@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lore Protocol"
+  short_description: "Use Lore decision context in this repo"
+  default_prompt: "Use $lore-protocol before editing files or creating commits in this repo."
