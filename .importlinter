@@ -1,0 +1,44 @@
+[importlinter]
+root_packages =
+    api
+    config
+    core
+    infra
+include_external_packages = True
+
+[importlinter:contract:domain_is_pure]
+name = Domain layer is pure
+type = forbidden
+source_modules =
+    core.domain
+forbidden_modules =
+    api
+    config
+    infra
+    fastapi
+    pydantic
+    pydantic_settings
+    httpx
+    temporalio
+    structlog
+    opentelemetry
+
+[importlinter:contract:core_has_no_infra]
+name = Core never imports infrastructure
+type = forbidden
+source_modules =
+    core
+forbidden_modules =
+    infra
+    api
+    config
+
+[importlinter:contract:api_does_not_import_adapters]
+name = API depends on registry, not concrete adapters
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    api
+forbidden_modules =
+    infra.adapters
+    infra.persistence.postgres_graph

@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+from datetime import date
+
+from core.domain.integrations import (
+    BuildResult,
+    CalendarEvent,
+    Issue,
+    IssueState,
+    PullRequest,
+    UserRef,
+)
+from tests.contract.contracts import (
+    assert_calendar_contract,
+    assert_chat_contract,
+    assert_ci_contract,
+    assert_issue_tracker_contract,
+    assert_vcs_contract,
+)
+from tests.contract.fakes import (
+    FakeCalendarProvider,
+    FakeChatProvider,
+    FakeCiProvider,
+    FakeIssueTracker,
+    FakeVcsProvider,
+)
+
+
+async def test_fake_chat_provider_satisfies_contract() -> None:
+    await assert_chat_contract(FakeChatProvider())
+
+
+async def test_fake_issue_tracker_satisfies_contract() -> None:
+    user = UserRef(tenant_id="demo", external_id="U123")
+    provider = FakeIssueTracker(
+        issues={
+            "PO-1": Issue(
+                tenant_id="demo",
+                key="PO-1",
+                title="Graph adapter",
+                state=IssueState.IN_PROGRESS,
+                assignee=user,
+            )
+        }
+    )
+    await assert_issue_tracker_contract(provider)
+
+
+async def test_fake_vcs_provider_satisfies_contract() -> None:
+    user = UserRef(tenant_id="demo", external_id="U123")
+    provider = FakeVcsProvider(
+        pull_requests=[
+            PullRequest(
+                tenant_id="demo",
+                id="1",
+                title="Add graph adapter",
+                author=user,
+                merged=False,
+            )
+        ]
+    )
+    await assert_vcs_contract(provider)
+
+
+async def test_fake_ci_provider_satisfies_contract() -> None:
+    provider = FakeCiProvider(
+        builds=[
+            BuildResult(tenant_id="demo", id="build-1", status="failed"),
+        ]
+    )
+    await assert_ci_contract(provider)
+
+
+async def test_fake_calendar_provider_satisfies_contract() -> None:
+    user = UserRef(tenant_id="demo", external_id="U123")
+    provider = FakeCalendarProvider(
+        events=[
+            CalendarEvent(
+                tenant_id="demo",
+                user=user,
+                starts_on=date(2026, 1, 10),
+                ends_on=date(2026, 1, 11),
+                kind="pto",
+            )
+        ]
+    )
+    await assert_calendar_contract(provider)

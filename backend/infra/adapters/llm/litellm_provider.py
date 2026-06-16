@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+from time import perf_counter
+from typing import Protocol
+from uuid import uuid4
+
+import httpx
+
+from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
+
+
+class LlmTraceSink(Protocol):
+    async def record(self, request: LlmRequest, response: LlmResponse) -> str: ...
+
+
+class NoopTraceSink:
+    async def record(self, request: LlmRequest, response: LlmResponse) -> str:
+        return response.trace_id
+
+
+@dataclass(frozen=True)
+class LiteLlmProvider:
+    base_url: str
+    trace_sink: LlmTraceSink
+    api_key: str | None = None
+
+    async def complete(self, request: LlmRequest) -> LlmResponse:
+        started = perf_counter()
+        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=30.0) as client:
+            http_response = await client.post(
+                "/v1/chat/completions",
+                headers=headers,
+                json={
+                    "model": request.model,
+                    "messages": [{"role": "user", "content": request.prompt}],
+                    "metadata": {
+                        "tenant_id": request.tenant_id,
+                        "correlation_id": request.correlation_id,
+                    },
+                },
+            )
+            http_response.raise_for_status()
+            payload = http_response.json()
+        latency_ms = (perf_counter() - started) * 1000
+        response = _response_from_payload(request, payload, latency_ms)
+        trace_id = await self.trace_sink.record(request, response)
+        return LlmResponse(
+            tenant_id=response.tenant_id,
+            text=response.text,
+            model=response.model,
+            usage=response.usage,
+            trace_id=trace_id,
+            metadata=response.metadata,
+        )
+
+
+def _response_from_payload(
+    request: LlmRequest, payload: Mapping[str, object], latency_ms: float
+) -> LlmResponse:
+    choices = payload.get("choices")
+    text = ""
+    if isinstance(choices, list) and choices:
+        first = choices[0]
+        if isinstance(first, Mapping):
+            message = first.get("message")
+            if isinstance(message, Mapping):
+                content = message.get("content")
+                text = content if isinstance(content, str) else ""
+
+    usage_payload = payload.get("usage")
+    prompt_tokens = 0
+    completion_tokens = 0
+    total_tokens = 0
+    if isinstance(usage_payload, Mapping):
+        prompt_tokens = _int_field(usage_payload, "prompt_tokens")
+        completion_tokens = _int_field(usage_payload, "completion_tokens")
+        total_tokens = _int_field(usage_payload, "total_tokens")
+
+    model = payload.get("model")
+    return LlmResponse(
+        tenant_id=request.tenant_id,
+        text=text,
+        model=model if isinstance(model, str) else request.model,
+        usage=TokenUsage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            cost_usd=0.0,
+            latency_ms=latency_ms,
+        ),
+        trace_id=str(payload.get("id") or uuid4()),
+    )
+
+
+def _int_field(payload: Mapping[str, object], key: str) -> int:
+    value = payload.get(key)
+    return value if isinstance(value, int) else 0
