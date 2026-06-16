@@ -5,7 +5,7 @@
   "panels": [
     {
       "type": "timeseries",
-      "title": "API Golden Signals",
+      "title": "API Availability",
       "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
       "targets": [
         {
@@ -15,6 +15,28 @@
         {
           "expr": "up{job=\"otel-collector\"}",
           "legendFormat": "otel collector"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "API Request Rate",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "sum by (route, status_code) (rate(pulseops_http_requests_total[5m]))",
+          "legendFormat": "{{route}} {{status_code}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "API Latency P95",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(pulseops_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{route}}"
         }
       ]
     }

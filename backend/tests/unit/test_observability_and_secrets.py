@@ -4,7 +4,8 @@ from cryptography.fernet import Fernet
 
 from core.ports.secrets import SecretRef
 from infra.adapters.secrets.encrypted import FernetSecretStore, InMemoryEncryptedSecretRecordStore
-from infra.observability.logging import redact_sensitive
+from infra.observability.logging import inject_correlation_id, redact_sensitive
+from infra.observability.tracing import correlation_scope
 
 
 def test_redaction_removes_dm_content_and_tokens() -> None:
@@ -14,6 +15,12 @@ def test_redaction_removes_dm_content_and_tokens() -> None:
         {"message": "raw dm", "token": "secret-token", "safe": "kept"},
     )
     assert event == {"message": "[redacted]", "token": "[redacted]", "safe": "kept"}
+
+
+async def test_logging_injects_correlation_id() -> None:
+    async with correlation_scope("corr-log"):
+        event = inject_correlation_id(None, "info", {"event": "hello"})
+    assert event["correlation_id"] == "corr-log"
 
 
 async def test_secret_store_encrypts_records() -> None:

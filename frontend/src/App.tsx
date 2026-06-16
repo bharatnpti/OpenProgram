@@ -70,7 +70,11 @@ export function App() {
             icon={<GitBranch className="h-4 w-4" />}
             label="Graph"
             value={graph.data?.root.name ?? (graph.isError ? "error" : "loading")}
-            detail={graph.data ? `${graph.data.nodes.length} nodes / ${graph.data.edges.length} edges` : ""}
+            detail={
+              graph.data
+                ? `${graph.data.nodes.length} nodes / ${graph.data.edges.length} edges`
+                : ""
+            }
             tone={graph.data ? "success" : "warning"}
           />
         </section>

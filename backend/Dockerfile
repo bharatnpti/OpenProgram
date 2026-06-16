@@ -3,6 +3,7 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY pyproject.toml ./
 COPY backend ./backend
+COPY scripts ./scripts
 RUN pip install --no-cache-dir .
 
 ENV PYTHONPATH=/app/backend

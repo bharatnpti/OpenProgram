@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from contextlib import AbstractAsyncContextManager
 from datetime import date
 from typing import Protocol
+
+from opentelemetry import trace
 
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
@@ -18,8 +21,10 @@ from core.domain.graph import (
     normalize_vector,
 )
 
+_tracer = trace.get_tracer("pulseops.persistence.graph")
 
-class AsyncSqlExecutor(Protocol):
+
+class AsyncSqlSession(Protocol):
     async def execute(self, query: str, params: Sequence[object] = ()) -> object: ...
 
     async def fetch(
@@ -27,81 +32,94 @@ class AsyncSqlExecutor(Protocol):
     ) -> Sequence[Mapping[str, object]]: ...
 
 
+class AsyncSqlExecutor(AsyncSqlSession, Protocol):
+    def transaction(self) -> AbstractAsyncContextManager[AsyncSqlSession]: ...
+
+
 class PostgresGraphRepository:
     def __init__(self, executor: AsyncSqlExecutor) -> None:
         self._executor = executor
 
     async def upsert_node(self, node: GraphNode) -> None:
-        await self._executor.execute(
-            """
-            INSERT INTO graph_nodes (tenant_id, id, kind, name, metadata)
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (tenant_id, id)
-            DO UPDATE SET kind = EXCLUDED.kind, name = EXCLUDED.name, metadata = EXCLUDED.metadata
-            """,
-            (node.tenant_id, node.id, node.kind.value, node.name, dict(node.metadata)),
-        )
-        await self._sync_age_node(node)
+        with _tracer.start_as_current_span("postgres.graph.upsert_node"):
+            async with self._executor.transaction() as transaction:
+                await transaction.execute(
+                    """
+                    INSERT INTO graph_nodes (tenant_id, id, kind, name, metadata)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (tenant_id, id)
+                    DO UPDATE SET
+                        kind = EXCLUDED.kind,
+                        name = EXCLUDED.name,
+                        metadata = EXCLUDED.metadata
+                    """,
+                    (node.tenant_id, node.id, node.kind.value, node.name, dict(node.metadata)),
+                )
+                await self._sync_age_node(transaction, node)
 
     async def add_edge(self, edge: GraphEdge) -> None:
-        await self._executor.execute(
-            """
-            INSERT INTO graph_edges (
-                tenant_id, from_node_id, to_node_id, kind, valid_from, valid_to, metadata
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                edge.tenant_id,
-                edge.from_node_id,
-                edge.to_node_id,
-                edge.kind.value,
-                edge.valid_from,
-                edge.valid_to,
-                dict(edge.metadata),
-            ),
-        )
-        await self._sync_age_edge(edge)
+        with _tracer.start_as_current_span("postgres.graph.add_edge"):
+            async with self._executor.transaction() as transaction:
+                await transaction.execute(
+                    """
+                    INSERT INTO graph_edges (
+                        tenant_id, from_node_id, to_node_id, kind, valid_from, valid_to, metadata
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        edge.tenant_id,
+                        edge.from_node_id,
+                        edge.to_node_id,
+                        edge.kind.value,
+                        edge.valid_from,
+                        edge.valid_to,
+                        dict(edge.metadata),
+                    ),
+                )
+                await self._sync_age_edge(transaction, edge)
 
     async def get_program_tree(self, tenant_id: str, program_id: str, as_of: date) -> GraphTree:
-        rows = await self._executor.fetch(
-            """
-            WITH RECURSIVE walk AS (
-                SELECT tenant_id, id, kind, name, metadata
-                FROM graph_nodes
-                WHERE tenant_id = %s AND id = %s
-              UNION
-                SELECT child.tenant_id, child.id, child.kind, child.name, child.metadata
-                FROM graph_nodes child
-                JOIN graph_edges edge
-                  ON edge.tenant_id = child.tenant_id
-                 AND edge.to_node_id = child.id
-                JOIN walk parent
-                  ON parent.tenant_id = edge.tenant_id
-                 AND parent.id = edge.from_node_id
-                WHERE edge.kind IN ('contains', 'assigned_to')
-                  AND (edge.valid_from IS NULL OR edge.valid_from <= %s)
-                  AND (edge.valid_to IS NULL OR edge.valid_to > %s)
+        with _tracer.start_as_current_span("postgres.graph.get_program_tree"):
+            rows = await self._executor.fetch(
+                """
+                WITH RECURSIVE walk AS (
+                    SELECT tenant_id, id, kind, name, metadata
+                    FROM graph_nodes
+                    WHERE tenant_id = %s AND id = %s
+                  UNION
+                    SELECT child.tenant_id, child.id, child.kind, child.name, child.metadata
+                    FROM graph_nodes child
+                    JOIN graph_edges edge
+                      ON edge.tenant_id = child.tenant_id
+                     AND edge.to_node_id = child.id
+                    JOIN walk parent
+                      ON parent.tenant_id = edge.tenant_id
+                     AND parent.id = edge.from_node_id
+                    WHERE edge.kind IN ('contains', 'assigned_to')
+                      AND (edge.valid_from IS NULL OR edge.valid_from <= %s)
+                      AND (edge.valid_to IS NULL OR edge.valid_to > %s)
+                )
+                SELECT * FROM walk
+                """,
+                (tenant_id, program_id, as_of, as_of),
             )
-            SELECT * FROM walk
-            """,
-            (tenant_id, program_id, as_of, as_of),
-        )
         nodes = tuple(_node_from_row(row) for row in rows)
         if not nodes:
             raise GraphNotFound(f"program {program_id} not found for tenant {tenant_id}")
 
-        edge_rows = await self._executor.fetch(
-            """
-            SELECT tenant_id, from_node_id, to_node_id, kind, valid_from, valid_to, metadata
-            FROM graph_edges
-            WHERE tenant_id = %s
-              AND kind IN ('contains', 'assigned_to')
-              AND (valid_from IS NULL OR valid_from <= %s)
-              AND (valid_to IS NULL OR valid_to > %s)
-            """,
-            (tenant_id, as_of, as_of),
-        )
+        with _tracer.start_as_current_span("postgres.graph.get_program_tree_edges"):
+            edge_rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, from_node_id, to_node_id, kind, valid_from, valid_to, metadata
+                FROM graph_edges
+                WHERE tenant_id = %s
+                  AND kind IN ('contains', 'assigned_to')
+                  AND (valid_from IS NULL OR valid_from <= %s)
+                  AND (valid_to IS NULL OR valid_to > %s)
+                """,
+                (tenant_id, as_of, as_of),
+            )
         node_ids = {node.id for node in nodes}
         edges = tuple(
             edge
@@ -113,121 +131,40 @@ class PostgresGraphRepository:
     async def active_developer_memberships(
         self, tenant_id: str, developer_id: str, as_of: date
     ) -> list[GraphEdge]:
-        rows = await self._executor.fetch(
-            """
-            SELECT tenant_id, from_node_id, to_node_id, kind, valid_from, valid_to, metadata
-            FROM graph_edges
-            WHERE tenant_id = %s
-              AND kind IN ('contains', 'assigned_to')
-              AND (from_node_id = %s OR to_node_id = %s)
-              AND (valid_from IS NULL OR valid_from <= %s)
-              AND (valid_to IS NULL OR valid_to > %s)
-            """,
-            (tenant_id, developer_id, developer_id, as_of, as_of),
-        )
-        return [_edge_from_row(row) for row in rows]
-
-    async def append_fact(self, fact: FactEvent) -> None:
-        await self._executor.execute(
-            """
-            INSERT INTO facts (
-                tenant_id, source, entity_kind, entity_id, payload,
-                observed_at, ingested_at, correlation_id
+        with _tracer.start_as_current_span("postgres.graph.active_developer_memberships"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, from_node_id, to_node_id, kind, valid_from, valid_to, metadata
+                FROM graph_edges
+                WHERE tenant_id = %s
+                  AND kind IN ('contains', 'assigned_to')
+                  AND (from_node_id = %s OR to_node_id = %s)
+                  AND (valid_from IS NULL OR valid_from <= %s)
+                  AND (valid_to IS NULL OR valid_to > %s)
+                """,
+                (tenant_id, developer_id, developer_id, as_of, as_of),
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                fact.tenant_id,
-                fact.source,
-                fact.entity_ref.kind.value,
-                fact.entity_ref.id,
-                dict(fact.payload),
-                fact.observed_at,
-                fact.ingested_at,
-                fact.correlation_id,
-            ),
-        )
+            return [_edge_from_row(row) for row in rows]
 
-    async def list_facts(self, tenant_id: str, entity_ref: EntityRef) -> list[FactEvent]:
-        rows = await self._executor.fetch(
-            """
-            SELECT tenant_id, source, entity_kind, entity_id, payload, observed_at, ingested_at,
-                   correlation_id
-            FROM facts
-            WHERE tenant_id = %s AND entity_kind = %s AND entity_id = %s
-            ORDER BY observed_at
-            """,
-            (tenant_id, entity_ref.kind.value, entity_ref.id),
-        )
-        return [_fact_from_row(row) for row in rows]
-
-    async def upsert_embedding(
-        self, tenant_id: str, entity_ref: EntityRef, vector: Sequence[float]
-    ) -> None:
-        await self._executor.execute(
-            """
-            INSERT INTO vector_items (tenant_id, entity_kind, entity_id, embedding)
-            VALUES (%s, %s, %s, %s::vector)
-            ON CONFLICT (tenant_id, entity_kind, entity_id)
-            DO UPDATE SET embedding = EXCLUDED.embedding
-            """,
-            (
-                tenant_id,
-                entity_ref.kind.value,
-                entity_ref.id,
-                _vector_literal(normalize_vector(vector)),
-            ),
-        )
-
-    async def search(
-        self, tenant_id: str, vector: Sequence[float], limit: int
-    ) -> list[VectorMatch]:
-        rows = await self._executor.fetch(
-            """
-            SELECT entity_kind, entity_id, 1 - (embedding <=> %s::vector) AS score
-            FROM vector_items
-            WHERE tenant_id = %s
-            ORDER BY embedding <=> %s::vector
-            LIMIT %s
-            """,
-            (
-                _vector_literal(normalize_vector(vector)),
-                tenant_id,
-                _vector_literal(normalize_vector(vector)),
-                limit,
-            ),
-        )
-        return [
-            VectorMatch(
-                entity_ref=EntityRef(
-                    tenant_id=tenant_id,
-                    kind=NodeKind(str(row["entity_kind"])),
-                    id=str(row["entity_id"]),
-                ),
-                score=_float_field(row.get("score")),
+    async def _sync_age_node(self, session: AsyncSqlSession, node: GraphNode) -> None:
+        with _tracer.start_as_current_span("postgres.age.sync_node"):
+            await _prepare_age_session(session)
+            await session.execute(
+                f"""
+                SELECT *
+                FROM cypher('pulseops_graph', $$
+                    MERGE (n:GraphNode {{
+                        tenant_id: {_cypher_string(node.tenant_id)},
+                        id: {_cypher_string(node.id)}
+                    }})
+                    SET n.kind = {_cypher_string(node.kind.value)},
+                        n.name = {_cypher_string(node.name)}
+                    RETURN n
+                $$) AS (n agtype)
+                """
             )
-            for row in rows
-        ]
 
-    async def _sync_age_node(self, node: GraphNode) -> None:
-        await self._executor.execute(
-            f"""
-            LOAD 'age';
-            SET search_path = ag_catalog, "$user", public;
-            SELECT *
-            FROM cypher('pulseops_graph', $$
-                MERGE (n:GraphNode {{
-                    tenant_id: {_cypher_string(node.tenant_id)},
-                    id: {_cypher_string(node.id)}
-                }})
-                SET n.kind = {_cypher_string(node.kind.value)},
-                    n.name = {_cypher_string(node.name)}
-                RETURN n
-            $$) AS (n agtype);
-            """
-        )
-
-    async def _sync_age_edge(self, edge: GraphEdge) -> None:
+    async def _sync_age_edge(self, session: AsyncSqlSession, edge: GraphEdge) -> None:
         relation = {
             EdgeKind.CONTAINS: "CONTAINS",
             EdgeKind.ASSIGNED_TO: "ASSIGNED_TO",
@@ -235,29 +172,130 @@ class PostgresGraphRepository:
         }[edge.kind]
         valid_from = _cypher_string(edge.valid_from.isoformat()) if edge.valid_from else "null"
         valid_to = _cypher_string(edge.valid_to.isoformat()) if edge.valid_to else "null"
-        await self._executor.execute(
-            f"""
-            LOAD 'age';
-            SET search_path = ag_catalog, "$user", public;
-            SELECT *
-            FROM cypher('pulseops_graph', $$
-                MATCH (from_node:GraphNode {{
-                    tenant_id: {_cypher_string(edge.tenant_id)},
-                    id: {_cypher_string(edge.from_node_id)}
-                }})
-                MATCH (to_node:GraphNode {{
-                    tenant_id: {_cypher_string(edge.tenant_id)},
-                    id: {_cypher_string(edge.to_node_id)}
-                }})
-                CREATE (from_node)-[edge:{relation} {{
-                    kind: {_cypher_string(edge.kind.value)},
-                    valid_from: {valid_from},
-                    valid_to: {valid_to}
-                }}]->(to_node)
-                RETURN edge
-            $$) AS (edge agtype);
-            """
-        )
+        with _tracer.start_as_current_span("postgres.age.sync_edge"):
+            await _prepare_age_session(session)
+            await session.execute(
+                f"""
+                SELECT *
+                FROM cypher('pulseops_graph', $$
+                    MATCH (from_node:GraphNode {{
+                        tenant_id: {_cypher_string(edge.tenant_id)},
+                        id: {_cypher_string(edge.from_node_id)}
+                    }})
+                    MATCH (to_node:GraphNode {{
+                        tenant_id: {_cypher_string(edge.tenant_id)},
+                        id: {_cypher_string(edge.to_node_id)}
+                    }})
+                    CREATE (from_node)-[edge:{relation} {{
+                        kind: {_cypher_string(edge.kind.value)},
+                        valid_from: {valid_from},
+                        valid_to: {valid_to}
+                    }}]->(to_node)
+                    RETURN edge
+                $$) AS (edge agtype)
+                """
+            )
+
+
+class PostgresTimeSeriesRepository:
+    def __init__(self, executor: AsyncSqlExecutor) -> None:
+        self._executor = executor
+
+    async def append_fact(self, fact: FactEvent) -> None:
+        with _tracer.start_as_current_span("postgres.timeseries.append_fact"):
+            await self._executor.execute(
+                """
+                INSERT INTO facts (
+                    tenant_id, source, entity_kind, entity_id, payload,
+                    observed_at, ingested_at, correlation_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    fact.tenant_id,
+                    fact.source,
+                    fact.entity_ref.kind.value,
+                    fact.entity_ref.id,
+                    dict(fact.payload),
+                    fact.observed_at,
+                    fact.ingested_at,
+                    fact.correlation_id,
+                ),
+            )
+
+    async def list_facts(self, tenant_id: str, entity_ref: EntityRef) -> list[FactEvent]:
+        with _tracer.start_as_current_span("postgres.timeseries.list_facts"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, source, entity_kind, entity_id, payload, observed_at, ingested_at,
+                       correlation_id
+                FROM facts
+                WHERE tenant_id = %s AND entity_kind = %s AND entity_id = %s
+                ORDER BY observed_at
+                """,
+                (tenant_id, entity_ref.kind.value, entity_ref.id),
+            )
+            return [_fact_from_row(row) for row in rows]
+
+
+class PostgresVectorStore:
+    def __init__(self, executor: AsyncSqlExecutor) -> None:
+        self._executor = executor
+
+    async def upsert_embedding(
+        self, tenant_id: str, entity_ref: EntityRef, vector: Sequence[float]
+    ) -> None:
+        with _tracer.start_as_current_span("postgres.vector.upsert_embedding"):
+            await self._executor.execute(
+                """
+                INSERT INTO vector_items (tenant_id, entity_kind, entity_id, embedding)
+                VALUES (%s, %s, %s, %s::vector)
+                ON CONFLICT (tenant_id, entity_kind, entity_id)
+                DO UPDATE SET embedding = EXCLUDED.embedding
+                """,
+                (
+                    tenant_id,
+                    entity_ref.kind.value,
+                    entity_ref.id,
+                    _vector_literal(normalize_vector(vector)),
+                ),
+            )
+
+    async def search(
+        self, tenant_id: str, vector: Sequence[float], limit: int
+    ) -> list[VectorMatch]:
+        with _tracer.start_as_current_span("postgres.vector.search"):
+            rows = await self._executor.fetch(
+                """
+                SELECT entity_kind, entity_id, 1 - (embedding <=> %s::vector) AS score
+                FROM vector_items
+                WHERE tenant_id = %s
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+                """,
+                (
+                    _vector_literal(normalize_vector(vector)),
+                    tenant_id,
+                    _vector_literal(normalize_vector(vector)),
+                    limit,
+                ),
+            )
+            return [
+                VectorMatch(
+                    entity_ref=EntityRef(
+                        tenant_id=tenant_id,
+                        kind=NodeKind(str(row["entity_kind"])),
+                        id=str(row["entity_id"]),
+                    ),
+                    score=_float_field(row.get("score")),
+                )
+                for row in rows
+            ]
+
+
+async def _prepare_age_session(session: AsyncSqlSession) -> None:
+    await session.execute("LOAD 'age'")
+    await session.execute('SET LOCAL search_path = ag_catalog, "$user", public')
 
 
 def _node_from_row(row: Mapping[str, object]) -> GraphNode:

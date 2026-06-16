@@ -26,7 +26,7 @@ export PULSEOPS_LANGFUSE_SECRET_KEY
 export PULSEOPS_LANGFUSE_PROJECT_ID
 export PULSEOPS_TEMPORAL_SCHEDULE_ID
 
-.PHONY: up down migrate seed schedule smoke integration verify test lint format api openapi worker frontend-install frontend-dev frontend-lint frontend-build
+.PHONY: up down migrate seed schedule smoke integration verify test lint format api openapi openapi-check worker mock-llm frontend-install frontend-dev frontend-lint frontend-format frontend-build frontend-generate
 
 up:
 	docker compose up -d
@@ -49,7 +49,7 @@ smoke:
 integration:
 	PULSEOPS_RUN_INTEGRATION=1 PYTHONPATH=$(PYTHONPATH) uv run pytest backend/tests/integration -m integration --no-cov
 
-verify: lint test frontend-lint frontend-build integration smoke
+verify: lint test frontend-lint frontend-build openapi-check integration smoke
 
 test:
 	PYTHONPATH=$(PYTHONPATH) uv run pytest
@@ -70,8 +70,17 @@ api:
 openapi:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m api.openapi
 
+openapi-check:
+	$(MAKE) openapi
+	cd frontend && npx prettier --write src/api/openapi.json
+	cd frontend && npm run generate:client
+	git diff --exit-code frontend/src/api/openapi.json frontend/src/api/generated.ts
+
 worker:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m infra.workflows.worker
+
+mock-llm:
+	uv run uvicorn scripts.mock_llm:app --host 0.0.0.0 --port 8089
 
 frontend-install:
 	cd frontend && npm install
@@ -80,7 +89,13 @@ frontend-dev:
 	cd frontend && npm run dev
 
 frontend-lint:
-	cd frontend && npm run lint && npm run typecheck
+	cd frontend && npm run lint && npm run typecheck && npm run format:check
+
+frontend-format:
+	cd frontend && npm run format
 
 frontend-build:
 	cd frontend && npm run build
+
+frontend-generate:
+	cd frontend && npm run generate:client

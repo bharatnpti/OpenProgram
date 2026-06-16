@@ -46,3 +46,19 @@ def test_registry_selects_real_configured_provider_adapters() -> None:
     assert isinstance(registry.llm_provider(), LiteLlmProvider)
     assert isinstance(registry.workflow_scheduler(), TemporalWorkflowScheduler)
     assert isinstance(registry.workflow_worker(), TemporalWorkflowWorker)
+
+
+async def test_registry_current_principal_uses_auth_provider() -> None:
+    registry = ServiceRegistry(
+        Settings(
+            secret_key=SECRET_KEY,
+            runtime_mode="memory",
+            dev_principal_subject="dev-1",
+            dev_principal_roles="dev,sm",
+        )
+    )
+
+    principal = await registry.current_principal("token").get()
+
+    assert principal.subject == "dev-1"
+    assert principal.scopes == frozenset({"dev-mode", "token"})

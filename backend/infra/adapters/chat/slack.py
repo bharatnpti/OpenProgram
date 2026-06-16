@@ -8,10 +8,14 @@ from typing import Protocol
 from uuid import uuid4
 
 import httpx
+from opentelemetry import trace
+from redis.asyncio import Redis
 
 from core.domain.errors import ProviderUnavailable
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from infra.adapters.chat.rate_limit import RateLimiter
+
+_tracer = trace.get_tracer("pulseops.adapters.chat.slack")
 
 
 class SlackHttpClient(Protocol):
@@ -22,49 +26,91 @@ class SlackHttpClient(Protocol):
     async def latest_reply(self, thread_id: str) -> Mapping[str, object] | None: ...
 
 
+class ConversationCache(Protocol):
+    async def get(self, user_id: str) -> str | None: ...
+
+    async def put(self, user_id: str, channel_id: str) -> None: ...
+
+
+@dataclass
+class InMemoryConversationCache:
+    _threads: dict[str, str] = field(default_factory=dict)
+
+    async def get(self, user_id: str) -> str | None:
+        with _tracer.start_as_current_span("slack.conversation_cache.memory.get"):
+            return self._threads.get(user_id)
+
+    async def put(self, user_id: str, channel_id: str) -> None:
+        with _tracer.start_as_current_span("slack.conversation_cache.memory.put"):
+            self._threads[user_id] = channel_id
+
+
+@dataclass(frozen=True)
+class RedisConversationCache:
+    tenant_id: str
+    client: Redis
+
+    async def get(self, user_id: str) -> str | None:
+        with _tracer.start_as_current_span("slack.conversation_cache.redis.get"):
+            value = await self.client.get(self._key(user_id))
+            return value if isinstance(value, str) and value else None
+
+    async def put(self, user_id: str, channel_id: str) -> None:
+        with _tracer.start_as_current_span("slack.conversation_cache.redis.put"):
+            await self.client.set(self._key(user_id), channel_id)
+
+    def _key(self, user_id: str) -> str:
+        return f"pulseops:slack:conversation:{self.tenant_id}:{user_id}"
+
+
 @dataclass
 class SlackChatAdapter:
     tenant_id: str
     http_client: SlackHttpClient
     rate_limiter: RateLimiter
-    _threads: dict[str, str] = field(default_factory=dict)
+    conversation_cache: ConversationCache = field(default_factory=InMemoryConversationCache)
 
     async def send_dm(self, user: ChatUserRef, message: OutboundMessage) -> str:
-        await self.rate_limiter.acquire(f"chat:{self.tenant_id}:{user.external_id}")
-        channel_id = self._threads.get(user.external_id)
-        if channel_id is None:
-            channel_id = await self.open_thread(user)
-        return await self.http_client.post_message(channel_id, message.text)
+        with _tracer.start_as_current_span("slack.send_dm"):
+            await self.rate_limiter.acquire(f"chat:{self.tenant_id}:{user.external_id}")
+            channel_id = await self.conversation_cache.get(user.external_id)
+            if channel_id is None:
+                channel_id = await self.open_thread(user)
+            return await self.http_client.post_message(channel_id, message.text)
 
     async def open_thread(self, user: ChatUserRef) -> str:
-        await self.rate_limiter.acquire(f"chat-open:{self.tenant_id}:{user.external_id}")
-        channel_id = await self.http_client.open_conversation(user.external_id)
-        self._threads[user.external_id] = channel_id
-        return channel_id
+        with _tracer.start_as_current_span("slack.open_thread"):
+            await self.rate_limiter.acquire(f"chat-open:{self.tenant_id}:{user.external_id}")
+            channel_id = await self.http_client.open_conversation(user.external_id)
+            await self.conversation_cache.put(user.external_id, channel_id)
+            return channel_id
 
     async def fetch_reply(self, thread_id: str) -> InboundMessage | None:
-        payload = await self.http_client.latest_reply(thread_id)
-        if payload is None:
-            return None
-        return self.map_reply_payload(payload, thread_id)
+        with _tracer.start_as_current_span("slack.fetch_reply"):
+            payload = await self.http_client.latest_reply(thread_id)
+            if payload is None:
+                return None
+            return self.map_reply_payload(payload, thread_id)
 
     def map_reply_payload(self, payload: Mapping[str, object], thread_id: str) -> InboundMessage:
-        user_id = _string_field(payload, "user")
-        text = _string_field(payload, "text")
-        timestamp = _string_field(payload, "ts")
-        return InboundMessage(
-            tenant_id=self.tenant_id,
-            user=ChatUserRef(tenant_id=self.tenant_id, external_id=user_id),
-            text=text,
-            thread_id=thread_id,
-            message_id=timestamp,
-            correlation_id=_string_field(payload, "client_msg_id", default=str(uuid4())),
-            received_at=datetime.now(tz=UTC),
-            metadata={"source": "slack"},
-        )
+        with _tracer.start_as_current_span("slack.map_reply_payload"):
+            user_id = _string_field(payload, "user")
+            text = _string_field(payload, "text")
+            timestamp = _string_field(payload, "ts")
+            return InboundMessage(
+                tenant_id=self.tenant_id,
+                user=ChatUserRef(tenant_id=self.tenant_id, external_id=user_id),
+                text=text,
+                thread_id=thread_id,
+                message_id=timestamp,
+                correlation_id=_string_field(payload, "client_msg_id", default=str(uuid4())),
+                received_at=datetime.now(tz=UTC),
+                metadata={"source": "slack"},
+            )
 
     def map_webhook(self, payload: Mapping[str, object], correlation_id: str) -> InboundMessage:
-        return SlackChatWebhookMapper(self.tenant_id).map_webhook(payload, correlation_id)
+        with _tracer.start_as_current_span("slack.map_webhook"):
+            return SlackChatWebhookMapper(self.tenant_id).map_webhook(payload, correlation_id)
 
 
 @dataclass(frozen=True)
@@ -72,20 +118,24 @@ class SlackChatWebhookMapper:
     tenant_id: str
 
     def map_webhook(self, payload: Mapping[str, object], correlation_id: str) -> InboundMessage:
-        event = payload.get("event")
-        if not isinstance(event, Mapping):
-            raise ProviderUnavailable("chat webhook payload did not contain an event object")
-        thread_id = _string_field(event, "thread_ts", default=_string_field(event, "channel"))
-        return InboundMessage(
-            tenant_id=self.tenant_id,
-            user=ChatUserRef(tenant_id=self.tenant_id, external_id=_string_field(event, "user")),
-            text=_string_field(event, "text"),
-            thread_id=thread_id,
-            message_id=_string_field(event, "ts"),
-            correlation_id=correlation_id,
-            received_at=datetime.now(tz=UTC),
-            metadata={"source": "slack"},
-        )
+        with _tracer.start_as_current_span("slack.webhook.map"):
+            event = payload.get("event")
+            if not isinstance(event, Mapping):
+                raise ProviderUnavailable("chat webhook payload did not contain an event object")
+            thread_id = _string_field(event, "thread_ts", default=_string_field(event, "channel"))
+            return InboundMessage(
+                tenant_id=self.tenant_id,
+                user=ChatUserRef(
+                    tenant_id=self.tenant_id,
+                    external_id=_string_field(event, "user"),
+                ),
+                text=_string_field(event, "text"),
+                thread_id=thread_id,
+                message_id=_string_field(event, "ts"),
+                correlation_id=correlation_id,
+                received_at=datetime.now(tz=UTC),
+                metadata={"source": "slack"},
+            )
 
 
 class DisabledSlackHttpClient:
@@ -107,26 +157,32 @@ class HttpSlackClient:
     retry_backoff_seconds: float = 0.25
 
     async def open_conversation(self, user_id: str) -> str:
-        payload = await self._post("/conversations.open", json={"users": user_id})
-        channel = payload.get("channel")
-        if not isinstance(channel, Mapping):
-            raise ProviderUnavailable("slack conversations.open response missing channel")
-        return _string_field(channel, "id")
+        with _tracer.start_as_current_span("slack.http.open_conversation"):
+            payload = await self._post("/conversations.open", json={"users": user_id})
+            channel = payload.get("channel")
+            if not isinstance(channel, Mapping):
+                raise ProviderUnavailable("slack conversations.open response missing channel")
+            return _string_field(channel, "id")
 
     async def post_message(self, channel_id: str, text: str) -> str:
-        payload = await self._post("/chat.postMessage", json={"channel": channel_id, "text": text})
-        return _string_field(payload, "ts")
+        with _tracer.start_as_current_span("slack.http.post_message"):
+            payload = await self._post(
+                "/chat.postMessage",
+                json={"channel": channel_id, "text": text},
+            )
+            return _string_field(payload, "ts")
 
     async def latest_reply(self, thread_id: str) -> Mapping[str, object] | None:
-        payload = await self._get(
-            "/conversations.history",
-            params={"channel": thread_id, "limit": "1"},
-        )
-        messages = payload.get("messages")
-        if not isinstance(messages, list) or not messages:
-            return None
-        first = messages[0]
-        return first if isinstance(first, Mapping) else None
+        with _tracer.start_as_current_span("slack.http.latest_reply"):
+            payload = await self._get(
+                "/conversations.history",
+                params={"channel": thread_id, "limit": "1"},
+            )
+            messages = payload.get("messages")
+            if not isinstance(messages, list) or not messages:
+                return None
+            first = messages[0]
+            return first if isinstance(first, Mapping) else None
 
     async def _post(self, path: str, json: Mapping[str, object]) -> Mapping[str, object]:
         return await self._request("POST", path, json=json)

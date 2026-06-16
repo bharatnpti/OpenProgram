@@ -56,3 +56,31 @@ def test_chat_webhook_route_ignores_unsupported_provider(settings: Settings) -> 
         "status": "ignored",
         "message_id": "unsupported-provider",
     }
+
+
+def test_metrics_endpoint_exposes_prometheus_metrics(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        client.get("/health")
+        response = client.get("/metrics")
+
+    assert response.status_code == 200
+    assert "pulseops_info" in response.text
+    assert "pulseops_http_requests_total" in response.text
+
+
+def test_cors_origins_are_configurable(settings: Settings) -> None:
+    app = create_app(
+        settings=settings.model_copy(update={"cors_origins": ("https://frontend.example",)})
+    )
+    with TestClient(app) as client:
+        response = client.options(
+            "/health",
+            headers={
+                "Origin": "https://frontend.example",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "https://frontend.example"

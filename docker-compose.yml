@@ -195,7 +195,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    command: ["uvicorn", "infra.mock_llm:app", "--host", "0.0.0.0", "--port", "8080", "--app-dir", "backend"]
+    command: ["uvicorn", "scripts.mock_llm:app", "--host", "0.0.0.0", "--port", "8080"]
     environment:
       PYTHONPATH: /app/backend
     ports:
@@ -262,8 +262,12 @@ services:
     environment:
       PULSEOPS_RUNTIME_MODE: container
       PULSEOPS_SECRET_KEY: ${PULSEOPS_SECRET_KEY:-q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=}
+      PULSEOPS_CORS_ORIGINS: ${PULSEOPS_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
       PULSEOPS_DATABASE_URL: postgresql://pulseops:pulseops@postgres:5432/pulseops
+      PULSEOPS_POSTGRES_POOL_MIN_SIZE: ${PULSEOPS_POSTGRES_POOL_MIN_SIZE:-1}
+      PULSEOPS_POSTGRES_POOL_MAX_SIZE: ${PULSEOPS_POSTGRES_POOL_MAX_SIZE:-5}
       PULSEOPS_REDIS_URL: redis://redis:6379/0
+      PULSEOPS_REDIS_MAX_CONNECTIONS: ${PULSEOPS_REDIS_MAX_CONNECTIONS:-10}
       PULSEOPS_TEMPORAL_TARGET: temporal:7233
       PULSEOPS_LITELLM_BASE_URL: http://litellm:4000
       PULSEOPS_LITELLM_API_KEY: local-litellm-key

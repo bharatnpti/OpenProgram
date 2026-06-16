@@ -23,7 +23,7 @@ async def get_current_principal(
     authorization: Annotated[str | None, Header()] = None,
 ) -> Principal:
     registry = get_registry(request)
-    return await registry.auth_provider().authenticate(authorization)
+    return await registry.current_principal(authorization).get()
 
 
 def get_graph_query_service(request: Request) -> GraphQueryService:
