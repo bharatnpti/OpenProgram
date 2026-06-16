@@ -11,12 +11,19 @@ The core exposes one Protocol per external capability:
 - `CalendarProvider`
 - `LlmProvider`
 - `SecretStore`
+- `ChatWebhookMapper`
+- `WorkflowScheduler`
+- `WorkflowWorker`
 
 All DTOs live in `core.domain` and carry `tenant_id` seams. Vendor payloads stay in `infra`.
 
 ## Composition Root
 
-`infra.registry.ServiceRegistry` wires configured providers from `config.Settings` using constructor injection. Application code receives ports, never concrete adapters.
+`infra.registry.ServiceRegistry` delegates provider selection to the adapter catalog and returns ports using constructor injection. Application and API code receive provider-neutral ports, never concrete adapters. Current selectors are:
+
+- `chat_provider`: `slack` or `fake`
+- `llm_provider`: `litellm` or `fake`
+- `workflow_provider`: `temporal` or `fake`
 
 ## Secret Storage
 
@@ -28,4 +35,4 @@ Each port has a reusable async contract test helper. The helper accepts a provid
 
 ## Anti-Corruption Rule
 
-Adapters translate external payloads to domain DTOs at the boundary. Provider-specific names may appear only under `infra/adapters/*`.
+Adapters translate external payloads to domain DTOs at the boundary. Provider-specific SDK imports stay under `infra/adapters/*`, while config and docs may name provider IDs used for selection.

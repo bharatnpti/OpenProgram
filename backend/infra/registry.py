@@ -4,21 +4,18 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 
-import httpx
 from cryptography.fernet import Fernet
-from redis.asyncio import Redis
 
 from config.settings import Settings
 from core.domain.messaging import InboundMessage
 from core.ports.auth import AuthProvider
-from core.ports.chat import ChatProvider
+from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.llm import LlmProvider
 from core.ports.repositories import GraphRepository, TimeSeriesRepository, VectorStore
 from core.ports.secrets import SecretStore
+from core.ports.workflows import WorkflowScheduler, WorkflowWorker
+from infra.adapters import catalog
 from infra.adapters.auth.dev import DevAuthProvider
-from infra.adapters.chat.rate_limit import InMemoryRateLimiter, RedisRateLimiter
-from infra.adapters.chat.slack import DisabledSlackHttpClient, HttpSlackClient, SlackChatAdapter
-from infra.adapters.llm.litellm_provider import LangfuseTraceSink, LiteLlmProvider, NoopTraceSink
 from infra.adapters.secrets.encrypted import (
     FernetSecretStore,
     InMemoryEncryptedSecretRecordStore,
@@ -59,54 +56,25 @@ class ServiceRegistry:
         )
 
     def chat_provider(self) -> ChatProvider:
-        http_client = (
-            HttpSlackClient(
-                bot_token=self.settings.slack_bot_token,
-                base_url=self.settings.slack_api_base_url,
-                retry_attempts=self.settings.slack_retry_attempts,
-                retry_backoff_seconds=self.settings.slack_retry_backoff_seconds,
-            )
-            if self.settings.slack_bot_token
-            else DisabledSlackHttpClient()
-        )
-        rate_limiter = (
-            InMemoryRateLimiter()
-            if self.settings.runtime_mode == "memory"
-            else RedisRateLimiter(
-                redis_url=self.settings.redis_url,
-                window_seconds=self.settings.redis_rate_limit_window_seconds,
-                max_events=self.settings.redis_rate_limit_max_events,
-            )
-        )
-        return SlackChatAdapter(
-            tenant_id=self.settings.tenant_id,
-            http_client=http_client,
-            rate_limiter=rate_limiter,
-        )
+        return catalog.build_chat_provider(self.settings)
+
+    def chat_webhook_mapper(self, provider: str) -> ChatWebhookMapper | None:
+        return catalog.build_chat_webhook_mapper(self.settings, provider)
 
     def map_chat_webhook(
-        self, payload: Mapping[str, object], correlation_id: str
+        self, provider: str, payload: Mapping[str, object], correlation_id: str
     ) -> InboundMessage | None:
-        chat_provider = self.chat_provider()
-        if isinstance(chat_provider, SlackChatAdapter):
-            return chat_provider.map_webhook(payload, correlation_id)
-        return None
+        mapper = self.chat_webhook_mapper(provider)
+        return mapper.map_webhook(payload, correlation_id) if mapper else None
 
     def llm_provider(self) -> LlmProvider:
-        trace_sink = (
-            NoopTraceSink()
-            if self.settings.runtime_mode == "memory"
-            else LangfuseTraceSink(
-                host=self.settings.langfuse_host,
-                public_key=_required(self.settings.langfuse_public_key, "langfuse_public_key"),
-                secret_key=_required(self.settings.langfuse_secret_key, "langfuse_secret_key"),
-            )
-        )
-        return LiteLlmProvider(
-            base_url=self.settings.litellm_base_url,
-            trace_sink=trace_sink,
-            api_key=self.settings.litellm_api_key,
-        )
+        return catalog.build_llm_provider(self.settings)
+
+    def workflow_scheduler(self) -> WorkflowScheduler:
+        return catalog.build_workflow_scheduler(self.settings)
+
+    def workflow_worker(self) -> WorkflowWorker:
+        return catalog.build_workflow_worker(self.settings)
 
     def secret_store(self) -> SecretStore:
         record_store = (
@@ -120,23 +88,9 @@ class ServiceRegistry:
         )
 
     async def readiness(self) -> dict[str, bool]:
-        if self.settings.runtime_mode == "memory":
-            return {
-                "settings": True,
-                "registry": True,
-                "graph_repository": True,
-                "redis": True,
-                "temporal": True,
-                "litellm": True,
-                "langfuse": True,
-            }
+        probes = catalog.build_readiness_probes(self.settings, self._executor)
         checks: dict[str, Callable[[], Awaitable[bool]]] = {
-            "database": self._check_database,
-            "database_extensions": self._check_database_extensions,
-            "redis": self._check_redis,
-            "temporal": self._check_temporal,
-            "litellm": self._check_litellm,
-            "langfuse": self._check_langfuse,
+            name: probe.check for name, probe in probes.items()
         }
         results = await asyncio.gather(
             *(self._bounded_check(check) for check in checks.values()),
@@ -165,52 +119,6 @@ class ServiceRegistry:
         except Exception:
             return False
 
-    async def _check_database(self) -> bool:
-        rows = await self._executor().fetch("SELECT 1 AS ok")
-        return bool(rows and rows[0].get("ok") == 1)
-
-    async def _check_database_extensions(self) -> bool:
-        rows = await self._executor().fetch(
-            """
-            SELECT extname
-            FROM pg_extension
-            WHERE extname IN ('age', 'timescaledb', 'vector')
-            """
-        )
-        return {str(row["extname"]) for row in rows} == {"age", "timescaledb", "vector"}
-
-    async def _check_redis(self) -> bool:
-        client = Redis.from_url(self.settings.redis_url, decode_responses=True)
-        try:
-            return bool(await client.ping())
-        finally:
-            await client.aclose()
-
-    async def _check_temporal(self) -> bool:
-        from temporalio.client import Client
-
-        await Client.connect(self.settings.temporal_target)
-        return True
-
-    async def _check_litellm(self) -> bool:
-        async with httpx.AsyncClient(
-            base_url=self.settings.litellm_base_url,
-            timeout=3.0,
-        ) as client:
-            response = await client.get("/health/readiness")
-            return response.is_success
-
-    async def _check_langfuse(self) -> bool:
-        async with httpx.AsyncClient(base_url=self.settings.langfuse_host, timeout=3.0) as client:
-            response = await client.get("/api/public/health")
-            return response.is_success
-
 
 def _fernet_key(value: str) -> bytes:
     return value.encode("utf-8")
-
-
-def _required(value: str | None, name: str) -> str:
-    if not value:
-        raise ValueError(f"{name} is required when runtime_mode=container")
-    return value

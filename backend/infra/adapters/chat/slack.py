@@ -64,6 +64,14 @@ class SlackChatAdapter:
         )
 
     def map_webhook(self, payload: Mapping[str, object], correlation_id: str) -> InboundMessage:
+        return SlackChatWebhookMapper(self.tenant_id).map_webhook(payload, correlation_id)
+
+
+@dataclass(frozen=True)
+class SlackChatWebhookMapper:
+    tenant_id: str
+
+    def map_webhook(self, payload: Mapping[str, object], correlation_id: str) -> InboundMessage:
         event = payload.get("event")
         if not isinstance(event, Mapping):
             raise ProviderUnavailable("chat webhook payload did not contain an event object")

@@ -13,13 +13,14 @@ from cryptography.fernet import Fernet
 
 from config.settings import get_settings
 from core.domain.graph import EntityRef, NodeKind
+from core.domain.workflows import HeartbeatInput
 from core.ports.secrets import SecretRef
 from infra.adapters.chat.rate_limit import RedisRateLimiter
 from infra.adapters.secrets.encrypted import FernetSecretStore, PostgresEncryptedSecretRecordStore
+from infra.adapters.workflows.temporal import HeartbeatWorkflow, record_heartbeat_activity
 from infra.persistence.postgres_graph import PostgresGraphRepository
 from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
 from infra.persistence.seed_data import seed_demo_graph
-from infra.workflows.heartbeat import HeartbeatInput, HeartbeatWorkflow, record_heartbeat_activity
 
 pytestmark = [
     pytest.mark.integration,

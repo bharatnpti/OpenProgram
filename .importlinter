@@ -20,6 +20,8 @@ forbidden_modules =
     pydantic_settings
     httpx
     temporalio
+    psycopg
+    redis
     structlog
     opentelemetry
 
@@ -32,6 +34,34 @@ forbidden_modules =
     infra
     api
     config
+
+[importlinter:contract:core_has_no_provider_sdks]
+name = Core does not import provider SDKs
+type = forbidden
+source_modules =
+    core
+forbidden_modules =
+    httpx
+    temporalio
+    psycopg
+    redis
+    openai
+    google
+
+[importlinter:contract:api_has_no_provider_sdks_or_adapters]
+name = API does not import provider SDKs or concrete adapters
+type = forbidden
+allow_indirect_imports = True
+source_modules =
+    api
+forbidden_modules =
+    infra.adapters
+    httpx
+    temporalio
+    psycopg
+    redis
+    openai
+    google
 
 [importlinter:contract:api_does_not_import_adapters]
 name = API depends on registry, not concrete adapters

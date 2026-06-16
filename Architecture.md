@@ -157,7 +157,7 @@ def get_chat_provider(settings: Settings) -> ChatProvider:
     return CHAT_ADAPTERS[settings.chat_provider](settings)
 ```
 
-Rule of thumb: if a vendor name (e.g. `Slack`) appears outside `infra/adapters/slack/`, it is a bug. Each port has a shared **contract test suite** that every adapter must pass.
+Rule of thumb: vendor SDK imports and payload types stay under `infra/adapters/*`. Provider IDs may appear in configuration, the adapter catalog, docs, and tests. Each port has a shared **contract test suite** that every adapter must pass.
 
 ---
 

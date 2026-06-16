@@ -10,8 +10,8 @@ import respx
 from core.domain.errors import ProviderUnavailable
 from core.domain.messaging import ChatUserRef, OutboundMessage
 from infra.adapters.chat.rate_limit import InMemoryRateLimiter
-from infra.adapters.chat.slack import HttpSlackClient, SlackChatAdapter
-from tests.contract.contracts import assert_chat_contract
+from infra.adapters.chat.slack import HttpSlackClient, SlackChatAdapter, SlackChatWebhookMapper
+from tests.contract.contracts import assert_chat_contract, assert_chat_webhook_mapper_contract
 
 
 @dataclass
@@ -36,6 +36,20 @@ async def test_slack_adapter_satisfies_chat_contract() -> None:
         rate_limiter=InMemoryRateLimiter(),
     )
     await assert_chat_contract(adapter)
+
+
+def test_slack_chat_webhook_mapper_satisfies_contract() -> None:
+    assert_chat_webhook_mapper_contract(
+        SlackChatWebhookMapper(tenant_id="demo"),
+        {
+            "event": {
+                "user": "U123",
+                "text": "blocked on API",
+                "ts": "1700000000.000001",
+                "channel": "C123",
+            }
+        },
+    )
 
 
 async def test_slack_adapter_maps_webhook_and_sends_dm() -> None:

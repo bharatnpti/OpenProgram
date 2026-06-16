@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     litellm_base_url: str = "http://localhost:4000"
     litellm_api_key: str | None = None
     litellm_model: str = "gpt-4o-mini"
+    llm_provider: str = "litellm"
     embedding_dimension: int = 1536
     langfuse_host: str = "http://localhost:3001"
     langfuse_public_key: str | None = None
@@ -37,6 +38,7 @@ class Settings(BaseSettings):
     langfuse_project_id: str | None = None
     otel_exporter_otlp_endpoint: str | None = None
     chat_provider: str = "slack"
+    workflow_provider: str = "temporal"
     slack_bot_token: str | None = None
     slack_api_base_url: str = "https://slack.com/api"
     slack_retry_attempts: int = 3
@@ -53,6 +55,24 @@ class Settings(BaseSettings):
         allowed = {"slack", "fake"}
         if value not in allowed:
             message = f"chat_provider must be one of {sorted(allowed)}"
+            raise ValueError(message)
+        return value
+
+    @field_validator("llm_provider")
+    @classmethod
+    def validate_llm_provider(cls, value: str) -> str:
+        allowed = {"litellm", "fake"}
+        if value not in allowed:
+            message = f"llm_provider must be one of {sorted(allowed)}"
+            raise ValueError(message)
+        return value
+
+    @field_validator("workflow_provider")
+    @classmethod
+    def validate_workflow_provider(cls, value: str) -> str:
+        allowed = {"temporal", "fake"}
+        if value not in allowed:
+            message = f"workflow_provider must be one of {sorted(allowed)}"
             raise ValueError(message)
         return value
 
