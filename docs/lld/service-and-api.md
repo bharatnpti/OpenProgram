@@ -9,7 +9,7 @@
 - `/health`: process liveness.
 - `/ready`: settings and dependency readiness.
 - `/graph/programs/{program_id}/tree`: sample graph read through `GraphRepository`.
-- `/webhooks/chat/slack`: first webhook intake route.
+- `/webhooks/chat/{provider}`: provider-neutral webhook intake route; `/webhooks/chat/slack` remains the Slack path.
 
 ## DTO Rule
 

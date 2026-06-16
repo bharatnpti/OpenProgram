@@ -12,7 +12,7 @@ from core.domain.integrations import (
 )
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from core.ports.calendar import CalendarProvider
-from core.ports.chat import ChatProvider
+from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.ci import CiProvider
 from core.ports.issue_tracker import IssueTracker
 from core.ports.vcs import VcsProvider
@@ -29,6 +29,18 @@ async def assert_chat_contract(provider: ChatProvider) -> None:
     assert message_id
     reply = await provider.fetch_reply(thread_id)
     assert reply is None or isinstance(reply, InboundMessage)
+
+
+def assert_chat_webhook_mapper_contract(
+    mapper: ChatWebhookMapper,
+    payload: dict[str, object],
+) -> None:
+    message = mapper.map_webhook(payload, "corr-webhook")
+    assert isinstance(message, InboundMessage)
+    assert message.tenant_id == "demo"
+    assert message.correlation_id == "corr-webhook"
+    assert message.message_id
+    assert message.thread_id
 
 
 async def assert_issue_tracker_contract(provider: IssueTracker) -> None:

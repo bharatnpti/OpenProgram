@@ -18,6 +18,8 @@ sequenceDiagram
 ## Classes
 
 - `SlackChatAdapter`: first real adapter, isolated under `infra.adapters.chat`.
+- `ChatWebhookMapper`: inbound provider payload mapper port.
+- `SlackChatWebhookMapper`: Slack-specific inbound mapper.
 - `HttpSlackClient`: Slack Web API implementation with bounded retry handling.
 - `RedisRateLimiter`: runtime rate-limit seam backed by the Redis container.
 - `InMemoryRateLimiter`: deterministic rate-limit seam for unit and contract tests.
@@ -28,5 +30,5 @@ Inbound webhooks map to `InboundMessage`. Outbound text maps from `OutboundMessa
 
 ## Tests
 
-- Shared `ChatProvider` contract runs against the fake and adapter.
+- Shared `ChatProvider` and `ChatWebhookMapper` contracts run against fakes and real adapters.
 - Adapter tests use a fake HTTP client plus recorded-style `respx` Slack Web API fixtures for open DM, send, reply, retry, and provider failures.

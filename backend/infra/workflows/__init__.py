@@ -1,1 +1,1 @@
-"""Temporal workflow skeletons."""
+"""Provider-neutral workflow entrypoints."""

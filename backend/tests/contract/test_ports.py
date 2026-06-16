@@ -10,9 +10,11 @@ from core.domain.integrations import (
     PullRequest,
     UserRef,
 )
+from infra.adapters.chat.fake import FakeChatWebhookMapper
 from tests.contract.contracts import (
     assert_calendar_contract,
     assert_chat_contract,
+    assert_chat_webhook_mapper_contract,
     assert_ci_contract,
     assert_issue_tracker_contract,
     assert_vcs_contract,
@@ -28,6 +30,13 @@ from tests.contract.fakes import (
 
 async def test_fake_chat_provider_satisfies_contract() -> None:
     await assert_chat_contract(FakeChatProvider())
+
+
+def test_fake_chat_webhook_mapper_satisfies_contract() -> None:
+    assert_chat_webhook_mapper_contract(
+        FakeChatWebhookMapper(tenant_id="demo"),
+        {"user_id": "U123", "text": "blocked", "message_id": "msg-1"},
+    )
 
 
 async def test_fake_issue_tracker_satisfies_contract() -> None:

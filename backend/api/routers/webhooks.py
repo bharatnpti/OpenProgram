@@ -13,13 +13,14 @@ from infra.registry import ServiceRegistry
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 
-@router.post("/chat/slack", response_model=ChatWebhookResponse)
-async def slack_webhook(
+@router.post("/chat/{provider}", response_model=ChatWebhookResponse)
+async def chat_webhook(
+    provider: str,
     request: Request,
     registry: Annotated[ServiceRegistry, Depends(get_registry)],
 ) -> ChatWebhookResponse:
     payload = await request.json()
-    message = registry.map_chat_webhook(_as_mapping(payload), current_correlation_id())
+    message = registry.map_chat_webhook(provider, _as_mapping(payload), current_correlation_id())
     if message is None:
         return ChatWebhookResponse(status="ignored", message_id="unsupported-provider")
     return ChatWebhookResponse(status="accepted", message_id=message.message_id)
