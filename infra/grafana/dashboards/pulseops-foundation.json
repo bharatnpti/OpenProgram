@@ -1,0 +1,13 @@
+{
+  "title": "PulseOps Foundation",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "API Golden Signals",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": []
+    }
+  ]
+}
