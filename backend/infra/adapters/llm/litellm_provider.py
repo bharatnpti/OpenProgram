@@ -9,8 +9,13 @@ from typing import Protocol
 from uuid import uuid4
 
 import httpx
+import structlog
+from opentelemetry import trace
 
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
+
+_logger = structlog.get_logger(__name__)
+_tracer = trace.get_tracer("pulseops.adapters.llm.litellm")
 
 
 class LlmTraceSink(Protocol):
@@ -29,62 +34,71 @@ class LangfuseTraceSink:
     secret_key: str
 
     async def record(self, request: LlmRequest, response: LlmResponse) -> str:
-        trace_id = response.trace_id
-        timestamp = datetime.now(tz=UTC).isoformat()
-        generation_id = f"{trace_id}-generation"
-        prompt_hash = sha256(request.prompt.encode("utf-8")).hexdigest()
-        payload = {
-            "batch": [
-                {
-                    "id": f"{trace_id}-trace-create",
-                    "type": "trace-create",
-                    "timestamp": timestamp,
-                    "body": {
-                        "id": trace_id,
-                        "name": "pulseops.status_agent",
-                        "userId": request.tenant_id,
-                        "input": request.prompt,
-                        "metadata": {
-                            "tenant_id": request.tenant_id,
-                            "correlation_id": request.correlation_id,
-                            "prompt_sha256": prompt_hash,
-                            **dict(request.metadata),
+        with _tracer.start_as_current_span("langfuse.record"):
+            trace_id = response.trace_id
+            timestamp = datetime.now(tz=UTC).isoformat()
+            generation_id = f"{trace_id}-generation"
+            prompt_hash = sha256(request.prompt.encode("utf-8")).hexdigest()
+            payload = {
+                "batch": [
+                    {
+                        "id": f"{trace_id}-trace-create",
+                        "type": "trace-create",
+                        "timestamp": timestamp,
+                        "body": {
+                            "id": trace_id,
+                            "name": "pulseops.status_agent",
+                            "userId": request.tenant_id,
+                            "input": request.prompt,
+                            "metadata": {
+                                "tenant_id": request.tenant_id,
+                                "correlation_id": request.correlation_id,
+                                "prompt_sha256": prompt_hash,
+                                **dict(request.metadata),
+                            },
                         },
                     },
-                },
-                {
-                    "id": f"{generation_id}-create",
-                    "type": "generation-create",
-                    "timestamp": timestamp,
-                    "body": {
-                        "id": generation_id,
-                        "traceId": trace_id,
-                        "name": "litellm.complete",
-                        "model": response.model,
-                        "input": request.prompt,
-                        "output": response.text,
-                        "usage": {
-                            "input": response.usage.prompt_tokens,
-                            "output": response.usage.completion_tokens,
-                            "total": response.usage.total_tokens,
-                            "unit": "TOKENS",
-                        },
-                        "metadata": {
-                            "cost_usd": response.usage.cost_usd,
-                            "latency_ms": response.usage.latency_ms,
+                    {
+                        "id": f"{generation_id}-create",
+                        "type": "generation-create",
+                        "timestamp": timestamp,
+                        "body": {
+                            "id": generation_id,
+                            "traceId": trace_id,
+                            "name": "litellm.complete",
+                            "model": response.model,
+                            "input": request.prompt,
+                            "output": response.text,
+                            "usage": {
+                                "input": response.usage.prompt_tokens,
+                                "output": response.usage.completion_tokens,
+                                "total": response.usage.total_tokens,
+                                "unit": "TOKENS",
+                            },
+                            "metadata": {
+                                "cost_usd": response.usage.cost_usd,
+                                "latency_ms": response.usage.latency_ms,
+                            },
                         },
                     },
-                },
-            ]
-        }
-        async with httpx.AsyncClient(base_url=self.host, timeout=10.0) as client:
-            result = await client.post(
-                "/api/public/ingestion",
-                auth=(self.public_key, self.secret_key),
-                json=payload,
-            )
-            result.raise_for_status()
-        return trace_id
+                ]
+            }
+            try:
+                async with httpx.AsyncClient(base_url=self.host, timeout=10.0) as client:
+                    result = await client.post(
+                        "/api/public/ingestion",
+                        auth=(self.public_key, self.secret_key),
+                        json=payload,
+                    )
+                    result.raise_for_status()
+            except Exception as exc:
+                _logger.warning(
+                    "langfuse_trace_record_failed",
+                    error_type=type(exc).__name__,
+                    trace_id=trace_id,
+                    exc_info=True,
+                )
+            return trace_id
 
 
 @dataclass(frozen=True)
@@ -94,34 +108,37 @@ class LiteLlmProvider:
     api_key: str | None = None
 
     async def complete(self, request: LlmRequest) -> LlmResponse:
-        started = perf_counter()
-        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=30.0) as client:
-            http_response = await client.post(
-                "/v1/chat/completions",
-                headers=headers,
-                json={
-                    "model": request.model,
-                    "messages": [{"role": "user", "content": request.prompt}],
-                    "metadata": {
-                        "tenant_id": request.tenant_id,
-                        "correlation_id": request.correlation_id,
+        with _tracer.start_as_current_span("litellm.complete") as span:
+            span.set_attribute("llm.model", request.model)
+            span.set_attribute("pulseops.tenant_id", request.tenant_id)
+            started = perf_counter()
+            headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+            async with httpx.AsyncClient(base_url=self.base_url, timeout=30.0) as client:
+                http_response = await client.post(
+                    "/v1/chat/completions",
+                    headers=headers,
+                    json={
+                        "model": request.model,
+                        "messages": [{"role": "user", "content": request.prompt}],
+                        "metadata": {
+                            "tenant_id": request.tenant_id,
+                            "correlation_id": request.correlation_id,
+                        },
                     },
-                },
+                )
+                http_response.raise_for_status()
+                payload = http_response.json()
+            latency_ms = (perf_counter() - started) * 1000
+            response = _response_from_payload(request, payload, latency_ms)
+            trace_id = await self.trace_sink.record(request, response)
+            return LlmResponse(
+                tenant_id=response.tenant_id,
+                text=response.text,
+                model=response.model,
+                usage=response.usage,
+                trace_id=trace_id,
+                metadata=response.metadata,
             )
-            http_response.raise_for_status()
-            payload = http_response.json()
-        latency_ms = (perf_counter() - started) * 1000
-        response = _response_from_payload(request, payload, latency_ms)
-        trace_id = await self.trace_sink.record(request, response)
-        return LlmResponse(
-            tenant_id=response.tenant_id,
-            text=response.text,
-            model=response.model,
-            usage=response.usage,
-            trace_id=trace_id,
-            metadata=response.metadata,
-        )
 
 
 def _response_from_payload(

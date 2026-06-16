@@ -16,9 +16,14 @@ from core.domain.graph import EntityRef, NodeKind
 from core.domain.workflows import HeartbeatInput
 from core.ports.secrets import SecretRef
 from infra.adapters.chat.rate_limit import RedisRateLimiter
+from infra.adapters.redis_client import RedisClientProvider
 from infra.adapters.secrets.encrypted import FernetSecretStore, PostgresEncryptedSecretRecordStore
 from infra.adapters.workflows.temporal import HeartbeatWorkflow, record_heartbeat_activity
-from infra.persistence.postgres_graph import PostgresGraphRepository
+from infra.persistence.postgres_graph import (
+    PostgresGraphRepository,
+    PostgresTimeSeriesRepository,
+    PostgresVectorStore,
+)
 from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
 from infra.persistence.seed_data import seed_demo_graph
 
@@ -88,32 +93,45 @@ async def test_postgres_extensions_seed_vector_and_secret(
     )
     assert {str(row["extname"]) for row in extension_rows} == {"age", "timescaledb", "vector"}
 
-    repository = PostgresGraphRepository(executor)
-    await seed_demo_graph(repository, repository, "demo")
-    tree = await repository.get_program_tree("demo", "program-platform", date.today())
-    assert tree.root.id == "program-platform"
+    graph_repository = PostgresGraphRepository(executor)
+    time_series_repository = PostgresTimeSeriesRepository(executor)
+    vector_store = PostgresVectorStore(executor)
+    try:
+        await seed_demo_graph(graph_repository, time_series_repository, "demo")
+        tree = await graph_repository.get_program_tree("demo", "program-platform", date.today())
+        assert tree.root.id == "program-platform"
 
-    ref = EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="task-api")
-    vector = [0.0] * 1536
-    vector[0] = 1.0
-    await repository.upsert_embedding("demo", ref, vector)
-    matches = await repository.search("demo", vector, limit=1)
-    assert matches[0].entity_ref == ref
-    assert matches[0].score == pytest.approx(1.0)
+        ref = EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="task-api")
+        vector = [0.0] * 1536
+        vector[0] = 1.0
+        await vector_store.upsert_embedding("demo", ref, vector)
+        matches = await vector_store.search("demo", vector, limit=1)
+        assert matches[0].entity_ref == ref
+        assert matches[0].score == pytest.approx(1.0)
 
-    secret_store = FernetSecretStore(
-        Fernet(SECRET_KEY.encode("utf-8")),
-        PostgresEncryptedSecretRecordStore(executor),
-    )
-    secret_ref = SecretRef(tenant_id="demo", connector="slack", key="bot_token")
-    await secret_store.put(secret_ref, "xoxb-secret")
-    assert await secret_store.get(secret_ref) == "xoxb-secret"
+        secret_store = FernetSecretStore(
+            Fernet(SECRET_KEY.encode("utf-8")),
+            PostgresEncryptedSecretRecordStore(executor),
+        )
+        secret_ref = SecretRef(tenant_id="demo", connector="slack", key="bot_token")
+        await secret_store.put(secret_ref, "xoxb-secret")
+        assert await secret_store.get(secret_ref) == "xoxb-secret"
+    finally:
+        await executor.close()
 
 
 async def test_redis_rate_limiter_uses_container(compose_stack: object) -> None:
     redis_url = _redis_url(compose_stack)
-    limiter = RedisRateLimiter(redis_url=redis_url, window_seconds=1, max_events=100)
-    await limiter.acquire("integration:rate-limit")
+    redis_provider = RedisClientProvider(redis_url=redis_url, max_connections=2)
+    try:
+        limiter = RedisRateLimiter(
+            client=redis_provider.client(),
+            window_seconds=1,
+            max_events=100,
+        )
+        await limiter.acquire("integration:rate-limit")
+    finally:
+        await redis_provider.close()
 
 
 async def test_temporal_worker_executes_heartbeat(compose_stack: object) -> None:

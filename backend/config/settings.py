@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.domain.auth import Role
@@ -21,8 +22,12 @@ class Settings(BaseSettings):
     environment: str = "local"
     tenant_id: str = "demo"
     runtime_mode: Literal["container", "memory"] = "container"
+    cors_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:5173")
     database_url: str = "postgresql://pulseops:pulseops@localhost:5432/pulseops"
+    postgres_pool_min_size: int = 1
+    postgres_pool_max_size: int = 5
     redis_url: str = "redis://localhost:6379/0"
+    redis_max_connections: int = 10
     temporal_target: str = "localhost:7233"
     temporal_task_queue: str = "pulseops-foundation"
     temporal_schedule_id: str = "pulseops-heartbeat"
@@ -48,6 +53,20 @@ class Settings(BaseSettings):
     secret_key: str = Field(default="", min_length=0)
     dev_principal_subject: str = "dev-user"
     dev_principal_roles: str = "admin"
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: object) -> object:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped.startswith("["):
+                parsed = json.loads(stripped)
+                if isinstance(parsed, list):
+                    return tuple(str(item) for item in parsed)
+            return tuple(item.strip() for item in stripped.split(",") if item.strip())
+        if isinstance(value, list | tuple | set):
+            return tuple(str(item) for item in value)
+        return value
 
     @field_validator("chat_provider")
     @classmethod
@@ -90,7 +109,13 @@ class Settings(BaseSettings):
             raise ValueError("embedding_dimension must be positive")
         return value
 
-    @field_validator("slack_retry_attempts", "redis_rate_limit_max_events")
+    @field_validator(
+        "slack_retry_attempts",
+        "redis_rate_limit_max_events",
+        "postgres_pool_min_size",
+        "postgres_pool_max_size",
+        "redis_max_connections",
+    )
     @classmethod
     def validate_positive_int(cls, value: int) -> int:
         if value <= 0:
@@ -103,6 +128,12 @@ class Settings(BaseSettings):
         if value <= 0:
             raise ValueError("seconds value must be positive")
         return value
+
+    @model_validator(mode="after")
+    def validate_pool_bounds(self) -> Self:
+        if self.postgres_pool_max_size < self.postgres_pool_min_size:
+            raise ValueError("postgres_pool_max_size must be >= postgres_pool_min_size")
+        return self
 
     @property
     def dev_roles(self) -> frozenset[Role]:

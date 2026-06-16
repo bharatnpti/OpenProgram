@@ -10,7 +10,6 @@ dist/
 build/
 node_modules/
 frontend/dist/
-frontend/src/api/openapi.json
 *.tsbuildinfo
 *.pyc
 __pycache__/

@@ -12,7 +12,7 @@ def main() -> None:
     app = create_app(settings=settings)
     output_path = Path("frontend/src/api/openapi.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(app.openapi(), indent=2), encoding="utf-8")
+    output_path.write_text(json.dumps(app.openapi(), indent=2) + "\n", encoding="utf-8")
     print(f"wrote {output_path}")
 
 

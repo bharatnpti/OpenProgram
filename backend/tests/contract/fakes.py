@@ -11,8 +11,10 @@ from core.domain.integrations import (
     PullRequest,
     UserRef,
 )
-from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
+from infra.adapters.llm.fake import FakeLlmProvider
+
+__all__ = ["FakeLlmProvider"]
 
 
 @dataclass
@@ -111,21 +113,3 @@ class FakeCalendarProvider:
             for event in self.events
             if event.user == user and event.starts_on >= start and event.ends_on <= end
         ]
-
-
-class FakeLlmProvider:
-    async def complete(self, request: LlmRequest) -> LlmResponse:
-        return LlmResponse(
-            tenant_id=request.tenant_id,
-            text=f"summary: {request.prompt[:24]}",
-            model=request.model,
-            usage=TokenUsage(
-                prompt_tokens=5,
-                completion_tokens=7,
-                total_tokens=12,
-                cost_usd=0.0,
-                latency_ms=1.0,
-            ),
-            trace_id="trace-fake",
-            metadata={"correlation_id": request.correlation_id},
-        )

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from alembic import op
 
 revision = "0001_phase_0_foundation"
@@ -11,13 +13,15 @@ depends_on = None
 
 
 def upgrade() -> None:
+    embedding_dimension = _embedding_dimension()
+    vector_type = f"vector({embedding_dimension})"
     op.execute("CREATE EXTENSION IF NOT EXISTS age;")
     op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb;")
     op.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+    op.execute("LOAD 'age';")
+    op.execute('SET search_path = ag_catalog, "$user", public;')
     op.execute(
         """
-        LOAD 'age';
-        SET search_path = ag_catalog, "$user", public;
         SELECT create_graph('pulseops_graph')
         WHERE NOT EXISTS (
             SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'pulseops_graph'
@@ -84,12 +88,12 @@ def upgrade() -> None:
             tenant_id TEXT NOT NULL,
             entity_kind TEXT NOT NULL,
             entity_id TEXT NOT NULL,
-            embedding vector(1536) NOT NULL,
+            embedding __VECTOR_TYPE__ NOT NULL,
             metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             PRIMARY KEY (tenant_id, entity_kind, entity_id)
         );
-        """
+        """.replace("__VECTOR_TYPE__", vector_type)
     )
     op.execute(
         """
@@ -112,10 +116,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("LOAD 'age';")
+    op.execute('SET search_path = ag_catalog, "$user", public;')
     op.execute(
         """
-        LOAD 'age';
-        SET search_path = ag_catalog, "$user", public;
         SELECT drop_graph('pulseops_graph', true)
         WHERE EXISTS (
             SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'pulseops_graph'
@@ -128,3 +132,14 @@ def downgrade() -> None:
     op.execute("DROP TABLE IF EXISTS facts;")
     op.execute("DROP TABLE IF EXISTS graph_edges;")
     op.execute("DROP TABLE IF EXISTS graph_nodes;")
+
+
+def _embedding_dimension() -> int:
+    raw_value = os.getenv("PULSEOPS_EMBEDDING_DIMENSION", "1536")
+    try:
+        dimension = int(raw_value)
+    except ValueError as exc:
+        raise ValueError("PULSEOPS_EMBEDDING_DIMENSION must be an integer") from exc
+    if dimension <= 0:
+        raise ValueError("PULSEOPS_EMBEDDING_DIMENSION must be positive")
+    return dimension

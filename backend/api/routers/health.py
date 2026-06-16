@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import Response
+from prometheus_client import CONTENT_TYPE_LATEST
 
 from api.dependencies import get_registry, get_settings_from_request
 from api.dtos import HealthResponse, ReadyResponse
@@ -35,7 +36,9 @@ async def ready(registry: Annotated[ServiceRegistry, Depends(get_registry)]) -> 
     )
 
 
-@router.get("/metrics", response_class=PlainTextResponse)
-async def metrics(request: Request) -> str:
-    settings = get_settings_from_request(request)
-    return f'pulseops_info{{environment="{settings.environment}"}} 1\n'
+@router.get("/metrics")
+async def metrics(request: Request) -> Response:
+    return Response(
+        content=request.app.state.metrics.render(),
+        media_type=CONTENT_TYPE_LATEST,
+    )

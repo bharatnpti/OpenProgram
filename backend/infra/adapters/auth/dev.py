@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from core.domain.auth import Principal, Role
+from core.ports.auth import AuthProvider
 
 
 @dataclass(frozen=True)
@@ -19,3 +20,12 @@ class DevAuthProvider:
             roles=self.roles,
             scopes=scopes,
         )
+
+
+@dataclass(frozen=True)
+class DevCurrentPrincipal:
+    auth_provider: AuthProvider
+    token: str | None
+
+    async def get(self) -> Principal:
+        return await self.auth_provider.authenticate(self.token)

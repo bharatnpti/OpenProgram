@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from redis.asyncio import Redis
+
 from config.settings import Settings
 from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.llm import LlmProvider
@@ -9,7 +11,13 @@ from core.ports.readiness import ReadinessProbe
 from core.ports.workflows import WorkflowScheduler, WorkflowWorker
 from infra.adapters.chat.fake import FakeChatProvider, FakeChatWebhookMapper
 from infra.adapters.chat.rate_limit import InMemoryRateLimiter, RedisRateLimiter
-from infra.adapters.chat.slack import DisabledSlackHttpClient, HttpSlackClient, SlackChatAdapter
+from infra.adapters.chat.slack import (
+    DisabledSlackHttpClient,
+    HttpSlackClient,
+    InMemoryConversationCache,
+    RedisConversationCache,
+    SlackChatAdapter,
+)
 from infra.adapters.llm.fake import FakeLlmProvider
 from infra.adapters.llm.litellm_provider import LangfuseTraceSink, LiteLlmProvider, NoopTraceSink
 from infra.adapters.readiness import (
@@ -32,7 +40,7 @@ from infra.adapters.workflows.temporal import (
 )
 
 
-def build_chat_provider(settings: Settings) -> ChatProvider:
+def build_chat_provider(settings: Settings, redis_client: Redis | None = None) -> ChatProvider:
     if settings.chat_provider == "fake":
         return FakeChatProvider(tenant_id=settings.tenant_id)
     http_client = (
@@ -49,15 +57,24 @@ def build_chat_provider(settings: Settings) -> ChatProvider:
         InMemoryRateLimiter()
         if settings.runtime_mode == "memory"
         else RedisRateLimiter(
-            redis_url=settings.redis_url,
+            client=_required_redis(redis_client),
             window_seconds=settings.redis_rate_limit_window_seconds,
             max_events=settings.redis_rate_limit_max_events,
+        )
+    )
+    conversation_cache = (
+        InMemoryConversationCache()
+        if settings.runtime_mode == "memory"
+        else RedisConversationCache(
+            tenant_id=settings.tenant_id,
+            client=_required_redis(redis_client),
         )
     )
     return SlackChatAdapter(
         tenant_id=settings.tenant_id,
         http_client=http_client,
         rate_limiter=rate_limiter,
+        conversation_cache=conversation_cache,
     )
 
 
@@ -120,6 +137,7 @@ def build_workflow_readiness_probe(settings: Settings) -> ReadinessProbe:
 def build_readiness_probes(
     settings: Settings,
     executor_factory: Callable[[], AsyncReadinessExecutor],
+    redis_client_factory: Callable[[], Redis],
 ) -> dict[str, ReadinessProbe]:
     if settings.runtime_mode == "memory":
         return {
@@ -133,7 +151,7 @@ def build_readiness_probes(
     return {
         "database": DatabaseReadinessProbe(executor_factory()),
         "database_extensions": DatabaseExtensionsReadinessProbe(executor_factory()),
-        "redis": RedisReadinessProbe(settings.redis_url),
+        "redis": RedisReadinessProbe(redis_client_factory()),
         "workflow_provider": build_workflow_readiness_probe(settings),
         "llm_provider": _llm_readiness_probe(settings),
         "llm_trace": _llm_trace_readiness_probe(settings),
@@ -156,3 +174,9 @@ def _required(value: str | None, name: str) -> str:
     if not value:
         raise ValueError(f"{name} is required when runtime_mode=container")
     return value
+
+
+def _required_redis(client: Redis | None) -> Redis:
+    if client is None:
+        raise ValueError("redis client is required when runtime_mode=container")
+    return client
