@@ -9,5 +9,6 @@ from config.settings import Settings
 def settings() -> Settings:
     return Settings(
         secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        runtime_mode="memory",
         dev_principal_roles="admin",
     )

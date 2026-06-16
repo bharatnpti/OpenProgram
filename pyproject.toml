@@ -13,11 +13,14 @@ dependencies = [
     "cryptography>=42.0.0",
     "fastapi>=0.111.0",
     "httpx>=0.27.0",
+    "langgraph>=0.2.0",
     "opentelemetry-api>=1.25.0",
     "opentelemetry-sdk>=1.25.0",
+    "opentelemetry-exporter-otlp>=1.25.0",
     "psycopg[binary]>=3.2.0",
     "pydantic>=2.7.0",
     "pydantic-settings>=2.3.0",
+    "redis>=5.0.0",
     "sqlalchemy>=2.0.30",
     "structlog>=24.2.0",
     "temporalio>=1.6.0",
@@ -33,7 +36,7 @@ dev = [
     "pytest-cov>=5.0.0",
     "respx>=0.21.0",
     "ruff>=0.5.0",
-    "testcontainers[postgres]>=4.7.0",
+    "testcontainers[postgres,redis]>=4.7.0",
 ]
 
 [tool.setuptools.package-dir]
@@ -47,6 +50,9 @@ asyncio_mode = "auto"
 pythonpath = ["backend"]
 testpaths = ["backend/tests"]
 addopts = "--cov=backend/core --cov-report=term-missing --cov-fail-under=85"
+markers = [
+    "integration: docker-backed integration tests",
+]
 
 [tool.coverage.run]
 source = ["backend/core"]
@@ -82,5 +88,6 @@ exclude = ["backend/infra/persistence/migrations/.*"]
 module = [
     "opentelemetry.*",
     "temporalio.*",
+    "langgraph.*",
 ]
 ignore_missing_imports = true
