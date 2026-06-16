@@ -5,10 +5,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
 
-from api.dependencies import get_settings_from_request
+from api.dependencies import get_registry, get_settings_from_request
 from api.dtos import HealthResponse, ReadyResponse
 from config.settings import Settings
 from infra.observability.tracing import current_correlation_id
+from infra.registry import ServiceRegistry
 
 router = APIRouter(tags=["health"])
 
@@ -26,10 +27,11 @@ async def health(
 
 
 @router.get("/ready", response_model=ReadyResponse)
-async def ready() -> ReadyResponse:
+async def ready(registry: Annotated[ServiceRegistry, Depends(get_registry)]) -> ReadyResponse:
+    dependencies = await registry.readiness()
     return ReadyResponse(
-        status="ok",
-        dependencies={"settings": True, "registry": True, "graph_repository": True},
+        status="ok" if all(dependencies.values()) else "degraded",
+        dependencies=dependencies,
     )
 
 

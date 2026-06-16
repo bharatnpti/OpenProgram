@@ -1,35 +1,9 @@
-export type NodeKind = "program" | "project" | "pod" | "developer" | "task";
-export type EdgeKind = "contains" | "assigned_to" | "depends_on";
+import type { components } from "./generated";
 
-export interface HealthResponse {
-  status: string;
-  environment: string;
-  tenant_id: string;
-  correlation_id: string;
-}
-
-export interface ReadyResponse {
-  status: string;
-  dependencies: Record<string, boolean>;
-}
-
-export interface GraphNodeDto {
-  id: string;
-  kind: NodeKind;
-  name: string;
-  metadata: Record<string, string | number | boolean | null>;
-}
-
-export interface GraphEdgeDto {
-  from_node_id: string;
-  to_node_id: string;
-  kind: EdgeKind;
-  valid_from: string | null;
-  valid_to: string | null;
-}
-
-export interface GraphTreeDto {
-  root: GraphNodeDto;
-  nodes: GraphNodeDto[];
-  edges: GraphEdgeDto[];
-}
+export type NodeKind = components["schemas"]["NodeKind"];
+export type EdgeKind = components["schemas"]["EdgeKind"];
+export type HealthResponse = components["schemas"]["HealthResponse"];
+export type ReadyResponse = components["schemas"]["ReadyResponse"];
+export type GraphNodeDto = components["schemas"]["GraphNodeDto"];
+export type GraphEdgeDto = components["schemas"]["GraphEdgeDto"];
+export type GraphTreeDto = components["schemas"]["GraphTreeDto"];

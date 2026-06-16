@@ -12,7 +12,7 @@ from starlette.responses import Response
 from api.routers import graph, health, webhooks
 from config.settings import Settings, get_settings
 from infra.observability.logging import configure_logging
-from infra.observability.tracing import correlation_scope
+from infra.observability.tracing import configure_tracing, correlation_scope
 from infra.persistence.seed_data import seed_demo_graph
 from infra.registry import ServiceRegistry
 
@@ -24,14 +24,16 @@ def create_app(
     resolved_settings = settings or get_settings()
     resolved_registry = registry or ServiceRegistry(resolved_settings)
     configure_logging()
+    configure_tracing(resolved_settings.otel_exporter_otlp_endpoint)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        await seed_demo_graph(
-            resolved_registry.graph_repository(),
-            resolved_registry.time_series_repository(),
-            resolved_settings.tenant_id,
-        )
+        if resolved_settings.runtime_mode == "memory":
+            await seed_demo_graph(
+                resolved_registry.graph_repository(),
+                resolved_registry.time_series_repository(),
+                resolved_settings.tenant_id,
+            )
         yield
 
     app = FastAPI(title="PulseOps", version="0.1.0", lifespan=lifespan)

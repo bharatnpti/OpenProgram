@@ -2,9 +2,10 @@
 
 ## Classes
 
-- `StatusAgentNode` in `core.application.agents.status_agent`.
+- `StatusAgentNode` in `core.application.agents.status_agent`, exposed as both a direct async callable and a compiled LangGraph runnable.
 - `LlmProvider` Protocol in `core.ports.llm`.
 - `LiteLlmProvider` in `infra.adapters.llm`.
+- `LangfuseTraceSink` in `infra.adapters.llm` posts trace and generation events to the local Langfuse container.
 
 ## Flow
 
@@ -27,4 +28,4 @@ Every call records prompt hash, token counts, cost, latency, tenant, and correla
 
 ## Tests
 
-Unit tests use a fake `LlmProvider`. Integration tests can point `LiteLlmProvider` at a local LiteLLM gateway and Langfuse.
+Unit tests use a fake `LlmProvider`. The smoke command points `LiteLlmProvider` at the local LiteLLM gateway and verifies the trace through Langfuse.

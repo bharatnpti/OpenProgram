@@ -41,6 +41,7 @@ class PostgresGraphRepository:
             """,
             (node.tenant_id, node.id, node.kind.value, node.name, dict(node.metadata)),
         )
+        await self._sync_age_node(node)
 
     async def add_edge(self, edge: GraphEdge) -> None:
         await self._executor.execute(
@@ -60,6 +61,7 @@ class PostgresGraphRepository:
                 dict(edge.metadata),
             ),
         )
+        await self._sync_age_edge(edge)
 
     async def get_program_tree(self, tenant_id: str, program_id: str, as_of: date) -> GraphTree:
         rows = await self._executor.fetch(
@@ -165,11 +167,16 @@ class PostgresGraphRepository:
         await self._executor.execute(
             """
             INSERT INTO vector_items (tenant_id, entity_kind, entity_id, embedding)
-            VALUES (%s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s::vector)
             ON CONFLICT (tenant_id, entity_kind, entity_id)
             DO UPDATE SET embedding = EXCLUDED.embedding
             """,
-            (tenant_id, entity_ref.kind.value, entity_ref.id, list(normalize_vector(vector))),
+            (
+                tenant_id,
+                entity_ref.kind.value,
+                entity_ref.id,
+                _vector_literal(normalize_vector(vector)),
+            ),
         )
 
     async def search(
@@ -177,12 +184,18 @@ class PostgresGraphRepository:
     ) -> list[VectorMatch]:
         rows = await self._executor.fetch(
             """
-            SELECT entity_kind, entity_id, 0.0 AS score
+            SELECT entity_kind, entity_id, 1 - (embedding <=> %s::vector) AS score
             FROM vector_items
             WHERE tenant_id = %s
+            ORDER BY embedding <=> %s::vector
             LIMIT %s
             """,
-            (tenant_id, limit),
+            (
+                _vector_literal(normalize_vector(vector)),
+                tenant_id,
+                _vector_literal(normalize_vector(vector)),
+                limit,
+            ),
         )
         return [
             VectorMatch(
@@ -195,6 +208,56 @@ class PostgresGraphRepository:
             )
             for row in rows
         ]
+
+    async def _sync_age_node(self, node: GraphNode) -> None:
+        await self._executor.execute(
+            f"""
+            LOAD 'age';
+            SET search_path = ag_catalog, "$user", public;
+            SELECT *
+            FROM cypher('pulseops_graph', $$
+                MERGE (n:GraphNode {{
+                    tenant_id: {_cypher_string(node.tenant_id)},
+                    id: {_cypher_string(node.id)}
+                }})
+                SET n.kind = {_cypher_string(node.kind.value)},
+                    n.name = {_cypher_string(node.name)}
+                RETURN n
+            $$) AS (n agtype);
+            """
+        )
+
+    async def _sync_age_edge(self, edge: GraphEdge) -> None:
+        relation = {
+            EdgeKind.CONTAINS: "CONTAINS",
+            EdgeKind.ASSIGNED_TO: "ASSIGNED_TO",
+            EdgeKind.DEPENDS_ON: "DEPENDS_ON",
+        }[edge.kind]
+        valid_from = _cypher_string(edge.valid_from.isoformat()) if edge.valid_from else "null"
+        valid_to = _cypher_string(edge.valid_to.isoformat()) if edge.valid_to else "null"
+        await self._executor.execute(
+            f"""
+            LOAD 'age';
+            SET search_path = ag_catalog, "$user", public;
+            SELECT *
+            FROM cypher('pulseops_graph', $$
+                MATCH (from_node:GraphNode {{
+                    tenant_id: {_cypher_string(edge.tenant_id)},
+                    id: {_cypher_string(edge.from_node_id)}
+                }})
+                MATCH (to_node:GraphNode {{
+                    tenant_id: {_cypher_string(edge.tenant_id)},
+                    id: {_cypher_string(edge.to_node_id)}
+                }})
+                CREATE (from_node)-[edge:{relation} {{
+                    kind: {_cypher_string(edge.kind.value)},
+                    valid_from: {valid_from},
+                    valid_to: {valid_to}
+                }}]->(to_node)
+                RETURN edge
+            $$) AS (edge agtype);
+            """
+        )
 
 
 def _node_from_row(row: Mapping[str, object]) -> GraphNode:
@@ -261,3 +324,11 @@ def _float_field(value: object) -> float:
     if isinstance(value, str | int | float):
         return float(value)
     return 0.0
+
+
+def _vector_literal(vector: Sequence[float]) -> str:
+    return "[" + ",".join(str(float(value)) for value in vector) + "]"
+
+
+def _cypher_string(value: str) -> str:
+    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"

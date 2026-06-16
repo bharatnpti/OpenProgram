@@ -1,0 +1,10 @@
+model_list:
+  - model_name: local-gpt
+    litellm_params:
+      model: openai/local-gpt
+      api_base: http://mock-llm:8080/v1
+      api_key: local-mock-key
+
+general_settings:
+  master_key: local-litellm-key
+  disable_spend_logs: true

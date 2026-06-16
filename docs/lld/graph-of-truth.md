@@ -26,12 +26,13 @@ class VectorStore(Protocol):
 
 ## Persistence Schema
 
-- `graph_nodes`: tenant-scoped node records with immutable external IDs.
-- `graph_edges`: typed edges with optional validity windows.
+- AGE graph `pulseops_graph`: typed node and edge mirror used by the Postgres adapter on writes.
+- `graph_nodes`: tenant-scoped node records with immutable external IDs for API queries.
+- `graph_edges`: typed edges with optional validity windows for API queries.
 - `facts`: append-only Timescale-ready event log.
-- `vector_items`: pgvector-ready embedding records.
+- `vector_items`: pgvector embedding records and cosine-similarity search.
 
-The migration enables `age`, `timescaledb`, and `vector` extensions when available and creates ordinary tables so local development still works when an extension image is incomplete.
+The migration strictly requires `age`, `timescaledb`, and `vector`; it fails if the custom Postgres container image does not provide them.
 
 ## Sequence
 
@@ -50,5 +51,5 @@ sequenceDiagram
 ## Tests
 
 - Unit tests run against `InMemoryGraphRepository`.
-- Integration tests target Postgres through Testcontainers once Docker is available.
+- Integration tests target the custom compose-backed Postgres service through Testcontainers when Docker is available.
 - The domain package is protected by import-linter.

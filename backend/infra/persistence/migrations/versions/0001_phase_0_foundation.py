@@ -11,42 +11,26 @@ depends_on = None
 
 
 def upgrade() -> None:
+    op.execute("CREATE EXTENSION IF NOT EXISTS age;")
+    op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb;")
+    op.execute("CREATE EXTENSION IF NOT EXISTS vector;")
     op.execute(
         """
-        DO $$
-        BEGIN
-            CREATE EXTENSION IF NOT EXISTS age;
-        EXCEPTION WHEN undefined_file THEN
-            RAISE NOTICE 'Apache AGE extension unavailable';
-        END $$;
+        LOAD 'age';
+        SET search_path = ag_catalog, "$user", public;
+        SELECT create_graph('pulseops_graph')
+        WHERE NOT EXISTS (
+            SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'pulseops_graph'
+        );
         """
     )
-    op.execute(
-        """
-        DO $$
-        BEGIN
-            CREATE EXTENSION IF NOT EXISTS timescaledb;
-        EXCEPTION WHEN undefined_file THEN
-            RAISE NOTICE 'TimescaleDB extension unavailable';
-        END $$;
-        """
-    )
-    op.execute(
-        """
-        DO $$
-        BEGIN
-            CREATE EXTENSION IF NOT EXISTS vector;
-        EXCEPTION WHEN undefined_file THEN
-            RAISE NOTICE 'pgvector extension unavailable';
-        END $$;
-        """
-    )
+    op.execute("SET search_path = public;")
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS graph_nodes (
             tenant_id TEXT NOT NULL,
             id TEXT NOT NULL,
-            kind TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('program', 'project', 'pod', 'developer', 'task')),
             name TEXT NOT NULL,
             metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -61,7 +45,7 @@ def upgrade() -> None:
             tenant_id TEXT NOT NULL,
             from_node_id TEXT NOT NULL,
             to_node_id TEXT NOT NULL,
-            kind TEXT NOT NULL,
+            kind TEXT NOT NULL CHECK (kind IN ('contains', 'assigned_to', 'depends_on')),
             valid_from DATE,
             valid_to DATE,
             metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -93,27 +77,24 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute(
-        """
-        DO $$
-        BEGIN
-            PERFORM create_hypertable('facts', 'observed_at', if_not_exists => TRUE);
-        EXCEPTION WHEN undefined_function THEN
-            RAISE NOTICE 'TimescaleDB create_hypertable unavailable';
-        END $$;
-        """
-    )
+    op.execute("SELECT create_hypertable('facts', 'observed_at', if_not_exists => TRUE);")
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS vector_items (
             tenant_id TEXT NOT NULL,
             entity_kind TEXT NOT NULL,
             entity_id TEXT NOT NULL,
-            embedding DOUBLE PRECISION[] NOT NULL,
+            embedding vector(1536) NOT NULL,
             metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             PRIMARY KEY (tenant_id, entity_kind, entity_id)
         );
+        """
+    )
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS vector_items_embedding_hnsw_idx
+        ON vector_items USING hnsw (embedding vector_cosine_ops);
         """
     )
     op.execute(
@@ -131,6 +112,17 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute(
+        """
+        LOAD 'age';
+        SET search_path = ag_catalog, "$user", public;
+        SELECT drop_graph('pulseops_graph', true)
+        WHERE EXISTS (
+            SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'pulseops_graph'
+        );
+        """
+    )
+    op.execute("SET search_path = public;")
     op.execute("DROP TABLE IF EXISTS connector_secrets;")
     op.execute("DROP TABLE IF EXISTS vector_items;")
     op.execute("DROP TABLE IF EXISTS facts;")

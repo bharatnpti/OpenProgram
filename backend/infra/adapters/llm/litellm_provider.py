@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from hashlib import sha256
 from time import perf_counter
 from typing import Protocol
 from uuid import uuid4
@@ -18,6 +20,71 @@ class LlmTraceSink(Protocol):
 class NoopTraceSink:
     async def record(self, request: LlmRequest, response: LlmResponse) -> str:
         return response.trace_id
+
+
+@dataclass(frozen=True)
+class LangfuseTraceSink:
+    host: str
+    public_key: str
+    secret_key: str
+
+    async def record(self, request: LlmRequest, response: LlmResponse) -> str:
+        trace_id = response.trace_id
+        timestamp = datetime.now(tz=UTC).isoformat()
+        generation_id = f"{trace_id}-generation"
+        prompt_hash = sha256(request.prompt.encode("utf-8")).hexdigest()
+        payload = {
+            "batch": [
+                {
+                    "id": f"{trace_id}-trace-create",
+                    "type": "trace-create",
+                    "timestamp": timestamp,
+                    "body": {
+                        "id": trace_id,
+                        "name": "pulseops.status_agent",
+                        "userId": request.tenant_id,
+                        "input": request.prompt,
+                        "metadata": {
+                            "tenant_id": request.tenant_id,
+                            "correlation_id": request.correlation_id,
+                            "prompt_sha256": prompt_hash,
+                            **dict(request.metadata),
+                        },
+                    },
+                },
+                {
+                    "id": f"{generation_id}-create",
+                    "type": "generation-create",
+                    "timestamp": timestamp,
+                    "body": {
+                        "id": generation_id,
+                        "traceId": trace_id,
+                        "name": "litellm.complete",
+                        "model": response.model,
+                        "input": request.prompt,
+                        "output": response.text,
+                        "usage": {
+                            "input": response.usage.prompt_tokens,
+                            "output": response.usage.completion_tokens,
+                            "total": response.usage.total_tokens,
+                            "unit": "TOKENS",
+                        },
+                        "metadata": {
+                            "cost_usd": response.usage.cost_usd,
+                            "latency_ms": response.usage.latency_ms,
+                        },
+                    },
+                },
+            ]
+        }
+        async with httpx.AsyncClient(base_url=self.host, timeout=10.0) as client:
+            result = await client.post(
+                "/api/public/ingestion",
+                auth=(self.public_key, self.secret_key),
+                json=payload,
+            )
+            result.raise_for_status()
+        return trace_id
 
 
 @dataclass(frozen=True)

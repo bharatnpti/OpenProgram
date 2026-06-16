@@ -3,9 +3,14 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+import httpx
+import pytest
+import respx
+
+from core.domain.errors import ProviderUnavailable
 from core.domain.messaging import ChatUserRef, OutboundMessage
 from infra.adapters.chat.rate_limit import InMemoryRateLimiter
-from infra.adapters.chat.slack import SlackChatAdapter
+from infra.adapters.chat.slack import HttpSlackClient, SlackChatAdapter
 from tests.contract.contracts import assert_chat_contract
 
 
@@ -59,3 +64,58 @@ async def test_slack_adapter_maps_webhook_and_sends_dm() -> None:
     )
     assert message_id == "1700000000.000001"
     assert http.messages == [("C-U123", "thanks")]
+
+
+@respx.mock
+async def test_http_slack_client_maps_recorded_dm_roundtrip() -> None:
+    client = HttpSlackClient(bot_token="xoxb-test", base_url="https://slack.test/api")
+    respx.post("https://slack.test/api/conversations.open").mock(
+        return_value=httpx.Response(200, json={"ok": True, "channel": {"id": "D123"}})
+    )
+    respx.post("https://slack.test/api/chat.postMessage").mock(
+        return_value=httpx.Response(200, json={"ok": True, "ts": "1700000000.000001"})
+    )
+    respx.get("https://slack.test/api/conversations.history").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "messages": [{"user": "U123", "text": "reply", "ts": "1700000000.000002"}],
+            },
+        )
+    )
+
+    assert await client.open_conversation("U123") == "D123"
+    assert await client.post_message("D123", "hello") == "1700000000.000001"
+    reply = await client.latest_reply("D123")
+    assert reply is not None
+    assert reply["text"] == "reply"
+
+
+@respx.mock
+async def test_http_slack_client_retries_rate_limit() -> None:
+    client = HttpSlackClient(
+        bot_token="xoxb-test",
+        base_url="https://slack.test/api",
+        retry_attempts=2,
+        retry_backoff_seconds=0.0,
+    )
+    respx.post("https://slack.test/api/chat.postMessage").mock(
+        side_effect=[
+            httpx.Response(429, headers={"retry-after": "0"}, json={"ok": False}),
+            httpx.Response(200, json={"ok": True, "ts": "1700000000.000003"}),
+        ]
+    )
+
+    assert await client.post_message("D123", "hello") == "1700000000.000003"
+
+
+@respx.mock
+async def test_http_slack_client_maps_provider_failure() -> None:
+    client = HttpSlackClient(bot_token="xoxb-test", base_url="https://slack.test/api")
+    respx.post("https://slack.test/api/chat.postMessage").mock(
+        return_value=httpx.Response(200, json={"ok": False, "error": "channel_not_found"})
+    )
+
+    with pytest.raises(ProviderUnavailable):
+        await client.post_message("missing", "hello")

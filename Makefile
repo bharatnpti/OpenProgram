@@ -1,8 +1,32 @@
 PYTHONPATH ?= backend
+PULSEOPS_RUNTIME_MODE ?= container
 PULSEOPS_SECRET_KEY ?= q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=
+PULSEOPS_DATABASE_URL ?= postgresql://pulseops:pulseops@localhost:5432/pulseops
+PULSEOPS_REDIS_URL ?= redis://localhost:6379/0
+PULSEOPS_TEMPORAL_TARGET ?= localhost:7233
+PULSEOPS_LITELLM_BASE_URL ?= http://localhost:4000
+PULSEOPS_LITELLM_API_KEY ?= local-litellm-key
+PULSEOPS_LITELLM_MODEL ?= local-gpt
+PULSEOPS_LANGFUSE_HOST ?= http://localhost:3001
+PULSEOPS_LANGFUSE_PUBLIC_KEY ?= pk-lf-local
+PULSEOPS_LANGFUSE_SECRET_KEY ?= sk-lf-local
+PULSEOPS_LANGFUSE_PROJECT_ID ?= local-project
+PULSEOPS_TEMPORAL_SCHEDULE_ID ?= pulseops-heartbeat
+export PULSEOPS_RUNTIME_MODE
 export PULSEOPS_SECRET_KEY
+export PULSEOPS_DATABASE_URL
+export PULSEOPS_REDIS_URL
+export PULSEOPS_TEMPORAL_TARGET
+export PULSEOPS_LITELLM_BASE_URL
+export PULSEOPS_LITELLM_API_KEY
+export PULSEOPS_LITELLM_MODEL
+export PULSEOPS_LANGFUSE_HOST
+export PULSEOPS_LANGFUSE_PUBLIC_KEY
+export PULSEOPS_LANGFUSE_SECRET_KEY
+export PULSEOPS_LANGFUSE_PROJECT_ID
+export PULSEOPS_TEMPORAL_SCHEDULE_ID
 
-.PHONY: up down migrate seed test lint format api openapi worker frontend-install frontend-dev frontend-lint frontend-build
+.PHONY: up down migrate seed schedule smoke integration verify test lint format api openapi worker frontend-install frontend-dev frontend-lint frontend-build
 
 up:
 	docker compose up -d
@@ -15,6 +39,17 @@ migrate:
 
 seed:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m infra.persistence.seed
+
+schedule:
+	PYTHONPATH=$(PYTHONPATH) uv run python -m infra.workflows.schedule
+
+smoke:
+	PYTHONPATH=$(PYTHONPATH) uv run python -m infra.smoke
+
+integration:
+	PULSEOPS_RUN_INTEGRATION=1 PYTHONPATH=$(PYTHONPATH) uv run pytest backend/tests/integration -m integration --no-cov
+
+verify: lint test frontend-lint frontend-build integration smoke
 
 test:
 	PYTHONPATH=$(PYTHONPATH) uv run pytest

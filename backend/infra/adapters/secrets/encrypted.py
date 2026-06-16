@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -27,6 +28,48 @@ class InMemoryEncryptedSecretRecordStore:
             return self._records[ref]
         except KeyError as exc:
             raise SecretNotFound(f"secret {ref.connector}/{ref.key} not found") from exc
+
+
+class AsyncSecretExecutor(Protocol):
+    async def execute(self, query: str, params: Sequence[object] = ()) -> object: ...
+
+    async def fetch(
+        self, query: str, params: Sequence[object] = ()
+    ) -> Sequence[Mapping[str, object]]: ...
+
+
+@dataclass(frozen=True)
+class PostgresEncryptedSecretRecordStore:
+    executor: AsyncSecretExecutor
+
+    async def put_ciphertext(self, ref: SecretRef, ciphertext: bytes) -> None:
+        await self.executor.execute(
+            """
+            INSERT INTO connector_secrets (tenant_id, connector, key, ciphertext)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (tenant_id, connector, key)
+            DO UPDATE SET ciphertext = EXCLUDED.ciphertext, updated_at = now()
+            """,
+            (ref.tenant_id, ref.connector, ref.key, ciphertext),
+        )
+
+    async def get_ciphertext(self, ref: SecretRef) -> bytes:
+        rows = await self.executor.fetch(
+            """
+            SELECT ciphertext
+            FROM connector_secrets
+            WHERE tenant_id = %s AND connector = %s AND key = %s
+            """,
+            (ref.tenant_id, ref.connector, ref.key),
+        )
+        if not rows:
+            raise SecretNotFound(f"secret {ref.connector}/{ref.key} not found")
+        ciphertext = rows[0]["ciphertext"]
+        if isinstance(ciphertext, memoryview):
+            return bytes(ciphertext)
+        if isinstance(ciphertext, bytes):
+            return ciphertext
+        raise SecretNotFound(f"secret {ref.connector}/{ref.key} had invalid ciphertext")
 
 
 @dataclass(frozen=True)
