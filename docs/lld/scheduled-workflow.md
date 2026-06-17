@@ -19,6 +19,8 @@ The pure heartbeat function accepts a deterministic `heartbeat_id`. Provider ada
 
 `docker-compose.yml` starts Postgres, the worker container, and a one-shot scheduler container. The worker and scheduler CLI entrypoints resolve `Settings.workflow_provider` through `ServiceRegistry`; `dbos` is the default provider and stores workflow state in the configured Postgres database. Temporal and Temporal UI services remain available, and deployments can switch back with `PULSEOPS_WORKFLOW_PROVIDER=temporal`.
 
+The shared heartbeat schedule id is configured with `PULSEOPS_HEARTBEAT_SCHEDULE_ID`. `PULSEOPS_TEMPORAL_SCHEDULE_ID` remains accepted as a legacy fallback when the generic setting is unset.
+
 ## Tests
 
-Pure unit tests validate heartbeat output and fake scheduling. End-to-end worker tests target both DBOS/Postgres and Temporal adapters and are gated on Docker availability.
+Pure unit tests validate heartbeat output, provider schedule id selection, DBOS readiness launch caching, and fake scheduling. End-to-end worker tests target both DBOS/Postgres and Temporal adapters, including deterministic DBOS schedule triggering, and are gated on Docker availability.

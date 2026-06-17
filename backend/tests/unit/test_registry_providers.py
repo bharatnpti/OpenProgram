@@ -40,6 +40,7 @@ def test_registry_selects_fake_providers() -> None:
         _settings(
             secret_key=SECRET_KEY,
             runtime_mode="memory",
+            heartbeat_schedule_id="fake-heartbeat",
             chat_provider="fake",
             issue_tracker_provider="fake",
             vcs_provider="fake",
@@ -55,7 +56,9 @@ def test_registry_selects_fake_providers() -> None:
     assert isinstance(registry.issue_tracker(), FakeIssueTracker)
     assert isinstance(registry.vcs_provider(), FakeVcsProvider)
     assert isinstance(registry.calendar_provider(), FakeCalendarProvider)
-    assert isinstance(registry.workflow_scheduler(), FakeWorkflowScheduler)
+    workflow_scheduler = registry.workflow_scheduler()
+    assert isinstance(workflow_scheduler, FakeWorkflowScheduler)
+    assert workflow_scheduler.schedule_id == "fake-heartbeat"
     assert isinstance(registry.workflow_worker(), FakeWorkflowWorker)
 
 
@@ -77,6 +80,7 @@ def test_registry_selects_real_configured_provider_adapters() -> None:
             google_calendar_base_url="https://calendar.test",
             google_calendar_token="token",
             llm_provider="litellm",
+            heartbeat_schedule_id="temporal-heartbeat",
             workflow_provider="temporal",
         )
     )
@@ -87,14 +91,24 @@ def test_registry_selects_real_configured_provider_adapters() -> None:
     assert isinstance(registry.issue_tracker(), JiraIssueTrackerAdapter)
     assert isinstance(registry.vcs_provider(), GitHubVcsAdapter)
     assert isinstance(registry.calendar_provider(), GoogleCalendarAdapter)
-    assert isinstance(registry.workflow_scheduler(), TemporalWorkflowScheduler)
+    workflow_scheduler = registry.workflow_scheduler()
+    assert isinstance(workflow_scheduler, TemporalWorkflowScheduler)
+    assert workflow_scheduler.schedule_id == "temporal-heartbeat"
     assert isinstance(registry.workflow_worker(), TemporalWorkflowWorker)
 
 
 def test_registry_defaults_to_dbos_workflow_provider() -> None:
-    registry = ServiceRegistry(_settings(secret_key=SECRET_KEY, runtime_mode="memory"))
+    registry = ServiceRegistry(
+        _settings(
+            secret_key=SECRET_KEY,
+            runtime_mode="memory",
+            heartbeat_schedule_id="dbos-heartbeat",
+        )
+    )
 
-    assert isinstance(registry.workflow_scheduler(), DbosWorkflowScheduler)
+    workflow_scheduler = registry.workflow_scheduler()
+    assert isinstance(workflow_scheduler, DbosWorkflowScheduler)
+    assert workflow_scheduler.schedule_id == "dbos-heartbeat"
     assert isinstance(registry.workflow_worker(), DbosWorkflowWorker)
 
 

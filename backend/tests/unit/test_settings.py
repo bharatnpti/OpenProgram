@@ -44,8 +44,32 @@ def test_settings_defaults_workflow_provider_to_dbos() -> None:
 
     assert settings.workflow_provider == "dbos"
     assert settings.dbos_app_name == "pulseops"
+    assert settings.heartbeat_schedule_id == "pulseops-heartbeat"
+    assert settings.resolved_heartbeat_schedule_id == "pulseops-heartbeat"
     assert settings.dbos_heartbeat_cron == "0 * * * * *"
     assert settings.resolved_dbos_system_database_url == settings.database_url
+
+
+def test_settings_resolves_configured_heartbeat_schedule_id() -> None:
+    settings = _settings(
+        secret_key=SECRET_KEY,
+        heartbeat_schedule_id="generic-heartbeat",
+        temporal_schedule_id="legacy-heartbeat",
+    )
+
+    assert settings.heartbeat_schedule_id == "generic-heartbeat"
+    assert settings.resolved_heartbeat_schedule_id == "generic-heartbeat"
+
+
+def test_settings_uses_legacy_temporal_schedule_id_when_generic_unset() -> None:
+    settings = _settings(
+        secret_key=SECRET_KEY,
+        heartbeat_schedule_id=None,
+        temporal_schedule_id="legacy-heartbeat",
+    )
+
+    assert settings.heartbeat_schedule_id == "legacy-heartbeat"
+    assert settings.resolved_heartbeat_schedule_id == "legacy-heartbeat"
 
 
 def test_settings_resolves_configured_dbos_system_database_url() -> None:

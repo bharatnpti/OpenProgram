@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     postgres_pool_max_size: int = 5
     redis_url: str = "redis://localhost:6379/0"
     redis_max_connections: int = 10
+    heartbeat_schedule_id: str | None = None
     temporal_target: str = "localhost:7233"
     temporal_task_queue: str = "pulseops-foundation"
     temporal_schedule_id: str = "pulseops-heartbeat"
@@ -147,6 +148,13 @@ class Settings(BaseSettings):
             return None
         return value
 
+    @field_validator("heartbeat_schedule_id", mode="before")
+    @classmethod
+    def empty_heartbeat_schedule_id_is_unset(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator("dbos_app_name", "dbos_heartbeat_cron")
     @classmethod
     def validate_non_empty_string(cls, value: str) -> str:
@@ -199,6 +207,8 @@ class Settings(BaseSettings):
     def validate_pool_bounds(self) -> Self:
         if self.postgres_pool_max_size < self.postgres_pool_min_size:
             raise ValueError("postgres_pool_max_size must be >= postgres_pool_min_size")
+        if self.heartbeat_schedule_id is None:
+            object.__setattr__(self, "heartbeat_schedule_id", self.temporal_schedule_id)
         return self
 
     @property
@@ -209,6 +219,10 @@ class Settings(BaseSettings):
     @property
     def resolved_dbos_system_database_url(self) -> str:
         return self.dbos_system_database_url or self.database_url
+
+    @property
+    def resolved_heartbeat_schedule_id(self) -> str:
+        return self.heartbeat_schedule_id or self.temporal_schedule_id
 
 
 @lru_cache(maxsize=1)

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from typing import Any, cast
 
 import psycopg
 from dbos import DBOS, DBOSConfig, ScheduleInput, SetWorkflowID
@@ -44,9 +45,9 @@ async def dbos_heartbeat_workflow(payload: HeartbeatInput) -> HeartbeatResult:
 async def dbos_scheduled_heartbeat_workflow(
     scheduled_time: datetime,
     context: dict[str, str],
-) -> None:
+) -> HeartbeatResult:
     schedule_id = context["schedule_id"]
-    await dbos_record_heartbeat_step(
+    return await dbos_record_heartbeat_step(
         HeartbeatInput(
             tenant_id=context["tenant_id"],
             heartbeat_id=f"{schedule_id}-{scheduled_time.isoformat()}",
@@ -206,14 +207,30 @@ class DbosWorkflowWorker:
 
 @dataclass(frozen=True)
 class DbosWorkflowReadinessProbe:
+    app_name: str
     system_database_url: str
+    _launched: bool = field(default=False, init=False, compare=False)
 
     async def check(self) -> bool:
-        connection = await psycopg.AsyncConnection.connect(self.system_database_url)
+        if self._launched:
+            return True
         try:
-            await connection.execute("SELECT 1")
-        finally:
-            await connection.close()
+            connection = await psycopg.AsyncConnection.connect(self.system_database_url)
+            try:
+                await connection.execute("SELECT 1")
+            finally:
+                await connection.close()
+            configure_dbos_runtime(
+                DbosRuntimeConfig(
+                    app_name=self.app_name,
+                    system_database_url=self.system_database_url,
+                )
+            )
+            DBOS.launch()
+        except Exception:
+            destroy_dbos_runtime()
+            raise
+        object.__setattr__(self, "_launched", True)
         return True
 
 
@@ -244,7 +261,7 @@ def _heartbeat_schedule_input(
 ) -> ScheduleInput:
     return {
         "schedule_name": schedule_id,
-        "workflow_fn": dbos_scheduled_heartbeat_workflow,
+        "workflow_fn": cast(Any, dbos_scheduled_heartbeat_workflow),
         "schedule": cron,
         "context": {"schedule_id": schedule_id, "tenant_id": tenant_id},
         "automatic_backfill": False,

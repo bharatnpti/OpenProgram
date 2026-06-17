@@ -10,6 +10,7 @@ from core.application.sync_services import SyncRunResult
 from core.domain.integrations import SyncCursor, UserRef
 from core.domain.status import CheckIn, CheckInScheduleRun
 from core.domain.workflows import HeartbeatInput, record_heartbeat
+from infra.adapters.workflows import dbos as dbos_workflows
 from infra.adapters.workflows import temporal as temporal_workflows
 from infra.adapters.workflows.fake import FakeWorkflowScheduler
 from infra.persistence.in_memory_graph import InMemoryGraphStore
@@ -85,6 +86,58 @@ async def test_temporal_connect_retries_until_ready(monkeypatch: pytest.MonkeyPa
 
     assert client is expected_client
     assert attempts == ["temporal:7233", "temporal:7233", "temporal:7233"]
+
+
+async def test_dbos_readiness_launches_once_and_caches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+
+    class Connection:
+        async def execute(self, query: str) -> None:
+            calls.append(("execute", query))
+
+        async def close(self) -> None:
+            calls.append(("close", None))
+
+    async def connect(url: str) -> Connection:
+        calls.append(("connect", url))
+        return Connection()
+
+    def configure(config: dbos_workflows.DbosRuntimeConfig) -> None:
+        calls.append(("configure", config))
+
+    def launch() -> None:
+        calls.append(("launch", None))
+
+    def destroy() -> None:
+        calls.append(("destroy", None))
+
+    monkeypatch.setattr(dbos_workflows.psycopg.AsyncConnection, "connect", connect)
+    monkeypatch.setattr(dbos_workflows, "configure_dbos_runtime", configure)
+    monkeypatch.setattr(dbos_workflows.DBOS, "launch", launch)
+    monkeypatch.setattr(dbos_workflows, "destroy_dbos_runtime", destroy)
+
+    probe = dbos_workflows.DbosWorkflowReadinessProbe(
+        app_name="pulseops-test",
+        system_database_url="postgresql://pulseops:pulseops@localhost:5432/pulseops",
+    )
+
+    assert await probe.check() is True
+    assert await probe.check() is True
+    assert calls == [
+        ("connect", "postgresql://pulseops:pulseops@localhost:5432/pulseops"),
+        ("execute", "SELECT 1"),
+        ("close", None),
+        (
+            "configure",
+            dbos_workflows.DbosRuntimeConfig(
+                app_name="pulseops-test",
+                system_database_url="postgresql://pulseops:pulseops@localhost:5432/pulseops",
+            ),
+        ),
+        ("launch", None),
+    ]
 
 
 async def test_jira_sync_activity_returns_json_native_cursor(
