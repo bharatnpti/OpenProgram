@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     temporal_task_queue: str = "pulseops-foundation"
     temporal_schedule_id: str = "pulseops-heartbeat"
     temporal_heartbeat_interval_seconds: int = 60
+    tenant_default_timezone: str = "UTC"
+    checkin_reply_wait_seconds: int = 0
+    checkin_final_reply_wait_seconds: int = 0
     litellm_base_url: str = "http://localhost:4000"
     litellm_api_key: str | None = None
     litellm_model: str = "gpt-4o-mini"
@@ -166,6 +169,13 @@ class Settings(BaseSettings):
     def validate_positive_seconds(cls, value: int) -> int:
         if value <= 0:
             raise ValueError("seconds value must be positive")
+        return value
+
+    @field_validator("checkin_reply_wait_seconds", "checkin_final_reply_wait_seconds")
+    @classmethod
+    def validate_non_negative_seconds(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("seconds value must be non-negative")
         return value
 
     @model_validator(mode="after")

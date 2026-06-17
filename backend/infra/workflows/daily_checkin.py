@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from temporalio import activity, workflow
 
-from core.domain.status import CheckIn
+from core.domain.integrations import UserRef
+from core.domain.status import CheckIn, CheckInPreference, CheckInScheduleRun
+from core.ports.repositories import StatusRepository
+from infra.workflows.nudge import NudgeInput, NudgeWorkflow
 
 if TYPE_CHECKING:
     from infra.registry import ServiceRegistry
@@ -20,6 +24,7 @@ class DailyCheckinInput:
     chat_external_id: str | None = None
     correlation_id: str | None = None
     asked_at: str | None = None
+    checkin_date: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -29,30 +34,159 @@ class DailyCheckinResult:
     correlation_id: str
     asked_at: str
     already_recorded: bool
+    status: str = "sent"
+    skipped_reason: str | None = None
+    nudge_workflow_id: str | None = None
+    reply_wait_seconds: int = 0
+    final_reply_wait_seconds: int = 0
 
 
 @activity.defn
 async def start_daily_checkin_activity(payload: DailyCheckinInput) -> DailyCheckinResult:
     registry = _service_registry()
     try:
+        repository = registry.status_repository()
+        settings = registry.settings
+        preference = await repository.checkin_preference_for(
+            payload.tenant_id,
+            payload.developer_id,
+        )
+        preference = preference or CheckInPreference(
+            tenant_id=payload.tenant_id,
+            developer_id=payload.developer_id,
+            reply_wait_seconds=settings.checkin_reply_wait_seconds,
+            final_reply_wait_seconds=settings.checkin_final_reply_wait_seconds,
+        )
+        checkin_date = _checkin_date(payload, datetime.now(tz=UTC))
+        scheduled_at = _scheduled_at(
+            checkin_date,
+            preference,
+            preference.timezone or settings.tenant_default_timezone,
+        )
+
+        existing_run = await repository.checkin_schedule_run(
+            payload.tenant_id,
+            payload.developer_id,
+            checkin_date,
+        )
+        if existing_run is not None:
+            existing_checkin = await repository.checkin_by_correlation(
+                payload.tenant_id,
+                existing_run.correlation_id,
+            )
+            if existing_checkin is not None:
+                return _checkin_result(
+                    existing_checkin,
+                    already_recorded=True,
+                    status=existing_run.status,
+                    reply_wait_seconds=preference.reply_wait_seconds,
+                    final_reply_wait_seconds=preference.final_reply_wait_seconds,
+                )
+            return _run_result(
+                existing_run,
+                already_recorded=True,
+                reply_wait_seconds=preference.reply_wait_seconds,
+                final_reply_wait_seconds=preference.final_reply_wait_seconds,
+            )
+
+        correlation_id = payload.correlation_id or f"checkin-{payload.developer_id}-{checkin_date}"
+        if checkin_date.weekday() not in set(preference.weekdays):
+            run = await _record_schedule_run(
+                repository,
+                tenant_id=payload.tenant_id,
+                developer_id=payload.developer_id,
+                checkin_date=checkin_date,
+                correlation_id=correlation_id,
+                status="skipped_weekend",
+                scheduled_at=scheduled_at,
+                reason="check-in preference excludes this weekday",
+            )
+            return _run_result(
+                run,
+                already_recorded=False,
+                reply_wait_seconds=preference.reply_wait_seconds,
+                final_reply_wait_seconds=preference.final_reply_wait_seconds,
+            )
+
+        availability = await registry.availability_service().availability_for(
+            UserRef(
+                tenant_id=payload.tenant_id,
+                external_id=payload.developer_id,
+                display_name=payload.developer_name,
+            ),
+            checkin_date,
+            default_timezone=preference.timezone or settings.tenant_default_timezone,
+        )
+        timezone = preference.timezone or availability.timezone or settings.tenant_default_timezone
+        scheduled_at = _scheduled_at(checkin_date, preference, timezone)
+        if not availability.available:
+            run = await _record_schedule_run(
+                repository,
+                tenant_id=payload.tenant_id,
+                developer_id=payload.developer_id,
+                checkin_date=checkin_date,
+                correlation_id=correlation_id,
+                status="skipped_unavailable",
+                scheduled_at=scheduled_at,
+                reason="calendar marks developer unavailable",
+            )
+            return _run_result(
+                run,
+                already_recorded=False,
+                reply_wait_seconds=preference.reply_wait_seconds,
+                final_reply_wait_seconds=preference.final_reply_wait_seconds,
+            )
+
         existing = None
         if payload.correlation_id is not None:
-            existing = await registry.status_repository().checkin_by_correlation(
+            existing = await repository.checkin_by_correlation(
                 payload.tenant_id,
                 payload.correlation_id,
             )
         if existing is not None:
-            return _checkin_result(existing, already_recorded=True)
+            await _record_schedule_run(
+                repository,
+                tenant_id=payload.tenant_id,
+                developer_id=payload.developer_id,
+                checkin_date=checkin_date,
+                correlation_id=existing.correlation_id,
+                status="sent",
+                scheduled_at=scheduled_at,
+                reason="check-in already existed for correlation",
+            )
+            return _checkin_result(
+                existing,
+                already_recorded=True,
+                status="sent",
+                reply_wait_seconds=preference.reply_wait_seconds,
+                final_reply_wait_seconds=preference.final_reply_wait_seconds,
+            )
 
         checkin = await registry.status_collector().start_checkin(
             tenant_id=payload.tenant_id,
             developer_id=payload.developer_id,
             developer_name=payload.developer_name,
             chat_external_id=payload.chat_external_id,
-            correlation_id=payload.correlation_id,
-            asked_at=_optional_datetime(payload.asked_at),
+            correlation_id=correlation_id,
+            asked_at=_optional_datetime(payload.asked_at) or scheduled_at,
         )
-        return _checkin_result(checkin, already_recorded=False)
+        await _record_schedule_run(
+            repository,
+            tenant_id=payload.tenant_id,
+            developer_id=payload.developer_id,
+            checkin_date=checkin_date,
+            correlation_id=checkin.correlation_id,
+            status="sent",
+            scheduled_at=scheduled_at,
+            reason=None,
+        )
+        return _checkin_result(
+            checkin,
+            already_recorded=False,
+            status="sent",
+            reply_wait_seconds=preference.reply_wait_seconds,
+            final_reply_wait_seconds=preference.final_reply_wait_seconds,
+        )
     finally:
         await registry.close()
 
@@ -69,21 +203,109 @@ class DailyCheckinWorkflow:
             )
         if scheduled.asked_at is None:
             scheduled = replace(scheduled, asked_at=workflow.now().isoformat())
-        return await workflow.execute_activity(
+        if scheduled.checkin_date is None:
+            scheduled = replace(scheduled, checkin_date=workflow.now().date().isoformat())
+        result = await workflow.execute_activity(
             start_daily_checkin_activity,
             scheduled,
             start_to_close_timeout=timedelta(minutes=5),
         )
+        if result.status == "sent" and not result.already_recorded:
+            nudge_workflow_id = f"nudge-{result.correlation_id}"
+            await workflow.start_child_workflow(
+                NudgeWorkflow.run,
+                NudgeInput(
+                    tenant_id=result.tenant_id,
+                    correlation_id=result.correlation_id,
+                    as_of=scheduled.checkin_date or workflow.now().date().isoformat(),
+                    developer_name=scheduled.developer_name,
+                    chat_external_id=scheduled.chat_external_id,
+                    reply_wait_seconds=result.reply_wait_seconds,
+                    final_reply_wait_seconds=result.final_reply_wait_seconds,
+                ),
+                id=nudge_workflow_id,
+            )
+            return replace(result, nudge_workflow_id=nudge_workflow_id)
+        return result
 
 
-def _checkin_result(checkin: CheckIn, *, already_recorded: bool) -> DailyCheckinResult:
+def _checkin_result(
+    checkin: CheckIn,
+    *,
+    already_recorded: bool,
+    status: str,
+    reply_wait_seconds: int,
+    final_reply_wait_seconds: int,
+) -> DailyCheckinResult:
     return DailyCheckinResult(
         tenant_id=checkin.tenant_id,
         developer_id=checkin.developer_id,
         correlation_id=checkin.correlation_id,
         asked_at=checkin.asked_at.isoformat(),
         already_recorded=already_recorded,
+        status=status,
+        reply_wait_seconds=reply_wait_seconds,
+        final_reply_wait_seconds=final_reply_wait_seconds,
     )
+
+
+def _run_result(
+    run: CheckInScheduleRun,
+    *,
+    already_recorded: bool,
+    reply_wait_seconds: int,
+    final_reply_wait_seconds: int,
+) -> DailyCheckinResult:
+    return DailyCheckinResult(
+        tenant_id=run.tenant_id,
+        developer_id=run.developer_id,
+        correlation_id=run.correlation_id,
+        asked_at=run.scheduled_at.isoformat(),
+        already_recorded=already_recorded,
+        status=run.status,
+        skipped_reason=run.reason,
+        reply_wait_seconds=reply_wait_seconds,
+        final_reply_wait_seconds=final_reply_wait_seconds,
+    )
+
+
+async def _record_schedule_run(
+    repository: StatusRepository,
+    *,
+    tenant_id: str,
+    developer_id: str,
+    checkin_date: date,
+    correlation_id: str,
+    status: str,
+    scheduled_at: datetime,
+    reason: str | None,
+) -> CheckInScheduleRun:
+    run = CheckInScheduleRun(
+        tenant_id=tenant_id,
+        developer_id=developer_id,
+        checkin_date=checkin_date,
+        correlation_id=correlation_id,
+        status=status,
+        scheduled_at=scheduled_at,
+        reason=reason,
+    )
+    await repository.record_checkin_schedule_run(run)
+    return run
+
+
+def _checkin_date(payload: DailyCheckinInput, fallback: datetime) -> date:
+    if payload.checkin_date is not None:
+        return date.fromisoformat(payload.checkin_date)
+    asked_at = _optional_datetime(payload.asked_at)
+    return (asked_at or fallback).date()
+
+
+def _scheduled_at(checkin_date: date, preference: CheckInPreference, timezone: str) -> datetime:
+    try:
+        zone = ZoneInfo(timezone)
+    except ZoneInfoNotFoundError:
+        zone = ZoneInfo("UTC")
+    return datetime.combine(checkin_date, preference.local_time, tzinfo=zone).astimezone(UTC)
 
 
 def _optional_datetime(value: str | None) -> datetime | None:

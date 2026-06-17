@@ -122,14 +122,18 @@ class IssueReadSyncService:
                 )
             )
 
-        await self._time_series_repository.append_fact(
+        issue_observed_at = _issue_updated_at(issue, observed_at)
+        await self._time_series_repository.append_fact_once(
             FactEvent(
                 tenant_id=issue.tenant_id,
                 source=self.connector,
                 entity_ref=EntityRef(tenant_id=issue.tenant_id, kind=NodeKind.TASK, id=issue.key),
                 payload=_issue_fact_payload(issue, project_key),
-                observed_at=_issue_updated_at(issue, observed_at),
-                correlation_id=f"{self.connector}:{issue.key}:{observed_at.isoformat()}",
+                observed_at=issue_observed_at,
+                correlation_id=(
+                    f"{self.connector}:{issue.tenant_id}:{issue.key}:"
+                    f"{issue_observed_at.isoformat()}"
+                ),
             )
         )
 
@@ -171,7 +175,7 @@ class VcsReadSyncService:
         pull_requests = await self._vcs_provider.list_pull_requests(tenant_id, repo_name, cursor)
 
         for commit in commits:
-            await self._append_commit_fact(commit, observed)
+            await self._append_commit_fact(commit)
         for pull_request in pull_requests:
             await self._append_pull_request_fact(pull_request, repo_name, observed)
 
@@ -195,8 +199,8 @@ class VcsReadSyncService:
             cursor=recorded_cursor,
         )
 
-    async def _append_commit_fact(self, commit: Commit, observed_at: datetime) -> None:
-        await self._time_series_repository.append_fact(
+    async def _append_commit_fact(self, commit: Commit) -> None:
+        await self._time_series_repository.append_fact_once(
             FactEvent(
                 tenant_id=commit.tenant_id,
                 source="vcs_commit",
@@ -207,7 +211,7 @@ class VcsReadSyncService:
                     "message": commit.message,
                 },
                 observed_at=_timestamp(commit.committed_at),
-                correlation_id=f"vcs:commit:{commit.sha}:{observed_at.isoformat()}",
+                correlation_id=f"vcs:commit:{commit.tenant_id}:{commit.repo}:{commit.sha}",
             )
         )
 
@@ -217,7 +221,8 @@ class VcsReadSyncService:
         repo_name: str,
         observed_at: datetime,
     ) -> None:
-        await self._time_series_repository.append_fact(
+        pull_request_observed_at = _pull_request_updated_at(pull_request, observed_at)
+        await self._time_series_repository.append_fact_once(
             FactEvent(
                 tenant_id=pull_request.tenant_id,
                 source="vcs_pull_request",
@@ -232,8 +237,11 @@ class VcsReadSyncService:
                     "title": pull_request.title,
                     "merged": pull_request.merged,
                 },
-                observed_at=_pull_request_updated_at(pull_request, observed_at),
-                correlation_id=f"vcs:pull_request:{pull_request.id}:{observed_at.isoformat()}",
+                observed_at=pull_request_observed_at,
+                correlation_id=(
+                    f"vcs:pull_request:{pull_request.tenant_id}:{repo_name}:"
+                    f"{pull_request.id}:{pull_request_observed_at.isoformat()}"
+                ),
             )
         )
 
@@ -290,7 +298,7 @@ class CalendarReadSyncService:
         )
 
     async def _append_event_fact(self, event: CalendarEvent, observed_at: datetime) -> None:
-        await self._time_series_repository.append_fact(
+        await self._time_series_repository.append_fact_once(
             FactEvent(
                 tenant_id=event.tenant_id,
                 source=self.connector,
@@ -307,8 +315,8 @@ class CalendarReadSyncService:
                 },
                 observed_at=observed_at,
                 correlation_id=(
-                    f"{self.connector}:{event.user.external_id}:"
-                    f"{event.starts_on.isoformat()}:{event.kind}"
+                    f"{self.connector}:{event.tenant_id}:{event.user.external_id}:"
+                    f"{event.starts_on.isoformat()}:{event.ends_on.isoformat()}:{event.kind}"
                 ),
             )
         )

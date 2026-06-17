@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Protocol
 
 from opentelemetry import trace
@@ -9,7 +9,17 @@ from opentelemetry import trace
 from core.domain.graph import EntityRef, JsonScalar, NodeKind
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
-from core.domain.status import CheckIn, CheckInSignals, DeveloperStatus, Mood, StatusSource
+from core.domain.status import (
+    CheckIn,
+    CheckInCorrelation,
+    CheckInNudge,
+    CheckInPreference,
+    CheckInScheduleRun,
+    CheckInSignals,
+    DeveloperStatus,
+    Mood,
+    StatusSource,
+)
 
 _tracer = trace.get_tracer("pulseops.persistence.status")
 
@@ -67,6 +77,242 @@ class PostgresStatusRepository:
                 (tenant_id, correlation_id),
             )
         return _checkin_from_row(rows[0]) if rows else None
+
+    async def record_checkin_correlation(self, correlation: CheckInCorrelation) -> None:
+        with _tracer.start_as_current_span("postgres.status.record_checkin_correlation"):
+            await self._executor.execute(
+                """
+                INSERT INTO checkin_correlations (
+                    tenant_id, correlation_id, developer_id, chat_user_ref, chat_thread_ref,
+                    outbound_message_id, asked_at, consumed_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, correlation_id)
+                DO UPDATE SET
+                    developer_id = EXCLUDED.developer_id,
+                    chat_user_ref = EXCLUDED.chat_user_ref,
+                    chat_thread_ref = EXCLUDED.chat_thread_ref,
+                    outbound_message_id = EXCLUDED.outbound_message_id,
+                    asked_at = EXCLUDED.asked_at,
+                    consumed_at = COALESCE(
+                        checkin_correlations.consumed_at,
+                        EXCLUDED.consumed_at
+                    )
+                """,
+                (
+                    correlation.tenant_id,
+                    correlation.correlation_id,
+                    correlation.developer_id,
+                    correlation.chat_user_ref,
+                    correlation.chat_thread_ref,
+                    correlation.outbound_message_id,
+                    correlation.asked_at,
+                    correlation.consumed_at,
+                ),
+            )
+
+    async def checkin_correlation_by_id(
+        self, tenant_id: str, correlation_id: str
+    ) -> CheckInCorrelation | None:
+        with _tracer.start_as_current_span("postgres.status.checkin_correlation_by_id"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, correlation_id, developer_id, chat_user_ref, chat_thread_ref,
+                       outbound_message_id, asked_at, consumed_at
+                FROM checkin_correlations
+                WHERE tenant_id = %s AND correlation_id = %s
+                LIMIT 1
+                """,
+                (tenant_id, correlation_id),
+            )
+        return _checkin_correlation_from_row(rows[0]) if rows else None
+
+    async def latest_checkin_correlation_for_thread(
+        self, tenant_id: str, chat_thread_ref: str, as_of: date
+    ) -> CheckInCorrelation | None:
+        with _tracer.start_as_current_span("postgres.status.latest_checkin_correlation_for_thread"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, correlation_id, developer_id, chat_user_ref, chat_thread_ref,
+                       outbound_message_id, asked_at, consumed_at
+                FROM checkin_correlations
+                WHERE tenant_id = %s
+                  AND chat_thread_ref = %s
+                  AND asked_at >= %s::date
+                  AND asked_at < (%s::date + INTERVAL '1 day')
+                ORDER BY asked_at DESC
+                LIMIT 1
+                """,
+                (tenant_id, chat_thread_ref, as_of, as_of),
+            )
+        return _checkin_correlation_from_row(rows[0]) if rows else None
+
+    async def latest_unconsumed_checkin_correlation_for_user(
+        self, tenant_id: str, chat_user_ref: str, as_of: date
+    ) -> CheckInCorrelation | None:
+        with _tracer.start_as_current_span(
+            "postgres.status.latest_unconsumed_checkin_correlation_for_user"
+        ):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, correlation_id, developer_id, chat_user_ref, chat_thread_ref,
+                       outbound_message_id, asked_at, consumed_at
+                FROM checkin_correlations
+                WHERE tenant_id = %s
+                  AND chat_user_ref = %s
+                  AND consumed_at IS NULL
+                  AND asked_at >= %s::date
+                  AND asked_at < (%s::date + INTERVAL '1 day')
+                ORDER BY asked_at DESC
+                LIMIT 1
+                """,
+                (tenant_id, chat_user_ref, as_of, as_of),
+            )
+        return _checkin_correlation_from_row(rows[0]) if rows else None
+
+    async def consume_checkin_correlation(
+        self, tenant_id: str, correlation_id: str, consumed_at: datetime
+    ) -> None:
+        with _tracer.start_as_current_span("postgres.status.consume_checkin_correlation"):
+            await self._executor.execute(
+                """
+                UPDATE checkin_correlations
+                SET consumed_at = COALESCE(consumed_at, %s)
+                WHERE tenant_id = %s AND correlation_id = %s
+                """,
+                (consumed_at, tenant_id, correlation_id),
+            )
+
+    async def record_checkin_preference(self, preference: CheckInPreference) -> None:
+        with _tracer.start_as_current_span("postgres.status.record_checkin_preference"):
+            await self._executor.execute(
+                """
+                INSERT INTO checkin_preferences (
+                    tenant_id, developer_id, local_time, timezone, weekdays,
+                    reply_wait_seconds, final_reply_wait_seconds
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, developer_id)
+                DO UPDATE SET
+                    local_time = EXCLUDED.local_time,
+                    timezone = EXCLUDED.timezone,
+                    weekdays = EXCLUDED.weekdays,
+                    reply_wait_seconds = EXCLUDED.reply_wait_seconds,
+                    final_reply_wait_seconds = EXCLUDED.final_reply_wait_seconds,
+                    updated_at = now()
+                """,
+                (
+                    preference.tenant_id,
+                    preference.developer_id,
+                    preference.local_time,
+                    preference.timezone,
+                    _int_tuple_to_json(preference.weekdays),
+                    preference.reply_wait_seconds,
+                    preference.final_reply_wait_seconds,
+                ),
+            )
+
+    async def checkin_preference_for(
+        self, tenant_id: str, developer_id: str
+    ) -> CheckInPreference | None:
+        with _tracer.start_as_current_span("postgres.status.checkin_preference_for"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, developer_id, local_time, timezone, weekdays,
+                       reply_wait_seconds, final_reply_wait_seconds
+                FROM checkin_preferences
+                WHERE tenant_id = %s AND developer_id = %s
+                LIMIT 1
+                """,
+                (tenant_id, developer_id),
+            )
+        return _checkin_preference_from_row(rows[0]) if rows else None
+
+    async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None:
+        with _tracer.start_as_current_span("postgres.status.record_checkin_schedule_run"):
+            await self._executor.execute(
+                """
+                INSERT INTO checkin_schedule_runs (
+                    tenant_id, developer_id, checkin_date, correlation_id, status,
+                    scheduled_at, reason
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, developer_id, checkin_date)
+                DO UPDATE SET
+                    correlation_id = EXCLUDED.correlation_id,
+                    status = EXCLUDED.status,
+                    scheduled_at = EXCLUDED.scheduled_at,
+                    reason = EXCLUDED.reason,
+                    updated_at = now()
+                """,
+                (
+                    run.tenant_id,
+                    run.developer_id,
+                    run.checkin_date,
+                    run.correlation_id,
+                    run.status,
+                    run.scheduled_at,
+                    run.reason,
+                ),
+            )
+
+    async def checkin_schedule_run(
+        self, tenant_id: str, developer_id: str, checkin_date: date
+    ) -> CheckInScheduleRun | None:
+        with _tracer.start_as_current_span("postgres.status.checkin_schedule_run"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, developer_id, checkin_date, correlation_id, status,
+                       scheduled_at, reason
+                FROM checkin_schedule_runs
+                WHERE tenant_id = %s AND developer_id = %s AND checkin_date = %s
+                LIMIT 1
+                """,
+                (tenant_id, developer_id, checkin_date),
+            )
+        return _checkin_schedule_run_from_row(rows[0]) if rows else None
+
+    async def record_checkin_nudge(self, nudge: CheckInNudge) -> CheckInNudge:
+        with _tracer.start_as_current_span("postgres.status.record_checkin_nudge"):
+            rows = await self._executor.fetch(
+                """
+                INSERT INTO checkin_nudges (
+                    tenant_id, correlation_id, nudge_number, sent_at, outbound_message_id
+                )
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, correlation_id, nudge_number)
+                DO UPDATE SET
+                    sent_at = COALESCE(checkin_nudges.sent_at, EXCLUDED.sent_at),
+                    outbound_message_id = COALESCE(
+                        checkin_nudges.outbound_message_id,
+                        EXCLUDED.outbound_message_id
+                    )
+                RETURNING tenant_id, correlation_id, nudge_number, sent_at, outbound_message_id
+                """,
+                (
+                    nudge.tenant_id,
+                    nudge.correlation_id,
+                    nudge.nudge_number,
+                    nudge.sent_at,
+                    nudge.outbound_message_id,
+                ),
+            )
+        return _checkin_nudge_from_row(rows[0])
+
+    async def checkin_nudge_for(
+        self, tenant_id: str, correlation_id: str, nudge_number: int
+    ) -> CheckInNudge | None:
+        with _tracer.start_as_current_span("postgres.status.checkin_nudge_for"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, correlation_id, nudge_number, sent_at, outbound_message_id
+                FROM checkin_nudges
+                WHERE tenant_id = %s AND correlation_id = %s AND nudge_number = %s
+                LIMIT 1
+                """,
+                (tenant_id, correlation_id, nudge_number),
+            )
+        return _checkin_nudge_from_row(rows[0]) if rows else None
 
     async def record_developer_status(self, status: DeveloperStatus) -> None:
         with _tracer.start_as_current_span("postgres.status.record_developer_status"):
@@ -264,6 +510,59 @@ def _checkin_from_row(row: Mapping[str, object]) -> CheckIn:
     )
 
 
+def _checkin_correlation_from_row(row: Mapping[str, object]) -> CheckInCorrelation:
+    return CheckInCorrelation(
+        tenant_id=str(row["tenant_id"]),
+        correlation_id=str(row["correlation_id"]),
+        developer_id=str(row["developer_id"]),
+        chat_user_ref=str(row["chat_user_ref"]),
+        chat_thread_ref=str(row["chat_thread_ref"]),
+        outbound_message_id=str(row["outbound_message_id"]),
+        asked_at=_datetime_field(row["asked_at"], "asked_at"),
+        consumed_at=_optional_datetime_field(row.get("consumed_at"), "consumed_at"),
+    )
+
+
+def _checkin_preference_from_row(row: Mapping[str, object]) -> CheckInPreference:
+    timezone = row.get("timezone")
+    return CheckInPreference(
+        tenant_id=str(row["tenant_id"]),
+        developer_id=str(row["developer_id"]),
+        local_time=_time_field(row["local_time"], "local_time"),
+        timezone=timezone if isinstance(timezone, str) and timezone else None,
+        weekdays=_int_tuple_from_json(row.get("weekdays")),
+        reply_wait_seconds=_int_field(row["reply_wait_seconds"], "reply_wait_seconds"),
+        final_reply_wait_seconds=_int_field(
+            row["final_reply_wait_seconds"],
+            "final_reply_wait_seconds",
+        ),
+    )
+
+
+def _checkin_schedule_run_from_row(row: Mapping[str, object]) -> CheckInScheduleRun:
+    reason = row.get("reason")
+    return CheckInScheduleRun(
+        tenant_id=str(row["tenant_id"]),
+        developer_id=str(row["developer_id"]),
+        checkin_date=_date_field(row["checkin_date"], "checkin_date"),
+        correlation_id=str(row["correlation_id"]),
+        status=str(row["status"]),
+        scheduled_at=_datetime_field(row["scheduled_at"], "scheduled_at"),
+        reason=reason if isinstance(reason, str) else None,
+    )
+
+
+def _checkin_nudge_from_row(row: Mapping[str, object]) -> CheckInNudge:
+    outbound_message_id = row.get("outbound_message_id")
+    return CheckInNudge(
+        tenant_id=str(row["tenant_id"]),
+        correlation_id=str(row["correlation_id"]),
+        nudge_number=_int_field(row["nudge_number"], "nudge_number"),
+        sent_at=_optional_datetime_field(row.get("sent_at"), "sent_at"),
+        outbound_message_id=outbound_message_id if isinstance(outbound_message_id, str) else None,
+    )
+
+
 def _developer_status_from_row(row: Mapping[str, object]) -> DeveloperStatus:
     return DeveloperStatus(
         tenant_id=str(row["tenant_id"]),
@@ -330,9 +629,18 @@ def _string_tuple_to_json(values: tuple[str, ...]) -> dict[str, object]:
     return {"items": list(values)}
 
 
+def _int_tuple_to_json(values: tuple[int, ...]) -> dict[str, object]:
+    return {"items": list(values)}
+
+
 def _string_tuple_from_json(value: object) -> tuple[str, ...]:
     items = _items_from_json(value)
     return tuple(item for item in items if isinstance(item, str))
+
+
+def _int_tuple_from_json(value: object) -> tuple[int, ...]:
+    items = _items_from_json(value)
+    return tuple(item for item in items if isinstance(item, int) and not isinstance(item, bool))
 
 
 def _factors_to_json(factors: tuple[RollupFactor, ...]) -> dict[str, object]:
@@ -445,3 +753,15 @@ def _date_field(value: object, field_name: str) -> date:
     if isinstance(value, date) and not isinstance(value, datetime):
         return value
     raise TypeError(f"{field_name} must be a date instance")
+
+
+def _time_field(value: object, field_name: str) -> time:
+    if isinstance(value, time):
+        return value
+    raise TypeError(f"{field_name} must be a time instance")
+
+
+def _int_field(value: object, field_name: str) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    raise TypeError(f"{field_name} must be an int instance")

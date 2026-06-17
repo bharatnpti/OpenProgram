@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 
@@ -26,26 +28,62 @@ def test_health_and_graph_routes(settings: Settings) -> None:
         assert len(body["nodes"]) >= 5
 
 
-def test_chat_webhook_route_uses_provider_mapper(settings: Settings) -> None:
-    app = create_app(settings=settings)
+def test_chat_webhook_route_processes_correlated_reply(settings: Settings) -> None:
+    app = create_app(
+        settings=settings.model_copy(
+            update={
+                "chat_provider": "fake",
+                "issue_tracker_provider": "fake",
+                "llm_provider": "fake",
+            }
+        )
+    )
     with TestClient(app) as client:
+        asyncio.run(
+            app.state.registry.status_collector().start_checkin(
+                tenant_id=settings.tenant_id,
+                developer_id="dev-1",
+                chat_external_id="U123",
+                correlation_id="corr-route",
+                asked_at=datetime.now(tz=UTC),
+            )
+        )
         response = client.post(
-            "/webhooks/chat/slack",
+            "/webhooks/chat/fake",
             json={
-                "event": {
-                    "user": "U123",
-                    "text": "blocked on API",
-                    "ts": "1700000000.000001",
-                    "channel": "C123",
-                }
+                "user_id": "U123",
+                "text": "blocked on API",
+                "message_id": "msg-reply-1",
+            },
+        )
+        duplicate_response = client.post(
+            "/webhooks/chat/fake",
+            json={
+                "user_id": "U123",
+                "text": "duplicate reply should be ignored",
+                "message_id": "msg-reply-2",
             },
         )
 
     assert response.status_code == 200
     assert response.json() == {
-        "status": "accepted",
-        "message_id": "1700000000.000001",
+        "status": "processed",
+        "message_id": "msg-reply-1",
     }
+    assert duplicate_response.status_code == 200
+    assert duplicate_response.json() == {
+        "status": "duplicate",
+        "message_id": "msg-reply-2",
+    }
+
+
+def test_chat_webhook_route_ignores_uncorrelated_reply(settings: Settings) -> None:
+    app = create_app(settings=settings.model_copy(update={"chat_provider": "fake"}))
+    with TestClient(app) as client:
+        response = client.post("/webhooks/chat/fake", json={"text": "ignored"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ignored"
 
 
 def test_chat_webhook_route_ignores_unsupported_provider(settings: Settings) -> None:

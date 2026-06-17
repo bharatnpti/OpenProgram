@@ -24,6 +24,7 @@ from infra.persistence.postgres_graph import (
     PostgresTimeSeriesRepository,
     PostgresVectorStore,
 )
+from infra.persistence.postgres_status import PostgresRollupRepository, PostgresStatusRepository
 from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
 from infra.persistence.seed_data import seed_demo_graph
 
@@ -95,13 +96,41 @@ async def test_postgres_extensions_seed_vector_and_secret(
 
     graph_repository = PostgresGraphRepository(executor)
     time_series_repository = PostgresTimeSeriesRepository(executor)
+    status_repository = PostgresStatusRepository(executor)
+    rollup_repository = PostgresRollupRepository(executor)
     vector_store = PostgresVectorStore(executor)
     try:
-        await seed_demo_graph(graph_repository, time_series_repository, "demo")
+        await seed_demo_graph(
+            graph_repository,
+            time_series_repository,
+            "demo",
+            status_repository=status_repository,
+            rollup_repository=rollup_repository,
+        )
         tree = await graph_repository.get_program_tree("demo", "program-platform", date.today())
         assert tree.root.id == "program-platform"
 
         ref = EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="task-api")
+        seeded_facts = await time_series_repository.list_facts("demo", ref)
+        await seed_demo_graph(
+            graph_repository,
+            time_series_repository,
+            "demo",
+            status_repository=status_repository,
+            rollup_repository=rollup_repository,
+        )
+        assert await time_series_repository.list_facts("demo", ref) == seeded_facts
+
+        confirmed = await status_repository.latest_developer_status(
+            "demo",
+            "dev-asha",
+            date(2026, 6, 15),
+        )
+        rollups = await rollup_repository.list_node_statuses("demo", date(2026, 6, 15))
+        assert confirmed is not None
+        assert confirmed.source.value == "confirmed"
+        assert rollups
+
         vector = [0.0] * 1536
         vector[0] = 1.0
         await vector_store.upsert_embedding("demo", ref, vector)

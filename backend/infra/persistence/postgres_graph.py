@@ -210,6 +210,7 @@ class PostgresTimeSeriesRepository:
                     observed_at, ingested_at, correlation_id
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
                 """,
                 (
                     fact.tenant_id,
@@ -222,6 +223,9 @@ class PostgresTimeSeriesRepository:
                     fact.correlation_id,
                 ),
             )
+
+    async def append_fact_once(self, fact: FactEvent) -> None:
+        await self.append_fact(fact)
 
     async def list_facts(self, tenant_id: str, entity_ref: EntityRef) -> list[FactEvent]:
         with _tracer.start_as_current_span("postgres.timeseries.list_facts"):

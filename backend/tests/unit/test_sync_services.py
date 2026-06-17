@@ -8,7 +8,15 @@ from core.application.sync_services import (
     VcsReadSyncService,
 )
 from core.domain.graph import EdgeKind, EntityRef, GraphEdge, NodeKind, Pod, Program
-from core.domain.integrations import CalendarEvent, Commit, Issue, IssueState, PullRequest, UserRef
+from core.domain.integrations import (
+    CalendarEvent,
+    Commit,
+    Issue,
+    IssueState,
+    PullRequest,
+    SyncCursor,
+    UserRef,
+)
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from tests.contract.fakes import FakeCalendarProvider, FakeIssueTracker, FakeVcsProvider
 
@@ -67,8 +75,26 @@ async def test_issue_read_sync_creates_task_edges_facts_and_cursor() -> None:
         edge.kind is EdgeKind.ASSIGNED_TO and edge.to_node_id == "PO-1" for edge in memberships
     )
     assert facts[0].payload["state"] == IssueState.IN_PROGRESS.value
+    assert facts[0].correlation_id == "issue:demo:PO-1:2026-01-10T08:30:00+00:00"
     assert cursor.updated_at == updated_at
     assert cursor.metadata["last_item_count"] == 1
+
+    await store.record_cursor("demo", "issue", "project:PO", SyncCursor())
+    await service.sync_project(
+        tenant_id="demo",
+        project_key="PO",
+        container_id="pod-1",
+        observed_at=datetime(2026, 1, 10, 9, 30, tzinfo=UTC),
+    )
+    assert (
+        len(
+            await store.list_facts(
+                "demo",
+                EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="PO-1"),
+            )
+        )
+        == 1
+    )
 
 
 async def test_vcs_read_sync_appends_commit_and_pull_request_facts_and_cursor() -> None:
@@ -119,8 +145,28 @@ async def test_vcs_read_sync_appends_commit_and_pull_request_facts_and_cursor() 
 
     assert result.items_synced == 2
     assert {fact.source for fact in facts} == {"vcs_commit", "vcs_pull_request"}
+    assert {fact.correlation_id for fact in facts} == {
+        "vcs:commit:demo:repo-1:abc123",
+        "vcs:pull_request:demo:repo-1:7:2026-01-10T09:00:00+00:00",
+    }
     assert cursor.updated_at == pull_request_time
     assert cursor.metadata["last_item_count"] == 2
+
+    await store.record_cursor("demo", "vcs", "repo:repo-1", SyncCursor())
+    await service.sync_repo(
+        tenant_id="demo",
+        repo_name="repo-1",
+        observed_at=datetime(2026, 1, 10, 10, 30, tzinfo=UTC),
+    )
+    assert (
+        len(
+            await store.list_facts(
+                "demo",
+                EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
+            )
+        )
+        == 2
+    )
 
 
 async def test_calendar_read_sync_appends_event_facts_and_cursor() -> None:
@@ -161,5 +207,23 @@ async def test_calendar_read_sync_appends_event_facts_and_cursor() -> None:
     assert result.items_synced == 1
     assert facts[0].source == "calendar"
     assert facts[0].payload["timezone"] == "Europe/Berlin"
+    assert facts[0].correlation_id == "calendar:demo:dev-1:2026-01-10:2026-01-11:pto"
     assert cursor.value == "2026-01-11"
     assert cursor.metadata["last_item_count"] == 1
+
+    await store.record_cursor("demo", "calendar", "user:dev-1", SyncCursor())
+    await service.sync_user(
+        user=user,
+        start=date(2026, 1, 10),
+        end=date(2026, 1, 11),
+        observed_at=observed_at,
+    )
+    assert (
+        len(
+            await store.list_facts(
+                "demo",
+                EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
+            )
+        )
+        == 1
+    )

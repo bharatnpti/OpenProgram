@@ -13,7 +13,14 @@ from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.domain.integrations import Issue, UserRef
 from core.domain.llm import LlmRequest
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
-from core.domain.status import CheckIn, DeveloperStatus, StatusSource
+from core.domain.status import (
+    CheckIn,
+    CheckInCorrelation,
+    CheckInNudge,
+    CheckInSignals,
+    DeveloperStatus,
+    StatusSource,
+)
 from core.ports.chat import ChatProvider
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
@@ -30,6 +37,8 @@ class StatusCollectorState(TypedDict, total=False):
     context: str
     dm_text: str
     message_id: str
+    chat_thread_ref: str
+    chat_user_ref: str
     trace_id: str
     checkin: CheckIn
 
@@ -41,8 +50,7 @@ class StatusCollectorGraph(Protocol):
 @dataclass(frozen=True, kw_only=True)
 class NonResponseResult:
     nudge_message_id: str
-    stale_status: DeveloperStatus
-    inferred_status: DeveloperStatus | None
+    terminal_status: DeveloperStatus
 
 
 class StatusCollector:
@@ -104,6 +112,9 @@ class StatusCollector:
             error = "inbound reply does not match a recorded check-in"
             raise ValueError(error)
 
+        if checkin.replied_at is not None:
+            return await self._confirmed_status_for_duplicate(checkin)
+
         signals = await self._parser.parse_reply(
             tenant_id=message.tenant_id,
             developer_id=checkin.developer_id,
@@ -130,7 +141,45 @@ class StatusCollector:
             summary=signals.progress_note,
         )
         await self._status_repository.record_developer_status(status)
+        await self._status_repository.consume_checkin_correlation(
+            checkin.tenant_id,
+            checkin.correlation_id,
+            message.received_at,
+        )
+        await self._append_redacted_checkin_fact(updated, status)
         return status
+
+    async def resolve_reply_correlation(self, message: InboundMessage) -> str | None:
+        direct = await self._status_repository.checkin_by_correlation(
+            message.tenant_id,
+            message.correlation_id,
+        )
+        if direct is not None:
+            return direct.correlation_id
+
+        correlation = await self._status_repository.checkin_correlation_by_id(
+            message.tenant_id,
+            message.correlation_id,
+        )
+        if correlation is not None:
+            return correlation.correlation_id
+
+        thread_correlation = await self._status_repository.latest_checkin_correlation_for_thread(
+            message.tenant_id,
+            message.thread_id,
+            message.received_at.date(),
+        )
+        if thread_correlation is not None:
+            return thread_correlation.correlation_id
+
+        user_correlation = (
+            await self._status_repository.latest_unconsumed_checkin_correlation_for_user(
+                message.tenant_id,
+                message.user.external_id,
+                message.received_at.date(),
+            )
+        )
+        return user_correlation.correlation_id if user_correlation is not None else None
 
     async def send_nudge(
         self,
@@ -150,6 +199,18 @@ class StatusCollector:
         if checkin.replied_at is not None:
             error = "cannot nudge a check-in that already has a reply"
             raise ValueError(error)
+
+        existing_nudge = await self._status_repository.checkin_nudge_for(
+            tenant_id,
+            correlation_id,
+            1,
+        )
+        if existing_nudge is not None:
+            return existing_nudge.outbound_message_id or _pending_nudge_message_id(correlation_id)
+
+        await self._status_repository.record_checkin_nudge(
+            CheckInNudge(tenant_id=tenant_id, correlation_id=correlation_id, nudge_number=1)
+        )
 
         context = await self.build_context(
             tenant_id=tenant_id,
@@ -176,7 +237,7 @@ class StatusCollector:
             )
         )
         text = response.text.strip() or "Could you share a quick status update when you can?"
-        return await self._chat_provider.send_dm(
+        message_id = await self._chat_provider.send_dm(
             ChatUserRef(
                 tenant_id=tenant_id,
                 external_id=chat_external_id or checkin.developer_id,
@@ -189,6 +250,16 @@ class StatusCollector:
                 metadata={"purpose": "status_nudge", "nudge_number": 1},
             ),
         )
+        stored = await self._status_repository.record_checkin_nudge(
+            CheckInNudge(
+                tenant_id=tenant_id,
+                correlation_id=correlation_id,
+                nudge_number=1,
+                sent_at=datetime.now(tz=UTC),
+                outbound_message_id=message_id,
+            )
+        )
+        return stored.outbound_message_id or message_id
 
     async def record_non_response(
         self,
@@ -197,29 +268,48 @@ class StatusCollector:
         developer_id: str,
         as_of: date,
         developer_name: str | None = None,
-    ) -> tuple[DeveloperStatus, DeveloperStatus | None]:
+    ) -> DeveloperStatus:
         inferred = await self.infer_fallback_status(
             tenant_id=tenant_id,
             developer_id=developer_id,
             as_of=as_of,
             developer_name=developer_name,
         )
-        blockers = inferred.blockers if inferred and inferred.blockers else ("no confirmed reply",)
-        summary = (
-            f"No confirmed check-in after a nudge. Fallback context: {inferred.summary}"
-            if inferred is not None
-            else "No confirmed check-in after a nudge. Current status is unknown."
+        if inferred is not None:
+            await self._status_repository.record_developer_status(inferred)
+            return inferred
+
+        prior = await self._status_repository.latest_developer_status(
+            tenant_id,
+            developer_id,
+            as_of,
         )
-        stale = DeveloperStatus(
+        if prior is not None and prior.source is not StatusSource.UNKNOWN:
+            stale = DeveloperStatus(
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                as_of=as_of,
+                source=StatusSource.STALE,
+                blockers=prior.blockers or ("no confirmed reply",),
+                summary=(
+                    "No confirmed check-in after a nudge. "
+                    f"Last known {prior.source.value} status on {prior.as_of.isoformat()}: "
+                    f"{prior.summary}"
+                ),
+            )
+            await self._status_repository.record_developer_status(stale)
+            return stale
+
+        unknown = DeveloperStatus(
             tenant_id=tenant_id,
             developer_id=developer_id,
             as_of=as_of,
-            source=StatusSource.STALE,
-            blockers=blockers,
-            summary=summary,
+            source=StatusSource.UNKNOWN,
+            blockers=("no confirmed reply",),
+            summary="No confirmed check-in after a nudge. Current status is unknown.",
         )
-        await self._status_repository.record_developer_status(stale)
-        return stale, inferred
+        await self._status_repository.record_developer_status(unknown)
+        return unknown
 
     async def nudge_then_mark_stale(
         self,
@@ -244,7 +334,7 @@ class StatusCollector:
             developer_name=developer_name,
             chat_external_id=chat_external_id,
         )
-        stale, inferred = await self.record_non_response(
+        terminal_status = await self.record_non_response(
             tenant_id=tenant_id,
             developer_id=checkin.developer_id,
             as_of=as_of,
@@ -252,8 +342,7 @@ class StatusCollector:
         )
         return NonResponseResult(
             nudge_message_id=nudge_message_id,
-            stale_status=stale,
-            inferred_status=inferred,
+            terminal_status=terminal_status,
         )
 
     async def infer_fallback_status(
@@ -264,24 +353,6 @@ class StatusCollector:
         as_of: date,
         developer_name: str | None = None,
     ) -> DeveloperStatus | None:
-        latest = await self._status_repository.latest_developer_status(
-            tenant_id,
-            developer_id,
-            as_of,
-        )
-        if latest is not None and latest.source is not StatusSource.UNKNOWN:
-            return DeveloperStatus(
-                tenant_id=tenant_id,
-                developer_id=developer_id,
-                as_of=as_of,
-                source=StatusSource.INFERRED,
-                blockers=latest.blockers,
-                summary=(
-                    f"Last known {latest.source.value} status on "
-                    f"{latest.as_of.isoformat()}: {latest.summary}"
-                ),
-            )
-
         context = await self.build_context(
             tenant_id=tenant_id,
             developer_id=developer_id,
@@ -294,8 +365,8 @@ class StatusCollector:
             developer_id=developer_id,
             as_of=as_of,
             source=StatusSource.INFERRED,
-            blockers=(),
-            summary=context,
+            blockers=("no confirmed reply",),
+            summary=f"No confirmed check-in after a nudge. Inferred from context: {context}",
         )
 
     async def build_context(
@@ -352,12 +423,14 @@ class StatusCollector:
         return {"dm_text": text, "trace_id": response.trace_id}
 
     async def _send_dm_node(self, state: StatusCollectorState) -> StatusCollectorState:
+        user = ChatUserRef(
+            tenant_id=state["tenant_id"],
+            external_id=state.get("chat_external_id", state["developer_id"]),
+            display_name=state.get("developer_name"),
+        )
+        chat_thread_ref = await self._chat_provider.open_thread(user)
         message_id = await self._chat_provider.send_dm(
-            ChatUserRef(
-                tenant_id=state["tenant_id"],
-                external_id=state.get("chat_external_id", state["developer_id"]),
-                display_name=state.get("developer_name"),
-            ),
+            user,
             OutboundMessage(
                 tenant_id=state["tenant_id"],
                 text=state["dm_text"],
@@ -365,7 +438,11 @@ class StatusCollector:
                 metadata={"purpose": "status_checkin"},
             ),
         )
-        return {"message_id": message_id}
+        return {
+            "message_id": message_id,
+            "chat_thread_ref": chat_thread_ref,
+            "chat_user_ref": user.external_id,
+        }
 
     async def _record_checkin_node(self, state: StatusCollectorState) -> StatusCollectorState:
         checkin = CheckIn(
@@ -378,7 +455,67 @@ class StatusCollector:
             signals=None,
         )
         await self._status_repository.record_checkin(checkin)
+        await self._status_repository.record_checkin_correlation(
+            CheckInCorrelation(
+                tenant_id=checkin.tenant_id,
+                correlation_id=checkin.correlation_id,
+                developer_id=checkin.developer_id,
+                chat_user_ref=state["chat_user_ref"],
+                chat_thread_ref=state["chat_thread_ref"],
+                outbound_message_id=state["message_id"],
+                asked_at=checkin.asked_at,
+            )
+        )
         return {"checkin": checkin}
+
+    async def _confirmed_status_for_duplicate(self, checkin: CheckIn) -> DeveloperStatus:
+        status_as_of = (checkin.replied_at or checkin.asked_at).date()
+        latest = await self._status_repository.latest_developer_status(
+            checkin.tenant_id,
+            checkin.developer_id,
+            status_as_of,
+        )
+        if latest is not None and latest.source is StatusSource.CONFIRMED:
+            return latest
+        signals = checkin.signals or CheckInSignals(progress_note="Duplicate confirmed reply.")
+        return DeveloperStatus(
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            as_of=status_as_of,
+            source=StatusSource.CONFIRMED,
+            blockers=signals.blockers,
+            summary=signals.progress_note,
+        )
+
+    async def _append_redacted_checkin_fact(
+        self,
+        checkin: CheckIn,
+        status: DeveloperStatus,
+    ) -> None:
+        if self._time_series_repository is None or checkin.replied_at is None:
+            return
+        signals = checkin.signals
+        payload: dict[str, JsonScalar] = {
+            "status_source": status.source.value,
+            "blocker_count": len(status.blockers),
+            "has_eta_change": signals.eta_change_days is not None if signals else False,
+            "eta_change_days": signals.eta_change_days if signals else None,
+            "mood": signals.mood.value if signals and signals.mood else None,
+        }
+        await self._time_series_repository.append_fact_once(
+            FactEvent(
+                tenant_id=checkin.tenant_id,
+                source="checkin",
+                entity_ref=EntityRef(
+                    tenant_id=checkin.tenant_id,
+                    kind=NodeKind.DEVELOPER,
+                    id=checkin.developer_id,
+                ),
+                payload=payload,
+                observed_at=checkin.replied_at,
+                correlation_id=checkin.correlation_id,
+            )
+        )
 
     async def _recent_facts(
         self,
@@ -416,6 +553,10 @@ _NO_CONTEXT = "No active issues or recent facts were available."
 
 def _new_correlation_id() -> str:
     return f"checkin-{uuid4().hex}"
+
+
+def _pending_nudge_message_id(correlation_id: str) -> str:
+    return f"pending-nudge-{correlation_id}-1"
 
 
 def _issue_context_lines(issues: Iterable[Issue]) -> list[str]:

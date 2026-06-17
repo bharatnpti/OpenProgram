@@ -26,7 +26,7 @@ export PULSEOPS_LANGFUSE_SECRET_KEY
 export PULSEOPS_LANGFUSE_PROJECT_ID
 export PULSEOPS_TEMPORAL_SCHEDULE_ID
 
-.PHONY: up down migrate seed schedule smoke integration verify test lint format api openapi openapi-check worker mock-llm frontend-install frontend-dev frontend-lint frontend-format frontend-build frontend-generate
+.PHONY: up down migrate seed schedule smoke phase1-smoke integration verify test lint format api openapi openapi-check worker mock-llm frontend-install frontend-dev frontend-lint frontend-format frontend-build frontend-generate
 
 up:
 	docker compose up -d
@@ -46,10 +46,13 @@ schedule:
 smoke:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m infra.smoke
 
+phase1-smoke:
+	PYTHONPATH=$(PYTHONPATH) uv run python -m infra.phase1_smoke
+
 integration:
 	PULSEOPS_RUN_INTEGRATION=1 PYTHONPATH=$(PYTHONPATH) uv run pytest backend/tests/integration -m integration --no-cov
 
-verify: lint test frontend-lint frontend-build openapi-check integration smoke
+verify: lint test frontend-lint frontend-build openapi-check integration smoke phase1-smoke
 
 test:
 	PYTHONPATH=$(PYTHONPATH) uv run pytest

@@ -6,6 +6,7 @@ from datetime import date
 from config.settings import get_settings
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.persistence.postgres_graph import PostgresGraphRepository, PostgresTimeSeriesRepository
+from infra.persistence.postgres_status import PostgresRollupRepository, PostgresStatusRepository
 from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
 from infra.persistence.seed_data import seed_demo_graph
 
@@ -27,8 +28,16 @@ async def _seed_postgres(database_url: str, tenant_id: str) -> tuple[int, int]:
     executor = PsycopgAsyncExecutor(database_url)
     graph_repository = PostgresGraphRepository(executor)
     time_series_repository = PostgresTimeSeriesRepository(executor)
+    status_repository = PostgresStatusRepository(executor)
+    rollup_repository = PostgresRollupRepository(executor)
     try:
-        await seed_demo_graph(graph_repository, time_series_repository, tenant_id)
+        await seed_demo_graph(
+            graph_repository,
+            time_series_repository,
+            tenant_id,
+            status_repository=status_repository,
+            rollup_repository=rollup_repository,
+        )
         tree = await graph_repository.get_program_tree(tenant_id, "program-platform", date.today())
         return len(tree.nodes), len(tree.edges)
     finally:

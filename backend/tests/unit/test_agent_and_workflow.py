@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
 from core.application.agents.status_agent import StatusAgentNode
+from core.application.status_collector import StatusCollector
 from core.application.sync_services import SyncRunResult
-from core.domain.integrations import SyncCursor
-from core.domain.status import CheckIn
+from core.domain.integrations import SyncCursor, UserRef
+from core.domain.status import CheckIn, CheckInScheduleRun
 from core.domain.workflows import HeartbeatInput, record_heartbeat
 from infra.adapters.workflows.fake import FakeWorkflowScheduler
-from infra.workflows import daily_checkin, jira_sync
-from tests.contract.fakes import FakeLlmProvider
+from infra.persistence.in_memory_graph import InMemoryGraphStore
+from infra.workflows import daily_checkin, jira_sync, nudge
+from tests.contract.fakes import FakeChatProvider, FakeIssueTracker, FakeLlmProvider
 
 
 async def test_status_agent_calls_llm_provider() -> None:
@@ -104,6 +106,7 @@ async def test_daily_checkin_activity_is_idempotent_for_existing_correlation(
             tenant_id="demo",
             developer_id="dev-1",
             correlation_id="corr-1",
+            checkin_date="2026-01-09",
         )
     )
 
@@ -111,6 +114,94 @@ async def test_daily_checkin_activity_is_idempotent_for_existing_correlation(
     assert result.asked_at == asked_at.isoformat()
     assert registry.collector_called is False
     assert registry.closed is True
+
+
+async def test_daily_checkin_activity_skips_weekends_idempotently(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _DailyCheckinRegistry(available=True)
+    monkeypatch.setattr(daily_checkin, "_service_registry", lambda: registry)
+    payload = daily_checkin.DailyCheckinInput(
+        tenant_id="demo",
+        developer_id="dev-1",
+        correlation_id="corr-weekend",
+        checkin_date="2026-01-10",
+    )
+
+    first = await daily_checkin.start_daily_checkin_activity(payload)
+    second = await daily_checkin.start_daily_checkin_activity(payload)
+
+    assert first.status == "skipped_weekend"
+    assert first.skipped_reason == "check-in preference excludes this weekday"
+    assert second.status == "skipped_weekend"
+    assert second.already_recorded is True
+    assert len(registry.repository.schedule_runs) == 1
+    assert registry.collector_called is False
+
+
+async def test_daily_checkin_activity_skips_calendar_unavailable_day(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _DailyCheckinRegistry(available=False)
+    monkeypatch.setattr(daily_checkin, "_service_registry", lambda: registry)
+
+    result = await daily_checkin.start_daily_checkin_activity(
+        daily_checkin.DailyCheckinInput(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-pto",
+            checkin_date="2026-01-12",
+        )
+    )
+
+    assert result.status == "skipped_unavailable"
+    assert result.skipped_reason == "calendar marks developer unavailable"
+    assert registry.collector_called is False
+
+
+async def test_nudge_activities_send_once_then_close_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-nudge",
+            asked_at=datetime(2026, 1, 12, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    chat = FakeChatProvider()
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=FakeLlmProvider(),
+        status_repository=store,
+        model="test-model",
+    )
+    registry = _NudgeRegistry(store, collector)
+    monkeypatch.setattr(nudge, "_service_registry", lambda: registry)
+    payload = nudge.NudgeInput(
+        tenant_id="demo",
+        correlation_id="corr-nudge",
+        as_of="2026-01-12",
+        chat_external_id="U123",
+    )
+
+    first = await nudge.send_checkin_nudge_activity(payload)
+    second = await nudge.send_checkin_nudge_activity(payload)
+    closed = await nudge.close_checkin_non_response_activity(payload)
+
+    assert first.status == "nudged"
+    assert second.status == "already_nudged"
+    assert first.nudge_message_id == "msg-U123-1"
+    assert second.nudge_message_id == "msg-U123-1"
+    assert len(chat.sent) == 1
+    assert closed.status == "closed"
+    assert closed.terminal_source == "unknown"
 
 
 class _StubIssueSyncService:
@@ -149,11 +240,42 @@ class _StubRegistry:
 class _ExistingCheckinRepository:
     def __init__(self, checkin: CheckIn) -> None:
         self._checkin = checkin
+        self.schedule_runs: list[CheckInScheduleRun] = []
 
     async def checkin_by_correlation(self, tenant_id: str, correlation_id: str) -> CheckIn | None:
         if self._checkin.tenant_id == tenant_id and self._checkin.correlation_id == correlation_id:
             return self._checkin
         return None
+
+    async def checkin_preference_for(self, tenant_id: str, developer_id: str) -> None:
+        return None
+
+    async def checkin_schedule_run(
+        self, tenant_id: str, developer_id: str, checkin_date: date
+    ) -> None:
+        return None
+
+    async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None:
+        self.schedule_runs.append(run)
+
+
+class _DailyCheckinRepository:
+    def __init__(self) -> None:
+        self.schedule_runs: dict[tuple[str, str, date], CheckInScheduleRun] = {}
+
+    async def checkin_by_correlation(self, tenant_id: str, correlation_id: str) -> None:
+        return None
+
+    async def checkin_preference_for(self, tenant_id: str, developer_id: str) -> None:
+        return None
+
+    async def checkin_schedule_run(
+        self, tenant_id: str, developer_id: str, checkin_date: date
+    ) -> CheckInScheduleRun | None:
+        return self.schedule_runs.get((tenant_id, developer_id, checkin_date))
+
+    async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None:
+        self.schedule_runs[(run.tenant_id, run.developer_id, run.checkin_date)] = run
 
 
 class _ExplodingStatusCollector:
@@ -165,6 +287,7 @@ class _ExistingCheckinRegistry:
     def __init__(self, checkin: CheckIn) -> None:
         self.closed = False
         self.collector_called = False
+        self.settings = _WorkflowSettings()
         self._repository = _ExistingCheckinRepository(checkin)
         self._collector = _ExplodingStatusCollector()
 
@@ -175,5 +298,73 @@ class _ExistingCheckinRegistry:
         self.collector_called = True
         return self._collector
 
+    def availability_service(self) -> _AvailableService:
+        return _AvailableService()
+
     async def close(self) -> None:
         self.closed = True
+
+
+class _DailyCheckinRegistry:
+    def __init__(self, *, available: bool) -> None:
+        self.closed = False
+        self.collector_called = False
+        self.settings = _WorkflowSettings()
+        self.repository = _DailyCheckinRepository()
+        self._availability = _AvailableService(available=available)
+        self._collector = _ExplodingStatusCollector()
+
+    def status_repository(self) -> _DailyCheckinRepository:
+        return self.repository
+
+    def status_collector(self) -> _ExplodingStatusCollector:
+        self.collector_called = True
+        return self._collector
+
+    def availability_service(self) -> _AvailableService:
+        return self._availability
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class _NudgeRegistry:
+    def __init__(self, store: InMemoryGraphStore, collector: StatusCollector) -> None:
+        self.closed = False
+        self._store = store
+        self._collector = collector
+
+    def status_repository(self) -> InMemoryGraphStore:
+        return self._store
+
+    def status_collector(self) -> StatusCollector:
+        return self._collector
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class _AvailableService:
+    def __init__(self, *, available: bool = True) -> None:
+        self._available = available
+
+    async def availability_for(
+        self,
+        user: UserRef,
+        as_of: date,
+        *,
+        default_timezone: str = "UTC",
+    ) -> _AvailabilityResult:
+        return _AvailabilityResult(available=self._available, timezone=default_timezone)
+
+
+class _AvailabilityResult:
+    def __init__(self, *, available: bool, timezone: str) -> None:
+        self.available = available
+        self.timezone = timezone
+
+
+class _WorkflowSettings:
+    tenant_default_timezone = "UTC"
+    checkin_reply_wait_seconds = 0
+    checkin_final_reply_wait_seconds = 0

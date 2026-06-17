@@ -19,7 +19,14 @@ from core.domain.integrations import (
 )
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from core.domain.rollup import NodeStatus
-from core.domain.status import CheckIn, DeveloperStatus
+from core.domain.status import (
+    CheckIn,
+    CheckInCorrelation,
+    CheckInNudge,
+    CheckInPreference,
+    CheckInScheduleRun,
+    DeveloperStatus,
+)
 from infra.adapters.llm.fake import FakeLlmProvider
 
 __all__ = ["FakeLlmProvider"]
@@ -137,6 +144,12 @@ class FakeVcsProvider:
 @dataclass
 class FakeStatusRepository:
     checkins: list[CheckIn] = field(default_factory=list)
+    checkin_correlations: list[CheckInCorrelation] = field(default_factory=list)
+    checkin_preferences: dict[tuple[str, str], CheckInPreference] = field(default_factory=dict)
+    checkin_schedule_runs: dict[tuple[str, str, date], CheckInScheduleRun] = field(
+        default_factory=dict
+    )
+    checkin_nudges: dict[tuple[str, str, int], CheckInNudge] = field(default_factory=dict)
     developer_statuses: list[DeveloperStatus] = field(default_factory=list)
     developer_ids: set[str] = field(default_factory=set)
 
@@ -157,6 +170,108 @@ class FakeStatusRepository:
             if checkin.tenant_id == tenant_id and checkin.correlation_id == correlation_id:
                 return checkin
         return None
+
+    async def record_checkin_correlation(self, correlation: CheckInCorrelation) -> None:
+        self.checkin_correlations = [
+            existing
+            for existing in self.checkin_correlations
+            if not (
+                existing.tenant_id == correlation.tenant_id
+                and existing.correlation_id == correlation.correlation_id
+            )
+        ]
+        self.checkin_correlations.append(correlation)
+
+    async def checkin_correlation_by_id(
+        self, tenant_id: str, correlation_id: str
+    ) -> CheckInCorrelation | None:
+        for correlation in reversed(self.checkin_correlations):
+            if correlation.tenant_id == tenant_id and correlation.correlation_id == correlation_id:
+                return correlation
+        return None
+
+    async def latest_checkin_correlation_for_thread(
+        self, tenant_id: str, chat_thread_ref: str, as_of: date
+    ) -> CheckInCorrelation | None:
+        matching = [
+            correlation
+            for correlation in self.checkin_correlations
+            if correlation.tenant_id == tenant_id
+            and correlation.chat_thread_ref == chat_thread_ref
+            and correlation.asked_at.date() == as_of
+        ]
+        return max(matching, key=lambda correlation: correlation.asked_at) if matching else None
+
+    async def latest_unconsumed_checkin_correlation_for_user(
+        self, tenant_id: str, chat_user_ref: str, as_of: date
+    ) -> CheckInCorrelation | None:
+        matching = [
+            correlation
+            for correlation in self.checkin_correlations
+            if correlation.tenant_id == tenant_id
+            and correlation.chat_user_ref == chat_user_ref
+            and correlation.consumed_at is None
+            and correlation.asked_at.date() == as_of
+        ]
+        return max(matching, key=lambda correlation: correlation.asked_at) if matching else None
+
+    async def consume_checkin_correlation(
+        self, tenant_id: str, correlation_id: str, consumed_at: datetime
+    ) -> None:
+        correlation = await self.checkin_correlation_by_id(tenant_id, correlation_id)
+        if correlation is None or correlation.consumed_at is not None:
+            return
+        await self.record_checkin_correlation(
+            CheckInCorrelation(
+                tenant_id=correlation.tenant_id,
+                correlation_id=correlation.correlation_id,
+                developer_id=correlation.developer_id,
+                chat_user_ref=correlation.chat_user_ref,
+                chat_thread_ref=correlation.chat_thread_ref,
+                outbound_message_id=correlation.outbound_message_id,
+                asked_at=correlation.asked_at,
+                consumed_at=consumed_at,
+            )
+        )
+
+    async def record_checkin_preference(self, preference: CheckInPreference) -> None:
+        self.checkin_preferences[(preference.tenant_id, preference.developer_id)] = preference
+
+    async def checkin_preference_for(
+        self, tenant_id: str, developer_id: str
+    ) -> CheckInPreference | None:
+        return self.checkin_preferences.get((tenant_id, developer_id))
+
+    async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None:
+        self.checkin_schedule_runs[(run.tenant_id, run.developer_id, run.checkin_date)] = run
+
+    async def checkin_schedule_run(
+        self, tenant_id: str, developer_id: str, checkin_date: date
+    ) -> CheckInScheduleRun | None:
+        return self.checkin_schedule_runs.get((tenant_id, developer_id, checkin_date))
+
+    async def record_checkin_nudge(self, nudge: CheckInNudge) -> CheckInNudge:
+        key = (nudge.tenant_id, nudge.correlation_id, nudge.nudge_number)
+        existing = self.checkin_nudges.get(key)
+        if existing is not None:
+            if existing.outbound_message_id is not None:
+                return existing
+            updated = CheckInNudge(
+                tenant_id=existing.tenant_id,
+                correlation_id=existing.correlation_id,
+                nudge_number=existing.nudge_number,
+                sent_at=nudge.sent_at or existing.sent_at,
+                outbound_message_id=nudge.outbound_message_id or existing.outbound_message_id,
+            )
+            self.checkin_nudges[key] = updated
+            return updated
+        self.checkin_nudges[key] = nudge
+        return nudge
+
+    async def checkin_nudge_for(
+        self, tenant_id: str, correlation_id: str, nudge_number: int
+    ) -> CheckInNudge | None:
+        return self.checkin_nudges.get((tenant_id, correlation_id, nudge_number))
 
     async def record_developer_status(self, status: DeveloperStatus) -> None:
         self.developer_ids.add(status.developer_id)

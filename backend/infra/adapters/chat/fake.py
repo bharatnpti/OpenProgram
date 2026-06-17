@@ -42,7 +42,7 @@ class FakeChatWebhookMapper:
             thread_id=thread_id,
             message_id=_string_field(payload, "message_id", default=str(uuid4())),
             correlation_id=correlation_id,
-            received_at=datetime.now(tz=UTC),
+            received_at=_datetime_field(payload, "received_at"),
             metadata={"source": "fake"},
         )
 
@@ -54,3 +54,11 @@ def _string_field(payload: Mapping[str, object], key: str, default: str | None =
     if default is not None:
         return default
     return ""
+
+
+def _datetime_field(payload: Mapping[str, object], key: str) -> datetime:
+    value = payload.get(key)
+    if isinstance(value, str) and value:
+        parsed = datetime.fromisoformat(value)
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+    return datetime.now(tz=UTC)

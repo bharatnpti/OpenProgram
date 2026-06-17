@@ -92,7 +92,11 @@ class TemporalWorkflowWorker:
         from infra.workflows.daily_checkin import DailyCheckinWorkflow, start_daily_checkin_activity
         from infra.workflows.git_sync import GitSyncWorkflow, sync_git_repo_activity
         from infra.workflows.jira_sync import JiraSyncWorkflow, sync_jira_project_activity
-        from infra.workflows.nudge import NudgeWorkflow, nudge_non_response_activity
+        from infra.workflows.nudge import (
+            NudgeWorkflow,
+            close_checkin_non_response_activity,
+            send_checkin_nudge_activity,
+        )
 
         client = await Client.connect(self.target)
         worker = Worker(
@@ -112,7 +116,8 @@ class TemporalWorkflowWorker:
                 sync_git_repo_activity,
                 sync_calendar_user_activity,
                 start_daily_checkin_activity,
-                nudge_non_response_activity,
+                send_checkin_nudge_activity,
+                close_checkin_non_response_activity,
             ],
         )
         await worker.run()
