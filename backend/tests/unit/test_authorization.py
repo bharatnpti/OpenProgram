@@ -19,9 +19,30 @@ def test_exec_cannot_read_raw_dm_but_can_read_budget_field() -> None:
     principal = Principal(tenant_id="demo", subject="exec", roles=frozenset({Role.EXEC}))
     policy = AuthorizationPolicy()
     assert policy.can(principal, Capability.READ_EXEC_AGGREGATE)
+    assert policy.can(principal, Capability.READ_PROGRAM_ROLLUP)
+    assert policy.can(principal, Capability.READ_PORTFOLIO_HEATMAP)
+    assert not policy.can(principal, Capability.READ_PROJECT_PROGRESS)
     assert not policy.can(principal, Capability.READ_RAW_DM)
     assert policy.can_read_field(principal, SensitiveField.BUDGET)
     assert not policy.can_read_field(principal, SensitiveField.RAW_DM_CONTENT)
+
+
+def test_persona_capabilities_follow_role_scope() -> None:
+    policy = AuthorizationPolicy()
+    dev = Principal(tenant_id="demo", subject="dev-asha", roles=frozenset({Role.DEV}))
+    sm = Principal(tenant_id="demo", subject="sm", roles=frozenset({Role.SM}))
+    po = Principal(tenant_id="demo", subject="po", roles=frozenset({Role.PO}))
+    mgr = Principal(tenant_id="demo", subject="mgr", roles=frozenset({Role.MGR}))
+
+    assert policy.can(dev, Capability.READ_OWN_WORK)
+    assert not policy.can(dev, Capability.READ_POD_BLOCKERS)
+    assert policy.can(sm, Capability.READ_POD_BLOCKERS)
+    assert policy.can(sm, Capability.READ_POD_CHECKINS)
+    assert not policy.can(sm, Capability.READ_PROJECT_PROGRESS)
+    assert policy.can(po, Capability.READ_PROJECT_PROGRESS)
+    assert not policy.can(po, Capability.READ_POD_CHECKINS)
+    assert policy.can(mgr, Capability.READ_PROGRAM_ROLLUP)
+    assert policy.can(mgr, Capability.READ_PORTFOLIO_HEATMAP)
 
 
 def test_admin_can_read_raw_dm() -> None:

@@ -15,6 +15,34 @@ class UserRef:
     display_name: str | None = None
 
 
+@dataclass(frozen=True, kw_only=True)
+class SyncCursor:
+    value: str | None = None
+    updated_at: datetime | None = None
+    metadata: Mapping[str, JsonScalar] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, kw_only=True)
+class Project:
+    tenant_id: str
+    id: str
+    key: str
+    name: str
+    metadata: Mapping[str, JsonScalar] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, kw_only=True)
+class Sprint:
+    tenant_id: str
+    id: str
+    board_id: str
+    name: str
+    state: str
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    metadata: Mapping[str, JsonScalar] = field(default_factory=dict)
+
+
 class IssueState(StrEnum):
     TODO = "todo"
     IN_PROGRESS = "in_progress"
@@ -30,6 +58,7 @@ class Issue:
     state: IssueState
     assignee: UserRef | None = None
     metadata: Mapping[str, JsonScalar] = field(default_factory=dict)
+    updated_at: datetime | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -39,6 +68,27 @@ class PullRequest:
     title: str
     author: UserRef
     merged: bool
+    metadata: Mapping[str, JsonScalar] = field(default_factory=dict)
+    updated_at: datetime | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class Repo:
+    tenant_id: str
+    id: str
+    name: str
+    default_branch: str | None = None
+    metadata: Mapping[str, JsonScalar] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, kw_only=True)
+class Commit:
+    tenant_id: str
+    repo: str
+    sha: str
+    message: str
+    author: UserRef | None
+    committed_at: datetime
     metadata: Mapping[str, JsonScalar] = field(default_factory=dict)
 
 

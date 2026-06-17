@@ -126,6 +126,384 @@
         }
       }
     },
+    "/me/focus": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "My Focus",
+        "operationId": "my_focus_me_focus_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pods/{pod_id}/blockers": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Pod Blockers",
+        "operationId": "pod_blockers_pods__pod_id__blockers_get",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodBlockersResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pods/{pod_id}/checkins": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Pod Checkins",
+        "operationId": "pod_checkins_pods__pod_id__checkins_get",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodCheckinsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/progress": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Project Progress",
+        "operationId": "project_progress_projects__project_id__progress_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectProgressResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/programs/{program_id}/tree": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Program Tree",
+        "operationId": "program_tree_programs__program_id__tree_get",
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Program Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgramTreeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portfolio/heatmap": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Portfolio Heatmap",
+        "operationId": "portfolio_heatmap_portfolio_heatmap_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioHeatmapResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/webhooks/chat/{provider}": {
       "post": {
         "tags": ["webhooks"],
@@ -169,6 +547,53 @@
   },
   "components": {
     "schemas": {
+      "BlockerDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "age_days": {
+            "type": "integer",
+            "title": "Age Days"
+          },
+          "owner_id": {
+            "type": "string",
+            "title": "Owner Id"
+          },
+          "owner_name": {
+            "type": "string",
+            "title": "Owner Name"
+          },
+          "source": {
+            "$ref": "#/components/schemas/StatusSource"
+          },
+          "status_as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "Status As Of"
+          },
+          "source_ref": {
+            "$ref": "#/components/schemas/EntityRefDto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "description",
+          "age_days",
+          "owner_id",
+          "owner_name",
+          "source",
+          "status_as_of",
+          "source_ref"
+        ],
+        "title": "BlockerDto"
+      },
       "ChatWebhookResponse": {
         "properties": {
           "status": {
@@ -184,10 +609,233 @@
         "required": ["status", "message_id"],
         "title": "ChatWebhookResponse"
       },
+      "CheckinDeveloperDto": {
+        "properties": {
+          "developer_id": {
+            "type": "string",
+            "title": "Developer Id"
+          },
+          "developer_name": {
+            "type": "string",
+            "title": "Developer Name"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["confirmed", "stale", "missing"],
+            "title": "State"
+          },
+          "source": {
+            "$ref": "#/components/schemas/StatusSource"
+          },
+          "status_as_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status As Of"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "developer_id",
+          "developer_name",
+          "state",
+          "source",
+          "status_as_of",
+          "summary"
+        ],
+        "title": "CheckinDeveloperDto"
+      },
       "EdgeKind": {
         "type": "string",
         "enum": ["contains", "assigned_to", "depends_on"],
         "title": "EdgeKind"
+      },
+      "EntityRefDto": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/NodeKind"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": ["tenant_id", "kind", "id"],
+        "title": "EntityRefDto"
+      },
+      "FocusItemDto": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["task", "blocker"],
+            "title": "Kind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "source": {
+            "$ref": "#/components/schemas/StatusSource"
+          },
+          "source_ref": {
+            "$ref": "#/components/schemas/EntityRefDto"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "label", "source", "source_ref", "confidence", "deadline"],
+        "title": "FocusItemDto"
+      },
+      "FocusResponse": {
+        "properties": {
+          "developer_id": {
+            "type": "string",
+            "title": "Developer Id"
+          },
+          "developer_name": {
+            "type": "string",
+            "title": "Developer Name"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "status_source": {
+            "$ref": "#/components/schemas/StatusSource"
+          },
+          "status_as_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status As Of"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blockers"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/FocusTaskDto"
+            },
+            "type": "array",
+            "title": "Tasks"
+          },
+          "focus": {
+            "items": {
+              "$ref": "#/components/schemas/FocusItemDto"
+            },
+            "type": "array",
+            "title": "Focus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "developer_id",
+          "developer_name",
+          "as_of",
+          "status_source",
+          "status_as_of",
+          "summary",
+          "blockers",
+          "tasks",
+          "focus"
+        ],
+        "title": "FocusResponse"
+      },
+      "FocusTaskDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "rag": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "source": {
+            "$ref": "#/components/schemas/StatusSource"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "rag", "source", "confidence", "deadline"],
+        "title": "FocusTaskDto"
       },
       "GraphEdgeDto": {
         "properties": {
@@ -332,10 +980,339 @@
         "required": ["status", "environment", "tenant_id", "correlation_id"],
         "title": "HealthResponse"
       },
+      "HeatmapCellDto": {
+        "properties": {
+          "row": {
+            "type": "string",
+            "title": "Row"
+          },
+          "column": {
+            "type": "string",
+            "title": "Column"
+          },
+          "entity_ref": {
+            "$ref": "#/components/schemas/EntityRefDto"
+          },
+          "rag": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "source": {
+            "$ref": "#/components/schemas/StatusSource"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why"
+          },
+          "source_ref": {
+            "$ref": "#/components/schemas/EntityRefDto"
+          }
+        },
+        "type": "object",
+        "required": ["row", "column", "entity_ref", "rag", "source", "why", "source_ref"],
+        "title": "HeatmapCellDto"
+      },
       "NodeKind": {
         "type": "string",
         "enum": ["program", "project", "pod", "developer", "task"],
         "title": "NodeKind"
+      },
+      "PersonaTreeEdgeDto": {
+        "properties": {
+          "from_node_id": {
+            "type": "string",
+            "title": "From Node Id"
+          },
+          "to_node_id": {
+            "type": "string",
+            "title": "To Node Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EdgeKind"
+          }
+        },
+        "type": "object",
+        "required": ["from_node_id", "to_node_id", "kind"],
+        "title": "PersonaTreeEdgeDto"
+      },
+      "PersonaTreeNodeDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/NodeKind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "rag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rag"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatusSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "factors": {
+            "items": {
+              "$ref": "#/components/schemas/RollupFactorDto"
+            },
+            "type": "array",
+            "title": "Factors"
+          }
+        },
+        "type": "object",
+        "required": ["id", "kind", "name", "rag", "source", "confidence", "factors"],
+        "title": "PersonaTreeNodeDto"
+      },
+      "PodBlockersResponse": {
+        "properties": {
+          "pod_id": {
+            "type": "string",
+            "title": "Pod Id"
+          },
+          "pod_name": {
+            "type": "string",
+            "title": "Pod Name"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/BlockerDto"
+            },
+            "type": "array",
+            "title": "Blockers"
+          }
+        },
+        "type": "object",
+        "required": ["pod_id", "pod_name", "as_of", "blockers"],
+        "title": "PodBlockersResponse"
+      },
+      "PodCheckinsResponse": {
+        "properties": {
+          "pod_id": {
+            "type": "string",
+            "title": "Pod Id"
+          },
+          "pod_name": {
+            "type": "string",
+            "title": "Pod Name"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "confirmed": {
+            "type": "integer",
+            "title": "Confirmed"
+          },
+          "stale": {
+            "type": "integer",
+            "title": "Stale"
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing"
+          },
+          "developers": {
+            "items": {
+              "$ref": "#/components/schemas/CheckinDeveloperDto"
+            },
+            "type": "array",
+            "title": "Developers"
+          }
+        },
+        "type": "object",
+        "required": ["pod_id", "pod_name", "as_of", "confirmed", "stale", "missing", "developers"],
+        "title": "PodCheckinsResponse"
+      },
+      "PortfolioHeatmapResponse": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "rows": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/HeatmapCellDto"
+            },
+            "type": "array",
+            "title": "Cells"
+          }
+        },
+        "type": "object",
+        "required": ["as_of", "rows", "columns", "cells"],
+        "title": "PortfolioHeatmapResponse"
+      },
+      "ProgramTreeResponse": {
+        "properties": {
+          "root_id": {
+            "type": "string",
+            "title": "Root Id"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/PersonaTreeNodeDto"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/PersonaTreeEdgeDto"
+            },
+            "type": "array",
+            "title": "Edges"
+          }
+        },
+        "type": "object",
+        "required": ["root_id", "as_of", "nodes", "edges"],
+        "title": "ProgramTreeResponse"
+      },
+      "ProjectProgressResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "rag": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "source": {
+            "$ref": "#/components/schemas/StatusSource"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "percent_complete": {
+            "type": "number",
+            "title": "Percent Complete"
+          },
+          "total_tasks": {
+            "type": "integer",
+            "title": "Total Tasks"
+          },
+          "green_tasks": {
+            "type": "integer",
+            "title": "Green Tasks"
+          },
+          "amber_tasks": {
+            "type": "integer",
+            "title": "Amber Tasks"
+          },
+          "red_tasks": {
+            "type": "integer",
+            "title": "Red Tasks"
+          },
+          "unknown_tasks": {
+            "type": "integer",
+            "title": "Unknown Tasks"
+          },
+          "factors": {
+            "items": {
+              "$ref": "#/components/schemas/RollupFactorDto"
+            },
+            "type": "array",
+            "title": "Factors"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/TaskProgressDto"
+            },
+            "type": "array",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "project_name",
+          "as_of",
+          "rag",
+          "source",
+          "confidence",
+          "percent_complete",
+          "total_tasks",
+          "green_tasks",
+          "amber_tasks",
+          "red_tasks",
+          "unknown_tasks",
+          "factors",
+          "tasks"
+        ],
+        "title": "ProjectProgressResponse"
+      },
+      "Rag": {
+        "type": "string",
+        "enum": ["green", "amber", "red", "unknown"],
+        "title": "Rag"
       },
       "ReadyResponse": {
         "properties": {
@@ -354,6 +1331,72 @@
         "type": "object",
         "required": ["status", "dependencies"],
         "title": "ReadyResponse"
+      },
+      "RollupFactorDto": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "contributes": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "source_ref": {
+            "$ref": "#/components/schemas/EntityRefDto"
+          }
+        },
+        "type": "object",
+        "required": ["description", "contributes", "source_ref"],
+        "title": "RollupFactorDto"
+      },
+      "StatusSource": {
+        "type": "string",
+        "enum": ["confirmed", "inferred", "stale", "unknown"],
+        "title": "StatusSource"
+      },
+      "TaskProgressDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "rag": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "source": {
+            "$ref": "#/components/schemas/StatusSource"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "rag", "source", "confidence", "deadline"],
+        "title": "TaskProgressDto"
       },
       "ValidationError": {
         "properties": {

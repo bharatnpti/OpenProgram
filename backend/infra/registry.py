@@ -8,12 +8,29 @@ from cryptography.fernet import Fernet
 from redis.asyncio import Redis
 
 from config.settings import Settings
+from core.application.availability import AvailabilityService
+from core.application.status_collector import StatusCollector
+from core.application.sync_services import (
+    CalendarReadSyncService,
+    IssueReadSyncService,
+    VcsReadSyncService,
+)
 from core.domain.messaging import InboundMessage
 from core.ports.auth import AuthProvider, CurrentPrincipal
+from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
+from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
-from core.ports.repositories import GraphRepository, TimeSeriesRepository, VectorStore
+from core.ports.repositories import (
+    GraphRepository,
+    RollupRepository,
+    StatusRepository,
+    SyncCursorRepository,
+    TimeSeriesRepository,
+    VectorStore,
+)
 from core.ports.secrets import SecretStore
+from core.ports.vcs import VcsProvider
 from core.ports.workflows import WorkflowScheduler, WorkflowWorker
 from infra.adapters import catalog
 from infra.adapters.auth.dev import DevAuthProvider, DevCurrentPrincipal
@@ -28,6 +45,11 @@ from infra.persistence.postgres_graph import (
     PostgresGraphRepository,
     PostgresTimeSeriesRepository,
     PostgresVectorStore,
+)
+from infra.persistence.postgres_status import (
+    PostgresRollupRepository,
+    PostgresStatusRepository,
+    PostgresSyncCursorRepository,
 )
 from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
 
@@ -44,7 +66,16 @@ class ServiceRegistry:
         init=False,
     )
     _postgres_vector_store: PostgresVectorStore | None = field(default=None, init=False)
+    _postgres_status_repository: PostgresStatusRepository | None = field(default=None, init=False)
+    _postgres_rollup_repository: PostgresRollupRepository | None = field(default=None, init=False)
+    _postgres_sync_cursor_repository: PostgresSyncCursorRepository | None = field(
+        default=None,
+        init=False,
+    )
     _redis_provider: RedisClientProvider | None = field(default=None, init=False)
+    _issue_tracker: IssueTracker | None = field(default=None, init=False)
+    _vcs_provider: VcsProvider | None = field(default=None, init=False)
+    _calendar_provider: CalendarProvider | None = field(default=None, init=False)
 
     def graph_repository(self) -> GraphRepository:
         if self.settings.runtime_mode == "memory":
@@ -66,6 +97,27 @@ class ServiceRegistry:
         if self._postgres_vector_store is None:
             self._postgres_vector_store = PostgresVectorStore(self._executor())
         return self._postgres_vector_store
+
+    def status_repository(self) -> StatusRepository:
+        if self.settings.runtime_mode == "memory":
+            return self._memory_graph_store()
+        if self._postgres_status_repository is None:
+            self._postgres_status_repository = PostgresStatusRepository(self._executor())
+        return self._postgres_status_repository
+
+    def rollup_repository(self) -> RollupRepository:
+        if self.settings.runtime_mode == "memory":
+            return self._memory_graph_store()
+        if self._postgres_rollup_repository is None:
+            self._postgres_rollup_repository = PostgresRollupRepository(self._executor())
+        return self._postgres_rollup_repository
+
+    def sync_cursor_repository(self) -> SyncCursorRepository:
+        if self.settings.runtime_mode == "memory":
+            return self._memory_graph_store()
+        if self._postgres_sync_cursor_repository is None:
+            self._postgres_sync_cursor_repository = PostgresSyncCursorRepository(self._executor())
+        return self._postgres_sync_cursor_repository
 
     def auth_provider(self) -> AuthProvider:
         return DevAuthProvider(
@@ -92,6 +144,65 @@ class ServiceRegistry:
 
     def llm_provider(self) -> LlmProvider:
         return catalog.build_llm_provider(self.settings)
+
+    def issue_tracker(self) -> IssueTracker:
+        if self._issue_tracker is None:
+            self._issue_tracker = catalog.build_issue_tracker(
+                self.settings,
+                self.secret_store(),
+            )
+        return self._issue_tracker
+
+    def vcs_provider(self) -> VcsProvider:
+        if self._vcs_provider is None:
+            self._vcs_provider = catalog.build_vcs_provider(
+                self.settings,
+                self.secret_store(),
+            )
+        return self._vcs_provider
+
+    def calendar_provider(self) -> CalendarProvider:
+        if self._calendar_provider is None:
+            self._calendar_provider = catalog.build_calendar_provider(
+                self.settings,
+                self.secret_store(),
+            )
+        return self._calendar_provider
+
+    def issue_read_sync_service(self) -> IssueReadSyncService:
+        return IssueReadSyncService(
+            issue_tracker=self.issue_tracker(),
+            graph_repository=self.graph_repository(),
+            time_series_repository=self.time_series_repository(),
+            cursor_repository=self.sync_cursor_repository(),
+        )
+
+    def vcs_read_sync_service(self) -> VcsReadSyncService:
+        return VcsReadSyncService(
+            vcs_provider=self.vcs_provider(),
+            time_series_repository=self.time_series_repository(),
+            cursor_repository=self.sync_cursor_repository(),
+        )
+
+    def calendar_read_sync_service(self) -> CalendarReadSyncService:
+        return CalendarReadSyncService(
+            calendar_provider=self.calendar_provider(),
+            time_series_repository=self.time_series_repository(),
+            cursor_repository=self.sync_cursor_repository(),
+        )
+
+    def availability_service(self) -> AvailabilityService:
+        return AvailabilityService(self.calendar_provider())
+
+    def status_collector(self) -> StatusCollector:
+        return StatusCollector(
+            issue_tracker=self.issue_tracker(),
+            chat_provider=self.chat_provider(),
+            llm_provider=self.llm_provider(),
+            status_repository=self.status_repository(),
+            time_series_repository=self.time_series_repository(),
+            model=self.settings.litellm_model,
+        )
 
     def workflow_scheduler(self) -> WorkflowScheduler:
         return catalog.build_workflow_scheduler(self.settings)

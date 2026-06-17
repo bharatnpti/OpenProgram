@@ -49,6 +49,12 @@ def test_settings_validate_provider_selectors() -> None:
     with pytest.raises(ValidationError):
         Settings(secret_key=SECRET_KEY, chat_provider="teams")
     with pytest.raises(ValidationError):
+        Settings(secret_key=SECRET_KEY, issue_tracker_provider="linear")
+    with pytest.raises(ValidationError):
+        Settings(secret_key=SECRET_KEY, vcs_provider="gitlab")
+    with pytest.raises(ValidationError):
+        Settings(secret_key=SECRET_KEY, calendar_provider="exchange")
+    with pytest.raises(ValidationError):
         Settings(secret_key=SECRET_KEY, llm_provider="gemini")
     with pytest.raises(ValidationError):
         Settings(secret_key=SECRET_KEY, workflow_provider="dbos")

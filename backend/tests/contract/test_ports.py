@@ -17,6 +17,9 @@ from tests.contract.contracts import (
     assert_chat_webhook_mapper_contract,
     assert_ci_contract,
     assert_issue_tracker_contract,
+    assert_rollup_repository_contract,
+    assert_status_repository_contract,
+    assert_sync_cursor_repository_contract,
     assert_vcs_contract,
 )
 from tests.contract.fakes import (
@@ -24,6 +27,9 @@ from tests.contract.fakes import (
     FakeChatProvider,
     FakeCiProvider,
     FakeIssueTracker,
+    FakeRollupRepository,
+    FakeStatusRepository,
+    FakeSyncCursorRepository,
     FakeVcsProvider,
 )
 
@@ -69,6 +75,18 @@ async def test_fake_vcs_provider_satisfies_contract() -> None:
         ]
     )
     await assert_vcs_contract(provider)
+
+
+async def test_fake_status_repository_satisfies_contract() -> None:
+    await assert_status_repository_contract(FakeStatusRepository())
+
+
+async def test_fake_rollup_repository_satisfies_contract() -> None:
+    await assert_rollup_repository_contract(FakeRollupRepository())
+
+
+async def test_fake_sync_cursor_repository_satisfies_contract() -> None:
+    await assert_sync_cursor_repository_contract(FakeSyncCursorRepository())
 
 
 async def test_fake_ci_provider_satisfies_contract() -> None:

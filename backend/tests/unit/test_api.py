@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
 
 from api.main import create_app
@@ -84,3 +86,58 @@ def test_cors_origins_are_configurable(settings: Settings) -> None:
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "https://frontend.example"
+
+
+def test_dev_focus_is_own_scope_and_omits_raw_replies(settings: Settings) -> None:
+    app = create_app(
+        settings=settings.model_copy(
+            update={"dev_principal_roles": "dev", "dev_principal_subject": "dev-asha"}
+        )
+    )
+    with TestClient(app) as client:
+        focus_response = client.get("/me/focus?as_of=2026-06-15")
+        blocked_response = client.get("/pods/pod-runtime/blockers?as_of=2026-06-15")
+
+    assert focus_response.status_code == 200
+    body = focus_response.json()
+    assert body["developer_id"] == "dev-asha"
+    assert {task["id"] for task in body["tasks"]} == {"task-api"}
+    serialized = json.dumps(body)
+    assert "raw_reply" not in serialized
+    assert "API shell is ready for review; no blockers." not in serialized
+    assert blocked_response.status_code == 403
+
+
+def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
+    sm_app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "sm"}))
+    with TestClient(sm_app) as client:
+        blockers = client.get("/pods/pod-runtime/blockers?as_of=2026-06-15")
+        checkins = client.get("/pods/pod-runtime/checkins?as_of=2026-06-15")
+        project_denied = client.get("/projects/project-foundations/progress?as_of=2026-06-15")
+
+    assert blockers.status_code == 200
+    assert blockers.json()["blockers"][0]["owner_id"] == "dev-liam"
+    assert checkins.status_code == 200
+    assert checkins.json()["stale"] >= 1
+    assert project_denied.status_code == 403
+
+    po_app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "po"}))
+    with TestClient(po_app) as client:
+        project = client.get("/projects/project-foundations/progress?as_of=2026-06-15")
+        pod_denied = client.get("/pods/pod-runtime/checkins?as_of=2026-06-15")
+
+    assert project.status_code == 200
+    assert project.json()["total_tasks"] == 4
+    assert pod_denied.status_code == 403
+
+    exec_app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "exec"}))
+    with TestClient(exec_app) as client:
+        tree = client.get("/programs/program-platform/tree?as_of=2026-06-15")
+        heatmap = client.get("/portfolio/heatmap?as_of=2026-06-15")
+        project_denied = client.get("/projects/project-foundations/progress?as_of=2026-06-15")
+
+    assert tree.status_code == 200
+    assert tree.json()["root_id"] == "program-platform"
+    assert heatmap.status_code == 200
+    assert "raw_reply" not in json.dumps(heatmap.json())
+    assert project_denied.status_code == 403

@@ -10,6 +10,11 @@ class Capability(StrEnum):
     READ_OWN_WORK = "read_own_work"
     READ_TEAM_AGGREGATE = "read_team_aggregate"
     READ_EXEC_AGGREGATE = "read_exec_aggregate"
+    READ_POD_BLOCKERS = "read_pod_blockers"
+    READ_POD_CHECKINS = "read_pod_checkins"
+    READ_PROJECT_PROGRESS = "read_project_progress"
+    READ_PROGRAM_ROLLUP = "read_program_rollup"
+    READ_PORTFOLIO_HEATMAP = "read_portfolio_heatmap"
     READ_RAW_DM = "read_raw_dm"
     WRITE_CONNECTOR_SECRET = "write_connector_secret"
 
@@ -27,10 +32,35 @@ class AuthorizationPolicy:
             return False
         allowed = {
             Role.DEV: frozenset({Capability.READ_OWN_WORK}),
-            Role.PO: frozenset({Capability.READ_TEAM_AGGREGATE}),
-            Role.SM: frozenset({Capability.READ_TEAM_AGGREGATE}),
-            Role.MGR: frozenset({Capability.READ_TEAM_AGGREGATE, Capability.READ_EXEC_AGGREGATE}),
-            Role.EXEC: frozenset({Capability.READ_EXEC_AGGREGATE}),
+            Role.PO: frozenset(
+                {
+                    Capability.READ_TEAM_AGGREGATE,
+                    Capability.READ_PROJECT_PROGRESS,
+                }
+            ),
+            Role.SM: frozenset(
+                {
+                    Capability.READ_TEAM_AGGREGATE,
+                    Capability.READ_POD_BLOCKERS,
+                    Capability.READ_POD_CHECKINS,
+                }
+            ),
+            Role.MGR: frozenset(
+                {
+                    Capability.READ_TEAM_AGGREGATE,
+                    Capability.READ_EXEC_AGGREGATE,
+                    Capability.READ_PROJECT_PROGRESS,
+                    Capability.READ_PROGRAM_ROLLUP,
+                    Capability.READ_PORTFOLIO_HEATMAP,
+                }
+            ),
+            Role.EXEC: frozenset(
+                {
+                    Capability.READ_EXEC_AGGREGATE,
+                    Capability.READ_PROGRAM_ROLLUP,
+                    Capability.READ_PORTFOLIO_HEATMAP,
+                }
+            ),
         }
         return any(capability in allowed.get(role, frozenset()) for role in principal.roles)
 

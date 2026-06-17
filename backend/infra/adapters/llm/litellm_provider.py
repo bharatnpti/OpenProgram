@@ -16,6 +16,8 @@ from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 
 _logger = structlog.get_logger(__name__)
 _tracer = trace.get_tracer("pulseops.adapters.llm.litellm")
+_REDACTED_INPUT = "[redacted input]"
+_REDACTED_OUTPUT = "[redacted output]"
 
 
 class LlmTraceSink(Protocol):
@@ -39,6 +41,24 @@ class LangfuseTraceSink:
             timestamp = datetime.now(tz=UTC).isoformat()
             generation_id = f"{trace_id}-generation"
             prompt_hash = sha256(request.prompt.encode("utf-8")).hexdigest()
+            output_hash = sha256(response.text.encode("utf-8")).hexdigest()
+            trace_input = (
+                _REDACTED_INPUT
+                if _metadata_flag(request.metadata, "redact_input")
+                else request.prompt
+            )
+            generation_output = (
+                _REDACTED_OUTPUT
+                if _metadata_flag(request.metadata, "redact_output")
+                else response.text
+            )
+            trace_metadata = {
+                "tenant_id": request.tenant_id,
+                "correlation_id": request.correlation_id,
+                "prompt_sha256": prompt_hash,
+                "output_sha256": output_hash,
+                **dict(request.metadata),
+            }
             payload = {
                 "batch": [
                     {
@@ -49,13 +69,8 @@ class LangfuseTraceSink:
                             "id": trace_id,
                             "name": "pulseops.status_agent",
                             "userId": request.tenant_id,
-                            "input": request.prompt,
-                            "metadata": {
-                                "tenant_id": request.tenant_id,
-                                "correlation_id": request.correlation_id,
-                                "prompt_sha256": prompt_hash,
-                                **dict(request.metadata),
-                            },
+                            "input": trace_input,
+                            "metadata": trace_metadata,
                         },
                     },
                     {
@@ -67,8 +82,8 @@ class LangfuseTraceSink:
                             "traceId": trace_id,
                             "name": "litellm.complete",
                             "model": response.model,
-                            "input": request.prompt,
-                            "output": response.text,
+                            "input": trace_input,
+                            "output": generation_output,
                             "usage": {
                                 "input": response.usage.prompt_tokens,
                                 "output": response.usage.completion_tokens,
@@ -78,6 +93,9 @@ class LangfuseTraceSink:
                             "metadata": {
                                 "cost_usd": response.usage.cost_usd,
                                 "latency_ms": response.usage.latency_ms,
+                                "prompt_sha256": prompt_hash,
+                                "output_sha256": output_hash,
+                                **dict(request.metadata),
                             },
                         },
                     },
@@ -182,3 +200,10 @@ def _response_from_payload(
 def _int_field(payload: Mapping[str, object], key: str) -> int:
     value = payload.get(key)
     return value if isinstance(value, int) else 0
+
+
+def _metadata_flag(metadata: Mapping[str, object], key: str) -> bool:
+    value = metadata.get(key)
+    if isinstance(value, bool):
+        return value
+    return isinstance(value, str) and value.lower() == "true"

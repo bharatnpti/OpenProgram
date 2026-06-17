@@ -72,6 +72,108 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/me/focus": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** My Focus */
+    get: operations["my_focus_me_focus_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/pods/{pod_id}/blockers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Pod Blockers */
+    get: operations["pod_blockers_pods__pod_id__blockers_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/pods/{pod_id}/checkins": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Pod Checkins */
+    get: operations["pod_checkins_pods__pod_id__checkins_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/progress": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Project Progress */
+    get: operations["project_progress_projects__project_id__progress_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/programs/{program_id}/tree": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Program Tree */
+    get: operations["program_tree_programs__program_id__tree_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/portfolio/heatmap": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Portfolio Heatmap */
+    get: operations["portfolio_heatmap_portfolio_heatmap_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/webhooks/chat/{provider}": {
     parameters: {
       query?: never;
@@ -93,6 +195,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** BlockerDto */
+    BlockerDto: {
+      /** Id */
+      id: string;
+      /** Description */
+      description: string;
+      /** Age Days */
+      age_days: number;
+      /** Owner Id */
+      owner_id: string;
+      /** Owner Name */
+      owner_name: string;
+      source: components["schemas"]["StatusSource"];
+      /**
+       * Status As Of
+       * Format: date
+       */
+      status_as_of: string;
+      source_ref: components["schemas"]["EntityRefDto"];
+    };
     /** ChatWebhookResponse */
     ChatWebhookResponse: {
       /** Status */
@@ -100,11 +222,88 @@ export interface components {
       /** Message Id */
       message_id: string;
     };
+    /** CheckinDeveloperDto */
+    CheckinDeveloperDto: {
+      /** Developer Id */
+      developer_id: string;
+      /** Developer Name */
+      developer_name: string;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "confirmed" | "stale" | "missing";
+      source: components["schemas"]["StatusSource"];
+      /** Status As Of */
+      status_as_of: string | null;
+      /** Summary */
+      summary: string;
+    };
     /**
      * EdgeKind
      * @enum {string}
      */
     EdgeKind: "contains" | "assigned_to" | "depends_on";
+    /** EntityRefDto */
+    EntityRefDto: {
+      /** Tenant Id */
+      tenant_id: string;
+      kind: components["schemas"]["NodeKind"];
+      /** Id */
+      id: string;
+    };
+    /** FocusItemDto */
+    FocusItemDto: {
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "task" | "blocker";
+      /** Label */
+      label: string;
+      source: components["schemas"]["StatusSource"];
+      source_ref: components["schemas"]["EntityRefDto"];
+      /** Confidence */
+      confidence: number | null;
+      /** Deadline */
+      deadline: string | null;
+    };
+    /** FocusResponse */
+    FocusResponse: {
+      /** Developer Id */
+      developer_id: string;
+      /** Developer Name */
+      developer_name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      status_source: components["schemas"]["StatusSource"];
+      /** Status As Of */
+      status_as_of: string | null;
+      /** Summary */
+      summary: string;
+      /** Blockers */
+      blockers: string[];
+      /** Tasks */
+      tasks: components["schemas"]["FocusTaskDto"][];
+      /** Focus */
+      focus: components["schemas"]["FocusItemDto"][];
+    };
+    /** FocusTaskDto */
+    FocusTaskDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      rag: components["schemas"]["Rag"];
+      source: components["schemas"]["StatusSource"];
+      /** Confidence */
+      confidence: number | null;
+      /** Deadline */
+      deadline: string | null;
+    };
     /** GraphEdgeDto */
     GraphEdgeDto: {
       /** From Node Id */
@@ -153,11 +352,145 @@ export interface components {
       /** Correlation Id */
       correlation_id: string;
     };
+    /** HeatmapCellDto */
+    HeatmapCellDto: {
+      /** Row */
+      row: string;
+      /** Column */
+      column: string;
+      entity_ref: components["schemas"]["EntityRefDto"];
+      rag: components["schemas"]["Rag"];
+      source: components["schemas"]["StatusSource"];
+      /** Why */
+      why: string;
+      source_ref: components["schemas"]["EntityRefDto"];
+    };
     /**
      * NodeKind
      * @enum {string}
      */
     NodeKind: "program" | "project" | "pod" | "developer" | "task";
+    /** PersonaTreeEdgeDto */
+    PersonaTreeEdgeDto: {
+      /** From Node Id */
+      from_node_id: string;
+      /** To Node Id */
+      to_node_id: string;
+      kind: components["schemas"]["EdgeKind"];
+    };
+    /** PersonaTreeNodeDto */
+    PersonaTreeNodeDto: {
+      /** Id */
+      id: string;
+      kind: components["schemas"]["NodeKind"];
+      /** Name */
+      name: string;
+      rag: components["schemas"]["Rag"] | null;
+      source: components["schemas"]["StatusSource"] | null;
+      /** Confidence */
+      confidence: number | null;
+      /** Factors */
+      factors: components["schemas"]["RollupFactorDto"][];
+    };
+    /** PodBlockersResponse */
+    PodBlockersResponse: {
+      /** Pod Id */
+      pod_id: string;
+      /** Pod Name */
+      pod_name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Blockers */
+      blockers: components["schemas"]["BlockerDto"][];
+    };
+    /** PodCheckinsResponse */
+    PodCheckinsResponse: {
+      /** Pod Id */
+      pod_id: string;
+      /** Pod Name */
+      pod_name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Confirmed */
+      confirmed: number;
+      /** Stale */
+      stale: number;
+      /** Missing */
+      missing: number;
+      /** Developers */
+      developers: components["schemas"]["CheckinDeveloperDto"][];
+    };
+    /** PortfolioHeatmapResponse */
+    PortfolioHeatmapResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Rows */
+      rows: string[];
+      /** Columns */
+      columns: string[];
+      /** Cells */
+      cells: components["schemas"]["HeatmapCellDto"][];
+    };
+    /** ProgramTreeResponse */
+    ProgramTreeResponse: {
+      /** Root Id */
+      root_id: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Nodes */
+      nodes: components["schemas"]["PersonaTreeNodeDto"][];
+      /** Edges */
+      edges: components["schemas"]["PersonaTreeEdgeDto"][];
+    };
+    /** ProjectProgressResponse */
+    ProjectProgressResponse: {
+      /** Project Id */
+      project_id: string;
+      /** Project Name */
+      project_name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      rag: components["schemas"]["Rag"];
+      source: components["schemas"]["StatusSource"];
+      /** Confidence */
+      confidence: number | null;
+      /** Percent Complete */
+      percent_complete: number;
+      /** Total Tasks */
+      total_tasks: number;
+      /** Green Tasks */
+      green_tasks: number;
+      /** Amber Tasks */
+      amber_tasks: number;
+      /** Red Tasks */
+      red_tasks: number;
+      /** Unknown Tasks */
+      unknown_tasks: number;
+      /** Factors */
+      factors: components["schemas"]["RollupFactorDto"][];
+      /** Tasks */
+      tasks: components["schemas"]["TaskProgressDto"][];
+    };
+    /**
+     * Rag
+     * @enum {string}
+     */
+    Rag: "green" | "amber" | "red" | "unknown";
     /** ReadyResponse */
     ReadyResponse: {
       /** Status */
@@ -166,6 +499,31 @@ export interface components {
       dependencies: {
         [key: string]: boolean;
       };
+    };
+    /** RollupFactorDto */
+    RollupFactorDto: {
+      /** Description */
+      description: string;
+      contributes: components["schemas"]["Rag"];
+      source_ref: components["schemas"]["EntityRefDto"];
+    };
+    /**
+     * StatusSource
+     * @enum {string}
+     */
+    StatusSource: "confirmed" | "inferred" | "stale" | "unknown";
+    /** TaskProgressDto */
+    TaskProgressDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      rag: components["schemas"]["Rag"];
+      source: components["schemas"]["StatusSource"];
+      /** Confidence */
+      confidence: number | null;
+      /** Deadline */
+      deadline: string | null;
     };
     /** ValidationError */
     ValidationError: {
@@ -271,6 +629,212 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["GraphTreeDto"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  my_focus_me_focus_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FocusResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  pod_blockers_pods__pod_id__blockers_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PodBlockersResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  pod_checkins_pods__pod_id__checkins_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PodCheckinsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_progress_projects__project_id__progress_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectProgressResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  program_tree_programs__program_id__tree_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        program_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProgramTreeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  portfolio_heatmap_portfolio_heatmap_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PortfolioHeatmapResponse"];
         };
       };
       /** @description Validation Error */
