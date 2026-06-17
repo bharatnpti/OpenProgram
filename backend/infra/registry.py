@@ -180,6 +180,7 @@ class ServiceRegistry:
     def vcs_read_sync_service(self) -> VcsReadSyncService:
         return VcsReadSyncService(
             vcs_provider=self.vcs_provider(),
+            graph_repository=self.graph_repository(),
             time_series_repository=self.time_series_repository(),
             cursor_repository=self.sync_cursor_repository(),
         )

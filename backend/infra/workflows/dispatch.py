@@ -50,6 +50,7 @@ def sync_workflow_input(input: SyncDispatchInput) -> SyncWorkflowInput:
             tenant_id=input.tenant_id,
             project_key=_required_str(input.payload, "project_key"),
             container_id=_optional_str(input.payload, "container_id"),
+            board_id=_optional_str(input.payload, "board_id"),
             observed_at=_optional_str(input.payload, "observed_at"),
         )
     if connector == "vcs":

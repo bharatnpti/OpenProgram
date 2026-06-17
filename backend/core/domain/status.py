@@ -56,8 +56,8 @@ class CheckInPreference:
     local_time: time = time(9, 30)
     timezone: str | None = None
     weekdays: tuple[int, ...] = (0, 1, 2, 3, 4)
-    reply_wait_seconds: int = 0
-    final_reply_wait_seconds: int = 0
+    reply_wait_seconds: int = 14400
+    final_reply_wait_seconds: int = 28800
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -52,6 +52,31 @@ async def test_fact_log_inserts_once_by_identity() -> None:
     assert facts == [fact]
 
 
+async def test_fact_log_filters_by_observed_since() -> None:
+    store = InMemoryGraphStore()
+    ref = EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="task-api")
+    old_fact = FactEvent(
+        tenant_id="demo",
+        source="unit",
+        entity_ref=ref,
+        payload={"status": "old"},
+        observed_at=datetime(2026, 1, 1, tzinfo=UTC),
+        correlation_id="corr-old",
+    )
+    new_fact = FactEvent(
+        tenant_id="demo",
+        source="unit",
+        entity_ref=ref,
+        payload={"status": "new"},
+        observed_at=datetime(2026, 1, 10, tzinfo=UTC),
+        correlation_id="corr-new",
+    )
+    await store.append_fact(old_fact)
+    await store.append_fact(new_fact)
+
+    assert await store.list_facts("demo", ref, datetime(2026, 1, 5, tzinfo=UTC)) == [new_fact]
+
+
 async def test_vector_search_returns_best_match() -> None:
     store = InMemoryGraphStore()
     ref = EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="task-api")

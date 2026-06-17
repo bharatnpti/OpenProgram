@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -112,6 +112,16 @@ async def test_postgres_extensions_seed_vector_and_secret(
 
         ref = EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="task-api")
         seeded_facts = await time_series_repository.list_facts("demo", ref)
+        recent_seeded_facts = await time_series_repository.list_facts(
+            "demo",
+            ref,
+            datetime(2026, 6, 1, tzinfo=UTC),
+        )
+        future_seeded_facts = await time_series_repository.list_facts(
+            "demo",
+            ref,
+            datetime(2026, 6, 16, tzinfo=UTC),
+        )
         await seed_demo_graph(
             graph_repository,
             time_series_repository,
@@ -120,6 +130,8 @@ async def test_postgres_extensions_seed_vector_and_secret(
             rollup_repository=rollup_repository,
         )
         assert await time_series_repository.list_facts("demo", ref) == seeded_facts
+        assert recent_seeded_facts == seeded_facts
+        assert future_seeded_facts == []
 
         confirmed = await status_repository.latest_developer_status(
             "demo",

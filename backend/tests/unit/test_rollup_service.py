@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
+
 from core.application.persona_views import PersonaViewService
 from core.application.rollup_service import RollupService
+from core.domain.errors import GraphNotFound
 from core.domain.graph import (
     Developer,
     EdgeKind,
@@ -110,6 +113,29 @@ async def test_persona_heatmap_fallback_rollup_persists_computed_statuses() -> N
     }
 
 
+async def test_persona_heatmap_only_swallows_missing_graph() -> None:
+    service = PersonaViewService(
+        graph_repository=_BrokenGraphRepository(RuntimeError("database unavailable")),
+        status_repository=FakeStatusRepository(),
+        rollup_repository=FakeRollupRepository(),
+        time_series_repository=_UnusedTimeSeriesRepository(),
+    )
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        await service.portfolio_heatmap("demo", date(2026, 1, 10), "program-1")
+
+    missing_service = PersonaViewService(
+        graph_repository=_BrokenGraphRepository(GraphNotFound("missing graph")),
+        status_repository=FakeStatusRepository(),
+        rollup_repository=FakeRollupRepository(),
+        time_series_repository=_UnusedTimeSeriesRepository(),
+    )
+
+    view = await missing_service.portfolio_heatmap("demo", date(2026, 1, 10), "program-1")
+
+    assert view.cells == ()
+
+
 def _program_tree(
     *,
     critical_task: bool = False,
@@ -178,6 +204,19 @@ class _GraphRepository:
         assert tenant_id == "demo"
         assert root_id == self._tree.root.id
         return self._tree
+
+
+class _BrokenGraphRepository:
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    async def get_program_tree(
+        self,
+        tenant_id: str,
+        root_id: str,
+        as_of: date,
+    ) -> GraphTree:
+        raise self._error
 
 
 class _UnusedTimeSeriesRepository:

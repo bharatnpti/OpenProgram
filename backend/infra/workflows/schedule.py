@@ -35,14 +35,18 @@ def checkin_fanout_config(settings: Settings) -> CheckinScheduleConfig:
 def sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
     configs: list[SyncScheduleConfig] = []
     for entry in settings.jira_sync_projects:
-        project_key, container_id = _jira_project_target(entry)
+        project_key, container_id, board_id = _jira_project_target(entry)
         scope = f"project:{project_key}"
         payload: dict[str, str | int | float | bool | None] = {"project_key": project_key}
         if container_id is not None:
             payload["container_id"] = container_id
+        if board_id is not None:
+            payload["board_id"] = board_id
         configs.append(
             SyncScheduleConfig(
-                schedule_id=safe_workflow_id(f"pulseops-sync-issue-{scope}-{container_id or ''}"),
+                schedule_id=safe_workflow_id(
+                    f"pulseops-sync-issue-{scope}-{container_id or ''}-{board_id or ''}"
+                ),
                 tenant_id=settings.tenant_id,
                 connector="issue",
                 scope=scope,
@@ -80,9 +84,12 @@ def sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
     return tuple(configs)
 
 
-def _jira_project_target(entry: str) -> tuple[str, str | None]:
-    project_key, separator, container_id = entry.partition(":")
-    return project_key, container_id if separator else None
+def _jira_project_target(entry: str) -> tuple[str, str | None, str | None]:
+    parts = entry.split(":")
+    project_key = parts[0]
+    container_id = parts[1] if len(parts) >= 2 else None
+    board_id = parts[2] if len(parts) >= 3 else None
+    return project_key, container_id, board_id
 
 
 if __name__ == "__main__":

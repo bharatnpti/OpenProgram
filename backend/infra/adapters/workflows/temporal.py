@@ -441,11 +441,11 @@ async def _connect_temporal(
 ) -> Client:
     from temporalio.client import Client
 
-    last_error: Exception | None = None
+    last_error: ConnectionError | OSError | RuntimeError | None = None
     for attempt in range(max(1, attempts)):
         try:
             return await Client.connect(target)
-        except Exception as exc:
+        except (ConnectionError, OSError, RuntimeError) as exc:
             last_error = exc
             if attempt < attempts - 1:
                 await asyncio.sleep(delay_seconds)

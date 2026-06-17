@@ -540,7 +540,7 @@ export interface components {
      * NodeKind
      * @enum {string}
      */
-    NodeKind: "program" | "project" | "pod" | "developer" | "task";
+    NodeKind: "program" | "project" | "sprint" | "repo" | "pod" | "developer" | "task";
     /** PersonaTreeEdgeDto */
     PersonaTreeEdgeDto: {
       /** From Node Id */

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Protocol, TypedDict, cast
 from uuid import uuid4
 
@@ -24,6 +24,8 @@ from core.ports.chat import ChatProvider
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
 from core.ports.repositories import StatusRepository, TimeSeriesRepository
+
+RECENT_FACT_LOOKBACK_DAYS = 30
 
 
 class StatusCollectorState(TypedDict, total=False):
@@ -143,13 +145,6 @@ class StatusCollector:
         return status
 
     async def resolve_reply_correlation(self, message: InboundMessage) -> str | None:
-        direct = await self._status_repository.checkin_by_correlation(
-            message.tenant_id,
-            message.correlation_id,
-        )
-        if direct is not None:
-            return direct.correlation_id
-
         correlation = await self._status_repository.checkin_correlation_by_id(
             message.tenant_id,
             message.correlation_id,
@@ -489,8 +484,9 @@ class StatusCollector:
             *(EntityRef(tenant_id=tenant_id, kind=NodeKind.TASK, id=issue.key) for issue in issues),
         ]
         facts: list[FactEvent] = []
+        since = datetime.now(tz=UTC) - timedelta(days=RECENT_FACT_LOOKBACK_DAYS)
         for ref in refs:
-            facts.extend(await self._time_series_repository.list_facts(tenant_id, ref))
+            facts.extend(await self._time_series_repository.list_facts(tenant_id, ref, since))
         return sorted(facts, key=lambda fact: fact.observed_at, reverse=True)[:5]
 
     def _compile_graph(self) -> StatusCollectorGraph:

@@ -48,6 +48,8 @@ def test_settings_defaults_workflow_provider_to_dbos() -> None:
     assert settings.resolved_heartbeat_schedule_id == "pulseops-heartbeat"
     assert settings.dbos_heartbeat_cron == "0 * * * * *"
     assert settings.resolved_dbos_system_database_url == settings.database_url
+    assert settings.checkin_reply_wait_seconds == 14400
+    assert settings.checkin_final_reply_wait_seconds == 28800
 
 
 def test_settings_resolves_configured_heartbeat_schedule_id() -> None:
@@ -115,13 +117,13 @@ def test_settings_validate_provider_selectors() -> None:
 def test_settings_parse_explicit_sync_target_lists() -> None:
     settings = _settings(
         secret_key=SECRET_KEY,
-        jira_sync_projects="PO, ENG:program-platform",
+        jira_sync_projects="PO, ENG:program-platform, API:pod-runtime:board-1",
         github_sync_repos='["oneai/program-manager", "oneai/runtime"]',
         calendar_sync_user_ids="dev-1, dev-2",
         calendar_sync_window_days=3,
     )
 
-    assert settings.jira_sync_projects == ("PO", "ENG:program-platform")
+    assert settings.jira_sync_projects == ("PO", "ENG:program-platform", "API:pod-runtime:board-1")
     assert settings.github_sync_repos == ("oneai/program-manager", "oneai/runtime")
     assert settings.calendar_sync_user_ids == ("dev-1", "dev-2")
     assert settings.calendar_sync_window_days == 3
@@ -129,8 +131,10 @@ def test_settings_parse_explicit_sync_target_lists() -> None:
 
 def test_settings_rejects_invalid_sync_targets() -> None:
     with pytest.raises(ValidationError):
-        _settings(secret_key=SECRET_KEY, jira_sync_projects="PO:container:extra")
+        _settings(secret_key=SECRET_KEY, jira_sync_projects="PO:container:board:extra")
     with pytest.raises(ValidationError):
         _settings(secret_key=SECRET_KEY, jira_sync_projects="PO:")
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, jira_sync_projects="PO:container:")
     with pytest.raises(ValidationError):
         _settings(secret_key=SECRET_KEY, calendar_sync_window_days=0)

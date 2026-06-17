@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
-from datetime import date
+from datetime import date, datetime
 from typing import Protocol
 
 from opentelemetry import trace
@@ -227,18 +227,36 @@ class PostgresTimeSeriesRepository:
     async def append_fact_once(self, fact: FactEvent) -> None:
         await self.append_fact(fact)
 
-    async def list_facts(self, tenant_id: str, entity_ref: EntityRef) -> list[FactEvent]:
+    async def list_facts(
+        self,
+        tenant_id: str,
+        entity_ref: EntityRef,
+        since: datetime | None = None,
+    ) -> list[FactEvent]:
         with _tracer.start_as_current_span("postgres.timeseries.list_facts"):
-            rows = await self._executor.fetch(
-                """
-                SELECT tenant_id, source, entity_kind, entity_id, payload, observed_at, ingested_at,
-                       correlation_id
-                FROM facts
-                WHERE tenant_id = %s AND entity_kind = %s AND entity_id = %s
-                ORDER BY observed_at
-                """,
-                (tenant_id, entity_ref.kind.value, entity_ref.id),
-            )
+            if since is not None:
+                rows = await self._executor.fetch(
+                    """
+                    SELECT tenant_id, source, entity_kind, entity_id, payload, observed_at,
+                           ingested_at, correlation_id
+                    FROM facts
+                    WHERE tenant_id = %s AND entity_kind = %s AND entity_id = %s
+                      AND observed_at >= %s
+                    ORDER BY observed_at
+                    """,
+                    (tenant_id, entity_ref.kind.value, entity_ref.id, since),
+                )
+            else:
+                rows = await self._executor.fetch(
+                    """
+                    SELECT tenant_id, source, entity_kind, entity_id, payload, observed_at,
+                           ingested_at, correlation_id
+                    FROM facts
+                    WHERE tenant_id = %s AND entity_kind = %s AND entity_id = %s
+                    ORDER BY observed_at
+                    """,
+                    (tenant_id, entity_ref.kind.value, entity_ref.id),
+                )
             return [_fact_from_row(row) for row in rows]
 
 
