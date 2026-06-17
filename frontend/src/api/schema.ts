@@ -12,6 +12,9 @@ export type Rag = components["schemas"]["Rag"];
 export type EntityRefDto = components["schemas"]["EntityRefDto"];
 export type RollupFactorDto = components["schemas"]["RollupFactorDto"];
 export type FocusResponse = components["schemas"]["FocusResponse"];
+export type CheckinPreferenceResponse = components["schemas"]["CheckinPreferenceResponse"];
+export type CheckinPreferenceUpdateRequest =
+  components["schemas"]["CheckinPreferenceUpdateRequest"];
 export type PodBlockersResponse = components["schemas"]["PodBlockersResponse"];
 export type PodCheckinsResponse = components["schemas"]["PodCheckinsResponse"];
 export type ProjectProgressResponse = components["schemas"]["ProjectProgressResponse"];

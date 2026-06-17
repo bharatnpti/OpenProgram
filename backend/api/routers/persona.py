@@ -86,9 +86,10 @@ async def portfolio_heatmap(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+    program_root_id: Annotated[str | None, Query()] = None,
 ) -> PortfolioHeatmapResponse:
     _ensure(principal, Capability.READ_PORTFOLIO_HEATMAP)
-    view = await persona_service.portfolio_heatmap(principal.tenant_id, as_of)
+    view = await persona_service.portfolio_heatmap(principal.tenant_id, as_of, program_root_id)
     return PortfolioHeatmapResponse.from_view(view)
 
 

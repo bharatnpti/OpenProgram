@@ -110,3 +110,27 @@ def test_settings_validate_provider_selectors() -> None:
         _settings(secret_key=SECRET_KEY, llm_provider="gemini")
     with pytest.raises(ValidationError):
         _settings(secret_key=SECRET_KEY, workflow_provider="airflow")
+
+
+def test_settings_parse_explicit_sync_target_lists() -> None:
+    settings = _settings(
+        secret_key=SECRET_KEY,
+        jira_sync_projects="PO, ENG:program-platform",
+        github_sync_repos='["oneai/program-manager", "oneai/runtime"]',
+        calendar_sync_user_ids="dev-1, dev-2",
+        calendar_sync_window_days=3,
+    )
+
+    assert settings.jira_sync_projects == ("PO", "ENG:program-platform")
+    assert settings.github_sync_repos == ("oneai/program-manager", "oneai/runtime")
+    assert settings.calendar_sync_user_ids == ("dev-1", "dev-2")
+    assert settings.calendar_sync_window_days == 3
+
+
+def test_settings_rejects_invalid_sync_targets() -> None:
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, jira_sync_projects="PO:container:extra")
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, jira_sync_projects="PO:")
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, calendar_sync_window_days=0)

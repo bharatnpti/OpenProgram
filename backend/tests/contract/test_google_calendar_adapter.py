@@ -64,3 +64,25 @@ async def test_google_calendar_adapter_maps_events_without_raw_payloads() -> Non
     assert events[1].metadata["timezone"] == "Asia/Kolkata"
     assert "summary" not in events[0].metadata
     assert {call.request.method for call in respx.calls} == {"GET"}
+
+
+@respx.mock
+async def test_google_calendar_adapter_uses_token_factory_over_static_token() -> None:
+    adapter = GoogleCalendarAdapter(
+        base_url="https://calendar.test/calendar/v3",
+        token="stale-token",
+        token_factory=lambda: "fresh-token",
+        calendar_id="{user}",
+    )
+    respx.get("https://calendar.test/calendar/v3/calendars/dev%40example.com/events").mock(
+        return_value=httpx.Response(200, json={"items": []})
+    )
+
+    events = await adapter.list_events(
+        UserRef(tenant_id="demo", external_id="dev@example.com"),
+        date(2026, 1, 10),
+        date(2026, 1, 11),
+    )
+
+    assert events == []
+    assert respx.calls[0].request.headers["Authorization"] == "Bearer fresh-token"

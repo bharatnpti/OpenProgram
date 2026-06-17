@@ -1,27 +1,43 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from temporalio import activity, workflow
 
 from core.domain.workflows import (
+    CheckinFanoutInput,
+    CheckinFanoutResult,
+    CheckinScheduleConfig,
+    DeveloperCheckinDispatch,
     HeartbeatInput,
     HeartbeatResult,
     ScheduleBootstrapResult,
+    SyncDispatchInput,
+    SyncScheduleConfig,
     record_heartbeat,
 )
-from infra.workflows import calendar_sync, daily_checkin, git_sync, jira_sync, nudge
+from infra.workflows import calendar_sync, checkin_fanout, daily_checkin, git_sync, jira_sync, nudge
 from infra.workflows.calendar_sync import CalendarSyncInput, CalendarSyncWorkflowResult
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
+from infra.workflows.dispatch import (
+    daily_checkin_input,
+    safe_workflow_id,
+    sync_dispatch_for_schedule,
+    sync_workflow_input,
+    sync_workflow_name,
+)
 from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import NudgeInput, NudgeResult
 
 if TYPE_CHECKING:
     from temporalio.client import Client
+    from temporalio.client import Schedule as TemporalSchedule
 
 
 @activity.defn
@@ -37,6 +53,38 @@ class HeartbeatWorkflow:
             record_heartbeat_activity,
             payload,
             start_to_close_timeout=timedelta(seconds=10),
+        )
+
+
+@activity.defn
+async def dispatch_checkins_for_tenant_activity(
+    payload: CheckinFanoutInput,
+) -> CheckinFanoutResult:
+    return await checkin_fanout.dispatch_checkins_for_tenant_activity(payload)
+
+
+@workflow.defn
+class CheckinFanoutWorkflow:
+    @workflow.run
+    async def run(self, payload: CheckinFanoutInput) -> CheckinFanoutResult:
+        return await workflow.execute_activity(
+            dispatch_checkins_for_tenant_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=10),
+        )
+
+
+@workflow.defn
+class ScheduledCheckinFanoutWorkflow:
+    @workflow.run
+    async def run(self, config: CheckinScheduleConfig) -> CheckinFanoutResult:
+        return await workflow.execute_activity(
+            dispatch_checkins_for_tenant_activity,
+            CheckinFanoutInput(
+                tenant_id=config.tenant_id,
+                checkin_date=workflow.now().date().isoformat(),
+            ),
+            start_to_close_timeout=timedelta(minutes=10),
         )
 
 
@@ -88,6 +136,18 @@ class CalendarSyncWorkflow:
         )
 
 
+@workflow.defn
+class ScheduledSyncWorkflow:
+    @workflow.run
+    async def run(
+        self,
+        config: SyncScheduleConfig,
+    ) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult:
+        return await _execute_sync_activity(
+            sync_workflow_input(sync_dispatch_for_schedule(config, workflow.now()))
+        )
+
+
 @activity.defn
 async def start_daily_checkin_activity(payload: DailyCheckinInput) -> DailyCheckinResult:
     return await daily_checkin.start_daily_checkin_activity(payload)
@@ -117,6 +177,7 @@ class DailyCheckinWorkflow:
                     now=workflow.now(),
                 ),
                 id=nudge_workflow_id,
+                parent_close_policy=workflow.ParentClosePolicy.ABANDON,
             )
             return replace(result, nudge_workflow_id=nudge_workflow_id)
         return result
@@ -164,6 +225,30 @@ class NudgeWorkflow:
         return close_result
 
 
+async def _execute_sync_activity(
+    payload: JiraSyncInput | GitSyncInput | CalendarSyncInput,
+) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult:
+    if isinstance(payload, JiraSyncInput):
+        return await workflow.execute_activity(
+            sync_jira_project_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+    if isinstance(payload, GitSyncInput):
+        return await workflow.execute_activity(
+            sync_git_repo_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+    if isinstance(payload, CalendarSyncInput):
+        return await workflow.execute_activity(
+            sync_calendar_user_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+    raise ValueError("unsupported sync payload")
+
+
 @dataclass(frozen=True)
 class TemporalWorkflowScheduler:
     target: str
@@ -176,12 +261,10 @@ class TemporalWorkflowScheduler:
         from temporalio.client import (
             Schedule,
             ScheduleActionStartWorkflow,
-            ScheduleAlreadyRunningError,
             ScheduleIntervalSpec,
             ScheduleOverlapPolicy,
             SchedulePolicy,
             ScheduleSpec,
-            ScheduleUpdate,
         )
 
         client = await _connect_temporal(self.target)
@@ -200,17 +283,108 @@ class TemporalWorkflowScheduler:
             ),
             policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
         )
-        try:
-            await client.create_schedule(self.schedule_id, schedule)
-            return ScheduleBootstrapResult(schedule_id=self.schedule_id, status="created")
-        except ScheduleAlreadyRunningError:
-            handle = client.get_schedule_handle(self.schedule_id)
+        status = await _ensure_temporal_schedule(client, self.schedule_id, schedule)
+        return ScheduleBootstrapResult(schedule_id=self.schedule_id, status=status)
 
-            async def updater(_: object) -> ScheduleUpdate:
-                return ScheduleUpdate(schedule=schedule)
+    async def ensure_checkin_fanout_schedule(
+        self, config: CheckinScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        from temporalio.client import (
+            Schedule,
+            ScheduleActionStartWorkflow,
+            ScheduleOverlapPolicy,
+            SchedulePolicy,
+            ScheduleSpec,
+        )
 
-            await handle.update(updater)
-            return ScheduleBootstrapResult(schedule_id=self.schedule_id, status="updated")
+        client = await _connect_temporal(self.target)
+        schedule = Schedule(
+            action=ScheduleActionStartWorkflow(
+                ScheduledCheckinFanoutWorkflow.run,
+                config,
+                id=f"{config.schedule_id}-workflow",
+                task_queue=self.task_queue,
+            ),
+            spec=ScheduleSpec(cron_expressions=[config.cron]),
+            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
+        )
+        status = await _ensure_temporal_schedule(client, config.schedule_id, schedule)
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status=status)
+
+    async def ensure_sync_schedules(
+        self, configs: Sequence[SyncScheduleConfig]
+    ) -> list[ScheduleBootstrapResult]:
+        from temporalio.client import (
+            Schedule,
+            ScheduleActionStartWorkflow,
+            ScheduleOverlapPolicy,
+            SchedulePolicy,
+            ScheduleSpec,
+        )
+
+        client = await _connect_temporal(self.target)
+        results: list[ScheduleBootstrapResult] = []
+        for config in configs:
+            schedule = Schedule(
+                action=ScheduleActionStartWorkflow(
+                    ScheduledSyncWorkflow.run,
+                    config,
+                    id=f"{config.schedule_id}-workflow",
+                    task_queue=self.task_queue,
+                ),
+                spec=ScheduleSpec(cron_expressions=[config.cron]),
+                policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
+            )
+            status = await _ensure_temporal_schedule(client, config.schedule_id, schedule)
+            results.append(ScheduleBootstrapResult(schedule_id=config.schedule_id, status=status))
+        return results
+
+    async def dispatch_developer_checkin(self, input: DeveloperCheckinDispatch) -> str:
+        client = await _connect_temporal(self.target)
+        workflow_id = safe_workflow_id(
+            "checkin-"
+            f"{input.tenant_id}-{input.developer_id}-"
+            f"{input.checkin_date or datetime.now(tz=UTC).date().isoformat()}-{uuid4()}"
+        )
+        await client.start_workflow(
+            DailyCheckinWorkflow.run,
+            daily_checkin_input(input),
+            id=workflow_id,
+            task_queue=self.task_queue,
+        )
+        return workflow_id
+
+    async def dispatch_sync(self, input: SyncDispatchInput) -> str:
+        client = await _connect_temporal(self.target)
+        workflow_input = sync_workflow_input(input)
+        workflow_name = sync_workflow_name(input)
+        workflow_id = safe_workflow_id(
+            f"sync-{workflow_name}-{input.tenant_id}-{input.scope}-{uuid4()}"
+        )
+        if isinstance(workflow_input, JiraSyncInput):
+            await client.start_workflow(
+                JiraSyncWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
+        elif isinstance(workflow_input, GitSyncInput):
+            await client.start_workflow(
+                GitSyncWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
+        elif isinstance(workflow_input, CalendarSyncInput):
+            await client.start_workflow(
+                CalendarSyncWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
+        else:
+            raise ValueError(f"unsupported sync connector: {input.connector}")
+        return workflow_id
 
 
 @dataclass(frozen=True)
@@ -227,14 +401,18 @@ class TemporalWorkflowWorker:
             task_queue=self.task_queue,
             workflows=[
                 HeartbeatWorkflow,
+                CheckinFanoutWorkflow,
+                ScheduledCheckinFanoutWorkflow,
                 JiraSyncWorkflow,
                 GitSyncWorkflow,
                 CalendarSyncWorkflow,
+                ScheduledSyncWorkflow,
                 DailyCheckinWorkflow,
                 NudgeWorkflow,
             ],
             activities=[
                 record_heartbeat_activity,
+                dispatch_checkins_for_tenant_activity,
                 sync_jira_project_activity,
                 sync_git_repo_activity,
                 sync_calendar_user_activity,
@@ -274,3 +452,23 @@ async def _connect_temporal(
     if last_error is not None:
         raise last_error
     raise RuntimeError("Temporal connection failed without an exception")
+
+
+async def _ensure_temporal_schedule(
+    client: Client,
+    schedule_id: str,
+    schedule: TemporalSchedule,
+) -> str:
+    from temporalio.client import ScheduleAlreadyRunningError, ScheduleUpdate
+
+    try:
+        await client.create_schedule(schedule_id, schedule)
+        return "created"
+    except ScheduleAlreadyRunningError:
+        handle = client.get_schedule_handle(schedule_id)
+
+        async def updater(_: object) -> ScheduleUpdate:
+            return ScheduleUpdate(schedule=schedule)
+
+        await handle.update(updater)
+        return "updated"

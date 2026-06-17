@@ -383,17 +383,22 @@ class PersonaViewService:
             ),
         )
 
-    async def portfolio_heatmap(self, tenant_id: str, as_of: date) -> PortfolioHeatmapView:
+    async def portfolio_heatmap(
+        self,
+        tenant_id: str,
+        as_of: date,
+        program_root_id: str | None = None,
+    ) -> PortfolioHeatmapView:
         statuses = await self._rollup_repository.list_node_statuses(tenant_id, as_of)
         if not statuses:
             try:
                 tree = await self._graph_repository.get_program_tree(
-                    tenant_id, PORTFOLIO_ROOT_ID, as_of
+                    tenant_id, program_root_id or PORTFOLIO_ROOT_ID, as_of
                 )
             except Exception:
                 statuses = []
             else:
-                statuses = list(await self._rollup_service().compute(tree, as_of))
+                statuses = list(await self._rollup_service().compute_and_record(tree, as_of))
         cells = tuple(_heatmap_cell(status) for status in statuses)
         rows = tuple(dict.fromkeys(cell.row for cell in cells))
         columns = tuple(dict.fromkeys(cell.column for cell in cells))
@@ -413,7 +418,7 @@ class PersonaViewService:
             if status is not None:
                 statuses[(node.kind, node.id)] = status
         if len(statuses) < len(rollup_nodes):
-            computed = await self._rollup_service().compute(tree, as_of)
+            computed = await self._rollup_service().compute_and_record(tree, as_of)
             for status in computed:
                 statuses.setdefault(
                     (status.entity_ref.kind, status.entity_ref.id),
@@ -454,7 +459,7 @@ class PersonaViewService:
         )
 
     def _rollup_service(self) -> RollupService:
-        return RollupService(self._status_repository)
+        return RollupService(self._status_repository, self._rollup_repository)
 
 
 def _developers(tree: GraphTree) -> tuple[GraphNode, ...]:

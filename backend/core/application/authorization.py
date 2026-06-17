@@ -17,6 +17,7 @@ class Capability(StrEnum):
     READ_PORTFOLIO_HEATMAP = "read_portfolio_heatmap"
     READ_RAW_DM = "read_raw_dm"
     WRITE_CONNECTOR_SECRET = "write_connector_secret"
+    DISPATCH_WORKFLOWS = "dispatch_workflows"
 
 
 class SensitiveField(StrEnum):

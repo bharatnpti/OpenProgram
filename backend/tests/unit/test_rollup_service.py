@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from core.application.persona_views import PersonaViewService
 from core.application.rollup_service import RollupService
 from core.domain.graph import (
     Developer,
@@ -76,6 +77,39 @@ async def test_rollup_keeps_stale_and_missing_statuses_out_of_green() -> None:
     assert by_id["program-1"].rag is not Rag.GREEN
 
 
+async def test_persona_heatmap_fallback_rollup_persists_computed_statuses() -> None:
+    as_of = date(2026, 1, 10)
+    tree = _program_tree(critical_task=True)
+    status_repository = FakeStatusRepository()
+    rollup_repository = FakeRollupRepository()
+    await status_repository.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-1",
+            as_of=as_of,
+            source=StatusSource.CONFIRMED,
+            blockers=("schema review",),
+            summary="Blocked on schema review.",
+        )
+    )
+    service = PersonaViewService(
+        graph_repository=_GraphRepository(tree),
+        status_repository=status_repository,
+        rollup_repository=rollup_repository,
+        time_series_repository=_UnusedTimeSeriesRepository(),
+    )
+
+    view = await service.portfolio_heatmap("demo", as_of, "program-1")
+
+    assert view.cells
+    assert {status.entity_ref.id for status in rollup_repository.node_statuses} >= {
+        "dev-1",
+        "pod-1",
+        "project-1",
+        "program-1",
+    }
+
+
 def _program_tree(
     *,
     critical_task: bool = False,
@@ -129,3 +163,22 @@ def _program_tree(
             )
         )
     return GraphTree(root=program, nodes=tuple(nodes), edges=tuple(edges))
+
+
+class _GraphRepository:
+    def __init__(self, tree: GraphTree) -> None:
+        self._tree = tree
+
+    async def get_program_tree(
+        self,
+        tenant_id: str,
+        root_id: str,
+        as_of: date,
+    ) -> GraphTree:
+        assert tenant_id == "demo"
+        assert root_id == self._tree.root.id
+        return self._tree
+
+
+class _UnusedTimeSeriesRepository:
+    pass

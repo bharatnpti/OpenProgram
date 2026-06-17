@@ -72,6 +72,92 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/workflows/checkin/dispatch": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Dispatch Checkin */
+    post: operations["dispatch_checkin_admin_workflows_checkin_dispatch_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/workflows/sync/jira": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Dispatch Jira Sync */
+    post: operations["dispatch_jira_sync_admin_workflows_sync_jira_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/workflows/sync/github": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Dispatch Github Sync */
+    post: operations["dispatch_github_sync_admin_workflows_sync_github_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/workflows/sync/calendar": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Dispatch Calendar Sync */
+    post: operations["dispatch_calendar_sync_admin_workflows_sync_calendar_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/checkin-preference": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Checkin Preference */
+    get: operations["get_checkin_preference_me_checkin_preference_get"];
+    /** Update Checkin Preference */
+    put: operations["update_checkin_preference_me_checkin_preference_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/me/focus": {
     parameters: {
       query?: never;
@@ -215,6 +301,27 @@ export interface components {
       status_as_of: string;
       source_ref: components["schemas"]["EntityRefDto"];
     };
+    /** CalendarSyncDispatchRequest */
+    CalendarSyncDispatchRequest: {
+      /** Tenant Id */
+      tenant_id: string;
+      /** User Id */
+      user_id: string;
+      /**
+       * Start
+       * Format: date
+       */
+      start: string;
+      /**
+       * End
+       * Format: date
+       */
+      end: string;
+      /** Display Name */
+      display_name?: string | null;
+      /** Observed At */
+      observed_at?: string | null;
+    };
     /** ChatWebhookResponse */
     ChatWebhookResponse: {
       /** Status */
@@ -238,6 +345,50 @@ export interface components {
       status_as_of: string | null;
       /** Summary */
       summary: string;
+    };
+    /** CheckinDispatchRequest */
+    CheckinDispatchRequest: {
+      /** Tenant Id */
+      tenant_id: string;
+      /** Developer Id */
+      developer_id: string;
+      /** Developer Name */
+      developer_name?: string | null;
+      /** Chat External Id */
+      chat_external_id?: string | null;
+      /** Checkin Date */
+      checkin_date?: string | null;
+    };
+    /** CheckinPreferenceResponse */
+    CheckinPreferenceResponse: {
+      /** Developer Id */
+      developer_id: string;
+      /**
+       * Local Time
+       * Format: time
+       */
+      local_time: string;
+      /** Timezone */
+      timezone: string | null;
+      /** Weekdays */
+      weekdays: number[];
+      /** Reply Wait Seconds */
+      reply_wait_seconds: number;
+      /** Final Reply Wait Seconds */
+      final_reply_wait_seconds: number;
+    };
+    /** CheckinPreferenceUpdateRequest */
+    CheckinPreferenceUpdateRequest: {
+      /** Local Time */
+      local_time?: string | null;
+      /** Timezone */
+      timezone?: string | null;
+      /** Weekdays */
+      weekdays?: number[] | null;
+      /** Reply Wait Seconds */
+      reply_wait_seconds?: number | null;
+      /** Final Reply Wait Seconds */
+      final_reply_wait_seconds?: number | null;
     };
     /**
      * EdgeKind
@@ -304,6 +455,15 @@ export interface components {
       /** Deadline */
       deadline: string | null;
     };
+    /** GithubSyncDispatchRequest */
+    GithubSyncDispatchRequest: {
+      /** Tenant Id */
+      tenant_id: string;
+      /** Repo Name */
+      repo_name: string;
+      /** Observed At */
+      observed_at?: string | null;
+    };
     /** GraphEdgeDto */
     GraphEdgeDto: {
       /** From Node Id */
@@ -364,6 +524,17 @@ export interface components {
       /** Why */
       why: string;
       source_ref: components["schemas"]["EntityRefDto"];
+    };
+    /** JiraSyncDispatchRequest */
+    JiraSyncDispatchRequest: {
+      /** Tenant Id */
+      tenant_id: string;
+      /** Project Key */
+      project_key: string;
+      /** Container Id */
+      container_id?: string | null;
+      /** Observed At */
+      observed_at?: string | null;
     };
     /**
      * NodeKind
@@ -538,6 +709,11 @@ export interface components {
       /** Context */
       ctx?: Record<string, never>;
     };
+    /** WorkflowDispatchResponse */
+    WorkflowDispatchResponse: {
+      /** Workflow Id */
+      workflow_id: string;
+    };
   };
   responses: never;
   parameters: never;
@@ -629,6 +805,212 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["GraphTreeDto"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  dispatch_checkin_admin_workflows_checkin_dispatch_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CheckinDispatchRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkflowDispatchResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  dispatch_jira_sync_admin_workflows_sync_jira_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["JiraSyncDispatchRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkflowDispatchResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  dispatch_github_sync_admin_workflows_sync_github_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["GithubSyncDispatchRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkflowDispatchResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  dispatch_calendar_sync_admin_workflows_sync_calendar_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CalendarSyncDispatchRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkflowDispatchResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_checkin_preference_me_checkin_preference_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CheckinPreferenceResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_checkin_preference_me_checkin_preference_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CheckinPreferenceUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CheckinPreferenceResponse"];
         };
       };
       /** @description Validation Error */
@@ -819,6 +1201,7 @@ export interface operations {
     parameters: {
       query?: {
         as_of?: string;
+        program_root_id?: string | null;
       };
       header?: {
         authorization?: string | null;

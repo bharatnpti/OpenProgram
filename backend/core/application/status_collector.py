@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Protocol, TypedDict, cast
 from uuid import uuid4
@@ -45,12 +44,6 @@ class StatusCollectorState(TypedDict, total=False):
 
 class StatusCollectorGraph(Protocol):
     async def ainvoke(self, input: StatusCollectorState) -> StatusCollectorState: ...
-
-
-@dataclass(frozen=True, kw_only=True)
-class NonResponseResult:
-    nudge_message_id: str
-    terminal_status: DeveloperStatus
 
 
 class StatusCollector:
@@ -310,40 +303,6 @@ class StatusCollector:
         )
         await self._status_repository.record_developer_status(unknown)
         return unknown
-
-    async def nudge_then_mark_stale(
-        self,
-        *,
-        tenant_id: str,
-        correlation_id: str,
-        as_of: date,
-        developer_name: str | None = None,
-        chat_external_id: str | None = None,
-    ) -> NonResponseResult:
-        checkin = await self._status_repository.checkin_by_correlation(
-            tenant_id,
-            correlation_id,
-        )
-        if checkin is None:
-            error = "cannot close non-response without a recorded check-in"
-            raise ValueError(error)
-
-        nudge_message_id = await self.send_nudge(
-            tenant_id=tenant_id,
-            correlation_id=correlation_id,
-            developer_name=developer_name,
-            chat_external_id=chat_external_id,
-        )
-        terminal_status = await self.record_non_response(
-            tenant_id=tenant_id,
-            developer_id=checkin.developer_id,
-            as_of=as_of,
-            developer_name=developer_name,
-        )
-        return NonResponseResult(
-            nudge_message_id=nudge_message_id,
-            terminal_status=terminal_status,
-        )
 
     async def infer_fallback_status(
         self,

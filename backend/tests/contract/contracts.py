@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
+import pytest
+
+from core.domain.errors import ProviderUnavailable
 from core.domain.graph import EntityRef, NodeKind
 from core.domain.integrations import (
     BuildResult,
@@ -72,8 +75,10 @@ async def assert_issue_tracker_contract(provider: IssueTracker) -> None:
     issue = await provider.get_issue("demo", "PO-1")
     assert isinstance(issue, Issue)
     assert await provider.list_active_for(user)
-    await provider.transition("demo", "PO-1", IssueState.DONE.value)
-    await provider.add_comment("demo", "PO-1", "done")
+    with pytest.raises(ProviderUnavailable):
+        await provider.transition("demo", "PO-1", IssueState.DONE.value)
+    with pytest.raises(ProviderUnavailable):
+        await provider.add_comment("demo", "PO-1", "done")
 
 
 async def assert_vcs_contract(provider: VcsProvider) -> None:

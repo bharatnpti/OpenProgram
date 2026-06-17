@@ -4,17 +4,25 @@ from datetime import UTC, date, datetime
 
 import pytest
 
+from config.settings import Settings
 from core.application.agents.status_agent import StatusAgentNode
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import SyncRunResult
 from core.domain.integrations import SyncCursor, UserRef
-from core.domain.status import CheckIn, CheckInScheduleRun
-from core.domain.workflows import HeartbeatInput, record_heartbeat
+from core.domain.status import CheckIn, CheckInScheduleRun, DeveloperStatus, StatusSource
+from core.domain.workflows import (
+    CheckinScheduleConfig,
+    DeveloperCheckinDispatch,
+    HeartbeatInput,
+    SyncDispatchInput,
+    SyncScheduleConfig,
+    record_heartbeat,
+)
 from infra.adapters.workflows import dbos as dbos_workflows
 from infra.adapters.workflows import temporal as temporal_workflows
 from infra.adapters.workflows.fake import FakeWorkflowScheduler
 from infra.persistence.in_memory_graph import InMemoryGraphStore
-from infra.workflows import daily_checkin, jira_sync, nudge
+from infra.workflows import checkin_fanout, daily_checkin, jira_sync, nudge, schedule
 from tests.contract.fakes import FakeChatProvider, FakeIssueTracker, FakeLlmProvider
 
 
@@ -59,9 +67,132 @@ def test_heartbeat_logic_is_retry_safe_shape() -> None:
 
 
 async def test_fake_workflow_scheduler_returns_deterministic_result() -> None:
-    result = await FakeWorkflowScheduler(schedule_id="heartbeat-test").ensure_heartbeat_schedule()
+    scheduler = FakeWorkflowScheduler(schedule_id="heartbeat-test")
+
+    result = await scheduler.ensure_heartbeat_schedule()
+    fanout = await scheduler.ensure_checkin_fanout_schedule(
+        CheckinScheduleConfig(schedule_id="checkin-fanout", tenant_id="demo", cron="0 9 * * *")
+    )
+    sync_results = await scheduler.ensure_sync_schedules(
+        [
+            SyncScheduleConfig(
+                schedule_id="jira-sync",
+                tenant_id="demo",
+                connector="issue",
+                scope="project:PO",
+                payload={"project_key": "PO"},
+                cron="0 * * * *",
+            )
+        ]
+    )
+    checkin_workflow_id = await scheduler.dispatch_developer_checkin(
+        DeveloperCheckinDispatch(
+            tenant_id="demo",
+            developer_id="dev-1",
+            checkin_date="2026-01-10",
+        )
+    )
+    sync_workflow_id = await scheduler.dispatch_sync(
+        SyncDispatchInput(
+            tenant_id="demo",
+            connector="vcs",
+            scope="repo:oneai/program-manager",
+            payload={"repo_name": "oneai/program-manager"},
+        )
+    )
+
     assert result.schedule_id == "heartbeat-test"
     assert result.status == "ready"
+    assert fanout.schedule_id == "checkin-fanout"
+    assert fanout.status == "ready"
+    assert [(item.schedule_id, item.status) for item in sync_results] == [("jira-sync", "ready")]
+    assert checkin_workflow_id == "fake-checkin-demo-dev-1-2026-01-10"
+    assert sync_workflow_id == "fake-sync-vcs-repo-oneai-program-manager"
+
+
+async def test_checkin_fanout_dispatches_developers_without_checkin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = InMemoryGraphStore()
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-1",
+            as_of=date(2026, 1, 9),
+            source=StatusSource.CONFIRMED,
+            blockers=(),
+            summary="yesterday",
+        )
+    )
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-2",
+            as_of=date(2026, 1, 9),
+            source=StatusSource.CONFIRMED,
+            blockers=(),
+            summary="yesterday",
+        )
+    )
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-2",
+            correlation_id="corr-dev-2",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=datetime(2026, 1, 10, 9, 5, tzinfo=UTC),
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    registry = _FanoutRegistry(store)
+    monkeypatch.setattr(checkin_fanout, "_service_registry", lambda: registry)
+
+    result = await checkin_fanout.dispatch_checkins_for_tenant_activity(
+        checkin_fanout.CheckinFanoutInput(tenant_id="demo", checkin_date="2026-01-10")
+    )
+
+    assert result.dispatched == 1
+    assert result.workflow_ids == ["dispatch-dev-1-2026-01-10"]
+    assert registry.scheduler.inputs == [
+        DeveloperCheckinDispatch(
+            tenant_id="demo",
+            developer_id="dev-1",
+            checkin_date="2026-01-10",
+        )
+    ]
+    assert registry.closed is True
+
+
+def test_schedule_configs_use_explicit_sync_targets() -> None:
+    settings = Settings(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        jira_sync_projects=("PO", "ENG:program-platform"),
+        github_sync_repos=("oneai/program-manager",),
+        calendar_sync_user_ids=("dev-1",),
+        calendar_sync_window_days=2,
+    )
+
+    checkin_config = schedule.checkin_fanout_config(settings)
+    sync_configs = schedule.sync_schedule_configs(settings)
+
+    assert checkin_config.schedule_id == "pulseops-checkin-fanout"
+    assert [(config.connector, config.scope, config.payload) for config in sync_configs] == [
+        ("issue", "project:PO", {"project_key": "PO"}),
+        (
+            "issue",
+            "project:ENG",
+            {"project_key": "ENG", "container_id": "program-platform"},
+        ),
+        ("vcs", "repo:oneai/program-manager", {"repo_name": "oneai/program-manager"}),
+        ("calendar", "user:dev-1", {"user_id": "dev-1", "window_days": 2}),
+    ]
+
+
+def test_temporal_nudge_child_uses_abandon_parent_close_policy() -> None:
+    source = temporal_workflows.DailyCheckinWorkflow.run.__code__.co_names
+    assert "ParentClosePolicy" in source
 
 
 async def test_temporal_connect_retries_until_ready(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -310,6 +441,31 @@ class _StubRegistry:
 
     def issue_read_sync_service(self) -> _StubIssueSyncService:
         return self._service
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class _FanoutScheduler:
+    def __init__(self) -> None:
+        self.inputs: list[DeveloperCheckinDispatch] = []
+
+    async def dispatch_developer_checkin(self, input: DeveloperCheckinDispatch) -> str:
+        self.inputs.append(input)
+        return f"dispatch-{input.developer_id}-{input.checkin_date}"
+
+
+class _FanoutRegistry:
+    def __init__(self, store: InMemoryGraphStore) -> None:
+        self.closed = False
+        self.scheduler = _FanoutScheduler()
+        self._store = store
+
+    def status_repository(self) -> InMemoryGraphStore:
+        return self._store
+
+    def workflow_scheduler(self) -> _FanoutScheduler:
+        return self.scheduler
 
     async def close(self) -> None:
         self.closed = True
