@@ -10,6 +10,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from cryptography.fernet import Fernet
+from psycopg import AsyncConnection, sql
 
 from config.settings import get_settings
 from core.domain.graph import EntityRef, NodeKind
@@ -24,9 +25,14 @@ from infra.persistence.postgres_graph import (
     PostgresTimeSeriesRepository,
     PostgresVectorStore,
 )
-from infra.persistence.postgres_status import PostgresRollupRepository, PostgresStatusRepository
+from infra.persistence.postgres_status import (
+    PostgresConversationRepository,
+    PostgresRollupRepository,
+    PostgresStatusRepository,
+)
 from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
 from infra.persistence.seed_data import seed_demo_graph
+from tests.contract.contracts import assert_conversation_repository_contract
 
 pytestmark = [
     pytest.mark.integration,
@@ -159,6 +165,51 @@ async def test_postgres_extensions_seed_vector_and_secret(
         assert await secret_store.get(secret_ref) == "xoxb-secret"
     finally:
         await executor.close()
+
+
+async def test_conversation_store_migration_and_repository_contract(
+    compose_stack: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admin_database_url = _service_url(compose_stack, "postgres", 5432, "postgres")
+    database_name = f"pulseops_it_0005_{uuid4().hex[:12]}"
+    database_url = _service_url(compose_stack, "postgres", 5432, database_name)
+    await _create_database(admin_database_url, database_name)
+    try:
+        _run_alembic(monkeypatch, database_url, "upgrade", "head")
+        executor = PsycopgAsyncExecutor(database_url)
+        try:
+            assert await _conversation_turns_table_exists(executor)
+            assert await _conversation_turns_hypertable_exists(executor)
+            await assert_conversation_repository_contract(
+                PostgresConversationRepository(executor)
+            )
+        finally:
+            await executor.close()
+
+        _run_alembic(
+            monkeypatch,
+            database_url,
+            "downgrade",
+            "0004_graph_anchor_hardening",
+        )
+        executor = PsycopgAsyncExecutor(database_url)
+        try:
+            assert not await _conversation_turns_table_exists(executor)
+            assert not await _conversation_turns_hypertable_exists(executor)
+        finally:
+            await executor.close()
+
+        _run_alembic(monkeypatch, database_url, "upgrade", "head")
+        executor = PsycopgAsyncExecutor(database_url)
+        try:
+            assert await _conversation_turns_table_exists(executor)
+            assert await _conversation_turns_hypertable_exists(executor)
+        finally:
+            await executor.close()
+    finally:
+        get_settings.cache_clear()
+        await _drop_database(admin_database_url, database_name)
 
 
 async def test_redis_rate_limiter_uses_container(compose_stack: object) -> None:
@@ -377,6 +428,75 @@ def _service_url(compose: object, service: str, port: int, database: str) -> str
     host = compose.get_service_host(service, port)
     published_port = compose.get_service_port(service, port)
     return f"postgresql://pulseops:pulseops@{host}:{published_port}/{database}"
+
+
+def _run_alembic(
+    monkeypatch: pytest.MonkeyPatch,
+    database_url: str,
+    action: str,
+    revision: str,
+) -> None:
+    monkeypatch.setenv("PULSEOPS_DATABASE_URL", database_url)
+    monkeypatch.setenv("PULSEOPS_SECRET_KEY", SECRET_KEY)
+    monkeypatch.setenv("PULSEOPS_RUNTIME_MODE", "container")
+    get_settings.cache_clear()
+    config = Config(str(ROOT / "backend/infra/persistence/alembic.ini"))
+    if action == "upgrade":
+        command.upgrade(config, revision)
+    elif action == "downgrade":
+        command.downgrade(config, revision)
+    else:
+        raise ValueError(f"unsupported Alembic action: {action}")
+    get_settings.cache_clear()
+
+
+async def _create_database(admin_database_url: str, database_name: str) -> None:
+    connection = await AsyncConnection.connect(admin_database_url, autocommit=True)
+    try:
+        await connection.execute(
+            sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database_name))
+        )
+    finally:
+        await connection.close()
+
+
+async def _drop_database(admin_database_url: str, database_name: str) -> None:
+    connection = await AsyncConnection.connect(admin_database_url, autocommit=True)
+    try:
+        await connection.execute(
+            """
+            SELECT pg_terminate_backend(pid)
+            FROM pg_stat_activity
+            WHERE datname = %s AND pid <> pg_backend_pid()
+            """,
+            (database_name,),
+        )
+        await connection.execute(
+            sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(database_name))
+        )
+    finally:
+        await connection.close()
+
+
+async def _conversation_turns_table_exists(executor: PsycopgAsyncExecutor) -> bool:
+    rows = await executor.fetch(
+        "SELECT to_regclass('public.conversation_turns') AS relation_name"
+    )
+    return rows[0]["relation_name"] is not None
+
+
+async def _conversation_turns_hypertable_exists(executor: PsycopgAsyncExecutor) -> bool:
+    rows = await executor.fetch(
+        """
+        SELECT EXISTS (
+            SELECT 1
+            FROM timescaledb_information.hypertables
+            WHERE hypertable_schema = 'public'
+              AND hypertable_name = 'conversation_turns'
+        ) AS exists
+        """
+    )
+    return bool(rows[0]["exists"])
 
 
 def _redis_url(compose: object) -> str:

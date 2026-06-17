@@ -51,6 +51,17 @@ async def test_status_parser_converts_valid_json_to_signals() -> None:
                 developer_id="dev-1",
                 conversation_id="corr-1",
                 conversation_date=date(2026, 1, 10),
+                role=ConversationRole.SYSTEM,
+                content="Status check-in conversation context.",
+                correlation_id="corr-1",
+                chat_message_id="msg-system",
+                observed_at=datetime(2026, 1, 10, 8, 59, tzinfo=UTC),
+            ),
+            ConversationTurn(
+                tenant_id="demo",
+                developer_id="dev-1",
+                conversation_id="corr-1",
+                conversation_date=date(2026, 1, 10),
                 role=ConversationRole.AGENT,
                 content="Can you share progress and blockers?",
                 correlation_id="corr-1",
@@ -84,6 +95,7 @@ async def test_status_parser_converts_valid_json_to_signals() -> None:
     }
     assert provider.requests[0].system is not None
     assert [(message.role, message.content) for message in provider.requests[0].messages] == [
+        ("system", "Status check-in conversation context."),
         ("assistant", "Can you share progress and blockers?"),
         ("user", "I am finishing the API handoff."),
     ]

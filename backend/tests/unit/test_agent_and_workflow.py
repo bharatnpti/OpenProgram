@@ -362,6 +362,13 @@ async def test_conversation_purge_activity_deletes_older_turns(
         _conversation_turn("old", observed_at=datetime(2026, 1, 9, 23, 59, tzinfo=UTC))
     )
     await store.append_turn(
+        _conversation_turn(
+            "other-tenant-old",
+            tenant_id="other",
+            observed_at=datetime(2026, 1, 9, 23, 59, tzinfo=UTC),
+        )
+    )
+    await store.append_turn(
         _conversation_turn("kept", observed_at=datetime(2026, 1, 10, 0, 0, tzinfo=UTC))
     )
     registry = _ConversationPurgeRegistry(store)
@@ -379,6 +386,9 @@ async def test_conversation_purge_activity_deletes_older_turns(
     assert result.deleted_count == 1
     assert [turn.content for turn in await store.list_recent_turns("demo", "dev-1", limit=10)] == [
         "kept"
+    ]
+    assert [turn.content for turn in await store.list_recent_turns("other", "dev-1", limit=10)] == [
+        "other-tenant-old"
     ]
     assert registry.closed is True
 
@@ -483,6 +493,7 @@ async def test_nudge_activities_send_once_then_close_unknown(
         chat_provider=chat,
         llm_provider=FakeLlmProvider(),
         status_repository=store,
+        conversation_repository=store,
         model="test-model",
     )
     registry = _NudgeRegistry(store, collector)
@@ -678,9 +689,14 @@ class _NudgeRegistry:
         self.closed = True
 
 
-def _conversation_turn(content: str, *, observed_at: datetime) -> ConversationTurn:
+def _conversation_turn(
+    content: str,
+    *,
+    observed_at: datetime,
+    tenant_id: str = "demo",
+) -> ConversationTurn:
     return ConversationTurn(
-        tenant_id="demo",
+        tenant_id=tenant_id,
         developer_id="dev-1",
         conversation_id="dev-1-2026-01-10",
         conversation_date=observed_at.date(),

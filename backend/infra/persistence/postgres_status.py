@@ -537,7 +537,12 @@ class PostgresConversationRepository:
                 WHERE tenant_id = %s
                   AND developer_id = %s
                   AND conversation_date = %s
-                ORDER BY observed_at ASC, id ASC
+                ORDER BY observed_at ASC,
+                         conversation_id ASC,
+                         COALESCE(correlation_id, '') ASC,
+                         COALESCE(chat_message_id, '') ASC,
+                         role ASC,
+                         content ASC
                 """,
                 (tenant_id, developer_id, on),
             )
@@ -555,32 +560,48 @@ class PostgresConversationRepository:
         with _tracer.start_as_current_span("postgres.conversation.list_recent_turns"):
             rows = await self._executor.fetch(
                 """
+                WITH latest AS (
+                    SELECT tenant_id, developer_id, conversation_id, conversation_date,
+                           role, content, correlation_id, chat_message_id, observed_at
+                    FROM conversation_turns
+                    WHERE tenant_id = %s
+                      AND developer_id = %s
+                      AND (%s::timestamptz IS NULL OR observed_at >= %s)
+                    ORDER BY observed_at DESC,
+                             conversation_id DESC,
+                             COALESCE(correlation_id, '') DESC,
+                             COALESCE(chat_message_id, '') DESC,
+                             role DESC,
+                             content DESC
+                    LIMIT %s
+                )
                 SELECT tenant_id, developer_id, conversation_id, conversation_date,
                        role, content, correlation_id, chat_message_id, observed_at
-                FROM conversation_turns
-                WHERE tenant_id = %s
-                  AND developer_id = %s
-                  AND (%s::timestamptz IS NULL OR observed_at >= %s)
-                ORDER BY observed_at DESC, id DESC
-                LIMIT %s
+                FROM latest
+                ORDER BY observed_at ASC,
+                         conversation_id ASC,
+                         COALESCE(correlation_id, '') ASC,
+                         COALESCE(chat_message_id, '') ASC,
+                         role ASC,
+                         content ASC
                 """,
                 (tenant_id, developer_id, since, since, limit),
             )
-        return [_conversation_turn_from_row(row) for row in reversed(rows)]
+        return [_conversation_turn_from_row(row) for row in rows]
 
-    async def purge_turns_older_than(self, cutoff: datetime) -> int:
+    async def purge_turns_older_than(self, tenant_id: str, cutoff: datetime) -> int:
         with _tracer.start_as_current_span("postgres.conversation.purge_turns_older_than"):
             rows = await self._executor.fetch(
                 """
                 WITH deleted AS (
                     DELETE FROM conversation_turns
-                    WHERE observed_at < %s
+                    WHERE tenant_id = %s AND observed_at < %s
                     RETURNING 1
                 )
                 SELECT count(*) AS deleted_count
                 FROM deleted
                 """,
-                (cutoff,),
+                (tenant_id, cutoff),
             )
         return _int_field(rows[0]["deleted_count"], "deleted_count") if rows else 0
 

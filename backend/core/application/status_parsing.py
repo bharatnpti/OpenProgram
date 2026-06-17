@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Mapping
 
-from core.domain.conversation import ConversationRole, ConversationTurn
-from core.domain.llm import LlmMessage, LlmMessageRole, LlmRequest
+from core.application.conversation_history import llm_messages_from_turns
+from core.domain.conversation import ConversationTurn
+from core.domain.llm import LlmRequest
 from core.domain.status import CheckInSignals, Mood
 from core.ports.llm import LlmProvider
 
@@ -35,7 +36,7 @@ class StatusParser:
                 model=self._model,
                 correlation_id=correlation_id,
                 system=PARSE_REPLY_SYSTEM_PROMPT,
-                messages=_llm_messages_from_turns(conversation_turns),
+                messages=llm_messages_from_turns(conversation_turns),
                 metadata={
                     "service": "status_parser",
                     "purpose": "parse_checkin_signals",
@@ -58,20 +59,6 @@ def _parser_prompt(raw_reply: str) -> str:
         "mood one of positive, neutral, negative, or null.\n\n"
         f"Reply:\n{raw_reply}"
     )
-
-
-def _llm_messages_from_turns(turns: Iterable[ConversationTurn]) -> tuple[LlmMessage, ...]:
-    return tuple(
-        LlmMessage(role=_llm_role_for_turn(turn.role), content=turn.content) for turn in turns
-    )
-
-
-def _llm_role_for_turn(role: ConversationRole) -> LlmMessageRole:
-    if role is ConversationRole.AGENT:
-        return "assistant"
-    if role is ConversationRole.USER:
-        return "user"
-    return "system"
 
 
 def _signals_from_json(value: object, *, fallback_progress_note: str) -> CheckInSignals:

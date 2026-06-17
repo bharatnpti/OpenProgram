@@ -5,6 +5,7 @@ from __future__ import annotations
 from alembic import op
 
 revision = "0005_conversation_store"
+# Alembic links to the revision id, not the longer migration filename.
 down_revision = "0004_graph_anchor_hardening"
 branch_labels = None
 depends_on = None

@@ -375,8 +375,12 @@ class FakeConversationRepository:
         )
         return sorted(matching[:limit], key=_conversation_sort_key)
 
-    async def purge_turns_older_than(self, cutoff: datetime) -> int:
-        retained = [turn for turn in self.turns if turn.observed_at >= cutoff]
+    async def purge_turns_older_than(self, tenant_id: str, cutoff: datetime) -> int:
+        retained = [
+            turn
+            for turn in self.turns
+            if turn.tenant_id != tenant_id or turn.observed_at >= cutoff
+        ]
         deleted_count = len(self.turns) - len(retained)
         self.turns = retained
         return deleted_count
