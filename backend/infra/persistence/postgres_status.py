@@ -634,6 +634,26 @@ class PostgresConversationRepository:
             )
         return [_conversation_turn_from_row(row) for row in rows]
 
+    async def user_turn_exists(
+        self, tenant_id: str, developer_id: str, chat_message_id: str
+    ) -> bool:
+        with _tracer.start_as_current_span("postgres.conversation.user_turn_exists"):
+            rows = await self._executor.fetch(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM conversation_turns
+                    WHERE tenant_id = %s
+                      AND developer_id = %s
+                      AND role = 'user'
+                      AND chat_message_id = %s
+                    LIMIT 1
+                ) AS user_turn_exists
+                """,
+                (tenant_id, developer_id, chat_message_id),
+            )
+        return bool(rows and rows[0]["user_turn_exists"])
+
     async def purge_turns_older_than(self, tenant_id: str, cutoff: datetime) -> int:
         with _tracer.start_as_current_span("postgres.conversation.purge_turns_older_than"):
             rows = await self._executor.fetch(

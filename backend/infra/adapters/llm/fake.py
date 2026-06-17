@@ -14,12 +14,20 @@ class FakeLlmProvider:
         self.requests.append(request)
         if self.responses:
             return self.responses.pop(0)
-        text = (
-            '{"progress_note":"Status update received",'
-            '"blockers":[],"eta_change_days":null,"mood":"neutral"}'
-            if request.metadata.get("purpose") == "parse_checkin_signals"
-            else f"summary: {request.prompt[:24]}"
-        )
+        purpose = request.metadata.get("purpose")
+        if purpose == "parse_checkin_signals":
+            text = (
+                '{"progress_note":"Status update received",'
+                '"blockers":[],"eta_change_days":null,"mood":"neutral"}'
+            )
+        elif purpose == "evaluate_checkin_clarification":
+            text = (
+                '{"sufficient":true,"question":null,'
+                '"signals":{"progress_note":"Status update received",'
+                '"blockers":[],"eta_change_days":null,"mood":"neutral"}}'
+            )
+        else:
+            text = f"summary: {request.prompt[:24]}"
         return LlmResponse(
             tenant_id=request.tenant_id,
             text=text,

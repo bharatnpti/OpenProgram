@@ -4,6 +4,8 @@ import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
+import structlog
+
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.conversation_history import llm_messages_from_turns
 from core.domain.conversation import ConversationTurn
@@ -21,6 +23,7 @@ CLARIFICATION_EVALUATOR_SYSTEM_PROMPT = (
     "information to finalize the check-in. Use prior conversation turns as context. "
     "If more information is needed, draft one concise follow-up question. Return only valid JSON."
 )
+_logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -67,7 +70,16 @@ class StatusParser:
         response = await self._complete(request, tools)
         try:
             parsed = json.loads(response.text)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            _logger.warning(
+                "status_parser_json_decode_failed",
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                correlation_id=correlation_id,
+                purpose="parse_checkin_signals",
+                trace_id=response.trace_id,
+                error=str(exc),
+            )
             return CheckInSignals(progress_note=raw_reply)
         return _signals_from_json(parsed, fallback_progress_note=raw_reply)
 
@@ -122,7 +134,16 @@ class ClarificationEvaluator:
         )
         try:
             parsed = json.loads(response.text)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            _logger.warning(
+                "clarification_evaluator_json_decode_failed",
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                correlation_id=correlation_id,
+                purpose="evaluate_checkin_clarification",
+                trace_id=response.trace_id,
+                error=str(exc),
+            )
             return ClarificationDecision(sufficient=True)
         return _clarification_decision_from_json(parsed, fallback_progress_note=raw_reply)
 

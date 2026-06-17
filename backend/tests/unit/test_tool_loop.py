@@ -4,6 +4,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
+
+from core.application.agents import tool_loop as tool_loop_module
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.tools.conversation_history import ConversationHistoryTool
 from core.domain.conversation import ConversationRole, ConversationTurn
@@ -115,7 +118,9 @@ async def test_tool_calling_agent_executes_tool_call_then_returns_final_response
     assert provider.requests[1].tool_results[0].content == "echo: history"
 
 
-async def test_tool_calling_agent_stops_at_iteration_cap() -> None:
+async def test_tool_calling_agent_stops_at_iteration_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     provider = FakeLlmProvider(
         responses=[
             _response(
@@ -130,9 +135,12 @@ async def test_tool_calling_agent_stops_at_iteration_cap() -> None:
                 ),
                 finish_reason="tool_calls",
             ),
+            _response(text="final answer at cap", finish_reason="stop"),
         ]
     )
     agent = ToolCallingAgent(llm_provider=provider, max_tool_iterations=1)
+    logger = CapturingLogger()
+    monkeypatch.setattr(tool_loop_module, "_logger", logger)
 
     response = await agent.run(
         LlmRequest(
@@ -144,10 +152,22 @@ async def test_tool_calling_agent_stops_at_iteration_cap() -> None:
         tools=(EchoTool(),),
     )
 
-    assert response.tool_calls == (
-        LlmToolCall(id="call-2", name="echo_tool", arguments={"value": "two"}),
+    assert response.text == "final answer at cap"
+    assert response.tool_calls == ()
+    assert len(provider.requests) == 3
+    assert provider.requests[2].tools == ()
+    assert provider.requests[2].tool_calls == (
+        LlmToolCall(id="call-1", name="echo_tool", arguments={"value": "one"}),
     )
-    assert len(provider.requests) == 2
+    assert provider.requests[2].tool_results[0].content == "echo: one"
+    assert logger.events == [
+        {
+            "event": "tool_loop_cap_reached",
+            "correlation_id": "corr-1",
+            "iteration": 1,
+            "tool_call_count": 1,
+        }
+    ]
 
 
 @dataclass
@@ -162,3 +182,11 @@ class EchoTool:
     async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
         self.calls.append(dict(arguments))
         return f"echo: {arguments.get('value', '')}"
+
+
+@dataclass
+class CapturingLogger:
+    events: list[dict[str, object]] = field(default_factory=list)
+
+    def warning(self, event: str, **kwargs: object) -> None:
+        self.events.append({"event": event, **kwargs})

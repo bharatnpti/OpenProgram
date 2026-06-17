@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 
+import structlog
 from opentelemetry import trace
 
 from core.domain.llm import LlmRequest, LlmResponse, LlmTool, LlmToolCall, LlmToolResult
@@ -10,6 +11,7 @@ from core.ports.llm import LlmProvider
 from core.ports.tools import AgentTool
 
 _tracer = trace.get_tracer("pulseops.application.agents.tool_loop")
+_logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -34,11 +36,20 @@ class ToolCallingAgent:
                 span.set_attribute("tool_loop.tool_count", len(tool_registry))
                 response = await self.llm_provider.complete(current_request)
                 span.set_attribute("tool_loop.tool_call_count", len(response.tool_calls))
+                cap_reached = bool(response.tool_calls) and iteration >= max_iterations
+                if cap_reached:
+                    span.set_attribute("tool_loop.cap_reached", True)
 
             if not response.tool_calls:
                 return response
             if iteration >= max_iterations:
-                return response
+                _logger.warning(
+                    "tool_loop_cap_reached",
+                    correlation_id=request.correlation_id,
+                    iteration=iteration,
+                    tool_call_count=len(response.tool_calls),
+                )
+                return await self.llm_provider.complete(replace(current_request, tools=()))
 
             tool_results = await _run_tool_calls(response.tool_calls, tool_registry)
             previous_tool_calls = (*previous_tool_calls, *response.tool_calls)
