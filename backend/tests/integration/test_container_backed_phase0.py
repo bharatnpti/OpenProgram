@@ -246,7 +246,14 @@ async def test_dbos_worker_executes_read_sync_workflow(
 
 
 async def test_dbos_scheduler_applies_heartbeat_schedule(compose_stack: object) -> None:
-    from infra.adapters.workflows.dbos import DbosWorkflowScheduler, destroy_dbos_runtime
+    from dbos import DBOS
+
+    from infra.adapters.workflows.dbos import (
+        DbosRuntimeConfig,
+        DbosWorkflowScheduler,
+        configure_dbos_runtime,
+        destroy_dbos_runtime,
+    )
 
     database_url = _service_url(compose_stack, "postgres", 5432, "pulseops")
     schedule_id = f"dbos-heartbeat-schedule-it-{uuid4()}"
@@ -259,11 +266,23 @@ async def test_dbos_scheduler_applies_heartbeat_schedule(compose_stack: object) 
     )
     try:
         result = await scheduler.ensure_heartbeat_schedule()
+        configure_dbos_runtime(
+            DbosRuntimeConfig(
+                app_name="pulseops-it",
+                system_database_url=database_url,
+            )
+        )
+        DBOS.launch()
+        handle = DBOS.trigger_schedule(schedule_id)
+        heartbeat = await asyncio.to_thread(handle.get_result)
     finally:
         destroy_dbos_runtime()
 
     assert result.schedule_id == schedule_id
     assert result.status == "configured"
+    assert heartbeat.status == "ok"
+    assert heartbeat.tenant_id == "demo"
+    assert heartbeat.heartbeat_id.startswith(f"{schedule_id}-")
 
 
 async def test_temporal_worker_executes_heartbeat(compose_stack: object) -> None:

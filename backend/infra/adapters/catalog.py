@@ -165,19 +165,19 @@ def build_llm_provider(settings: Settings) -> LlmProvider:
 
 def build_workflow_scheduler(settings: Settings) -> WorkflowScheduler:
     if settings.workflow_provider == "fake":
-        return FakeWorkflowScheduler(schedule_id=settings.temporal_schedule_id)
+        return FakeWorkflowScheduler(schedule_id=settings.resolved_heartbeat_schedule_id)
     if settings.workflow_provider == "dbos":
         return DbosWorkflowScheduler(
             app_name=settings.dbos_app_name,
             system_database_url=settings.resolved_dbos_system_database_url,
-            schedule_id=settings.temporal_schedule_id,
+            schedule_id=settings.resolved_heartbeat_schedule_id,
             tenant_id=settings.tenant_id,
             heartbeat_cron=settings.dbos_heartbeat_cron,
         )
     return TemporalWorkflowScheduler(
         target=settings.temporal_target,
         task_queue=settings.temporal_task_queue,
-        schedule_id=settings.temporal_schedule_id,
+        schedule_id=settings.resolved_heartbeat_schedule_id,
         tenant_id=settings.tenant_id,
         interval_seconds=settings.temporal_heartbeat_interval_seconds,
     )
@@ -202,7 +202,8 @@ def build_workflow_readiness_probe(settings: Settings) -> ReadinessProbe:
         return FakeWorkflowReadinessProbe()
     if settings.workflow_provider == "dbos":
         return DbosWorkflowReadinessProbe(
-            system_database_url=settings.resolved_dbos_system_database_url
+            app_name=settings.dbos_app_name,
+            system_database_url=settings.resolved_dbos_system_database_url,
         )
     return TemporalWorkflowReadinessProbe(target=settings.temporal_target)
 
