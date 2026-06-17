@@ -346,7 +346,7 @@ def _next_cursor(cursor: SyncCursor, timestamps: Iterable[datetime]) -> SyncCurs
     latest = _timestamp(cursor.updated_at) if cursor.updated_at is not None else None
     for timestamp in timestamps:
         normalized = _timestamp(timestamp)
-        if latest is None or normalized > _timestamp(latest):
+        if latest is None or normalized > latest:
             latest = normalized
     return SyncCursor(
         value=latest.isoformat() if latest is not None else cursor.value,

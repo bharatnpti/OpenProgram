@@ -3,13 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from core.domain.errors import ProviderUnavailable
 from core.domain.graph import EntityRef
 from core.domain.integrations import (
     BuildResult,
     CalendarEvent,
     Commit,
     Issue,
-    IssueState,
     Project,
     PullRequest,
     Repo,
@@ -82,28 +82,10 @@ class FakeIssueTracker:
         return [issue for issue in self.issues.values() if issue.assignee == assignee]
 
     async def transition(self, tenant_id: str, key: str, to_state: str) -> None:
-        issue = self.issues[key]
-        self.issues[key] = Issue(
-            tenant_id=issue.tenant_id,
-            key=issue.key,
-            title=issue.title,
-            state=IssueState(to_state),
-            assignee=issue.assignee,
-            metadata=issue.metadata,
-            updated_at=issue.updated_at,
-        )
+        raise ProviderUnavailable("fake issue tracker is read-only")
 
     async def add_comment(self, tenant_id: str, key: str, body: str) -> None:
-        issue = self.issues[key]
-        self.issues[key] = Issue(
-            tenant_id=issue.tenant_id,
-            key=issue.key,
-            title=issue.title,
-            state=issue.state,
-            assignee=issue.assignee,
-            metadata={**issue.metadata, "last_comment": body},
-            updated_at=issue.updated_at,
-        )
+        raise ProviderUnavailable("fake issue tracker is read-only")
 
 
 @dataclass

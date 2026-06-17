@@ -1,22 +1,37 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, cast
+from uuid import uuid4
 
 import psycopg
 from dbos import DBOS, DBOSConfig, ScheduleInput, SetWorkflowID
 
 from core.domain.workflows import (
+    CheckinFanoutInput,
+    CheckinFanoutResult,
+    CheckinScheduleConfig,
+    DeveloperCheckinDispatch,
     HeartbeatInput,
     HeartbeatResult,
     ScheduleBootstrapResult,
+    SyncDispatchInput,
+    SyncScheduleConfig,
     record_heartbeat,
 )
-from infra.workflows import calendar_sync, daily_checkin, git_sync, jira_sync, nudge
+from infra.workflows import calendar_sync, checkin_fanout, daily_checkin, git_sync, jira_sync, nudge
 from infra.workflows.calendar_sync import CalendarSyncInput, CalendarSyncWorkflowResult
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
+from infra.workflows.dispatch import (
+    daily_checkin_input,
+    safe_workflow_id,
+    sync_dispatch_for_schedule,
+    sync_workflow_input,
+    sync_workflow_name,
+)
 from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import NudgeInput, NudgeResult
@@ -55,6 +70,29 @@ async def dbos_scheduled_heartbeat_workflow(
     )
 
 
+@DBOS.step(name="pulseops_checkin_fanout", retries_allowed=True)
+async def dbos_checkin_fanout_step(payload: CheckinFanoutInput) -> CheckinFanoutResult:
+    return await checkin_fanout.dispatch_checkins_for_tenant_activity(payload)
+
+
+@DBOS.workflow(name="pulseops_checkin_fanout")
+async def dbos_checkin_fanout_workflow(payload: CheckinFanoutInput) -> CheckinFanoutResult:
+    return await dbos_checkin_fanout_step(payload)
+
+
+@DBOS.workflow(name="pulseops_scheduled_checkin_fanout")
+async def dbos_scheduled_checkin_fanout_workflow(
+    scheduled_time: datetime,
+    context: dict[str, str],
+) -> CheckinFanoutResult:
+    return await dbos_checkin_fanout_step(
+        CheckinFanoutInput(
+            tenant_id=context["tenant_id"],
+            checkin_date=scheduled_time.date().isoformat(),
+        )
+    )
+
+
 @DBOS.step(name="pulseops_sync_jira_project", retries_allowed=True)
 async def dbos_sync_jira_project_step(payload: JiraSyncInput) -> ReadSyncWorkflowResult:
     return await jira_sync.sync_jira_project_activity(payload)
@@ -87,6 +125,16 @@ async def dbos_calendar_sync_workflow(
     payload: CalendarSyncInput,
 ) -> CalendarSyncWorkflowResult:
     return await dbos_sync_calendar_user_step(payload)
+
+
+@DBOS.workflow(name="pulseops_scheduled_sync")
+async def dbos_scheduled_sync_workflow(
+    scheduled_time: datetime,
+    context: dict[str, Any],
+) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult:
+    return await _run_sync_dispatch(
+        sync_dispatch_for_schedule(_sync_schedule_config_from_context(context), scheduled_time)
+    )
 
 
 @DBOS.step(name="pulseops_prepare_daily_checkin")
@@ -155,6 +203,19 @@ async def dbos_nudge_workflow(payload: NudgeInput) -> NudgeResult:
     return close_result
 
 
+async def _run_sync_dispatch(
+    input: SyncDispatchInput,
+) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult:
+    workflow_input = sync_workflow_input(input)
+    if isinstance(workflow_input, JiraSyncInput):
+        return await dbos_sync_jira_project_step(workflow_input)
+    if isinstance(workflow_input, GitSyncInput):
+        return await dbos_sync_git_repo_step(workflow_input)
+    if isinstance(workflow_input, CalendarSyncInput):
+        return await dbos_sync_calendar_user_step(workflow_input)
+    raise ValueError(f"unsupported sync connector: {input.connector}")
+
+
 @dataclass(frozen=True)
 class DbosWorkflowScheduler:
     app_name: str
@@ -164,13 +225,12 @@ class DbosWorkflowScheduler:
     heartbeat_cron: str
 
     async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
-        configure_dbos_runtime(
+        started_runtime = _ensure_dbos_runtime(
             DbosRuntimeConfig(
                 app_name=self.app_name,
                 system_database_url=self.system_database_url,
             )
         )
-        DBOS.launch()
         try:
             DBOS.apply_schedules(
                 [
@@ -182,8 +242,96 @@ class DbosWorkflowScheduler:
                 ]
             )
         finally:
-            destroy_dbos_runtime()
+            if started_runtime:
+                destroy_dbos_runtime()
         return ScheduleBootstrapResult(schedule_id=self.schedule_id, status="configured")
+
+    async def ensure_checkin_fanout_schedule(
+        self, config: CheckinScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        started_runtime = _ensure_dbos_runtime(
+            DbosRuntimeConfig(
+                app_name=self.app_name,
+                system_database_url=self.system_database_url,
+            )
+        )
+        try:
+            DBOS.apply_schedules([_checkin_fanout_schedule_input(config)])
+        finally:
+            if started_runtime:
+                destroy_dbos_runtime()
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="configured")
+
+    async def ensure_sync_schedules(
+        self, configs: Sequence[SyncScheduleConfig]
+    ) -> list[ScheduleBootstrapResult]:
+        if not configs:
+            return []
+        started_runtime = _ensure_dbos_runtime(
+            DbosRuntimeConfig(
+                app_name=self.app_name,
+                system_database_url=self.system_database_url,
+            )
+        )
+        try:
+            DBOS.apply_schedules([_sync_schedule_input(config) for config in configs])
+        finally:
+            if started_runtime:
+                destroy_dbos_runtime()
+        return [
+            ScheduleBootstrapResult(schedule_id=config.schedule_id, status="configured")
+            for config in configs
+        ]
+
+    async def dispatch_developer_checkin(self, input: DeveloperCheckinDispatch) -> str:
+        workflow_id = safe_workflow_id(
+            "checkin-"
+            f"{input.tenant_id}-{input.developer_id}-"
+            f"{input.checkin_date or datetime.now(tz=UTC).date().isoformat()}-{uuid4()}"
+        )
+        started_runtime = _ensure_dbos_runtime(
+            DbosRuntimeConfig(
+                app_name=self.app_name,
+                system_database_url=self.system_database_url,
+            )
+        )
+        try:
+            with SetWorkflowID(workflow_id):
+                await DBOS.start_workflow_async(
+                    dbos_daily_checkin_workflow,
+                    daily_checkin_input(input),
+                )
+        finally:
+            if started_runtime:
+                destroy_dbos_runtime()
+        return workflow_id
+
+    async def dispatch_sync(self, input: SyncDispatchInput) -> str:
+        workflow_input = sync_workflow_input(input)
+        workflow_name = sync_workflow_name(input)
+        workflow_id = safe_workflow_id(
+            f"sync-{workflow_name}-{input.tenant_id}-{input.scope}-{uuid4()}"
+        )
+        started_runtime = _ensure_dbos_runtime(
+            DbosRuntimeConfig(
+                app_name=self.app_name,
+                system_database_url=self.system_database_url,
+            )
+        )
+        try:
+            with SetWorkflowID(workflow_id):
+                if isinstance(workflow_input, JiraSyncInput):
+                    await DBOS.start_workflow_async(dbos_jira_sync_workflow, workflow_input)
+                elif isinstance(workflow_input, GitSyncInput):
+                    await DBOS.start_workflow_async(dbos_git_sync_workflow, workflow_input)
+                elif isinstance(workflow_input, CalendarSyncInput):
+                    await DBOS.start_workflow_async(dbos_calendar_sync_workflow, workflow_input)
+                else:
+                    raise ValueError(f"unsupported sync connector: {input.connector}")
+        finally:
+            if started_runtime:
+                destroy_dbos_runtime()
+        return workflow_id
 
 
 @dataclass(frozen=True)
@@ -247,6 +395,14 @@ def configure_dbos_runtime(config: DbosRuntimeConfig) -> None:
     _configured_runtime = config
 
 
+def _ensure_dbos_runtime(config: DbosRuntimeConfig) -> bool:
+    already_configured = _configured_runtime == config
+    configure_dbos_runtime(config)
+    if not already_configured:
+        DBOS.launch()
+    return not already_configured
+
+
 def destroy_dbos_runtime() -> None:
     global _configured_runtime
     DBOS.destroy(destroy_registry=False)
@@ -266,3 +422,47 @@ def _heartbeat_schedule_input(
         "context": {"schedule_id": schedule_id, "tenant_id": tenant_id},
         "automatic_backfill": False,
     }
+
+
+def _checkin_fanout_schedule_input(config: CheckinScheduleConfig) -> ScheduleInput:
+    return {
+        "schedule_name": config.schedule_id,
+        "workflow_fn": cast(Any, dbos_scheduled_checkin_fanout_workflow),
+        "schedule": config.cron,
+        "context": {
+            "schedule_id": config.schedule_id,
+            "tenant_id": config.tenant_id,
+        },
+        "automatic_backfill": False,
+    }
+
+
+def _sync_schedule_input(config: SyncScheduleConfig) -> ScheduleInput:
+    return {
+        "schedule_name": config.schedule_id,
+        "workflow_fn": cast(Any, dbos_scheduled_sync_workflow),
+        "schedule": config.cron,
+        "context": {
+            "schedule_id": config.schedule_id,
+            "tenant_id": config.tenant_id,
+            "connector": config.connector,
+            "scope": config.scope,
+            "payload": dict(config.payload),
+            "cron": config.cron,
+        },
+        "automatic_backfill": False,
+    }
+
+
+def _sync_schedule_config_from_context(context: dict[str, Any]) -> SyncScheduleConfig:
+    payload = context.get("payload", {})
+    if not isinstance(payload, dict):
+        raise ValueError("sync schedule context payload must be an object")
+    return SyncScheduleConfig(
+        schedule_id=str(context["schedule_id"]),
+        tenant_id=str(context["tenant_id"]),
+        connector=str(context["connector"]),
+        scope=str(context["scope"]),
+        payload=cast(dict[str, str | int | float | bool | None], payload),
+        cron=str(context["cron"]),
+    )

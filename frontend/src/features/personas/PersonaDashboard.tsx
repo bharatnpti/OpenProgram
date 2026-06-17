@@ -16,37 +16,57 @@ import { Button } from "../../components/ui/button";
 import { HeatmapChart } from "./HeatmapChart";
 import { HierarchyFlow } from "./HierarchyFlow";
 
-const demoAsOf = "2026-06-15";
+const todayIso = () => new Date().toISOString().slice(0, 10);
 
-export function PersonaDashboard() {
-  const [asOf, setAsOf] = useState(demoAsOf);
+type DashboardRole = "dev" | "sm" | "po" | "exec";
+
+export function PersonaDashboard({ role }: { role: DashboardRole }) {
+  const [asOf, setAsOf] = useState(todayIso);
+  const showFocus = role === "dev";
+  const showTeam = role === "sm";
+  const showProgress = role === "po";
+  const showExec = role === "exec";
   const health = useQuery({ queryKey: ["health"], queryFn: apiClient.health });
   const focus = useQuery({
     queryKey: ["persona", "focus", asOf],
     queryFn: () => apiClient.focus(asOf),
+    enabled: showFocus,
   });
   const blockers = useQuery({
     queryKey: ["persona", "blockers", "pod-runtime", asOf],
     queryFn: () => apiClient.podBlockers("pod-runtime", asOf),
+    enabled: showTeam,
   });
   const checkins = useQuery({
     queryKey: ["persona", "checkins", "pod-runtime", asOf],
     queryFn: () => apiClient.podCheckins("pod-runtime", asOf),
+    enabled: showTeam,
   });
   const progress = useQuery({
     queryKey: ["persona", "progress", "project-foundations", asOf],
     queryFn: () => apiClient.projectProgress("project-foundations", asOf),
+    enabled: showProgress,
   });
   const tree = useQuery({
     queryKey: ["persona", "tree", "program-platform", asOf],
     queryFn: () => apiClient.personaProgramTree("program-platform", asOf),
+    enabled: showExec,
+    staleTime: 5 * 60_000,
   });
   const heatmap = useQuery({
-    queryKey: ["persona", "heatmap", asOf],
-    queryFn: () => apiClient.portfolioHeatmap(asOf),
+    queryKey: ["persona", "heatmap", "program-platform", asOf],
+    queryFn: () => apiClient.portfolioHeatmap(asOf, "program-platform"),
+    enabled: showExec,
+    staleTime: 5 * 60_000,
   });
 
-  const queries = [health, focus, blockers, checkins, progress, tree, heatmap];
+  const queries = [
+    health,
+    ...(showFocus ? [focus] : []),
+    ...(showTeam ? [blockers, checkins] : []),
+    ...(showProgress ? [progress] : []),
+    ...(showExec ? [tree, heatmap] : []),
+  ];
   const isRefreshing = queries.some((query) => query.isFetching);
 
   return (
@@ -86,178 +106,222 @@ export function PersonaDashboard() {
         </header>
 
         <section className="grid gap-3 md:grid-cols-4">
-          <Metric
-            icon={<UserRound className="h-4 w-4" />}
-            label="Dev Focus"
-            value={focus.data?.focus.length.toString() ?? "-"}
-            detail={focus.data?.status_source ?? statusForQuery(focus)}
-          />
-          <Metric
-            icon={<AlertTriangle className="h-4 w-4" />}
-            label="Pod Blockers"
-            value={blockers.data?.blockers.length.toString() ?? "-"}
-            detail={statusForQuery(blockers)}
-          />
-          <Metric
-            icon={<CalendarCheck className="h-4 w-4" />}
-            label="Check-ins"
-            value={
-              checkins.data ? `${checkins.data.confirmed}/${checkins.data.developers.length}` : "-"
-            }
-            detail={statusForQuery(checkins)}
-          />
-          <Metric
-            icon={<GitPullRequest className="h-4 w-4" />}
-            label="Project Progress"
-            value={progress.data ? `${Math.round(progress.data.percent_complete)}%` : "-"}
-            detail={progress.data?.source ?? statusForQuery(progress)}
-          />
+          {showFocus && (
+            <Metric
+              icon={<UserRound className="h-4 w-4" />}
+              label="Dev Focus"
+              value={focus.data?.focus.length.toString() ?? "-"}
+              detail={focus.data?.status_source ?? statusForQuery(focus)}
+            />
+          )}
+          {showTeam && (
+            <Metric
+              icon={<AlertTriangle className="h-4 w-4" />}
+              label="Pod Blockers"
+              value={blockers.data?.blockers.length.toString() ?? "-"}
+              detail={statusForQuery(blockers)}
+            />
+          )}
+          {showTeam && (
+            <Metric
+              icon={<CalendarCheck className="h-4 w-4" />}
+              label="Check-ins"
+              value={
+                checkins.data
+                  ? `${checkins.data.confirmed}/${checkins.data.developers.length}`
+                  : "-"
+              }
+              detail={statusForQuery(checkins)}
+            />
+          )}
+          {showProgress && (
+            <Metric
+              icon={<GitPullRequest className="h-4 w-4" />}
+              label="Project Progress"
+              value={progress.data ? `${Math.round(progress.data.percent_complete)}%` : "-"}
+              detail={progress.data?.source ?? statusForQuery(progress)}
+            />
+          )}
+          {showExec && (
+            <Metric
+              icon={<Network className="h-4 w-4" />}
+              label="Program Tree"
+              value={tree.data?.nodes.length.toString() ?? "-"}
+              detail={statusForQuery(tree)}
+            />
+          )}
+          {showExec && (
+            <Metric
+              icon={<AlertTriangle className="h-4 w-4" />}
+              label="Heatmap"
+              value={heatmap.data?.cells.length.toString() ?? "-"}
+              detail={statusForQuery(heatmap)}
+            />
+          )}
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
-          <Panel title="Dev Focus" action={<SourceBadge source={focus.data?.status_source} />}>
-            <LoadState query={focus}>
-              {focus.data && (
-                <div className="space-y-4">
-                  <div>
-                    <div className="text-sm font-semibold">{focus.data.developer_name}</div>
-                    <p className="mt-1 text-sm text-muted-foreground">{focus.data.summary}</p>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <ListBlock
-                      title="Focus"
-                      empty="No active focus items"
-                      items={focus.data.focus.map((item) => ({
-                        id: `${item.kind}-${item.label}`,
-                        primary: item.label,
-                        secondary: `${item.kind} / ${item.source}`,
-                        badge: item.deadline ?? item.source_ref.kind,
-                        tone: item.kind === "blocker" ? "danger" : "warning",
-                      }))}
-                    />
-                    <ListBlock
-                      title="Tasks"
-                      empty="No assigned tasks"
-                      items={focus.data.tasks.map((task) => ({
-                        id: task.id,
-                        primary: task.name,
-                        secondary: sourceLine(task.source, task.confidence),
-                        badge: task.rag,
-                        tone: toneForRag(task.rag),
-                      }))}
-                    />
-                  </div>
-                </div>
-              )}
-            </LoadState>
-          </Panel>
-
-          <Panel title="SM Check-ins" action={<Badge tone="info">pod-runtime</Badge>}>
-            <LoadState query={checkins}>
-              {checkins.data && (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-2 text-center text-sm">
-                    <Count label="Confirmed" value={checkins.data.confirmed} tone="success" />
-                    <Count label="Stale" value={checkins.data.stale} tone="warning" />
-                    <Count label="Missing" value={checkins.data.missing} tone="danger" />
-                  </div>
-                  <div className="divide-y divide-border">
-                    {checkins.data.developers.map((developer) => (
-                      <Row
-                        key={developer.developer_id}
-                        primary={developer.developer_name}
-                        secondary={developer.summary}
-                        badge={developer.state}
-                        tone={toneForState(developer.state)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </LoadState>
-          </Panel>
-        </section>
-
-        <section className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
-          <Panel title="SM Blocker Board" action={<Badge tone="info">source + age</Badge>}>
-            <LoadState query={blockers}>
-              {blockers.data && (
-                <div className="divide-y divide-border">
-                  {blockers.data.blockers.length === 0 && (
-                    <EmptyState>No blockers reported for this pod.</EmptyState>
+        {(showFocus || showTeam) && (
+          <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
+            {showFocus && (
+              <Panel title="Dev Focus" action={<SourceBadge source={focus.data?.status_source} />}>
+                <LoadState query={focus}>
+                  {focus.data && (
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-sm font-semibold">{focus.data.developer_name}</div>
+                        <p className="mt-1 text-sm text-muted-foreground">{focus.data.summary}</p>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <ListBlock
+                          title="Focus"
+                          empty="No active focus items"
+                          items={focus.data.focus.map((item) => ({
+                            id: `${item.kind}-${item.label}`,
+                            primary: item.label,
+                            secondary: `${item.kind} / ${item.source}`,
+                            badge: item.deadline ?? item.source_ref.kind,
+                            tone: item.kind === "blocker" ? "danger" : "warning",
+                          }))}
+                        />
+                        <ListBlock
+                          title="Tasks"
+                          empty="No assigned tasks"
+                          items={focus.data.tasks.map((task) => ({
+                            id: task.id,
+                            primary: task.name,
+                            secondary: sourceLine(task.source, task.confidence),
+                            badge: task.rag,
+                            tone: toneForRag(task.rag),
+                          }))}
+                        />
+                      </div>
+                    </div>
                   )}
-                  {blockers.data.blockers.map((blocker) => (
+                </LoadState>
+              </Panel>
+            )}
+
+            {showTeam && (
+              <Panel title="SM Check-ins" action={<Badge tone="info">pod-runtime</Badge>}>
+                <LoadState query={checkins}>
+                  {checkins.data && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                        <Count label="Confirmed" value={checkins.data.confirmed} tone="success" />
+                        <Count label="Stale" value={checkins.data.stale} tone="warning" />
+                        <Count label="Missing" value={checkins.data.missing} tone="danger" />
+                      </div>
+                      <div className="divide-y divide-border">
+                        {checkins.data.developers.map((developer) => (
+                          <Row
+                            key={developer.developer_id}
+                            primary={developer.developer_name}
+                            secondary={developer.summary}
+                            badge={developer.state}
+                            tone={toneForState(developer.state)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </LoadState>
+              </Panel>
+            )}
+          </section>
+        )}
+
+        {(showTeam || showProgress) && (
+          <section className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
+            {showTeam && (
+              <Panel title="SM Blocker Board" action={<Badge tone="info">source + age</Badge>}>
+                <LoadState query={blockers}>
+                  {blockers.data && (
+                    <div className="divide-y divide-border">
+                      {blockers.data.blockers.length === 0 && (
+                        <EmptyState>No blockers reported for this pod.</EmptyState>
+                      )}
+                      {blockers.data.blockers.map((blocker) => (
+                        <Row
+                          key={blocker.id}
+                          primary={blocker.description}
+                          secondary={`${blocker.owner_name} / ${blocker.source}`}
+                          badge={`${blocker.age_days}d`}
+                          tone={blocker.age_days > 0 ? "warning" : "neutral"}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </LoadState>
+              </Panel>
+            )}
+
+            {showProgress && (
+              <Panel
+                title="PO Project Progress"
+                action={progress.data && <RagBadge rag={progress.data.rag} />}
+              >
+                <LoadState query={progress}>
+                  {progress.data && (
+                    <div className="space-y-4">
+                      <div className="grid gap-3 md:grid-cols-5">
+                        <Count label="Done" value={progress.data.green_tasks} tone="success" />
+                        <Count label="At risk" value={progress.data.amber_tasks} tone="warning" />
+                        <Count label="Blocked" value={progress.data.red_tasks} tone="danger" />
+                        <Count
+                          label="Unknown"
+                          value={progress.data.unknown_tasks}
+                          tone="neutral"
+                        />
+                        <Count label="Total" value={progress.data.total_tasks} tone="info" />
+                      </div>
+                      <div className="divide-y divide-border">
+                        {progress.data.tasks.map((task) => (
+                          <Row
+                            key={task.id}
+                            primary={task.name}
+                            secondary={sourceLine(task.source, task.confidence)}
+                            badge={task.rag}
+                            tone={toneForRag(task.rag)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </LoadState>
+              </Panel>
+            )}
+          </section>
+        )}
+
+        {showExec && (
+          <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+            <Panel
+              title="Mgr / Exec Program Tree"
+              action={<Network className="h-4 w-4 text-muted-foreground" />}
+            >
+              <LoadState query={tree}>
+                <HierarchyFlow data={tree.data} />
+              </LoadState>
+            </Panel>
+
+            <Panel title="Portfolio Heatmap" action={<Badge tone="info">RAG</Badge>}>
+              <LoadState query={heatmap}>
+                <HeatmapChart data={heatmap.data} />
+                <div className="mt-2 divide-y divide-border">
+                  {heatmap.data?.cells.map((cell) => (
                     <Row
-                      key={blocker.id}
-                      primary={blocker.description}
-                      secondary={`${blocker.owner_name} / ${blocker.source}`}
-                      badge={`${blocker.age_days}d`}
-                      tone={blocker.age_days > 0 ? "warning" : "neutral"}
+                      key={`${cell.entity_ref.kind}-${cell.entity_ref.id}`}
+                      primary={`${cell.entity_ref.kind}:${cell.entity_ref.id}`}
+                      secondary={`${cell.why} / ${cell.source}`}
+                      badge={cell.rag}
+                      tone={toneForRag(cell.rag)}
                     />
                   ))}
                 </div>
-              )}
-            </LoadState>
-          </Panel>
-
-          <Panel
-            title="PO Project Progress"
-            action={progress.data && <RagBadge rag={progress.data.rag} />}
-          >
-            <LoadState query={progress}>
-              {progress.data && (
-                <div className="space-y-4">
-                  <div className="grid gap-3 md:grid-cols-5">
-                    <Count label="Done" value={progress.data.green_tasks} tone="success" />
-                    <Count label="At risk" value={progress.data.amber_tasks} tone="warning" />
-                    <Count label="Blocked" value={progress.data.red_tasks} tone="danger" />
-                    <Count label="Unknown" value={progress.data.unknown_tasks} tone="neutral" />
-                    <Count label="Total" value={progress.data.total_tasks} tone="info" />
-                  </div>
-                  <div className="divide-y divide-border">
-                    {progress.data.tasks.map((task) => (
-                      <Row
-                        key={task.id}
-                        primary={task.name}
-                        secondary={sourceLine(task.source, task.confidence)}
-                        badge={task.rag}
-                        tone={toneForRag(task.rag)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </LoadState>
-          </Panel>
-        </section>
-
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <Panel
-            title="Mgr / Exec Program Tree"
-            action={<Network className="h-4 w-4 text-muted-foreground" />}
-          >
-            <LoadState query={tree}>
-              <HierarchyFlow data={tree.data} />
-            </LoadState>
-          </Panel>
-
-          <Panel title="Portfolio Heatmap" action={<Badge tone="info">RAG</Badge>}>
-            <LoadState query={heatmap}>
-              <HeatmapChart data={heatmap.data} />
-              <div className="mt-2 divide-y divide-border">
-                {heatmap.data?.cells.map((cell) => (
-                  <Row
-                    key={`${cell.entity_ref.kind}-${cell.entity_ref.id}`}
-                    primary={`${cell.entity_ref.kind}:${cell.entity_ref.id}`}
-                    secondary={`${cell.why} / ${cell.source}`}
-                    badge={cell.rag}
-                    tone={toneForRag(cell.rag)}
-                  />
-                ))}
-              </div>
-            </LoadState>
-          </Panel>
-        </section>
+              </LoadState>
+            </Panel>
+          </section>
+        )}
       </div>
     </main>
   );

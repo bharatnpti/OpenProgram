@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, time
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from core.application.persona_views import (
     BlockerView,
@@ -23,7 +23,7 @@ from core.application.persona_views import (
 )
 from core.domain.graph import EdgeKind, GraphEdge, GraphNode, GraphTree, NodeKind
 from core.domain.rollup import Rag, RollupFactor
-from core.domain.status import StatusSource
+from core.domain.status import CheckInPreference, StatusSource
 
 
 class HealthResponse(BaseModel):
@@ -462,3 +462,94 @@ class PortfolioHeatmapResponse(BaseModel):
             columns=list(view.columns),
             cells=[HeatmapCellDto.from_view(cell) for cell in view.cells],
         )
+
+
+class WorkflowDispatchResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    workflow_id: str
+
+
+class CheckinDispatchRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    tenant_id: str
+    developer_id: str
+    developer_name: str | None = None
+    chat_external_id: str | None = None
+    checkin_date: date | None = None
+
+
+class JiraSyncDispatchRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    tenant_id: str
+    project_key: str
+    container_id: str | None = None
+    observed_at: datetime | None = None
+
+
+class GithubSyncDispatchRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    tenant_id: str
+    repo_name: str
+    observed_at: datetime | None = None
+
+
+class CalendarSyncDispatchRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    tenant_id: str
+    user_id: str
+    start: date
+    end: date
+    display_name: str | None = None
+    observed_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_window(self) -> CalendarSyncDispatchRequest:
+        if self.end <= self.start:
+            raise ValueError("end must be after start")
+        return self
+
+
+class CheckinPreferenceResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    developer_id: str
+    local_time: time
+    timezone: str | None
+    weekdays: list[int]
+    reply_wait_seconds: int
+    final_reply_wait_seconds: int
+
+    @classmethod
+    def from_domain(cls, preference: CheckInPreference) -> CheckinPreferenceResponse:
+        return cls(
+            developer_id=preference.developer_id,
+            local_time=preference.local_time,
+            timezone=preference.timezone,
+            weekdays=list(preference.weekdays),
+            reply_wait_seconds=preference.reply_wait_seconds,
+            final_reply_wait_seconds=preference.final_reply_wait_seconds,
+        )
+
+
+class CheckinPreferenceUpdateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    local_time: time | None = None
+    timezone: str | None = None
+    weekdays: list[int] | None = None
+    reply_wait_seconds: int | None = Field(default=None, ge=0)
+    final_reply_wait_seconds: int | None = Field(default=None, ge=0)
+
+    @field_validator("weekdays")
+    @classmethod
+    def validate_weekdays(cls, value: list[int] | None) -> list[int] | None:
+        if value is None:
+            return value
+        if any(day < 0 or day > 6 for day in value):
+            raise ValueError("weekdays must be in the range 0..6")
+        return value

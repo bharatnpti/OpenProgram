@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
 from typing import cast
@@ -28,6 +28,7 @@ class GoogleCalendarCredentials:
 class GoogleCalendarAdapter:
     base_url: str = "https://www.googleapis.com/calendar/v3"
     token: str | None = None
+    token_factory: Callable[[], str] | None = None
     calendar_id: str | None = None
     secret_store: SecretStore | None = None
     timeout_seconds: float = 10.0
@@ -76,7 +77,8 @@ class GoogleCalendarAdapter:
 
     async def _credentials(self, tenant_id: str) -> GoogleCalendarCredentials:
         base_url = self.base_url or await self._secret(tenant_id, "base_url")
-        token = self.token or await self._secret(tenant_id, "token")
+        token = self.token_factory() if self.token_factory is not None else self.token
+        token = token or await self._secret(tenant_id, "token")
         calendar_id = self.calendar_id or await self._secret(tenant_id, "calendar_id")
         if not base_url or not token:
             raise ProviderUnavailable("calendar credentials are not configured")

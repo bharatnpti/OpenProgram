@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from core.domain.workflows import ScheduleBootstrapResult
+from core.domain.workflows import (
+    CheckinScheduleConfig,
+    DeveloperCheckinDispatch,
+    ScheduleBootstrapResult,
+    SyncDispatchInput,
+    SyncScheduleConfig,
+)
+from infra.workflows.dispatch import safe_workflow_id
 
 
 @dataclass(frozen=True)
@@ -11,6 +19,27 @@ class FakeWorkflowScheduler:
 
     async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
         return ScheduleBootstrapResult(schedule_id=self.schedule_id, status="ready")
+
+    async def ensure_checkin_fanout_schedule(
+        self, config: CheckinScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
+
+    async def ensure_sync_schedules(
+        self, configs: Sequence[SyncScheduleConfig]
+    ) -> list[ScheduleBootstrapResult]:
+        return [
+            ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
+            for config in configs
+        ]
+
+    async def dispatch_developer_checkin(self, input: DeveloperCheckinDispatch) -> str:
+        return safe_workflow_id(
+            f"fake-checkin-{input.tenant_id}-{input.developer_id}-{input.checkin_date or 'today'}"
+        )
+
+    async def dispatch_sync(self, input: SyncDispatchInput) -> str:
+        return safe_workflow_id(f"fake-sync-{input.connector}-{input.scope}")
 
 
 class FakeWorkflowWorker:

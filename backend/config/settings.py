@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     redis_max_connections: int = 10
     heartbeat_schedule_id: str | None = None
+    checkin_fanout_schedule_id: str = "pulseops-checkin-fanout"
+    checkin_fanout_cron: str = "30 9 * * 1-5"
+    jira_sync_projects: tuple[str, ...] = ()
+    github_sync_repos: tuple[str, ...] = ()
+    calendar_sync_user_ids: tuple[str, ...] = ()
+    calendar_sync_window_days: int = 1
+    jira_sync_cron: str = "0 * * * *"
+    github_sync_cron: str = "*/15 * * * *"
+    calendar_sync_cron: str = "0 8 * * *"
     temporal_target: str = "localhost:7233"
     temporal_task_queue: str = "pulseops-foundation"
     temporal_schedule_id: str = "pulseops-heartbeat"
@@ -85,6 +94,41 @@ class Settings(BaseSettings):
             return tuple(item.strip() for item in stripped.split(",") if item.strip())
         if isinstance(value, list | tuple | set):
             return tuple(str(item) for item in value)
+        return value
+
+    @field_validator(
+        "jira_sync_projects",
+        "github_sync_repos",
+        "calendar_sync_user_ids",
+        mode="before",
+    )
+    @classmethod
+    def parse_string_tuple(cls, value: object) -> object:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return ()
+            if stripped.startswith("["):
+                parsed = json.loads(stripped)
+                if isinstance(parsed, list):
+                    return tuple(str(item).strip() for item in parsed if str(item).strip())
+            return tuple(item.strip() for item in stripped.split(",") if item.strip())
+        if isinstance(value, list | tuple | set):
+            return tuple(str(item).strip() for item in value if str(item).strip())
+        return value
+
+    @field_validator("jira_sync_projects")
+    @classmethod
+    def validate_jira_sync_projects(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        for item in value:
+            if item.count(":") > 1:
+                raise ValueError("jira_sync_projects entries must be PROJECT or PROJECT:CONTAINER")
+            parts = item.split(":", maxsplit=1)
+            project = parts[0].strip()
+            if not project:
+                raise ValueError("jira_sync_projects project key must not be empty")
+            if len(parts) == 2 and not parts[1].strip():
+                raise ValueError("jira_sync_projects container id must not be empty")
         return value
 
     @field_validator("chat_provider")
@@ -155,7 +199,15 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("dbos_app_name", "dbos_heartbeat_cron")
+    @field_validator(
+        "dbos_app_name",
+        "dbos_heartbeat_cron",
+        "checkin_fanout_schedule_id",
+        "checkin_fanout_cron",
+        "jira_sync_cron",
+        "github_sync_cron",
+        "calendar_sync_cron",
+    )
     @classmethod
     def validate_non_empty_string(cls, value: str) -> str:
         if not value.strip():
@@ -182,6 +234,7 @@ class Settings(BaseSettings):
         "postgres_pool_min_size",
         "postgres_pool_max_size",
         "redis_max_connections",
+        "calendar_sync_window_days",
     )
     @classmethod
     def validate_positive_int(cls, value: int) -> int:

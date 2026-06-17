@@ -45,7 +45,12 @@ class AvailabilityService:
 
 
 def _event_blocks_availability(event: CalendarEvent, as_of: date) -> bool:
-    return _kind_blocks_availability(event.kind) and _event_covers(event, as_of)
+    if not _event_covers(event, as_of):
+        return False
+    explicit = event.metadata.get("blocks_availability")
+    if isinstance(explicit, bool):
+        return explicit
+    return _kind_blocks_availability(event.kind)
 
 
 def _kind_blocks_availability(kind: str) -> bool:

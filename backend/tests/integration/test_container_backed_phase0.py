@@ -13,7 +13,7 @@ from cryptography.fernet import Fernet
 
 from config.settings import get_settings
 from core.domain.graph import EntityRef, NodeKind
-from core.domain.workflows import HeartbeatInput
+from core.domain.workflows import CheckinScheduleConfig, HeartbeatInput
 from core.ports.secrets import SecretRef
 from infra.adapters.chat.rate_limit import RedisRateLimiter
 from infra.adapters.redis_client import RedisClientProvider
@@ -283,6 +283,60 @@ async def test_dbos_scheduler_applies_heartbeat_schedule(compose_stack: object) 
     assert heartbeat.status == "ok"
     assert heartbeat.tenant_id == "demo"
     assert heartbeat.heartbeat_id.startswith(f"{schedule_id}-")
+
+
+async def test_dbos_scheduler_applies_checkin_fanout_schedule(
+    compose_stack: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dbos import DBOS
+
+    from infra.adapters.workflows.dbos import (
+        DbosRuntimeConfig,
+        DbosWorkflowScheduler,
+        configure_dbos_runtime,
+        destroy_dbos_runtime,
+    )
+
+    database_url = _service_url(compose_stack, "postgres", 5432, "pulseops")
+    monkeypatch.setenv("PULSEOPS_SECRET_KEY", SECRET_KEY)
+    monkeypatch.setenv("PULSEOPS_RUNTIME_MODE", "memory")
+    monkeypatch.setenv("PULSEOPS_WORKFLOW_PROVIDER", "fake")
+    get_settings.cache_clear()
+    schedule_id = f"dbos-checkin-fanout-schedule-it-{uuid4()}"
+    scheduler = DbosWorkflowScheduler(
+        app_name="pulseops-it",
+        system_database_url=database_url,
+        schedule_id=f"unused-heartbeat-{uuid4()}",
+        tenant_id="demo",
+        heartbeat_cron="0 * * * * *",
+    )
+    try:
+        result = await scheduler.ensure_checkin_fanout_schedule(
+            CheckinScheduleConfig(
+                schedule_id=schedule_id,
+                tenant_id="demo",
+                cron="0 * * * * *",
+            )
+        )
+        configure_dbos_runtime(
+            DbosRuntimeConfig(
+                app_name="pulseops-it",
+                system_database_url=database_url,
+            )
+        )
+        DBOS.launch()
+        handle = DBOS.trigger_schedule(schedule_id)
+        fanout = await asyncio.to_thread(handle.get_result)
+    finally:
+        destroy_dbos_runtime()
+        get_settings.cache_clear()
+
+    assert result.schedule_id == schedule_id
+    assert result.status == "configured"
+    assert fanout.tenant_id == "demo"
+    assert fanout.dispatched == 0
+    assert fanout.workflow_ids == []
 
 
 async def test_temporal_worker_executes_heartbeat(compose_stack: object) -> None:

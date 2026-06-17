@@ -269,19 +269,24 @@ async def test_status_collector_nudges_once_and_records_stale_non_response() -> 
         model="test-model",
     )
 
-    result = await collector.nudge_then_mark_stale(
+    nudge_message_id = await collector.send_nudge(
         tenant_id="demo",
         correlation_id="corr-1",
-        as_of=date(2026, 1, 10),
         developer_name="Asha",
         chat_external_id="U123",
     )
+    terminal_status = await collector.record_non_response(
+        tenant_id="demo",
+        developer_id="dev-1",
+        as_of=date(2026, 1, 10),
+        developer_name="Asha",
+    )
 
-    assert result.nudge_message_id == "msg-U123-1"
+    assert nudge_message_id == "msg-U123-1"
     assert len(chat.sent) == 1
-    assert result.terminal_status.source is StatusSource.STALE
-    assert result.terminal_status.blockers == ("no confirmed reply",)
-    assert "Yesterday was on track" in result.terminal_status.summary
+    assert terminal_status.source is StatusSource.STALE
+    assert terminal_status.blockers == ("no confirmed reply",)
+    assert "Yesterday was on track" in terminal_status.summary
 
 
 async def test_status_collector_records_inferred_and_unknown_non_response() -> None:

@@ -179,3 +179,119 @@ def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
     assert heatmap.status_code == 200
     assert "raw_reply" not in json.dumps(heatmap.json())
     assert project_denied.status_code == 403
+
+
+def test_admin_workflow_dispatch_routes_are_admin_only(settings: Settings) -> None:
+    app = create_app(settings=settings.model_copy(update={"workflow_provider": "fake"}))
+    with TestClient(app) as client:
+        checkin = client.post(
+            "/admin/workflows/checkin/dispatch",
+            json={
+                "tenant_id": "demo",
+                "developer_id": "dev-1",
+                "checkin_date": "2026-01-10",
+            },
+        )
+        jira = client.post(
+            "/admin/workflows/sync/jira",
+            json={"tenant_id": "demo", "project_key": "PO"},
+        )
+        github = client.post(
+            "/admin/workflows/sync/github",
+            json={"tenant_id": "demo", "repo_name": "oneai/program-manager"},
+        )
+        calendar = client.post(
+            "/admin/workflows/sync/calendar",
+            json={
+                "tenant_id": "demo",
+                "user_id": "dev-1",
+                "start": "2026-01-10",
+                "end": "2026-01-11",
+            },
+        )
+
+    assert checkin.status_code == 200
+    assert checkin.json()["workflow_id"] == "fake-checkin-demo-dev-1-2026-01-10"
+    assert jira.status_code == 200
+    assert jira.json()["workflow_id"] == "fake-sync-issue-project-PO"
+    assert github.status_code == 200
+    assert github.json()["workflow_id"] == "fake-sync-vcs-repo-oneai-program-manager"
+    assert calendar.status_code == 200
+    assert calendar.json()["workflow_id"] == "fake-sync-calendar-user-dev-1"
+
+    dev_app = create_app(
+        settings=settings.model_copy(
+            update={"dev_principal_roles": "dev", "workflow_provider": "fake"}
+        )
+    )
+    with TestClient(dev_app) as client:
+        denied = client.post(
+            "/admin/workflows/checkin/dispatch",
+            json={"tenant_id": "demo", "developer_id": "dev-1"},
+        )
+
+    assert denied.status_code == 403
+
+
+def test_checkin_preference_routes_merge_and_validate(settings: Settings) -> None:
+    app = create_app(
+        settings=settings.model_copy(
+            update={
+                "dev_principal_roles": "dev",
+                "dev_principal_subject": "dev-asha",
+                "tenant_default_timezone": "Asia/Kolkata",
+                "checkin_reply_wait_seconds": 60,
+                "checkin_final_reply_wait_seconds": 120,
+            }
+        )
+    )
+    with TestClient(app) as client:
+        default_response = client.get("/me/checkin-preference")
+        updated_response = client.put(
+            "/me/checkin-preference",
+            json={
+                "local_time": "10:15:00",
+                "weekdays": [0, 2, 4],
+                "reply_wait_seconds": 30,
+            },
+        )
+        invalid_weekday = client.put(
+            "/me/checkin-preference",
+            json={"weekdays": [7]},
+        )
+        invalid_wait = client.put(
+            "/me/checkin-preference",
+            json={"reply_wait_seconds": -1},
+        )
+
+    assert default_response.status_code == 200
+    assert default_response.json() == {
+        "developer_id": "dev-asha",
+        "local_time": "09:30:00",
+        "timezone": "Asia/Kolkata",
+        "weekdays": [0, 1, 2, 3, 4],
+        "reply_wait_seconds": 60,
+        "final_reply_wait_seconds": 120,
+    }
+    assert updated_response.status_code == 200
+    assert updated_response.json() == {
+        "developer_id": "dev-asha",
+        "local_time": "10:15:00",
+        "timezone": "Asia/Kolkata",
+        "weekdays": [0, 2, 4],
+        "reply_wait_seconds": 30,
+        "final_reply_wait_seconds": 120,
+    }
+    assert invalid_weekday.status_code == 422
+    assert invalid_wait.status_code == 422
+
+
+def test_portfolio_heatmap_accepts_program_root_id(settings: Settings) -> None:
+    app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "exec"}))
+    with TestClient(app) as client:
+        response = client.get(
+            "/portfolio/heatmap?as_of=2026-06-15&program_root_id=program-platform"
+        )
+
+    assert response.status_code == 200
+    assert response.json()["as_of"] == "2026-06-15"

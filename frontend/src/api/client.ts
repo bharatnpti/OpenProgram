@@ -1,4 +1,6 @@
 import type {
+  CheckinPreferenceResponse,
+  CheckinPreferenceUpdateRequest,
   FocusResponse,
   GraphTreeDto,
   HealthResponse,
@@ -12,11 +14,17 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
-async function requestJson<T>(path: string): Promise<T> {
+async function requestJson<T>(
+  path: string,
+  options: { method?: string; body?: unknown } = {},
+): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: options.method,
     headers: {
+      ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
       "x-correlation-id": crypto.randomUUID(),
     },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
@@ -38,8 +46,16 @@ export const apiClient = {
     requestJson<ProjectProgressResponse>(withAsOf(`/projects/${projectId}/progress`, asOf)),
   personaProgramTree: (programId: string, asOf?: string) =>
     requestJson<ProgramTreeResponse>(withAsOf(`/programs/${programId}/tree`, asOf)),
-  portfolioHeatmap: (asOf?: string) =>
-    requestJson<PortfolioHeatmapResponse>(withAsOf("/portfolio/heatmap", asOf)),
+  portfolioHeatmap: (asOf?: string, programRootId?: string) =>
+    requestJson<PortfolioHeatmapResponse>(
+      withQuery("/portfolio/heatmap", { as_of: asOf, program_root_id: programRootId }),
+    ),
+  checkinPreference: () => requestJson<CheckinPreferenceResponse>("/me/checkin-preference"),
+  updateCheckinPreference: (input: CheckinPreferenceUpdateRequest) =>
+    requestJson<CheckinPreferenceResponse>("/me/checkin-preference", {
+      method: "PUT",
+      body: input,
+    }),
 };
 
 function withAsOf(path: string, asOf?: string): string {
@@ -47,4 +63,15 @@ function withAsOf(path: string, asOf?: string): string {
     return path;
   }
   return `${path}?as_of=${encodeURIComponent(asOf)}`;
+}
+
+function withQuery(path: string, params: Record<string, string | undefined>): string {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) {
+      search.set(key, value);
+    }
+  });
+  const query = search.toString();
+  return query ? `${path}?${query}` : path;
 }
