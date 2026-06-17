@@ -357,8 +357,12 @@ class InMemoryGraphStore:
         )
         return sorted(matching[:limit], key=_conversation_sort_key)
 
-    async def purge_turns_older_than(self, cutoff: datetime) -> int:
-        retained = [turn for turn in self._conversation_turns if turn.observed_at >= cutoff]
+    async def purge_turns_older_than(self, tenant_id: str, cutoff: datetime) -> int:
+        retained = [
+            turn
+            for turn in self._conversation_turns
+            if turn.tenant_id != tenant_id or turn.observed_at >= cutoff
+        ]
         deleted_count = len(self._conversation_turns) - len(retained)
         self._conversation_turns = retained
         return deleted_count

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from inspect import Parameter, signature
 
 from core.application.status_collector import StatusCollector
 from core.application.status_parsing import StatusParser
@@ -36,6 +37,12 @@ class SequenceLlmProvider:
             ),
             trace_id=f"trace-{len(self.requests)}",
         )
+
+
+def test_status_collector_requires_conversation_repository() -> None:
+    parameter = signature(StatusCollector).parameters["conversation_repository"]
+
+    assert parameter.default is Parameter.empty
 
 
 async def test_status_collector_graph_sends_dm_and_records_checkin() -> None:
@@ -85,6 +92,19 @@ async def test_status_collector_graph_sends_dm_and_records_checkin() -> None:
             observed_at=datetime(2026, 1, 9, 17, 0, tzinfo=UTC),
         )
     )
+    await store.append_turn(
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            conversation_id="old-corr",
+            conversation_date=date(2026, 1, 9),
+            role=ConversationRole.AGENT,
+            content="This context is outside the 24-hour lookback.",
+            correlation_id="old-corr",
+            chat_message_id="old-msg",
+            observed_at=datetime(2026, 1, 9, 8, 59, tzinfo=UTC),
+        )
+    )
     chat = FakeChatProvider()
     llm = SequenceLlmProvider(texts=["Can you share progress, blockers, and ETA changes?"])
     collector = StatusCollector(
@@ -119,8 +139,9 @@ async def test_status_collector_graph_sends_dm_and_records_checkin() -> None:
     assert "schema review" in llm.requests[0].prompt
     assert "ancient dependency" not in llm.requests[0].prompt
     assert llm.requests[0].system is not None
-    assert llm.requests[0].messages[0].role == "user"
-    assert llm.requests[0].messages[0].content == "Yesterday I was waiting on schema review."
+    assert [(message.role, message.content) for message in llm.requests[0].messages] == [
+        ("user", "Yesterday I was waiting on schema review.")
+    ]
     turns = await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
     assert turns == [
         ConversationTurn(
@@ -387,6 +408,7 @@ async def test_status_collector_records_inferred_and_unknown_non_response() -> N
         chat_provider=FakeChatProvider(),
         llm_provider=SequenceLlmProvider(texts=[]),
         status_repository=inferred_store,
+        conversation_repository=inferred_store,
         model="test-model",
     )
 
@@ -402,6 +424,7 @@ async def test_status_collector_records_inferred_and_unknown_non_response() -> N
         chat_provider=FakeChatProvider(),
         llm_provider=SequenceLlmProvider(texts=[]),
         status_repository=unknown_store,
+        conversation_repository=unknown_store,
         model="test-model",
     )
 

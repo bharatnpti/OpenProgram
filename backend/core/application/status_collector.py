@@ -7,11 +7,12 @@ from uuid import uuid4
 
 from langgraph.graph import StateGraph
 
+from core.application.conversation_history import llm_messages_from_turns
 from core.application.status_parsing import StatusParser
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.domain.integrations import Issue, UserRef
-from core.domain.llm import LlmMessage, LlmMessageRole, LlmRequest
+from core.domain.llm import LlmRequest
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from core.domain.status import (
     CheckIn,
@@ -27,6 +28,7 @@ from core.ports.llm import LlmProvider
 from core.ports.repositories import ConversationRepository, StatusRepository, TimeSeriesRepository
 
 RECENT_FACT_LOOKBACK_DAYS = 30
+RECENT_CONVERSATION_LOOKBACK = timedelta(hours=24)
 RECENT_CONVERSATION_TURN_LIMIT = 20
 COMPOSE_CHECKIN_SYSTEM_PROMPT = (
     "Compose a concise daily check-in DM. Use prior conversation turns as context, but do not "
@@ -66,9 +68,9 @@ class StatusCollector:
         chat_provider: ChatProvider,
         llm_provider: LlmProvider,
         status_repository: StatusRepository,
+        conversation_repository: ConversationRepository,
         model: str,
         time_series_repository: TimeSeriesRepository | None = None,
-        conversation_repository: ConversationRepository | None = None,
         parser: StatusParser | None = None,
     ) -> None:
         self._issue_tracker = issue_tracker
@@ -140,6 +142,7 @@ class StatusCollector:
             tenant_id=message.tenant_id,
             developer_id=checkin.developer_id,
             exclude_chat_message_id=message.message_id,
+            reference_at=message.received_at,
         )
         signals = await self._parser.parse_reply(
             tenant_id=message.tenant_id,
@@ -245,6 +248,7 @@ class StatusCollector:
         conversation_turns = await self._recent_conversation_turns(
             tenant_id=tenant_id,
             developer_id=checkin.developer_id,
+            reference_at=checkin.asked_at,
         )
         response = await self._llm_provider.complete(
             LlmRequest(
@@ -253,7 +257,7 @@ class StatusCollector:
                 model=self._model,
                 correlation_id=correlation_id,
                 system=COMPOSE_NUDGE_SYSTEM_PROMPT,
-                messages=_llm_messages_from_turns(conversation_turns),
+                messages=llm_messages_from_turns(conversation_turns),
                 metadata={
                     "service": "status_collector",
                     "purpose": "compose_nudge",
@@ -419,10 +423,11 @@ class StatusCollector:
                 model=self._model,
                 correlation_id=state["correlation_id"],
                 system=COMPOSE_CHECKIN_SYSTEM_PROMPT,
-                messages=_llm_messages_from_turns(
+                messages=llm_messages_from_turns(
                     await self._recent_conversation_turns(
                         tenant_id=state["tenant_id"],
                         developer_id=state["developer_id"],
+                        reference_at=state.get("asked_at"),
                     )
                 ),
                 metadata={
@@ -545,8 +550,6 @@ class StatusCollector:
         )
 
     async def _record_conversation_turn(self, turn: ConversationTurn) -> None:
-        if self._conversation_repository is None:
-            return
         await self._conversation_repository.append_turn(turn)
 
     async def _recent_conversation_turns(
@@ -555,13 +558,14 @@ class StatusCollector:
         tenant_id: str,
         developer_id: str,
         exclude_chat_message_id: str | None = None,
+        reference_at: datetime | None = None,
     ) -> list[ConversationTurn]:
-        if self._conversation_repository is None:
-            return []
+        reference_time = reference_at or datetime.now(tz=UTC)
         turns = await self._conversation_repository.list_recent_turns(
             tenant_id,
             developer_id,
             limit=RECENT_CONVERSATION_TURN_LIMIT,
+            since=reference_time - RECENT_CONVERSATION_LOOKBACK,
         )
         if exclude_chat_message_id is None:
             return turns
@@ -623,20 +627,6 @@ def _fact_context_lines(facts: Iterable[FactEvent]) -> list[str]:
         f"{_format_payload(fact.payload)}"
         for fact in facts
     ]
-
-
-def _llm_messages_from_turns(turns: Iterable[ConversationTurn]) -> tuple[LlmMessage, ...]:
-    return tuple(
-        LlmMessage(role=_llm_role_for_turn(turn.role), content=turn.content) for turn in turns
-    )
-
-
-def _llm_role_for_turn(role: ConversationRole) -> LlmMessageRole:
-    if role is ConversationRole.AGENT:
-        return "assistant"
-    if role is ConversationRole.USER:
-        return "user"
-    return "system"
 
 
 def _format_payload(payload: Mapping[str, JsonScalar]) -> str:

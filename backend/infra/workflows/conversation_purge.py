@@ -16,7 +16,10 @@ async def purge_conversation_turns_activity(
     try:
         now = _optional_datetime(payload.now) or datetime.now(tz=UTC)
         cutoff = now - timedelta(days=payload.retention_days)
-        deleted_count = await registry.conversation_repository().purge_turns_older_than(cutoff)
+        deleted_count = await registry.conversation_repository().purge_turns_older_than(
+            payload.tenant_id,
+            cutoff,
+        )
         return ConversationPurgeResult(
             tenant_id=payload.tenant_id,
             cutoff=cutoff.isoformat(),

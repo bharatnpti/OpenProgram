@@ -281,10 +281,22 @@ async def assert_conversation_repository_contract(repository: ConversationReposi
         chat_message_id="msg-other",
         observed_at=datetime(2026, 1, 10, 10, 0, tzinfo=UTC),
     )
+    other_tenant_old = ConversationTurn(
+        tenant_id="other",
+        developer_id="dev-1",
+        conversation_id="conv-other-tenant",
+        conversation_date=date(2026, 1, 9),
+        role=ConversationRole.USER,
+        content="Other tenant old context.",
+        correlation_id=None,
+        chat_message_id="msg-other-tenant",
+        observed_at=datetime(2026, 1, 9, 12, 0, tzinfo=UTC),
+    )
 
     await repository.append_turn(second)
     await repository.append_turn(previous)
     await repository.append_turn(other_developer)
+    await repository.append_turn(other_tenant_old)
     await repository.append_turn(first)
 
     day_turns = await repository.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
@@ -302,9 +314,15 @@ async def assert_conversation_repository_contract(repository: ConversationReposi
     assert recent_since == [second]
     assert await repository.list_recent_turns("demo", "dev-1", limit=0) == []
 
-    purged = await repository.purge_turns_older_than(datetime(2026, 1, 10, 0, 0, tzinfo=UTC))
+    purged = await repository.purge_turns_older_than(
+        "demo",
+        datetime(2026, 1, 10, 0, 0, tzinfo=UTC),
+    )
     assert purged == 1
     assert await repository.list_turns_for_day("demo", "dev-1", date(2026, 1, 9)) == []
+    assert await repository.list_turns_for_day("other", "dev-1", date(2026, 1, 9)) == [
+        other_tenant_old
+    ]
     assert await repository.list_turns_for_day("demo", "dev-2", date(2026, 1, 10)) == [
         other_developer
     ]
