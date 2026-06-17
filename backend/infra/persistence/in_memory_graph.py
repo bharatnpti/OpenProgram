@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from math import sqrt
 
 from core.domain.errors import GraphNotFound
@@ -20,7 +20,14 @@ from core.domain.graph import (
 )
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus
-from core.domain.status import CheckIn, DeveloperStatus
+from core.domain.status import (
+    CheckIn,
+    CheckInCorrelation,
+    CheckInNudge,
+    CheckInPreference,
+    CheckInScheduleRun,
+    DeveloperStatus,
+)
 
 
 @dataclass
@@ -30,6 +37,12 @@ class InMemoryGraphStore:
     _facts: list[FactEvent] = field(default_factory=list)
     _vectors: dict[tuple[str, str, str], tuple[float, ...]] = field(default_factory=dict)
     _checkins: list[CheckIn] = field(default_factory=list)
+    _checkin_correlations: list[CheckInCorrelation] = field(default_factory=list)
+    _checkin_preferences: dict[tuple[str, str], CheckInPreference] = field(default_factory=dict)
+    _checkin_schedule_runs: dict[tuple[str, str, date], CheckInScheduleRun] = field(
+        default_factory=dict
+    )
+    _checkin_nudges: dict[tuple[str, str, int], CheckInNudge] = field(default_factory=dict)
     _developer_statuses: dict[tuple[str, str, date], DeveloperStatus] = field(default_factory=dict)
     _node_statuses: dict[tuple[str, str, str, date], NodeStatus] = field(default_factory=dict)
     _sync_cursors: dict[tuple[str, str, str], SyncCursor] = field(default_factory=dict)
@@ -80,7 +93,13 @@ class InMemoryGraphStore:
         ]
 
     async def append_fact(self, fact: FactEvent) -> None:
+        identity = _fact_identity(fact)
+        if any(_fact_identity(existing) == identity for existing in self._facts):
+            return
         self._facts.append(fact)
+
+    async def append_fact_once(self, fact: FactEvent) -> None:
+        await self.append_fact(fact)
 
     async def list_facts(self, tenant_id: str, entity_ref: EntityRef) -> list[FactEvent]:
         return [
@@ -105,6 +124,108 @@ class InMemoryGraphStore:
             if checkin.tenant_id == tenant_id and checkin.correlation_id == correlation_id:
                 return checkin
         return None
+
+    async def record_checkin_correlation(self, correlation: CheckInCorrelation) -> None:
+        self._checkin_correlations = [
+            existing
+            for existing in self._checkin_correlations
+            if not (
+                existing.tenant_id == correlation.tenant_id
+                and existing.correlation_id == correlation.correlation_id
+            )
+        ]
+        self._checkin_correlations.append(correlation)
+
+    async def checkin_correlation_by_id(
+        self, tenant_id: str, correlation_id: str
+    ) -> CheckInCorrelation | None:
+        for correlation in reversed(self._checkin_correlations):
+            if correlation.tenant_id == tenant_id and correlation.correlation_id == correlation_id:
+                return correlation
+        return None
+
+    async def latest_checkin_correlation_for_thread(
+        self, tenant_id: str, chat_thread_ref: str, as_of: date
+    ) -> CheckInCorrelation | None:
+        matching = [
+            correlation
+            for correlation in self._checkin_correlations
+            if correlation.tenant_id == tenant_id
+            and correlation.chat_thread_ref == chat_thread_ref
+            and correlation.asked_at.date() == as_of
+        ]
+        return max(matching, key=lambda correlation: correlation.asked_at) if matching else None
+
+    async def latest_unconsumed_checkin_correlation_for_user(
+        self, tenant_id: str, chat_user_ref: str, as_of: date
+    ) -> CheckInCorrelation | None:
+        matching = [
+            correlation
+            for correlation in self._checkin_correlations
+            if correlation.tenant_id == tenant_id
+            and correlation.chat_user_ref == chat_user_ref
+            and correlation.consumed_at is None
+            and correlation.asked_at.date() == as_of
+        ]
+        return max(matching, key=lambda correlation: correlation.asked_at) if matching else None
+
+    async def consume_checkin_correlation(
+        self, tenant_id: str, correlation_id: str, consumed_at: datetime
+    ) -> None:
+        correlation = await self.checkin_correlation_by_id(tenant_id, correlation_id)
+        if correlation is None or correlation.consumed_at is not None:
+            return
+        await self.record_checkin_correlation(
+            CheckInCorrelation(
+                tenant_id=correlation.tenant_id,
+                correlation_id=correlation.correlation_id,
+                developer_id=correlation.developer_id,
+                chat_user_ref=correlation.chat_user_ref,
+                chat_thread_ref=correlation.chat_thread_ref,
+                outbound_message_id=correlation.outbound_message_id,
+                asked_at=correlation.asked_at,
+                consumed_at=consumed_at,
+            )
+        )
+
+    async def record_checkin_preference(self, preference: CheckInPreference) -> None:
+        self._checkin_preferences[(preference.tenant_id, preference.developer_id)] = preference
+
+    async def checkin_preference_for(
+        self, tenant_id: str, developer_id: str
+    ) -> CheckInPreference | None:
+        return self._checkin_preferences.get((tenant_id, developer_id))
+
+    async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None:
+        self._checkin_schedule_runs[(run.tenant_id, run.developer_id, run.checkin_date)] = run
+
+    async def checkin_schedule_run(
+        self, tenant_id: str, developer_id: str, checkin_date: date
+    ) -> CheckInScheduleRun | None:
+        return self._checkin_schedule_runs.get((tenant_id, developer_id, checkin_date))
+
+    async def record_checkin_nudge(self, nudge: CheckInNudge) -> CheckInNudge:
+        key = (nudge.tenant_id, nudge.correlation_id, nudge.nudge_number)
+        existing = self._checkin_nudges.get(key)
+        if existing is not None:
+            if existing.outbound_message_id is not None:
+                return existing
+            updated = CheckInNudge(
+                tenant_id=existing.tenant_id,
+                correlation_id=existing.correlation_id,
+                nudge_number=existing.nudge_number,
+                sent_at=nudge.sent_at or existing.sent_at,
+                outbound_message_id=nudge.outbound_message_id or existing.outbound_message_id,
+            )
+            self._checkin_nudges[key] = updated
+            return updated
+        self._checkin_nudges[key] = nudge
+        return nudge
+
+    async def checkin_nudge_for(
+        self, tenant_id: str, correlation_id: str, nudge_number: int
+    ) -> CheckInNudge | None:
+        return self._checkin_nudges.get((tenant_id, correlation_id, nudge_number))
 
     async def record_developer_status(self, status: DeveloperStatus) -> None:
         self._developer_statuses[(status.tenant_id, status.developer_id, status.as_of)] = status
@@ -234,3 +355,14 @@ def _cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:
 
 def _node_kind(value: str) -> NodeKind:
     return NodeKind(value)
+
+
+def _fact_identity(fact: FactEvent) -> tuple[str, str, str, str, str, datetime]:
+    return (
+        fact.tenant_id,
+        fact.source,
+        fact.entity_ref.kind.value,
+        fact.entity_ref.id,
+        fact.correlation_id,
+        fact.observed_at,
+    )

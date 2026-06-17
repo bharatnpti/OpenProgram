@@ -173,7 +173,7 @@ def demo_edges(tenant_id: str) -> tuple[GraphEdge, ...]:
 
 
 def demo_facts(tenant_id: str) -> tuple[FactEvent, ...]:
-    now = datetime.now(tz=UTC)
+    now = datetime(2026, 6, 15, 8, 0, tzinfo=UTC)
     return (
         FactEvent(
             tenant_id=tenant_id,
@@ -274,7 +274,7 @@ async def seed_demo_graph(
     for edge in demo_edges(tenant_id):
         await graph_repository.add_edge(edge)
     for fact in demo_facts(tenant_id):
-        await time_series_repository.append_fact(fact)
+        await time_series_repository.append_fact_once(fact)
     status_repository = status_repository or _status_repository_from(graph_repository)
     if status_repository is not None:
         for checkin in demo_checkins(tenant_id):

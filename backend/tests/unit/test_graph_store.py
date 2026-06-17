@@ -36,7 +36,7 @@ async def test_seeded_graph_is_queryable_with_time_bounded_edges() -> None:
     assert current_memberships == []
 
 
-async def test_fact_log_is_append_only_from_port_perspective() -> None:
+async def test_fact_log_inserts_once_by_identity() -> None:
     store = InMemoryGraphStore()
     fact = FactEvent(
         tenant_id="demo",
@@ -49,7 +49,7 @@ async def test_fact_log_is_append_only_from_port_perspective() -> None:
     await store.append_fact(fact)
     await store.append_fact(fact)
     facts = await store.list_facts("demo", fact.entity_ref)
-    assert facts == [fact, fact]
+    assert facts == [fact]
 
 
 async def test_vector_search_returns_best_match() -> None:

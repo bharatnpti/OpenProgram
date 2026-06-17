@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, datetime
 from typing import Protocol
 
 from core.domain.graph import EntityRef, FactEvent, GraphEdge, GraphNode, GraphTree, VectorMatch
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus
-from core.domain.status import CheckIn, DeveloperStatus
+from core.domain.status import (
+    CheckIn,
+    CheckInCorrelation,
+    CheckInNudge,
+    CheckInPreference,
+    CheckInScheduleRun,
+    DeveloperStatus,
+)
 
 
 class GraphRepository(Protocol):
@@ -25,6 +32,8 @@ class GraphRepository(Protocol):
 class TimeSeriesRepository(Protocol):
     async def append_fact(self, fact: FactEvent) -> None: ...
 
+    async def append_fact_once(self, fact: FactEvent) -> None: ...
+
     async def list_facts(self, tenant_id: str, entity_ref: EntityRef) -> list[FactEvent]: ...
 
 
@@ -34,6 +43,42 @@ class StatusRepository(Protocol):
     async def checkin_by_correlation(
         self, tenant_id: str, correlation_id: str
     ) -> CheckIn | None: ...
+
+    async def record_checkin_correlation(self, correlation: CheckInCorrelation) -> None: ...
+
+    async def checkin_correlation_by_id(
+        self, tenant_id: str, correlation_id: str
+    ) -> CheckInCorrelation | None: ...
+
+    async def latest_checkin_correlation_for_thread(
+        self, tenant_id: str, chat_thread_ref: str, as_of: date
+    ) -> CheckInCorrelation | None: ...
+
+    async def latest_unconsumed_checkin_correlation_for_user(
+        self, tenant_id: str, chat_user_ref: str, as_of: date
+    ) -> CheckInCorrelation | None: ...
+
+    async def consume_checkin_correlation(
+        self, tenant_id: str, correlation_id: str, consumed_at: datetime
+    ) -> None: ...
+
+    async def record_checkin_preference(self, preference: CheckInPreference) -> None: ...
+
+    async def checkin_preference_for(
+        self, tenant_id: str, developer_id: str
+    ) -> CheckInPreference | None: ...
+
+    async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None: ...
+
+    async def checkin_schedule_run(
+        self, tenant_id: str, developer_id: str, checkin_date: date
+    ) -> CheckInScheduleRun | None: ...
+
+    async def record_checkin_nudge(self, nudge: CheckInNudge) -> CheckInNudge: ...
+
+    async def checkin_nudge_for(
+        self, tenant_id: str, correlation_id: str, nudge_number: int
+    ) -> CheckInNudge | None: ...
 
     async def record_developer_status(self, status: DeveloperStatus) -> None: ...
 

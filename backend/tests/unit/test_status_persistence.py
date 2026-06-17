@@ -1,14 +1,27 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 
 from core.domain.graph import EntityRef, NodeKind
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
-from core.domain.status import CheckInSignals, DeveloperStatus, Mood, StatusSource
+from core.domain.status import (
+    CheckInCorrelation,
+    CheckInNudge,
+    CheckInPreference,
+    CheckInScheduleRun,
+    CheckInSignals,
+    DeveloperStatus,
+    Mood,
+    StatusSource,
+)
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.persistence.postgres_status import (
+    _checkin_correlation_from_row,
     _checkin_from_row,
+    _checkin_nudge_from_row,
+    _checkin_preference_from_row,
+    _checkin_schedule_run_from_row,
     _developer_status_from_row,
     _node_status_from_row,
     _sync_cursor_from_row,
@@ -111,6 +124,49 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
             "metadata": {"page": 2, "nested": {"ignored": True}},
         }
     )
+    correlation = _checkin_correlation_from_row(
+        {
+            "tenant_id": "demo",
+            "developer_id": "dev-1",
+            "correlation_id": "corr-1",
+            "chat_user_ref": "U123",
+            "chat_thread_ref": "thread-U123",
+            "outbound_message_id": "msg-1",
+            "asked_at": asked_at,
+            "consumed_at": replied_at,
+        }
+    )
+    preference = _checkin_preference_from_row(
+        {
+            "tenant_id": "demo",
+            "developer_id": "dev-1",
+            "local_time": time(9, 30),
+            "timezone": "Europe/Berlin",
+            "weekdays": {"items": [0, 1, 2, 3, 4]},
+            "reply_wait_seconds": 60,
+            "final_reply_wait_seconds": 120,
+        }
+    )
+    schedule_run = _checkin_schedule_run_from_row(
+        {
+            "tenant_id": "demo",
+            "developer_id": "dev-1",
+            "checkin_date": date(2026, 1, 10),
+            "correlation_id": "corr-1",
+            "status": "sent",
+            "scheduled_at": asked_at,
+            "reason": None,
+        }
+    )
+    nudge = _checkin_nudge_from_row(
+        {
+            "tenant_id": "demo",
+            "correlation_id": "corr-1",
+            "nudge_number": 1,
+            "sent_at": replied_at,
+            "outbound_message_id": "nudge-1",
+        }
+    )
 
     assert checkin.signals == CheckInSignals(
         progress_note="Graph sync",
@@ -143,4 +199,38 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
         value="cursor-1",
         updated_at=cursor_updated_at,
         metadata={"page": 2},
+    )
+    assert correlation == CheckInCorrelation(
+        tenant_id="demo",
+        developer_id="dev-1",
+        correlation_id="corr-1",
+        chat_user_ref="U123",
+        chat_thread_ref="thread-U123",
+        outbound_message_id="msg-1",
+        asked_at=asked_at,
+        consumed_at=replied_at,
+    )
+    assert preference == CheckInPreference(
+        tenant_id="demo",
+        developer_id="dev-1",
+        local_time=time(9, 30),
+        timezone="Europe/Berlin",
+        weekdays=(0, 1, 2, 3, 4),
+        reply_wait_seconds=60,
+        final_reply_wait_seconds=120,
+    )
+    assert schedule_run == CheckInScheduleRun(
+        tenant_id="demo",
+        developer_id="dev-1",
+        checkin_date=date(2026, 1, 10),
+        correlation_id="corr-1",
+        status="sent",
+        scheduled_at=asked_at,
+    )
+    assert nudge == CheckInNudge(
+        tenant_id="demo",
+        correlation_id="corr-1",
+        nudge_number=1,
+        sent_at=replied_at,
+        outbound_message_id="nudge-1",
     )

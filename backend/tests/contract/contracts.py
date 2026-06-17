@@ -18,7 +18,16 @@ from core.domain.integrations import (
 )
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
-from core.domain.status import CheckIn, CheckInSignals, DeveloperStatus, StatusSource
+from core.domain.status import (
+    CheckIn,
+    CheckInCorrelation,
+    CheckInNudge,
+    CheckInPreference,
+    CheckInScheduleRun,
+    CheckInSignals,
+    DeveloperStatus,
+    StatusSource,
+)
 from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.ci import CiProvider
@@ -99,6 +108,69 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
     assert checkin is not None
     assert checkin.developer_id == "dev-1"
     assert checkin.raw_reply == "blocked on dependency"
+
+    correlation = CheckInCorrelation(
+        tenant_id="demo",
+        developer_id="dev-1",
+        correlation_id="corr-1",
+        chat_user_ref="U123",
+        chat_thread_ref="thread-1",
+        outbound_message_id="msg-1",
+        asked_at=asked_at,
+    )
+    await repository.record_checkin_correlation(correlation)
+    assert await repository.checkin_correlation_by_id("demo", "corr-1") == correlation
+    assert (
+        await repository.latest_checkin_correlation_for_thread(
+            "demo",
+            "thread-1",
+            date(2026, 1, 10),
+        )
+        == correlation
+    )
+    assert (
+        await repository.latest_unconsumed_checkin_correlation_for_user(
+            "demo",
+            "U123",
+            date(2026, 1, 10),
+        )
+        == correlation
+    )
+    await repository.consume_checkin_correlation("demo", "corr-1", replied_at)
+    consumed = await repository.checkin_correlation_by_id("demo", "corr-1")
+    assert consumed is not None
+    assert consumed.consumed_at == replied_at
+
+    preference = CheckInPreference(tenant_id="demo", developer_id="dev-1")
+    await repository.record_checkin_preference(preference)
+    assert await repository.checkin_preference_for("demo", "dev-1") == preference
+
+    schedule_run = CheckInScheduleRun(
+        tenant_id="demo",
+        developer_id="dev-1",
+        checkin_date=date(2026, 1, 10),
+        correlation_id="corr-1",
+        status="sent",
+        scheduled_at=asked_at,
+    )
+    await repository.record_checkin_schedule_run(schedule_run)
+    assert await repository.checkin_schedule_run("demo", "dev-1", date(2026, 1, 10)) == schedule_run
+
+    claimed_nudge = await repository.record_checkin_nudge(
+        CheckInNudge(tenant_id="demo", correlation_id="corr-1", nudge_number=1)
+    )
+    assert claimed_nudge.outbound_message_id is None
+    sent_nudge = await repository.record_checkin_nudge(
+        CheckInNudge(
+            tenant_id="demo",
+            correlation_id="corr-1",
+            nudge_number=1,
+            sent_at=replied_at,
+            outbound_message_id="nudge-1",
+        )
+    )
+    assert sent_nudge.outbound_message_id == "nudge-1"
+    assert await repository.checkin_nudge_for("demo", "corr-1", 1) == sent_nudge
 
     status = DeveloperStatus(
         tenant_id="demo",

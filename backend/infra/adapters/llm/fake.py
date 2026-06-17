@@ -5,9 +5,15 @@ from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 
 class FakeLlmProvider:
     async def complete(self, request: LlmRequest) -> LlmResponse:
+        text = (
+            '{"progress_note":"Status update received",'
+            '"blockers":[],"eta_change_days":null,"mood":"neutral"}'
+            if request.metadata.get("purpose") == "parse_checkin_signals"
+            else f"summary: {request.prompt[:24]}"
+        )
         return LlmResponse(
             tenant_id=request.tenant_id,
-            text=f"summary: {request.prompt[:24]}",
+            text=text,
             model=request.model,
             usage=TokenUsage(
                 prompt_tokens=5,
