@@ -10,6 +10,7 @@ from core.application.sync_services import SyncRunResult
 from core.domain.integrations import SyncCursor, UserRef
 from core.domain.status import CheckIn, CheckInScheduleRun
 from core.domain.workflows import HeartbeatInput, record_heartbeat
+from infra.adapters.workflows import temporal as temporal_workflows
 from infra.adapters.workflows.fake import FakeWorkflowScheduler
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.workflows import daily_checkin, jira_sync, nudge
@@ -60,6 +61,30 @@ async def test_fake_workflow_scheduler_returns_deterministic_result() -> None:
     result = await FakeWorkflowScheduler(schedule_id="heartbeat-test").ensure_heartbeat_schedule()
     assert result.schedule_id == "heartbeat-test"
     assert result.status == "ready"
+
+
+async def test_temporal_connect_retries_until_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    from temporalio.client import Client
+
+    attempts: list[str] = []
+    expected_client = object()
+
+    async def connect(target: str) -> object:
+        attempts.append(target)
+        if len(attempts) < 3:
+            raise RuntimeError("Temporal is starting")
+        return expected_client
+
+    monkeypatch.setattr(Client, "connect", connect)
+
+    client = await temporal_workflows._connect_temporal(
+        "temporal:7233",
+        attempts=3,
+        delay_seconds=0,
+    )
+
+    assert client is expected_client
+    assert attempts == ["temporal:7233", "temporal:7233", "temporal:7233"]
 
 
 async def test_jira_sync_activity_returns_json_native_cursor(
