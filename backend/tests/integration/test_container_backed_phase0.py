@@ -163,6 +163,58 @@ async def test_redis_rate_limiter_uses_container(compose_stack: object) -> None:
         await redis_provider.close()
 
 
+async def test_dbos_worker_executes_heartbeat(compose_stack: object) -> None:
+    from dbos import DBOS, SetWorkflowID
+
+    from infra.adapters.workflows.dbos import (
+        DbosRuntimeConfig,
+        configure_dbos_runtime,
+        dbos_heartbeat_workflow,
+        destroy_dbos_runtime,
+    )
+
+    database_url = _service_url(compose_stack, "postgres", 5432, "pulseops")
+    configure_dbos_runtime(
+        DbosRuntimeConfig(
+            app_name="pulseops-it",
+            system_database_url=database_url,
+        )
+    )
+    DBOS.launch()
+    try:
+        with SetWorkflowID(f"dbos-heartbeat-it-{uuid4()}"):
+            handle = await DBOS.start_workflow_async(
+                dbos_heartbeat_workflow,
+                HeartbeatInput(tenant_id="demo", heartbeat_id=f"it-{uuid4()}"),
+            )
+        result = await handle.get_result()
+    finally:
+        destroy_dbos_runtime()
+
+    assert result.status == "ok"
+
+
+async def test_dbos_scheduler_applies_heartbeat_schedule(compose_stack: object) -> None:
+    from infra.adapters.workflows.dbos import DbosWorkflowScheduler, destroy_dbos_runtime
+
+    database_url = _service_url(compose_stack, "postgres", 5432, "pulseops")
+    schedule_id = f"dbos-heartbeat-schedule-it-{uuid4()}"
+    scheduler = DbosWorkflowScheduler(
+        app_name="pulseops-it",
+        system_database_url=database_url,
+        schedule_id=schedule_id,
+        tenant_id="demo",
+        heartbeat_cron="0 * * * * *",
+    )
+    try:
+        result = await scheduler.ensure_heartbeat_schedule()
+    finally:
+        destroy_dbos_runtime()
+
+    assert result.schedule_id == schedule_id
+    assert result.status == "configured"
+
+
 async def test_temporal_worker_executes_heartbeat(compose_stack: object) -> None:
     from temporalio.worker import Worker
 

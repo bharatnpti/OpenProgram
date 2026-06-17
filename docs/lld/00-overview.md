@@ -2,7 +2,7 @@
 
 ## Scope
 
-Phase 0 establishes the runnable PulseOps foundation: a hexagonal FastAPI backend, Graph of Truth persistence seam, integration ports and first chat adapter, Temporal and LangGraph skeletons, React shell, observability, and CI/CD.
+Phase 0 establishes the runnable PulseOps foundation: a hexagonal FastAPI backend, Graph of Truth persistence seam, integration ports and first chat adapter, durable workflow and LangGraph skeletons, React shell, observability, and CI/CD.
 
 ## Tech Versions
 
@@ -12,7 +12,7 @@ Phase 0 establishes the runnable PulseOps foundation: a hexagonal FastAPI backen
 | API | FastAPI + Pydantic v2 |
 | Agents | LangGraph-compatible application node |
 | LLM gateway | LiteLLM-compatible HTTP provider |
-| Workflow | Temporal Python SDK |
+| Workflow | DBOS Python SDK by default; Temporal Python SDK selectable |
 | System of record | PostgreSQL 16 |
 | Graph | Apache AGE extension schema seam |
 | Time-series | TimescaleDB hypertable seam |

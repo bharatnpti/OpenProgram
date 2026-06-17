@@ -31,6 +31,26 @@ def test_settings_parse_cors_origins_and_pool_sizes() -> None:
     assert settings.redis_max_connections == 20
 
 
+def test_settings_defaults_workflow_provider_to_dbos() -> None:
+    settings = Settings(secret_key=SECRET_KEY)
+
+    assert settings.workflow_provider == "dbos"
+    assert settings.dbos_app_name == "pulseops"
+    assert settings.dbos_heartbeat_cron == "0 * * * * *"
+    assert settings.resolved_dbos_system_database_url == settings.database_url
+
+
+def test_settings_resolves_configured_dbos_system_database_url() -> None:
+    settings = Settings(
+        secret_key=SECRET_KEY,
+        dbos_system_database_url="postgresql://dbos:dbos@localhost:5432/dbos",
+    )
+
+    assert (
+        settings.resolved_dbos_system_database_url == "postgresql://dbos:dbos@localhost:5432/dbos"
+    )
+
+
 def test_settings_rejects_invalid_pool_bounds() -> None:
     with pytest.raises(ValidationError):
         Settings(
@@ -57,4 +77,4 @@ def test_settings_validate_provider_selectors() -> None:
     with pytest.raises(ValidationError):
         Settings(secret_key=SECRET_KEY, llm_provider="gemini")
     with pytest.raises(ValidationError):
-        Settings(secret_key=SECRET_KEY, workflow_provider="dbos")
+        Settings(secret_key=SECRET_KEY, workflow_provider="airflow")

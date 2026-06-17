@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-
-from temporalio import activity, workflow
 
 from core.domain.integrations import UserRef
 from core.domain.status import CheckIn, CheckInPreference, CheckInScheduleRun
 from core.ports.repositories import StatusRepository
-from infra.workflows.nudge import NudgeInput, NudgeWorkflow
+from infra.workflows.nudge import NudgeInput
 
 if TYPE_CHECKING:
     from infra.registry import ServiceRegistry
@@ -41,7 +39,6 @@ class DailyCheckinResult:
     final_reply_wait_seconds: int = 0
 
 
-@activity.defn
 async def start_daily_checkin_activity(payload: DailyCheckinInput) -> DailyCheckinResult:
     registry = _service_registry()
     try:
@@ -191,42 +188,40 @@ async def start_daily_checkin_activity(payload: DailyCheckinInput) -> DailyCheck
         await registry.close()
 
 
-@workflow.defn
-class DailyCheckinWorkflow:
-    @workflow.run
-    async def run(self, payload: DailyCheckinInput) -> DailyCheckinResult:
-        scheduled = payload
-        if scheduled.correlation_id is None:
-            scheduled = replace(
-                scheduled,
-                correlation_id=f"checkin-{workflow.info().workflow_id}",
-            )
-        if scheduled.asked_at is None:
-            scheduled = replace(scheduled, asked_at=workflow.now().isoformat())
-        if scheduled.checkin_date is None:
-            scheduled = replace(scheduled, checkin_date=workflow.now().date().isoformat())
-        result = await workflow.execute_activity(
-            start_daily_checkin_activity,
+def prepare_daily_checkin_payload(
+    payload: DailyCheckinInput,
+    *,
+    workflow_id: str,
+    now: datetime,
+) -> DailyCheckinInput:
+    scheduled = payload
+    if scheduled.correlation_id is None:
+        scheduled = replace(
             scheduled,
-            start_to_close_timeout=timedelta(minutes=5),
+            correlation_id=f"checkin-{workflow_id}",
         )
-        if result.status == "sent" and not result.already_recorded:
-            nudge_workflow_id = f"nudge-{result.correlation_id}"
-            await workflow.start_child_workflow(
-                NudgeWorkflow.run,
-                NudgeInput(
-                    tenant_id=result.tenant_id,
-                    correlation_id=result.correlation_id,
-                    as_of=scheduled.checkin_date or workflow.now().date().isoformat(),
-                    developer_name=scheduled.developer_name,
-                    chat_external_id=scheduled.chat_external_id,
-                    reply_wait_seconds=result.reply_wait_seconds,
-                    final_reply_wait_seconds=result.final_reply_wait_seconds,
-                ),
-                id=nudge_workflow_id,
-            )
-            return replace(result, nudge_workflow_id=nudge_workflow_id)
-        return result
+    if scheduled.asked_at is None:
+        scheduled = replace(scheduled, asked_at=now.isoformat())
+    if scheduled.checkin_date is None:
+        scheduled = replace(scheduled, checkin_date=now.date().isoformat())
+    return scheduled
+
+
+def nudge_input_for_daily_checkin_result(
+    result: DailyCheckinResult,
+    scheduled: DailyCheckinInput,
+    *,
+    now: datetime,
+) -> NudgeInput:
+    return NudgeInput(
+        tenant_id=result.tenant_id,
+        correlation_id=result.correlation_id,
+        as_of=scheduled.checkin_date or now.date().isoformat(),
+        developer_name=scheduled.developer_name,
+        chat_external_id=scheduled.chat_external_id,
+        reply_wait_seconds=result.reply_wait_seconds,
+        final_reply_wait_seconds=result.final_reply_wait_seconds,
+    )
 
 
 def _checkin_result(

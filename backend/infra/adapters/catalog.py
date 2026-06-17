@@ -40,6 +40,11 @@ from infra.adapters.readiness import (
     RedisReadinessProbe,
     StaticReadinessProbe,
 )
+from infra.adapters.workflows.dbos import (
+    DbosWorkflowReadinessProbe,
+    DbosWorkflowScheduler,
+    DbosWorkflowWorker,
+)
 from infra.adapters.workflows.fake import (
     FakeWorkflowReadinessProbe,
     FakeWorkflowScheduler,
@@ -161,6 +166,14 @@ def build_llm_provider(settings: Settings) -> LlmProvider:
 def build_workflow_scheduler(settings: Settings) -> WorkflowScheduler:
     if settings.workflow_provider == "fake":
         return FakeWorkflowScheduler(schedule_id=settings.temporal_schedule_id)
+    if settings.workflow_provider == "dbos":
+        return DbosWorkflowScheduler(
+            app_name=settings.dbos_app_name,
+            system_database_url=settings.resolved_dbos_system_database_url,
+            schedule_id=settings.temporal_schedule_id,
+            tenant_id=settings.tenant_id,
+            heartbeat_cron=settings.dbos_heartbeat_cron,
+        )
     return TemporalWorkflowScheduler(
         target=settings.temporal_target,
         task_queue=settings.temporal_task_queue,
@@ -173,6 +186,11 @@ def build_workflow_scheduler(settings: Settings) -> WorkflowScheduler:
 def build_workflow_worker(settings: Settings) -> WorkflowWorker:
     if settings.workflow_provider == "fake":
         return FakeWorkflowWorker()
+    if settings.workflow_provider == "dbos":
+        return DbosWorkflowWorker(
+            app_name=settings.dbos_app_name,
+            system_database_url=settings.resolved_dbos_system_database_url,
+        )
     return TemporalWorkflowWorker(
         target=settings.temporal_target,
         task_queue=settings.temporal_task_queue,
@@ -182,6 +200,10 @@ def build_workflow_worker(settings: Settings) -> WorkflowWorker:
 def build_workflow_readiness_probe(settings: Settings) -> ReadinessProbe:
     if settings.workflow_provider == "fake":
         return FakeWorkflowReadinessProbe()
+    if settings.workflow_provider == "dbos":
+        return DbosWorkflowReadinessProbe(
+            system_database_url=settings.resolved_dbos_system_database_url
+        )
     return TemporalWorkflowReadinessProbe(target=settings.temporal_target)
 
 

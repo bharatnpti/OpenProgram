@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import TYPE_CHECKING
-
-from temporalio import activity, workflow
 
 from core.application.sync_services import SyncRunResult
 from core.domain.graph import JsonScalar
@@ -34,7 +32,6 @@ class CalendarSyncWorkflowResult:
     cursor_metadata: dict[str, JsonScalar]
 
 
-@activity.defn
 async def sync_calendar_user_activity(payload: CalendarSyncInput) -> CalendarSyncWorkflowResult:
     registry = _service_registry()
     try:
@@ -51,17 +48,6 @@ async def sync_calendar_user_activity(payload: CalendarSyncInput) -> CalendarSyn
         return _workflow_result(result)
     finally:
         await registry.close()
-
-
-@workflow.defn
-class CalendarSyncWorkflow:
-    @workflow.run
-    async def run(self, payload: CalendarSyncInput) -> CalendarSyncWorkflowResult:
-        return await workflow.execute_activity(
-            sync_calendar_user_activity,
-            payload,
-            start_to_close_timeout=timedelta(minutes=5),
-        )
 
 
 def _workflow_result(result: SyncRunResult) -> CalendarSyncWorkflowResult:

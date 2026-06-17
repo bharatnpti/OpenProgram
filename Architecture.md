@@ -23,7 +23,7 @@ Architecture and engineering standards for the PulseOps agentic program-manageme
 | API | FastAPI + Pydantic v2 |
 | Agents / orchestration | LangGraph (multi-agent graph) |
 | LLM gateway | LiteLLM (provider-agnostic) |
-| Workflow engine | Temporal (durable, scheduled, long-running check-ins/nudges/escalations) |
+| Workflow engine | DBOS by default, Temporal selectable by config |
 | System of record | PostgreSQL |
 | Graph queries | PostgreSQL + Apache AGE |
 | Time-series | TimescaleDB (Postgres extension) |
@@ -67,7 +67,7 @@ graph LR
 - **Domain** — entities, value objects, domain rules. No I/O, no SDKs, no FastAPI, no SQL.
 - **Application** — use cases and agents (LangGraph nodes); orchestrates work through ports.
 - **Ports** — interfaces (`Protocol`/ABC) the core depends on.
-- **Infrastructure** — adapters implementing ports (vendors, persistence, Temporal workflows).
+- **Infrastructure** — adapters implementing ports (vendors, persistence, workflow runtimes).
 - **API** — FastAPI routers, request/response DTOs, dependency wiring.
 
 ---
@@ -83,7 +83,7 @@ backend/
   infra/
     adapters/        # slack/, teams/, jira/, github/, gitlab/, ci/
     persistence/     # postgres (AGE/Timescale/pgvector) repo implementations
-    workflows/       # Temporal workflows & activities
+    workflows/       # provider-neutral workflow payloads and operations
     registry.py      # config -> adapter wiring (DI composition root)
   api/               # FastAPI routers, request/response DTOs, dependencies
   config/            # pydantic-settings
@@ -181,7 +181,7 @@ Rule of thumb: vendor SDK imports and payload types stay under `infra/adapters/*
 - **Domain exceptions** (e.g. `BlockerNotFound`, `ProviderUnavailable`). Adapters catch vendor errors and re-raise as domain/port errors; a vendor SDK exception must never surface in a use case.
 - **Structured logging** (`structlog`) with correlation/trace IDs. Never log PII or the contents of developer DMs.
 - **OpenTelemetry** spans across agent steps; **Langfuse** traces on every LLM call (prompt, tokens, cost, latency).
-- **Idempotency + audit** for any agent write (Jira transitions, nudges): every external mutation is logged, reversible, and safe to retry. Temporal activities must be idempotent.
+- **Idempotency + audit** for any agent write (Jira transitions, nudges): every external mutation is logged, reversible, and safe to retry. Workflow steps and activities must be idempotent.
 
 ### Configuration & secrets
 - **`pydantic-settings`**, 12-factor, env-driven. No secrets in code or VCS. Provider selection (e.g. `chat_provider=slack`) lives in config.
