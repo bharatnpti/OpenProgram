@@ -5,10 +5,15 @@ from collections.abc import Callable
 from redis.asyncio import Redis
 
 from config.settings import Settings
+from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
+from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
 from core.ports.readiness import ReadinessProbe
+from core.ports.secrets import SecretStore
+from core.ports.vcs import VcsProvider
 from core.ports.workflows import WorkflowScheduler, WorkflowWorker
+from infra.adapters.calendar.google_adapter import GoogleCalendarAdapter
 from infra.adapters.chat.fake import FakeChatProvider, FakeChatWebhookMapper
 from infra.adapters.chat.rate_limit import InMemoryRateLimiter, RedisRateLimiter
 from infra.adapters.chat.slack import (
@@ -18,6 +23,13 @@ from infra.adapters.chat.slack import (
     RedisConversationCache,
     SlackChatAdapter,
 )
+from infra.adapters.github.github_adapter import GitHubVcsAdapter
+from infra.adapters.integrations.fake import (
+    FakeCalendarProvider,
+    FakeIssueTracker,
+    FakeVcsProvider,
+)
+from infra.adapters.jira.jira_adapter import JiraIssueTrackerAdapter
 from infra.adapters.llm.fake import FakeLlmProvider
 from infra.adapters.llm.litellm_provider import LangfuseTraceSink, LiteLlmProvider, NoopTraceSink
 from infra.adapters.readiness import (
@@ -86,6 +98,45 @@ def build_chat_webhook_mapper(settings: Settings, provider: str) -> ChatWebhookM
 
         return SlackChatWebhookMapper(tenant_id=settings.tenant_id)
     return None
+
+
+def build_issue_tracker(
+    settings: Settings,
+    secret_store: SecretStore | None = None,
+) -> IssueTracker:
+    if settings.issue_tracker_provider == "fake":
+        return FakeIssueTracker(tenant_id=settings.tenant_id)
+    return JiraIssueTrackerAdapter(
+        base_url=settings.jira_base_url,
+        email=settings.jira_email,
+        api_token=settings.jira_api_token,
+        secret_store=secret_store,
+    )
+
+
+def build_vcs_provider(settings: Settings, secret_store: SecretStore | None = None) -> VcsProvider:
+    if settings.vcs_provider == "fake":
+        return FakeVcsProvider(tenant_id=settings.tenant_id)
+    return GitHubVcsAdapter(
+        base_url=settings.github_base_url,
+        token=settings.github_token,
+        owner=settings.github_owner,
+        secret_store=secret_store,
+    )
+
+
+def build_calendar_provider(
+    settings: Settings,
+    secret_store: SecretStore | None = None,
+) -> CalendarProvider:
+    if settings.calendar_provider == "fake":
+        return FakeCalendarProvider(tenant_id=settings.tenant_id)
+    return GoogleCalendarAdapter(
+        base_url=settings.google_calendar_base_url,
+        token=settings.google_calendar_token,
+        calendar_id=settings.google_calendar_id,
+        secret_store=secret_store,
+    )
 
 
 def build_llm_provider(settings: Settings) -> LlmProvider:

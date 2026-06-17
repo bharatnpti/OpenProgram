@@ -6,6 +6,7 @@ from fastapi import Header, Request
 
 from config.settings import Settings
 from core.application.graph_queries import GraphQueryService
+from core.application.persona_views import PersonaViewService
 from core.domain.auth import Principal
 from infra.registry import ServiceRegistry
 
@@ -30,5 +31,15 @@ def get_graph_query_service(request: Request) -> GraphQueryService:
     registry = get_registry(request)
     return GraphQueryService(
         graph_repository=registry.graph_repository(),
+        time_series_repository=registry.time_series_repository(),
+    )
+
+
+def get_persona_view_service(request: Request) -> PersonaViewService:
+    registry = get_registry(request)
+    return PersonaViewService(
+        graph_repository=registry.graph_repository(),
+        status_repository=registry.status_repository(),
+        rollup_repository=registry.rollup_repository(),
         time_series_repository=registry.time_series_repository(),
     )

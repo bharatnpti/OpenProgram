@@ -43,11 +43,23 @@ class Settings(BaseSettings):
     langfuse_project_id: str | None = None
     otel_exporter_otlp_endpoint: str | None = None
     chat_provider: str = "slack"
+    issue_tracker_provider: str = "jira"
+    vcs_provider: str = "github"
+    calendar_provider: str = "google"
     workflow_provider: str = "temporal"
     slack_bot_token: str | None = None
     slack_api_base_url: str = "https://slack.com/api"
     slack_retry_attempts: int = 3
     slack_retry_backoff_seconds: float = 0.25
+    jira_base_url: str | None = None
+    jira_email: str | None = None
+    jira_api_token: str | None = None
+    github_base_url: str = "https://api.github.com"
+    github_token: str | None = None
+    github_owner: str | None = None
+    google_calendar_base_url: str = "https://www.googleapis.com/calendar/v3"
+    google_calendar_token: str | None = None
+    google_calendar_id: str | None = None
     redis_rate_limit_window_seconds: int = 1
     redis_rate_limit_max_events: int = 1
     secret_key: str = Field(default="", min_length=0)
@@ -74,6 +86,33 @@ class Settings(BaseSettings):
         allowed = {"slack", "fake"}
         if value not in allowed:
             message = f"chat_provider must be one of {sorted(allowed)}"
+            raise ValueError(message)
+        return value
+
+    @field_validator("issue_tracker_provider")
+    @classmethod
+    def validate_issue_tracker_provider(cls, value: str) -> str:
+        allowed = {"jira", "fake"}
+        if value not in allowed:
+            message = f"issue_tracker_provider must be one of {sorted(allowed)}"
+            raise ValueError(message)
+        return value
+
+    @field_validator("vcs_provider")
+    @classmethod
+    def validate_vcs_provider(cls, value: str) -> str:
+        allowed = {"github", "fake"}
+        if value not in allowed:
+            message = f"vcs_provider must be one of {sorted(allowed)}"
+            raise ValueError(message)
+        return value
+
+    @field_validator("calendar_provider")
+    @classmethod
+    def validate_calendar_provider(cls, value: str) -> str:
+        allowed = {"google", "fake"}
+        if value not in allowed:
+            message = f"calendar_provider must be one of {sorted(allowed)}"
             raise ValueError(message)
         return value
 

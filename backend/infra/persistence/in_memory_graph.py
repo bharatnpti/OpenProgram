@@ -18,6 +18,9 @@ from core.domain.graph import (
     VectorMatch,
     normalize_vector,
 )
+from core.domain.integrations import SyncCursor
+from core.domain.rollup import NodeStatus
+from core.domain.status import CheckIn, DeveloperStatus
 
 
 @dataclass
@@ -26,6 +29,10 @@ class InMemoryGraphStore:
     _edges: list[GraphEdge] = field(default_factory=list)
     _facts: list[FactEvent] = field(default_factory=list)
     _vectors: dict[tuple[str, str, str], tuple[float, ...]] = field(default_factory=dict)
+    _checkins: list[CheckIn] = field(default_factory=list)
+    _developer_statuses: dict[tuple[str, str, date], DeveloperStatus] = field(default_factory=dict)
+    _node_statuses: dict[tuple[str, str, str, date], NodeStatus] = field(default_factory=dict)
+    _sync_cursors: dict[tuple[str, str, str], SyncCursor] = field(default_factory=dict)
 
     async def upsert_node(self, node: GraphNode) -> None:
         self._nodes[(node.tenant_id, node.id)] = node
@@ -81,6 +88,105 @@ class InMemoryGraphStore:
             for fact in self._facts
             if fact.tenant_id == tenant_id and fact.entity_ref == entity_ref
         ]
+
+    async def record_checkin(self, checkin: CheckIn) -> None:
+        self._checkins = [
+            existing
+            for existing in self._checkins
+            if not (
+                existing.tenant_id == checkin.tenant_id
+                and existing.correlation_id == checkin.correlation_id
+            )
+        ]
+        self._checkins.append(checkin)
+
+    async def checkin_by_correlation(self, tenant_id: str, correlation_id: str) -> CheckIn | None:
+        for checkin in reversed(self._checkins):
+            if checkin.tenant_id == tenant_id and checkin.correlation_id == correlation_id:
+                return checkin
+        return None
+
+    async def record_developer_status(self, status: DeveloperStatus) -> None:
+        self._developer_statuses[(status.tenant_id, status.developer_id, status.as_of)] = status
+
+    async def latest_developer_status(
+        self, tenant_id: str, developer_id: str, as_of: date
+    ) -> DeveloperStatus | None:
+        matching = [
+            status
+            for status in self._developer_statuses.values()
+            if status.tenant_id == tenant_id
+            and status.developer_id == developer_id
+            and status.as_of <= as_of
+        ]
+        return max(matching, key=lambda status: status.as_of) if matching else None
+
+    async def developers_without_checkin(self, tenant_id: str, as_of: date) -> list[str]:
+        known_developer_ids = {
+            node.id
+            for (node_tenant_id, _), node in self._nodes.items()
+            if node_tenant_id == tenant_id and node.kind is NodeKind.DEVELOPER
+        }
+        known_developer_ids.update(
+            status.developer_id
+            for status in self._developer_statuses.values()
+            if status.tenant_id == tenant_id
+        )
+        known_developer_ids.update(
+            checkin.developer_id for checkin in self._checkins if checkin.tenant_id == tenant_id
+        )
+        replied_developer_ids = {
+            checkin.developer_id
+            for checkin in self._checkins
+            if checkin.tenant_id == tenant_id
+            and checkin.replied_at is not None
+            and checkin.replied_at.date() == as_of
+        }
+        return sorted(known_developer_ids - replied_developer_ids)
+
+    async def record_node_status(self, status: NodeStatus) -> None:
+        self._node_statuses[
+            (
+                status.entity_ref.tenant_id,
+                status.entity_ref.kind.value,
+                status.entity_ref.id,
+                status.as_of,
+            )
+        ] = status
+
+    async def latest_node_status(
+        self, tenant_id: str, entity_ref: EntityRef, as_of: date
+    ) -> NodeStatus | None:
+        matching = [
+            status
+            for status in self._node_statuses.values()
+            if status.entity_ref.tenant_id == tenant_id
+            and status.entity_ref == entity_ref
+            and status.as_of <= as_of
+        ]
+        return max(matching, key=lambda status: status.as_of) if matching else None
+
+    async def list_node_statuses(self, tenant_id: str, as_of: date) -> list[NodeStatus]:
+        latest_by_entity: dict[tuple[str, str], NodeStatus] = {}
+        for status in self._node_statuses.values():
+            if status.entity_ref.tenant_id != tenant_id or status.as_of > as_of:
+                continue
+            key = (status.entity_ref.kind.value, status.entity_ref.id)
+            current = latest_by_entity.get(key)
+            if current is None or current.as_of < status.as_of:
+                latest_by_entity[key] = status
+        return sorted(
+            latest_by_entity.values(),
+            key=lambda status: (status.entity_ref.kind.value, status.entity_ref.id),
+        )
+
+    async def get_cursor(self, tenant_id: str, connector: str, scope: str) -> SyncCursor:
+        return self._sync_cursors.get((tenant_id, connector, scope), SyncCursor())
+
+    async def record_cursor(
+        self, tenant_id: str, connector: str, scope: str, cursor: SyncCursor
+    ) -> None:
+        self._sync_cursors[(tenant_id, connector, scope)] = cursor
 
     async def upsert_embedding(
         self, tenant_id: str, entity_ref: EntityRef, vector: Sequence[float]

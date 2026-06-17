@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from opentelemetry import trace
 from starlette.responses import Response
 
-from api.routers import graph, health, webhooks
+from api.routers import graph, health, persona, webhooks
 from config.settings import Settings, get_settings
 from infra.observability.logging import configure_logging
 from infra.observability.metrics import build_http_metrics
@@ -82,6 +82,7 @@ def create_app(
 
     app.include_router(health.router)
     app.include_router(graph.router)
+    app.include_router(persona.router)
     app.include_router(webhooks.router)
     return app
 
