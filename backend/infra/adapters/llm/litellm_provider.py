@@ -13,7 +13,8 @@ import httpx
 import structlog
 from opentelemetry import trace
 
-from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
+from core.domain.graph import JsonScalar
+from core.domain.llm import LlmRequest, LlmResponse, LlmTool, LlmToolCall, TokenUsage
 
 _logger = structlog.get_logger(__name__)
 _tracer = trace.get_tracer("pulseops.adapters.llm.litellm")
@@ -124,17 +125,20 @@ class LiteLlmProvider:
             started = perf_counter()
             headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
             async with httpx.AsyncClient(base_url=self.base_url, timeout=30.0) as client:
+                body: dict[str, object] = {
+                    "model": request.model,
+                    "messages": _chat_messages(request),
+                    "metadata": {
+                        "tenant_id": request.tenant_id,
+                        "correlation_id": request.correlation_id,
+                    },
+                }
+                if request.tools:
+                    body["tools"] = [_tool_payload(tool) for tool in request.tools]
                 http_response = await client.post(
                     "/v1/chat/completions",
                     headers=headers,
-                    json={
-                        "model": request.model,
-                        "messages": _chat_messages(request),
-                        "metadata": {
-                            "tenant_id": request.tenant_id,
-                            "correlation_id": request.correlation_id,
-                        },
-                    },
+                    json=body,
                 )
                 http_response.raise_for_status()
                 payload = http_response.json()
@@ -147,6 +151,8 @@ class LiteLlmProvider:
                 model=response.model,
                 usage=response.usage,
                 trace_id=trace_id,
+                tool_calls=response.tool_calls,
+                finish_reason=response.finish_reason,
                 metadata=response.metadata,
             )
 
@@ -156,13 +162,18 @@ def _response_from_payload(
 ) -> LlmResponse:
     choices = payload.get("choices")
     text = ""
+    tool_calls: tuple[LlmToolCall, ...] = ()
+    finish_reason: str | None = None
     if isinstance(choices, list) and choices:
         first = choices[0]
         if isinstance(first, Mapping):
+            raw_finish_reason = first.get("finish_reason")
+            finish_reason = raw_finish_reason if isinstance(raw_finish_reason, str) else None
             message = first.get("message")
             if isinstance(message, Mapping):
                 content = message.get("content")
                 text = content if isinstance(content, str) else ""
+                tool_calls = _tool_calls_from_message(message)
 
     usage_payload = payload.get("usage")
     prompt_tokens = 0
@@ -186,6 +197,8 @@ def _response_from_payload(
             latency_ms=latency_ms,
         ),
         trace_id=str(payload.get("id") or uuid4()),
+        tool_calls=tool_calls,
+        finish_reason=finish_reason,
     )
 
 
@@ -194,8 +207,8 @@ def _int_field(payload: Mapping[str, object], key: str) -> int:
     return value if isinstance(value, int) else 0
 
 
-def _chat_messages(request: LlmRequest) -> list[dict[str, str]]:
-    messages: list[dict[str, str]] = []
+def _chat_messages(request: LlmRequest) -> list[dict[str, object]]:
+    messages: list[dict[str, object]] = []
     if request.system is not None:
         messages.append({"role": "system", "content": request.system})
     messages.extend(
@@ -203,8 +216,91 @@ def _chat_messages(request: LlmRequest) -> list[dict[str, str]]:
     )
     if request.prompt:
         messages.append({"role": "user", "content": request.prompt})
+    if request.tool_calls:
+        messages.append(
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [_tool_call_payload(tool_call) for tool_call in request.tool_calls],
+            }
+        )
+    messages.extend(
+        {
+            "role": "tool",
+            "tool_call_id": result.tool_call_id,
+            "content": result.content,
+        }
+        for result in request.tool_results
+    )
     return messages
 
 
-def _trace_input(request: LlmRequest) -> list[dict[str, str]]:
+def _trace_input(request: LlmRequest) -> list[dict[str, object]]:
     return _chat_messages(request)
+
+
+def _tool_payload(tool: LlmTool) -> dict[str, object]:
+    return {
+        "type": "function",
+        "function": {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": dict(tool.parameters),
+        },
+    }
+
+
+def _tool_call_payload(tool_call: LlmToolCall) -> dict[str, object]:
+    return {
+        "id": tool_call.id,
+        "type": "function",
+        "function": {
+            "name": tool_call.name,
+            "arguments": json.dumps(dict(tool_call.arguments), sort_keys=True),
+        },
+    }
+
+
+def _tool_calls_from_message(message: Mapping[str, object]) -> tuple[LlmToolCall, ...]:
+    raw_tool_calls = message.get("tool_calls")
+    if not isinstance(raw_tool_calls, list | tuple):
+        return ()
+    tool_calls: list[LlmToolCall] = []
+    for index, raw_tool_call in enumerate(raw_tool_calls):
+        if not isinstance(raw_tool_call, Mapping):
+            continue
+        function = raw_tool_call.get("function")
+        if not isinstance(function, Mapping):
+            continue
+        name = function.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        raw_id = raw_tool_call.get("id")
+        tool_calls.append(
+            LlmToolCall(
+                id=raw_id if isinstance(raw_id, str) and raw_id else f"tool-call-{index}",
+                name=name,
+                arguments=_arguments_from_json(function.get("arguments")),
+            )
+        )
+    return tuple(tool_calls)
+
+
+def _arguments_from_json(value: object) -> Mapping[str, JsonScalar]:
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return _json_scalar_mapping(decoded)
+    return _json_scalar_mapping(value)
+
+
+def _json_scalar_mapping(value: object) -> dict[str, JsonScalar]:
+    if not isinstance(value, Mapping):
+        return {}
+    result: dict[str, JsonScalar] = {}
+    for key, item in value.items():
+        if isinstance(key, str) and (item is None or isinstance(item, str | int | float | bool)):
+            result[key] = item
+    return result

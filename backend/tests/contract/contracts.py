@@ -24,6 +24,7 @@ from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
 from core.domain.status import (
     CheckIn,
+    CheckInClarification,
     CheckInCorrelation,
     CheckInNudge,
     CheckInPreference,
@@ -182,6 +183,29 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
     )
     assert sent_nudge.outbound_message_id == "nudge-1"
     assert await repository.checkin_nudge_for("demo", "corr-1", 1) == sent_nudge
+
+    claimed_clarification = await repository.record_checkin_clarification(
+        CheckInClarification(
+            tenant_id="demo",
+            correlation_id="corr-1",
+            clarification_number=1,
+            question="What is still missing?",
+        )
+    )
+    assert claimed_clarification.outbound_message_id is None
+    sent_clarification = await repository.record_checkin_clarification(
+        CheckInClarification(
+            tenant_id="demo",
+            correlation_id="corr-1",
+            clarification_number=1,
+            question="Different question should not overwrite the claim.",
+            sent_at=replied_at,
+            outbound_message_id="clarify-1",
+        )
+    )
+    assert sent_clarification.question == "What is still missing?"
+    assert sent_clarification.outbound_message_id == "clarify-1"
+    assert await repository.checkin_clarification_count("demo", "corr-1") == 1
 
     status = DeveloperStatus(
         tenant_id="demo",

@@ -12,6 +12,7 @@ from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
 from core.domain.status import (
     CheckIn,
+    CheckInClarification,
     CheckInCorrelation,
     CheckInNudge,
     CheckInPreference,
@@ -314,6 +315,50 @@ class PostgresStatusRepository:
                 (tenant_id, correlation_id, nudge_number),
             )
         return _checkin_nudge_from_row(rows[0]) if rows else None
+
+    async def record_checkin_clarification(
+        self, clarification: CheckInClarification
+    ) -> CheckInClarification:
+        with _tracer.start_as_current_span("postgres.status.record_checkin_clarification"):
+            rows = await self._executor.fetch(
+                """
+                INSERT INTO checkin_clarifications (
+                    tenant_id, correlation_id, clarification_number, question,
+                    sent_at, outbound_message_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, correlation_id, clarification_number)
+                DO UPDATE SET
+                    sent_at = COALESCE(checkin_clarifications.sent_at, EXCLUDED.sent_at),
+                    outbound_message_id = COALESCE(
+                        checkin_clarifications.outbound_message_id,
+                        EXCLUDED.outbound_message_id
+                    )
+                RETURNING tenant_id, correlation_id, clarification_number, question,
+                          sent_at, outbound_message_id
+                """,
+                (
+                    clarification.tenant_id,
+                    clarification.correlation_id,
+                    clarification.clarification_number,
+                    clarification.question,
+                    clarification.sent_at,
+                    clarification.outbound_message_id,
+                ),
+            )
+        return _checkin_clarification_from_row(rows[0])
+
+    async def checkin_clarification_count(self, tenant_id: str, correlation_id: str) -> int:
+        with _tracer.start_as_current_span("postgres.status.checkin_clarification_count"):
+            rows = await self._executor.fetch(
+                """
+                SELECT count(*) AS clarification_count
+                FROM checkin_clarifications
+                WHERE tenant_id = %s AND correlation_id = %s
+                """,
+                (tenant_id, correlation_id),
+            )
+        return _int_field(rows[0]["clarification_count"], "clarification_count") if rows else 0
 
     async def record_developer_status(self, status: DeveloperStatus) -> None:
         with _tracer.start_as_current_span("postgres.status.record_developer_status"):
@@ -667,6 +712,21 @@ def _checkin_nudge_from_row(row: Mapping[str, object]) -> CheckInNudge:
         tenant_id=str(row["tenant_id"]),
         correlation_id=str(row["correlation_id"]),
         nudge_number=_int_field(row["nudge_number"], "nudge_number"),
+        sent_at=_optional_datetime_field(row.get("sent_at"), "sent_at"),
+        outbound_message_id=outbound_message_id if isinstance(outbound_message_id, str) else None,
+    )
+
+
+def _checkin_clarification_from_row(row: Mapping[str, object]) -> CheckInClarification:
+    outbound_message_id = row.get("outbound_message_id")
+    return CheckInClarification(
+        tenant_id=str(row["tenant_id"]),
+        correlation_id=str(row["correlation_id"]),
+        clarification_number=_int_field(
+            row["clarification_number"],
+            "clarification_number",
+        ),
+        question=str(row["question"]),
         sent_at=_optional_datetime_field(row.get("sent_at"), "sent_at"),
         outbound_message_id=outbound_message_id if isinstance(outbound_message_id, str) else None,
     )

@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from inspect import Parameter, signature
 
+import pytest
+
+from core.application import status_collector as status_collector_module
 from core.application.status_collector import StatusCollector
 from core.application.status_parsing import StatusParser
 from core.domain.conversation import ConversationRole, ConversationTurn
@@ -11,7 +14,7 @@ from core.domain.graph import EntityRef, FactEvent, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 from core.domain.messaging import ChatUserRef, InboundMessage
-from core.domain.status import CheckIn, DeveloperStatus, StatusSource
+from core.domain.status import CheckIn, CheckInClarification, DeveloperStatus, StatusSource
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from tests.contract.fakes import FakeChatProvider, FakeIssueTracker
 
@@ -37,6 +40,14 @@ class SequenceLlmProvider:
             ),
             trace_id=f"trace-{len(self.requests)}",
         )
+
+
+@dataclass
+class CapturingLogger:
+    events: list[dict[str, object]] = field(default_factory=list)
+
+    def info(self, event: str, **values: object) -> None:
+        self.events.append({"event": event, **values})
 
 
 def test_status_collector_requires_conversation_repository() -> None:
@@ -158,7 +169,9 @@ async def test_status_collector_graph_sends_dm_and_records_checkin() -> None:
     ]
 
 
-async def test_status_collector_handles_reply_by_correlation() -> None:
+async def test_status_collector_handles_reply_by_correlation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     store = InMemoryGraphStore()
     await store.append_turn(
         ConversationTurn(
@@ -200,6 +213,8 @@ async def test_status_collector_handles_reply_by_correlation() -> None:
         model="test-model",
         parser=StatusParser(parser_llm, model="test-model"),
     )
+    logger = CapturingLogger()
+    monkeypatch.setattr(status_collector_module, "_logger", logger)
 
     status = await collector.handle_reply(
         InboundMessage(
@@ -216,6 +231,8 @@ async def test_status_collector_handles_reply_by_correlation() -> None:
     updated = await store.checkin_by_correlation("demo", "corr-1")
     assert updated is not None
     assert updated.raw_reply == "Graph sync is in review, blocked on schema review."
+    assert logger.events[0]["event"] == "status_reply_received"
+    assert logger.events[0]["raw_reply"] == "Graph sync is in review, blocked on schema review."
     assert status.source is StatusSource.CONFIRMED
     assert status.blockers == ("schema review",)
     assert await store.latest_developer_status("demo", "dev-1", date(2026, 1, 10)) == status
@@ -238,8 +255,8 @@ async def test_status_collector_handles_reply_by_correlation() -> None:
         "has_eta_change": True,
         "eta_change_days": 1,
         "mood": "neutral",
+        "raw_reply": "Graph sync is in review, blocked on schema review.",
     }
-    assert "Graph sync" not in str(facts[0].payload)
     turns = await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
     assert turns[-1].role is ConversationRole.USER
     assert turns[-1].content == "Graph sync is in review, blocked on schema review."
@@ -266,6 +283,231 @@ async def test_status_collector_handles_reply_by_correlation() -> None:
     assert duplicate_checkin == updated
     assert len(parser_llm.requests) == 1
     assert duplicate_facts == facts
+
+
+async def test_status_collector_sends_clarification_and_keeps_checkin_open() -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    chat = FakeChatProvider()
+    llm = SequenceLlmProvider(
+        texts=['{"sufficient":false,"question":"What blocker should I note?","signals":null}']
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    result = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="Still working on it.",
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
+        )
+    )
+
+    checkin = await store.checkin_by_correlation("demo", "corr-1")
+    assert result is None
+    assert checkin is not None
+    assert checkin.replied_at is None
+    assert len(chat.sent) == 1
+    assert chat.sent[0].text == "What blocker should I note?"
+    assert chat.sent[0].metadata == {
+        "purpose": "status_clarification",
+        "clarification_number": 1,
+    }
+    assert await store.checkin_clarification_count("demo", "corr-1") == 1
+    turns = await store.list_recent_turns("demo", "dev-1", limit=2)
+    assert [turn.role for turn in turns] == [ConversationRole.USER, ConversationRole.AGENT]
+
+
+async def test_status_collector_finalizes_when_clarification_cap_reached() -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    await store.record_checkin_clarification(
+        CheckInClarification(
+            tenant_id="demo",
+            correlation_id="corr-1",
+            clarification_number=1,
+            question="What blocker should I note?",
+            sent_at=datetime(2026, 1, 10, 9, 8, tzinfo=UTC),
+            outbound_message_id="msg-clarify",
+        )
+    )
+    chat = FakeChatProvider()
+    llm = SequenceLlmProvider(
+        texts=[
+            '{"sufficient":false,"question":"Any ETA change?",'
+            '"signals":{"progress_note":"Cache work is still in progress",'
+            '"blockers":[],"eta_change_days":null,"mood":"neutral"}}'
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+        checkin_max_clarifications=1,
+    )
+
+    status = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="Cache work is still in progress.",
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 15, tzinfo=UTC),
+        )
+    )
+
+    checkin = await store.checkin_by_correlation("demo", "corr-1")
+    assert status is not None
+    assert status.source is StatusSource.CONFIRMED
+    assert "Clarification cap reached" in status.summary
+    assert checkin is not None
+    assert checkin.replied_at == datetime(2026, 1, 10, 9, 15, tzinfo=UTC)
+    assert chat.sent == []
+
+
+async def test_status_collector_ignores_duplicate_message_id_while_open() -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    await store.append_turn(
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            conversation_id="corr-1",
+            conversation_date=date(2026, 1, 10),
+            role=ConversationRole.USER,
+            content="Already recorded.",
+            correlation_id="corr-1",
+            chat_message_id="msg-1",
+            observed_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
+        )
+    )
+    chat = FakeChatProvider()
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=SequenceLlmProvider(texts=[]),
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    result = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="Redelivered text.",
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 8, tzinfo=UTC),
+        )
+    )
+
+    turns = await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
+    assert result is None
+    assert len(turns) == 1
+    assert chat.sent == []
+
+
+async def test_status_collector_timeout_finalizes_accumulated_clarification_reply() -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    await store.append_turn(
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            conversation_id="corr-1",
+            conversation_date=date(2026, 1, 10),
+            role=ConversationRole.USER,
+            content="Cache work is partly done.",
+            correlation_id="corr-1",
+            chat_message_id="msg-1",
+            observed_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
+        )
+    )
+    parser_llm = SequenceLlmProvider(
+        texts=[
+            '{"progress_note":"Cache work is partly done",'
+            '"blockers":[],"eta_change_days":null,"mood":"neutral"}'
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(texts=[]),
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+        parser=StatusParser(parser_llm, model="test-model"),
+    )
+
+    status = await collector.record_non_response(
+        tenant_id="demo",
+        developer_id="dev-1",
+        as_of=date(2026, 1, 10),
+        correlation_id="corr-1",
+    )
+
+    checkin = await store.checkin_by_correlation("demo", "corr-1")
+    assert status.source is StatusSource.CONFIRMED
+    assert "clarification timeout" in status.summary
+    assert checkin is not None
+    assert checkin.replied_at == datetime(2026, 1, 10, 9, 7, tzinfo=UTC)
 
 
 async def test_status_collector_resolves_replies_by_thread_then_user_day() -> None:

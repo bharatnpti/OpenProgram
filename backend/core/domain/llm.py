@@ -16,6 +16,26 @@ class LlmMessage:
 
 
 @dataclass(frozen=True, kw_only=True)
+class LlmTool:
+    name: str
+    description: str
+    parameters: Mapping[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, kw_only=True)
+class LlmToolCall:
+    id: str
+    name: str
+    arguments: Mapping[str, JsonScalar] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, kw_only=True)
+class LlmToolResult:
+    tool_call_id: str
+    content: str
+
+
+@dataclass(frozen=True, kw_only=True)
 class LlmRequest:
     tenant_id: str
     prompt: str
@@ -23,6 +43,9 @@ class LlmRequest:
     correlation_id: str
     system: str | None = None
     messages: tuple[LlmMessage, ...] = ()
+    tools: tuple[LlmTool, ...] = ()
+    tool_calls: tuple[LlmToolCall, ...] = ()
+    tool_results: tuple[LlmToolResult, ...] = ()
     metadata: Mapping[str, JsonScalar] = field(default_factory=dict)
 
 
@@ -42,4 +65,6 @@ class LlmResponse:
     model: str
     usage: TokenUsage
     trace_id: str
+    tool_calls: tuple[LlmToolCall, ...] = ()
+    finish_reason: str | None = None
     metadata: Mapping[str, JsonScalar] = field(default_factory=dict)

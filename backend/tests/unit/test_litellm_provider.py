@@ -5,7 +5,15 @@ import json
 import httpx
 import respx
 
-from core.domain.llm import LlmMessage, LlmRequest
+from core.domain.llm import (
+    LlmMessage,
+    LlmRequest,
+    LlmResponse,
+    LlmTool,
+    LlmToolCall,
+    LlmToolResult,
+    TokenUsage,
+)
 from infra.adapters.llm.fake import FakeLlmProvider
 from infra.adapters.llm.litellm_provider import LangfuseTraceSink, LiteLlmProvider
 
@@ -120,4 +128,137 @@ async def test_fake_llm_provider_captures_multi_turn_request() -> None:
     response = await provider.complete(request)
 
     assert response.text == "summary: Summarize"
+    assert provider.requests == [request]
+
+
+@respx.mock
+async def test_litellm_sends_tools_and_parses_tool_calls() -> None:
+    route = respx.post("https://litellm.test/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "trace-llm",
+                "model": "test-model",
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call-1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "fetch_conversation_history",
+                                        "arguments": '{"since_days": 7, "limit": 3}',
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
+            },
+        )
+    )
+    respx.post("https://langfuse.test/api/public/ingestion").mock(
+        return_value=httpx.Response(200, json={"ok": True})
+    )
+    provider = LiteLlmProvider(
+        base_url="https://litellm.test",
+        trace_sink=LangfuseTraceSink(
+            host="https://langfuse.test",
+            public_key="pk-test",
+            secret_key="sk-test",
+        ),
+    )
+
+    response = await provider.complete(
+        LlmRequest(
+            tenant_id="demo",
+            prompt="Need more context?",
+            model="test-model",
+            correlation_id="corr-1",
+            tools=(
+                LlmTool(
+                    name="fetch_conversation_history",
+                    description="Fetch history",
+                    parameters={"type": "object", "properties": {}},
+                ),
+            ),
+            tool_calls=(
+                LlmToolCall(
+                    id="prior-call",
+                    name="fetch_conversation_history",
+                    arguments={"limit": 1},
+                ),
+            ),
+            tool_results=(LlmToolResult(tool_call_id="prior-call", content="prior result"),),
+        )
+    )
+
+    body = json.loads(route.calls[0].request.content)
+    assert body["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "fetch_conversation_history",
+                "description": "Fetch history",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        }
+    ]
+    assert body["messages"][-2]["tool_calls"][0]["id"] == "prior-call"
+    assert body["messages"][-1] == {
+        "role": "tool",
+        "tool_call_id": "prior-call",
+        "content": "prior result",
+    }
+    assert response.finish_reason == "tool_calls"
+    assert response.tool_calls == (
+        LlmToolCall(
+            id="call-1",
+            name="fetch_conversation_history",
+            arguments={"since_days": 7, "limit": 3},
+        ),
+    )
+
+
+async def test_fake_llm_provider_returns_scripted_responses() -> None:
+    scripted = LlmResponse(
+        tenant_id="demo",
+        text="",
+        model="test-model",
+        usage=TokenUsage(
+            prompt_tokens=1,
+            completion_tokens=1,
+            total_tokens=2,
+            cost_usd=0.0,
+            latency_ms=1.0,
+        ),
+        trace_id="trace-scripted",
+        tool_calls=(
+            LlmToolCall(
+                id="call-1",
+                name="fetch_conversation_history",
+                arguments={"limit": 1},
+            ),
+        ),
+        finish_reason="tool_calls",
+    )
+    provider = FakeLlmProvider(responses=[scripted])
+    request = LlmRequest(
+        tenant_id="demo",
+        prompt="Summarize",
+        model="test-model",
+        correlation_id="corr-1",
+    )
+
+    response = await provider.complete(request)
+
+    assert response == scripted
     assert provider.requests == [request]

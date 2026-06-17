@@ -120,6 +120,7 @@ async def close_checkin_non_response_activity(payload: NudgeInput) -> NudgeResul
             developer_id=checkin.developer_id,
             as_of=as_of,
             developer_name=payload.developer_name,
+            correlation_id=payload.correlation_id,
         )
         return NudgeResult(
             tenant_id=payload.tenant_id,

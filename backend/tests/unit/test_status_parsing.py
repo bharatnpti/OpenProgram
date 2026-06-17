@@ -3,7 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
-from core.application.status_parsing import StatusParser
+from core.application.status_parsing import (
+    ClarificationDecision,
+    ClarificationEvaluator,
+    StatusParser,
+)
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 from core.domain.status import CheckInSignals, Mood
@@ -145,3 +149,50 @@ async def test_status_parser_ignores_wrongly_typed_optional_fields() -> None:
     )
 
     assert signals == CheckInSignals(progress_note="Fallback progress.")
+
+
+async def test_clarification_evaluator_parses_needed_question() -> None:
+    provider = CapturingLlmProvider(
+        text='{"sufficient":false,"question":"What is blocking the handoff?","signals":null}'
+    )
+    evaluator = ClarificationEvaluator(provider, model="test-model")
+
+    decision = await evaluator.evaluate(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="Still working on it.",
+        correlation_id="corr-1",
+    )
+
+    assert decision == ClarificationDecision(
+        sufficient=False,
+        question="What is blocking the handoff?",
+    )
+    assert provider.requests[0].metadata["purpose"] == "evaluate_checkin_clarification"
+
+
+async def test_clarification_evaluator_parses_sufficient_signals() -> None:
+    provider = CapturingLlmProvider(
+        text=(
+            '{"sufficient":true,"question":null,'
+            '"signals":{"progress_note":"API handoff is ready",'
+            '"blockers":[],"eta_change_days":0,"mood":"positive"}}'
+        )
+    )
+    evaluator = ClarificationEvaluator(provider, model="test-model")
+
+    decision = await evaluator.evaluate(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="API handoff is ready.",
+        correlation_id="corr-1",
+    )
+
+    assert decision == ClarificationDecision(
+        sufficient=True,
+        signals=CheckInSignals(
+            progress_note="API handoff is ready",
+            eta_change_days=0,
+            mood=Mood.POSITIVE,
+        ),
+    )

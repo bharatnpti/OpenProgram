@@ -7,10 +7,13 @@ from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 
 @dataclass
 class FakeLlmProvider:
+    responses: list[LlmResponse] = field(default_factory=list)
     requests: list[LlmRequest] = field(default_factory=list)
 
     async def complete(self, request: LlmRequest) -> LlmResponse:
         self.requests.append(request)
+        if self.responses:
+            return self.responses.pop(0)
         text = (
             '{"progress_note":"Status update received",'
             '"blockers":[],"eta_change_days":null,"mood":"neutral"}'

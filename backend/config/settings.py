@@ -51,10 +51,12 @@ class Settings(BaseSettings):
     tenant_default_timezone: str = "UTC"
     checkin_reply_wait_seconds: int = 14400
     checkin_final_reply_wait_seconds: int = 28800
+    checkin_max_clarifications: int = 2
     litellm_base_url: str = "http://localhost:4000"
     litellm_api_key: str | None = None
     litellm_model: str = "gpt-4o-mini"
     llm_provider: str = "litellm"
+    llm_max_tool_iterations: int = 3
     embedding_dimension: int = 1536
     langfuse_host: str = "http://localhost:3001"
     langfuse_public_key: str | None = None
@@ -265,6 +267,13 @@ class Settings(BaseSettings):
     def validate_non_negative_seconds(cls, value: int) -> int:
         if value < 0:
             raise ValueError("seconds value must be non-negative")
+        return value
+
+    @field_validator("checkin_max_clarifications", "llm_max_tool_iterations")
+    @classmethod
+    def validate_non_negative_count(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("count value must be non-negative")
         return value
 
     @model_validator(mode="after")
