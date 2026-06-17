@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     temporal_task_queue: str = "pulseops-foundation"
     temporal_schedule_id: str = "pulseops-heartbeat"
     temporal_heartbeat_interval_seconds: int = 60
+    dbos_app_name: str = "pulseops"
+    dbos_system_database_url: str | None = None
+    dbos_heartbeat_cron: str = "0 * * * * *"
     tenant_default_timezone: str = "UTC"
     checkin_reply_wait_seconds: int = 0
     checkin_final_reply_wait_seconds: int = 0
@@ -49,7 +52,7 @@ class Settings(BaseSettings):
     issue_tracker_provider: str = "jira"
     vcs_provider: str = "github"
     calendar_provider: str = "google"
-    workflow_provider: str = "temporal"
+    workflow_provider: str = "dbos"
     slack_bot_token: str | None = None
     slack_api_base_url: str = "https://slack.com/api"
     slack_retry_attempts: int = 3
@@ -131,10 +134,24 @@ class Settings(BaseSettings):
     @field_validator("workflow_provider")
     @classmethod
     def validate_workflow_provider(cls, value: str) -> str:
-        allowed = {"temporal", "fake"}
+        allowed = {"dbos", "temporal", "fake"}
         if value not in allowed:
             message = f"workflow_provider must be one of {sorted(allowed)}"
             raise ValueError(message)
+        return value
+
+    @field_validator("dbos_system_database_url", mode="before")
+    @classmethod
+    def empty_dbos_system_database_url_is_unset(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("dbos_app_name", "dbos_heartbeat_cron")
+    @classmethod
+    def validate_non_empty_string(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("value must not be empty")
         return value
 
     @field_validator("secret_key")
@@ -188,6 +205,10 @@ class Settings(BaseSettings):
     def dev_roles(self) -> frozenset[Role]:
         values = [item.strip().lower() for item in self.dev_principal_roles.split(",")]
         return frozenset(Role(value) for value in values if value)
+
+    @property
+    def resolved_dbos_system_database_url(self) -> str:
+        return self.dbos_system_database_url or self.database_url
 
 
 @lru_cache(maxsize=1)

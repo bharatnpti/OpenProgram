@@ -13,6 +13,7 @@ from infra.adapters.integrations.fake import (
 from infra.adapters.jira.jira_adapter import JiraIssueTrackerAdapter
 from infra.adapters.llm.fake import FakeLlmProvider
 from infra.adapters.llm.litellm_provider import LiteLlmProvider
+from infra.adapters.workflows.dbos import DbosWorkflowScheduler, DbosWorkflowWorker
 from infra.adapters.workflows.fake import FakeWorkflowScheduler, FakeWorkflowWorker
 from infra.adapters.workflows.temporal import TemporalWorkflowScheduler, TemporalWorkflowWorker
 from infra.persistence.in_memory_graph import InMemoryGraphStore
@@ -80,6 +81,13 @@ def test_registry_selects_real_configured_provider_adapters() -> None:
     assert isinstance(registry.calendar_provider(), GoogleCalendarAdapter)
     assert isinstance(registry.workflow_scheduler(), TemporalWorkflowScheduler)
     assert isinstance(registry.workflow_worker(), TemporalWorkflowWorker)
+
+
+def test_registry_defaults_to_dbos_workflow_provider() -> None:
+    registry = ServiceRegistry(Settings(secret_key=SECRET_KEY, runtime_mode="memory"))
+
+    assert isinstance(registry.workflow_scheduler(), DbosWorkflowScheduler)
+    assert isinstance(registry.workflow_worker(), DbosWorkflowWorker)
 
 
 async def test_registry_current_principal_uses_auth_provider() -> None:

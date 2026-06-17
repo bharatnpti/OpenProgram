@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from typing import TYPE_CHECKING
-
-from temporalio import activity, workflow
 
 from core.domain.status import StatusSource
 
@@ -33,7 +31,6 @@ class NudgeResult:
     terminal_source: str | None = None
 
 
-@activity.defn
 async def send_checkin_nudge_activity(payload: NudgeInput) -> NudgeResult:
     registry = _service_registry()
     try:
@@ -80,7 +77,6 @@ async def send_checkin_nudge_activity(payload: NudgeInput) -> NudgeResult:
         await registry.close()
 
 
-@activity.defn
 async def close_checkin_non_response_activity(payload: NudgeInput) -> NudgeResult:
     registry = _service_registry()
     try:
@@ -134,38 +130,6 @@ async def close_checkin_non_response_activity(payload: NudgeInput) -> NudgeResul
         )
     finally:
         await registry.close()
-
-
-@workflow.defn
-class NudgeWorkflow:
-    @workflow.run
-    async def run(self, payload: NudgeInput) -> NudgeResult:
-        if payload.reply_wait_seconds > 0:
-            await workflow.sleep(timedelta(seconds=payload.reply_wait_seconds))
-        nudge_result = await workflow.execute_activity(
-            send_checkin_nudge_activity,
-            payload,
-            start_to_close_timeout=timedelta(minutes=5),
-        )
-        if nudge_result.status == "already_replied":
-            return nudge_result
-        if payload.final_reply_wait_seconds > 0:
-            await workflow.sleep(timedelta(seconds=payload.final_reply_wait_seconds))
-        close_result = await workflow.execute_activity(
-            close_checkin_non_response_activity,
-            payload,
-            start_to_close_timeout=timedelta(minutes=5),
-        )
-        if close_result.nudge_message_id is None:
-            return NudgeResult(
-                tenant_id=close_result.tenant_id,
-                developer_id=close_result.developer_id,
-                correlation_id=close_result.correlation_id,
-                status=close_result.status,
-                nudge_message_id=nudge_result.nudge_message_id,
-                terminal_source=close_result.terminal_source,
-            )
-        return close_result
 
 
 def _service_registry() -> ServiceRegistry:

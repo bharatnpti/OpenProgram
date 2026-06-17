@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import TYPE_CHECKING
-
-from temporalio import activity, workflow
 
 from core.application.sync_services import SyncRunResult
 from core.domain.graph import JsonScalar
@@ -30,7 +28,6 @@ class GitSyncWorkflowResult:
     cursor_metadata: dict[str, JsonScalar]
 
 
-@activity.defn
 async def sync_git_repo_activity(payload: GitSyncInput) -> GitSyncWorkflowResult:
     registry = _service_registry()
     try:
@@ -42,17 +39,6 @@ async def sync_git_repo_activity(payload: GitSyncInput) -> GitSyncWorkflowResult
         return _workflow_result(result)
     finally:
         await registry.close()
-
-
-@workflow.defn
-class GitSyncWorkflow:
-    @workflow.run
-    async def run(self, payload: GitSyncInput) -> GitSyncWorkflowResult:
-        return await workflow.execute_activity(
-            sync_git_repo_activity,
-            payload,
-            start_to_close_timeout=timedelta(minutes=5),
-        )
 
 
 def _workflow_result(result: SyncRunResult) -> GitSyncWorkflowResult:

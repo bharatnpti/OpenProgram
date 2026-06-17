@@ -23,7 +23,7 @@ All DTOs live in `core.domain` and carry `tenant_id` seams. Vendor payloads stay
 
 - `chat_provider`: `slack` or `fake`
 - `llm_provider`: `litellm` or `fake`
-- `workflow_provider`: `temporal` or `fake`
+- `workflow_provider`: `dbos`, `temporal`, or `fake`
 
 ## Secret Storage
 

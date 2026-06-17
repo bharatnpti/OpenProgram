@@ -4,19 +4,21 @@
 
 - `WorkflowScheduler`: provider-neutral schedule bootstrap port.
 - `WorkflowWorker`: provider-neutral worker runtime port.
-- `TemporalWorkflowScheduler`: Temporal-backed schedule adapter.
-- `TemporalWorkflowWorker`: Temporal-backed worker adapter.
+- `DbosWorkflowScheduler`: DBOS-backed schedule adapter using the existing Postgres system database.
+- `DbosWorkflowWorker`: DBOS-backed worker adapter.
+- `TemporalWorkflowScheduler`: Temporal-backed schedule adapter kept for deployments that select Temporal.
+- `TemporalWorkflowWorker`: Temporal-backed worker adapter kept for deployments that select Temporal.
 - `FakeWorkflowScheduler` / `FakeWorkflowWorker`: local and test adapters.
 - `HeartbeatInput`, `HeartbeatResult`, and `ScheduleBootstrapResult`: provider-neutral DTOs in `core.domain.workflows`.
 
 ## Idempotency
 
-The pure heartbeat function accepts a deterministic `heartbeat_id`. Provider adapters wrap it in their own workflow/activity runtime and keep retries idempotent at the logical result level.
+The pure heartbeat function accepts a deterministic `heartbeat_id`. Provider adapters wrap it in their own workflow/step or workflow/activity runtime and keep retries idempotent at the logical result level.
 
 ## Local Operation
 
-`docker-compose.yml` starts Temporal, the UI, a worker container, and a one-shot scheduler container. The worker and scheduler CLI entrypoints resolve `Settings.workflow_provider` through `ServiceRegistry`; `temporal` is the default provider.
+`docker-compose.yml` starts Postgres, the worker container, and a one-shot scheduler container. The worker and scheduler CLI entrypoints resolve `Settings.workflow_provider` through `ServiceRegistry`; `dbos` is the default provider and stores workflow state in the configured Postgres database. Temporal and Temporal UI services remain available, and deployments can switch back with `PULSEOPS_WORKFLOW_PROVIDER=temporal`.
 
 ## Tests
 
-Pure unit tests validate heartbeat output and fake scheduling. End-to-end worker tests target the Temporal adapter and are gated on Docker/Temporal availability.
+Pure unit tests validate heartbeat output and fake scheduling. End-to-end worker tests target both DBOS/Postgres and Temporal adapters and are gated on Docker availability.
