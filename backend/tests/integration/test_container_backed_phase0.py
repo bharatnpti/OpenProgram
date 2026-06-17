@@ -194,6 +194,57 @@ async def test_dbos_worker_executes_heartbeat(compose_stack: object) -> None:
     assert result.status == "ok"
 
 
+async def test_dbos_worker_executes_read_sync_workflow(
+    compose_stack: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dbos import DBOS, SetWorkflowID
+
+    from infra.adapters.workflows.dbos import (
+        DbosRuntimeConfig,
+        configure_dbos_runtime,
+        dbos_jira_sync_workflow,
+        destroy_dbos_runtime,
+    )
+    from infra.workflows.jira_sync import JiraSyncInput
+
+    database_url = _service_url(compose_stack, "postgres", 5432, "pulseops")
+    monkeypatch.setenv("PULSEOPS_SECRET_KEY", SECRET_KEY)
+    monkeypatch.setenv("PULSEOPS_RUNTIME_MODE", "memory")
+    monkeypatch.setenv("PULSEOPS_CHAT_PROVIDER", "fake")
+    monkeypatch.setenv("PULSEOPS_ISSUE_TRACKER_PROVIDER", "fake")
+    monkeypatch.setenv("PULSEOPS_VCS_PROVIDER", "fake")
+    monkeypatch.setenv("PULSEOPS_CALENDAR_PROVIDER", "fake")
+    monkeypatch.setenv("PULSEOPS_LLM_PROVIDER", "fake")
+    get_settings.cache_clear()
+    configure_dbos_runtime(
+        DbosRuntimeConfig(
+            app_name="pulseops-it",
+            system_database_url=database_url,
+        )
+    )
+    DBOS.launch()
+    try:
+        with SetWorkflowID(f"dbos-jira-sync-it-{uuid4()}"):
+            handle = await DBOS.start_workflow_async(
+                dbos_jira_sync_workflow,
+                JiraSyncInput(
+                    tenant_id="demo",
+                    project_key="PO",
+                    observed_at="2026-01-10T11:00:00+00:00",
+                ),
+            )
+        result = await handle.get_result()
+    finally:
+        destroy_dbos_runtime()
+        get_settings.cache_clear()
+
+    assert result.connector == "issue"
+    assert result.scope == "project:PO"
+    assert result.items_synced == 2
+    assert result.cursor_updated_at == "2026-01-10T10:00:00+00:00"
+
+
 async def test_dbos_scheduler_applies_heartbeat_schedule(compose_stack: object) -> None:
     from infra.adapters.workflows.dbos import DbosWorkflowScheduler, destroy_dbos_runtime
 

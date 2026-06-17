@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import cast
+
 from config.settings import Settings
 from infra.adapters.calendar.google_adapter import GoogleCalendarAdapter
 from infra.adapters.chat.fake import FakeChatProvider, FakeChatWebhookMapper
@@ -27,9 +30,14 @@ from infra.registry import ServiceRegistry
 SECRET_KEY = "q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ="
 
 
+def _settings(**overrides: object) -> Settings:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    return settings_factory(_env_file=None, **overrides)
+
+
 def test_registry_selects_fake_providers() -> None:
     registry = ServiceRegistry(
-        Settings(
+        _settings(
             secret_key=SECRET_KEY,
             runtime_mode="memory",
             chat_provider="fake",
@@ -53,7 +61,7 @@ def test_registry_selects_fake_providers() -> None:
 
 def test_registry_selects_real_configured_provider_adapters() -> None:
     registry = ServiceRegistry(
-        Settings(
+        _settings(
             secret_key=SECRET_KEY,
             runtime_mode="memory",
             chat_provider="slack",
@@ -84,7 +92,7 @@ def test_registry_selects_real_configured_provider_adapters() -> None:
 
 
 def test_registry_defaults_to_dbos_workflow_provider() -> None:
-    registry = ServiceRegistry(Settings(secret_key=SECRET_KEY, runtime_mode="memory"))
+    registry = ServiceRegistry(_settings(secret_key=SECRET_KEY, runtime_mode="memory"))
 
     assert isinstance(registry.workflow_scheduler(), DbosWorkflowScheduler)
     assert isinstance(registry.workflow_worker(), DbosWorkflowWorker)
@@ -92,7 +100,7 @@ def test_registry_defaults_to_dbos_workflow_provider() -> None:
 
 async def test_registry_current_principal_uses_auth_provider() -> None:
     registry = ServiceRegistry(
-        Settings(
+        _settings(
             secret_key=SECRET_KEY,
             runtime_mode="memory",
             dev_principal_subject="dev-1",
@@ -107,7 +115,7 @@ async def test_registry_current_principal_uses_auth_provider() -> None:
 
 
 def test_registry_returns_memory_phase_1_repositories() -> None:
-    registry = ServiceRegistry(Settings(secret_key=SECRET_KEY, runtime_mode="memory"))
+    registry = ServiceRegistry(_settings(secret_key=SECRET_KEY, runtime_mode="memory"))
 
     graph_store = registry.graph_repository()
 
@@ -118,7 +126,7 @@ def test_registry_returns_memory_phase_1_repositories() -> None:
 
 
 def test_registry_returns_postgres_phase_1_repositories() -> None:
-    registry = ServiceRegistry(Settings(secret_key=SECRET_KEY, runtime_mode="container"))
+    registry = ServiceRegistry(_settings(secret_key=SECRET_KEY, runtime_mode="container"))
 
     assert isinstance(registry.status_repository(), PostgresStatusRepository)
     assert isinstance(registry.rollup_repository(), PostgresRollupRepository)

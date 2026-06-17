@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, replace
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 from temporalio import activity, workflow
 
@@ -17,6 +19,9 @@ from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
 from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import NudgeInput, NudgeResult
+
+if TYPE_CHECKING:
+    from temporalio.client import Client
 
 
 @activity.defn
@@ -169,7 +174,6 @@ class TemporalWorkflowScheduler:
 
     async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
         from temporalio.client import (
-            Client,
             Schedule,
             ScheduleActionStartWorkflow,
             ScheduleAlreadyRunningError,
@@ -180,7 +184,7 @@ class TemporalWorkflowScheduler:
             ScheduleUpdate,
         )
 
-        client = await Client.connect(self.target)
+        client = await _connect_temporal(self.target)
         schedule = Schedule(
             action=ScheduleActionStartWorkflow(
                 HeartbeatWorkflow.run,
@@ -215,10 +219,9 @@ class TemporalWorkflowWorker:
     task_queue: str
 
     async def run(self) -> None:
-        from temporalio.client import Client
         from temporalio.worker import Worker
 
-        client = await Client.connect(self.target)
+        client = await _connect_temporal(self.target)
         worker = Worker(
             client,
             task_queue=self.task_queue,
@@ -248,7 +251,26 @@ class TemporalWorkflowReadinessProbe:
     target: str
 
     async def check(self) -> bool:
-        from temporalio.client import Client
-
-        await Client.connect(self.target)
+        await _connect_temporal(self.target)
         return True
+
+
+async def _connect_temporal(
+    target: str,
+    *,
+    attempts: int = 30,
+    delay_seconds: float = 1.0,
+) -> Client:
+    from temporalio.client import Client
+
+    last_error: Exception | None = None
+    for attempt in range(max(1, attempts)):
+        try:
+            return await Client.connect(target)
+        except Exception as exc:
+            last_error = exc
+            if attempt < attempts - 1:
+                await asyncio.sleep(delay_seconds)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Temporal connection failed without an exception")
