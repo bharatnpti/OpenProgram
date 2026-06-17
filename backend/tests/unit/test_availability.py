@@ -87,3 +87,31 @@ async def test_availability_respects_blocks_availability_metadata_before_kind() 
 
     assert availability.available is False
     assert availability.blocking_events[0].kind == "busy"
+
+
+async def test_availability_ignores_events_that_do_not_cover_day() -> None:
+    user = UserRef(tenant_id="demo", external_id="dev-1")
+    service = AvailabilityService(
+        FakeCalendarProvider(
+            events=[
+                CalendarEvent(
+                    tenant_id="demo",
+                    user=user,
+                    starts_on=date(2026, 1, 11),
+                    ends_on=date(2026, 1, 11),
+                    kind="pto",
+                    metadata={"blocks_availability": True, "tz": "Asia/Kolkata"},
+                )
+            ]
+        )
+    )
+
+    availability = await service.availability_for(
+        user,
+        date(2026, 1, 10),
+        default_timezone="UTC",
+    )
+
+    assert availability.available is True
+    assert availability.timezone == "Asia/Kolkata"
+    assert availability.blocking_events == ()

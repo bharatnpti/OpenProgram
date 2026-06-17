@@ -115,3 +115,33 @@ async def test_status_parser_falls_back_to_raw_reply_when_output_is_malformed() 
     assert signals == CheckInSignals(
         progress_note="Finished the cache work; waiting on review.",
     )
+
+
+async def test_status_parser_falls_back_when_json_is_not_an_object() -> None:
+    provider = CapturingLlmProvider(text='["not", "an", "object"]')
+    parser = StatusParser(provider, model="test-model")
+
+    signals = await parser.parse_reply(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="Raw status text.",
+        correlation_id="corr-1",
+    )
+
+    assert signals == CheckInSignals(progress_note="Raw status text.")
+
+
+async def test_status_parser_ignores_wrongly_typed_optional_fields() -> None:
+    provider = CapturingLlmProvider(
+        text=('{"progress_note":"   ","blockers":"blocked","eta_change_days":true,"mood":"angry"}')
+    )
+    parser = StatusParser(provider, model="test-model")
+
+    signals = await parser.parse_reply(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="Fallback progress.",
+        correlation_id="corr-1",
+    )
+
+    assert signals == CheckInSignals(progress_note="Fallback progress.")

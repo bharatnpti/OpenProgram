@@ -8,6 +8,7 @@ import pytest
 
 from config.settings import Settings
 from core.application.agents.status_agent import StatusAgentNode
+from core.application.conversation_history import llm_messages_from_turns
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import SyncRunResult
 from core.domain.conversation import ConversationRole, ConversationTurn
@@ -65,6 +66,53 @@ async def test_status_agent_langgraph_wrapper_calls_llm_provider() -> None:
     )
     assert result["trace_id"] == "trace-fake"
     assert result["summary"].startswith("summary:")
+
+
+def test_conversation_history_maps_turn_roles_to_llm_messages() -> None:
+    observed_at = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
+    turns = (
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            conversation_id="corr-1",
+            conversation_date=date(2026, 1, 10),
+            role=ConversationRole.SYSTEM,
+            content="System context.",
+            correlation_id="corr-1",
+            chat_message_id="msg-system",
+            observed_at=observed_at,
+        ),
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            conversation_id="corr-1",
+            conversation_date=date(2026, 1, 10),
+            role=ConversationRole.AGENT,
+            content="Any blockers?",
+            correlation_id="corr-1",
+            chat_message_id="msg-agent",
+            observed_at=observed_at,
+        ),
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            conversation_id="corr-1",
+            conversation_date=date(2026, 1, 10),
+            role=ConversationRole.USER,
+            content="No blockers.",
+            correlation_id="corr-1",
+            chat_message_id="msg-user",
+            observed_at=observed_at,
+        ),
+    )
+
+    messages = llm_messages_from_turns(turns)
+
+    assert [(message.role, message.content) for message in messages] == [
+        ("system", "System context."),
+        ("assistant", "Any blockers?"),
+        ("user", "No blockers."),
+    ]
 
 
 def test_heartbeat_logic_is_retry_safe_shape() -> None:

@@ -282,3 +282,207 @@ async def test_calendar_read_sync_appends_event_facts_and_cursor() -> None:
         )
         == 1
     )
+
+
+async def test_issue_sync_uses_fallback_project_and_sprint_name_matching() -> None:
+    store = InMemoryGraphStore()
+    observed_at = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
+    tracker = FakeIssueTracker(
+        sprints=[
+            Sprint(
+                tenant_id="demo",
+                id="sprint-current",
+                board_id="board-1",
+                name="Current Sprint",
+                state="active",
+                starts_at=datetime(2026, 1, 6, 9, 0, tzinfo=UTC),
+                ends_at=datetime(2026, 1, 17, 18, 0, tzinfo=UTC),
+                metadata={"velocity": 21},
+            )
+        ],
+        issues={
+            "OPS-1": Issue(
+                tenant_id="demo",
+                key="OPS-1",
+                title="Unassigned sprint task",
+                state=IssueState.TODO,
+                assignee=None,
+                metadata={
+                    "project_key": "OPS",
+                    "sprint_name": "Current Sprint",
+                    "nested": ("ignored",),
+                },
+                updated_at=None,
+            ),
+            "OPS-2": Issue(
+                tenant_id="demo",
+                key="OPS-2",
+                title="Fallback parent task",
+                state=IssueState.BLOCKED,
+                assignee=None,
+                metadata={"project_key": "OPS", "sprint": "Missing Sprint"},
+                updated_at=datetime(2026, 1, 10, 8, 0, tzinfo=UTC),
+            ),
+        },
+    )
+    service = IssueReadSyncService(
+        issue_tracker=tracker,
+        graph_repository=store,
+        time_series_repository=store,
+        cursor_repository=store,
+    )
+
+    result = await service.sync_project(
+        tenant_id="demo",
+        project_key="OPS",
+        board_id="board-1",
+        observed_at=observed_at,
+    )
+
+    tree = await store.get_program_tree("demo", "OPS", date(2026, 1, 10))
+    edges = {(edge.from_node_id, edge.to_node_id, edge.kind) for edge in tree.edges}
+    task_nodes = {node.id: node for node in tree.nodes if node.kind is NodeKind.TASK}
+    facts = await store.list_facts(
+        "demo",
+        EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="OPS-1"),
+    )
+    cursor = await store.get_cursor("demo", "issue", "project:OPS")
+
+    assert result.items_synced == 2
+    assert ("OPS", "sprint-current", EdgeKind.CONTAINS) in edges
+    assert ("sprint-current", "OPS-1", EdgeKind.CONTAINS) in edges
+    assert ("OPS", "OPS-2", EdgeKind.CONTAINS) in edges
+    assert "nested" not in task_nodes["OPS-1"].metadata
+    assert facts[0].observed_at == observed_at
+    assert facts[0].payload["assignee_id"] is None
+    assert cursor.updated_at == observed_at
+
+
+async def test_vcs_sync_matches_repo_id_and_normalizes_fallback_timestamps() -> None:
+    store = InMemoryGraphStore()
+    observed_at = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
+    author = UserRef(tenant_id="demo", external_id="dev-1")
+    provider = FakeVcsProvider(
+        repos=[
+            Repo(
+                tenant_id="demo",
+                id="repo-external",
+                name="oneai/service",
+                default_branch="main",
+                metadata={"stars": 2, "labels": ("ignored",)},
+            )
+        ],
+        commits=[
+            Commit(
+                tenant_id="demo",
+                repo="repo-external",
+                sha="abc123",
+                message="Automated merge",
+                author=None,
+                committed_at=datetime(2026, 1, 10, 8, 0),
+            )
+        ],
+        pull_requests=[
+            PullRequest(
+                tenant_id="demo",
+                id="9",
+                title="Open API updates",
+                author=author,
+                merged=True,
+                metadata={"repo": "repo-external"},
+                updated_at=None,
+            )
+        ],
+    )
+    service = VcsReadSyncService(
+        vcs_provider=provider,
+        graph_repository=store,
+        time_series_repository=store,
+        cursor_repository=store,
+    )
+
+    result = await service.sync_repo(
+        tenant_id="demo",
+        repo_name="repo-external",
+        observed_at=observed_at,
+    )
+
+    repo_tree = await store.get_program_tree("demo", "oneai/service", date(2026, 1, 10))
+    repo_facts = await store.list_facts(
+        "demo",
+        EntityRef(tenant_id="demo", kind=NodeKind.REPO, id="oneai/service"),
+    )
+    developer_facts = await store.list_facts(
+        "demo",
+        EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
+    )
+    cursor = await store.get_cursor("demo", "vcs", "repo:repo-external")
+
+    assert result.items_synced == 2
+    assert repo_tree.root.metadata["external_id"] == "repo-external"
+    assert repo_tree.root.metadata["default_branch"] == "main"
+    assert "labels" not in repo_tree.root.metadata
+    assert repo_facts[0].observed_at == datetime(2026, 1, 10, 8, 0, tzinfo=UTC)
+    assert developer_facts[0].observed_at == observed_at
+    assert cursor.updated_at == observed_at
+
+
+async def test_vcs_sync_creates_placeholder_repo_when_provider_has_no_match() -> None:
+    store = InMemoryGraphStore()
+    service = VcsReadSyncService(
+        vcs_provider=FakeVcsProvider(),
+        graph_repository=store,
+        time_series_repository=store,
+        cursor_repository=store,
+    )
+
+    result = await service.sync_repo(
+        tenant_id="demo",
+        repo_name="missing-repo",
+        observed_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+    )
+
+    repo_tree = await store.get_program_tree("demo", "missing-repo", date(2026, 1, 10))
+    cursor = await store.get_cursor("demo", "vcs", "repo:missing-repo")
+
+    assert result.items_synced == 0
+    assert repo_tree.root.name == "missing-repo"
+    assert cursor.value is None
+    assert cursor.updated_at is None
+    assert cursor.metadata["last_item_count"] == 0
+
+
+async def test_calendar_sync_uses_timezone_alias_metadata() -> None:
+    store = InMemoryGraphStore()
+    user = UserRef(tenant_id="demo", external_id="dev-1")
+    provider = FakeCalendarProvider(
+        events=[
+            CalendarEvent(
+                tenant_id="demo",
+                user=user,
+                starts_on=date(2026, 1, 10),
+                ends_on=date(2026, 1, 11),
+                kind="focus",
+                metadata={"time_zone": "Asia/Kolkata"},
+            )
+        ]
+    )
+    service = CalendarReadSyncService(
+        calendar_provider=provider,
+        time_series_repository=store,
+        cursor_repository=store,
+    )
+
+    await service.sync_user(
+        user=user,
+        start=date(2026, 1, 10),
+        end=date(2026, 1, 11),
+        observed_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+    )
+
+    facts = await store.list_facts(
+        "demo",
+        EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
+    )
+
+    assert facts[0].payload["timezone"] == "Asia/Kolkata"

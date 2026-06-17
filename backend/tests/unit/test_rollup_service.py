@@ -136,9 +136,132 @@ async def test_persona_heatmap_only_swallows_missing_graph() -> None:
     assert view.cells == ()
 
 
+async def test_rollup_task_root_has_no_node_status() -> None:
+    task = Task(tenant_id="demo", id="task-root", name="Task root")
+    tree = GraphTree(root=task, nodes=(task,), edges=())
+
+    statuses = await RollupService(FakeStatusRepository()).compute(tree, date(2026, 1, 10))
+
+    assert statuses == ()
+
+
+async def test_rollup_without_children_records_unknown_factor() -> None:
+    program = Program(tenant_id="demo", id="program-empty", name="Program")
+    tree = GraphTree(
+        root=program,
+        nodes=(program,),
+        edges=(
+            GraphEdge(
+                tenant_id="demo",
+                from_node_id=program.id,
+                to_node_id="missing-child",
+                kind=EdgeKind.CONTAINS,
+            ),
+        ),
+    )
+
+    statuses = await RollupService(FakeStatusRepository()).compute(tree, date(2026, 1, 10))
+
+    assert len(statuses) == 1
+    assert statuses[0].entity_ref.id == "program-empty"
+    assert statuses[0].rag is Rag.UNKNOWN
+    assert statuses[0].factors[0].description == "No child status data is available."
+
+
+async def test_rollup_all_green_children_stay_green() -> None:
+    as_of = date(2026, 1, 10)
+    tree = _program_tree()
+    status_repository = FakeStatusRepository()
+    await status_repository.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-1",
+            as_of=as_of,
+            source=StatusSource.CONFIRMED,
+            blockers=(),
+            summary="Ready.",
+        )
+    )
+
+    statuses = await RollupService(status_repository).compute(tree, as_of)
+    by_id = {status.entity_ref.id: status for status in statuses}
+
+    assert by_id["dev-1"].rag is Rag.GREEN
+    assert by_id["pod-1"].rag is Rag.GREEN
+    assert by_id["program-1"].source is StatusSource.CONFIRMED
+    assert by_id["program-1"].factors[0].description == (
+        "All child statuses are confirmed with no blockers."
+    )
+
+
+async def test_rollup_inferred_status_and_multiple_blockers_escalate() -> None:
+    as_of = date(2026, 1, 10)
+    tree = _program_tree(include_second_developer=True)
+    status_repository = FakeStatusRepository()
+    await status_repository.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-1",
+            as_of=as_of,
+            source=StatusSource.INFERRED,
+            blockers=(),
+            summary="Inferred from activity.",
+        )
+    )
+    await status_repository.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-2",
+            as_of=as_of,
+            source=StatusSource.CONFIRMED,
+            blockers=("schema review", "staging access"),
+            summary="Blocked.",
+        )
+    )
+
+    statuses = await RollupService(status_repository).compute(tree, as_of)
+    by_id = {status.entity_ref.id: status for status in statuses}
+
+    assert by_id["dev-1"].rag is Rag.AMBER
+    assert by_id["dev-1"].factors[0].description == ("Status is inferred and needs confirmation.")
+    assert by_id["dev-2"].rag is Rag.RED
+    assert [factor.description for factor in by_id["dev-2"].factors] == [
+        "Blocker: schema review",
+        "Blocker: staging access",
+    ]
+    assert by_id["program-1"].rag is Rag.RED
+
+
+async def test_rollup_edge_level_critical_metadata_escalates_single_blocker() -> None:
+    as_of = date(2026, 1, 10)
+    tree = _program_tree(critical_edge=True)
+    status_repository = FakeStatusRepository()
+    await status_repository.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-1",
+            as_of=as_of,
+            source=StatusSource.CONFIRMED,
+            blockers=("API contract",),
+            summary="Blocked.",
+        )
+    )
+
+    statuses = await RollupService(status_repository).compute(tree, as_of)
+    by_id = {status.entity_ref.id: status for status in statuses}
+
+    assert by_id["dev-1"].rag is Rag.RED
+    assert by_id["dev-1"].factors[0].source_ref == EntityRef(
+        tenant_id="demo",
+        kind=NodeKind.TASK,
+        id="task-1",
+    )
+
+
 def _program_tree(
     *,
     critical_task: bool = False,
+    critical_edge: bool = False,
     include_second_developer: bool = False,
 ) -> GraphTree:
     program = Program(tenant_id="demo", id="program-1", name="Program")
@@ -176,6 +299,7 @@ def _program_tree(
             from_node_id="dev-1",
             to_node_id="task-1",
             kind=EdgeKind.ASSIGNED_TO,
+            metadata={"critical_path": "true"} if critical_edge else {},
         ),
     ]
     if include_second_developer:
