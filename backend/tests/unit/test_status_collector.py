@@ -7,16 +7,17 @@ from inspect import Parameter, signature
 import pytest
 
 from core.application import status_collector as status_collector_module
+from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.status_collector import StatusCollector
 from core.application.status_parsing import StatusParser
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.graph import EntityRef, FactEvent, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
-from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
+from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
 from core.domain.messaging import ChatUserRef, InboundMessage
 from core.domain.status import CheckIn, CheckInClarification, DeveloperStatus, StatusSource
 from infra.persistence.in_memory_graph import InMemoryGraphStore
-from tests.contract.fakes import FakeChatProvider, FakeIssueTracker
+from tests.contract.fakes import FakeChatProvider, FakeIssueTracker, FakeLlmProvider
 
 
 @dataclass
@@ -40,6 +41,29 @@ class SequenceLlmProvider:
             ),
             trace_id=f"trace-{len(self.requests)}",
         )
+
+
+def _llm_response(
+    *,
+    text: str = "",
+    tool_calls: tuple[LlmToolCall, ...] = (),
+    finish_reason: str | None = None,
+) -> LlmResponse:
+    return LlmResponse(
+        tenant_id="demo",
+        text=text,
+        model="test-model",
+        usage=TokenUsage(
+            prompt_tokens=1,
+            completion_tokens=1,
+            total_tokens=2,
+            cost_usd=0.0,
+            latency_ms=1.0,
+        ),
+        trace_id="trace-scripted",
+        tool_calls=tool_calls,
+        finish_reason=finish_reason,
+    )
 
 
 @dataclass
@@ -216,7 +240,7 @@ async def test_status_collector_handles_reply_by_correlation(
     logger = CapturingLogger()
     monkeypatch.setattr(status_collector_module, "_logger", logger)
 
-    status = await collector.handle_reply(
+    outcome = await collector.handle_reply(
         InboundMessage(
             tenant_id="demo",
             user=ChatUserRef(tenant_id="demo", external_id="U123"),
@@ -228,6 +252,9 @@ async def test_status_collector_handles_reply_by_correlation(
         )
     )
 
+    assert outcome.kind == "processed"
+    status = outcome.status
+    assert status is not None
     updated = await store.checkin_by_correlation("demo", "corr-1")
     assert updated is not None
     assert updated.raw_reply == "Graph sync is in review, blocked on schema review."
@@ -279,7 +306,8 @@ async def test_status_collector_handles_reply_by_correlation(
         "demo",
         EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
     )
-    assert duplicate == status
+    assert duplicate.kind == "processed"
+    assert duplicate.status == status
     assert duplicate_checkin == updated
     assert len(parser_llm.requests) == 1
     assert duplicate_facts == facts
@@ -311,7 +339,7 @@ async def test_status_collector_sends_clarification_and_keeps_checkin_open() -> 
         model="test-model",
     )
 
-    result = await collector.handle_reply(
+    outcome = await collector.handle_reply(
         InboundMessage(
             tenant_id="demo",
             user=ChatUserRef(tenant_id="demo", external_id="U123"),
@@ -324,7 +352,8 @@ async def test_status_collector_sends_clarification_and_keeps_checkin_open() -> 
     )
 
     checkin = await store.checkin_by_correlation("demo", "corr-1")
-    assert result is None
+    assert outcome.kind == "clarifying"
+    assert outcome.status is None
     assert checkin is not None
     assert checkin.replied_at is None
     assert len(chat.sent) == 1
@@ -332,6 +361,7 @@ async def test_status_collector_sends_clarification_and_keeps_checkin_open() -> 
     assert chat.sent[0].metadata == {
         "purpose": "status_clarification",
         "clarification_number": 1,
+        "idempotency_key": "clarification:corr-1:1",
     }
     assert await store.checkin_clarification_count("demo", "corr-1") == 1
     turns = await store.list_recent_turns("demo", "dev-1", limit=2)
@@ -379,7 +409,7 @@ async def test_status_collector_finalizes_when_clarification_cap_reached() -> No
         checkin_max_clarifications=1,
     )
 
-    status = await collector.handle_reply(
+    outcome = await collector.handle_reply(
         InboundMessage(
             tenant_id="demo",
             user=ChatUserRef(tenant_id="demo", external_id="U123"),
@@ -392,12 +422,96 @@ async def test_status_collector_finalizes_when_clarification_cap_reached() -> No
     )
 
     checkin = await store.checkin_by_correlation("demo", "corr-1")
+    assert outcome.kind == "processed"
+    status = outcome.status
     assert status is not None
     assert status.source is StatusSource.CONFIRMED
     assert "Clarification cap reached" in status.summary
     assert checkin is not None
     assert checkin.replied_at == datetime(2026, 1, 10, 9, 15, tzinfo=UTC)
     assert chat.sent == []
+
+
+async def test_status_collector_tool_agent_fetches_history_and_finalizes_reply() -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    await store.append_turn(
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            conversation_id="corr-prior",
+            conversation_date=date(2026, 1, 9),
+            role=ConversationRole.USER,
+            content="Previous deploy context.",
+            correlation_id="corr-prior",
+            chat_message_id="msg-prior",
+            observed_at=datetime(2026, 1, 9, 16, 0, tzinfo=UTC),
+        )
+    )
+    llm = FakeLlmProvider(
+        responses=[
+            _llm_response(
+                tool_calls=(
+                    LlmToolCall(
+                        id="call-history",
+                        name="fetch_conversation_history",
+                        arguments={"on": "2026-01-09"},
+                    ),
+                ),
+                finish_reason="tool_calls",
+            ),
+            _llm_response(
+                text=(
+                    '{"sufficient":true,"question":null,'
+                    '"signals":{"progress_note":"Current work is ready",'
+                    '"blockers":[],"eta_change_days":0,"mood":"positive"}}'
+                ),
+                finish_reason="stop",
+            ),
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+        tool_agent=ToolCallingAgent(llm, max_tool_iterations=1),
+    )
+
+    outcome = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="Ready now.",
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
+        )
+    )
+
+    assert outcome.kind == "processed"
+    assert outcome.status is not None
+    assert outcome.status.summary == "Current work is ready"
+    assert len(llm.requests) == 2
+    assert llm.requests[0].tools[0].name == "fetch_conversation_history"
+    assert llm.requests[1].tool_calls[0].id == "call-history"
+    assert "Previous deploy context." in llm.requests[1].tool_results[0].content
+    checkin = await store.checkin_by_correlation("demo", "corr-1")
+    assert checkin is not None
+    assert checkin.raw_reply == "Ready now."
 
 
 async def test_status_collector_ignores_duplicate_message_id_while_open() -> None:
@@ -426,6 +540,19 @@ async def test_status_collector_ignores_duplicate_message_id_while_open() -> Non
             observed_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
         )
     )
+    await store.append_turn(
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            conversation_id="corr-1",
+            conversation_date=date(2026, 1, 11),
+            role=ConversationRole.AGENT,
+            content="What blocker should I note?",
+            correlation_id="corr-1",
+            chat_message_id="msg-clarify",
+            observed_at=datetime(2026, 1, 11, 9, 8, tzinfo=UTC),
+        )
+    )
     chat = FakeChatProvider()
     collector = StatusCollector(
         issue_tracker=FakeIssueTracker(),
@@ -436,7 +563,7 @@ async def test_status_collector_ignores_duplicate_message_id_while_open() -> Non
         model="test-model",
     )
 
-    result = await collector.handle_reply(
+    outcome = await collector.handle_reply(
         InboundMessage(
             tenant_id="demo",
             user=ChatUserRef(tenant_id="demo", external_id="U123"),
@@ -449,7 +576,8 @@ async def test_status_collector_ignores_duplicate_message_id_while_open() -> Non
     )
 
     turns = await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
-    assert result is None
+    assert outcome.kind == "ignored"
+    assert outcome.status is None
     assert len(turns) == 1
     assert chat.sent == []
 
@@ -499,7 +627,7 @@ async def test_status_collector_timeout_finalizes_accumulated_clarification_repl
     status = await collector.record_non_response(
         tenant_id="demo",
         developer_id="dev-1",
-        as_of=date(2026, 1, 10),
+        as_of=date(2026, 1, 12),
         correlation_id="corr-1",
     )
 
@@ -507,6 +635,7 @@ async def test_status_collector_timeout_finalizes_accumulated_clarification_repl
     assert status.source is StatusSource.CONFIRMED
     assert "clarification timeout" in status.summary
     assert checkin is not None
+    assert checkin.raw_reply == "Cache work is partly done."
     assert checkin.replied_at == datetime(2026, 1, 10, 9, 7, tzinfo=UTC)
 
 
@@ -618,6 +747,11 @@ async def test_status_collector_nudges_once_and_records_stale_non_response() -> 
 
     assert nudge_message_id == "msg-U123-1"
     assert len(chat.sent) == 1
+    assert chat.sent[0].metadata == {
+        "purpose": "status_nudge",
+        "nudge_number": 1,
+        "idempotency_key": "nudge:corr-1:1",
+    }
     turns = await store.list_recent_turns("demo", "dev-1", limit=1)
     assert len(turns) == 1
     assert turns[0].conversation_id == "corr-1"

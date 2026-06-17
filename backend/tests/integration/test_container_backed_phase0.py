@@ -181,9 +181,7 @@ async def test_conversation_store_migration_and_repository_contract(
         try:
             assert await _conversation_turns_table_exists(executor)
             assert await _conversation_turns_hypertable_exists(executor)
-            await assert_conversation_repository_contract(
-                PostgresConversationRepository(executor)
-            )
+            await assert_conversation_repository_contract(PostgresConversationRepository(executor))
         finally:
             await executor.close()
 
@@ -479,9 +477,7 @@ async def _drop_database(admin_database_url: str, database_name: str) -> None:
 
 
 async def _conversation_turns_table_exists(executor: PsycopgAsyncExecutor) -> bool:
-    rows = await executor.fetch(
-        "SELECT to_regclass('public.conversation_turns') AS relation_name"
-    )
+    rows = await executor.fetch("SELECT to_regclass('public.conversation_turns') AS relation_name")
     return rows[0]["relation_name"] is not None
 
 

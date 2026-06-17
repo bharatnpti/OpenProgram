@@ -44,6 +44,7 @@ class LlmRequest:
     system: str | None = None
     messages: tuple[LlmMessage, ...] = ()
     tools: tuple[LlmTool, ...] = ()
+    # Prior assistant tool-call turns carried through multi-turn tool loops.
     tool_calls: tuple[LlmToolCall, ...] = ()
     tool_results: tuple[LlmToolResult, ...] = ()
     metadata: Mapping[str, JsonScalar] = field(default_factory=dict)

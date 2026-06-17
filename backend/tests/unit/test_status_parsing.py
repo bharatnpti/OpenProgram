@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
+from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.status_parsing import (
     ClarificationDecision,
     ClarificationEvaluator,
     StatusParser,
 )
 from core.domain.conversation import ConversationRole, ConversationTurn
-from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
+from core.domain.graph import JsonScalar
+from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
 from core.domain.status import CheckInSignals, Mood
+from tests.contract.fakes import FakeLlmProvider
 
 
 @dataclass
@@ -33,6 +37,29 @@ class CapturingLlmProvider:
             ),
             trace_id="trace-parser",
         )
+
+
+def _response(
+    *,
+    text: str = "",
+    tool_calls: tuple[LlmToolCall, ...] = (),
+    finish_reason: str | None = None,
+) -> LlmResponse:
+    return LlmResponse(
+        tenant_id="demo",
+        text=text,
+        model="test-model",
+        usage=TokenUsage(
+            prompt_tokens=1,
+            completion_tokens=1,
+            total_tokens=2,
+            cost_usd=0.0,
+            latency_ms=1.0,
+        ),
+        trace_id="trace-parser",
+        tool_calls=tool_calls,
+        finish_reason=finish_reason,
+    )
 
 
 async def test_status_parser_converts_valid_json_to_signals() -> None:
@@ -196,3 +223,78 @@ async def test_clarification_evaluator_parses_sufficient_signals() -> None:
             mood=Mood.POSITIVE,
         ),
     )
+
+
+async def test_clarification_evaluator_parses_final_json_after_tool_cap() -> None:
+    provider = FakeLlmProvider(
+        responses=[
+            _response(
+                tool_calls=(
+                    LlmToolCall(
+                        id="call-1",
+                        name="fetch_conversation_history",
+                        arguments={"limit": 5},
+                    ),
+                ),
+                finish_reason="tool_calls",
+            ),
+            _response(
+                tool_calls=(
+                    LlmToolCall(
+                        id="call-2",
+                        name="fetch_conversation_history",
+                        arguments={"limit": 10},
+                    ),
+                ),
+                finish_reason="tool_calls",
+            ),
+            _response(
+                text=(
+                    '{"sufficient":true,"question":null,'
+                    '"signals":{"progress_note":"History confirms handoff is ready",'
+                    '"blockers":[],"eta_change_days":0,"mood":"positive"}}'
+                ),
+                finish_reason="stop",
+            ),
+        ]
+    )
+    tool = StaticTool()
+    evaluator = ClarificationEvaluator(
+        provider,
+        model="test-model",
+        tool_agent=ToolCallingAgent(provider, max_tool_iterations=1),
+    )
+
+    decision = await evaluator.evaluate(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="Ready.",
+        correlation_id="corr-1",
+        tools=(tool,),
+    )
+
+    assert decision == ClarificationDecision(
+        sufficient=True,
+        signals=CheckInSignals(
+            progress_note="History confirms handoff is ready",
+            eta_change_days=0,
+            mood=Mood.POSITIVE,
+        ),
+    )
+    assert len(provider.requests) == 3
+    assert provider.requests[2].tools == ()
+    assert provider.requests[2].tool_results[0].content == "history: 5"
+
+
+@dataclass
+class StaticTool:
+    calls: list[dict[str, JsonScalar]] = field(default_factory=list)
+    name: str = "fetch_conversation_history"
+    description: str = "Fetch static test history."
+    parameters: dict[str, object] = field(
+        default_factory=lambda: {"type": "object", "properties": {}}
+    )
+
+    async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
+        self.calls.append(dict(arguments))
+        return f"history: {arguments.get('limit', '')}"

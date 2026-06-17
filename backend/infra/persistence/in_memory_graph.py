@@ -395,6 +395,17 @@ class InMemoryGraphStore:
         )
         return sorted(matching[:limit], key=_conversation_sort_key)
 
+    async def user_turn_exists(
+        self, tenant_id: str, developer_id: str, chat_message_id: str
+    ) -> bool:
+        return any(
+            turn.tenant_id == tenant_id
+            and turn.developer_id == developer_id
+            and turn.chat_message_id == chat_message_id
+            and turn.role.value == "user"
+            for turn in self._conversation_turns
+        )
+
     async def purge_turns_older_than(self, tenant_id: str, cutoff: datetime) -> int:
         retained = [
             turn

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Protocol, TypedDict, cast
+from typing import Literal, Protocol, TypedDict, cast
 from uuid import uuid4
 
 import structlog
@@ -12,7 +13,7 @@ from opentelemetry import trace
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.conversation_history import llm_messages_from_turns
 from core.application.status_parsing import ClarificationEvaluator, StatusParser
-from core.application.tools.conversation_history import ConversationHistoryTool
+from core.application.tools.conversation_history import MAX_HISTORY_LIMIT, ConversationHistoryTool
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.domain.integrations import Issue, UserRef
@@ -65,6 +66,12 @@ class StatusCollectorState(TypedDict, total=False):
 
 class StatusCollectorGraph(Protocol):
     async def ainvoke(self, input: StatusCollectorState) -> StatusCollectorState: ...
+
+
+@dataclass(frozen=True, kw_only=True)
+class ReplyOutcome:
+    kind: Literal["processed", "clarifying", "ignored"]
+    status: DeveloperStatus | None = None
 
 
 class StatusCollector:
@@ -131,7 +138,7 @@ class StatusCollector:
             raise RuntimeError(message)
         return checkin
 
-    async def handle_reply(self, message: InboundMessage) -> DeveloperStatus | None:
+    async def handle_reply(self, message: InboundMessage) -> ReplyOutcome:
         checkin = await self._status_repository.checkin_by_correlation(
             message.tenant_id,
             message.correlation_id,
@@ -151,14 +158,16 @@ class StatusCollector:
         trace.get_current_span().set_attribute("pulseops.raw_reply", message.text)
 
         if checkin.replied_at is not None:
-            return await self._confirmed_status_for_duplicate(checkin)
+            return ReplyOutcome(
+                kind="processed",
+                status=await self._confirmed_status_for_duplicate(checkin),
+            )
         if await self._user_turn_exists(
             tenant_id=checkin.tenant_id,
             developer_id=checkin.developer_id,
-            on=message.received_at.date(),
             chat_message_id=message.message_id,
         ):
-            return None
+            return ReplyOutcome(kind="ignored")
 
         await self._record_conversation_turn(
             ConversationTurn(
@@ -208,7 +217,7 @@ class StatusCollector:
                 question=decision.question,
                 clarification_number=clarification_count + 1,
             )
-            return None
+            return ReplyOutcome(kind="clarifying")
 
         signals = decision.signals or await self._parser.parse_reply(
             tenant_id=message.tenant_id,
@@ -223,11 +232,14 @@ class StatusCollector:
                 signals,
                 "Clarification cap reached before all details were confirmed.",
             )
-        return await self._finalize_checkin_reply(
-            checkin=checkin,
-            replied_at=message.received_at,
-            raw_reply=message.text,
-            signals=signals,
+        return ReplyOutcome(
+            kind="processed",
+            status=await self._finalize_checkin_reply(
+                checkin=checkin,
+                replied_at=message.received_at,
+                raw_reply=message.text,
+                signals=signals,
+            ),
         )
 
     async def resolve_reply_correlation(self, message: InboundMessage) -> str | None:
@@ -334,7 +346,11 @@ class StatusCollector:
                 tenant_id=tenant_id,
                 text=text,
                 correlation_id=correlation_id,
-                metadata={"purpose": "status_nudge", "nudge_number": 1},
+                metadata={
+                    "purpose": "status_nudge",
+                    "nudge_number": 1,
+                    "idempotency_key": f"nudge:{correlation_id}:1",
+                },
             ),
         )
         sent_at = datetime.now(tz=UTC)
@@ -620,6 +636,9 @@ class StatusCollector:
                 metadata={
                     "purpose": "status_clarification",
                     "clarification_number": clarification_number,
+                    "idempotency_key": (
+                        f"clarification:{checkin.correlation_id}:{clarification_number}"
+                    ),
                 },
             ),
         )
@@ -696,11 +715,11 @@ class StatusCollector:
         if checkin is None or checkin.replied_at is not None:
             return None
 
-        turns = await self._conversation_turns_for_correlation(
+        turns = await self._correlation_turns_for_timeout(
             tenant_id=tenant_id,
             developer_id=checkin.developer_id,
             correlation_id=correlation_id,
-            reference_at=datetime.combine(as_of, datetime.min.time(), tzinfo=UTC),
+            reference_at=datetime.combine(as_of, datetime.max.time(), tzinfo=UTC),
         )
         user_turns = [turn for turn in turns if turn.role is ConversationRole.USER]
         if not user_turns:
@@ -779,17 +798,12 @@ class StatusCollector:
         *,
         tenant_id: str,
         developer_id: str,
-        on: date,
         chat_message_id: str,
     ) -> bool:
-        turns = await self._conversation_repository.list_turns_for_day(
+        return await self._conversation_repository.user_turn_exists(
             tenant_id,
             developer_id,
-            on,
-        )
-        return any(
-            turn.role is ConversationRole.USER and turn.chat_message_id == chat_message_id
-            for turn in turns
+            chat_message_id,
         )
 
     def _conversation_history_tool(
@@ -839,6 +853,22 @@ class StatusCollector:
             developer_id,
             limit=RECENT_CONVERSATION_TURN_LIMIT,
             since=reference_at - RECENT_CONVERSATION_LOOKBACK,
+        )
+        return [turn for turn in turns if turn.correlation_id == correlation_id]
+
+    async def _correlation_turns_for_timeout(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        correlation_id: str,
+        reference_at: datetime,
+    ) -> list[ConversationTurn]:
+        turns = await self._conversation_repository.list_recent_turns(
+            tenant_id,
+            developer_id,
+            limit=MAX_HISTORY_LIMIT,
+            since=reference_at - timedelta(days=self._conversation_retention_days),
         )
         return [turn for turn in turns if turn.correlation_id == correlation_id]
 

@@ -337,6 +337,10 @@ async def assert_conversation_repository_contract(repository: ConversationReposi
     )
     assert recent_since == [second]
     assert await repository.list_recent_turns("demo", "dev-1", limit=0) == []
+    assert await repository.user_turn_exists("demo", "dev-1", "msg-2") is True
+    assert await repository.user_turn_exists("demo", "dev-1", "msg-1") is False
+    assert await repository.user_turn_exists("demo", "dev-2", "msg-2") is False
+    assert await repository.user_turn_exists("other", "dev-1", "msg-2") is False
 
     purged = await repository.purge_turns_older_than(
         "demo",

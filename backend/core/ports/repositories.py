@@ -117,6 +117,10 @@ class ConversationRepository(Protocol):
         since: datetime | None = None,
     ) -> list[ConversationTurn]: ...
 
+    async def user_turn_exists(
+        self, tenant_id: str, developer_id: str, chat_message_id: str
+    ) -> bool: ...
+
     async def purge_turns_older_than(self, tenant_id: str, cutoff: datetime) -> int: ...
 
 
