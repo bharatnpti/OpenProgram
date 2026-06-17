@@ -16,6 +16,7 @@ class JiraSyncInput:
     tenant_id: str
     project_key: str
     container_id: str | None = None
+    board_id: str | None = None
     observed_at: str | None = None
 
 
@@ -36,6 +37,7 @@ async def sync_jira_project_activity(payload: JiraSyncInput) -> ReadSyncWorkflow
             tenant_id=payload.tenant_id,
             project_key=payload.project_key,
             container_id=payload.container_id,
+            board_id=payload.board_id,
             observed_at=_optional_datetime(payload.observed_at),
         )
         return _workflow_result(result)

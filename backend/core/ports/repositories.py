@@ -34,7 +34,12 @@ class TimeSeriesRepository(Protocol):
 
     async def append_fact_once(self, fact: FactEvent) -> None: ...
 
-    async def list_facts(self, tenant_id: str, entity_ref: EntityRef) -> list[FactEvent]: ...
+    async def list_facts(
+        self,
+        tenant_id: str,
+        entity_ref: EntityRef,
+        since: datetime | None = None,
+    ) -> list[FactEvent]: ...
 
 
 class StatusRepository(Protocol):

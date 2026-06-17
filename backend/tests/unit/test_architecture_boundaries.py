@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 CHECKED_PACKAGES = (ROOT / "backend/core", ROOT / "backend/api")
+APPLICATION_PACKAGE = ROOT / "backend/core/application"
 FORBIDDEN_IMPORTS = (
     "from infra.adapters",
     "import infra.adapters",
@@ -55,6 +56,16 @@ def test_core_and_api_do_not_name_concrete_providers() -> None:
         for forbidden in FORBIDDEN_PROVIDER_TERMS:
             if forbidden in content:
                 violations.append(f"{path.relative_to(ROOT)} contains {forbidden}")
+    assert violations == []
+
+
+def test_application_layer_does_not_call_issue_tracker_write_back() -> None:
+    violations: list[str] = []
+    for path in APPLICATION_PACKAGE.rglob("*.py"):
+        content = path.read_text(encoding="utf-8")
+        for forbidden in (".transition(", ".add_comment("):
+            if forbidden in content:
+                violations.append(f"{path.relative_to(ROOT)} calls {forbidden}")
     assert violations == []
 
 

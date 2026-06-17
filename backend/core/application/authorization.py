@@ -27,11 +27,8 @@ class SensitiveField(StrEnum):
 
 class AuthorizationPolicy:
     def can(self, principal: Principal, capability: Capability) -> bool:
-        if principal.has_role(Role.ADMIN):
-            return True
-        if capability is Capability.READ_RAW_DM:
-            return False
         allowed = {
+            Role.ADMIN: frozenset({Capability.DISPATCH_WORKFLOWS}),
             Role.DEV: frozenset({Capability.READ_OWN_WORK}),
             Role.PO: frozenset(
                 {
@@ -63,6 +60,10 @@ class AuthorizationPolicy:
                 }
             ),
         }
+        if principal.has_role(Role.ADMIN):
+            return True
+        if capability is Capability.READ_RAW_DM:
+            return False
         return any(capability in allowed.get(role, frozenset()) for role in principal.roles)
 
     def ensure(self, principal: Principal, capability: Capability) -> None:

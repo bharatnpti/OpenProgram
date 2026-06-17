@@ -168,7 +168,7 @@ def test_schedule_configs_use_explicit_sync_targets() -> None:
     settings = Settings(
         _env_file=None,
         secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
-        jira_sync_projects=("PO", "ENG:program-platform"),
+        jira_sync_projects=("PO", "ENG:program-platform", "API:pod-runtime:board-1"),
         github_sync_repos=("oneai/program-manager",),
         calendar_sync_user_ids=("dev-1",),
         calendar_sync_window_days=2,
@@ -184,6 +184,11 @@ def test_schedule_configs_use_explicit_sync_targets() -> None:
             "issue",
             "project:ENG",
             {"project_key": "ENG", "container_id": "program-platform"},
+        ),
+        (
+            "issue",
+            "project:API",
+            {"project_key": "API", "container_id": "pod-runtime", "board_id": "board-1"},
         ),
         ("vcs", "repo:oneai/program-manager", {"repo_name": "oneai/program-manager"}),
         ("calendar", "user:dev-1", {"user_id": "dev-1", "window_days": 2}),
@@ -217,6 +222,29 @@ async def test_temporal_connect_retries_until_ready(monkeypatch: pytest.MonkeyPa
 
     assert client is expected_client
     assert attempts == ["temporal:7233", "temporal:7233", "temporal:7233"]
+
+
+async def test_temporal_connect_does_not_retry_unexpected_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from temporalio.client import Client
+
+    attempts: list[str] = []
+
+    async def connect(target: str) -> object:
+        attempts.append(target)
+        raise ValueError("bad worker configuration")
+
+    monkeypatch.setattr(Client, "connect", connect)
+
+    with pytest.raises(ValueError, match="bad worker configuration"):
+        await temporal_workflows._connect_temporal(
+            "temporal:7233",
+            attempts=3,
+            delay_seconds=0,
+        )
+
+    assert attempts == ["temporal:7233"]
 
 
 async def test_dbos_readiness_launches_once_and_caches(
@@ -281,6 +309,7 @@ async def test_jira_sync_activity_returns_json_native_cursor(
         jira_sync.JiraSyncInput(
             tenant_id="demo",
             project_key="PO",
+            board_id="board-1",
             observed_at="2026-01-10T09:00:00+00:00",
         )
     )
@@ -290,6 +319,7 @@ async def test_jira_sync_activity_returns_json_native_cursor(
     assert result.items_synced == 1
     assert result.cursor_updated_at == "2026-01-10T09:00:00+00:00"
     assert result.cursor_metadata == {"last_item_count": 1}
+    assert registry._service.board_id == "board-1"
     assert registry.closed is True
 
 
@@ -321,6 +351,8 @@ async def test_daily_checkin_activity_is_idempotent_for_existing_correlation(
 
     assert result.already_recorded is True
     assert result.asked_at == asked_at.isoformat()
+    assert result.reply_wait_seconds == 14400
+    assert result.final_reply_wait_seconds == 28800
     assert registry.collector_called is False
     assert registry.closed is True
 
@@ -342,6 +374,8 @@ async def test_daily_checkin_activity_skips_weekends_idempotently(
 
     assert first.status == "skipped_weekend"
     assert first.skipped_reason == "check-in preference excludes this weekday"
+    assert first.reply_wait_seconds == 14400
+    assert first.final_reply_wait_seconds == 28800
     assert second.status == "skipped_weekend"
     assert second.already_recorded is True
     assert len(registry.repository.schedule_runs) == 1
@@ -404,6 +438,8 @@ async def test_nudge_activities_send_once_then_close_unknown(
     second = await nudge.send_checkin_nudge_activity(payload)
     closed = await nudge.close_checkin_non_response_activity(payload)
 
+    assert payload.reply_wait_seconds == 14400
+    assert payload.final_reply_wait_seconds == 28800
     assert first.status == "nudged"
     assert second.status == "already_nudged"
     assert first.nudge_message_id == "msg-U123-1"
@@ -414,14 +450,18 @@ async def test_nudge_activities_send_once_then_close_unknown(
 
 
 class _StubIssueSyncService:
+    board_id: str | None = None
+
     async def sync_project(
         self,
         *,
         tenant_id: str,
         project_key: str,
         container_id: str | None = None,
+        board_id: str | None = None,
         observed_at: datetime | None = None,
     ) -> SyncRunResult:
+        self.board_id = board_id
         return SyncRunResult(
             connector="issue",
             scope=f"project:{project_key}",
@@ -600,5 +640,5 @@ class _AvailabilityResult:
 
 class _WorkflowSettings:
     tenant_default_timezone = "UTC"
-    checkin_reply_wait_seconds = 0
-    checkin_final_reply_wait_seconds = 0
+    checkin_reply_wait_seconds = 14400
+    checkin_final_reply_wait_seconds = 28800

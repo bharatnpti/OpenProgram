@@ -35,8 +35,8 @@ class DailyCheckinResult:
     status: str = "sent"
     skipped_reason: str | None = None
     nudge_workflow_id: str | None = None
-    reply_wait_seconds: int = 0
-    final_reply_wait_seconds: int = 0
+    reply_wait_seconds: int = 14400
+    final_reply_wait_seconds: int = 28800
 
 
 async def start_daily_checkin_activity(payload: DailyCheckinInput) -> DailyCheckinResult:

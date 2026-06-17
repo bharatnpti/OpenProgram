@@ -1637,7 +1637,7 @@
       },
       "NodeKind": {
         "type": "string",
-        "enum": ["program", "project", "pod", "developer", "task"],
+        "enum": ["program", "project", "sprint", "repo", "pod", "developer", "task"],
         "title": "NodeKind"
       },
       "PersonaTreeEdgeDto": {

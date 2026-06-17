@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from core.application.status_collector import StatusCollector
 from core.application.status_parsing import StatusParser
@@ -56,8 +56,18 @@ async def test_status_collector_graph_sends_dm_and_records_checkin() -> None:
             tenant_id="demo",
             source="unit",
             entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="PO-1"),
+            payload={"risk": "ancient dependency"},
+            observed_at=datetime.now(tz=UTC) - timedelta(days=31),
+            correlation_id="fact-old",
+        )
+    )
+    await store.append_fact(
+        FactEvent(
+            tenant_id="demo",
+            source="unit",
+            entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="PO-1"),
             payload={"risk": "schema review"},
-            observed_at=datetime(2026, 1, 10, 8, 0, tzinfo=UTC),
+            observed_at=datetime.now(tz=UTC),
             correlation_id="fact-1",
         )
     )
@@ -92,6 +102,7 @@ async def test_status_collector_graph_sends_dm_and_records_checkin() -> None:
     assert chat.sent[0].metadata == {"purpose": "status_checkin"}
     assert "Build graph sync" in llm.requests[0].prompt
     assert "schema review" in llm.requests[0].prompt
+    assert "ancient dependency" not in llm.requests[0].prompt
 
 
 async def test_status_collector_handles_reply_by_correlation() -> None:

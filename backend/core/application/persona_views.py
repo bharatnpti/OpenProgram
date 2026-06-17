@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 
 from core.application.rollup_service import RollupService
@@ -18,6 +18,7 @@ from core.ports.repositories import (
 )
 
 PORTFOLIO_ROOT_ID = "program-platform"
+TASK_FACT_LOOKBACK_DAYS = 30
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -187,6 +188,7 @@ class PersonaViewService:
         self._status_repository = status_repository
         self._rollup_repository = rollup_repository
         self._time_series_repository = time_series_repository
+        self._rollup_service = RollupService(status_repository, rollup_repository)
 
     async def focus(self, tenant_id: str, developer_id: str, as_of: date) -> FocusView:
         status = await self._status_repository.latest_developer_status(
@@ -224,7 +226,7 @@ class PersonaViewService:
         tasks_list: list[FocusTaskView] = []
         for node in _sorted_nodes(tree.nodes):
             if node.kind is NodeKind.TASK:
-                tasks_list.append(await self._focus_task(node))
+                tasks_list.append(await self._focus_task(node, as_of))
         tasks = tuple(tasks_list)
         status_source = status.source if status else StatusSource.UNKNOWN
         blockers = status.blockers if status else ()
@@ -315,7 +317,7 @@ class PersonaViewService:
         task_list: list[TaskProgressView] = []
         for node in _sorted_nodes(tree.nodes):
             if node.kind is NodeKind.TASK:
-                task_list.append(await self._task_progress(node))
+                task_list.append(await self._task_progress(node, as_of))
         tasks = tuple(task_list)
         counts = _task_counts(tasks)
         return ProjectProgressView(
@@ -341,7 +343,7 @@ class PersonaViewService:
         nodes: list[TreeNodeView] = []
         for node in _sorted_nodes(tree.nodes):
             if node.kind is NodeKind.TASK:
-                task_status = await self._task_status(node)
+                task_status = await self._task_status(node, as_of)
                 nodes.append(
                     TreeNodeView(
                         id=node.id,
@@ -395,10 +397,10 @@ class PersonaViewService:
                 tree = await self._graph_repository.get_program_tree(
                     tenant_id, program_root_id or PORTFOLIO_ROOT_ID, as_of
                 )
-            except Exception:
+            except GraphNotFound:
                 statuses = []
             else:
-                statuses = list(await self._rollup_service().compute_and_record(tree, as_of))
+                statuses = list(await self._rollup_service.compute_and_record(tree, as_of))
         cells = tuple(_heatmap_cell(status) for status in statuses)
         rows = tuple(dict.fromkeys(cell.row for cell in cells))
         columns = tuple(dict.fromkeys(cell.column for cell in cells))
@@ -418,7 +420,7 @@ class PersonaViewService:
             if status is not None:
                 statuses[(node.kind, node.id)] = status
         if len(statuses) < len(rollup_nodes):
-            computed = await self._rollup_service().compute_and_record(tree, as_of)
+            computed = await self._rollup_service.compute_and_record(tree, as_of)
             for status in computed:
                 statuses.setdefault(
                     (status.entity_ref.kind, status.entity_ref.id),
@@ -426,8 +428,8 @@ class PersonaViewService:
                 )
         return statuses
 
-    async def _focus_task(self, node: GraphNode) -> FocusTaskView:
-        status = await self._task_status(node)
+    async def _focus_task(self, node: GraphNode, as_of: date) -> FocusTaskView:
+        status = await self._task_status(node, as_of)
         return FocusTaskView(
             id=node.id,
             name=node.name,
@@ -437,8 +439,8 @@ class PersonaViewService:
             deadline=_deadline(node),
         )
 
-    async def _task_progress(self, node: GraphNode) -> TaskProgressView:
-        status = await self._task_status(node)
+    async def _task_progress(self, node: GraphNode, as_of: date) -> TaskProgressView:
+        status = await self._task_status(node, as_of)
         return TaskProgressView(
             id=node.id,
             name=node.name,
@@ -448,8 +450,12 @@ class PersonaViewService:
             deadline=_deadline(node),
         )
 
-    async def _task_status(self, node: GraphNode) -> TaskStatusView:
-        facts = await self._time_series_repository.list_facts(node.tenant_id, node.ref)
+    async def _task_status(self, node: GraphNode, as_of: date) -> TaskStatusView:
+        facts = await self._time_series_repository.list_facts(
+            node.tenant_id,
+            node.ref,
+            _since_for_as_of(as_of),
+        )
         fact = max(facts, key=lambda item: item.observed_at) if facts else None
         return TaskStatusView(
             rag=_rag_from_fact_or_metadata(fact, node),
@@ -458,9 +464,6 @@ class PersonaViewService:
             source_ref=node.ref,
         )
 
-    def _rollup_service(self) -> RollupService:
-        return RollupService(self._status_repository, self._rollup_repository)
-
 
 def _developers(tree: GraphTree) -> tuple[GraphNode, ...]:
     return tuple(node for node in _sorted_nodes(tree.nodes) if node.kind is NodeKind.DEVELOPER)
@@ -468,6 +471,10 @@ def _developers(tree: GraphTree) -> tuple[GraphNode, ...]:
 
 def _sorted_nodes(nodes: tuple[GraphNode, ...]) -> tuple[GraphNode, ...]:
     return tuple(sorted(nodes, key=lambda node: (node.kind.value, node.name, node.id)))
+
+
+def _since_for_as_of(as_of: date) -> datetime:
+    return datetime.combine(as_of - timedelta(days=TASK_FACT_LOOKBACK_DAYS), time.min, tzinfo=UTC)
 
 
 def _blockers_for_status(

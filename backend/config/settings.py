@@ -46,8 +46,8 @@ class Settings(BaseSettings):
     dbos_system_database_url: str | None = None
     dbos_heartbeat_cron: str = "0 * * * * *"
     tenant_default_timezone: str = "UTC"
-    checkin_reply_wait_seconds: int = 0
-    checkin_final_reply_wait_seconds: int = 0
+    checkin_reply_wait_seconds: int = 14400
+    checkin_final_reply_wait_seconds: int = 28800
     litellm_base_url: str = "http://localhost:4000"
     litellm_api_key: str | None = None
     litellm_model: str = "gpt-4o-mini"
@@ -121,14 +121,19 @@ class Settings(BaseSettings):
     @classmethod
     def validate_jira_sync_projects(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         for item in value:
-            if item.count(":") > 1:
-                raise ValueError("jira_sync_projects entries must be PROJECT or PROJECT:CONTAINER")
-            parts = item.split(":", maxsplit=1)
+            if item.count(":") > 2:
+                raise ValueError(
+                    "jira_sync_projects entries must be PROJECT, PROJECT:CONTAINER, "
+                    "or PROJECT:CONTAINER:BOARD"
+                )
+            parts = item.split(":")
             project = parts[0].strip()
             if not project:
                 raise ValueError("jira_sync_projects project key must not be empty")
-            if len(parts) == 2 and not parts[1].strip():
+            if len(parts) >= 2 and not parts[1].strip():
                 raise ValueError("jira_sync_projects container id must not be empty")
+            if len(parts) == 3 and not parts[2].strip():
+                raise ValueError("jira_sync_projects board id must not be empty")
         return value
 
     @field_validator("chat_provider")

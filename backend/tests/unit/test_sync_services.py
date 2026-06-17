@@ -13,7 +13,10 @@ from core.domain.integrations import (
     Commit,
     Issue,
     IssueState,
+    Project,
     PullRequest,
+    Repo,
+    Sprint,
     SyncCursor,
     UserRef,
 )
@@ -36,6 +39,18 @@ async def test_issue_read_sync_creates_task_edges_facts_and_cursor() -> None:
     assignee = UserRef(tenant_id="demo", external_id="dev-1", display_name="Asha")
     updated_at = datetime(2026, 1, 10, 8, 30, tzinfo=UTC)
     tracker = FakeIssueTracker(
+        projects=[
+            Project(tenant_id="demo", id="10000", key="PO", name="PulseOps"),
+        ],
+        sprints=[
+            Sprint(
+                tenant_id="demo",
+                id="sprint-1",
+                board_id="board-1",
+                name="Sprint 1",
+                state="active",
+            )
+        ],
         issues={
             "PO-1": Issue(
                 tenant_id="demo",
@@ -43,9 +58,10 @@ async def test_issue_read_sync_creates_task_edges_facts_and_cursor() -> None:
                 title="Build status collector",
                 state=IssueState.IN_PROGRESS,
                 assignee=assignee,
+                metadata={"sprint_id": "sprint-1"},
                 updated_at=updated_at,
             )
-        }
+        },
     )
     service = IssueReadSyncService(
         issue_tracker=tracker,
@@ -58,10 +74,12 @@ async def test_issue_read_sync_creates_task_edges_facts_and_cursor() -> None:
         tenant_id="demo",
         project_key="PO",
         container_id="pod-1",
+        board_id="board-1",
         observed_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
     )
 
     tree = await store.get_program_tree("demo", "program-1", date(2026, 1, 10))
+    tree_edges = {(edge.from_node_id, edge.to_node_id, edge.kind) for edge in tree.edges}
     facts = await store.list_facts(
         "demo",
         EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="PO-1"),
@@ -70,7 +88,12 @@ async def test_issue_read_sync_creates_task_edges_facts_and_cursor() -> None:
     cursor = await store.get_cursor("demo", "issue", "project:PO")
 
     assert result.items_synced == 1
+    assert any(node.id == "PO" and node.kind is NodeKind.PROJECT for node in tree.nodes)
+    assert any(node.id == "sprint-1" and node.kind is NodeKind.SPRINT for node in tree.nodes)
     assert any(node.id == "PO-1" and node.kind is NodeKind.TASK for node in tree.nodes)
+    assert ("pod-1", "PO", EdgeKind.CONTAINS) in tree_edges
+    assert ("PO", "sprint-1", EdgeKind.CONTAINS) in tree_edges
+    assert ("sprint-1", "PO-1", EdgeKind.CONTAINS) in tree_edges
     assert any(
         edge.kind is EdgeKind.ASSIGNED_TO and edge.to_node_id == "PO-1" for edge in memberships
     )
@@ -84,6 +107,7 @@ async def test_issue_read_sync_creates_task_edges_facts_and_cursor() -> None:
         tenant_id="demo",
         project_key="PO",
         container_id="pod-1",
+        board_id="board-1",
         observed_at=datetime(2026, 1, 10, 9, 30, tzinfo=UTC),
     )
     assert (
@@ -103,6 +127,9 @@ async def test_vcs_read_sync_appends_commit_and_pull_request_facts_and_cursor() 
     commit_time = datetime(2026, 1, 10, 8, 0, tzinfo=UTC)
     pull_request_time = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
     provider = FakeVcsProvider(
+        repos=[
+            Repo(tenant_id="demo", id="repo-external-1", name="repo-1", default_branch="main"),
+        ],
         commits=[
             Commit(
                 tenant_id="demo",
@@ -111,7 +138,15 @@ async def test_vcs_read_sync_appends_commit_and_pull_request_facts_and_cursor() 
                 message="Add collector",
                 author=author,
                 committed_at=commit_time,
-            )
+            ),
+            Commit(
+                tenant_id="demo",
+                repo="repo-1",
+                sha="def456",
+                message="Automated merge",
+                author=None,
+                committed_at=datetime(2026, 1, 10, 8, 15, tzinfo=UTC),
+            ),
         ],
         pull_requests=[
             PullRequest(
@@ -127,6 +162,7 @@ async def test_vcs_read_sync_appends_commit_and_pull_request_facts_and_cursor() 
     )
     service = VcsReadSyncService(
         vcs_provider=provider,
+        graph_repository=store,
         time_series_repository=store,
         cursor_repository=store,
     )
@@ -141,16 +177,26 @@ async def test_vcs_read_sync_appends_commit_and_pull_request_facts_and_cursor() 
         "demo",
         EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
     )
+    repo_facts = await store.list_facts(
+        "demo",
+        EntityRef(tenant_id="demo", kind=NodeKind.REPO, id="repo-1"),
+    )
+    repo_tree = await store.get_program_tree("demo", "repo-1", date(2026, 1, 10))
+    developer_tree = await store.get_program_tree("demo", "dev-1", date(2026, 1, 10))
     cursor = await store.get_cursor("demo", "vcs", "repo:repo-1")
 
-    assert result.items_synced == 2
+    assert result.items_synced == 3
+    assert repo_tree.root.kind is NodeKind.REPO
+    assert developer_tree.root.kind is NodeKind.DEVELOPER
     assert {fact.source for fact in facts} == {"vcs_commit", "vcs_pull_request"}
+    assert {fact.source for fact in repo_facts} == {"vcs_commit"}
     assert {fact.correlation_id for fact in facts} == {
         "vcs:commit:demo:repo-1:abc123",
         "vcs:pull_request:demo:repo-1:7:2026-01-10T09:00:00+00:00",
     }
+    assert repo_facts[0].correlation_id == "vcs:commit:demo:repo-1:def456"
     assert cursor.updated_at == pull_request_time
-    assert cursor.metadata["last_item_count"] == 2
+    assert cursor.metadata["last_item_count"] == 3
 
     await store.record_cursor("demo", "vcs", "repo:repo-1", SyncCursor())
     await service.sync_repo(
@@ -166,6 +212,15 @@ async def test_vcs_read_sync_appends_commit_and_pull_request_facts_and_cursor() 
             )
         )
         == 2
+    )
+    assert (
+        len(
+            await store.list_facts(
+                "demo",
+                EntityRef(tenant_id="demo", kind=NodeKind.REPO, id="repo-1"),
+            )
+        )
+        == 1
     )
 
 

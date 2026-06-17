@@ -48,3 +48,12 @@ def test_persona_capabilities_follow_role_scope() -> None:
 def test_admin_can_read_raw_dm() -> None:
     principal = Principal(tenant_id="demo", subject="admin", roles=frozenset({Role.ADMIN}))
     assert AuthorizationPolicy().can_read_field(principal, SensitiveField.RAW_DM_CONTENT)
+
+
+def test_dispatch_workflows_is_admin_only() -> None:
+    policy = AuthorizationPolicy()
+    admin = Principal(tenant_id="demo", subject="admin", roles=frozenset({Role.ADMIN}))
+    manager = Principal(tenant_id="demo", subject="mgr", roles=frozenset({Role.MGR}))
+
+    assert policy.can(admin, Capability.DISPATCH_WORKFLOWS)
+    assert not policy.can(manager, Capability.DISPATCH_WORKFLOWS)

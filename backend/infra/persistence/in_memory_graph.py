@@ -101,11 +101,18 @@ class InMemoryGraphStore:
     async def append_fact_once(self, fact: FactEvent) -> None:
         await self.append_fact(fact)
 
-    async def list_facts(self, tenant_id: str, entity_ref: EntityRef) -> list[FactEvent]:
+    async def list_facts(
+        self,
+        tenant_id: str,
+        entity_ref: EntityRef,
+        since: datetime | None = None,
+    ) -> list[FactEvent]:
         return [
             fact
             for fact in self._facts
-            if fact.tenant_id == tenant_id and fact.entity_ref == entity_ref
+            if fact.tenant_id == tenant_id
+            and fact.entity_ref == entity_ref
+            and (since is None or fact.observed_at >= since)
         ]
 
     async def record_checkin(self, checkin: CheckIn) -> None:
