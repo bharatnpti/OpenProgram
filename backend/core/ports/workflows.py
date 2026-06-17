@@ -5,6 +5,7 @@ from typing import Protocol
 
 from core.domain.workflows import (
     CheckinScheduleConfig,
+    ConversationPurgeScheduleConfig,
     DeveloperCheckinDispatch,
     ScheduleBootstrapResult,
     SyncDispatchInput,
@@ -17,6 +18,10 @@ class WorkflowScheduler(Protocol):
 
     async def ensure_checkin_fanout_schedule(
         self, config: CheckinScheduleConfig
+    ) -> ScheduleBootstrapResult: ...
+
+    async def ensure_conversation_purge_schedule(
+        self, config: ConversationPurgeScheduleConfig
     ) -> ScheduleBootstrapResult: ...
 
     async def ensure_sync_schedules(

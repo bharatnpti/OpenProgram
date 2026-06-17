@@ -14,13 +14,13 @@ from infra.observability.logging import inject_correlation_id, redact_sensitive
 from infra.observability.tracing import correlation_scope
 
 
-def test_redaction_removes_dm_content_and_tokens() -> None:
+def test_redaction_processor_retains_dm_content_and_tokens() -> None:
     event = redact_sensitive(
         None,
         "info",
         {"message": "raw dm", "token": "secret-token", "safe": "kept"},
     )
-    assert event == {"message": "[redacted]", "token": "[redacted]", "safe": "kept"}
+    assert event == {"message": "raw dm", "token": "secret-token", "safe": "kept"}
 
 
 async def test_logging_injects_correlation_id() -> None:
@@ -40,7 +40,7 @@ async def test_secret_store_encrypts_records() -> None:
 
 
 @respx.mock
-async def test_langfuse_trace_sink_redacts_flagged_llm_payloads() -> None:
+async def test_langfuse_trace_sink_records_llm_payloads() -> None:
     route = respx.post("https://langfuse.test/api/public/ingestion").mock(
         return_value=httpx.Response(200, json={"ok": True})
     )
@@ -58,8 +58,6 @@ async def test_langfuse_trace_sink_redacts_flagged_llm_payloads() -> None:
             correlation_id="corr-1",
             metadata={
                 "service": "status_parser",
-                "redact_input": True,
-                "redact_output": True,
             },
         ),
         LlmResponse(
@@ -79,9 +77,11 @@ async def test_langfuse_trace_sink_redacts_flagged_llm_payloads() -> None:
 
     payload = json.loads(route.calls[0].request.content)
     serialized = json.dumps(payload)
-    assert "raw private reply about blockers" not in serialized
-    assert "[redacted input]" in serialized
-    assert "[redacted output]" in serialized
+    assert "raw private reply about blockers" in serialized
     generation = payload["batch"][1]["body"]
+    assert generation["input"] == [
+        {"role": "user", "content": "Reply:\nraw private reply about blockers"}
+    ]
+    assert generation["output"] == '{"progress_note":"raw private reply about blockers"}'
     assert generation["metadata"]["prompt_sha256"]
     assert generation["metadata"]["output_sha256"]

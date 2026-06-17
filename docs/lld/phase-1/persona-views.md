@@ -2,9 +2,9 @@
 
 ## Scope
 
-Persona views are read-only API and frontend slices over the same graph, status, and rollup data. They are scoped by the Phase 0 default-deny authorization policy.
+Persona views are read-only API and frontend slices over the same graph, status, rollup, and conversation-store data. They are scoped by the Phase 0 default-deny authorization policy.
 
-Raw DM content is never returned. Phase 1 shows only source tags (`CONFIRMED`, `INFERRED`, `STALE`, `UNKNOWN`), not confidence scores.
+Raw inbound and outbound DM turns are persisted in the durable conversation store with configurable retention. This document does not add a persona API for raw conversation turns; Phase 1 views show source tags (`CONFIRMED`, `INFERRED`, `STALE`, `UNKNOWN`), not confidence scores.
 
 ## API Endpoints
 
@@ -24,7 +24,7 @@ Each router resolves the current `Principal`, asks the authorization policy for 
 - API DTOs live in `api.dtos`.
 - Domain dataclasses are not returned directly.
 - DTOs include `rag`, `source`, `summary`, `factors`, and provider-neutral `source_ref`.
-- DTOs do not include `raw_reply`, provider payloads, tokens, or secrets.
+- DTOs remain provider-neutral and do not add new conversation-turn fields in this slice.
 - Exec views aggregate by default and do not expose developer-level raw check-in text.
 
 ## Application Services
@@ -75,7 +75,7 @@ Persona endpoints are read-only. They never trigger syncs, check-ins, nudges, ex
 ## Tests
 
 - API tests cover allow and deny cases for every capability.
-- DTO tests assert raw reply text and provider payloads are absent.
+- DTO tests assert provider payloads are absent and that persona contracts remain stable unless a route explicitly adds conversation fields.
 - Query service tests use fake repositories and principals.
 - Frontend tests cover loading, empty, denied, stale, inferred, and drill states.
 - OpenAPI generation and TypeScript build verify contract alignment.

@@ -2,7 +2,7 @@
 
 ## Logging
 
-`infra.observability.logging.configure_logging` configures structlog with correlation IDs and a redaction processor. Keys such as `text`, `message`, `raw_body`, `token`, and `secret` are redacted.
+`infra.observability.logging.configure_logging` configures structlog with correlation IDs. The legacy `redact_sensitive` processor remains in the processor chain as a compatibility no-op and does not remove message or token fields.
 
 ## Tracing
 
@@ -12,6 +12,6 @@ API middleware creates a correlation ID when the caller does not provide one. Ap
 
 Prometheus scrapes the backend and infrastructure services. Grafana loads a starter dashboard from `infra/grafana/dashboards`.
 
-## PII Rule
+## Conversation Payloads
 
-Raw DM content and secrets must not appear in normal logs. Tests cover redaction.
+Raw inbound and outbound conversation turns are persisted in the durable conversation store with configurable retention. Logs and LLM traces retain submitted payload fields unless a caller explicitly omits them before logging.

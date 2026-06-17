@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from core.application.status_collector import StatusCollector
 from core.application.status_parsing import StatusParser
+from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.graph import EntityRef, FactEvent, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
@@ -71,6 +72,19 @@ async def test_status_collector_graph_sends_dm_and_records_checkin() -> None:
             correlation_id="fact-1",
         )
     )
+    await store.append_turn(
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            conversation_id="previous-corr",
+            conversation_date=date(2026, 1, 9),
+            role=ConversationRole.USER,
+            content="Yesterday I was waiting on schema review.",
+            correlation_id="previous-corr",
+            chat_message_id="previous-msg",
+            observed_at=datetime(2026, 1, 9, 17, 0, tzinfo=UTC),
+        )
+    )
     chat = FakeChatProvider()
     llm = SequenceLlmProvider(texts=["Can you share progress, blockers, and ETA changes?"])
     collector = StatusCollector(
@@ -79,6 +93,7 @@ async def test_status_collector_graph_sends_dm_and_records_checkin() -> None:
         llm_provider=llm,
         status_repository=store,
         time_series_repository=store,
+        conversation_repository=store,
         model="test-model",
     )
 
@@ -103,10 +118,40 @@ async def test_status_collector_graph_sends_dm_and_records_checkin() -> None:
     assert "Build graph sync" in llm.requests[0].prompt
     assert "schema review" in llm.requests[0].prompt
     assert "ancient dependency" not in llm.requests[0].prompt
+    assert llm.requests[0].system is not None
+    assert llm.requests[0].messages[0].role == "user"
+    assert llm.requests[0].messages[0].content == "Yesterday I was waiting on schema review."
+    turns = await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
+    assert turns == [
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            conversation_id="corr-1",
+            conversation_date=date(2026, 1, 10),
+            role=ConversationRole.AGENT,
+            content="Can you share progress, blockers, and ETA changes?",
+            correlation_id="corr-1",
+            chat_message_id="msg-U123-1",
+            observed_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+        )
+    ]
 
 
 async def test_status_collector_handles_reply_by_correlation() -> None:
     store = InMemoryGraphStore()
+    await store.append_turn(
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            conversation_id="corr-1",
+            conversation_date=date(2026, 1, 10),
+            role=ConversationRole.AGENT,
+            content="Can you share progress, blockers, and ETA changes?",
+            correlation_id="corr-1",
+            chat_message_id="msg-outbound-1",
+            observed_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+        )
+    )
     await store.record_checkin(
         CheckIn(
             tenant_id="demo",
@@ -130,6 +175,7 @@ async def test_status_collector_handles_reply_by_correlation() -> None:
         llm_provider=SequenceLlmProvider(texts=["unused"]),
         status_repository=store,
         time_series_repository=store,
+        conversation_repository=store,
         model="test-model",
         parser=StatusParser(parser_llm, model="test-model"),
     )
@@ -153,6 +199,13 @@ async def test_status_collector_handles_reply_by_correlation() -> None:
     assert status.blockers == ("schema review",)
     assert await store.latest_developer_status("demo", "dev-1", date(2026, 1, 10)) == status
     assert "Graph sync is in review" not in parser_llm.requests[0].metadata.values()
+    assert [message.content for message in parser_llm.requests[0].messages] == [
+        "Can you share progress, blockers, and ETA changes?"
+    ]
+    assert all(
+        message.content != "Graph sync is in review, blocked on schema review."
+        for message in parser_llm.requests[0].messages
+    )
     facts = await store.list_facts(
         "demo",
         EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
@@ -166,6 +219,10 @@ async def test_status_collector_handles_reply_by_correlation() -> None:
         "mood": "neutral",
     }
     assert "Graph sync" not in str(facts[0].payload)
+    turns = await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
+    assert turns[-1].role is ConversationRole.USER
+    assert turns[-1].content == "Graph sync is in review, blocked on schema review."
+    assert turns[-1].chat_message_id == "msg-1"
 
     duplicate = await collector.handle_reply(
         InboundMessage(
@@ -203,6 +260,7 @@ async def test_status_collector_resolves_replies_by_thread_then_user_day() -> No
             ]
         ),
         status_repository=store,
+        conversation_repository=store,
         model="test-model",
     )
     asked_at = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
@@ -272,11 +330,13 @@ async def test_status_collector_nudges_once_and_records_stale_non_response() -> 
         )
     )
     chat = FakeChatProvider()
+    llm = SequenceLlmProvider(texts=["Quick follow-up on your status update."])
     collector = StatusCollector(
         issue_tracker=FakeIssueTracker(),
         chat_provider=chat,
-        llm_provider=SequenceLlmProvider(texts=["Quick follow-up on your status update."]),
+        llm_provider=llm,
         status_repository=store,
+        conversation_repository=store,
         model="test-model",
     )
 
@@ -295,6 +355,14 @@ async def test_status_collector_nudges_once_and_records_stale_non_response() -> 
 
     assert nudge_message_id == "msg-U123-1"
     assert len(chat.sent) == 1
+    turns = await store.list_recent_turns("demo", "dev-1", limit=1)
+    assert len(turns) == 1
+    assert turns[0].conversation_id == "corr-1"
+    assert turns[0].conversation_date == turns[0].observed_at.date()
+    assert turns[0].role is ConversationRole.AGENT
+    assert turns[0].content == "Quick follow-up on your status update."
+    assert turns[0].chat_message_id == "msg-U123-1"
+    assert llm.requests[0].system is not None
     assert terminal_status.source is StatusSource.STALE
     assert terminal_status.blockers == ("no confirmed reply",)
     assert "Yesterday was on track" in terminal_status.summary

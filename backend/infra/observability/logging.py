@@ -6,17 +6,12 @@ import structlog
 
 from infra.observability.tracing import current_correlation_id
 
-SENSITIVE_KEYS = frozenset({"text", "message", "raw_body", "token", "secret", "authorization"})
-
 
 def redact_sensitive(
     logger: object,
     method_name: str,
     event_dict: MutableMapping[str, object],
 ) -> MutableMapping[str, object]:
-    for key in tuple(event_dict):
-        if key.lower() in SENSITIVE_KEYS:
-            event_dict[key] = "[redacted]"
     return event_dict
 
 

@@ -26,7 +26,7 @@ sequenceDiagram
 
 ## Mapping
 
-Inbound webhooks map to `InboundMessage`. Outbound text maps from `OutboundMessage`. Raw DM content is never logged; structured logs redact message fields.
+Inbound webhooks map to `InboundMessage`. Outbound text maps from `OutboundMessage`. Raw inbound and outbound conversation turns are retained in the durable conversation store according to configured retention.
 
 ## Tests
 

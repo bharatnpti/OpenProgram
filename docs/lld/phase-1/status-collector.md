@@ -83,7 +83,7 @@ The existing single-node status agent becomes a multi-node collector graph while
   - `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`
   - Unique key: `(tenant_id, developer_id, as_of, source)`
 
-Raw reply text is stored only for audit and re-parse workflows. It is redacted from logs, traces, metrics, and persona APIs.
+Raw reply text remains on check-ins for audit and re-parse workflows, and inbound/outbound DM turns are also captured in the durable conversation store with configurable retention.
 
 ## Sequence
 
@@ -114,8 +114,8 @@ sequenceDiagram
 ## Observability
 
 - Every node emits an OpenTelemetry span with `tenant_id`, `developer_id`, and `correlation_id`.
-- LLM traces include model, latency, token counts, and redacted prompt metadata.
-- Raw DM content and raw replies are never written to logs or trace payloads.
+- LLM traces include model, latency, token counts, prompt input, and model output.
+- Raw inbound and outbound DM turns are persisted in the conversation store and retained according to configuration.
 - Chat provider errors are translated to provider-neutral application errors.
 
 ## Tests
@@ -123,5 +123,5 @@ sequenceDiagram
 - Unit tests cover each node with fake ports.
 - Graph tests verify node ordering and state transitions.
 - Webhook tests verify correlation lookup and idempotent duplicate reply handling.
-- Privacy tests assert raw DM content is redacted from logs and traces.
+- Tests cover conversation capture, retention, and trace/log payload retention where applicable.
 - Contract tests for `ChatProvider` continue to cover the outbound DM path.

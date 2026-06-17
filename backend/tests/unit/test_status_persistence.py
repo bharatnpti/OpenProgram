@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, time
 
+from core.domain.conversation import ConversationRole
 from core.domain.graph import EntityRef, NodeKind
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
@@ -22,12 +23,14 @@ from infra.persistence.postgres_status import (
     _checkin_nudge_from_row,
     _checkin_preference_from_row,
     _checkin_schedule_run_from_row,
+    _conversation_turn_from_row,
     _developer_status_from_row,
     _node_status_from_row,
     _sync_cursor_from_row,
 )
 from infra.persistence.seed_data import seed_demo_graph
 from tests.contract.contracts import (
+    assert_conversation_repository_contract,
     assert_rollup_repository_contract,
     assert_status_repository_contract,
     assert_sync_cursor_repository_contract,
@@ -40,6 +43,7 @@ async def test_in_memory_store_satisfies_phase_1_repository_contracts() -> None:
     await assert_status_repository_contract(store)
     await assert_rollup_repository_contract(store)
     await assert_sync_cursor_repository_contract(store)
+    await assert_conversation_repository_contract(store)
 
 
 async def test_seed_demo_graph_adds_memory_statuses_and_rollups() -> None:
@@ -67,6 +71,7 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
     asked_at = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
     replied_at = datetime(2026, 1, 10, 9, 5, tzinfo=UTC)
     cursor_updated_at = datetime(2026, 1, 10, 10, 0, tzinfo=UTC)
+    conversation_observed_at = datetime(2026, 1, 10, 9, 1, tzinfo=UTC)
 
     checkin = _checkin_from_row(
         {
@@ -122,6 +127,19 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
             "cursor_value": "cursor-1",
             "cursor_updated_at": cursor_updated_at,
             "metadata": {"page": 2, "nested": {"ignored": True}},
+        }
+    )
+    conversation_turn = _conversation_turn_from_row(
+        {
+            "tenant_id": "demo",
+            "developer_id": "dev-1",
+            "conversation_id": "conv-1",
+            "conversation_date": date(2026, 1, 10),
+            "role": "user",
+            "content": "blocked on dependency",
+            "correlation_id": "corr-1",
+            "chat_message_id": "msg-1",
+            "observed_at": conversation_observed_at,
         }
     )
     correlation = _checkin_correlation_from_row(
@@ -200,6 +218,9 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
         updated_at=cursor_updated_at,
         metadata={"page": 2},
     )
+    assert conversation_turn.role is ConversationRole.USER
+    assert conversation_turn.content == "blocked on dependency"
+    assert conversation_turn.observed_at == conversation_observed_at
     assert correlation == CheckInCorrelation(
         tenant_id="demo",
         developer_id="dev-1",

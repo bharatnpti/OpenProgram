@@ -14,6 +14,9 @@ from core.domain.workflows import (
     CheckinFanoutInput,
     CheckinFanoutResult,
     CheckinScheduleConfig,
+    ConversationPurgeInput,
+    ConversationPurgeResult,
+    ConversationPurgeScheduleConfig,
     DeveloperCheckinDispatch,
     HeartbeatInput,
     HeartbeatResult,
@@ -22,7 +25,15 @@ from core.domain.workflows import (
     SyncScheduleConfig,
     record_heartbeat,
 )
-from infra.workflows import calendar_sync, checkin_fanout, daily_checkin, git_sync, jira_sync, nudge
+from infra.workflows import (
+    calendar_sync,
+    checkin_fanout,
+    conversation_purge,
+    daily_checkin,
+    git_sync,
+    jira_sync,
+    nudge,
+)
 from infra.workflows.calendar_sync import CalendarSyncInput, CalendarSyncWorkflowResult
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
 from infra.workflows.dispatch import (
@@ -89,6 +100,34 @@ async def dbos_scheduled_checkin_fanout_workflow(
         CheckinFanoutInput(
             tenant_id=context["tenant_id"],
             checkin_date=scheduled_time.date().isoformat(),
+        )
+    )
+
+
+@DBOS.step(name="pulseops_purge_conversation_turns", retries_allowed=True)
+async def dbos_purge_conversation_turns_step(
+    payload: ConversationPurgeInput,
+) -> ConversationPurgeResult:
+    return await conversation_purge.purge_conversation_turns_activity(payload)
+
+
+@DBOS.workflow(name="pulseops_conversation_purge")
+async def dbos_conversation_purge_workflow(
+    payload: ConversationPurgeInput,
+) -> ConversationPurgeResult:
+    return await dbos_purge_conversation_turns_step(payload)
+
+
+@DBOS.workflow(name="pulseops_scheduled_conversation_purge")
+async def dbos_scheduled_conversation_purge_workflow(
+    scheduled_time: datetime,
+    context: dict[str, str],
+) -> ConversationPurgeResult:
+    return await dbos_purge_conversation_turns_step(
+        ConversationPurgeInput(
+            tenant_id=context["tenant_id"],
+            retention_days=int(context["retention_days"]),
+            now=scheduled_time.isoformat(),
         )
     )
 
@@ -257,6 +296,22 @@ class DbosWorkflowScheduler:
         )
         try:
             DBOS.apply_schedules([_checkin_fanout_schedule_input(config)])
+        finally:
+            if started_runtime:
+                destroy_dbos_runtime()
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="configured")
+
+    async def ensure_conversation_purge_schedule(
+        self, config: ConversationPurgeScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        started_runtime = _ensure_dbos_runtime(
+            DbosRuntimeConfig(
+                app_name=self.app_name,
+                system_database_url=self.system_database_url,
+            )
+        )
+        try:
+            DBOS.apply_schedules([_conversation_purge_schedule_input(config)])
         finally:
             if started_runtime:
                 destroy_dbos_runtime()
@@ -432,6 +487,20 @@ def _checkin_fanout_schedule_input(config: CheckinScheduleConfig) -> ScheduleInp
         "context": {
             "schedule_id": config.schedule_id,
             "tenant_id": config.tenant_id,
+        },
+        "automatic_backfill": False,
+    }
+
+
+def _conversation_purge_schedule_input(config: ConversationPurgeScheduleConfig) -> ScheduleInput:
+    return {
+        "schedule_name": config.schedule_id,
+        "workflow_fn": cast(Any, dbos_scheduled_conversation_purge_workflow),
+        "schedule": config.cron,
+        "context": {
+            "schedule_id": config.schedule_id,
+            "tenant_id": config.tenant_id,
+            "retention_days": str(config.retention_days),
         },
         "automatic_backfill": False,
     }

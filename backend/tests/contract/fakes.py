@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from core.domain.conversation import ConversationTurn
 from core.domain.errors import ProviderUnavailable
 from core.domain.graph import EntityRef
 from core.domain.integrations import (
@@ -332,6 +333,56 @@ class FakeSyncCursorRepository:
 
 
 @dataclass
+class FakeConversationRepository:
+    turns: list[ConversationTurn] = field(default_factory=list)
+
+    async def append_turn(self, turn: ConversationTurn) -> None:
+        self.turns.append(turn)
+
+    async def list_turns_for_day(
+        self, tenant_id: str, developer_id: str, on: date
+    ) -> list[ConversationTurn]:
+        return sorted(
+            (
+                turn
+                for turn in self.turns
+                if turn.tenant_id == tenant_id
+                and turn.developer_id == developer_id
+                and turn.conversation_date == on
+            ),
+            key=_conversation_sort_key,
+        )
+
+    async def list_recent_turns(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        limit: int,
+        since: datetime | None = None,
+    ) -> list[ConversationTurn]:
+        if limit <= 0:
+            return []
+        matching = sorted(
+            (
+                turn
+                for turn in self.turns
+                if turn.tenant_id == tenant_id
+                and turn.developer_id == developer_id
+                and (since is None or turn.observed_at >= since)
+            ),
+            key=_conversation_sort_key,
+            reverse=True,
+        )
+        return sorted(matching[:limit], key=_conversation_sort_key)
+
+    async def purge_turns_older_than(self, cutoff: datetime) -> int:
+        retained = [turn for turn in self.turns if turn.observed_at >= cutoff]
+        deleted_count = len(self.turns) - len(retained)
+        self.turns = retained
+        return deleted_count
+
+
+@dataclass
 class FakeCiProvider:
     builds: list[BuildResult] = field(default_factory=list)
 
@@ -376,3 +427,16 @@ def _pull_request_matches_repo(pull_request: PullRequest, repo: str) -> bool:
 
 def _is_after_cursor(updated_at: datetime | None, cursor: SyncCursor) -> bool:
     return cursor.updated_at is None or updated_at is None or updated_at > cursor.updated_at
+
+
+def _conversation_sort_key(
+    turn: ConversationTurn,
+) -> tuple[datetime, str, str, str, str, str]:
+    return (
+        turn.observed_at,
+        turn.conversation_id,
+        turn.correlation_id or "",
+        turn.chat_message_id or "",
+        turn.role.value,
+        turn.content,
+    )

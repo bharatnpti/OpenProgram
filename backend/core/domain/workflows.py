@@ -34,6 +34,14 @@ class CheckinScheduleConfig:
 
 
 @dataclass(frozen=True, kw_only=True)
+class ConversationPurgeScheduleConfig:
+    schedule_id: str
+    tenant_id: str
+    retention_days: int
+    cron: str
+
+
+@dataclass(frozen=True, kw_only=True)
 class DeveloperCheckinDispatch:
     tenant_id: str
     developer_id: str
@@ -72,6 +80,20 @@ class SyncScheduleConfig:
     scope: str
     payload: dict[str, WorkflowPayloadValue]
     cron: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class ConversationPurgeInput:
+    tenant_id: str
+    retention_days: int
+    now: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class ConversationPurgeResult:
+    tenant_id: str
+    cutoff: str
+    deleted_count: int
 
 
 @dataclass(frozen=True, kw_only=True)

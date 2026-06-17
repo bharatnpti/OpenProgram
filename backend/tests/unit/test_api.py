@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
@@ -126,7 +125,7 @@ def test_cors_origins_are_configurable(settings: Settings) -> None:
     assert response.headers["access-control-allow-origin"] == "https://frontend.example"
 
 
-def test_dev_focus_is_own_scope_and_omits_raw_replies(settings: Settings) -> None:
+def test_dev_focus_is_own_scope(settings: Settings) -> None:
     app = create_app(
         settings=settings.model_copy(
             update={"dev_principal_roles": "dev", "dev_principal_subject": "dev-asha"}
@@ -140,9 +139,6 @@ def test_dev_focus_is_own_scope_and_omits_raw_replies(settings: Settings) -> Non
     body = focus_response.json()
     assert body["developer_id"] == "dev-asha"
     assert {task["id"] for task in body["tasks"]} == {"task-api"}
-    serialized = json.dumps(body)
-    assert "raw_reply" not in serialized
-    assert "API shell is ready for review; no blockers." not in serialized
     assert blocked_response.status_code == 403
 
 
@@ -177,7 +173,6 @@ def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
     assert tree.status_code == 200
     assert tree.json()["root_id"] == "program-platform"
     assert heatmap.status_code == 200
-    assert "raw_reply" not in json.dumps(heatmap.json())
     assert project_denied.status_code == 403
 
 

@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Protocol
 
+from core.domain.conversation import ConversationTurn
 from core.domain.graph import EntityRef, FactEvent, GraphEdge, GraphNode, GraphTree, VectorMatch
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus
@@ -92,6 +93,24 @@ class StatusRepository(Protocol):
     ) -> DeveloperStatus | None: ...
 
     async def developers_without_checkin(self, tenant_id: str, as_of: date) -> list[str]: ...
+
+
+class ConversationRepository(Protocol):
+    async def append_turn(self, turn: ConversationTurn) -> None: ...
+
+    async def list_turns_for_day(
+        self, tenant_id: str, developer_id: str, on: date
+    ) -> list[ConversationTurn]: ...
+
+    async def list_recent_turns(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        limit: int,
+        since: datetime | None = None,
+    ) -> list[ConversationTurn]: ...
+
+    async def purge_turns_older_than(self, cutoff: datetime) -> int: ...
 
 
 class RollupRepository(Protocol):

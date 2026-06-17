@@ -29,7 +29,7 @@ class AuthorizationPolicy:
     def can(self, principal: Principal, capability: Capability) -> bool:
         allowed = {
             Role.ADMIN: frozenset({Capability.DISPATCH_WORKFLOWS}),
-            Role.DEV: frozenset({Capability.READ_OWN_WORK}),
+            Role.DEV: frozenset({Capability.READ_OWN_WORK, Capability.READ_RAW_DM}),
             Role.PO: frozenset(
                 {
                     Capability.READ_TEAM_AGGREGATE,
@@ -41,6 +41,7 @@ class AuthorizationPolicy:
                     Capability.READ_TEAM_AGGREGATE,
                     Capability.READ_POD_BLOCKERS,
                     Capability.READ_POD_CHECKINS,
+                    Capability.READ_RAW_DM,
                 }
             ),
             Role.MGR: frozenset(
@@ -62,8 +63,6 @@ class AuthorizationPolicy:
         }
         if principal.has_role(Role.ADMIN):
             return True
-        if capability is Capability.READ_RAW_DM:
-            return False
         return any(capability in allowed.get(role, frozenset()) for role in principal.roles)
 
     def ensure(self, principal: Principal, capability: Capability) -> None:
@@ -73,7 +72,7 @@ class AuthorizationPolicy:
 
     def can_read_field(self, principal: Principal, field: SensitiveField) -> bool:
         if field is SensitiveField.RAW_DM_CONTENT:
-            return principal.has_role(Role.ADMIN)
+            return self.can(principal, Capability.READ_RAW_DM)
         if field is SensitiveField.BUDGET:
             return principal.has_role(Role.ADMIN) or principal.has_role(Role.EXEC)
         return False

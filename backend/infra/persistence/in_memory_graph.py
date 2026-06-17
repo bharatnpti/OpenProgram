@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from math import sqrt
 
+from core.domain.conversation import ConversationTurn
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
     EdgeKind,
@@ -46,6 +47,7 @@ class InMemoryGraphStore:
     _developer_statuses: dict[tuple[str, str, date], DeveloperStatus] = field(default_factory=dict)
     _node_statuses: dict[tuple[str, str, str, date], NodeStatus] = field(default_factory=dict)
     _sync_cursors: dict[tuple[str, str, str], SyncCursor] = field(default_factory=dict)
+    _conversation_turns: list[ConversationTurn] = field(default_factory=list)
 
     async def upsert_node(self, node: GraphNode) -> None:
         self._nodes[(node.tenant_id, node.id)] = node
@@ -316,6 +318,51 @@ class InMemoryGraphStore:
     ) -> None:
         self._sync_cursors[(tenant_id, connector, scope)] = cursor
 
+    async def append_turn(self, turn: ConversationTurn) -> None:
+        self._conversation_turns.append(turn)
+
+    async def list_turns_for_day(
+        self, tenant_id: str, developer_id: str, on: date
+    ) -> list[ConversationTurn]:
+        return sorted(
+            (
+                turn
+                for turn in self._conversation_turns
+                if turn.tenant_id == tenant_id
+                and turn.developer_id == developer_id
+                and turn.conversation_date == on
+            ),
+            key=_conversation_sort_key,
+        )
+
+    async def list_recent_turns(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        limit: int,
+        since: datetime | None = None,
+    ) -> list[ConversationTurn]:
+        if limit <= 0:
+            return []
+        matching = sorted(
+            (
+                turn
+                for turn in self._conversation_turns
+                if turn.tenant_id == tenant_id
+                and turn.developer_id == developer_id
+                and (since is None or turn.observed_at >= since)
+            ),
+            key=_conversation_sort_key,
+            reverse=True,
+        )
+        return sorted(matching[:limit], key=_conversation_sort_key)
+
+    async def purge_turns_older_than(self, cutoff: datetime) -> int:
+        retained = [turn for turn in self._conversation_turns if turn.observed_at >= cutoff]
+        deleted_count = len(self._conversation_turns) - len(retained)
+        self._conversation_turns = retained
+        return deleted_count
+
     async def upsert_embedding(
         self, tenant_id: str, entity_ref: EntityRef, vector: Sequence[float]
     ) -> None:
@@ -372,4 +419,17 @@ def _fact_identity(fact: FactEvent) -> tuple[str, str, str, str, str, datetime]:
         fact.entity_ref.id,
         fact.correlation_id,
         fact.observed_at,
+    )
+
+
+def _conversation_sort_key(
+    turn: ConversationTurn,
+) -> tuple[datetime, str, str, str, str, str]:
+    return (
+        turn.observed_at,
+        turn.conversation_id,
+        turn.correlation_id or "",
+        turn.chat_message_id or "",
+        turn.role.value,
+        turn.content,
     )

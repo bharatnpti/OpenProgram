@@ -6,6 +6,7 @@ from typing import Protocol
 
 from opentelemetry import trace
 
+from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.graph import EntityRef, JsonScalar, NodeKind
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
@@ -497,6 +498,93 @@ class PostgresSyncCursorRepository:
             )
 
 
+class PostgresConversationRepository:
+    def __init__(self, executor: AsyncSqlExecutor) -> None:
+        self._executor = executor
+
+    async def append_turn(self, turn: ConversationTurn) -> None:
+        with _tracer.start_as_current_span("postgres.conversation.append_turn"):
+            await self._executor.execute(
+                """
+                INSERT INTO conversation_turns (
+                    tenant_id, developer_id, conversation_id, conversation_date,
+                    role, content, correlation_id, chat_message_id, observed_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    turn.tenant_id,
+                    turn.developer_id,
+                    turn.conversation_id,
+                    turn.conversation_date,
+                    turn.role.value,
+                    turn.content,
+                    turn.correlation_id,
+                    turn.chat_message_id,
+                    turn.observed_at,
+                ),
+            )
+
+    async def list_turns_for_day(
+        self, tenant_id: str, developer_id: str, on: date
+    ) -> list[ConversationTurn]:
+        with _tracer.start_as_current_span("postgres.conversation.list_turns_for_day"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, developer_id, conversation_id, conversation_date,
+                       role, content, correlation_id, chat_message_id, observed_at
+                FROM conversation_turns
+                WHERE tenant_id = %s
+                  AND developer_id = %s
+                  AND conversation_date = %s
+                ORDER BY observed_at ASC, id ASC
+                """,
+                (tenant_id, developer_id, on),
+            )
+        return [_conversation_turn_from_row(row) for row in rows]
+
+    async def list_recent_turns(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        limit: int,
+        since: datetime | None = None,
+    ) -> list[ConversationTurn]:
+        if limit <= 0:
+            return []
+        with _tracer.start_as_current_span("postgres.conversation.list_recent_turns"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, developer_id, conversation_id, conversation_date,
+                       role, content, correlation_id, chat_message_id, observed_at
+                FROM conversation_turns
+                WHERE tenant_id = %s
+                  AND developer_id = %s
+                  AND (%s::timestamptz IS NULL OR observed_at >= %s)
+                ORDER BY observed_at DESC, id DESC
+                LIMIT %s
+                """,
+                (tenant_id, developer_id, since, since, limit),
+            )
+        return [_conversation_turn_from_row(row) for row in reversed(rows)]
+
+    async def purge_turns_older_than(self, cutoff: datetime) -> int:
+        with _tracer.start_as_current_span("postgres.conversation.purge_turns_older_than"):
+            rows = await self._executor.fetch(
+                """
+                WITH deleted AS (
+                    DELETE FROM conversation_turns
+                    WHERE observed_at < %s
+                    RETURNING 1
+                )
+                SELECT count(*) AS deleted_count
+                FROM deleted
+                """,
+                (cutoff,),
+            )
+        return _int_field(rows[0]["deleted_count"], "deleted_count") if rows else 0
+
+
 def _checkin_from_row(row: Mapping[str, object]) -> CheckIn:
     raw_reply = row.get("raw_reply")
     return CheckIn(
@@ -594,6 +682,22 @@ def _sync_cursor_from_row(row: Mapping[str, object]) -> SyncCursor:
         value=cursor_value if isinstance(cursor_value, str) else None,
         updated_at=_optional_datetime_field(row.get("cursor_updated_at"), "cursor_updated_at"),
         metadata=_json_scalar_mapping(row.get("metadata")),
+    )
+
+
+def _conversation_turn_from_row(row: Mapping[str, object]) -> ConversationTurn:
+    correlation_id = row.get("correlation_id")
+    chat_message_id = row.get("chat_message_id")
+    return ConversationTurn(
+        tenant_id=str(row["tenant_id"]),
+        developer_id=str(row["developer_id"]),
+        conversation_id=str(row["conversation_id"]),
+        conversation_date=_date_field(row["conversation_date"], "conversation_date"),
+        role=ConversationRole(str(row["role"])),
+        content=str(row["content"]),
+        correlation_id=correlation_id if isinstance(correlation_id, str) else None,
+        chat_message_id=chat_message_id if isinstance(chat_message_id, str) else None,
+        observed_at=_datetime_field(row["observed_at"], "observed_at"),
     )
 
 
