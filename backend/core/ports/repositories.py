@@ -10,6 +10,7 @@ from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus
 from core.domain.status import (
     CheckIn,
+    CheckInClarification,
     CheckInCorrelation,
     CheckInNudge,
     CheckInPreference,
@@ -85,6 +86,12 @@ class StatusRepository(Protocol):
     async def checkin_nudge_for(
         self, tenant_id: str, correlation_id: str, nudge_number: int
     ) -> CheckInNudge | None: ...
+
+    async def record_checkin_clarification(
+        self, clarification: CheckInClarification
+    ) -> CheckInClarification: ...
+
+    async def checkin_clarification_count(self, tenant_id: str, correlation_id: str) -> int: ...
 
     async def record_developer_status(self, status: DeveloperStatus) -> None: ...
 

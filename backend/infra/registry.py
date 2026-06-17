@@ -8,6 +8,7 @@ from cryptography.fernet import Fernet
 from redis.asyncio import Redis
 
 from config.settings import Settings
+from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.availability import AvailabilityService
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import (
@@ -211,14 +212,22 @@ class ServiceRegistry:
         return AvailabilityService(self.calendar_provider())
 
     def status_collector(self) -> StatusCollector:
+        llm_provider = self.llm_provider()
+        tool_agent = ToolCallingAgent(
+            llm_provider=llm_provider,
+            max_tool_iterations=self.settings.llm_max_tool_iterations,
+        )
         return StatusCollector(
             issue_tracker=self.issue_tracker(),
             chat_provider=self.chat_provider(),
-            llm_provider=self.llm_provider(),
+            llm_provider=llm_provider,
             status_repository=self.status_repository(),
             conversation_repository=self.conversation_repository(),
             time_series_repository=self.time_series_repository(),
             model=self.settings.litellm_model,
+            tool_agent=tool_agent,
+            conversation_retention_days=self.settings.conversation_retention_days,
+            checkin_max_clarifications=self.settings.checkin_max_clarifications,
         )
 
     def workflow_scheduler(self) -> WorkflowScheduler:

@@ -7,6 +7,7 @@ from core.domain.graph import EntityRef, NodeKind
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
 from core.domain.status import (
+    CheckInClarification,
     CheckInCorrelation,
     CheckInNudge,
     CheckInPreference,
@@ -18,6 +19,7 @@ from core.domain.status import (
 )
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.persistence.postgres_status import (
+    _checkin_clarification_from_row,
     _checkin_correlation_from_row,
     _checkin_from_row,
     _checkin_nudge_from_row,
@@ -185,6 +187,16 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
             "outbound_message_id": "nudge-1",
         }
     )
+    clarification = _checkin_clarification_from_row(
+        {
+            "tenant_id": "demo",
+            "correlation_id": "corr-1",
+            "clarification_number": 1,
+            "question": "What is still blocked?",
+            "sent_at": replied_at,
+            "outbound_message_id": "clarify-1",
+        }
+    )
 
     assert checkin.signals == CheckInSignals(
         progress_note="Graph sync",
@@ -254,4 +266,12 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
         nudge_number=1,
         sent_at=replied_at,
         outbound_message_id="nudge-1",
+    )
+    assert clarification == CheckInClarification(
+        tenant_id="demo",
+        correlation_id="corr-1",
+        clarification_number=1,
+        question="What is still blocked?",
+        sent_at=replied_at,
+        outbound_message_id="clarify-1",
     )

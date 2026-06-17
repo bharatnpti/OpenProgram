@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 
 from api.main import create_app
 from config.settings import Settings
+from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
+from core.ports.llm import LlmProvider
+from infra.registry import ServiceRegistry
 
 
 def test_health_and_graph_routes(settings: Settings) -> None:
@@ -73,6 +77,50 @@ def test_chat_webhook_route_processes_correlated_reply(settings: Settings) -> No
     assert duplicate_response.json() == {
         "status": "duplicate",
         "message_id": "msg-reply-2",
+    }
+
+
+def test_chat_webhook_route_reports_clarifying_reply(settings: Settings) -> None:
+    configured = settings.model_copy(
+        update={
+            "chat_provider": "fake",
+            "issue_tracker_provider": "fake",
+            "llm_provider": "fake",
+        }
+    )
+    registry = _ScriptedLlmRegistry(
+        configured,
+        llm=_SequenceLlmProvider(
+            texts=[
+                "Can you share status?",
+                '{"sufficient":false,"question":"What blocker should I note?","signals":null}',
+            ]
+        ),
+    )
+    app = create_app(settings=configured, registry=registry)
+    with TestClient(app) as client:
+        asyncio.run(
+            app.state.registry.status_collector().start_checkin(
+                tenant_id=settings.tenant_id,
+                developer_id="dev-1",
+                chat_external_id="U123",
+                correlation_id="corr-route",
+                asked_at=datetime.now(tz=UTC),
+            )
+        )
+        response = client.post(
+            "/webhooks/chat/fake",
+            json={
+                "user_id": "U123",
+                "text": "Still working on it",
+                "message_id": "msg-reply-1",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "clarifying",
+        "message_id": "msg-reply-1",
     }
 
 
@@ -290,3 +338,34 @@ def test_portfolio_heatmap_accepts_program_root_id(settings: Settings) -> None:
 
     assert response.status_code == 200
     assert response.json()["as_of"] == "2026-06-15"
+
+
+@dataclass
+class _SequenceLlmProvider:
+    texts: list[str]
+    requests: list[LlmRequest] = field(default_factory=list)
+
+    async def complete(self, request: LlmRequest) -> LlmResponse:
+        self.requests.append(request)
+        return LlmResponse(
+            tenant_id=request.tenant_id,
+            text=self.texts.pop(0),
+            model=request.model,
+            usage=TokenUsage(
+                prompt_tokens=1,
+                completion_tokens=1,
+                total_tokens=2,
+                cost_usd=0.0,
+                latency_ms=1.0,
+            ),
+            trace_id=f"trace-{len(self.requests)}",
+        )
+
+
+class _ScriptedLlmRegistry(ServiceRegistry):
+    def __init__(self, settings: Settings, *, llm: _SequenceLlmProvider) -> None:
+        super().__init__(settings)
+        self._scripted_llm = llm
+
+    def llm_provider(self) -> LlmProvider:
+        return self._scripted_llm

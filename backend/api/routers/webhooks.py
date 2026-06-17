@@ -36,8 +36,11 @@ async def chat_webhook(
     if checkin is not None and checkin.replied_at is not None:
         return ChatWebhookResponse(status="duplicate", message_id=message.message_id)
 
-    await collector.handle_reply(replace(message, correlation_id=resolved_correlation_id))
-    return ChatWebhookResponse(status="processed", message_id=message.message_id)
+    result = await collector.handle_reply(replace(message, correlation_id=resolved_correlation_id))
+    return ChatWebhookResponse(
+        status="clarifying" if result is None else "processed",
+        message_id=message.message_id,
+    )
 
 
 def _as_mapping(value: object) -> Mapping[str, object]:

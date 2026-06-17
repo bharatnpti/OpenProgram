@@ -22,6 +22,7 @@ from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from core.domain.rollup import NodeStatus
 from core.domain.status import (
     CheckIn,
+    CheckInClarification,
     CheckInCorrelation,
     CheckInNudge,
     CheckInPreference,
@@ -133,6 +134,9 @@ class FakeStatusRepository:
         default_factory=dict
     )
     checkin_nudges: dict[tuple[str, str, int], CheckInNudge] = field(default_factory=dict)
+    checkin_clarifications: dict[tuple[str, str, int], CheckInClarification] = field(
+        default_factory=dict
+    )
     developer_statuses: list[DeveloperStatus] = field(default_factory=list)
     developer_ids: set[str] = field(default_factory=set)
 
@@ -256,6 +260,40 @@ class FakeStatusRepository:
     ) -> CheckInNudge | None:
         return self.checkin_nudges.get((tenant_id, correlation_id, nudge_number))
 
+    async def record_checkin_clarification(
+        self, clarification: CheckInClarification
+    ) -> CheckInClarification:
+        key = (
+            clarification.tenant_id,
+            clarification.correlation_id,
+            clarification.clarification_number,
+        )
+        existing = self.checkin_clarifications.get(key)
+        if existing is not None:
+            if existing.outbound_message_id is not None:
+                return existing
+            updated = CheckInClarification(
+                tenant_id=existing.tenant_id,
+                correlation_id=existing.correlation_id,
+                clarification_number=existing.clarification_number,
+                question=existing.question or clarification.question,
+                sent_at=clarification.sent_at or existing.sent_at,
+                outbound_message_id=(
+                    clarification.outbound_message_id or existing.outbound_message_id
+                ),
+            )
+            self.checkin_clarifications[key] = updated
+            return updated
+        self.checkin_clarifications[key] = clarification
+        return clarification
+
+    async def checkin_clarification_count(self, tenant_id: str, correlation_id: str) -> int:
+        return sum(
+            1
+            for existing_tenant_id, existing_correlation_id, _ in self.checkin_clarifications
+            if existing_tenant_id == tenant_id and existing_correlation_id == correlation_id
+        )
+
     async def record_developer_status(self, status: DeveloperStatus) -> None:
         self.developer_ids.add(status.developer_id)
         self.developer_statuses.append(status)
@@ -377,9 +415,7 @@ class FakeConversationRepository:
 
     async def purge_turns_older_than(self, tenant_id: str, cutoff: datetime) -> int:
         retained = [
-            turn
-            for turn in self.turns
-            if turn.tenant_id != tenant_id or turn.observed_at >= cutoff
+            turn for turn in self.turns if turn.tenant_id != tenant_id or turn.observed_at >= cutoff
         ]
         deleted_count = len(self.turns) - len(retained)
         self.turns = retained

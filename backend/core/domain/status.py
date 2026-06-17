@@ -81,6 +81,16 @@ class CheckInNudge:
 
 
 @dataclass(frozen=True, kw_only=True)
+class CheckInClarification:
+    tenant_id: str
+    correlation_id: str
+    clarification_number: int
+    question: str
+    sent_at: datetime | None = None
+    outbound_message_id: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
 class DeveloperStatus:
     tenant_id: str
     developer_id: str

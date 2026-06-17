@@ -23,6 +23,7 @@ from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus
 from core.domain.status import (
     CheckIn,
+    CheckInClarification,
     CheckInCorrelation,
     CheckInNudge,
     CheckInPreference,
@@ -44,6 +45,9 @@ class InMemoryGraphStore:
         default_factory=dict
     )
     _checkin_nudges: dict[tuple[str, str, int], CheckInNudge] = field(default_factory=dict)
+    _checkin_clarifications: dict[tuple[str, str, int], CheckInClarification] = field(
+        default_factory=dict
+    )
     _developer_statuses: dict[tuple[str, str, date], DeveloperStatus] = field(default_factory=dict)
     _node_statuses: dict[tuple[str, str, str, date], NodeStatus] = field(default_factory=dict)
     _sync_cursors: dict[tuple[str, str, str], SyncCursor] = field(default_factory=dict)
@@ -235,6 +239,40 @@ class InMemoryGraphStore:
         self, tenant_id: str, correlation_id: str, nudge_number: int
     ) -> CheckInNudge | None:
         return self._checkin_nudges.get((tenant_id, correlation_id, nudge_number))
+
+    async def record_checkin_clarification(
+        self, clarification: CheckInClarification
+    ) -> CheckInClarification:
+        key = (
+            clarification.tenant_id,
+            clarification.correlation_id,
+            clarification.clarification_number,
+        )
+        existing = self._checkin_clarifications.get(key)
+        if existing is not None:
+            if existing.outbound_message_id is not None:
+                return existing
+            updated = CheckInClarification(
+                tenant_id=existing.tenant_id,
+                correlation_id=existing.correlation_id,
+                clarification_number=existing.clarification_number,
+                question=existing.question or clarification.question,
+                sent_at=clarification.sent_at or existing.sent_at,
+                outbound_message_id=(
+                    clarification.outbound_message_id or existing.outbound_message_id
+                ),
+            )
+            self._checkin_clarifications[key] = updated
+            return updated
+        self._checkin_clarifications[key] = clarification
+        return clarification
+
+    async def checkin_clarification_count(self, tenant_id: str, correlation_id: str) -> int:
+        return sum(
+            1
+            for existing_tenant_id, existing_correlation_id, _ in self._checkin_clarifications
+            if existing_tenant_id == tenant_id and existing_correlation_id == correlation_id
+        )
 
     async def record_developer_status(self, status: DeveloperStatus) -> None:
         self._developer_statuses[(status.tenant_id, status.developer_id, status.as_of)] = status

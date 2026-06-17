@@ -51,6 +51,43 @@ async def test_focus_falls_back_to_status_when_developer_graph_is_missing() -> N
     ]
 
 
+async def test_focus_does_not_expose_raw_checkin_fact_content() -> None:
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    raw_reply = "raw private reply about blockers"
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-missing",
+            as_of=as_of,
+            source=StatusSource.CONFIRMED,
+            blockers=("waiting on API review",),
+            summary="Finishing handoff.",
+        )
+    )
+    await store.append_fact(
+        FactEvent(
+            tenant_id="demo",
+            source="checkin",
+            entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-missing"),
+            payload={"raw_reply": raw_reply, "status_source": "confirmed"},
+            observed_at=datetime(2026, 1, 10, 9, 5, tzinfo=UTC),
+            correlation_id="corr-1",
+        )
+    )
+    service = PersonaViewService(
+        graph_repository=store,
+        status_repository=store,
+        rollup_repository=store,
+        time_series_repository=store,
+    )
+
+    view = await service.focus("demo", "dev-missing", as_of)
+
+    assert raw_reply not in str(view)
+    assert view.summary == "Finishing handoff."
+
+
 async def test_focus_uses_latest_task_fact_and_metadata_fallbacks() -> None:
     store = InMemoryGraphStore()
     as_of = date(2026, 1, 10)

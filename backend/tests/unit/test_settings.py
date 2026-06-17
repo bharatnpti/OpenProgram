@@ -50,6 +50,8 @@ def test_settings_defaults_workflow_provider_to_dbos() -> None:
     assert settings.resolved_dbos_system_database_url == settings.database_url
     assert settings.checkin_reply_wait_seconds == 14400
     assert settings.checkin_final_reply_wait_seconds == 28800
+    assert settings.checkin_max_clarifications == 2
+    assert settings.llm_max_tool_iterations == 3
     assert settings.conversation_retention_days == 30
     assert settings.conversation_purge_cron == "0 3 * * *"
     assert settings.conversation_purge_schedule_id == "pulseops-conversation-purge"
@@ -147,3 +149,7 @@ def test_settings_rejects_invalid_sync_targets() -> None:
         _settings(secret_key=SECRET_KEY, conversation_purge_cron="")
     with pytest.raises(ValidationError):
         _settings(secret_key=SECRET_KEY, conversation_purge_schedule_id="")
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, checkin_max_clarifications=-1)
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, llm_max_tool_iterations=-1)
