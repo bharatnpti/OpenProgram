@@ -13,6 +13,9 @@ from core.domain.workflows import (
     CheckinFanoutInput,
     CheckinFanoutResult,
     CheckinScheduleConfig,
+    ConversationPurgeInput,
+    ConversationPurgeResult,
+    ConversationPurgeScheduleConfig,
     DeveloperCheckinDispatch,
     HeartbeatInput,
     HeartbeatResult,
@@ -21,7 +24,15 @@ from core.domain.workflows import (
     SyncScheduleConfig,
     record_heartbeat,
 )
-from infra.workflows import calendar_sync, checkin_fanout, daily_checkin, git_sync, jira_sync, nudge
+from infra.workflows import (
+    calendar_sync,
+    checkin_fanout,
+    conversation_purge,
+    daily_checkin,
+    git_sync,
+    jira_sync,
+    nudge,
+)
 from infra.workflows.calendar_sync import CalendarSyncInput, CalendarSyncWorkflowResult
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
 from infra.workflows.dispatch import (
@@ -85,6 +96,39 @@ class ScheduledCheckinFanoutWorkflow:
                 checkin_date=workflow.now().date().isoformat(),
             ),
             start_to_close_timeout=timedelta(minutes=10),
+        )
+
+
+@activity.defn
+async def purge_conversation_turns_activity(
+    payload: ConversationPurgeInput,
+) -> ConversationPurgeResult:
+    return await conversation_purge.purge_conversation_turns_activity(payload)
+
+
+@workflow.defn
+class ConversationPurgeWorkflow:
+    @workflow.run
+    async def run(self, payload: ConversationPurgeInput) -> ConversationPurgeResult:
+        return await workflow.execute_activity(
+            purge_conversation_turns_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+
+
+@workflow.defn
+class ScheduledConversationPurgeWorkflow:
+    @workflow.run
+    async def run(self, config: ConversationPurgeScheduleConfig) -> ConversationPurgeResult:
+        return await workflow.execute_activity(
+            purge_conversation_turns_activity,
+            ConversationPurgeInput(
+                tenant_id=config.tenant_id,
+                retention_days=config.retention_days,
+                now=workflow.now().isoformat(),
+            ),
+            start_to_close_timeout=timedelta(minutes=5),
         )
 
 
@@ -311,6 +355,31 @@ class TemporalWorkflowScheduler:
         status = await _ensure_temporal_schedule(client, config.schedule_id, schedule)
         return ScheduleBootstrapResult(schedule_id=config.schedule_id, status=status)
 
+    async def ensure_conversation_purge_schedule(
+        self, config: ConversationPurgeScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        from temporalio.client import (
+            Schedule,
+            ScheduleActionStartWorkflow,
+            ScheduleOverlapPolicy,
+            SchedulePolicy,
+            ScheduleSpec,
+        )
+
+        client = await _connect_temporal(self.target)
+        schedule = Schedule(
+            action=ScheduleActionStartWorkflow(
+                ScheduledConversationPurgeWorkflow.run,
+                config,
+                id=f"{config.schedule_id}-workflow",
+                task_queue=self.task_queue,
+            ),
+            spec=ScheduleSpec(cron_expressions=[config.cron]),
+            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
+        )
+        status = await _ensure_temporal_schedule(client, config.schedule_id, schedule)
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status=status)
+
     async def ensure_sync_schedules(
         self, configs: Sequence[SyncScheduleConfig]
     ) -> list[ScheduleBootstrapResult]:
@@ -403,6 +472,8 @@ class TemporalWorkflowWorker:
                 HeartbeatWorkflow,
                 CheckinFanoutWorkflow,
                 ScheduledCheckinFanoutWorkflow,
+                ConversationPurgeWorkflow,
+                ScheduledConversationPurgeWorkflow,
                 JiraSyncWorkflow,
                 GitSyncWorkflow,
                 CalendarSyncWorkflow,
@@ -413,6 +484,7 @@ class TemporalWorkflowWorker:
             activities=[
                 record_heartbeat_activity,
                 dispatch_checkins_for_tenant_activity,
+                purge_conversation_turns_activity,
                 sync_jira_project_activity,
                 sync_git_repo_activity,
                 sync_calendar_user_activity,

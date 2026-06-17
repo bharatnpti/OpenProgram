@@ -70,7 +70,7 @@ This preserves the Phase 0 rule: `api -> application -> domain`, and `infra -> p
 - `connector_sync_cursors`: tenant-scoped cursor state keyed by connector and scope.
 - `checkin_preferences`: per-developer local check-in time, timezone, and weekday preferences.
 - `checkin_correlations`: maps outbound chat thread/message references to a provider-neutral check-in correlation ID.
-- `checkins`: asked/replied check-ins, raw reply text, parsed signals JSON, and timestamps. Raw replies are never logged or returned by persona APIs.
+- `checkins`: asked/replied check-ins, raw reply text, parsed signals JSON, and timestamps. Raw inbound and outbound turns are also retained in the durable conversation store according to configured retention.
 - `developer_statuses`: append-only or as-of rows for `DeveloperStatus`, keyed by tenant, developer, and date.
 - `node_statuses`: persisted `NodeStatus` rollups with RAG, source tag, factors JSON, and as-of date.
 - Existing `graph_nodes`, `graph_edges`, and `facts` remain the system of record for graph structure and append-only evidence.
@@ -115,5 +115,5 @@ sequenceDiagram
 - Pure unit tests cover status parsing validation, availability decisions, scheduling idempotency, and rollup rules.
 - Port contract tests run against fakes and real read adapters with recorded HTTP.
 - Integration tests cover Postgres schema deltas, graph/fact writes, and workflow replay/idempotency.
-- API tests verify default-deny authorization and that raw DM content is never returned.
+- API tests verify default-deny authorization and stable persona contracts; conversation-turn exposure requires an explicit route/DTO change.
 - Frontend checks use the existing lint, typecheck, build, and generated API client workflow.

@@ -8,9 +8,10 @@ from uuid import uuid4
 from langgraph.graph import StateGraph
 
 from core.application.status_parsing import StatusParser
+from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.domain.integrations import Issue, UserRef
-from core.domain.llm import LlmRequest
+from core.domain.llm import LlmMessage, LlmMessageRole, LlmRequest
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from core.domain.status import (
     CheckIn,
@@ -23,9 +24,18 @@ from core.domain.status import (
 from core.ports.chat import ChatProvider
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
-from core.ports.repositories import StatusRepository, TimeSeriesRepository
+from core.ports.repositories import ConversationRepository, StatusRepository, TimeSeriesRepository
 
 RECENT_FACT_LOOKBACK_DAYS = 30
+RECENT_CONVERSATION_TURN_LIMIT = 20
+COMPOSE_CHECKIN_SYSTEM_PROMPT = (
+    "Compose a concise daily check-in DM. Use prior conversation turns as context, but do not "
+    "quote private history unless it directly helps the ask."
+)
+COMPOSE_NUDGE_SYSTEM_PROMPT = (
+    "Compose a concise follow-up DM for a pending status check-in. Use prior conversation turns "
+    "as context and avoid assuming status is healthy without a reply."
+)
 
 
 class StatusCollectorState(TypedDict, total=False):
@@ -58,6 +68,7 @@ class StatusCollector:
         status_repository: StatusRepository,
         model: str,
         time_series_repository: TimeSeriesRepository | None = None,
+        conversation_repository: ConversationRepository | None = None,
         parser: StatusParser | None = None,
     ) -> None:
         self._issue_tracker = issue_tracker
@@ -65,6 +76,7 @@ class StatusCollector:
         self._llm_provider = llm_provider
         self._status_repository = status_repository
         self._time_series_repository = time_series_repository
+        self._conversation_repository = conversation_repository
         self._model = model
         self._parser = parser or StatusParser(llm_provider, model)
         self._compiled_graph = self._compile_graph()
@@ -107,14 +119,34 @@ class StatusCollector:
             error = "inbound reply does not match a recorded check-in"
             raise ValueError(error)
 
+        await self._record_conversation_turn(
+            ConversationTurn(
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                conversation_id=checkin.correlation_id,
+                conversation_date=message.received_at.date(),
+                role=ConversationRole.USER,
+                content=message.text,
+                correlation_id=message.correlation_id,
+                chat_message_id=message.message_id,
+                observed_at=message.received_at,
+            )
+        )
+
         if checkin.replied_at is not None:
             return await self._confirmed_status_for_duplicate(checkin)
 
+        conversation_turns = await self._recent_conversation_turns(
+            tenant_id=message.tenant_id,
+            developer_id=checkin.developer_id,
+            exclude_chat_message_id=message.message_id,
+        )
         signals = await self._parser.parse_reply(
             tenant_id=message.tenant_id,
             developer_id=checkin.developer_id,
             raw_reply=message.text,
             correlation_id=message.correlation_id,
+            conversation_turns=conversation_turns,
         )
         updated = CheckIn(
             tenant_id=checkin.tenant_id,
@@ -141,7 +173,7 @@ class StatusCollector:
             checkin.correlation_id,
             message.received_at,
         )
-        await self._append_redacted_checkin_fact(updated, status)
+        await self._append_checkin_fact(updated, status)
         return status
 
     async def resolve_reply_correlation(self, message: InboundMessage) -> str | None:
@@ -210,12 +242,18 @@ class StatusCollector:
             "Do not imply the work is healthy just because there was no reply. "
             f"Developer: {developer_name or checkin.developer_id}. Context: {context}"
         )
+        conversation_turns = await self._recent_conversation_turns(
+            tenant_id=tenant_id,
+            developer_id=checkin.developer_id,
+        )
         response = await self._llm_provider.complete(
             LlmRequest(
                 tenant_id=tenant_id,
                 prompt=prompt,
                 model=self._model,
                 correlation_id=correlation_id,
+                system=COMPOSE_NUDGE_SYSTEM_PROMPT,
+                messages=_llm_messages_from_turns(conversation_turns),
                 metadata={
                     "service": "status_collector",
                     "purpose": "compose_nudge",
@@ -238,12 +276,26 @@ class StatusCollector:
                 metadata={"purpose": "status_nudge", "nudge_number": 1},
             ),
         )
+        sent_at = datetime.now(tz=UTC)
+        await self._record_conversation_turn(
+            ConversationTurn(
+                tenant_id=tenant_id,
+                developer_id=checkin.developer_id,
+                conversation_id=correlation_id,
+                conversation_date=sent_at.date(),
+                role=ConversationRole.AGENT,
+                content=text,
+                correlation_id=correlation_id,
+                chat_message_id=message_id,
+                observed_at=sent_at,
+            )
+        )
         stored = await self._status_repository.record_checkin_nudge(
             CheckInNudge(
                 tenant_id=tenant_id,
                 correlation_id=correlation_id,
                 nudge_number=1,
-                sent_at=datetime.now(tz=UTC),
+                sent_at=sent_at,
                 outbound_message_id=message_id,
             )
         )
@@ -366,6 +418,13 @@ class StatusCollector:
                 prompt=prompt,
                 model=self._model,
                 correlation_id=state["correlation_id"],
+                system=COMPOSE_CHECKIN_SYSTEM_PROMPT,
+                messages=_llm_messages_from_turns(
+                    await self._recent_conversation_turns(
+                        tenant_id=state["tenant_id"],
+                        developer_id=state["developer_id"],
+                    )
+                ),
                 metadata={
                     "service": "status_collector",
                     "purpose": "compose_checkin",
@@ -391,6 +450,20 @@ class StatusCollector:
                 correlation_id=state["correlation_id"],
                 metadata={"purpose": "status_checkin"},
             ),
+        )
+        observed_at = state.get("asked_at", datetime.now(tz=UTC))
+        await self._record_conversation_turn(
+            ConversationTurn(
+                tenant_id=state["tenant_id"],
+                developer_id=state["developer_id"],
+                conversation_id=state["correlation_id"],
+                conversation_date=observed_at.date(),
+                role=ConversationRole.AGENT,
+                content=state["dm_text"],
+                correlation_id=state["correlation_id"],
+                chat_message_id=message_id,
+                observed_at=observed_at,
+            )
         )
         return {
             "message_id": message_id,
@@ -441,7 +514,7 @@ class StatusCollector:
             summary=signals.progress_note,
         )
 
-    async def _append_redacted_checkin_fact(
+    async def _append_checkin_fact(
         self,
         checkin: CheckIn,
         status: DeveloperStatus,
@@ -470,6 +543,29 @@ class StatusCollector:
                 correlation_id=checkin.correlation_id,
             )
         )
+
+    async def _record_conversation_turn(self, turn: ConversationTurn) -> None:
+        if self._conversation_repository is None:
+            return
+        await self._conversation_repository.append_turn(turn)
+
+    async def _recent_conversation_turns(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        exclude_chat_message_id: str | None = None,
+    ) -> list[ConversationTurn]:
+        if self._conversation_repository is None:
+            return []
+        turns = await self._conversation_repository.list_recent_turns(
+            tenant_id,
+            developer_id,
+            limit=RECENT_CONVERSATION_TURN_LIMIT,
+        )
+        if exclude_chat_message_id is None:
+            return turns
+        return [turn for turn in turns if turn.chat_message_id != exclude_chat_message_id]
 
     async def _recent_facts(
         self,
@@ -527,6 +623,20 @@ def _fact_context_lines(facts: Iterable[FactEvent]) -> list[str]:
         f"{_format_payload(fact.payload)}"
         for fact in facts
     ]
+
+
+def _llm_messages_from_turns(turns: Iterable[ConversationTurn]) -> tuple[LlmMessage, ...]:
+    return tuple(
+        LlmMessage(role=_llm_role_for_turn(turn.role), content=turn.content) for turn in turns
+    )
+
+
+def _llm_role_for_turn(role: ConversationRole) -> LlmMessageRole:
+    if role is ConversationRole.AGENT:
+        return "assistant"
+    if role is ConversationRole.USER:
+        return "user"
+    return "system"
 
 
 def _format_payload(payload: Mapping[str, JsonScalar]) -> str:

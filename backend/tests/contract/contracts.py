@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 
+from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.errors import ProviderUnavailable
 from core.domain.graph import EntityRef, NodeKind
 from core.domain.integrations import (
@@ -35,7 +36,12 @@ from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.ci import CiProvider
 from core.ports.issue_tracker import IssueTracker
-from core.ports.repositories import RollupRepository, StatusRepository, SyncCursorRepository
+from core.ports.repositories import (
+    ConversationRepository,
+    RollupRepository,
+    StatusRepository,
+    SyncCursorRepository,
+)
 from core.ports.vcs import VcsProvider
 
 
@@ -228,6 +234,80 @@ async def assert_sync_cursor_repository_contract(repository: SyncCursorRepositor
     )
     await repository.record_cursor("demo", "jira", "project:PO", cursor)
     assert await repository.get_cursor("demo", "jira", "project:PO") == cursor
+
+
+async def assert_conversation_repository_contract(repository: ConversationRepository) -> None:
+    first = ConversationTurn(
+        tenant_id="demo",
+        developer_id="dev-1",
+        conversation_id="conv-1",
+        conversation_date=date(2026, 1, 10),
+        role=ConversationRole.AGENT,
+        content="How is PO-1 going?",
+        correlation_id="corr-1",
+        chat_message_id="msg-1",
+        observed_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+    )
+    second = ConversationTurn(
+        tenant_id="demo",
+        developer_id="dev-1",
+        conversation_id="conv-1",
+        conversation_date=date(2026, 1, 10),
+        role=ConversationRole.USER,
+        content="Blocked on dependency.",
+        correlation_id="corr-1",
+        chat_message_id="msg-2",
+        observed_at=datetime(2026, 1, 10, 9, 5, tzinfo=UTC),
+    )
+    previous = ConversationTurn(
+        tenant_id="demo",
+        developer_id="dev-1",
+        conversation_id="conv-0",
+        conversation_date=date(2026, 1, 9),
+        role=ConversationRole.USER,
+        content="Yesterday's context.",
+        correlation_id=None,
+        chat_message_id="msg-0",
+        observed_at=datetime(2026, 1, 9, 17, 0, tzinfo=UTC),
+    )
+    other_developer = ConversationTurn(
+        tenant_id="demo",
+        developer_id="dev-2",
+        conversation_id="conv-other",
+        conversation_date=date(2026, 1, 10),
+        role=ConversationRole.USER,
+        content="Different developer.",
+        correlation_id=None,
+        chat_message_id="msg-other",
+        observed_at=datetime(2026, 1, 10, 10, 0, tzinfo=UTC),
+    )
+
+    await repository.append_turn(second)
+    await repository.append_turn(previous)
+    await repository.append_turn(other_developer)
+    await repository.append_turn(first)
+
+    day_turns = await repository.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
+    assert day_turns == [first, second]
+
+    recent = await repository.list_recent_turns("demo", "dev-1", limit=2)
+    assert recent == [first, second]
+
+    recent_since = await repository.list_recent_turns(
+        "demo",
+        "dev-1",
+        limit=10,
+        since=datetime(2026, 1, 10, 9, 1, tzinfo=UTC),
+    )
+    assert recent_since == [second]
+    assert await repository.list_recent_turns("demo", "dev-1", limit=0) == []
+
+    purged = await repository.purge_turns_older_than(datetime(2026, 1, 10, 0, 0, tzinfo=UTC))
+    assert purged == 1
+    assert await repository.list_turns_for_day("demo", "dev-1", date(2026, 1, 9)) == []
+    assert await repository.list_turns_for_day("demo", "dev-2", date(2026, 1, 10)) == [
+        other_developer
+    ]
 
 
 async def assert_ci_contract(provider: CiProvider) -> None:

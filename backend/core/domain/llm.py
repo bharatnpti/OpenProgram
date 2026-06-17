@@ -2,8 +2,17 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Literal
 
 from core.domain.graph import JsonScalar
+
+type LlmMessageRole = Literal["system", "user", "assistant"]
+
+
+@dataclass(frozen=True, kw_only=True)
+class LlmMessage:
+    role: LlmMessageRole
+    content: str
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -12,6 +21,8 @@ class LlmRequest:
     prompt: str
     model: str
     correlation_id: str
+    system: str | None = None
+    messages: tuple[LlmMessage, ...] = ()
     metadata: Mapping[str, JsonScalar] = field(default_factory=dict)
 
 

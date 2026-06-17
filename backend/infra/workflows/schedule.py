@@ -3,7 +3,11 @@ from __future__ import annotations
 import asyncio
 
 from config.settings import Settings, get_settings
-from core.domain.workflows import CheckinScheduleConfig, SyncScheduleConfig
+from core.domain.workflows import (
+    CheckinScheduleConfig,
+    ConversationPurgeScheduleConfig,
+    SyncScheduleConfig,
+)
 from infra.registry import ServiceRegistry
 from infra.workflows.dispatch import safe_workflow_id
 
@@ -16,6 +20,7 @@ async def main() -> None:
         results = [
             await scheduler.ensure_heartbeat_schedule(),
             await scheduler.ensure_checkin_fanout_schedule(checkin_fanout_config(settings)),
+            await scheduler.ensure_conversation_purge_schedule(conversation_purge_config(settings)),
             *(await scheduler.ensure_sync_schedules(sync_schedule_configs(settings))),
         ]
         for result in results:
@@ -29,6 +34,15 @@ def checkin_fanout_config(settings: Settings) -> CheckinScheduleConfig:
         schedule_id=settings.checkin_fanout_schedule_id,
         tenant_id=settings.tenant_id,
         cron=settings.checkin_fanout_cron,
+    )
+
+
+def conversation_purge_config(settings: Settings) -> ConversationPurgeScheduleConfig:
+    return ConversationPurgeScheduleConfig(
+        schedule_id=settings.conversation_purge_schedule_id,
+        tenant_id=settings.tenant_id,
+        retention_days=settings.conversation_retention_days,
+        cron=settings.conversation_purge_cron,
     )
 
 

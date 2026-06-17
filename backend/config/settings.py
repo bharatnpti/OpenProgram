@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     jira_sync_cron: str = "0 * * * *"
     github_sync_cron: str = "*/15 * * * *"
     calendar_sync_cron: str = "0 8 * * *"
+    conversation_retention_days: int = 30
+    conversation_purge_cron: str = "0 3 * * *"
+    conversation_purge_schedule_id: str = "pulseops-conversation-purge"
     temporal_target: str = "localhost:7233"
     temporal_task_queue: str = "pulseops-foundation"
     temporal_schedule_id: str = "pulseops-heartbeat"
@@ -212,6 +215,8 @@ class Settings(BaseSettings):
         "jira_sync_cron",
         "github_sync_cron",
         "calendar_sync_cron",
+        "conversation_purge_cron",
+        "conversation_purge_schedule_id",
     )
     @classmethod
     def validate_non_empty_string(cls, value: str) -> str:
@@ -240,6 +245,7 @@ class Settings(BaseSettings):
         "postgres_pool_max_size",
         "redis_max_connections",
         "calendar_sync_window_days",
+        "conversation_retention_days",
     )
     @classmethod
     def validate_positive_int(cls, value: int) -> int:

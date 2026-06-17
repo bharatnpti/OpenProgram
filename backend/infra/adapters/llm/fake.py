@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 
 
+@dataclass
 class FakeLlmProvider:
+    requests: list[LlmRequest] = field(default_factory=list)
+
     async def complete(self, request: LlmRequest) -> LlmResponse:
+        self.requests.append(request)
         text = (
             '{"progress_note":"Status update received",'
             '"blockers":[],"eta_change_days":null,"mood":"neutral"}'

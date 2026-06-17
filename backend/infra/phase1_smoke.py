@@ -107,7 +107,7 @@ async def _prove_scheduled_checkin_and_webhook(
     )
     _assert(checkin is not None and checkin.replied_at is not None, "reply was not persisted")
     _assert(status is not None and status.source.value == "confirmed", "status was not confirmed")
-    _assert(any(fact.source == "checkin" for fact in facts), "redacted check-in fact missing")
+    _assert(any(fact.source == "checkin" for fact in facts), "check-in fact missing")
 
 
 async def _prove_nudge_non_response(registry: ServiceRegistry, checkin_date: date) -> None:

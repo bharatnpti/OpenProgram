@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -16,8 +17,6 @@ from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 
 _logger = structlog.get_logger(__name__)
 _tracer = trace.get_tracer("pulseops.adapters.llm.litellm")
-_REDACTED_INPUT = "[redacted input]"
-_REDACTED_OUTPUT = "[redacted output]"
 
 
 class LlmTraceSink(Protocol):
@@ -40,18 +39,11 @@ class LangfuseTraceSink:
             trace_id = response.trace_id
             timestamp = datetime.now(tz=UTC).isoformat()
             generation_id = f"{trace_id}-generation"
-            prompt_hash = sha256(request.prompt.encode("utf-8")).hexdigest()
+            trace_input = _trace_input(request)
+            prompt_hash = sha256(
+                json.dumps(trace_input, sort_keys=True).encode("utf-8")
+            ).hexdigest()
             output_hash = sha256(response.text.encode("utf-8")).hexdigest()
-            trace_input = (
-                _REDACTED_INPUT
-                if _metadata_flag(request.metadata, "redact_input")
-                else request.prompt
-            )
-            generation_output = (
-                _REDACTED_OUTPUT
-                if _metadata_flag(request.metadata, "redact_output")
-                else response.text
-            )
             trace_metadata = {
                 "tenant_id": request.tenant_id,
                 "correlation_id": request.correlation_id,
@@ -83,7 +75,7 @@ class LangfuseTraceSink:
                             "name": "litellm.complete",
                             "model": response.model,
                             "input": trace_input,
-                            "output": generation_output,
+                            "output": response.text,
                             "usage": {
                                 "input": response.usage.prompt_tokens,
                                 "output": response.usage.completion_tokens,
@@ -137,7 +129,7 @@ class LiteLlmProvider:
                     headers=headers,
                     json={
                         "model": request.model,
-                        "messages": [{"role": "user", "content": request.prompt}],
+                        "messages": _chat_messages(request),
                         "metadata": {
                             "tenant_id": request.tenant_id,
                             "correlation_id": request.correlation_id,
@@ -202,8 +194,17 @@ def _int_field(payload: Mapping[str, object], key: str) -> int:
     return value if isinstance(value, int) else 0
 
 
-def _metadata_flag(metadata: Mapping[str, object], key: str) -> bool:
-    value = metadata.get(key)
-    if isinstance(value, bool):
-        return value
-    return isinstance(value, str) and value.lower() == "true"
+def _chat_messages(request: LlmRequest) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = []
+    if request.system is not None:
+        messages.append({"role": "system", "content": request.system})
+    messages.extend(
+        {"role": message.role, "content": message.content} for message in request.messages
+    )
+    if request.prompt:
+        messages.append({"role": "user", "content": request.prompt})
+    return messages
+
+
+def _trace_input(request: LlmRequest) -> list[dict[str, str]]:
+    return _chat_messages(request)

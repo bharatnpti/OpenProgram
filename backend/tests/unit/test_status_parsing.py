@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 
 from core.application.status_parsing import StatusParser
+from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 from core.domain.status import CheckInSignals, Mood
 
@@ -43,6 +45,30 @@ async def test_status_parser_converts_valid_json_to_signals() -> None:
         developer_id="dev-1",
         raw_reply="raw reply with private detail",
         correlation_id="corr-1",
+        conversation_turns=(
+            ConversationTurn(
+                tenant_id="demo",
+                developer_id="dev-1",
+                conversation_id="corr-1",
+                conversation_date=date(2026, 1, 10),
+                role=ConversationRole.AGENT,
+                content="Can you share progress and blockers?",
+                correlation_id="corr-1",
+                chat_message_id="msg-agent",
+                observed_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            ),
+            ConversationTurn(
+                tenant_id="demo",
+                developer_id="dev-1",
+                conversation_id="corr-1",
+                conversation_date=date(2026, 1, 10),
+                role=ConversationRole.USER,
+                content="I am finishing the API handoff.",
+                correlation_id="corr-1",
+                chat_message_id="msg-user",
+                observed_at=datetime(2026, 1, 10, 9, 5, tzinfo=UTC),
+            ),
+        ),
     )
 
     assert signals == CheckInSignals(
@@ -55,9 +81,12 @@ async def test_status_parser_converts_valid_json_to_signals() -> None:
         "service": "status_parser",
         "purpose": "parse_checkin_signals",
         "developer_id": "dev-1",
-        "redact_input": True,
-        "redact_output": True,
     }
+    assert provider.requests[0].system is not None
+    assert [(message.role, message.content) for message in provider.requests[0].messages] == [
+        ("assistant", "Can you share progress and blockers?"),
+        ("user", "I am finishing the API handoff."),
+    ]
 
 
 async def test_status_parser_falls_back_to_raw_reply_when_output_is_malformed() -> None:

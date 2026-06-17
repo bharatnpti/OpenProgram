@@ -49,7 +49,7 @@ class SyncCursorRepository(Protocol):
 - `IssueSyncService`: reads projects, sprints, and changed issues; upserts `Task` nodes; maintains `CONTAINS` and `ASSIGNED_TO` edges; appends issue facts.
 - `VcsActivitySyncService`: reads repositories, commits, and pull requests; appends activity facts linked to developer and repository refs.
 - `AvailabilityService`: reads calendar events and answers availability, PTO, and timezone questions for scheduling.
-- `ConnectorSyncService`: wraps provider calls with cursor load/save, idempotency keys, correlation IDs, and structured redacted logging.
+- `ConnectorSyncService`: wraps provider calls with cursor load/save, idempotency keys, correlation IDs, and structured logging.
 
 All services depend on ports and domain DTOs only.
 

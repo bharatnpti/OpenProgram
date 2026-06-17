@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, date, datetime
+from typing import cast
 
 import pytest
 
@@ -8,10 +10,14 @@ from config.settings import Settings
 from core.application.agents.status_agent import StatusAgentNode
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import SyncRunResult
+from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.integrations import SyncCursor, UserRef
 from core.domain.status import CheckIn, CheckInScheduleRun, DeveloperStatus, StatusSource
 from core.domain.workflows import (
+    CheckinFanoutInput,
     CheckinScheduleConfig,
+    ConversationPurgeInput,
+    ConversationPurgeScheduleConfig,
     DeveloperCheckinDispatch,
     HeartbeatInput,
     SyncDispatchInput,
@@ -22,7 +28,14 @@ from infra.adapters.workflows import dbos as dbos_workflows
 from infra.adapters.workflows import temporal as temporal_workflows
 from infra.adapters.workflows.fake import FakeWorkflowScheduler
 from infra.persistence.in_memory_graph import InMemoryGraphStore
-from infra.workflows import checkin_fanout, daily_checkin, jira_sync, nudge, schedule
+from infra.workflows import (
+    checkin_fanout,
+    conversation_purge,
+    daily_checkin,
+    jira_sync,
+    nudge,
+    schedule,
+)
 from tests.contract.fakes import FakeChatProvider, FakeIssueTracker, FakeLlmProvider
 
 
@@ -73,6 +86,14 @@ async def test_fake_workflow_scheduler_returns_deterministic_result() -> None:
     fanout = await scheduler.ensure_checkin_fanout_schedule(
         CheckinScheduleConfig(schedule_id="checkin-fanout", tenant_id="demo", cron="0 9 * * *")
     )
+    purge = await scheduler.ensure_conversation_purge_schedule(
+        ConversationPurgeScheduleConfig(
+            schedule_id="conversation-purge",
+            tenant_id="demo",
+            retention_days=30,
+            cron="0 3 * * *",
+        )
+    )
     sync_results = await scheduler.ensure_sync_schedules(
         [
             SyncScheduleConfig(
@@ -105,6 +126,8 @@ async def test_fake_workflow_scheduler_returns_deterministic_result() -> None:
     assert result.status == "ready"
     assert fanout.schedule_id == "checkin-fanout"
     assert fanout.status == "ready"
+    assert purge.schedule_id == "conversation-purge"
+    assert purge.status == "ready"
     assert [(item.schedule_id, item.status) for item in sync_results] == [("jira-sync", "ready")]
     assert checkin_workflow_id == "fake-checkin-demo-dev-1-2026-01-10"
     assert sync_workflow_id == "fake-sync-vcs-repo-oneai-program-manager"
@@ -149,7 +172,7 @@ async def test_checkin_fanout_dispatches_developers_without_checkin(
     monkeypatch.setattr(checkin_fanout, "_service_registry", lambda: registry)
 
     result = await checkin_fanout.dispatch_checkins_for_tenant_activity(
-        checkin_fanout.CheckinFanoutInput(tenant_id="demo", checkin_date="2026-01-10")
+        CheckinFanoutInput(tenant_id="demo", checkin_date="2026-01-10")
     )
 
     assert result.dispatched == 1
@@ -165,7 +188,8 @@ async def test_checkin_fanout_dispatches_developers_without_checkin(
 
 
 def test_schedule_configs_use_explicit_sync_targets() -> None:
-    settings = Settings(
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
         _env_file=None,
         secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
         jira_sync_projects=("PO", "ENG:program-platform", "API:pod-runtime:board-1"),
@@ -175,9 +199,16 @@ def test_schedule_configs_use_explicit_sync_targets() -> None:
     )
 
     checkin_config = schedule.checkin_fanout_config(settings)
+    purge_config = schedule.conversation_purge_config(settings)
     sync_configs = schedule.sync_schedule_configs(settings)
 
     assert checkin_config.schedule_id == "pulseops-checkin-fanout"
+    assert purge_config == ConversationPurgeScheduleConfig(
+        schedule_id="pulseops-conversation-purge",
+        tenant_id="demo",
+        retention_days=30,
+        cron="0 3 * * *",
+    )
     assert [(config.connector, config.scope, config.payload) for config in sync_configs] == [
         ("issue", "project:PO", {"project_key": "PO"}),
         (
@@ -272,9 +303,9 @@ async def test_dbos_readiness_launches_once_and_caches(
     def destroy() -> None:
         calls.append(("destroy", None))
 
-    monkeypatch.setattr(dbos_workflows.psycopg.AsyncConnection, "connect", connect)
+    monkeypatch.setattr("infra.adapters.workflows.dbos.psycopg.AsyncConnection.connect", connect)
     monkeypatch.setattr(dbos_workflows, "configure_dbos_runtime", configure)
-    monkeypatch.setattr(dbos_workflows.DBOS, "launch", launch)
+    monkeypatch.setattr("infra.adapters.workflows.dbos.DBOS.launch", launch)
     monkeypatch.setattr(dbos_workflows, "destroy_dbos_runtime", destroy)
 
     probe = dbos_workflows.DbosWorkflowReadinessProbe(
@@ -320,6 +351,35 @@ async def test_jira_sync_activity_returns_json_native_cursor(
     assert result.cursor_updated_at == "2026-01-10T09:00:00+00:00"
     assert result.cursor_metadata == {"last_item_count": 1}
     assert registry._service.board_id == "board-1"
+    assert registry.closed is True
+
+
+async def test_conversation_purge_activity_deletes_older_turns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = InMemoryGraphStore()
+    await store.append_turn(
+        _conversation_turn("old", observed_at=datetime(2026, 1, 9, 23, 59, tzinfo=UTC))
+    )
+    await store.append_turn(
+        _conversation_turn("kept", observed_at=datetime(2026, 1, 10, 0, 0, tzinfo=UTC))
+    )
+    registry = _ConversationPurgeRegistry(store)
+    monkeypatch.setattr(conversation_purge, "_service_registry", lambda: registry)
+
+    result = await conversation_purge.purge_conversation_turns_activity(
+        ConversationPurgeInput(
+            tenant_id="demo",
+            retention_days=30,
+            now="2026-02-09T00:00:00+00:00",
+        )
+    )
+
+    assert result.cutoff == "2026-01-10T00:00:00+00:00"
+    assert result.deleted_count == 1
+    assert [turn.content for turn in await store.list_recent_turns("demo", "dev-1", limit=10)] == [
+        "kept"
+    ]
     assert registry.closed is True
 
 
@@ -613,6 +673,32 @@ class _NudgeRegistry:
 
     def status_collector(self) -> StatusCollector:
         return self._collector
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+def _conversation_turn(content: str, *, observed_at: datetime) -> ConversationTurn:
+    return ConversationTurn(
+        tenant_id="demo",
+        developer_id="dev-1",
+        conversation_id="dev-1-2026-01-10",
+        conversation_date=observed_at.date(),
+        role=ConversationRole.USER,
+        content=content,
+        correlation_id=None,
+        chat_message_id=None,
+        observed_at=observed_at,
+    )
+
+
+class _ConversationPurgeRegistry:
+    def __init__(self, store: InMemoryGraphStore) -> None:
+        self.closed = False
+        self._store = store
+
+    def conversation_repository(self) -> InMemoryGraphStore:
+        return self._store
 
     async def close(self) -> None:
         self.closed = True

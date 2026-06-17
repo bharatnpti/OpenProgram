@@ -179,7 +179,7 @@ Rule of thumb: vendor SDK imports and payload types stay under `infra/adapters/*
 
 ### Errors, logging, observability
 - **Domain exceptions** (e.g. `BlockerNotFound`, `ProviderUnavailable`). Adapters catch vendor errors and re-raise as domain/port errors; a vendor SDK exception must never surface in a use case.
-- **Structured logging** (`structlog`) with correlation/trace IDs. Never log PII or the contents of developer DMs.
+- **Structured logging** (`structlog`) with correlation/trace IDs. Raw inbound and outbound conversation turns are captured in the durable conversation store and bounded by configurable retention.
 - **OpenTelemetry** spans across agent steps; **Langfuse** traces on every LLM call (prompt, tokens, cost, latency).
 - **Idempotency + audit** for any agent write (Jira transitions, nudges): every external mutation is logged, reversible, and safe to retry. Workflow steps and activities must be idempotent.
 

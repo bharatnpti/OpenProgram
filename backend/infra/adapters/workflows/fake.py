@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from core.domain.workflows import (
     CheckinScheduleConfig,
+    ConversationPurgeScheduleConfig,
     DeveloperCheckinDispatch,
     ScheduleBootstrapResult,
     SyncDispatchInput,
@@ -22,6 +23,11 @@ class FakeWorkflowScheduler:
 
     async def ensure_checkin_fanout_schedule(
         self, config: CheckinScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
+
+    async def ensure_conversation_purge_schedule(
+        self, config: ConversationPurgeScheduleConfig
     ) -> ScheduleBootstrapResult:
         return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
 

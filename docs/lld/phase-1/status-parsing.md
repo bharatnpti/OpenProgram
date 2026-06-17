@@ -35,7 +35,7 @@ Use null when ETA or mood is absent.
 Use an empty blocker list when no blocker is stated.
 ```
 
-The reply text is passed only to the LLM call and the status repository. Trace metadata is redacted.
+The reply text is passed to the LLM call, status repository, and conversation store. Trace payloads retain submitted LLM input and output.
 
 ## Validation
 
@@ -70,7 +70,7 @@ DeveloperStatus(
 )
 ```
 
-When parsing fails, `blockers=()` and the summary is the safe fallback text. Raw reply text never becomes a persona API response.
+When parsing fails, `blockers=()` and the summary is the fallback text. This parser does not add persona API response fields.
 
 ## Sequence
 
@@ -95,13 +95,13 @@ sequenceDiagram
 
 Parsing stores results in:
 
-- `checkins.raw_reply`: raw text, access controlled and redacted from logs.
+- `checkins.raw_reply`: raw text, access controlled through authorization policy.
 - `checkins.signals`: JSON representation of `CheckInSignals`, nullable.
 - `developer_statuses`: derived summary, blockers, source, and as-of date.
-- `facts`: append-only check-in fact with redacted payload metadata and source reference.
+- `facts`: append-only check-in fact with payload metadata and source reference.
 
 ## Tests
 
 - Unit tests cover valid replies, no-blocker replies, multiple blockers, ETA changes, mood extraction, malformed JSON, oversized output, and empty replies.
 - Property-style tests cover unexpected strings and ensure parser failures do not crash the collector.
-- Redaction tests assert raw replies do not appear in logs, traces, or persona DTOs.
+- Tests assert raw replies are preserved for parsing/persistence and that persona contracts remain stable unless a route explicitly adds conversation fields.

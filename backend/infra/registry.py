@@ -22,6 +22,7 @@ from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
 from core.ports.repositories import (
+    ConversationRepository,
     GraphRepository,
     RollupRepository,
     StatusRepository,
@@ -47,6 +48,7 @@ from infra.persistence.postgres_graph import (
     PostgresVectorStore,
 )
 from infra.persistence.postgres_status import (
+    PostgresConversationRepository,
     PostgresRollupRepository,
     PostgresStatusRepository,
     PostgresSyncCursorRepository,
@@ -67,6 +69,10 @@ class ServiceRegistry:
     )
     _postgres_vector_store: PostgresVectorStore | None = field(default=None, init=False)
     _postgres_status_repository: PostgresStatusRepository | None = field(default=None, init=False)
+    _postgres_conversation_repository: PostgresConversationRepository | None = field(
+        default=None,
+        init=False,
+    )
     _postgres_rollup_repository: PostgresRollupRepository | None = field(default=None, init=False)
     _postgres_sync_cursor_repository: PostgresSyncCursorRepository | None = field(
         default=None,
@@ -104,6 +110,15 @@ class ServiceRegistry:
         if self._postgres_status_repository is None:
             self._postgres_status_repository = PostgresStatusRepository(self._executor())
         return self._postgres_status_repository
+
+    def conversation_repository(self) -> ConversationRepository:
+        if self.settings.runtime_mode == "memory":
+            return self._memory_graph_store()
+        if self._postgres_conversation_repository is None:
+            self._postgres_conversation_repository = PostgresConversationRepository(
+                self._executor()
+            )
+        return self._postgres_conversation_repository
 
     def rollup_repository(self) -> RollupRepository:
         if self.settings.runtime_mode == "memory":
@@ -201,6 +216,7 @@ class ServiceRegistry:
             chat_provider=self.chat_provider(),
             llm_provider=self.llm_provider(),
             status_repository=self.status_repository(),
+            conversation_repository=self.conversation_repository(),
             time_series_repository=self.time_series_repository(),
             model=self.settings.litellm_model,
         )

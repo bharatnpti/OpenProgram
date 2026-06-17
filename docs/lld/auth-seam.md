@@ -19,7 +19,7 @@ class CurrentPrincipal(Protocol):
 
 `AuthorizationPolicy` is central and default-deny. Use cases ask it for capability/scope decisions instead of checking roles inline.
 
-Sensitive fields include budget and raw DM content. Executives see aggregates, not raw DMs.
+Sensitive fields include budget and raw DM content. Raw DM access follows the normal `READ_RAW_DM` capability mapping instead of an admin-only field gate.
 
 ## Tests
 

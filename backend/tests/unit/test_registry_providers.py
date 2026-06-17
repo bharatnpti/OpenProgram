@@ -21,6 +21,7 @@ from infra.adapters.workflows.fake import FakeWorkflowScheduler, FakeWorkflowWor
 from infra.adapters.workflows.temporal import TemporalWorkflowScheduler, TemporalWorkflowWorker
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.persistence.postgres_status import (
+    PostgresConversationRepository,
     PostgresRollupRepository,
     PostgresStatusRepository,
     PostgresSyncCursorRepository,
@@ -135,6 +136,7 @@ def test_registry_returns_memory_phase_1_repositories() -> None:
 
     assert isinstance(graph_store, InMemoryGraphStore)
     assert registry.status_repository() is graph_store
+    assert registry.conversation_repository() is graph_store
     assert registry.rollup_repository() is graph_store
     assert registry.sync_cursor_repository() is graph_store
 
@@ -143,6 +145,8 @@ def test_registry_returns_postgres_phase_1_repositories() -> None:
     registry = ServiceRegistry(_settings(secret_key=SECRET_KEY, runtime_mode="container"))
 
     assert isinstance(registry.status_repository(), PostgresStatusRepository)
+    assert isinstance(registry.conversation_repository(), PostgresConversationRepository)
     assert isinstance(registry.rollup_repository(), PostgresRollupRepository)
     assert isinstance(registry.sync_cursor_repository(), PostgresSyncCursorRepository)
     assert registry.status_repository() is registry.status_repository()
+    assert registry.conversation_repository() is registry.conversation_repository()

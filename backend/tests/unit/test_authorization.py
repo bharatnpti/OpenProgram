@@ -35,9 +35,13 @@ def test_persona_capabilities_follow_role_scope() -> None:
     mgr = Principal(tenant_id="demo", subject="mgr", roles=frozenset({Role.MGR}))
 
     assert policy.can(dev, Capability.READ_OWN_WORK)
+    assert policy.can(dev, Capability.READ_RAW_DM)
+    assert policy.can_read_field(dev, SensitiveField.RAW_DM_CONTENT)
     assert not policy.can(dev, Capability.READ_POD_BLOCKERS)
     assert policy.can(sm, Capability.READ_POD_BLOCKERS)
     assert policy.can(sm, Capability.READ_POD_CHECKINS)
+    assert policy.can(sm, Capability.READ_RAW_DM)
+    assert policy.can_read_field(sm, SensitiveField.RAW_DM_CONTENT)
     assert not policy.can(sm, Capability.READ_PROJECT_PROGRESS)
     assert policy.can(po, Capability.READ_PROJECT_PROGRESS)
     assert not policy.can(po, Capability.READ_POD_CHECKINS)

@@ -128,4 +128,4 @@ sequenceDiagram
 - Workflow tests cover replay safety and idempotent duplicate starts.
 - Nudge tests verify exactly one outbound nudge.
 - Non-response tests verify `STALE`, `INFERRED`, and `UNKNOWN` selection.
-- Privacy tests assert no raw DM content appears in workflow logs.
+- Tests cover outbound nudge capture and retention through the conversation store.

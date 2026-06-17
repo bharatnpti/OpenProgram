@@ -108,7 +108,7 @@ Every non-green rollup must include at least one `RollupFactor`. The factor `sou
 - Task node for issue-derived blockers.
 - Fact event for activity-derived inferred status.
 
-Persona views use these refs to navigate from program to project, pod, developer, task, or fact without exposing raw DM content.
+Persona views use these refs to navigate from program to project, pod, developer, task, or fact without adding conversation-turn fields to rollup DTOs.
 
 ## Tests
 
