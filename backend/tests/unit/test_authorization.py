@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from core.application.authorization import AuthorizationPolicy, Capability, SensitiveField
@@ -61,3 +63,17 @@ def test_dispatch_workflows_is_admin_only() -> None:
 
     assert policy.can(admin, Capability.DISPATCH_WORKFLOWS)
     assert not policy.can(manager, Capability.DISPATCH_WORKFLOWS)
+
+
+def test_unknown_sensitive_field_and_scope_default_to_false() -> None:
+    principal = Principal(
+        tenant_id="demo",
+        subject="dev",
+        roles=frozenset({Role.DEV}),
+        scopes=frozenset({"read:own"}),
+    )
+    policy = AuthorizationPolicy()
+
+    assert principal.has_scope("read:own")
+    assert not principal.has_scope("write:secrets")
+    assert not policy.can_read_field(principal, cast(SensitiveField, "unknown"))
