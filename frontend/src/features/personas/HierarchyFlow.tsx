@@ -14,7 +14,9 @@ import type { NodeKind, ProgramTreeResponse, Rag } from "../../api/schema";
 
 const levelByKind: Record<NodeKind, number> = {
   program: 0,
+  repo: 0,
   project: 1,
+  sprint: 2,
   pod: 2,
   developer: 3,
   task: 4,
