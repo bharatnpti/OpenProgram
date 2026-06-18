@@ -189,9 +189,32 @@ class FakeStatusRepository:
         ]
         return max(matching, key=lambda correlation: correlation.asked_at) if matching else None
 
+    async def unconsumed_checkin_correlations_for_thread(
+        self, tenant_id: str, chat_thread_ref: str, as_of: date
+    ) -> list[CheckInCorrelation]:
+        matching = [
+            correlation
+            for correlation in self.checkin_correlations
+            if correlation.tenant_id == tenant_id
+            and correlation.chat_thread_ref == chat_thread_ref
+            and correlation.consumed_at is None
+            and correlation.asked_at.date() == as_of
+        ]
+        return sorted(matching, key=lambda correlation: correlation.asked_at, reverse=True)
+
     async def latest_unconsumed_checkin_correlation_for_user(
         self, tenant_id: str, chat_user_ref: str, as_of: date
     ) -> CheckInCorrelation | None:
+        matching = await self.unconsumed_checkin_correlations_for_user(
+            tenant_id,
+            chat_user_ref,
+            as_of,
+        )
+        return matching[0] if matching else None
+
+    async def unconsumed_checkin_correlations_for_user(
+        self, tenant_id: str, chat_user_ref: str, as_of: date
+    ) -> list[CheckInCorrelation]:
         matching = [
             correlation
             for correlation in self.checkin_correlations
@@ -200,7 +223,7 @@ class FakeStatusRepository:
             and correlation.consumed_at is None
             and correlation.asked_at.date() == as_of
         ]
-        return max(matching, key=lambda correlation: correlation.asked_at) if matching else None
+        return sorted(matching, key=lambda correlation: correlation.asked_at, reverse=True)
 
     async def consume_checkin_correlation(
         self, tenant_id: str, correlation_id: str, consumed_at: datetime

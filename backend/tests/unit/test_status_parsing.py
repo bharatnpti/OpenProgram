@@ -125,6 +125,7 @@ async def test_status_parser_converts_valid_json_to_signals() -> None:
         "developer_id": "dev-1",
     }
     assert provider.requests[0].system is not None
+    assert "Do not invent blockers" in provider.requests[0].system
     assert [(message.role, message.content) for message in provider.requests[0].messages] == [
         ("system", "Status check-in conversation context."),
         ("assistant", "Can you share progress and blockers?"),
@@ -178,6 +179,29 @@ async def test_status_parser_ignores_wrongly_typed_optional_fields() -> None:
     assert signals == CheckInSignals(progress_note="Fallback progress.")
 
 
+async def test_status_parser_includes_prior_blockers_without_resolving_them() -> None:
+    provider = CapturingLlmProvider(
+        text=(
+            '{"progress_note":"Same as yesterday","blockers":[],"eta_change_days":null,"mood":null}'
+        )
+    )
+    parser = StatusParser(provider, model="test-model")
+
+    await parser.parse_reply(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="Same as yesterday.",
+        correlation_id="corr-1",
+        prior_blockers=("release gate",),
+    )
+
+    assert "Previously open blockers" in provider.requests[0].prompt
+    assert "release gate" in provider.requests[0].prompt
+    assert (
+        "mark them resolved only if the reply says they are resolved" in provider.requests[0].prompt
+    )
+
+
 async def test_clarification_evaluator_parses_needed_question() -> None:
     provider = CapturingLlmProvider(
         text='{"sufficient":false,"question":"What is blocking the handoff?","signals":null}'
@@ -223,6 +247,23 @@ async def test_clarification_evaluator_parses_sufficient_signals() -> None:
             mood=Mood.POSITIVE,
         ),
     )
+
+
+async def test_clarification_evaluator_parses_non_status_intent() -> None:
+    provider = CapturingLlmProvider(
+        text='{"is_status_update":false,"sufficient":false,"question":null,"signals":null}'
+    )
+    evaluator = ClarificationEvaluator(provider, model="test-model")
+
+    decision = await evaluator.evaluate(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="Thanks!",
+        correlation_id="corr-1",
+    )
+
+    assert decision == ClarificationDecision(sufficient=False, is_status_update=False)
+    assert "is_status_update boolean" in provider.requests[0].prompt
 
 
 async def test_clarification_evaluator_parses_final_json_after_tool_cap() -> None:
