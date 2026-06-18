@@ -11,6 +11,8 @@ import psycopg
 from dbos import DBOS, DBOSConfig, ScheduleInput, SetWorkflowID
 
 from core.domain.workflows import (
+    DirectorySyncInput,
+    DirectorySyncResult,
     CheckinFanoutInput,
     CheckinFanoutResult,
     CheckinScheduleConfig,
@@ -30,6 +32,7 @@ from infra.workflows import (
     checkin_fanout,
     conversation_purge,
     daily_checkin,
+    directory_sync,
     git_sync,
     jira_sync,
     nudge,
@@ -166,11 +169,23 @@ async def dbos_calendar_sync_workflow(
     return await dbos_sync_calendar_user_step(payload)
 
 
+@DBOS.step(name="pulseops_sync_directory", retries_allowed=True)
+async def dbos_sync_directory_step(payload: DirectorySyncInput) -> DirectorySyncResult:
+    return await directory_sync.sync_directory_activity(payload)
+
+
+@DBOS.workflow(name="pulseops_directory_sync")
+async def dbos_directory_sync_workflow(
+    payload: DirectorySyncInput,
+) -> DirectorySyncResult:
+    return await dbos_sync_directory_step(payload)
+
+
 @DBOS.workflow(name="pulseops_scheduled_sync")
 async def dbos_scheduled_sync_workflow(
     scheduled_time: datetime,
     context: dict[str, Any],
-) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult:
+) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult | DirectorySyncResult:
     return await _run_sync_dispatch(
         sync_dispatch_for_schedule(_sync_schedule_config_from_context(context), scheduled_time)
     )
@@ -244,7 +259,7 @@ async def dbos_nudge_workflow(payload: NudgeInput) -> NudgeResult:
 
 async def _run_sync_dispatch(
     input: SyncDispatchInput,
-) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult:
+) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult | DirectorySyncResult:
     workflow_input = sync_workflow_input(input)
     if isinstance(workflow_input, JiraSyncInput):
         return await dbos_sync_jira_project_step(workflow_input)
@@ -252,6 +267,8 @@ async def _run_sync_dispatch(
         return await dbos_sync_git_repo_step(workflow_input)
     if isinstance(workflow_input, CalendarSyncInput):
         return await dbos_sync_calendar_user_step(workflow_input)
+    if isinstance(workflow_input, DirectorySyncInput):
+        return await dbos_sync_directory_step(workflow_input)
     raise ValueError(f"unsupported sync connector: {input.connector}")
 
 

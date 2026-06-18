@@ -7,6 +7,7 @@ from datetime import date, datetime
 from math import sqrt
 
 from core.domain.conversation import ConversationTurn
+from core.domain.directory import DirectoryUser
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
     EdgeKind,
@@ -30,6 +31,7 @@ from core.domain.status import (
     CheckInScheduleRun,
     DeveloperStatus,
 )
+from core.ports.directory import DirectoryUserRepository
 
 
 @dataclass
@@ -51,14 +53,67 @@ class InMemoryGraphStore:
     _developer_statuses: dict[tuple[str, str, date], DeveloperStatus] = field(default_factory=dict)
     _node_statuses: dict[tuple[str, str, str, date], NodeStatus] = field(default_factory=dict)
     _sync_cursors: dict[tuple[str, str, str], SyncCursor] = field(default_factory=dict)
+    _directory_users: dict[tuple[str, str], DirectoryUser] = field(default_factory=dict)
     _conversation_turns: list[ConversationTurn] = field(default_factory=list)
+
+    async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
+        return sorted(
+            (
+                node
+                for (node_tenant_id, _), node in self._nodes.items()
+                if node_tenant_id == tenant_id and (kind is None or node.kind is kind)
+            ),
+            key=lambda node: (node.kind.value, node.name, node.id),
+        )
+
+    async def get_node(self, tenant_id: str, id: str) -> GraphNode | None:
+        return self._nodes.get((tenant_id, id))
 
     async def upsert_node(self, node: GraphNode) -> None:
         self._nodes[(node.tenant_id, node.id)] = node
 
+    async def delete_node(self, tenant_id: str, id: str) -> None:
+        self._nodes.pop((tenant_id, id), None)
+        self._edges = [
+            edge
+            for edge in self._edges
+            if not (
+                edge.tenant_id == tenant_id and (edge.from_node_id == id or edge.to_node_id == id)
+            )
+        ]
+
     async def add_edge(self, edge: GraphEdge) -> None:
         if edge not in self._edges:
             self._edges.append(edge)
+
+    async def list_edges(
+        self,
+        tenant_id: str,
+        from_node_id: str | None = None,
+        to_node_id: str | None = None,
+        kind: EdgeKind | None = None,
+    ) -> list[GraphEdge]:
+        return sorted(
+            (
+                edge
+                for edge in self._edges
+                if edge.tenant_id == tenant_id
+                and (from_node_id is None or edge.from_node_id == from_node_id)
+                and (to_node_id is None or edge.to_node_id == to_node_id)
+                and (kind is None or edge.kind is kind)
+            ),
+            key=lambda edge: (
+                edge.from_node_id,
+                edge.to_node_id,
+                edge.kind.value,
+                edge.valid_from or date.min,
+                edge.valid_to or date.max,
+                tuple((key, repr(value)) for key, value in sorted(edge.metadata.items())),
+            ),
+        )
+
+    async def remove_edge(self, edge: GraphEdge) -> None:
+        self._edges = [existing for existing in self._edges if existing != edge]
 
     async def get_program_tree(self, tenant_id: str, program_id: str, as_of: date) -> GraphTree:
         root = self._nodes.get((tenant_id, program_id))
@@ -231,6 +286,19 @@ class InMemoryGraphStore:
         self, tenant_id: str, developer_id: str
     ) -> CheckInPreference | None:
         return self._checkin_preferences.get((tenant_id, developer_id))
+
+    async def list_checkin_preferences(self, tenant_id: str) -> list[CheckInPreference]:
+        return sorted(
+            (
+                preference
+                for (preference_tenant_id, _), preference in self._checkin_preferences.items()
+                if preference_tenant_id == tenant_id
+            ),
+            key=lambda preference: preference.developer_id,
+        )
+
+    async def delete_checkin_preference(self, tenant_id: str, developer_id: str) -> None:
+        self._checkin_preferences.pop((tenant_id, developer_id), None)
 
     async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None:
         self._checkin_schedule_runs[(run.tenant_id, run.developer_id, run.checkin_date)] = run
@@ -461,6 +529,81 @@ class InMemoryGraphStore:
             )
         return sorted(scored, key=lambda match: match.score, reverse=True)[:limit]
 
+    async def upsert_users(self, users: Sequence[DirectoryUser]) -> None:
+        for user in users:
+            self._directory_users[(user.tenant_id, user.external_id)] = user
+
+    async def search_directory_users(
+        self,
+        tenant_id: str,
+        query: str = "",
+        limit: int = 25,
+        offset: int = 0,
+    ) -> list[DirectoryUser]:
+        query_value = query.strip().lower()
+        filtered = sorted(
+            (
+                user
+                for (user_tenant, _), user in self._directory_users.items()
+                if user_tenant == tenant_id
+                and user.is_active
+                and (
+                    not query_value
+                    or query_value in user.display_name.lower()
+                    or (user.email is not None and query_value in user.email.lower())
+                    or (user.handle is not None and query_value in user.handle.lower())
+                    or query_value in user.external_id.lower()
+                )
+            ),
+            key=lambda user: (user.display_name.lower(), user.external_id),
+        )
+        return filtered[offset : offset + limit]
+
+    async def count_directory_users(self, tenant_id: str, query: str = "") -> int:
+        query_value = query.strip().lower()
+        return sum(
+            1
+            for (user_tenant, _), user in self._directory_users.items()
+            if user_tenant == tenant_id
+            and user.is_active
+            and (
+                not query_value
+                or query_value in user.display_name.lower()
+                or (user.email is not None and query_value in user.email.lower())
+                or (user.handle is not None and query_value in user.handle.lower())
+                or query_value in user.external_id.lower()
+            )
+        )
+
+    async def get_directory_user(self, tenant_id: str, external_id: str) -> DirectoryUser | None:
+        return self._directory_users.get((tenant_id, external_id))
+
+    async def deactivate_missing_directory_users(
+        self, tenant_id: str, seen_external_ids: Sequence[str]
+    ) -> int:
+        seen = set(seen_external_ids)
+        count = 0
+        for key, user in list(self._directory_users.items()):
+            if key[0] != tenant_id:
+                continue
+            if user.external_id in seen or not user.is_active:
+                continue
+            self._directory_users[key] = DirectoryUser(
+                tenant_id=user.tenant_id,
+                external_id=user.external_id,
+                display_name=user.display_name,
+                email=user.email,
+                handle=user.handle,
+                avatar_url=user.avatar_url,
+                title=user.title,
+                is_active=False,
+                source=user.source,
+                synced_at=user.synced_at,
+                metadata=dict(user.metadata),
+            )
+            count += 1
+        return count
+
     def _active_edges_from(self, tenant_id: str, node_id: str, as_of: date) -> list[GraphEdge]:
         return [
             edge
@@ -470,6 +613,32 @@ class InMemoryGraphStore:
             and edge.kind in {EdgeKind.CONTAINS, EdgeKind.ASSIGNED_TO}
             and edge.is_active_on(as_of)
         ]
+
+
+@dataclass
+class InMemoryDirectoryUserRepository(DirectoryUserRepository):
+    store: InMemoryGraphStore
+
+    async def upsert_users(self, users: Sequence[DirectoryUser]) -> None:
+        await self.store.upsert_users(users)
+
+    async def search(
+        self,
+        tenant_id: str,
+        query: str = "",
+        limit: int = 25,
+        offset: int = 0,
+    ) -> list[DirectoryUser]:
+        return await self.store.search_directory_users(tenant_id, query=query, limit=limit, offset=offset)
+
+    async def count(self, tenant_id: str, query: str = "") -> int:
+        return await self.store.count_directory_users(tenant_id, query=query)
+
+    async def get(self, tenant_id: str, external_id: str) -> DirectoryUser | None:
+        return await self.store.get_directory_user(tenant_id, external_id)
+
+    async def deactivate_missing(self, tenant_id: str, seen_external_ids: Sequence[str]) -> int:
+        return await self.store.deactivate_missing_directory_users(tenant_id, seen_external_ids)
 
 
 def _cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:

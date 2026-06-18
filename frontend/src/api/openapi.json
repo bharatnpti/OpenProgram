@@ -7,7 +7,9 @@
   "paths": {
     "/health": {
       "get": {
-        "tags": ["health"],
+        "tags": [
+          "health"
+        ],
         "summary": "Health",
         "operationId": "health_health_get",
         "responses": {
@@ -26,7 +28,9 @@
     },
     "/ready": {
       "get": {
-        "tags": ["health"],
+        "tags": [
+          "health"
+        ],
         "summary": "Ready",
         "operationId": "ready_ready_get",
         "responses": {
@@ -45,7 +49,9 @@
     },
     "/metrics": {
       "get": {
-        "tags": ["health"],
+        "tags": [
+          "health"
+        ],
         "summary": "Metrics",
         "operationId": "metrics_metrics_get",
         "responses": {
@@ -62,7 +68,9 @@
     },
     "/graph/programs/{program_id}/tree": {
       "get": {
-        "tags": ["graph"],
+        "tags": [
+          "graph"
+        ],
         "summary": "Program Tree",
         "operationId": "program_tree_graph_programs__program_id__tree_get",
         "parameters": [
@@ -128,7 +136,9 @@
     },
     "/admin/workflows/checkin/dispatch": {
       "post": {
-        "tags": ["admin"],
+        "tags": [
+          "admin"
+        ],
         "summary": "Dispatch Checkin",
         "operationId": "dispatch_checkin_admin_workflows_checkin_dispatch_post",
         "parameters": [
@@ -185,7 +195,9 @@
     },
     "/admin/workflows/sync/jira": {
       "post": {
-        "tags": ["admin"],
+        "tags": [
+          "admin"
+        ],
         "summary": "Dispatch Jira Sync",
         "operationId": "dispatch_jira_sync_admin_workflows_sync_jira_post",
         "parameters": [
@@ -242,7 +254,9 @@
     },
     "/admin/workflows/sync/github": {
       "post": {
-        "tags": ["admin"],
+        "tags": [
+          "admin"
+        ],
         "summary": "Dispatch Github Sync",
         "operationId": "dispatch_github_sync_admin_workflows_sync_github_post",
         "parameters": [
@@ -299,7 +313,9 @@
     },
     "/admin/workflows/sync/calendar": {
       "post": {
-        "tags": ["admin"],
+        "tags": [
+          "admin"
+        ],
         "summary": "Dispatch Calendar Sync",
         "operationId": "dispatch_calendar_sync_admin_workflows_sync_calendar_post",
         "parameters": [
@@ -354,9 +370,2223 @@
         }
       }
     },
+    "/config/programs": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "List Config Programs",
+        "operationId": "list_config_programs_config_programs_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConfigNodeResponse"
+                  },
+                  "title": "Response List Config Programs Config Programs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Create Config Program",
+        "operationId": "create_config_program_config_programs_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigNodeCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigNodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/programs/{program_id}": {
+      "put": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Update Config Program",
+        "operationId": "update_config_program_config_programs__program_id__put",
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Program Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigNodeUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigNodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Delete Config Program",
+        "operationId": "delete_config_program_config_programs__program_id__delete",
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Program Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Get Config Program",
+        "operationId": "get_config_program_config_programs__program_id__get",
+        "parameters": [
+          {
+            "name": "program_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Program Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigNodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/projects": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "List Config Projects",
+        "operationId": "list_config_projects_config_projects_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConfigNodeResponse"
+                  },
+                  "title": "Response List Config Projects Config Projects Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Create Config Project",
+        "operationId": "create_config_project_config_projects_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigNodeCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigNodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/projects/{project_id}": {
+      "put": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Update Config Project",
+        "operationId": "update_config_project_config_projects__project_id__put",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigNodeUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigNodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Delete Config Project",
+        "operationId": "delete_config_project_config_projects__project_id__delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Get Config Project",
+        "operationId": "get_config_project_config_projects__project_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigNodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/pods": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "List Config Pods",
+        "operationId": "list_config_pods_config_pods_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConfigNodeResponse"
+                  },
+                  "title": "Response List Config Pods Config Pods Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Create Config Pod",
+        "operationId": "create_config_pod_config_pods_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigNodeCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigNodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/pods/{pod_id}": {
+      "put": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Update Config Pod",
+        "operationId": "update_config_pod_config_pods__pod_id__put",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigNodeUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigNodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Delete Config Pod",
+        "operationId": "delete_config_pod_config_pods__pod_id__delete",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Get Config Pod",
+        "operationId": "get_config_pod_config_pods__pod_id__get",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigNodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/members": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "List Config Members",
+        "operationId": "list_config_members_config_members_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConfigNodeResponse"
+                  },
+                  "title": "Response List Config Members Config Members Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Create Config Member",
+        "operationId": "create_config_member_config_members_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigNodeCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigNodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/directory/users": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Search Config Directory Users",
+        "operationId": "search_config_directory_users_config_directory_users_get",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Query"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectorySearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/directory/sync": {
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Sync Config Directory",
+        "operationId": "sync_config_directory_config_directory_sync_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectorySyncResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/members/from-directory": {
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Create Config Members From Directory",
+        "operationId": "create_config_members_from_directory_config_members_from_directory_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberFromDirectoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConfigNodeResponse"
+                  },
+                  "title": "Response Create Config Members From Directory Config Members From Directory Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/members/{member_id}": {
+      "put": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Update Config Member",
+        "operationId": "update_config_member_config_members__member_id__put",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigNodeUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigNodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Delete Config Member",
+        "operationId": "delete_config_member_config_members__member_id__delete",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Get Config Member",
+        "operationId": "get_config_member_config_members__member_id__get",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigNodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/projects/{project_id}/program": {
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Link Config Project Program",
+        "operationId": "link_config_project_program_config_projects__project_id__program_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgramProjectLinkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigEdgeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Unlink Config Project Program",
+        "operationId": "unlink_config_project_program_config_projects__project_id__program_delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "program_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Program Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/pods/{pod_id}/projects/{project_id}": {
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Link Config Pod Project",
+        "operationId": "link_config_pod_project_config_pods__pod_id__projects__project_id__post",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigEdgeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Unlink Config Pod Project",
+        "operationId": "unlink_config_pod_project_config_pods__pod_id__projects__project_id__delete",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/pods/{pod_id}/members/{member_id}": {
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Link Config Pod Member",
+        "operationId": "link_config_pod_member_config_pods__pod_id__members__member_id__post",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PodMemberLinkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigEdgeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Unlink Config Pod Member",
+        "operationId": "unlink_config_pod_member_config_pods__pod_id__members__member_id__delete",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/members/{member_id}/tasks": {
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Assign Config Member Task",
+        "operationId": "assign_config_member_task_config_members__member_id__tasks_post",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberTaskAssignmentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigEdgeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Unassign Config Member Task",
+        "operationId": "unassign_config_member_task_config_members__member_id__tasks_delete",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/members/{member_id}/checkin-preference": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Get Config Member Checkin Preference",
+        "operationId": "get_config_member_checkin_preference_config_members__member_id__checkin_preference_get",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckinPreferenceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "config"
+        ],
+        "summary": "Update Config Member Checkin Preference",
+        "operationId": "update_config_member_checkin_preference_config_members__member_id__checkin_preference_put",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckinPreferenceUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckinPreferenceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/checkin-preferences": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "List Config Checkin Preferences",
+        "operationId": "list_config_checkin_preferences_config_checkin_preferences_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CheckinPreferenceResponse"
+                  },
+                  "title": "Response List Config Checkin Preferences Config Checkin Preferences Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/programs": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "List Programs",
+        "operationId": "list_programs_programs_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DirectoryItemResponse"
+                  },
+                  "title": "Response List Programs Programs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "List Projects",
+        "operationId": "list_projects_projects_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DirectoryItemResponse"
+                  },
+                  "title": "Response List Projects Projects Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pods": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "List Pods",
+        "operationId": "list_pods_pods_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DirectoryItemResponse"
+                  },
+                  "title": "Response List Pods Pods Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/me/checkin-preference": {
       "get": {
-        "tags": ["checkins"],
+        "tags": [
+          "checkins"
+        ],
         "summary": "Get Checkin Preference",
         "operationId": "get_checkin_preference_me_checkin_preference_get",
         "parameters": [
@@ -401,7 +2631,9 @@
         }
       },
       "put": {
-        "tags": ["checkins"],
+        "tags": [
+          "checkins"
+        ],
         "summary": "Update Checkin Preference",
         "operationId": "update_checkin_preference_me_checkin_preference_put",
         "parameters": [
@@ -458,7 +2690,9 @@
     },
     "/me/focus": {
       "get": {
-        "tags": ["personas"],
+        "tags": [
+          "personas"
+        ],
         "summary": "My Focus",
         "operationId": "my_focus_me_focus_get",
         "parameters": [
@@ -515,7 +2749,9 @@
     },
     "/pods/{pod_id}/blockers": {
       "get": {
-        "tags": ["personas"],
+        "tags": [
+          "personas"
+        ],
         "summary": "Pod Blockers",
         "operationId": "pod_blockers_pods__pod_id__blockers_get",
         "parameters": [
@@ -581,7 +2817,9 @@
     },
     "/pods/{pod_id}/checkins": {
       "get": {
-        "tags": ["personas"],
+        "tags": [
+          "personas"
+        ],
         "summary": "Pod Checkins",
         "operationId": "pod_checkins_pods__pod_id__checkins_get",
         "parameters": [
@@ -647,7 +2885,9 @@
     },
     "/projects/{project_id}/progress": {
       "get": {
-        "tags": ["personas"],
+        "tags": [
+          "personas"
+        ],
         "summary": "Project Progress",
         "operationId": "project_progress_projects__project_id__progress_get",
         "parameters": [
@@ -713,7 +2953,9 @@
     },
     "/programs/{program_id}/tree": {
       "get": {
-        "tags": ["personas"],
+        "tags": [
+          "personas"
+        ],
         "summary": "Program Tree",
         "operationId": "program_tree_programs__program_id__tree_get",
         "parameters": [
@@ -779,7 +3021,9 @@
     },
     "/portfolio/heatmap": {
       "get": {
-        "tags": ["personas"],
+        "tags": [
+          "personas"
+        ],
         "summary": "Portfolio Heatmap",
         "operationId": "portfolio_heatmap_portfolio_heatmap_get",
         "parameters": [
@@ -852,7 +3096,9 @@
     },
     "/webhooks/chat/{provider}": {
       "post": {
-        "tags": ["webhooks"],
+        "tags": [
+          "webhooks"
+        ],
         "summary": "Chat Webhook",
         "operationId": "chat_webhook_webhooks_chat__provider__post",
         "parameters": [
@@ -985,7 +3231,12 @@
           }
         },
         "type": "object",
-        "required": ["tenant_id", "user_id", "start", "end"],
+        "required": [
+          "tenant_id",
+          "user_id",
+          "start",
+          "end"
+        ],
         "title": "CalendarSyncDispatchRequest"
       },
       "ChatWebhookResponse": {
@@ -1000,7 +3251,10 @@
           }
         },
         "type": "object",
-        "required": ["status", "message_id"],
+        "required": [
+          "status",
+          "message_id"
+        ],
         "title": "ChatWebhookResponse"
       },
       "CheckinDeveloperDto": {
@@ -1015,7 +3269,11 @@
           },
           "state": {
             "type": "string",
-            "enum": ["confirmed", "stale", "missing"],
+            "enum": [
+              "confirmed",
+              "stale",
+              "missing"
+            ],
             "title": "State"
           },
           "source": {
@@ -1095,7 +3353,10 @@
           }
         },
         "type": "object",
-        "required": ["tenant_id", "developer_id"],
+        "required": [
+          "tenant_id",
+          "developer_id"
+        ],
         "title": "CheckinDispatchRequest"
       },
       "CheckinPreferenceResponse": {
@@ -1214,9 +3475,564 @@
         "type": "object",
         "title": "CheckinPreferenceUpdateRequest"
       },
+      "ConfigEdgeResponse": {
+        "properties": {
+          "from_node_id": {
+            "type": "string",
+            "title": "From Node Id"
+          },
+          "to_node_id": {
+            "type": "string",
+            "title": "To Node Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/EdgeKind"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_node_id",
+          "to_node_id",
+          "kind",
+          "valid_from",
+          "valid_to",
+          "metadata"
+        ],
+        "title": "ConfigEdgeResponse"
+      },
+      "ConfigNodeCreateRequest": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ConfigNodeCreateRequest"
+      },
+      "ConfigNodeResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/NodeKind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "metadata"
+        ],
+        "title": "ConfigNodeResponse"
+      },
+      "ConfigNodeUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "title": "ConfigNodeUpdateRequest"
+      },
+      "DirectoryItemResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/NodeKind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Metadata"
+          },
+          "rag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rag"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatusSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "program_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Program Ids"
+          },
+          "project_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Project Ids"
+          },
+          "pod_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pod Ids"
+          },
+          "member_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Member Ids"
+          },
+          "task_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Task Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "description",
+          "code",
+          "metadata",
+          "rag",
+          "source",
+          "program_ids",
+          "project_ids",
+          "pod_ids",
+          "member_ids",
+          "task_ids"
+        ],
+        "title": "DirectoryItemResponse"
+      },
+      "DirectorySearchResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DirectoryUserResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "DirectorySearchResponse"
+      },
+      "DirectorySyncResponse": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "synced_count": {
+            "type": "integer",
+            "title": "Synced Count"
+          },
+          "deactivated_count": {
+            "type": "integer",
+            "title": "Deactivated Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tenant_id",
+          "synced_count",
+          "deactivated_count"
+        ],
+        "title": "DirectorySyncResponse"
+      },
+      "DirectoryUserResponse": {
+        "properties": {
+          "external_id": {
+            "type": "string",
+            "title": "External Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "external_id",
+          "display_name",
+          "email",
+          "handle",
+          "avatar_url",
+          "title",
+          "is_active",
+          "source",
+          "metadata"
+        ],
+        "title": "DirectoryUserResponse"
+      },
       "EdgeKind": {
         "type": "string",
-        "enum": ["contains", "assigned_to", "depends_on"],
+        "enum": [
+          "contains",
+          "assigned_to",
+          "depends_on"
+        ],
         "title": "EdgeKind"
       },
       "EntityRefDto": {
@@ -1234,14 +4050,21 @@
           }
         },
         "type": "object",
-        "required": ["tenant_id", "kind", "id"],
+        "required": [
+          "tenant_id",
+          "kind",
+          "id"
+        ],
         "title": "EntityRefDto"
       },
       "FocusItemDto": {
         "properties": {
           "kind": {
             "type": "string",
-            "enum": ["task", "blocker"],
+            "enum": [
+              "task",
+              "blocker"
+            ],
             "title": "Kind"
           },
           "label": {
@@ -1279,7 +4102,14 @@
           }
         },
         "type": "object",
-        "required": ["kind", "label", "source", "source_ref", "confidence", "deadline"],
+        "required": [
+          "kind",
+          "label",
+          "source",
+          "source_ref",
+          "confidence",
+          "deadline"
+        ],
         "title": "FocusItemDto"
       },
       "FocusResponse": {
@@ -1393,7 +4223,14 @@
           }
         },
         "type": "object",
-        "required": ["id", "name", "rag", "source", "confidence", "deadline"],
+        "required": [
+          "id",
+          "name",
+          "rag",
+          "source",
+          "confidence",
+          "deadline"
+        ],
         "title": "FocusTaskDto"
       },
       "GithubSyncDispatchRequest": {
@@ -1420,7 +4257,10 @@
           }
         },
         "type": "object",
-        "required": ["tenant_id", "repo_name"],
+        "required": [
+          "tenant_id",
+          "repo_name"
+        ],
         "title": "GithubSyncDispatchRequest"
       },
       "GraphEdgeDto": {
@@ -1462,7 +4302,13 @@
           }
         },
         "type": "object",
-        "required": ["from_node_id", "to_node_id", "kind", "valid_from", "valid_to"],
+        "required": [
+          "from_node_id",
+          "to_node_id",
+          "kind",
+          "valid_from",
+          "valid_to"
+        ],
         "title": "GraphEdgeDto"
       },
       "GraphNodeDto": {
@@ -1503,7 +4349,12 @@
           }
         },
         "type": "object",
-        "required": ["id", "kind", "name", "metadata"],
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "metadata"
+        ],
         "title": "GraphNodeDto"
       },
       "GraphTreeDto": {
@@ -1527,7 +4378,11 @@
           }
         },
         "type": "object",
-        "required": ["root", "nodes", "edges"],
+        "required": [
+          "root",
+          "nodes",
+          "edges"
+        ],
         "title": "GraphTreeDto"
       },
       "HTTPValidationError": {
@@ -1563,7 +4418,12 @@
           }
         },
         "type": "object",
-        "required": ["status", "environment", "tenant_id", "correlation_id"],
+        "required": [
+          "status",
+          "environment",
+          "tenant_id",
+          "correlation_id"
+        ],
         "title": "HealthResponse"
       },
       "HeatmapCellDto": {
@@ -1594,7 +4454,15 @@
           }
         },
         "type": "object",
-        "required": ["row", "column", "entity_ref", "rag", "source", "why", "source_ref"],
+        "required": [
+          "row",
+          "column",
+          "entity_ref",
+          "rag",
+          "source",
+          "why",
+          "source_ref"
+        ],
         "title": "HeatmapCellDto"
       },
       "JiraSyncDispatchRequest": {
@@ -1632,12 +4500,54 @@
           }
         },
         "type": "object",
-        "required": ["tenant_id", "project_key"],
+        "required": [
+          "tenant_id",
+          "project_key"
+        ],
         "title": "JiraSyncDispatchRequest"
+      },
+      "MemberFromDirectoryRequest": {
+        "properties": {
+          "external_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "External Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "external_ids"
+        ],
+        "title": "MemberFromDirectoryRequest"
+      },
+      "MemberTaskAssignmentRequest": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Task Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id"
+        ],
+        "title": "MemberTaskAssignmentRequest"
       },
       "NodeKind": {
         "type": "string",
-        "enum": ["program", "project", "sprint", "repo", "pod", "developer", "task"],
+        "enum": [
+          "program",
+          "project",
+          "sprint",
+          "repo",
+          "pod",
+          "developer",
+          "task"
+        ],
         "title": "NodeKind"
       },
       "PersonaTreeEdgeDto": {
@@ -1655,7 +4565,11 @@
           }
         },
         "type": "object",
-        "required": ["from_node_id", "to_node_id", "kind"],
+        "required": [
+          "from_node_id",
+          "to_node_id",
+          "kind"
+        ],
         "title": "PersonaTreeEdgeDto"
       },
       "PersonaTreeNodeDto": {
@@ -1711,7 +4625,15 @@
           }
         },
         "type": "object",
-        "required": ["id", "kind", "name", "rag", "source", "confidence", "factors"],
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "rag",
+          "source",
+          "confidence",
+          "factors"
+        ],
         "title": "PersonaTreeNodeDto"
       },
       "PodBlockersResponse": {
@@ -1738,7 +4660,12 @@
           }
         },
         "type": "object",
-        "required": ["pod_id", "pod_name", "as_of", "blockers"],
+        "required": [
+          "pod_id",
+          "pod_name",
+          "as_of",
+          "blockers"
+        ],
         "title": "PodBlockersResponse"
       },
       "PodCheckinsResponse": {
@@ -1777,8 +4704,30 @@
           }
         },
         "type": "object",
-        "required": ["pod_id", "pod_name", "as_of", "confirmed", "stale", "missing", "developers"],
+        "required": [
+          "pod_id",
+          "pod_name",
+          "as_of",
+          "confirmed",
+          "stale",
+          "missing",
+          "developers"
+        ],
         "title": "PodCheckinsResponse"
+      },
+      "PodMemberLinkRequest": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Role"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "title": "PodMemberLinkRequest"
       },
       "PortfolioHeatmapResponse": {
         "properties": {
@@ -1810,8 +4759,27 @@
           }
         },
         "type": "object",
-        "required": ["as_of", "rows", "columns", "cells"],
+        "required": [
+          "as_of",
+          "rows",
+          "columns",
+          "cells"
+        ],
         "title": "PortfolioHeatmapResponse"
+      },
+      "ProgramProjectLinkRequest": {
+        "properties": {
+          "program_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Program Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "program_id"
+        ],
+        "title": "ProgramProjectLinkRequest"
       },
       "ProgramTreeResponse": {
         "properties": {
@@ -1840,7 +4808,12 @@
           }
         },
         "type": "object",
-        "required": ["root_id", "as_of", "nodes", "edges"],
+        "required": [
+          "root_id",
+          "as_of",
+          "nodes",
+          "edges"
+        ],
         "title": "ProgramTreeResponse"
       },
       "ProjectProgressResponse": {
@@ -1935,7 +4908,12 @@
       },
       "Rag": {
         "type": "string",
-        "enum": ["green", "amber", "red", "unknown"],
+        "enum": [
+          "green",
+          "amber",
+          "red",
+          "unknown"
+        ],
         "title": "Rag"
       },
       "ReadyResponse": {
@@ -1953,7 +4931,10 @@
           }
         },
         "type": "object",
-        "required": ["status", "dependencies"],
+        "required": [
+          "status",
+          "dependencies"
+        ],
         "title": "ReadyResponse"
       },
       "RollupFactorDto": {
@@ -1970,12 +4951,21 @@
           }
         },
         "type": "object",
-        "required": ["description", "contributes", "source_ref"],
+        "required": [
+          "description",
+          "contributes",
+          "source_ref"
+        ],
         "title": "RollupFactorDto"
       },
       "StatusSource": {
         "type": "string",
-        "enum": ["confirmed", "inferred", "stale", "unknown"],
+        "enum": [
+          "confirmed",
+          "inferred",
+          "stale",
+          "unknown"
+        ],
         "title": "StatusSource"
       },
       "TaskProgressDto": {
@@ -2019,7 +5009,14 @@
           }
         },
         "type": "object",
-        "required": ["id", "name", "rag", "source", "confidence", "deadline"],
+        "required": [
+          "id",
+          "name",
+          "rag",
+          "source",
+          "confidence",
+          "deadline"
+        ],
         "title": "TaskProgressDto"
       },
       "ValidationError": {
@@ -2055,7 +5052,11 @@
           }
         },
         "type": "object",
-        "required": ["loc", "msg", "type"],
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
         "title": "ValidationError"
       },
       "WorkflowDispatchResponse": {
@@ -2066,7 +5067,9 @@
           }
         },
         "type": "object",
-        "required": ["workflow_id"],
+        "required": [
+          "workflow_id"
+        ],
         "title": "WorkflowDispatchResponse"
       }
     }

@@ -6,6 +6,7 @@ from redis.asyncio import Redis
 
 from config.settings import Settings
 from core.ports.calendar import CalendarProvider
+from core.ports.directory import DirectoryProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
@@ -14,6 +15,8 @@ from core.ports.secrets import SecretStore
 from core.ports.vcs import VcsProvider
 from core.ports.workflows import WorkflowScheduler, WorkflowWorker
 from infra.adapters.calendar.google_adapter import GoogleCalendarAdapter
+from infra.adapters.directory.fake import FakeDirectoryProvider
+from infra.adapters.directory.slack import SlackDirectoryProvider
 from infra.adapters.chat.fake import FakeChatProvider, FakeChatWebhookMapper
 from infra.adapters.chat.rate_limit import InMemoryRateLimiter, RedisRateLimiter
 from infra.adapters.chat.slack import (
@@ -60,16 +63,7 @@ from infra.adapters.workflows.temporal import (
 def build_chat_provider(settings: Settings, redis_client: Redis | None = None) -> ChatProvider:
     if settings.chat_provider == "fake":
         return FakeChatProvider(tenant_id=settings.tenant_id)
-    http_client = (
-        HttpSlackClient(
-            bot_token=settings.slack_bot_token,
-            base_url=settings.slack_api_base_url,
-            retry_attempts=settings.slack_retry_attempts,
-            retry_backoff_seconds=settings.slack_retry_backoff_seconds,
-        )
-        if settings.slack_bot_token
-        else DisabledSlackHttpClient()
-    )
+    http_client = _slack_http_client(settings)
     rate_limiter = (
         InMemoryRateLimiter()
         if settings.runtime_mode == "memory"
@@ -93,6 +87,12 @@ def build_chat_provider(settings: Settings, redis_client: Redis | None = None) -
         rate_limiter=rate_limiter,
         conversation_cache=conversation_cache,
     )
+
+
+def build_directory_provider(settings: Settings) -> DirectoryProvider:
+    if settings.runtime_mode == "memory" or settings.directory_provider == "fake":
+        return FakeDirectoryProvider()
+    return SlackDirectoryProvider(http_client=_slack_http_client(settings))
 
 
 def build_chat_webhook_mapper(settings: Settings, provider: str) -> ChatWebhookMapper | None:
@@ -248,6 +248,17 @@ def _required(value: str | None, name: str) -> str:
     if not value:
         raise ValueError(f"{name} is required when runtime_mode=container")
     return value
+
+
+def _slack_http_client(settings: Settings) -> HttpSlackClient | DisabledSlackHttpClient:
+    if settings.slack_bot_token:
+        return HttpSlackClient(
+            bot_token=settings.slack_bot_token,
+            base_url=settings.slack_api_base_url,
+            retry_attempts=settings.slack_retry_attempts,
+            retry_backoff_seconds=settings.slack_retry_backoff_seconds,
+        )
+    return DisabledSlackHttpClient()
 
 
 def _required_redis(client: Redis | None) -> Redis:

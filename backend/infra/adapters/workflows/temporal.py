@@ -10,6 +10,8 @@ from uuid import uuid4
 from temporalio import activity, workflow
 
 from core.domain.workflows import (
+    DirectorySyncInput,
+    DirectorySyncResult,
     CheckinFanoutInput,
     CheckinFanoutResult,
     CheckinScheduleConfig,
@@ -29,6 +31,7 @@ from infra.workflows import (
     checkin_fanout,
     conversation_purge,
     daily_checkin,
+    directory_sync,
     git_sync,
     jira_sync,
     nudge,
@@ -180,13 +183,29 @@ class CalendarSyncWorkflow:
         )
 
 
+@activity.defn
+async def sync_directory_activity(payload: DirectorySyncInput) -> DirectorySyncResult:
+    return await directory_sync.sync_directory_activity(payload)
+
+
+@workflow.defn
+class DirectorySyncWorkflow:
+    @workflow.run
+    async def run(self, payload: DirectorySyncInput) -> DirectorySyncResult:
+        return await workflow.execute_activity(
+            sync_directory_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+
+
 @workflow.defn
 class ScheduledSyncWorkflow:
     @workflow.run
     async def run(
         self,
         config: SyncScheduleConfig,
-    ) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult:
+    ) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult | DirectorySyncResult:
         return await _execute_sync_activity(
             sync_workflow_input(sync_dispatch_for_schedule(config, workflow.now()))
         )
@@ -270,8 +289,8 @@ class NudgeWorkflow:
 
 
 async def _execute_sync_activity(
-    payload: JiraSyncInput | GitSyncInput | CalendarSyncInput,
-) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult:
+    payload: JiraSyncInput | GitSyncInput | CalendarSyncInput | DirectorySyncInput,
+) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult | DirectorySyncResult:
     if isinstance(payload, JiraSyncInput):
         return await workflow.execute_activity(
             sync_jira_project_activity,
@@ -287,6 +306,12 @@ async def _execute_sync_activity(
     if isinstance(payload, CalendarSyncInput):
         return await workflow.execute_activity(
             sync_calendar_user_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+    if isinstance(payload, DirectorySyncInput):
+        return await workflow.execute_activity(
+            sync_directory_activity,
             payload,
             start_to_close_timeout=timedelta(minutes=5),
         )
@@ -451,6 +476,13 @@ class TemporalWorkflowScheduler:
                 id=workflow_id,
                 task_queue=self.task_queue,
             )
+        elif isinstance(workflow_input, DirectorySyncInput):
+            await client.start_workflow(
+                DirectorySyncWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
         else:
             raise ValueError(f"unsupported sync connector: {input.connector}")
         return workflow_id
@@ -477,6 +509,7 @@ class TemporalWorkflowWorker:
                 JiraSyncWorkflow,
                 GitSyncWorkflow,
                 CalendarSyncWorkflow,
+                DirectorySyncWorkflow,
                 ScheduledSyncWorkflow,
                 DailyCheckinWorkflow,
                 NudgeWorkflow,
@@ -488,6 +521,7 @@ class TemporalWorkflowWorker:
                 sync_jira_project_activity,
                 sync_git_repo_activity,
                 sync_calendar_user_activity,
+                sync_directory_activity,
                 start_daily_checkin_activity,
                 send_checkin_nudge_activity,
                 close_checkin_non_response_activity,

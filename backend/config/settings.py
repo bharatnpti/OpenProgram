@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     conversation_retention_days: int = 30
     conversation_purge_cron: str = "0 3 * * *"
     conversation_purge_schedule_id: str = "pulseops-conversation-purge"
+    directory_provider: str = "slack"
+    directory_sync_cron: str = "0 */6 * * *"
+    directory_sync_schedule_id: str = "pulseops-directory-sync"
     temporal_target: str = "localhost:7233"
     temporal_task_queue: str = "pulseops-foundation"
     temporal_schedule_id: str = "pulseops-heartbeat"
@@ -150,6 +153,15 @@ class Settings(BaseSettings):
             raise ValueError(message)
         return value
 
+    @field_validator("directory_provider")
+    @classmethod
+    def validate_directory_provider(cls, value: str) -> str:
+        allowed = {"slack", "fake"}
+        if value not in allowed:
+            message = f"directory_provider must be one of {sorted(allowed)}"
+            raise ValueError(message)
+        return value
+
     @field_validator("issue_tracker_provider")
     @classmethod
     def validate_issue_tracker_provider(cls, value: str) -> str:
@@ -219,6 +231,8 @@ class Settings(BaseSettings):
         "calendar_sync_cron",
         "conversation_purge_cron",
         "conversation_purge_schedule_id",
+        "directory_sync_cron",
+        "directory_sync_schedule_id",
     )
     @classmethod
     def validate_non_empty_string(cls, value: str) -> str:

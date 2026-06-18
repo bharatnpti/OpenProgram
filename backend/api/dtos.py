@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from core.domain.directory import DirectoryUser
+from core.application.config_service import DirectoryItemView
 from core.application.persona_views import (
     BlockerView,
     CheckinDeveloperView,
@@ -89,6 +91,175 @@ class GraphTreeDto(BaseModel):
             nodes=[GraphNodeDto.from_domain(node) for node in tree.nodes],
             edges=[GraphEdgeDto.from_domain(edge) for edge in tree.edges],
         )
+
+
+class ConfigNodeResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    kind: NodeKind
+    name: str
+    description: str | None = None
+    code: str | None = None
+    metadata: dict[str, str | int | float | bool | None]
+
+    @classmethod
+    def from_domain(cls, node: GraphNode) -> ConfigNodeResponse:
+        metadata = dict(node.metadata)
+        description = metadata.get("description")
+        code = metadata.get("code")
+        return cls(
+            id=node.id,
+            kind=node.kind,
+            name=node.name,
+            description=description if isinstance(description, str) else None,
+            code=code if isinstance(code, str) else None,
+            metadata=metadata,
+        )
+
+
+class ConfigNodeCreateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    description: str | None = None
+    code: str | None = None
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
+class ConfigNodeUpdateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    code: str | None = None
+    metadata: dict[str, str | int | float | bool | None] | None = None
+
+
+class ConfigEdgeResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    from_node_id: str
+    to_node_id: str
+    kind: EdgeKind
+    valid_from: date | None
+    valid_to: date | None
+    metadata: dict[str, str | int | float | bool | None]
+
+    @classmethod
+    def from_domain(cls, edge: GraphEdge) -> ConfigEdgeResponse:
+        return cls(
+            from_node_id=edge.from_node_id,
+            to_node_id=edge.to_node_id,
+            kind=edge.kind,
+            valid_from=edge.valid_from,
+            valid_to=edge.valid_to,
+            metadata=dict(edge.metadata),
+        )
+
+
+class ProgramProjectLinkRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    program_id: str = Field(min_length=1)
+
+
+class PodMemberLinkRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    role: str = Field(min_length=1)
+
+
+class MemberTaskAssignmentRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    task_id: str = Field(min_length=1)
+
+
+class DirectoryItemResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    kind: NodeKind
+    name: str
+    description: str | None
+    code: str | None
+    metadata: dict[str, str | int | float | bool | None]
+    rag: Rag | None
+    source: StatusSource | None
+    program_ids: list[str]
+    project_ids: list[str]
+    pod_ids: list[str]
+    member_ids: list[str]
+    task_ids: list[str]
+
+    @classmethod
+    def from_view(cls, view: DirectoryItemView) -> DirectoryItemResponse:
+        return cls(
+            id=view.id,
+            kind=view.kind,
+            name=view.name,
+            description=view.description,
+            code=view.code,
+            metadata=dict(view.metadata),
+            rag=view.rag,
+            source=view.source,
+            program_ids=list(view.program_ids),
+            project_ids=list(view.project_ids),
+            pod_ids=list(view.pod_ids),
+            member_ids=list(view.member_ids),
+            task_ids=list(view.task_ids),
+        )
+
+
+class DirectoryUserResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    external_id: str
+    display_name: str
+    email: str | None
+    handle: str | None
+    avatar_url: str | None
+    title: str | None
+    is_active: bool
+    source: str
+    metadata: dict[str, str | int | float | bool | None]
+
+    @classmethod
+    def from_domain(cls, user: DirectoryUser) -> DirectoryUserResponse:
+        return cls(
+            external_id=user.external_id,
+            display_name=user.display_name,
+            email=user.email,
+            handle=user.handle,
+            avatar_url=user.avatar_url,
+            title=user.title,
+            is_active=user.is_active,
+            source=user.source,
+            metadata=dict(user.metadata),
+        )
+
+
+class DirectorySearchResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    items: list[DirectoryUserResponse]
+    total: int
+
+
+class DirectorySyncResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    tenant_id: str
+    synced_count: int
+    deactivated_count: int
+
+
+class MemberFromDirectoryRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    external_ids: list[str] = Field(min_length=1)
 
 
 class ChatWebhookResponse(BaseModel):

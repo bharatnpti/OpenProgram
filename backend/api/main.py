@@ -10,12 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from opentelemetry import trace
 from starlette.responses import Response
 
-from api.routers import admin, checkin, graph, health, persona, webhooks
+from api.routers import admin, checkin, config, graph, health, persona, webhooks
 from config.settings import Settings, get_settings
 from infra.observability.logging import configure_logging
 from infra.observability.metrics import build_http_metrics
 from infra.observability.tracing import configure_tracing, correlation_scope
-from infra.persistence.seed_data import seed_demo_graph
 from infra.registry import ServiceRegistry
 
 
@@ -32,12 +31,6 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
-            if resolved_settings.runtime_mode == "memory":
-                await seed_demo_graph(
-                    resolved_registry.graph_repository(),
-                    resolved_registry.time_series_repository(),
-                    resolved_settings.tenant_id,
-                )
             yield
         finally:
             await resolved_registry.close()
@@ -83,6 +76,7 @@ def create_app(
     app.include_router(health.router)
     app.include_router(graph.router)
     app.include_router(admin.router)
+    app.include_router(config.router)
     app.include_router(checkin.router)
     app.include_router(persona.router)
     app.include_router(webhooks.router)
