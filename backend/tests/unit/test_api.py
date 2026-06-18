@@ -145,6 +145,18 @@ def test_chat_webhook_route_ignores_unsupported_provider(settings: Settings) -> 
     }
 
 
+def test_chat_webhook_route_echoes_verification_challenge(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        response = client.post(
+            "/webhooks/chat/slack",
+            json={"type": "url_verification", "challenge": "challenge-token"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"challenge": "challenge-token"}
+
+
 def test_metrics_endpoint_exposes_prometheus_metrics(settings: Settings) -> None:
     app = create_app(settings=settings)
     with TestClient(app) as client:
