@@ -228,6 +228,7 @@ class ServiceRegistry:
             tool_agent=tool_agent,
             conversation_retention_days=self.settings.conversation_retention_days,
             checkin_max_clarifications=self.settings.checkin_max_clarifications,
+            tenant_default_timezone=self.settings.tenant_default_timezone,
         )
 
     def workflow_scheduler(self) -> WorkflowScheduler:

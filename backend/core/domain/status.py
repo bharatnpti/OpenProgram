@@ -98,3 +98,5 @@ class DeveloperStatus:
     source: StatusSource
     blockers: tuple[str, ...]
     summary: str
+    eta_change_days: int | None = None
+    mood: Mood | None = None

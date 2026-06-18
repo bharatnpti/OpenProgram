@@ -41,7 +41,8 @@ from tests.contract.fakes import FakeChatProvider, FakeIssueTracker, FakeLlmProv
 
 
 async def test_status_agent_calls_llm_provider() -> None:
-    node = StatusAgentNode(FakeLlmProvider(), model="test-model")
+    provider = FakeLlmProvider()
+    node = StatusAgentNode(provider, model="test-model")
     result = await node(
         {
             "tenant_id": "demo",
@@ -52,6 +53,15 @@ async def test_status_agent_calls_llm_provider() -> None:
     )
     assert result["trace_id"] == "trace-fake"
     assert result["summary"].startswith("summary:")
+    request = provider.requests[0]
+    assert request.system is not None
+    assert request.metadata["purpose"] == "summarize_status"
+    assert [(message.role, message.content) for message in request.messages] == [
+        (
+            "user",
+            "Developer: Asha\nContext:\nAPI shell is complete; graph tests are blocked.",
+        )
+    ]
 
 
 async def test_status_agent_langgraph_wrapper_calls_llm_provider() -> None:

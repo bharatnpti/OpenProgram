@@ -16,11 +16,13 @@ from core.ports.tools import AgentTool
 
 PARSE_REPLY_SYSTEM_PROMPT = (
     "Extract structured status signals from the current reply. Use prior conversation turns only "
-    "as context, and return only valid JSON."
+    "as context. Do not invent blockers; use an empty blocker list when no blocker is stated. "
+    "Return only valid JSON."
 )
 CLARIFICATION_EVALUATOR_SYSTEM_PROMPT = (
     "Decide whether a status check-in reply has enough concrete progress, blocker, and ETA "
     "information to finalize the check-in. Use prior conversation turns as context. "
+    "Classify whether the reply is a status update. Do not invent blockers. "
     "If more information is needed, draft one concise follow-up question. Return only valid JSON."
 )
 _logger = structlog.get_logger(__name__)
@@ -31,6 +33,7 @@ class ClarificationDecision:
     sufficient: bool
     question: str | None = None
     signals: CheckInSignals | None = None
+    is_status_update: bool = True
 
 
 class StatusParser:
@@ -53,10 +56,11 @@ class StatusParser:
         correlation_id: str,
         conversation_turns: Iterable[ConversationTurn] = (),
         tools: Iterable[AgentTool] = (),
+        prior_blockers: Iterable[str] = (),
     ) -> CheckInSignals:
         request = LlmRequest(
             tenant_id=tenant_id,
-            prompt=_parser_prompt(raw_reply),
+            prompt=_parser_prompt(raw_reply, prior_blockers=prior_blockers),
             model=self._model,
             correlation_id=correlation_id,
             system=PARSE_REPLY_SYSTEM_PROMPT,
@@ -113,10 +117,11 @@ class ClarificationEvaluator:
         correlation_id: str,
         conversation_turns: Iterable[ConversationTurn] = (),
         tools: Iterable[AgentTool] = (),
+        prior_blockers: Iterable[str] = (),
     ) -> ClarificationDecision:
         request = LlmRequest(
             tenant_id=tenant_id,
-            prompt=_clarification_prompt(raw_reply),
+            prompt=_clarification_prompt(raw_reply, prior_blockers=prior_blockers),
             model=self._model,
             correlation_id=correlation_id,
             system=CLARIFICATION_EVALUATOR_SYSTEM_PROMPT,
@@ -148,23 +153,30 @@ class ClarificationEvaluator:
         return _clarification_decision_from_json(parsed, fallback_progress_note=raw_reply)
 
 
-def _parser_prompt(raw_reply: str) -> str:
+def _parser_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ()) -> str:
     return (
         "Extract structured check-in signals from the reply below. "
         "Return only a JSON object with keys: progress_note string, "
         "blockers array of strings, eta_change_days integer or null, "
-        "mood one of positive, neutral, negative, or null.\n\n"
+        "mood one of positive, neutral, negative, or null. "
+        "Do not invent blockers; use an empty blockers array when no blocker is stated. "
+        "Previously open blockers are context only; mark them resolved only if the reply says "
+        f"they are resolved.{_prior_blocker_prompt(prior_blockers)}\n\n"
         f"Reply:\n{raw_reply}"
     )
 
 
-def _clarification_prompt(raw_reply: str) -> str:
+def _clarification_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ()) -> str:
     return (
         "Evaluate the latest check-in reply below. Return only a JSON object with keys: "
-        "sufficient boolean, question string or null, and signals object or null. "
+        "is_status_update boolean, sufficient boolean, question string or null, and "
+        "signals object or null. Set is_status_update false for acknowledgements, thanks, "
+        "reactions, or questions that do not provide status progress, blockers, or ETA. "
         "The signals object uses keys: progress_note string, blockers array of strings, "
         "eta_change_days integer or null, mood one of positive, neutral, negative, or null. "
-        "When sufficient is false, question must ask only for the missing status detail.\n\n"
+        "Do not invent blockers. Previously open blockers are context only; mark them resolved "
+        "only if the reply says they are resolved. When sufficient is false, question must ask "
+        f"only for the missing status detail.{_prior_blocker_prompt(prior_blockers)}\n\n"
         f"Latest reply:\n{raw_reply}"
     )
 
@@ -176,6 +188,10 @@ def _clarification_decision_from_json(
 ) -> ClarificationDecision:
     if not isinstance(value, Mapping):
         return ClarificationDecision(sufficient=True)
+
+    is_status_update = value.get("is_status_update")
+    if isinstance(is_status_update, bool) and not is_status_update:
+        return ClarificationDecision(sufficient=False, is_status_update=False)
 
     sufficient = value.get("sufficient")
     if not isinstance(sufficient, bool):
@@ -198,6 +214,13 @@ def _clarification_decision_from_json(
             signals=signals or CheckInSignals(progress_note=fallback_progress_note),
         )
     return ClarificationDecision(sufficient=False, question=clean_question, signals=signals)
+
+
+def _prior_blocker_prompt(prior_blockers: Iterable[str]) -> str:
+    blockers = tuple(blocker.strip() for blocker in prior_blockers if blocker.strip())
+    if not blockers:
+        return ""
+    return "\n\nPreviously open blockers:\n" + "\n".join(f"- {blocker}" for blocker in blockers)
 
 
 def _signals_from_json(value: object, *, fallback_progress_note: str) -> CheckInSignals:

@@ -31,6 +31,7 @@ from core.domain.status import (
     CheckInScheduleRun,
     CheckInSignals,
     DeveloperStatus,
+    Mood,
     StatusSource,
 )
 from core.ports.calendar import CalendarProvider
@@ -140,6 +141,11 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
         )
         == correlation
     )
+    assert await repository.unconsumed_checkin_correlations_for_thread(
+        "demo",
+        "thread-1",
+        date(2026, 1, 10),
+    ) == [correlation]
     assert (
         await repository.latest_unconsumed_checkin_correlation_for_user(
             "demo",
@@ -148,10 +154,31 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
         )
         == correlation
     )
+    assert await repository.unconsumed_checkin_correlations_for_user(
+        "demo",
+        "U123",
+        date(2026, 1, 10),
+    ) == [correlation]
     await repository.consume_checkin_correlation("demo", "corr-1", replied_at)
     consumed = await repository.checkin_correlation_by_id("demo", "corr-1")
     assert consumed is not None
     assert consumed.consumed_at == replied_at
+    assert (
+        await repository.unconsumed_checkin_correlations_for_user(
+            "demo",
+            "U123",
+            date(2026, 1, 10),
+        )
+        == []
+    )
+    assert (
+        await repository.unconsumed_checkin_correlations_for_thread(
+            "demo",
+            "thread-1",
+            date(2026, 1, 10),
+        )
+        == []
+    )
 
     preference = CheckInPreference(tenant_id="demo", developer_id="dev-1")
     await repository.record_checkin_preference(preference)
@@ -214,6 +241,8 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
         source=StatusSource.CONFIRMED,
         blockers=("dependency",),
         summary="Implementing graph sync; blocked on dependency.",
+        eta_change_days=1,
+        mood=Mood.NEGATIVE,
     )
     await repository.record_developer_status(status)
     latest = await repository.latest_developer_status("demo", "dev-1", date(2026, 1, 10))

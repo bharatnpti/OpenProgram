@@ -13,6 +13,12 @@ depends_on = None
 def upgrade() -> None:
     op.execute(
         """
+        ALTER TABLE alembic_version
+        ALTER COLUMN version_num TYPE VARCHAR(128);
+        """
+    )
+    op.execute(
+        """
         CREATE INDEX IF NOT EXISTS conversation_turns_user_message_idx
         ON conversation_turns (tenant_id, developer_id, chat_message_id)
         WHERE role = 'user' AND chat_message_id IS NOT NULL;

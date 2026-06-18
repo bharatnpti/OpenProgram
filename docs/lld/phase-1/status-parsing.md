@@ -33,6 +33,8 @@ Return only JSON matching the schema.
 Do not infer work that is not stated in the reply.
 Use null when ETA or mood is absent.
 Use an empty blocker list when no blocker is stated.
+Previously open blockers may be supplied as context, but they are resolved only when the reply says
+so.
 ```
 
 The reply text is passed to the LLM call, status repository, and conversation store. Trace payloads retain submitted LLM input and output.
@@ -51,7 +53,7 @@ Parsing uses a strict edge schema before constructing domain dataclasses:
 ## Fallbacks
 
 - Valid JSON: record `CheckIn.signals` and `DeveloperStatus(source=CONFIRMED)`.
-- Malformed JSON or schema failure: record the `CheckIn` with `signals=None`, then record `DeveloperStatus(source=CONFIRMED)` with summary `Reply received; parsing unavailable.`.
+- Malformed JSON or schema failure: fall back to `CheckInSignals(progress_note=raw_reply)`, record the raw reply, and leave `blockers=[]` unless a valid parsed blocker was stated.
 - Empty reply: keep the pending check-in open until the workflow timeout. Nudge handling owns `STALE`, `INFERRED`, and `UNKNOWN`.
 - No reply after nudge: scheduling records `STALE`, `INFERRED`, or `UNKNOWN` based on available facts.
 
@@ -67,10 +69,12 @@ DeveloperStatus(
     source=StatusSource.CONFIRMED,
     blockers=signals.blockers,
     summary=signals.progress_note,
+    eta_change_days=signals.eta_change_days,
+    mood=signals.mood,
 )
 ```
 
-When parsing fails, `blockers=()` and the summary is the fallback text. This parser does not add persona API response fields.
+When parsing fails, `blockers=()` and the summary is the raw reply fallback. This parser does not add persona API response fields.
 
 ## Sequence
 
@@ -97,7 +101,7 @@ Parsing stores results in:
 
 - `checkins.raw_reply`: raw text, access controlled through authorization policy.
 - `checkins.signals`: JSON representation of `CheckInSignals`, nullable.
-- `developer_statuses`: derived summary, blockers, source, and as-of date.
+- `developer_statuses`: derived summary, blockers, ETA delta, mood, source, and as-of date.
 - `facts`: append-only check-in fact with payload metadata and source reference.
 
 ## Tests

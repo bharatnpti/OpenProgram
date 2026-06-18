@@ -15,7 +15,15 @@ from core.domain.graph import EntityRef, FactEvent, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
 from core.domain.messaging import ChatUserRef, InboundMessage
-from core.domain.status import CheckIn, CheckInClarification, DeveloperStatus, StatusSource
+from core.domain.status import (
+    CheckIn,
+    CheckInClarification,
+    CheckInCorrelation,
+    CheckInPreference,
+    DeveloperStatus,
+    Mood,
+    StatusSource,
+)
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from tests.contract.fakes import FakeChatProvider, FakeIssueTracker, FakeLlmProvider
 
@@ -262,6 +270,8 @@ async def test_status_collector_handles_reply_by_correlation(
     assert logger.events[0]["raw_reply"] == "Graph sync is in review, blocked on schema review."
     assert status.source is StatusSource.CONFIRMED
     assert status.blockers == ("schema review",)
+    assert status.eta_change_days == 1
+    assert status.mood is Mood.NEUTRAL
     assert await store.latest_developer_status("demo", "dev-1", date(2026, 1, 10)) == status
     assert "Graph sync is in review" not in parser_llm.requests[0].metadata.values()
     assert [message.content for message in parser_llm.requests[0].messages] == [
@@ -617,7 +627,9 @@ async def test_status_collector_timeout_finalizes_accumulated_clarification_repl
     collector = StatusCollector(
         issue_tracker=FakeIssueTracker(),
         chat_provider=FakeChatProvider(),
-        llm_provider=SequenceLlmProvider(texts=[]),
+        llm_provider=SequenceLlmProvider(
+            texts=['{"is_status_update":true,"sufficient":true,"question":null,"signals":null}']
+        ),
         status_repository=store,
         conversation_repository=store,
         model="test-model",
@@ -637,6 +649,60 @@ async def test_status_collector_timeout_finalizes_accumulated_clarification_repl
     assert checkin is not None
     assert checkin.raw_reply == "Cache work is partly done."
     assert checkin.replied_at == datetime(2026, 1, 10, 9, 7, tzinfo=UTC)
+
+
+async def test_status_collector_timeout_does_not_confirm_non_status_turn() -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    await store.append_turn(
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            conversation_id="corr-1",
+            conversation_date=date(2026, 1, 10),
+            role=ConversationRole.USER,
+            content="Thanks!",
+            correlation_id="corr-1",
+            chat_message_id="msg-1",
+            observed_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
+        )
+    )
+    parser_llm = SequenceLlmProvider(texts=[])
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(
+            texts=['{"is_status_update":false,"sufficient":false,"question":null,"signals":null}']
+        ),
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+        parser=StatusParser(parser_llm, model="test-model"),
+    )
+
+    terminal = await collector.record_non_response(
+        tenant_id="demo",
+        developer_id="dev-1",
+        as_of=date(2026, 1, 12),
+        correlation_id="corr-1",
+    )
+
+    checkin = await store.checkin_by_correlation("demo", "corr-1")
+    assert terminal.source is StatusSource.UNKNOWN
+    assert checkin is not None
+    assert checkin.replied_at is None
+    assert await store.latest_developer_status("demo", "dev-1", date(2026, 1, 10)) is None
+    assert parser_llm.requests == []
 
 
 async def test_status_collector_resolves_replies_by_thread_then_user_day() -> None:
@@ -696,6 +762,391 @@ async def test_status_collector_resolves_replies_by_thread_then_user_day() -> No
 
     assert by_thread == "corr-thread"
     assert by_user == "corr-user"
+
+
+async def test_status_collector_resolves_user_fallback_by_developer_local_date() -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin_preference(
+        CheckInPreference(
+            tenant_id="demo",
+            developer_id="dev-1",
+            timezone="America/Los_Angeles",
+        )
+    )
+    asked_at = datetime(2026, 1, 10, 23, 30, tzinfo=UTC)
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-late",
+            asked_at=asked_at,
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    await store.record_checkin_correlation(
+        CheckInCorrelation(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-late",
+            chat_user_ref="U123",
+            chat_thread_ref="thread-original",
+            outbound_message_id="msg-out",
+            asked_at=asked_at,
+        )
+    )
+    llm = SequenceLlmProvider(
+        texts=[
+            '{"sufficient":true,"question":null,'
+            '"signals":{"progress_note":"Finished the rollout",'
+            '"blockers":[],"eta_change_days":0,"mood":"positive"}}'
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+    received_at = datetime(2026, 1, 11, 1, 0, tzinfo=UTC)
+
+    resolved = await collector.resolve_reply_correlation(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="Finished the rollout.",
+            thread_id="unknown-thread",
+            message_id="msg-late",
+            correlation_id="request-corr",
+            received_at=received_at,
+        )
+    )
+    outcome = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="Finished the rollout.",
+            thread_id="unknown-thread",
+            message_id="msg-late",
+            correlation_id="corr-late",
+            received_at=received_at,
+        )
+    )
+
+    assert resolved == "corr-late"
+    assert outcome.kind == "processed"
+    local_turns = await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
+    assert local_turns[-1].chat_message_id == "msg-late"
+    assert await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 11)) == []
+
+
+async def test_status_collector_does_not_guess_ambiguous_user_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = InMemoryGraphStore()
+    for developer_id, correlation_id in (("dev-1", "corr-1"), ("dev-2", "corr-2")):
+        asked_at = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
+        await store.record_checkin_correlation(
+            CheckInCorrelation(
+                tenant_id="demo",
+                developer_id=developer_id,
+                correlation_id=correlation_id,
+                chat_user_ref="U123",
+                chat_thread_ref=f"thread-{developer_id}",
+                outbound_message_id=f"msg-{developer_id}",
+                asked_at=asked_at,
+            )
+        )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(texts=[]),
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+    logger = CapturingLogger()
+    monkeypatch.setattr(status_collector_module, "_logger", logger)
+
+    resolved = await collector.resolve_reply_correlation(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="reply",
+            thread_id="unknown-thread",
+            message_id="msg-ambiguous",
+            correlation_id="request-corr",
+            received_at=datetime(2026, 1, 10, 9, 5, tzinfo=UTC),
+        )
+    )
+
+    assert resolved is None
+    assert logger.events == [
+        {
+            "event": "reply_correlation_ambiguous",
+            "tenant_id": "demo",
+            "chat_user_ref": "U123",
+            "message_id": "msg-ambiguous",
+            "correlation_ids": ["corr-1", "corr-2"],
+        }
+    ]
+
+
+async def test_status_collector_does_not_guess_ambiguous_thread_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = InMemoryGraphStore()
+    for developer_id, correlation_id in (("dev-1", "corr-1"), ("dev-2", "corr-2")):
+        await store.record_checkin_correlation(
+            CheckInCorrelation(
+                tenant_id="demo",
+                developer_id=developer_id,
+                correlation_id=correlation_id,
+                chat_user_ref="U123",
+                chat_thread_ref="thread-shared",
+                outbound_message_id=f"msg-{developer_id}",
+                asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            )
+        )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(texts=[]),
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+    logger = CapturingLogger()
+    monkeypatch.setattr(status_collector_module, "_logger", logger)
+
+    resolved = await collector.resolve_reply_correlation(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="reply",
+            thread_id="thread-shared",
+            message_id="msg-ambiguous-thread",
+            correlation_id="request-corr",
+            received_at=datetime(2026, 1, 10, 9, 5, tzinfo=UTC),
+        )
+    )
+
+    assert resolved is None
+    assert logger.events == [
+        {
+            "event": "reply_correlation_ambiguous",
+            "tenant_id": "demo",
+            "chat_user_ref": "U123",
+            "chat_thread_ref": "thread-shared",
+            "message_id": "msg-ambiguous-thread",
+            "correlation_ids": ["corr-1", "corr-2"],
+        }
+    ]
+
+
+async def test_status_collector_prioritizes_blocked_and_critical_issues() -> None:
+    assignee = UserRef(tenant_id="demo", external_id="dev-1")
+    tracker = FakeIssueTracker(
+        issues={
+            f"PO-{index}": Issue(
+                tenant_id="demo",
+                key=f"PO-{index}",
+                title=f"Routine task {index}",
+                state=IssueState.IN_PROGRESS,
+                assignee=assignee,
+                updated_at=datetime(2026, 1, 10, 10 + index, tzinfo=UTC),
+            )
+            for index in range(1, 6)
+        }
+        | {
+            "PO-BLOCKED": Issue(
+                tenant_id="demo",
+                key="PO-BLOCKED",
+                title="Blocked release gate",
+                state=IssueState.BLOCKED,
+                assignee=assignee,
+                metadata={"critical_path": True},
+                updated_at=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+            )
+        }
+    )
+    collector = StatusCollector(
+        issue_tracker=tracker,
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(texts=[]),
+        status_repository=InMemoryGraphStore(),
+        conversation_repository=InMemoryGraphStore(),
+        model="test-model",
+    )
+
+    context = await collector.build_context(tenant_id="demo", developer_id="dev-1")
+
+    assert "PO-BLOCKED" in context
+    assert "PO-1" not in context
+
+
+async def test_status_collector_carries_forward_unresolved_prior_blockers() -> None:
+    store = InMemoryGraphStore()
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-1",
+            as_of=date(2026, 1, 9),
+            source=StatusSource.CONFIRMED,
+            blockers=("release gate",),
+            summary="Blocked on release gate.",
+        )
+    )
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    llm = SequenceLlmProvider(
+        texts=[
+            '{"sufficient":true,"question":null,'
+            '"signals":{"progress_note":"Same as yesterday",'
+            '"blockers":[],"eta_change_days":null,"mood":"neutral"}}'
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    outcome = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="Same as yesterday.",
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 5, tzinfo=UTC),
+        )
+    )
+
+    assert outcome.status is not None
+    assert outcome.status.blockers == ("release gate",)
+    assert "Prior blockers carried forward" in outcome.status.summary
+    assert "Previously open blockers" in llm.requests[0].prompt
+    assert "release gate" in llm.requests[0].prompt
+
+
+async def test_status_collector_does_not_clear_prior_blocker_on_negated_resolution() -> None:
+    store = InMemoryGraphStore()
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-1",
+            as_of=date(2026, 1, 9),
+            source=StatusSource.CONFIRMED,
+            blockers=("release gate",),
+            summary="Blocked on release gate.",
+        )
+    )
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    llm = SequenceLlmProvider(
+        texts=[
+            '{"sufficient":true,"question":null,'
+            '"signals":{"progress_note":"Release gate is not resolved",'
+            '"blockers":[],"eta_change_days":null,"mood":"negative"}}'
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    outcome = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="Release gate is not resolved.",
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 5, tzinfo=UTC),
+        )
+    )
+
+    assert outcome.status is not None
+    assert outcome.status.blockers == ("release gate",)
+    assert "Prior blockers carried forward" in outcome.status.summary
+
+
+async def test_status_collector_acknowledges_non_status_reply_without_finalizing() -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    chat = FakeChatProvider()
+    llm = SequenceLlmProvider(
+        texts=['{"is_status_update":false,"sufficient":false,"question":null,"signals":null}']
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    outcome = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="Thanks!",
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 5, tzinfo=UTC),
+        )
+    )
+    checkin = await store.checkin_by_correlation("demo", "corr-1")
+
+    assert outcome.kind == "acknowledged"
+    assert outcome.status is None
+    assert checkin is not None
+    assert checkin.replied_at is None
+    assert await store.latest_developer_status("demo", "dev-1", date(2026, 1, 10)) is None
+    assert chat.sent[0].text == "Thanks. I'll keep the check-in open for your status update."
 
 
 async def test_status_collector_nudges_once_and_records_stale_non_response() -> None:

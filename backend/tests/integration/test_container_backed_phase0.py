@@ -14,6 +14,7 @@ from psycopg import AsyncConnection, sql
 
 from config.settings import get_settings
 from core.domain.graph import EntityRef, NodeKind
+from core.domain.status import DeveloperStatus, Mood, StatusSource
 from core.domain.workflows import CheckinScheduleConfig, HeartbeatInput
 from core.ports.secrets import SecretRef
 from infra.adapters.chat.rate_limit import RedisRateLimiter
@@ -203,6 +204,58 @@ async def test_conversation_store_migration_and_repository_contract(
         try:
             assert await _conversation_turns_table_exists(executor)
             assert await _conversation_turns_hypertable_exists(executor)
+        finally:
+            await executor.close()
+    finally:
+        get_settings.cache_clear()
+        await _drop_database(admin_database_url, database_name)
+
+
+async def test_developer_status_signals_migration_and_repository_round_trip(
+    compose_stack: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admin_database_url = _service_url(compose_stack, "postgres", 5432, "postgres")
+    database_name = f"pulseops_it_0008_{uuid4().hex[:12]}"
+    database_url = _service_url(compose_stack, "postgres", 5432, database_name)
+    await _create_database(admin_database_url, database_name)
+    try:
+        _run_alembic(monkeypatch, database_url, "upgrade", "head")
+        executor = PsycopgAsyncExecutor(database_url)
+        try:
+            assert await _developer_status_signal_columns_exist(executor)
+            repository = PostgresStatusRepository(executor)
+            status = DeveloperStatus(
+                tenant_id="demo",
+                developer_id="dev-1",
+                as_of=date(2026, 1, 10),
+                source=StatusSource.CONFIRMED,
+                blockers=("dependency",),
+                summary="Blocked on dependency.",
+                eta_change_days=2,
+                mood=Mood.NEGATIVE,
+            )
+            await repository.record_developer_status(status)
+            assert (
+                await repository.latest_developer_status(
+                    "demo",
+                    "dev-1",
+                    date(2026, 1, 10),
+                )
+                == status
+            )
+        finally:
+            await executor.close()
+
+        _run_alembic(
+            monkeypatch,
+            database_url,
+            "downgrade",
+            "0007_conversation_user_turn_lookup",
+        )
+        executor = PsycopgAsyncExecutor(database_url)
+        try:
+            assert not await _developer_status_signal_columns_exist(executor)
         finally:
             await executor.close()
     finally:
@@ -446,6 +499,19 @@ def _run_alembic(
     else:
         raise ValueError(f"unsupported Alembic action: {action}")
     get_settings.cache_clear()
+
+
+async def _developer_status_signal_columns_exist(executor: PsycopgAsyncExecutor) -> bool:
+    rows = await executor.fetch(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'developer_statuses'
+          AND column_name IN ('eta_change_days', 'mood')
+        """
+    )
+    return {str(row["column_name"]) for row in rows} == {"eta_change_days", "mood"}
 
 
 async def _create_database(admin_database_url: str, database_name: str) -> None:

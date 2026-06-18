@@ -61,9 +61,17 @@ class StatusRepository(Protocol):
         self, tenant_id: str, chat_thread_ref: str, as_of: date
     ) -> CheckInCorrelation | None: ...
 
+    async def unconsumed_checkin_correlations_for_thread(
+        self, tenant_id: str, chat_thread_ref: str, as_of: date
+    ) -> list[CheckInCorrelation]: ...
+
     async def latest_unconsumed_checkin_correlation_for_user(
         self, tenant_id: str, chat_user_ref: str, as_of: date
     ) -> CheckInCorrelation | None: ...
+
+    async def unconsumed_checkin_correlations_for_user(
+        self, tenant_id: str, chat_user_ref: str, as_of: date
+    ) -> list[CheckInCorrelation]: ...
 
     async def consume_checkin_correlation(
         self, tenant_id: str, correlation_id: str, consumed_at: datetime

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal, Protocol, TypedDict, cast
 from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 from langgraph.graph import StateGraph
@@ -16,7 +17,7 @@ from core.application.status_parsing import ClarificationEvaluator, StatusParser
 from core.application.tools.conversation_history import MAX_HISTORY_LIMIT, ConversationHistoryTool
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
-from core.domain.integrations import Issue, UserRef
+from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from core.domain.status import (
@@ -70,7 +71,7 @@ class StatusCollectorGraph(Protocol):
 
 @dataclass(frozen=True, kw_only=True)
 class ReplyOutcome:
-    kind: Literal["processed", "clarifying", "ignored"]
+    kind: Literal["processed", "clarifying", "ignored", "acknowledged"]
     status: DeveloperStatus | None = None
 
 
@@ -90,6 +91,7 @@ class StatusCollector:
         tool_agent: ToolCallingAgent | None = None,
         conversation_retention_days: int = 30,
         checkin_max_clarifications: int = 2,
+        tenant_default_timezone: str = "UTC",
     ) -> None:
         self._issue_tracker = issue_tracker
         self._chat_provider = chat_provider
@@ -101,6 +103,7 @@ class StatusCollector:
         self._tool_agent = tool_agent
         self._conversation_retention_days = conversation_retention_days
         self._checkin_max_clarifications = max(0, checkin_max_clarifications)
+        self._tenant_default_timezone = tenant_default_timezone
         self._parser = parser or StatusParser(llm_provider, model, tool_agent=tool_agent)
         self._clarification_evaluator = clarification_evaluator or ClarificationEvaluator(
             llm_provider,
@@ -174,7 +177,11 @@ class StatusCollector:
                 tenant_id=checkin.tenant_id,
                 developer_id=checkin.developer_id,
                 conversation_id=checkin.correlation_id,
-                conversation_date=message.received_at.date(),
+                conversation_date=await self._local_date_for_developer(
+                    checkin.tenant_id,
+                    checkin.developer_id,
+                    message.received_at,
+                ),
                 role=ConversationRole.USER,
                 content=message.text,
                 correlation_id=message.correlation_id,
@@ -194,6 +201,7 @@ class StatusCollector:
             developer_id=checkin.developer_id,
             reference_at=message.received_at,
         )
+        prior_blockers = await self._prior_open_blockers(checkin, message.received_at)
         decision = await self._clarification_evaluator.evaluate(
             tenant_id=message.tenant_id,
             developer_id=checkin.developer_id,
@@ -201,7 +209,12 @@ class StatusCollector:
             correlation_id=message.correlation_id,
             conversation_turns=conversation_turns,
             tools=(history_tool,),
+            prior_blockers=prior_blockers,
         )
+        if not decision.is_status_update:
+            await self._send_non_status_ack(checkin=checkin, message=message)
+            return ReplyOutcome(kind="acknowledged")
+
         clarification_count = await self._status_repository.checkin_clarification_count(
             checkin.tenant_id,
             checkin.correlation_id,
@@ -226,6 +239,7 @@ class StatusCollector:
             correlation_id=message.correlation_id,
             conversation_turns=conversation_turns,
             tools=(history_tool,),
+            prior_blockers=prior_blockers,
         )
         if not decision.sufficient:
             signals = _signals_with_note(
@@ -239,6 +253,7 @@ class StatusCollector:
                 replied_at=message.received_at,
                 raw_reply=message.text,
                 signals=signals,
+                prior_blockers=prior_blockers,
             ),
         )
 
@@ -250,22 +265,81 @@ class StatusCollector:
         if correlation is not None:
             return correlation.correlation_id
 
-        thread_correlation = await self._status_repository.latest_checkin_correlation_for_thread(
-            message.tenant_id,
-            message.thread_id,
-            message.received_at.date(),
+        open_thread_matches = await self._unconsumed_thread_local_matches(message)
+        resolved = _single_correlation_or_log_ambiguous(
+            message,
+            open_thread_matches,
+            chat_thread_ref=message.thread_id,
         )
+        if resolved is not None or open_thread_matches:
+            return resolved
+
+        thread_correlation = await self._latest_thread_local_match(message)
         if thread_correlation is not None:
             return thread_correlation.correlation_id
 
-        user_correlation = (
-            await self._status_repository.latest_unconsumed_checkin_correlation_for_user(
-                message.tenant_id,
-                message.user.external_id,
-                message.received_at.date(),
+        user_matches = await self._unconsumed_user_local_matches(message)
+        return _single_correlation_or_log_ambiguous(message, user_matches)
+
+    async def _unconsumed_thread_local_matches(
+        self,
+        message: InboundMessage,
+    ) -> list[CheckInCorrelation]:
+        correlations: list[CheckInCorrelation] = []
+        for candidate_date in _candidate_correlation_dates(
+            message.received_at,
+            self._tenant_default_timezone,
+        ):
+            correlations.extend(
+                await self._status_repository.unconsumed_checkin_correlations_for_thread(
+                    message.tenant_id,
+                    message.thread_id,
+                    candidate_date,
+                )
             )
+        return await self._local_date_matches(
+            _dedupe_correlations(correlations),
+            message.received_at,
         )
-        return user_correlation.correlation_id if user_correlation is not None else None
+
+    async def _latest_thread_local_match(
+        self,
+        message: InboundMessage,
+    ) -> CheckInCorrelation | None:
+        correlations: list[CheckInCorrelation] = []
+        for candidate_date in _candidate_correlation_dates(
+            message.received_at,
+            self._tenant_default_timezone,
+        ):
+            candidate = await self._status_repository.latest_checkin_correlation_for_thread(
+                message.tenant_id,
+                message.thread_id,
+                candidate_date,
+            )
+            if candidate is not None:
+                correlations.append(candidate)
+        return await self._latest_local_date_match(correlations, message.received_at)
+
+    async def _unconsumed_user_local_matches(
+        self,
+        message: InboundMessage,
+    ) -> list[CheckInCorrelation]:
+        user_correlations: list[CheckInCorrelation] = []
+        for candidate_date in _candidate_correlation_dates(
+            message.received_at,
+            self._tenant_default_timezone,
+        ):
+            user_correlations.extend(
+                await self._status_repository.unconsumed_checkin_correlations_for_user(
+                    message.tenant_id,
+                    message.user.external_id,
+                    candidate_date,
+                )
+            )
+        return await self._local_date_matches(
+            _dedupe_correlations(user_correlations),
+            message.received_at,
+        )
 
     async def send_nudge(
         self,
@@ -359,7 +433,11 @@ class StatusCollector:
                 tenant_id=tenant_id,
                 developer_id=checkin.developer_id,
                 conversation_id=correlation_id,
-                conversation_date=sent_at.date(),
+                conversation_date=await self._local_date_for_developer(
+                    tenant_id,
+                    checkin.developer_id,
+                    sent_at,
+                ),
                 role=ConversationRole.AGENT,
                 content=text,
                 correlation_id=correlation_id,
@@ -472,10 +550,11 @@ class StatusCollector:
         issues = await self._issue_tracker.list_active_for(
             UserRef(tenant_id=tenant_id, external_id=developer_id)
         )
-        lines = _issue_context_lines(issues)
+        prioritized_issues = _prioritize_issues(issues)
+        lines = _issue_context_lines(prioritized_issues)
 
         if self._time_series_repository is not None:
-            facts = await self._recent_facts(tenant_id, developer_id, issues)
+            facts = await self._recent_facts(tenant_id, developer_id, prioritized_issues)
             lines.extend(_fact_context_lines(facts))
 
         if not lines:
@@ -551,7 +630,11 @@ class StatusCollector:
                 tenant_id=state["tenant_id"],
                 developer_id=state["developer_id"],
                 conversation_id=state["correlation_id"],
-                conversation_date=observed_at.date(),
+                conversation_date=await self._local_date_for_developer(
+                    state["tenant_id"],
+                    state["developer_id"],
+                    observed_at,
+                ),
                 role=ConversationRole.AGENT,
                 content=state["dm_text"],
                 correlation_id=state["correlation_id"],
@@ -590,7 +673,11 @@ class StatusCollector:
         return {"checkin": checkin}
 
     async def _confirmed_status_for_duplicate(self, checkin: CheckIn) -> DeveloperStatus:
-        status_as_of = (checkin.replied_at or checkin.asked_at).date()
+        status_as_of = await self._local_date_for_developer(
+            checkin.tenant_id,
+            checkin.developer_id,
+            checkin.replied_at or checkin.asked_at,
+        )
         latest = await self._status_repository.latest_developer_status(
             checkin.tenant_id,
             checkin.developer_id,
@@ -606,6 +693,8 @@ class StatusCollector:
             source=StatusSource.CONFIRMED,
             blockers=signals.blockers,
             summary=signals.progress_note,
+            eta_change_days=signals.eta_change_days,
+            mood=signals.mood,
         )
 
     async def _send_clarification(
@@ -658,7 +747,11 @@ class StatusCollector:
                 tenant_id=checkin.tenant_id,
                 developer_id=checkin.developer_id,
                 conversation_id=checkin.correlation_id,
-                conversation_date=sent_at.date(),
+                conversation_date=await self._local_date_for_developer(
+                    checkin.tenant_id,
+                    checkin.developer_id,
+                    sent_at,
+                ),
                 role=ConversationRole.AGENT,
                 content=claimed.question,
                 correlation_id=checkin.correlation_id,
@@ -668,6 +761,47 @@ class StatusCollector:
         )
         return stored.outbound_message_id or message_id
 
+    async def _send_non_status_ack(
+        self,
+        *,
+        checkin: CheckIn,
+        message: InboundMessage,
+    ) -> str:
+        text = "Thanks. I'll keep the check-in open for your status update."
+        message_id = await self._chat_provider.send_dm(
+            message.user,
+            OutboundMessage(
+                tenant_id=checkin.tenant_id,
+                text=text,
+                correlation_id=checkin.correlation_id,
+                metadata={
+                    "purpose": "status_non_status_ack",
+                    "idempotency_key": (
+                        f"non-status-ack:{checkin.correlation_id}:{message.message_id}"
+                    ),
+                },
+            ),
+        )
+        sent_at = datetime.now(tz=UTC)
+        await self._record_conversation_turn(
+            ConversationTurn(
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                conversation_id=checkin.correlation_id,
+                conversation_date=await self._local_date_for_developer(
+                    checkin.tenant_id,
+                    checkin.developer_id,
+                    sent_at,
+                ),
+                role=ConversationRole.AGENT,
+                content=text,
+                correlation_id=checkin.correlation_id,
+                chat_message_id=message_id,
+                observed_at=sent_at,
+            )
+        )
+        return message_id
+
     async def _finalize_checkin_reply(
         self,
         *,
@@ -675,7 +809,13 @@ class StatusCollector:
         replied_at: datetime,
         raw_reply: str,
         signals: CheckInSignals,
+        prior_blockers: tuple[str, ...] = (),
     ) -> DeveloperStatus:
+        final_signals = _signals_with_carried_blockers(
+            signals,
+            raw_reply=raw_reply,
+            prior_blockers=prior_blockers,
+        )
         updated = CheckIn(
             tenant_id=checkin.tenant_id,
             developer_id=checkin.developer_id,
@@ -683,17 +823,23 @@ class StatusCollector:
             asked_at=checkin.asked_at,
             replied_at=replied_at,
             raw_reply=raw_reply,
-            signals=signals,
+            signals=final_signals,
         )
         await self._status_repository.record_checkin(updated)
 
         status = DeveloperStatus(
             tenant_id=checkin.tenant_id,
             developer_id=checkin.developer_id,
-            as_of=replied_at.date(),
+            as_of=await self._local_date_for_developer(
+                checkin.tenant_id,
+                checkin.developer_id,
+                replied_at,
+            ),
             source=StatusSource.CONFIRMED,
-            blockers=signals.blockers,
-            summary=signals.progress_note,
+            blockers=final_signals.blockers,
+            summary=final_signals.progress_note,
+            eta_change_days=final_signals.eta_change_days,
+            mood=final_signals.mood,
         )
         await self._status_repository.record_developer_status(status)
         await self._status_repository.consume_checkin_correlation(
@@ -726,18 +872,32 @@ class StatusCollector:
             return None
 
         raw_reply = "\n".join(turn.content for turn in user_turns)
+        prior_blockers = await self._prior_open_blockers(checkin, user_turns[-1].observed_at)
         history_tool = self._conversation_history_tool(
             tenant_id=tenant_id,
             developer_id=checkin.developer_id,
             reference_at=user_turns[-1].observed_at,
         )
-        signals = await self._parser.parse_reply(
+        decision = await self._clarification_evaluator.evaluate(
             tenant_id=tenant_id,
             developer_id=checkin.developer_id,
             raw_reply=raw_reply,
             correlation_id=correlation_id,
             conversation_turns=turns,
             tools=(history_tool,),
+            prior_blockers=prior_blockers,
+        )
+        if not decision.is_status_update:
+            return None
+
+        signals = decision.signals or await self._parser.parse_reply(
+            tenant_id=tenant_id,
+            developer_id=checkin.developer_id,
+            raw_reply=raw_reply,
+            correlation_id=correlation_id,
+            conversation_turns=turns,
+            tools=(history_tool,),
+            prior_blockers=prior_blockers,
         )
         return await self._finalize_checkin_reply(
             checkin=checkin,
@@ -747,6 +907,7 @@ class StatusCollector:
                 signals,
                 "Finalized from accumulated replies after clarification timeout.",
             ),
+            prior_blockers=prior_blockers,
         )
 
     async def _complete_llm(
@@ -820,6 +981,51 @@ class StatusCollector:
             retention_days=self._conversation_retention_days,
             reference_at=reference_at,
         )
+
+    async def _local_date_for_developer(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        at: datetime,
+    ) -> date:
+        preference = await self._status_repository.checkin_preference_for(tenant_id, developer_id)
+        return _local_date(
+            at, preference.timezone if preference else None, self._tenant_default_timezone
+        )
+
+    async def _local_date_matches(
+        self,
+        correlations: Iterable[CheckInCorrelation],
+        received_at: datetime,
+    ) -> list[CheckInCorrelation]:
+        matches: list[CheckInCorrelation] = []
+        for correlation in correlations:
+            preference = await self._status_repository.checkin_preference_for(
+                correlation.tenant_id,
+                correlation.developer_id,
+            )
+            timezone = preference.timezone if preference else None
+            asked_date = _local_date(correlation.asked_at, timezone, self._tenant_default_timezone)
+            reply_date = _local_date(received_at, timezone, self._tenant_default_timezone)
+            if correlation.asked_at <= received_at and asked_date == reply_date:
+                matches.append(correlation)
+        return sorted(matches, key=lambda correlation: correlation.asked_at, reverse=True)
+
+    async def _latest_local_date_match(
+        self,
+        correlations: Iterable[CheckInCorrelation],
+        received_at: datetime,
+    ) -> CheckInCorrelation | None:
+        matches = await self._local_date_matches(_dedupe_correlations(correlations), received_at)
+        return matches[0] if matches else None
+
+    async def _prior_open_blockers(self, checkin: CheckIn, at: datetime) -> tuple[str, ...]:
+        status = await self._status_repository.latest_developer_status(
+            checkin.tenant_id,
+            checkin.developer_id,
+            await self._local_date_for_developer(checkin.tenant_id, checkin.developer_id, at),
+        )
+        return _open_blockers_from_status(status)
 
     async def _recent_conversation_turns(
         self,
@@ -915,6 +1121,27 @@ def _pending_nudge_message_id(correlation_id: str) -> str:
     return f"pending-nudge-{correlation_id}-1"
 
 
+def _single_correlation_or_log_ambiguous(
+    message: InboundMessage,
+    matches: list[CheckInCorrelation],
+    *,
+    chat_thread_ref: str | None = None,
+) -> str | None:
+    if len(matches) == 1:
+        return matches[0].correlation_id
+    if len(matches) > 1:
+        values: dict[str, object] = {
+            "tenant_id": message.tenant_id,
+            "chat_user_ref": message.user.external_id,
+            "message_id": message.message_id,
+            "correlation_ids": [correlation.correlation_id for correlation in matches],
+        }
+        if chat_thread_ref is not None:
+            values["chat_thread_ref"] = chat_thread_ref
+        _logger.info("reply_correlation_ambiguous", **values)
+    return None
+
+
 def _signals_with_note(signals: CheckInSignals, note: str) -> CheckInSignals:
     return CheckInSignals(
         progress_note=f"{signals.progress_note} {note}",
@@ -922,6 +1149,159 @@ def _signals_with_note(signals: CheckInSignals, note: str) -> CheckInSignals:
         eta_change_days=signals.eta_change_days,
         mood=signals.mood,
     )
+
+
+def _signals_with_carried_blockers(
+    signals: CheckInSignals,
+    *,
+    raw_reply: str,
+    prior_blockers: tuple[str, ...],
+) -> CheckInSignals:
+    if not prior_blockers or signals.blockers or _explicitly_resolves_blockers(raw_reply):
+        return signals
+    return CheckInSignals(
+        progress_note=(
+            f"{signals.progress_note} Prior blockers carried forward until explicitly resolved: "
+            f"{', '.join(prior_blockers)}."
+        ),
+        blockers=prior_blockers,
+        eta_change_days=signals.eta_change_days,
+        mood=signals.mood,
+    )
+
+
+def _explicitly_resolves_blockers(raw_reply: str) -> bool:
+    normalized = raw_reply.lower()
+    negated_resolution_phrases = (
+        "not resolved",
+        "not yet resolved",
+        "isn't resolved",
+        "is not resolved",
+        "wasn't resolved",
+        "was not resolved",
+        "not cleared",
+        "isn't cleared",
+        "is not cleared",
+        "not unblocked",
+        "still blocked",
+        "still blocking",
+        "still unresolved",
+        "remains blocked",
+        "unresolved",
+    )
+    if any(phrase in normalized for phrase in negated_resolution_phrases):
+        return False
+    resolution_phrases = (
+        "no blocker",
+        "no blockers",
+        "not blocked",
+        "unblocked",
+        "resolved",
+        "cleared",
+        "blocker is gone",
+        "blockers are gone",
+        "nothing blocking",
+    )
+    return any(phrase in normalized for phrase in resolution_phrases)
+
+
+def _open_blockers_from_status(status: DeveloperStatus | None) -> tuple[str, ...]:
+    if status is None or status.source is StatusSource.UNKNOWN:
+        return ()
+    blockers = []
+    for blocker in status.blockers:
+        clean = blocker.strip()
+        if clean and clean.lower() != "no confirmed reply" and clean not in blockers:
+            blockers.append(clean)
+    return tuple(blockers)
+
+
+def _prioritize_issues(issues: Iterable[Issue]) -> list[Issue]:
+    return sorted(
+        issues,
+        key=lambda issue: (
+            issue.state is not IssueState.BLOCKED,
+            not _is_priority_issue(issue),
+            -(issue.updated_at.timestamp() if issue.updated_at is not None else 0.0),
+            issue.key,
+        ),
+    )
+
+
+def _is_priority_issue(issue: Issue) -> bool:
+    metadata = issue.metadata
+    if _truthy(metadata.get("critical_path")):
+        return True
+    priority = metadata.get("priority")
+    if isinstance(priority, str) and priority.strip().lower() in {
+        "blocker",
+        "critical",
+        "highest",
+        "high",
+        "p0",
+        "p1",
+    }:
+        return True
+    labels = metadata.get("labels")
+    label_values: tuple[str, ...]
+    if isinstance(labels, str):
+        label_values = (labels,)
+    elif isinstance(labels, list | tuple | set):
+        label_values = tuple(label for label in labels if isinstance(label, str))
+    else:
+        label_values = ()
+    priority_labels = {
+        "blocker",
+        "critical",
+        "critical-path",
+        "critical_path",
+        "highest",
+        "high-priority",
+        "p0",
+        "p1",
+    }
+    return any(label.strip().lower() in priority_labels for label in label_values)
+
+
+def _truthy(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y"}
+    if isinstance(value, int | float):
+        return value > 0
+    return False
+
+
+def _candidate_correlation_dates(
+    received_at: datetime, tenant_default_timezone: str
+) -> tuple[date, ...]:
+    utc_date = received_at.date()
+    dates = {
+        utc_date - timedelta(days=1),
+        utc_date,
+        utc_date + timedelta(days=1),
+        _local_date(received_at, None, tenant_default_timezone),
+    }
+    return tuple(sorted(dates))
+
+
+def _dedupe_correlations(correlations: Iterable[CheckInCorrelation]) -> list[CheckInCorrelation]:
+    deduped: dict[str, CheckInCorrelation] = {}
+    for correlation in correlations:
+        current = deduped.get(correlation.correlation_id)
+        if current is None or current.asked_at < correlation.asked_at:
+            deduped[correlation.correlation_id] = correlation
+    return list(deduped.values())
+
+
+def _local_date(at: datetime, timezone: str | None, tenant_default_timezone: str) -> date:
+    timezone_name = timezone or tenant_default_timezone
+    try:
+        return at.astimezone(ZoneInfo(timezone_name)).date()
+    except ZoneInfoNotFoundError:
+        _logger.warning("invalid_checkin_timezone", timezone=timezone_name)
+        return at.astimezone(UTC).date()
 
 
 def _issue_context_lines(issues: Iterable[Issue]) -> list[str]:

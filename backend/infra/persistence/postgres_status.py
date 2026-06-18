@@ -149,11 +149,43 @@ class PostgresStatusRepository:
             )
         return _checkin_correlation_from_row(rows[0]) if rows else None
 
+    async def unconsumed_checkin_correlations_for_thread(
+        self, tenant_id: str, chat_thread_ref: str, as_of: date
+    ) -> list[CheckInCorrelation]:
+        with _tracer.start_as_current_span(
+            "postgres.status.unconsumed_checkin_correlations_for_thread"
+        ):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, correlation_id, developer_id, chat_user_ref, chat_thread_ref,
+                       outbound_message_id, asked_at, consumed_at
+                FROM checkin_correlations
+                WHERE tenant_id = %s
+                  AND chat_thread_ref = %s
+                  AND consumed_at IS NULL
+                  AND asked_at >= %s::date
+                  AND asked_at < (%s::date + INTERVAL '1 day')
+                ORDER BY asked_at DESC
+                """,
+                (tenant_id, chat_thread_ref, as_of, as_of),
+            )
+        return [_checkin_correlation_from_row(row) for row in rows]
+
     async def latest_unconsumed_checkin_correlation_for_user(
         self, tenant_id: str, chat_user_ref: str, as_of: date
     ) -> CheckInCorrelation | None:
+        correlations = await self.unconsumed_checkin_correlations_for_user(
+            tenant_id,
+            chat_user_ref,
+            as_of,
+        )
+        return correlations[0] if correlations else None
+
+    async def unconsumed_checkin_correlations_for_user(
+        self, tenant_id: str, chat_user_ref: str, as_of: date
+    ) -> list[CheckInCorrelation]:
         with _tracer.start_as_current_span(
-            "postgres.status.latest_unconsumed_checkin_correlation_for_user"
+            "postgres.status.unconsumed_checkin_correlations_for_user"
         ):
             rows = await self._executor.fetch(
                 """
@@ -166,11 +198,10 @@ class PostgresStatusRepository:
                   AND asked_at >= %s::date
                   AND asked_at < (%s::date + INTERVAL '1 day')
                 ORDER BY asked_at DESC
-                LIMIT 1
                 """,
                 (tenant_id, chat_user_ref, as_of, as_of),
             )
-        return _checkin_correlation_from_row(rows[0]) if rows else None
+        return [_checkin_correlation_from_row(row) for row in rows]
 
     async def consume_checkin_correlation(
         self, tenant_id: str, correlation_id: str, consumed_at: datetime
@@ -365,14 +396,17 @@ class PostgresStatusRepository:
             await self._executor.execute(
                 """
                 INSERT INTO developer_statuses (
-                    tenant_id, developer_id, as_of, source, blockers, summary
+                    tenant_id, developer_id, as_of, source, blockers, summary,
+                    eta_change_days, mood
                 )
-                VALUES (%s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id, developer_id, as_of)
                 DO UPDATE SET
                     source = EXCLUDED.source,
                     blockers = EXCLUDED.blockers,
                     summary = EXCLUDED.summary,
+                    eta_change_days = EXCLUDED.eta_change_days,
+                    mood = EXCLUDED.mood,
                     updated_at = now()
                 """,
                 (
@@ -382,6 +416,8 @@ class PostgresStatusRepository:
                     status.source.value,
                     _string_tuple_to_json(status.blockers),
                     status.summary,
+                    status.eta_change_days,
+                    status.mood.value if status.mood else None,
                 ),
             )
 
@@ -391,7 +427,8 @@ class PostgresStatusRepository:
         with _tracer.start_as_current_span("postgres.status.latest_developer_status"):
             rows = await self._executor.fetch(
                 """
-                SELECT tenant_id, developer_id, as_of, source, blockers, summary
+                SELECT tenant_id, developer_id, as_of, source, blockers, summary,
+                       eta_change_days, mood
                 FROM developer_statuses
                 WHERE tenant_id = %s AND developer_id = %s AND as_of <= %s
                 ORDER BY as_of DESC
@@ -753,6 +790,7 @@ def _checkin_clarification_from_row(row: Mapping[str, object]) -> CheckInClarifi
 
 
 def _developer_status_from_row(row: Mapping[str, object]) -> DeveloperStatus:
+    eta_change_days = row.get("eta_change_days")
     return DeveloperStatus(
         tenant_id=str(row["tenant_id"]),
         developer_id=str(row["developer_id"]),
@@ -760,6 +798,10 @@ def _developer_status_from_row(row: Mapping[str, object]) -> DeveloperStatus:
         source=StatusSource(str(row["source"])),
         blockers=_string_tuple_from_json(row.get("blockers")),
         summary=str(row["summary"]),
+        eta_change_days=eta_change_days
+        if isinstance(eta_change_days, int) and not isinstance(eta_change_days, bool)
+        else None,
+        mood=_mood_from_json(row.get("mood")),
     )
 
 

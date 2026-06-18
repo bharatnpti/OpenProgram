@@ -99,6 +99,8 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
             "source": "confirmed",
             "blockers": {"items": ["dependency"]},
             "summary": "Graph sync is blocked.",
+            "eta_change_days": 2,
+            "mood": "negative",
         }
     )
     node_status = _node_status_from_row(
@@ -211,6 +213,8 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
         source=StatusSource.CONFIRMED,
         blockers=("dependency",),
         summary="Graph sync is blocked.",
+        eta_change_days=2,
+        mood=Mood.NEGATIVE,
     )
     assert node_status == NodeStatus(
         entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.POD, id="pod-1"),
