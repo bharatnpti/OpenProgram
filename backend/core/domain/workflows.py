@@ -83,6 +83,18 @@ class SyncScheduleConfig:
 
 
 @dataclass(frozen=True, kw_only=True)
+class DirectorySyncInput:
+    tenant_id: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class DirectorySyncResult:
+    tenant_id: str
+    synced_count: int
+    deactivated_count: int
+
+
+@dataclass(frozen=True, kw_only=True)
 class ConversationPurgeInput:
     tenant_id: str
     retention_days: int

@@ -95,6 +95,16 @@ def sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
                 cron=settings.calendar_sync_cron,
             )
         )
+    configs.append(
+        SyncScheduleConfig(
+            schedule_id=settings.directory_sync_schedule_id,
+            tenant_id=settings.tenant_id,
+            connector="directory",
+            scope="directory",
+            payload={},
+            cron=settings.directory_sync_cron,
+        )
+    )
     return tuple(configs)
 
 

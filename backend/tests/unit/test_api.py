@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.main import create_app
 from config.settings import Settings
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 from core.ports.llm import LlmProvider
+from infra.persistence.seed_data import seed_demo_graph
 from infra.registry import ServiceRegistry
 
 
@@ -24,11 +26,47 @@ def test_health_and_graph_routes(settings: Settings) -> None:
         assert ready_response.status_code == 200
         assert ready_response.json()["status"] == "ok"
 
+        _seed_demo(app, settings)
         graph_response = client.get("/graph/programs/program-platform/tree")
         assert graph_response.status_code == 200
         body = graph_response.json()
         assert body["root"]["id"] == "program-platform"
         assert len(body["nodes"]) >= 5
+
+
+def test_memory_app_starts_without_demo_seed(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        response = client.get("/programs")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_admin_directory_search_and_member_add_flow(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        sync_response = client.post("/config/directory/sync")
+        search_response = client.get("/config/directory/users", params={"query": "asha"})
+        add_response = client.post(
+            "/config/members/from-directory",
+            json={"external_ids": ["U1001"]},
+        )
+        members_response = client.get("/config/members")
+
+    assert sync_response.status_code == 200
+    assert sync_response.json() == {
+        "tenant_id": "demo",
+        "synced_count": 3,
+        "deactivated_count": 0,
+    }
+    assert search_response.status_code == 200
+    assert search_response.json()["total"] == 1
+    assert [item["external_id"] for item in search_response.json()["items"]] == ["U1001"]
+    assert add_response.status_code == 201
+    assert [item["id"] for item in add_response.json()] == ["U1001"]
+    assert members_response.status_code == 200
+    assert [item["id"] for item in members_response.json()] == ["U1001"]
 
 
 def test_chat_webhook_route_processes_correlated_reply(settings: Settings) -> None:
@@ -192,6 +230,7 @@ def test_dev_focus_is_own_scope(settings: Settings) -> None:
         )
     )
     with TestClient(app) as client:
+        _seed_demo(app, settings)
         focus_response = client.get("/me/focus?as_of=2026-06-15")
         blocked_response = client.get("/pods/pod-runtime/blockers?as_of=2026-06-15")
 
@@ -205,6 +244,7 @@ def test_dev_focus_is_own_scope(settings: Settings) -> None:
 def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
     sm_app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "sm"}))
     with TestClient(sm_app) as client:
+        _seed_demo(sm_app, settings)
         blockers = client.get("/pods/pod-runtime/blockers?as_of=2026-06-15")
         checkins = client.get("/pods/pod-runtime/checkins?as_of=2026-06-15")
         project_denied = client.get("/projects/project-foundations/progress?as_of=2026-06-15")
@@ -217,6 +257,7 @@ def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
 
     po_app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "po"}))
     with TestClient(po_app) as client:
+        _seed_demo(po_app, settings)
         project = client.get("/projects/project-foundations/progress?as_of=2026-06-15")
         pod_denied = client.get("/pods/pod-runtime/checkins?as_of=2026-06-15")
 
@@ -226,6 +267,7 @@ def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
 
     exec_app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "exec"}))
     with TestClient(exec_app) as client:
+        _seed_demo(exec_app, settings)
         tree = client.get("/programs/program-platform/tree?as_of=2026-06-15")
         heatmap = client.get("/portfolio/heatmap?as_of=2026-06-15")
         project_denied = client.get("/projects/project-foundations/progress?as_of=2026-06-15")
@@ -352,6 +394,172 @@ def test_portfolio_heatmap_accepts_program_root_id(settings: Settings) -> None:
     assert response.json()["as_of"] == "2026-06-15"
 
 
+def test_admin_config_crud_populates_directory_and_dashboards(settings: Settings) -> None:
+    app = create_app(
+        settings=settings.model_copy(
+            update={
+                "tenant_default_timezone": "Asia/Kolkata",
+                "checkin_reply_wait_seconds": 60,
+                "checkin_final_reply_wait_seconds": 120,
+            }
+        )
+    )
+    as_of = date.today().isoformat()
+    with TestClient(app) as client:
+        empty_programs = client.get("/programs")
+        program = client.post(
+            "/config/programs",
+            json={
+                "id": "program-alpha",
+                "name": "Alpha Program",
+                "description": "Runtime config program",
+            },
+        )
+        project = client.post(
+            "/config/projects",
+            json={
+                "id": "project-alpha",
+                "name": "Alpha Project",
+                "description": "Configured project",
+                "code": "ALPHA",
+            },
+        )
+        pod = client.post(
+            "/config/pods",
+            json={"id": "pod-alpha", "name": "Alpha Pod"},
+        )
+        member = client.post(
+            "/config/members",
+            json={"id": "dev-ada", "name": "Ada"},
+        )
+        program_link = client.post(
+            "/config/projects/project-alpha/program",
+            json={"program_id": "program-alpha"},
+        )
+        pod_link = client.post("/config/pods/pod-alpha/projects/project-alpha")
+        member_link = client.post(
+            "/config/pods/pod-alpha/members/dev-ada",
+            json={"role": "engineer"},
+        )
+        duplicate_member_link = client.post(
+            "/config/pods/pod-alpha/members/dev-ada",
+            json={"role": "engineer"},
+        )
+        preference = client.put(
+            "/config/members/dev-ada/checkin-preference",
+            json={"local_time": "10:45:00", "weekdays": [0, 2, 4]},
+        )
+        preference_list = client.get("/config/checkin-preferences")
+        projects = client.get(f"/projects?as_of={as_of}")
+        pods = client.get(f"/pods?as_of={as_of}")
+        checkins = client.get(f"/pods/pod-alpha/checkins?as_of={as_of}")
+        progress = client.get(f"/projects/project-alpha/progress?as_of={as_of}")
+        heatmap = client.get(f"/portfolio/heatmap?as_of={as_of}")
+        delete_member_link = client.delete("/config/pods/pod-alpha/members/dev-ada")
+        delete_project = client.delete("/config/projects/project-alpha")
+        projects_after_delete = client.get(f"/projects?as_of={as_of}")
+
+    assert empty_programs.status_code == 200
+    assert empty_programs.json() == []
+    assert program.status_code == 201
+    assert project.status_code == 201
+    assert project.json()["metadata"]["code"] == "ALPHA"
+    assert pod.status_code == 201
+    assert member.status_code == 201
+    assert program_link.status_code == 200
+    assert pod_link.status_code == 200
+    assert member_link.status_code == 200
+    assert member_link.json()["metadata"]["role"] == "engineer"
+    assert duplicate_member_link.status_code == 409
+    assert preference.status_code == 200
+    assert preference.json()["local_time"] == "10:45:00"
+    assert preference.json()["timezone"] == "Asia/Kolkata"
+    assert preference_list.status_code == 200
+    assert preference_list.json()[0]["developer_id"] == "dev-ada"
+    assert projects.status_code == 200
+    assert projects.json()[0]["program_ids"] == ["program-alpha"]
+    assert projects.json()[0]["pod_ids"] == ["pod-alpha"]
+    assert pods.status_code == 200
+    assert pods.json()[0]["member_ids"] == ["dev-ada"]
+    assert checkins.status_code == 200
+    assert checkins.json()["missing"] == 1
+    assert progress.status_code == 200
+    assert progress.json()["project_id"] == "project-alpha"
+    assert heatmap.status_code == 200
+    assert heatmap.json()["cells"]
+    assert delete_member_link.status_code == 204
+    assert delete_project.status_code == 204
+    assert projects_after_delete.status_code == 200
+    assert projects_after_delete.json() == []
+
+
+def test_config_routes_are_admin_only_but_directory_is_readable(settings: Settings) -> None:
+    app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "dev"}))
+    with TestClient(app) as client:
+        denied = client.post(
+            "/config/programs",
+            json={"id": "program-alpha", "name": "Alpha Program"},
+        )
+        directory = client.get("/programs")
+
+    assert denied.status_code == 403
+    assert directory.status_code == 200
+
+
+def test_config_crud_full_lifecycle(settings: Settings) -> None:
+    app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "admin"}))
+    with TestClient(app) as client:
+        program = client.post(
+            "/config/programs",
+            json={"id": "program-alpha", "name": "Alpha Program"},
+        )
+        project = client.post(
+            "/config/projects",
+            json={"id": "project-alpha", "name": "Alpha Project", "code": "ALPHA"},
+        )
+        pod = client.post("/config/pods", json={"id": "pod-alpha", "name": "Alpha Pod"})
+        member = client.post("/config/members", json={"id": "dev-ada", "name": "Ada"})
+        fetched_program = client.get("/config/programs/program-alpha")
+        updated_program = client.put(
+            "/config/programs/program-alpha",
+            json={"name": "Alpha Program v2"},
+        )
+        program_link = client.post(
+            "/config/projects/project-alpha/program",
+            json={"program_id": "program-alpha"},
+        )
+        pod_link = client.post("/config/pods/pod-alpha/projects/project-alpha")
+        member_link = client.post(
+            "/config/pods/pod-alpha/members/dev-ada",
+            json={"role": "engineer"},
+        )
+        programs = client.get("/config/programs")
+        projects = client.get("/projects")
+        fetched_member = client.get("/config/members/dev-ada")
+        delete_member = client.delete("/config/members/dev-ada")
+        missing_member = client.get("/config/members/dev-ada")
+
+    assert program.status_code == 201
+    assert project.status_code == 201
+    assert pod.status_code == 201
+    assert member.status_code == 201
+    assert fetched_program.status_code == 200
+    assert fetched_program.json()["name"] == "Alpha Program"
+    assert updated_program.status_code == 200
+    assert updated_program.json()["name"] == "Alpha Program v2"
+    assert program_link.status_code == 200
+    assert pod_link.status_code == 200
+    assert member_link.status_code == 200
+    assert member_link.json()["metadata"]["role"] == "engineer"
+    assert any(item["id"] == "program-alpha" for item in programs.json())
+    assert any(item["id"] == "project-alpha" for item in projects.json())
+    assert projects.json()[0]["program_ids"] == ["program-alpha"]
+    assert projects.json()[0]["pod_ids"] == ["pod-alpha"]
+    assert fetched_member.status_code == 200
+    assert delete_member.status_code == 204
+    assert missing_member.status_code == 404
+
+
 @dataclass
 class _SequenceLlmProvider:
     texts: list[str]
@@ -381,3 +589,13 @@ class _ScriptedLlmRegistry(ServiceRegistry):
 
     def llm_provider(self) -> LlmProvider:
         return self._scripted_llm
+
+
+def _seed_demo(app: FastAPI, settings: Settings) -> None:
+    asyncio.run(
+        seed_demo_graph(
+            app.state.registry.graph_repository(),
+            app.state.registry.time_series_repository(),
+            settings.tenant_id,
+        )
+    )

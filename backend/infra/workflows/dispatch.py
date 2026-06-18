@@ -4,13 +4,18 @@ import re
 from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 
-from core.domain.workflows import DeveloperCheckinDispatch, SyncDispatchInput, SyncScheduleConfig
+from core.domain.workflows import (
+    DirectorySyncInput,
+    DeveloperCheckinDispatch,
+    SyncDispatchInput,
+    SyncScheduleConfig,
+)
 from infra.workflows.calendar_sync import CalendarSyncInput
 from infra.workflows.daily_checkin import DailyCheckinInput
 from infra.workflows.git_sync import GitSyncInput
 from infra.workflows.jira_sync import JiraSyncInput
 
-type SyncWorkflowInput = JiraSyncInput | GitSyncInput | CalendarSyncInput
+type SyncWorkflowInput = JiraSyncInput | GitSyncInput | CalendarSyncInput | DirectorySyncInput
 
 
 def daily_checkin_input(payload: DeveloperCheckinDispatch) -> DailyCheckinInput:
@@ -68,6 +73,8 @@ def sync_workflow_input(input: SyncDispatchInput) -> SyncWorkflowInput:
             display_name=_optional_str(input.payload, "display_name"),
             observed_at=_optional_str(input.payload, "observed_at"),
         )
+    if connector == "directory":
+        return DirectorySyncInput(tenant_id=input.tenant_id)
     raise ValueError(f"unsupported sync connector: {input.connector}")
 
 
@@ -79,6 +86,8 @@ def sync_workflow_name(input: SyncDispatchInput) -> str:
         return "git"
     if connector == "calendar":
         return "calendar"
+    if connector == "directory":
+        return "directory"
     raise ValueError(f"unsupported sync connector: {input.connector}")
 
 
@@ -95,6 +104,8 @@ def _connector(value: str) -> str:
         return "vcs"
     if normalized in {"calendar", "google_calendar"}:
         return "calendar"
+    if normalized in {"directory", "directory_users"}:
+        return "directory"
     return normalized
 
 

@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 import pytest
 
 from core.domain.conversation import ConversationRole, ConversationTurn
+from core.domain.directory import DirectoryUser
 from core.domain.errors import ProviderUnavailable
 from core.domain.graph import EntityRef, NodeKind
 from core.domain.integrations import (
@@ -35,6 +36,7 @@ from core.domain.status import (
     StatusSource,
 )
 from core.ports.calendar import CalendarProvider
+from core.ports.directory import DirectoryUserRepository
 from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.ci import CiProvider
 from core.ports.issue_tracker import IssueTracker
@@ -183,6 +185,10 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
     preference = CheckInPreference(tenant_id="demo", developer_id="dev-1")
     await repository.record_checkin_preference(preference)
     assert await repository.checkin_preference_for("demo", "dev-1") == preference
+    assert await repository.list_checkin_preferences("demo") == [preference]
+    await repository.delete_checkin_preference("demo", "dev-1")
+    assert await repository.checkin_preference_for("demo", "dev-1") is None
+    assert await repository.list_checkin_preferences("demo") == []
 
     schedule_run = CheckInScheduleRun(
         tenant_id="demo",
@@ -249,6 +255,67 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
     assert latest == status
     missing = await repository.developers_without_checkin("demo", date(2026, 1, 10))
     assert all(isinstance(developer_id, str) for developer_id in missing)
+
+
+async def assert_directory_user_repository_contract(repository: DirectoryUserRepository) -> None:
+    users = [
+        DirectoryUser(
+            tenant_id="demo",
+            external_id="U1001",
+            display_name="Asha Rao",
+            email="asha@example.com",
+            handle="asha",
+            avatar_url=None,
+            title="Engineering Manager",
+            source="slack",
+        ),
+        DirectoryUser(
+            tenant_id="demo",
+            external_id="U1002",
+            display_name="Liam Chen",
+            email="liam@example.com",
+            handle="liam",
+            avatar_url=None,
+            title="Platform Engineer",
+            source="slack",
+        ),
+        DirectoryUser(
+            tenant_id="demo",
+            external_id="U1003",
+            display_name="Mina Patel",
+            email="mina@example.com",
+            handle="mina",
+            avatar_url=None,
+            title="Product Owner",
+            source="slack",
+        ),
+    ]
+    await repository.upsert_users(users)
+    await repository.upsert_users(
+        [
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U1004",
+                display_name="Zoya Khan",
+                email="zoya@example.com",
+                handle="zoya",
+                avatar_url=None,
+                title="Designer",
+                source="slack",
+            )
+        ]
+    )
+
+    assert await repository.count("demo", "a") == 4
+    assert [user.external_id for user in await repository.search("demo", "li", limit=10)] == [
+        "U1002"
+    ]
+    assert await repository.get("demo", "U1001") is not None
+    assert await repository.deactivate_missing("demo", ["U1001", "U1002"]) == 2
+    assert [user.external_id for user in await repository.search("demo", "", limit=10)] == [
+        "U1001",
+        "U1002",
+    ]
 
 
 async def assert_rollup_repository_contract(repository: RollupRepository) -> None:

@@ -25,6 +25,8 @@ class SlackHttpClient(Protocol):
 
     async def latest_reply(self, thread_id: str) -> Mapping[str, object] | None: ...
 
+    async def list_users(self, cursor: str | None = None) -> Mapping[str, object]: ...
+
 
 class ConversationCache(Protocol):
     async def get(self, user_id: str) -> str | None: ...
@@ -148,6 +150,9 @@ class DisabledSlackHttpClient:
     async def latest_reply(self, thread_id: str) -> Mapping[str, object] | None:
         raise ProviderUnavailable("slack_bot_token is required to fetch replies")
 
+    async def list_users(self, cursor: str | None = None) -> Mapping[str, object]:
+        raise ProviderUnavailable("slack_bot_token is required to list users")
+
 
 @dataclass(frozen=True)
 class HttpSlackClient:
@@ -183,6 +188,13 @@ class HttpSlackClient:
                 return None
             first = messages[0]
             return first if isinstance(first, Mapping) else None
+
+    async def list_users(self, cursor: str | None = None) -> Mapping[str, object]:
+        with _tracer.start_as_current_span("slack.http.list_users"):
+            params: dict[str, str] = {"limit": "200"}
+            if cursor:
+                params["cursor"] = cursor
+            return await self._get("/users.list", params=params)
 
     async def _post(self, path: str, json: Mapping[str, object]) -> Mapping[str, object]:
         return await self._request("POST", path, json=json)

@@ -7,12 +7,14 @@ import {
   RefreshCw,
   UserRound,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { apiClient } from "../../api/client";
 import type { Rag, StatusSource } from "../../api/schema";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Select } from "../../components/ui/select";
+import { resolveSelection } from "../../lib/selection";
 import { HeatmapChart } from "./HeatmapChart";
 import { HierarchyFlow } from "./HierarchyFlow";
 
@@ -22,10 +24,62 @@ type DashboardRole = "dev" | "sm" | "po" | "exec";
 
 export function PersonaDashboard({ role }: { role: DashboardRole }) {
   const [asOf, setAsOf] = useState(todayIso);
+  const [podId, setPodId] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [programId, setProgramId] = useState("");
+
   const showFocus = role === "dev";
   const showTeam = role === "sm";
   const showProgress = role === "po";
   const showExec = role === "exec";
+
+  const podsDirectory = useQuery({
+    queryKey: ["directory", "pods", asOf],
+    queryFn: () => apiClient.pods(asOf),
+    enabled: showTeam,
+  });
+  const projectsDirectory = useQuery({
+    queryKey: ["directory", "projects", asOf],
+    queryFn: () => apiClient.projects(asOf),
+    enabled: showProgress,
+  });
+  const programsDirectory = useQuery({
+    queryKey: ["directory", "programs", asOf],
+    queryFn: () => apiClient.programs(asOf),
+    enabled: showExec,
+  });
+
+  const selectedPodId = useMemo(
+    () => resolveSelection(podId, podsDirectory.data),
+    [podId, podsDirectory.data],
+  );
+  const selectedProjectId = useMemo(
+    () => resolveSelection(projectId, projectsDirectory.data),
+    [projectId, projectsDirectory.data],
+  );
+  const selectedProgramId = useMemo(
+    () => resolveSelection(programId, programsDirectory.data),
+    [programId, programsDirectory.data],
+  );
+
+  useEffect(() => {
+    if (selectedPodId !== podId) {
+      setPodId(selectedPodId);
+    }
+  }, [podId, selectedPodId]);
+  useEffect(() => {
+    if (selectedProjectId !== projectId) {
+      setProjectId(selectedProjectId);
+    }
+  }, [projectId, selectedProjectId]);
+  useEffect(() => {
+    if (selectedProgramId !== programId) {
+      setProgramId(selectedProgramId);
+    }
+  }, [programId, selectedProgramId]);
+
+  const selectedPod = podsDirectory.data?.find((pod) => pod.id === selectedPodId);
+
   const health = useQuery({ queryKey: ["health"], queryFn: apiClient.health });
   const focus = useQuery({
     queryKey: ["persona", "focus", asOf],
@@ -33,30 +87,30 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
     enabled: showFocus,
   });
   const blockers = useQuery({
-    queryKey: ["persona", "blockers", "pod-runtime", asOf],
-    queryFn: () => apiClient.podBlockers("pod-runtime", asOf),
-    enabled: showTeam,
+    queryKey: ["persona", "blockers", selectedPodId, asOf],
+    queryFn: () => apiClient.podBlockers(selectedPodId, asOf),
+    enabled: showTeam && Boolean(selectedPodId),
   });
   const checkins = useQuery({
-    queryKey: ["persona", "checkins", "pod-runtime", asOf],
-    queryFn: () => apiClient.podCheckins("pod-runtime", asOf),
-    enabled: showTeam,
+    queryKey: ["persona", "checkins", selectedPodId, asOf],
+    queryFn: () => apiClient.podCheckins(selectedPodId, asOf),
+    enabled: showTeam && Boolean(selectedPodId),
   });
   const progress = useQuery({
-    queryKey: ["persona", "progress", "project-foundations", asOf],
-    queryFn: () => apiClient.projectProgress("project-foundations", asOf),
-    enabled: showProgress,
+    queryKey: ["persona", "progress", selectedProjectId, asOf],
+    queryFn: () => apiClient.projectProgress(selectedProjectId, asOf),
+    enabled: showProgress && Boolean(selectedProjectId),
   });
   const tree = useQuery({
-    queryKey: ["persona", "tree", "program-platform", asOf],
-    queryFn: () => apiClient.personaProgramTree("program-platform", asOf),
-    enabled: showExec,
+    queryKey: ["persona", "tree", selectedProgramId, asOf],
+    queryFn: () => apiClient.personaProgramTree(selectedProgramId, asOf),
+    enabled: showExec && Boolean(selectedProgramId),
     staleTime: 5 * 60_000,
   });
   const heatmap = useQuery({
-    queryKey: ["persona", "heatmap", "program-platform", asOf],
-    queryFn: () => apiClient.portfolioHeatmap(asOf, "program-platform"),
-    enabled: showExec,
+    queryKey: ["persona", "heatmap", selectedProgramId, asOf],
+    queryFn: () => apiClient.portfolioHeatmap(asOf, selectedProgramId),
+    enabled: showExec && Boolean(selectedProgramId),
     staleTime: 5 * 60_000,
   });
 
@@ -85,6 +139,45 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {showTeam && (
+              <Select
+                value={selectedPodId}
+                onChange={(event) => setPodId(event.target.value)}
+                className="min-w-44"
+              >
+                {podsDirectory.data?.map((pod) => (
+                  <option key={pod.id} value={pod.id}>
+                    {pod.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+            {showProgress && (
+              <Select
+                value={selectedProjectId}
+                onChange={(event) => setProjectId(event.target.value)}
+                className="min-w-44"
+              >
+                {projectsDirectory.data?.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+            {showExec && (
+              <Select
+                value={selectedProgramId}
+                onChange={(event) => setProgramId(event.target.value)}
+                className="min-w-44"
+              >
+                {programsDirectory.data?.map((program) => (
+                  <option key={program.id} value={program.id}>
+                    {program.name}
+                  </option>
+                ))}
+              </Select>
+            )}
             <input
               type="date"
               className="h-9 rounded border border-border bg-white px-3 text-sm"
@@ -202,7 +295,16 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
             )}
 
             {showTeam && (
-              <Panel title="SM Check-ins" action={<Badge tone="info">pod-runtime</Badge>}>
+              <Panel
+                title="SM Check-ins"
+                action={
+                  selectedPod ? (
+                    <Badge tone="info">{selectedPod.name}</Badge>
+                  ) : (
+                    <Badge tone="warning">no pod</Badge>
+                  )
+                }
+              >
                 <LoadState query={checkins}>
                   {checkins.data && (
                     <div className="space-y-3">

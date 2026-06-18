@@ -10,6 +10,7 @@ from redis.asyncio import Redis
 from config.settings import Settings
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.availability import AvailabilityService
+from core.application.directory_sync_service import DirectorySyncService
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import (
     CalendarReadSyncService,
@@ -19,6 +20,7 @@ from core.application.sync_services import (
 from core.domain.messaging import InboundMessage
 from core.ports.auth import AuthProvider, CurrentPrincipal
 from core.ports.calendar import CalendarProvider
+from core.ports.directory import DirectoryProvider, DirectoryUserRepository
 from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
@@ -34,20 +36,21 @@ from core.ports.repositories import (
 from core.ports.secrets import SecretStore
 from core.ports.vcs import VcsProvider
 from core.ports.workflows import WorkflowScheduler, WorkflowWorker
-from infra.adapters import catalog
 from infra.adapters.auth.dev import DevAuthProvider, DevCurrentPrincipal
+from infra.adapters import catalog
 from infra.adapters.redis_client import RedisClientProvider
 from infra.adapters.secrets.encrypted import (
     FernetSecretStore,
     InMemoryEncryptedSecretRecordStore,
     PostgresEncryptedSecretRecordStore,
 )
-from infra.persistence.in_memory_graph import InMemoryGraphStore
+from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
 from infra.persistence.postgres_graph import (
     PostgresGraphRepository,
     PostgresTimeSeriesRepository,
     PostgresVectorStore,
 )
+from infra.persistence.postgres_directory import PostgresDirectoryUserRepository
 from infra.persistence.postgres_status import (
     PostgresConversationRepository,
     PostgresRollupRepository,
@@ -83,6 +86,11 @@ class ServiceRegistry:
     _issue_tracker: IssueTracker | None = field(default=None, init=False)
     _vcs_provider: VcsProvider | None = field(default=None, init=False)
     _calendar_provider: CalendarProvider | None = field(default=None, init=False)
+    _directory_provider: DirectoryProvider | None = field(default=None, init=False)
+    _postgres_directory_user_repository: PostgresDirectoryUserRepository | None = field(
+        default=None,
+        init=False,
+    )
 
     def graph_repository(self) -> GraphRepository:
         if self.settings.runtime_mode == "memory":
@@ -185,6 +193,20 @@ class ServiceRegistry:
             )
         return self._calendar_provider
 
+    def directory_provider(self) -> DirectoryProvider:
+        if self._directory_provider is None:
+            self._directory_provider = catalog.build_directory_provider(self.settings)
+        return self._directory_provider
+
+    def directory_user_repository(self) -> DirectoryUserRepository:
+        if self.settings.runtime_mode == "memory":
+            return InMemoryDirectoryUserRepository(self._memory_graph_store())
+        if self._postgres_directory_user_repository is None:
+            self._postgres_directory_user_repository = PostgresDirectoryUserRepository(
+                self._executor()
+            )
+        return self._postgres_directory_user_repository
+
     def issue_read_sync_service(self) -> IssueReadSyncService:
         return IssueReadSyncService(
             issue_tracker=self.issue_tracker(),
@@ -206,6 +228,12 @@ class ServiceRegistry:
             calendar_provider=self.calendar_provider(),
             time_series_repository=self.time_series_repository(),
             cursor_repository=self.sync_cursor_repository(),
+        )
+
+    def directory_sync_service(self) -> DirectorySyncService:
+        return DirectorySyncService(
+            provider=self.directory_provider(),
+            repository=self.directory_user_repository(),
         )
 
     def availability_service(self) -> AvailabilityService:

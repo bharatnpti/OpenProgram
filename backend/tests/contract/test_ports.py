@@ -13,6 +13,7 @@ from core.domain.integrations import (
 from infra.adapters.chat.fake import FakeChatWebhookMapper
 from tests.contract.contracts import (
     assert_calendar_contract,
+    assert_directory_user_repository_contract,
     assert_chat_contract,
     assert_chat_webhook_mapper_contract,
     assert_ci_contract,
@@ -28,6 +29,7 @@ from tests.contract.fakes import (
     FakeChatProvider,
     FakeCiProvider,
     FakeConversationRepository,
+    FakeDirectoryUserRepository,
     FakeIssueTracker,
     FakeRollupRepository,
     FakeStatusRepository,
@@ -118,3 +120,7 @@ async def test_fake_calendar_provider_satisfies_contract() -> None:
         ]
     )
     await assert_calendar_contract(provider)
+
+
+async def test_fake_directory_user_repository_satisfies_contract() -> None:
+    await assert_directory_user_repository_contract(FakeDirectoryUserRepository())

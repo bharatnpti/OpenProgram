@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from core.domain.conversation import ConversationTurn
+from core.domain.directory import DirectoryUser
 from core.domain.errors import ProviderUnavailable
 from core.domain.graph import EntityRef
 from core.domain.integrations import (
@@ -29,6 +31,7 @@ from core.domain.status import (
     CheckInScheduleRun,
     DeveloperStatus,
 )
+from core.ports.directory import DirectoryUserRepository
 from infra.adapters.llm.fake import FakeLlmProvider
 
 __all__ = ["FakeLlmProvider"]
@@ -252,6 +255,19 @@ class FakeStatusRepository:
     ) -> CheckInPreference | None:
         return self.checkin_preferences.get((tenant_id, developer_id))
 
+    async def list_checkin_preferences(self, tenant_id: str) -> list[CheckInPreference]:
+        return sorted(
+            (
+                preference
+                for (preference_tenant_id, _), preference in self.checkin_preferences.items()
+                if preference_tenant_id == tenant_id
+            ),
+            key=lambda preference: preference.developer_id,
+        )
+
+    async def delete_checkin_preference(self, tenant_id: str, developer_id: str) -> None:
+        self.checkin_preferences.pop((tenant_id, developer_id), None)
+
     async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None:
         self.checkin_schedule_runs[(run.tenant_id, run.developer_id, run.checkin_date)] = run
 
@@ -351,6 +367,82 @@ class FakeStatusRepository:
             and checkin.replied_at.date() == as_of
         }
         return sorted(known_developer_ids - replied_developer_ids)
+
+
+@dataclass
+class FakeDirectoryUserRepository(DirectoryUserRepository):
+    users: dict[tuple[str, str], DirectoryUser] = field(default_factory=dict)
+
+    async def upsert_users(self, users: Sequence[DirectoryUser]) -> None:
+        for user in users:
+            self.users[(user.tenant_id, user.external_id)] = user
+
+    async def search(
+        self,
+        tenant_id: str,
+        query: str = "",
+        limit: int = 25,
+        offset: int = 0,
+    ) -> list[DirectoryUser]:
+        query_value = query.strip().lower()
+        filtered = sorted(
+            (
+                user
+                for (user_tenant, _), user in self.users.items()
+                if user_tenant == tenant_id
+                and user.is_active
+                and (
+                    not query_value
+                    or query_value in user.display_name.lower()
+                    or (user.email is not None and query_value in user.email.lower())
+                    or (user.handle is not None and query_value in user.handle.lower())
+                    or query_value in user.external_id.lower()
+                )
+            ),
+            key=lambda user: (user.display_name.lower(), user.external_id),
+        )
+        return filtered[offset : offset + limit]
+
+    async def count(self, tenant_id: str, query: str = "") -> int:
+        query_value = query.strip().lower()
+        return sum(
+            1
+            for (user_tenant, _), user in self.users.items()
+            if user_tenant == tenant_id
+            and user.is_active
+            and (
+                not query_value
+                or query_value in user.display_name.lower()
+                or (user.email is not None and query_value in user.email.lower())
+                or (user.handle is not None and query_value in user.handle.lower())
+                or query_value in user.external_id.lower()
+            )
+        )
+
+    async def get(self, tenant_id: str, external_id: str) -> DirectoryUser | None:
+        return self.users.get((tenant_id, external_id))
+
+    async def deactivate_missing(self, tenant_id: str, seen_external_ids: Sequence[str]) -> int:
+        seen = set(seen_external_ids)
+        updated = 0
+        for key, user in list(self.users.items()):
+            if key[0] != tenant_id or not user.is_active or user.external_id in seen:
+                continue
+            self.users[key] = DirectoryUser(
+                tenant_id=user.tenant_id,
+                external_id=user.external_id,
+                display_name=user.display_name,
+                email=user.email,
+                handle=user.handle,
+                avatar_url=user.avatar_url,
+                title=user.title,
+                is_active=False,
+                source=user.source,
+                synced_at=user.synced_at,
+                metadata=dict(user.metadata),
+            )
+            updated += 1
+        return updated
 
 
 @dataclass

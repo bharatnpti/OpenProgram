@@ -1,12 +1,23 @@
 import type {
   CheckinPreferenceResponse,
   CheckinPreferenceUpdateRequest,
+  ConfigEdgeResponse,
+  ConfigNodeCreateRequest,
+  ConfigNodeResponse,
+  ConfigNodeUpdateRequest,
+  DirectoryItemResponse,
+  DirectorySearchResponse,
+  DirectorySyncResponse,
+  MemberFromDirectoryRequest,
   FocusResponse,
   GraphTreeDto,
   HealthResponse,
+  MemberTaskAssignmentRequest,
+  PodMemberLinkRequest,
   PodBlockersResponse,
   PodCheckinsResponse,
   PortfolioHeatmapResponse,
+  ProgramProjectLinkRequest,
   ProgramTreeResponse,
   ProjectProgressResponse,
   ReadyResponse,
@@ -29,6 +40,9 @@ async function requestJson<T>(
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
+  if (response.status === 204) {
+    return undefined as T;
+  }
   return (await response.json()) as T;
 }
 
@@ -37,6 +51,11 @@ export const apiClient = {
   ready: () => requestJson<ReadyResponse>("/ready"),
   programTree: (programId: string) =>
     requestJson<GraphTreeDto>(`/graph/programs/${programId}/tree`),
+  programs: (asOf?: string) =>
+    requestJson<DirectoryItemResponse[]>(withAsOf("/programs", asOf)),
+  pods: (asOf?: string) => requestJson<DirectoryItemResponse[]>(withAsOf("/pods", asOf)),
+  projects: (asOf?: string) =>
+    requestJson<DirectoryItemResponse[]>(withAsOf("/projects", asOf)),
   focus: (asOf?: string) => requestJson<FocusResponse>(withAsOf("/me/focus", asOf)),
   podBlockers: (podId: string, asOf?: string) =>
     requestJson<PodBlockersResponse>(withAsOf(`/pods/${podId}/blockers`, asOf)),
@@ -56,6 +75,93 @@ export const apiClient = {
       method: "PUT",
       body: input,
     }),
+  configPrograms: () => requestJson<ConfigNodeResponse[]>("/config/programs"),
+  createConfigProgram: (input: ConfigNodeCreateRequest) =>
+    requestJson<ConfigNodeResponse>("/config/programs", { method: "POST", body: input }),
+  updateConfigProgram: (id: string, input: ConfigNodeUpdateRequest) =>
+    requestJson<ConfigNodeResponse>(`/config/programs/${id}`, { method: "PUT", body: input }),
+  deleteConfigProgram: (id: string) =>
+    requestJson<void>(`/config/programs/${id}`, { method: "DELETE" }),
+  configProjects: () => requestJson<ConfigNodeResponse[]>("/config/projects"),
+  createConfigProject: (input: ConfigNodeCreateRequest) =>
+    requestJson<ConfigNodeResponse>("/config/projects", { method: "POST", body: input }),
+  updateConfigProject: (id: string, input: ConfigNodeUpdateRequest) =>
+    requestJson<ConfigNodeResponse>(`/config/projects/${id}`, { method: "PUT", body: input }),
+  deleteConfigProject: (id: string) =>
+    requestJson<void>(`/config/projects/${id}`, { method: "DELETE" }),
+  configPods: () => requestJson<ConfigNodeResponse[]>("/config/pods"),
+  createConfigPod: (input: ConfigNodeCreateRequest) =>
+    requestJson<ConfigNodeResponse>("/config/pods", { method: "POST", body: input }),
+  updateConfigPod: (id: string, input: ConfigNodeUpdateRequest) =>
+    requestJson<ConfigNodeResponse>(`/config/pods/${id}`, { method: "PUT", body: input }),
+  deleteConfigPod: (id: string) => requestJson<void>(`/config/pods/${id}`, { method: "DELETE" }),
+  configMembers: () => requestJson<ConfigNodeResponse[]>("/config/members"),
+  searchDirectory: (query = "", limit = 25, offset = 0) =>
+    requestJson<DirectorySearchResponse>(
+      withQuery("/config/directory/users", {
+        query,
+        limit: String(limit),
+        offset: String(offset),
+      }),
+    ),
+  syncDirectory: () => requestJson<DirectorySyncResponse>("/config/directory/sync", {
+    method: "POST",
+  }),
+  addMembersFromDirectory: (externalIds: string[]) =>
+    requestJson<ConfigNodeResponse[]>("/config/members/from-directory", {
+      method: "POST",
+      body: { external_ids: externalIds } satisfies MemberFromDirectoryRequest,
+    }),
+  createConfigMember: (input: ConfigNodeCreateRequest) =>
+    requestJson<ConfigNodeResponse>("/config/members", { method: "POST", body: input }),
+  updateConfigMember: (id: string, input: ConfigNodeUpdateRequest) =>
+    requestJson<ConfigNodeResponse>(`/config/members/${id}`, { method: "PUT", body: input }),
+  deleteConfigMember: (id: string) =>
+    requestJson<void>(`/config/members/${id}`, { method: "DELETE" }),
+  linkProjectProgram: (projectId: string, input: ProgramProjectLinkRequest) =>
+    requestJson<ConfigEdgeResponse>(`/config/projects/${projectId}/program`, {
+      method: "POST",
+      body: input,
+    }),
+  unlinkProjectProgram: (projectId: string, programId?: string) =>
+    requestJson<void>(
+      withQuery(`/config/projects/${projectId}/program`, { program_id: programId }),
+      { method: "DELETE" },
+    ),
+  linkPodProject: (podId: string, projectId: string) =>
+    requestJson<ConfigEdgeResponse>(`/config/pods/${podId}/projects/${projectId}`, {
+      method: "POST",
+    }),
+  unlinkPodProject: (podId: string, projectId: string) =>
+    requestJson<void>(`/config/pods/${podId}/projects/${projectId}`, { method: "DELETE" }),
+  linkPodMember: (podId: string, memberId: string, input: PodMemberLinkRequest) =>
+    requestJson<ConfigEdgeResponse>(`/config/pods/${podId}/members/${memberId}`, {
+      method: "POST",
+      body: input,
+    }),
+  unlinkPodMember: (podId: string, memberId: string) =>
+    requestJson<void>(`/config/pods/${podId}/members/${memberId}`, { method: "DELETE" }),
+  assignMemberTask: (memberId: string, input: MemberTaskAssignmentRequest) =>
+    requestJson<ConfigEdgeResponse>(`/config/members/${memberId}/tasks`, {
+      method: "POST",
+      body: input,
+    }),
+  unassignMemberTask: (memberId: string, taskId: string) =>
+    requestJson<void>(withQuery(`/config/members/${memberId}/tasks`, { task_id: taskId }), {
+      method: "DELETE",
+    }),
+  configMemberCheckinPreference: (memberId: string) =>
+    requestJson<CheckinPreferenceResponse>(`/config/members/${memberId}/checkin-preference`),
+  updateConfigMemberCheckinPreference: (
+    memberId: string,
+    input: CheckinPreferenceUpdateRequest,
+  ) =>
+    requestJson<CheckinPreferenceResponse>(`/config/members/${memberId}/checkin-preference`, {
+      method: "PUT",
+      body: input,
+    }),
+  configCheckinPreferences: () =>
+    requestJson<CheckinPreferenceResponse[]>("/config/checkin-preferences"),
 };
 
 function withAsOf(path: string, asOf?: string): string {

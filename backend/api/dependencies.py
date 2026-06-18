@@ -5,6 +5,8 @@ from typing import Annotated, cast
 from fastapi import Header, Request
 
 from config.settings import Settings
+from core.application.config_service import ConfigService, DirectoryService
+from core.application.directory_sync_service import DirectorySyncService
 from core.application.graph_queries import GraphQueryService
 from core.application.persona_views import PersonaViewService
 from core.domain.auth import Principal
@@ -33,6 +35,28 @@ def get_graph_query_service(request: Request) -> GraphQueryService:
         graph_repository=registry.graph_repository(),
         time_series_repository=registry.time_series_repository(),
     )
+
+
+def get_config_service(request: Request) -> ConfigService:
+    registry = get_registry(request)
+    return ConfigService(
+        graph_repository=registry.graph_repository(),
+        status_repository=registry.status_repository(),
+        directory_repository=registry.directory_user_repository(),
+    )
+
+
+def get_directory_service(request: Request) -> DirectoryService:
+    registry = get_registry(request)
+    return DirectoryService(
+        graph_repository=registry.graph_repository(),
+        rollup_repository=registry.rollup_repository(),
+    )
+
+
+def get_directory_sync_service(request: Request) -> DirectorySyncService:
+    registry = get_registry(request)
+    return registry.directory_sync_service()
 
 
 def get_persona_view_service(request: Request) -> PersonaViewService:
