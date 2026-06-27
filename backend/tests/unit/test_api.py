@@ -7,12 +7,14 @@ from datetime import UTC, date, datetime
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from api.dependencies import get_directory_sync_service
 from api.main import create_app
 from config.settings import Settings
+from core.domain.errors import ProviderConfigurationError
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 from core.ports.llm import LlmProvider
-from infra.persistence.seed_data import seed_demo_graph
 from infra.registry import ServiceRegistry
+from tests.fixtures.demo_graph import populate_demo_graph
 
 
 def test_health_and_graph_routes(settings: Settings) -> None:
@@ -26,7 +28,7 @@ def test_health_and_graph_routes(settings: Settings) -> None:
         assert ready_response.status_code == 200
         assert ready_response.json()["status"] == "ok"
 
-        _seed_demo(app, settings)
+        _populate_graph_fixture(app, settings)
         graph_response = client.get("/graph/programs/program-platform/tree")
         assert graph_response.status_code == 200
         body = graph_response.json()
@@ -34,7 +36,7 @@ def test_health_and_graph_routes(settings: Settings) -> None:
         assert len(body["nodes"]) >= 5
 
 
-def test_memory_app_starts_without_demo_seed(settings: Settings) -> None:
+def test_memory_app_starts_without_demo_data(settings: Settings) -> None:
     app = create_app(settings=settings)
     with TestClient(app) as client:
         response = client.get("/programs")
@@ -95,6 +97,22 @@ def test_admin_directory_sync_provider_unavailable_returns_503(settings: Setting
 
     assert response.status_code == 503
     assert "slack_bot_token" in response.json()["detail"]
+
+
+def test_admin_directory_sync_provider_configuration_error_returns_424(
+    settings: Settings,
+) -> None:
+    app = create_app(settings=settings)
+    app.dependency_overrides[get_directory_sync_service] = lambda: (
+        _ProviderConfigurationFailingDirectorySyncService()
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post("/config/directory/sync")
+
+    assert response.status_code == 424
+    detail = response.json()["detail"]
+    assert "users:read" in detail
+    assert "slack bot token" in detail
 
 
 def test_admin_add_from_directory_validates_batch_before_writing(
@@ -298,7 +316,7 @@ def test_dev_focus_is_own_scope(settings: Settings) -> None:
         )
     )
     with TestClient(app) as client:
-        _seed_demo(app, settings)
+        _populate_graph_fixture(app, settings)
         focus_response = client.get("/me/focus?as_of=2026-06-15")
         blocked_response = client.get("/pods/pod-runtime/blockers?as_of=2026-06-15")
 
@@ -312,7 +330,7 @@ def test_dev_focus_is_own_scope(settings: Settings) -> None:
 def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
     sm_app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "sm"}))
     with TestClient(sm_app) as client:
-        _seed_demo(sm_app, settings)
+        _populate_graph_fixture(sm_app, settings)
         blockers = client.get("/pods/pod-runtime/blockers?as_of=2026-06-15")
         checkins = client.get("/pods/pod-runtime/checkins?as_of=2026-06-15")
         project_denied = client.get("/projects/project-foundations/progress?as_of=2026-06-15")
@@ -325,7 +343,7 @@ def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
 
     po_app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "po"}))
     with TestClient(po_app) as client:
-        _seed_demo(po_app, settings)
+        _populate_graph_fixture(po_app, settings)
         project = client.get("/projects/project-foundations/progress?as_of=2026-06-15")
         pod_denied = client.get("/pods/pod-runtime/checkins?as_of=2026-06-15")
 
@@ -335,7 +353,7 @@ def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
 
     exec_app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "exec"}))
     with TestClient(exec_app) as client:
-        _seed_demo(exec_app, settings)
+        _populate_graph_fixture(exec_app, settings)
         tree = client.get("/programs/program-platform/tree?as_of=2026-06-15")
         heatmap = client.get("/portfolio/heatmap?as_of=2026-06-15")
         project_denied = client.get("/projects/project-foundations/progress?as_of=2026-06-15")
@@ -629,6 +647,14 @@ def test_config_crud_full_lifecycle(settings: Settings) -> None:
 
 
 @dataclass
+class _ProviderConfigurationFailingDirectorySyncService:
+    async def sync(self, tenant_id: str) -> object:
+        raise ProviderConfigurationError(
+            "slack bot token is missing required OAuth scope(s) for users.list: users:read"
+        )
+
+
+@dataclass
 class _SequenceLlmProvider:
     texts: list[str]
     requests: list[LlmRequest] = field(default_factory=list)
@@ -659,9 +685,9 @@ class _ScriptedLlmRegistry(ServiceRegistry):
         return self._scripted_llm
 
 
-def _seed_demo(app: FastAPI, settings: Settings) -> None:
+def _populate_graph_fixture(app: FastAPI, settings: Settings) -> None:
     asyncio.run(
-        seed_demo_graph(
+        populate_demo_graph(
             app.state.registry.graph_repository(),
             app.state.registry.time_series_repository(),
             settings.tenant_id,

@@ -17,7 +17,6 @@ from core.ports.repositories import (
     TimeSeriesRepository,
 )
 
-PORTFOLIO_ROOT_ID = "program-platform"
 TASK_FACT_LOOKBACK_DAYS = 30
 
 
@@ -392,19 +391,37 @@ class PersonaViewService:
         program_root_id: str | None = None,
     ) -> PortfolioHeatmapView:
         statuses = await self._rollup_repository.list_node_statuses(tenant_id, as_of)
-        if not statuses:
+        if program_root_id is not None:
+            if not statuses:
+                try:
+                    tree = await self._graph_repository.get_program_tree(
+                        tenant_id, program_root_id, as_of
+                    )
+                except GraphNotFound:
+                    return PortfolioHeatmapView(as_of=as_of, rows=(), columns=(), cells=())
+                statuses = list(await self._rollup_service.compute_and_record(tree, as_of))
+        else:
+            resolved_root_id = await self._first_program_id(tenant_id)
+            if resolved_root_id is None:
+                return PortfolioHeatmapView(as_of=as_of, rows=(), columns=(), cells=())
             try:
                 tree = await self._graph_repository.get_program_tree(
-                    tenant_id, program_root_id or PORTFOLIO_ROOT_ID, as_of
+                    tenant_id, resolved_root_id, as_of
                 )
             except GraphNotFound:
-                statuses = []
-            else:
+                return PortfolioHeatmapView(as_of=as_of, rows=(), columns=(), cells=())
+            tree_ids = {node.id for node in tree.nodes}
+            statuses = [status for status in statuses if status.entity_ref.id in tree_ids]
+            if not statuses:
                 statuses = list(await self._rollup_service.compute_and_record(tree, as_of))
         cells = tuple(_heatmap_cell(status) for status in statuses)
         rows = tuple(dict.fromkeys(cell.row for cell in cells))
         columns = tuple(dict.fromkeys(cell.column for cell in cells))
         return PortfolioHeatmapView(as_of=as_of, rows=rows, columns=columns, cells=cells)
+
+    async def _first_program_id(self, tenant_id: str) -> str | None:
+        programs = await self._graph_repository.list_nodes(tenant_id, NodeKind.PROGRAM)
+        return programs[0].id if programs else None
 
     async def _node_statuses_for_tree(
         self, tree: GraphTree, as_of: date

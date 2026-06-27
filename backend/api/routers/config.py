@@ -38,7 +38,12 @@ from core.application.config_service import (
 )
 from core.application.directory_sync_service import DirectorySyncService
 from core.domain.auth import Principal
-from core.domain.errors import AuthorizationDenied, GraphNotFound, ProviderUnavailable
+from core.domain.errors import (
+    AuthorizationDenied,
+    GraphNotFound,
+    ProviderConfigurationError,
+    ProviderUnavailable,
+)
 from core.domain.graph import GraphNode, JsonScalar, NodeKind
 from core.domain.status import CheckInPreference
 
@@ -719,6 +724,8 @@ def _ensure(principal: Principal, capability: Capability) -> None:
 
 
 def _http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, ProviderConfigurationError):
+        return HTTPException(status_code=status.HTTP_424_FAILED_DEPENDENCY, detail=str(exc))
     if isinstance(exc, ProviderUnavailable):
         return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
     if isinstance(exc, GraphNotFound):

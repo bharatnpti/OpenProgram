@@ -6,6 +6,7 @@ from config.settings import Settings, get_settings
 from core.domain.workflows import (
     CheckinScheduleConfig,
     ConversationPurgeScheduleConfig,
+    ScheduleBootstrapResult,
     SyncScheduleConfig,
 )
 from infra.registry import ServiceRegistry
@@ -16,17 +17,25 @@ async def main() -> None:
     settings = get_settings()
     registry = ServiceRegistry(settings)
     try:
-        scheduler = registry.workflow_scheduler()
-        results = [
-            await scheduler.ensure_heartbeat_schedule(),
-            await scheduler.ensure_checkin_fanout_schedule(checkin_fanout_config(settings)),
-            await scheduler.ensure_conversation_purge_schedule(conversation_purge_config(settings)),
-            *(await scheduler.ensure_sync_schedules(sync_schedule_configs(settings))),
-        ]
+        results = await ensure_workflow_schedules(registry, settings)
         for result in results:
             print(f"workflow schedule {result.status}: {result.schedule_id}")
     finally:
         await registry.close()
+
+
+async def ensure_workflow_schedules(
+    registry: ServiceRegistry,
+    settings: Settings | None = None,
+) -> list[ScheduleBootstrapResult]:
+    settings = settings or registry.settings
+    scheduler = registry.workflow_scheduler()
+    return [
+        await scheduler.ensure_heartbeat_schedule(),
+        await scheduler.ensure_checkin_fanout_schedule(checkin_fanout_config(settings)),
+        await scheduler.ensure_conversation_purge_schedule(conversation_purge_config(settings)),
+        *(await scheduler.ensure_sync_schedules(sync_schedule_configs(settings))),
+    ]
 
 
 def checkin_fanout_config(settings: Settings) -> CheckinScheduleConfig:

@@ -6,7 +6,7 @@
 
 - Custom Postgres 16 image with AGE, TimescaleDB, and pgvector installed.
 - Redis.
-- DBOS-backed worker and scheduler bootstrap using Postgres, with Temporal and Temporal UI still available for `PULSEOPS_WORKFLOW_PROVIDER=temporal`.
+- DBOS-backed worker using Postgres; the worker bootstraps schedules on startup. Temporal and Temporal UI remain available for `PULSEOPS_WORKFLOW_PROVIDER=temporal`.
 - LiteLLM plus a local OpenAI-compatible mock LLM.
 - Langfuse v3 web/worker with ClickHouse, Redis, MinIO, and headless local project/API-key initialization.
 - OpenTelemetry collector.
@@ -21,8 +21,6 @@
 
 - `make up`
 - `make migrate`
-- `make seed`
-- `make schedule`
 - `make smoke`
 - `make integration`
 - `make verify`

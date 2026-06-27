@@ -5,7 +5,16 @@ from datetime import date, datetime
 from typing import Protocol
 
 from core.domain.conversation import ConversationTurn
-from core.domain.graph import EntityRef, FactEvent, GraphEdge, GraphNode, GraphTree, VectorMatch
+from core.domain.graph import (
+    EdgeKind,
+    EntityRef,
+    FactEvent,
+    GraphEdge,
+    GraphNode,
+    GraphTree,
+    NodeKind,
+    VectorMatch,
+)
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus
 from core.domain.status import (
@@ -20,9 +29,25 @@ from core.domain.status import (
 
 
 class GraphRepository(Protocol):
+    async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]: ...
+
+    async def get_node(self, tenant_id: str, id: str) -> GraphNode | None: ...
+
     async def upsert_node(self, node: GraphNode) -> None: ...
 
+    async def delete_node(self, tenant_id: str, id: str) -> None: ...
+
     async def add_edge(self, edge: GraphEdge) -> None: ...
+
+    async def list_edges(
+        self,
+        tenant_id: str,
+        from_node_id: str | None = None,
+        to_node_id: str | None = None,
+        kind: EdgeKind | None = None,
+    ) -> list[GraphEdge]: ...
+
+    async def remove_edge(self, edge: GraphEdge) -> None: ...
 
     async def get_program_tree(self, tenant_id: str, program_id: str, as_of: date) -> GraphTree: ...
 
@@ -82,6 +107,10 @@ class StatusRepository(Protocol):
     async def checkin_preference_for(
         self, tenant_id: str, developer_id: str
     ) -> CheckInPreference | None: ...
+
+    async def list_checkin_preferences(self, tenant_id: str) -> list[CheckInPreference]: ...
+
+    async def delete_checkin_preference(self, tenant_id: str, developer_id: str) -> None: ...
 
     async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None: ...
 

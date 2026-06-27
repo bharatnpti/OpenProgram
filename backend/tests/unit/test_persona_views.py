@@ -4,12 +4,14 @@ from datetime import UTC, date, datetime
 
 from core.application.persona_views import PersonaViewService
 from core.domain.graph import (
+    Developer,
     EdgeKind,
     EntityRef,
     FactEvent,
     GraphEdge,
     GraphTree,
     NodeKind,
+    Pod,
     Program,
     Project,
     Task,
@@ -91,7 +93,7 @@ async def test_focus_does_not_expose_raw_checkin_fact_content() -> None:
 async def test_focus_uses_latest_task_fact_and_metadata_fallbacks() -> None:
     store = InMemoryGraphStore()
     as_of = date(2026, 1, 10)
-    developer = await _seed_developer_task_tree(store)
+    developer = await _populate_developer_task_tree(store)
     task_ref = EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="task-api")
     await store.append_fact(
         FactEvent(
@@ -212,7 +214,57 @@ async def test_portfolio_heatmap_uses_existing_rollups_without_graph_fallback() 
     assert view.cells[1].source_ref == source_ref
 
 
-async def _seed_developer_task_tree(store: InMemoryGraphStore) -> Program:
+async def test_portfolio_heatmap_uses_first_configured_program_when_root_is_omitted() -> None:
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    program = Program(tenant_id="demo", id="program-alpha", name="Alpha")
+    project = Project(tenant_id="demo", id="project-alpha", name="Project")
+    pod = Pod(tenant_id="demo", id="pod-alpha", name="Pod")
+    developer = Developer(tenant_id="demo", id="dev-ada", name="Ada")
+    for node in (program, project, pod, developer):
+        await store.upsert_node(node)
+    await store.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id=program.id,
+            to_node_id=project.id,
+            kind=EdgeKind.CONTAINS,
+        )
+    )
+    await store.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id=project.id,
+            to_node_id=pod.id,
+            kind=EdgeKind.CONTAINS,
+        )
+    )
+    await store.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id=pod.id,
+            to_node_id=developer.id,
+            kind=EdgeKind.CONTAINS,
+        )
+    )
+    service = PersonaViewService(
+        graph_repository=store,
+        status_repository=store,
+        rollup_repository=store,
+        time_series_repository=store,
+    )
+
+    view = await service.portfolio_heatmap("demo", as_of)
+
+    assert {cell.entity_ref.id for cell in view.cells} >= {
+        "program-alpha",
+        "project-alpha",
+        "pod-alpha",
+        "dev-ada",
+    }
+
+
+async def _populate_developer_task_tree(store: InMemoryGraphStore) -> Program:
     program = Program(tenant_id="demo", id="dev-1", name="Asha")
     project = Project(tenant_id="demo", id="project-api", name="API")
     task = Task(

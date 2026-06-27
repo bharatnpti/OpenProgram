@@ -230,9 +230,9 @@ services:
     volumes:
       - ./infra/otel/otel-collector.yaml:/etc/otelcol/config.yaml:ro
     ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "8889:8889"
+      - "${PULSEOPS_OTEL_GRPC_PORT_BINDING:-4317:4317}"
+      - "${PULSEOPS_OTEL_HTTP_PORT_BINDING:-4318:4318}"
+      - "${PULSEOPS_OTEL_METRICS_PORT_BINDING:-8889:8889}"
 
   prometheus:
     image: prom/prometheus:v2.53.0
@@ -299,6 +299,9 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     command: ["python", "-m", "infra.workflows.worker"]
+    env_file:
+      - path: .env
+        required: false
     environment:
       PYTHONPATH: /app/backend
       PULSEOPS_RUNTIME_MODE: container
@@ -330,40 +333,6 @@ services:
       langfuse-web:
         condition: service_healthy
       litellm:
-        condition: service_healthy
-
-  scheduler:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    command: ["python", "-m", "infra.workflows.schedule"]
-    environment:
-      PYTHONPATH: /app/backend
-      PULSEOPS_RUNTIME_MODE: container
-      PULSEOPS_SECRET_KEY: ${PULSEOPS_SECRET_KEY:-q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=}
-      PULSEOPS_DATABASE_URL: postgresql://pulseops:pulseops@postgres:5432/pulseops
-      PULSEOPS_POSTGRES_POOL_MIN_SIZE: ${PULSEOPS_POSTGRES_POOL_MIN_SIZE:-1}
-      PULSEOPS_POSTGRES_POOL_MAX_SIZE: ${PULSEOPS_POSTGRES_POOL_MAX_SIZE:-5}
-      PULSEOPS_REDIS_URL: redis://redis:6379/0
-      PULSEOPS_REDIS_MAX_CONNECTIONS: ${PULSEOPS_REDIS_MAX_CONNECTIONS:-10}
-      PULSEOPS_WORKFLOW_PROVIDER: ${PULSEOPS_WORKFLOW_PROVIDER:-dbos}
-      PULSEOPS_DBOS_APP_NAME: ${PULSEOPS_DBOS_APP_NAME:-pulseops}
-      PULSEOPS_DBOS_SYSTEM_DATABASE_URL: ${PULSEOPS_DBOS_SYSTEM_DATABASE_URL:-postgresql://pulseops:pulseops@postgres:5432/pulseops}
-      PULSEOPS_DBOS_HEARTBEAT_CRON: "${PULSEOPS_DBOS_HEARTBEAT_CRON:-0 * * * * *}"
-      PULSEOPS_HEARTBEAT_SCHEDULE_ID: ${PULSEOPS_HEARTBEAT_SCHEDULE_ID:-${PULSEOPS_TEMPORAL_SCHEDULE_ID:-pulseops-heartbeat}}
-      PULSEOPS_TEMPORAL_TARGET: temporal:7233
-      PULSEOPS_LITELLM_BASE_URL: http://litellm:4000
-      PULSEOPS_LITELLM_API_KEY: local-litellm-key
-      PULSEOPS_LITELLM_MODEL: local-gpt
-      PULSEOPS_LANGFUSE_HOST: http://langfuse-web:3000
-      PULSEOPS_LANGFUSE_PUBLIC_KEY: pk-lf-local
-      PULSEOPS_LANGFUSE_SECRET_KEY: sk-lf-local
-      PULSEOPS_LANGFUSE_PROJECT_ID: local-project
-      PULSEOPS_OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
 
 volumes:

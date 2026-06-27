@@ -30,13 +30,13 @@ from infra.persistence.postgres_status import (
     _node_status_from_row,
     _sync_cursor_from_row,
 )
-from infra.persistence.seed_data import seed_demo_graph
 from tests.contract.contracts import (
     assert_conversation_repository_contract,
     assert_rollup_repository_contract,
     assert_status_repository_contract,
     assert_sync_cursor_repository_contract,
 )
+from tests.fixtures.demo_graph import populate_demo_graph
 
 
 async def test_in_memory_store_satisfies_phase_1_repository_contracts() -> None:
@@ -48,9 +48,9 @@ async def test_in_memory_store_satisfies_phase_1_repository_contracts() -> None:
     await assert_conversation_repository_contract(store)
 
 
-async def test_seed_demo_graph_adds_memory_statuses_and_rollups() -> None:
+async def test_demo_graph_fixture_adds_memory_statuses_and_rollups() -> None:
     store = InMemoryGraphStore()
-    await seed_demo_graph(store, store, "demo")
+    await populate_demo_graph(store, store, "demo")
 
     confirmed = await store.latest_developer_status("demo", "dev-asha", date(2026, 6, 15))
     stale = await store.latest_developer_status("demo", "dev-liam", date(2026, 6, 15))
