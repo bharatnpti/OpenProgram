@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from core.domain.directory import DirectoryUser
 from core.application.directory_sync_service import DirectorySyncService
+from core.domain.directory import DirectoryUser
 from infra.adapters.directory.slack import SlackDirectoryProvider
+from infra.persistence.postgres_directory import PostgresDirectoryUserRepository
 from tests.contract.fakes import FakeDirectoryUserRepository
 
 
@@ -42,6 +45,25 @@ class _FakeSlackHttpClient:
         if not self.pages:
             return {"ok": True, "members": [], "response_metadata": {"next_cursor": ""}}
         return self.pages.pop(0)
+
+
+@dataclass
+class _RecordingExecutor:
+    calls: list[tuple[str, tuple[object, ...]]]
+    fetch_calls: list[tuple[str, tuple[object, ...]]] = field(default_factory=list)
+    fetch_rows: list[dict[str, object]] = field(default_factory=list)
+
+    async def execute(self, query: str, params: tuple[object, ...]) -> object:
+        self.calls.append((query, params))
+        return object()
+
+    async def fetch(self, query: str, params: tuple[object, ...]) -> list[dict[str, object]]:
+        self.fetch_calls.append((query, params))
+        return self.fetch_rows
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[_RecordingExecutor]:
+        yield self
 
 
 async def test_directory_sync_service_upserts_and_deactivates_missing() -> None:
@@ -160,3 +182,39 @@ async def test_slack_directory_provider_paginates_and_filters() -> None:
     assert users[0].avatar_url == "https://example.com/asha.png"
     assert users[1].display_name == "Liam Chen"
     assert users[1].email == "liam@example.com"
+
+
+async def test_postgres_directory_repository_batches_large_upserts() -> None:
+    executor = _RecordingExecutor(calls=[])
+    repository = PostgresDirectoryUserRepository(executor)
+    users = [
+        DirectoryUser(
+            tenant_id="demo",
+            external_id=f"U{index:04d}",
+            display_name=f"User {index}",
+            source="slack",
+        )
+        for index in range(1001)
+    ]
+
+    await repository.upsert_users(users)
+
+    assert [len(params) for _, params in executor.calls] == [11000, 11]
+
+
+async def test_postgres_directory_repository_uses_index_friendly_search_queries() -> None:
+    executor = _RecordingExecutor(calls=[])
+    repository = PostgresDirectoryUserRepository(executor)
+
+    await repository.search("demo", query="", limit=25, offset=0)
+    empty_query, empty_params = executor.fetch_calls[-1]
+    assert "ILIKE" not in empty_query
+    assert "ORDER BY display_name, external_id" in empty_query
+    assert empty_params == ("demo", 25, 0)
+
+    await repository.search("demo", query="asha", limit=25, offset=0)
+    search_query, search_params = executor.fetch_calls[-1]
+    assert "COALESCE" not in search_query
+    assert "handle ILIKE" in search_query
+    assert "external_id ILIKE" in search_query
+    assert search_params == ("demo", "%asha%", "%asha%", "%asha%", "%asha%", 25, 0)

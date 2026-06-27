@@ -69,6 +69,74 @@ def test_admin_directory_search_and_member_add_flow(settings: Settings) -> None:
     assert [item["id"] for item in members_response.json()] == ["U1001"]
 
 
+def test_admin_add_from_directory_missing_id_returns_404(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/config/members/from-directory",
+            json={"external_ids": ["missing-user"]},
+        )
+
+    assert response.status_code == 404
+    assert "missing-user" in response.json()["detail"]
+
+
+def test_admin_directory_sync_provider_unavailable_returns_503(settings: Settings) -> None:
+    app = create_app(
+        settings=settings.model_copy(
+            update={
+                "runtime_mode": "container",
+                "slack_bot_token": None,
+            }
+        )
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post("/config/directory/sync")
+
+    assert response.status_code == 503
+    assert "slack_bot_token" in response.json()["detail"]
+
+
+def test_admin_add_from_directory_validates_batch_before_writing(
+    settings: Settings,
+) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        sync_response = client.post("/config/directory/sync")
+        add_response = client.post(
+            "/config/members/from-directory",
+            json={"external_ids": ["U1001", "missing-user"]},
+        )
+        members_response = client.get("/config/members")
+
+    assert sync_response.status_code == 200
+    assert add_response.status_code == 404
+    assert "missing-user" in add_response.json()["detail"]
+    assert members_response.status_code == 200
+    assert members_response.json() == []
+
+
+def test_admin_add_from_directory_wrong_kind_conflict_returns_409(
+    settings: Settings,
+) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        sync_response = client.post("/config/directory/sync")
+        project_response = client.post(
+            "/config/projects",
+            json={"id": "U1001", "name": "Directory ID Project"},
+        )
+        add_response = client.post(
+            "/config/members/from-directory",
+            json={"external_ids": ["U1001"]},
+        )
+
+    assert sync_response.status_code == 200
+    assert project_response.status_code == 201
+    assert add_response.status_code == 409
+    assert "not a developer" in add_response.json()["detail"]
+
+
 def test_chat_webhook_route_processes_correlated_reply(settings: Settings) -> None:
     app = create_app(
         settings=settings.model_copy(

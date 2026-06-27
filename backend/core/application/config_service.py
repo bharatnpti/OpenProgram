@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 
-from core.domain.errors import GraphNotFound, PulseOpsError
 from core.domain.directory import DirectoryUser
+from core.domain.errors import GraphNotFound, PulseOpsError
 from core.domain.graph import EdgeKind, GraphEdge, GraphNode, JsonScalar, NodeKind
 from core.domain.rollup import Rag
 from core.domain.status import CheckInPreference, StatusSource
@@ -247,24 +247,51 @@ class ConfigService:
         return users, count
 
     async def add_member_from_directory(self, tenant_id: str, external_id: str) -> GraphNode:
+        members = await self.add_members_from_directory(tenant_id, [external_id])
+        return members[0]
+
+    async def add_members_from_directory(
+        self, tenant_id: str, external_ids: Sequence[str]
+    ) -> list[GraphNode]:
         repository = self._directory_repository_or_raise()
-        directory_user = await repository.get(tenant_id, external_id)
-        if directory_user is None:
-            raise GraphNotFound(f"directory user {external_id} not found for tenant {tenant_id}")
-        existing = await self._graph_repository.get_node(tenant_id, external_id)
-        if existing is not None:
-            if existing.kind is not NodeKind.DEVELOPER:
-                raise GraphNotFound(f"{external_id} exists as a {existing.kind.value}, not a developer")
-            return existing
-        node = GraphNode(
-            tenant_id=tenant_id,
-            id=external_id,
-            kind=NodeKind.DEVELOPER,
-            name=directory_user.display_name,
-            metadata=_directory_metadata(directory_user),
-        )
-        await self._graph_repository.upsert_node(node)
-        return node
+        directory_users: dict[str, DirectoryUser] = {}
+        existing_nodes: dict[str, GraphNode] = {}
+        for external_id in external_ids:
+            directory_user = await repository.get(tenant_id, external_id)
+            if directory_user is None or not directory_user.is_active:
+                raise GraphNotFound(
+                    f"active directory user {external_id} not found for tenant {tenant_id}"
+                )
+            existing = await self._graph_repository.get_node(tenant_id, external_id)
+            if existing is not None:
+                if existing.kind is not NodeKind.DEVELOPER:
+                    raise ConfigConflict(
+                        f"{external_id} exists as a {existing.kind.value}, not a developer"
+                    )
+                existing_nodes[external_id] = existing
+            directory_users[external_id] = directory_user
+
+        created_nodes: dict[str, GraphNode] = {}
+        members: list[GraphNode] = []
+        for external_id in external_ids:
+            existing = existing_nodes.get(external_id)
+            if existing is not None:
+                members.append(existing)
+                continue
+            created = created_nodes.get(external_id)
+            if created is None:
+                directory_user = directory_users[external_id]
+                created = GraphNode(
+                    tenant_id=tenant_id,
+                    id=external_id,
+                    kind=NodeKind.DEVELOPER,
+                    name=directory_user.display_name,
+                    metadata=_directory_metadata(directory_user),
+                )
+                await self._graph_repository.upsert_node(created)
+                created_nodes[external_id] = created
+            members.append(created)
+        return members
 
     async def _ensure_node(
         self,
