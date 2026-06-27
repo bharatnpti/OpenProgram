@@ -35,7 +35,7 @@ export PULSEOPS_LANGFUSE_PUBLIC_KEY
 export PULSEOPS_LANGFUSE_SECRET_KEY
 export PULSEOPS_LANGFUSE_PROJECT_ID
 
-.PHONY: up down migrate seed schedule smoke phase1-smoke integration verify test lint format api openapi openapi-check worker mock-llm frontend-install frontend-dev frontend-lint frontend-format frontend-build frontend-generate
+.PHONY: up down migrate smoke phase1-smoke integration verify test lint format api openapi openapi-check worker mock-llm frontend-install frontend-dev frontend-lint frontend-format frontend-build frontend-generate
 
 up:
 	docker compose up -d
@@ -45,12 +45,6 @@ down:
 
 migrate:
 	PYTHONPATH=$(PYTHONPATH) uv run alembic -c backend/infra/persistence/alembic.ini upgrade head
-
-seed:
-	PYTHONPATH=$(PYTHONPATH) uv run python -m infra.persistence.seed
-
-schedule:
-	PYTHONPATH=$(PYTHONPATH) uv run python -m infra.workflows.schedule
 
 smoke:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m infra.smoke

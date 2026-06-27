@@ -177,19 +177,19 @@ def demo_facts(tenant_id: str) -> tuple[FactEvent, ...]:
     return (
         FactEvent(
             tenant_id=tenant_id,
-            source="seed",
+            source="fixture",
             entity_ref=EntityRef(tenant_id=tenant_id, kind=NodeKind.TASK, id="task-api"),
             payload={"status": "green", "confidence": 0.8},
             observed_at=now,
-            correlation_id="seed-demo",
+            correlation_id="fixture-demo",
         ),
         FactEvent(
             tenant_id=tenant_id,
-            source="seed",
+            source="fixture",
             entity_ref=EntityRef(tenant_id=tenant_id, kind=NodeKind.TASK, id="task-graph"),
             payload={"status": "amber", "confidence": 0.6},
             observed_at=now,
-            correlation_id="seed-demo",
+            correlation_id="fixture-demo",
         ),
     )
 
@@ -201,7 +201,7 @@ def demo_checkins(tenant_id: str) -> tuple[CheckIn, ...]:
         CheckIn(
             tenant_id=tenant_id,
             developer_id="dev-asha",
-            correlation_id="seed-checkin-asha",
+            correlation_id="fixture-checkin-asha",
             asked_at=asked_at,
             replied_at=replied_at,
             raw_reply="API shell is ready for review; no blockers.",
@@ -214,7 +214,7 @@ def demo_checkins(tenant_id: str) -> tuple[CheckIn, ...]:
         CheckIn(
             tenant_id=tenant_id,
             developer_id="dev-liam",
-            correlation_id="seed-checkin-liam",
+            correlation_id="fixture-checkin-liam",
             asked_at=asked_at,
             replied_at=None,
             raw_reply=None,
@@ -262,7 +262,7 @@ def demo_node_statuses(tenant_id: str) -> tuple[NodeStatus, ...]:
     )
 
 
-async def seed_demo_graph(
+async def populate_demo_graph(
     graph_repository: GraphRepository,
     time_series_repository: TimeSeriesRepository,
     tenant_id: str,

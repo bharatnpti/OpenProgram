@@ -7,7 +7,7 @@ import httpx
 import pytest
 import respx
 
-from core.domain.errors import ProviderUnavailable
+from core.domain.errors import ProviderConfigurationError, ProviderUnavailable
 from core.domain.messaging import ChatUserRef, OutboundMessage
 from infra.adapters.chat.rate_limit import InMemoryRateLimiter
 from infra.adapters.chat.slack import HttpSlackClient, SlackChatAdapter, SlackChatWebhookMapper
@@ -133,3 +133,26 @@ async def test_http_slack_client_maps_provider_failure() -> None:
 
     with pytest.raises(ProviderUnavailable):
         await client.post_message("missing", "hello")
+
+
+@respx.mock
+async def test_http_slack_client_maps_missing_scope_to_configuration_error() -> None:
+    client = HttpSlackClient(bot_token="xoxb-test", base_url="https://slack.test/api")
+    respx.get("https://slack.test/api/users.list").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": False,
+                "error": "missing_scope",
+                "needed": "users:read",
+                "provided": "chat:write",
+            },
+        )
+    )
+
+    with pytest.raises(ProviderConfigurationError) as exc_info:
+        await client.list_users()
+
+    message = str(exc_info.value)
+    assert "users:read" in message
+    assert "slack_bot_token" in message

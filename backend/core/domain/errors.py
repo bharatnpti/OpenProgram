@@ -13,6 +13,10 @@ class ProviderUnavailable(PulseOpsError):
     """Raised when an external provider cannot satisfy a request."""
 
 
+class ProviderConfigurationError(ProviderUnavailable):
+    """Raised when external provider credentials or permissions are misconfigured."""
+
+
 class SecretNotFound(PulseOpsError):
     """Raised when a requested connector secret does not exist."""
 

@@ -40,6 +40,43 @@ class PostgresGraphRepository:
     def __init__(self, executor: AsyncSqlExecutor) -> None:
         self._executor = executor
 
+    async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
+        with _tracer.start_as_current_span("postgres.graph.list_nodes"):
+            if kind is None:
+                rows = await self._executor.fetch(
+                    """
+                    SELECT tenant_id, id, kind, name, metadata
+                    FROM graph_nodes
+                    WHERE tenant_id = %s
+                    ORDER BY kind, name, id
+                    """,
+                    (tenant_id,),
+                )
+            else:
+                rows = await self._executor.fetch(
+                    """
+                    SELECT tenant_id, id, kind, name, metadata
+                    FROM graph_nodes
+                    WHERE tenant_id = %s AND kind = %s
+                    ORDER BY kind, name, id
+                    """,
+                    (tenant_id, kind.value),
+                )
+        return [_node_from_row(row) for row in rows]
+
+    async def get_node(self, tenant_id: str, id: str) -> GraphNode | None:
+        with _tracer.start_as_current_span("postgres.graph.get_node"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, id, kind, name, metadata
+                FROM graph_nodes
+                WHERE tenant_id = %s AND id = %s
+                LIMIT 1
+                """,
+                (tenant_id, id),
+            )
+        return _node_from_row(rows[0]) if rows else None
+
     async def upsert_node(self, node: GraphNode) -> None:
         with _tracer.start_as_current_span("postgres.graph.upsert_node"):
             async with self._executor.transaction() as transaction:
@@ -56,6 +93,26 @@ class PostgresGraphRepository:
                     (node.tenant_id, node.id, node.kind.value, node.name, dict(node.metadata)),
                 )
                 await self._sync_age_node(transaction, node)
+
+    async def delete_node(self, tenant_id: str, id: str) -> None:
+        with _tracer.start_as_current_span("postgres.graph.delete_node"):
+            async with self._executor.transaction() as transaction:
+                await transaction.execute(
+                    """
+                    DELETE FROM graph_edges
+                    WHERE tenant_id = %s
+                      AND (from_node_id = %s OR to_node_id = %s)
+                    """,
+                    (tenant_id, id, id),
+                )
+                await transaction.execute(
+                    """
+                    DELETE FROM graph_nodes
+                    WHERE tenant_id = %s AND id = %s
+                    """,
+                    (tenant_id, id),
+                )
+                await self._sync_age_delete_node(transaction, tenant_id, id)
 
     async def add_edge(self, edge: GraphEdge) -> None:
         with _tracer.start_as_current_span("postgres.graph.add_edge"):
@@ -78,6 +135,60 @@ class PostgresGraphRepository:
                     ),
                 )
                 await self._sync_age_edge(transaction, edge)
+
+    async def list_edges(
+        self,
+        tenant_id: str,
+        from_node_id: str | None = None,
+        to_node_id: str | None = None,
+        kind: EdgeKind | None = None,
+    ) -> list[GraphEdge]:
+        clauses = ["tenant_id = %s"]
+        params: list[object] = [tenant_id]
+        if from_node_id is not None:
+            clauses.append("from_node_id = %s")
+            params.append(from_node_id)
+        if to_node_id is not None:
+            clauses.append("to_node_id = %s")
+            params.append(to_node_id)
+        if kind is not None:
+            clauses.append("kind = %s")
+            params.append(kind.value)
+        query = f"""
+            SELECT tenant_id, from_node_id, to_node_id, kind, valid_from, valid_to, metadata
+            FROM graph_edges
+            WHERE {" AND ".join(clauses)}
+            ORDER BY from_node_id, to_node_id, kind, valid_from NULLS FIRST, valid_to NULLS LAST
+        """
+        with _tracer.start_as_current_span("postgres.graph.list_edges"):
+            rows = await self._executor.fetch(query, tuple(params))
+        return [_edge_from_row(row) for row in rows]
+
+    async def remove_edge(self, edge: GraphEdge) -> None:
+        with _tracer.start_as_current_span("postgres.graph.remove_edge"):
+            async with self._executor.transaction() as transaction:
+                await transaction.execute(
+                    """
+                    DELETE FROM graph_edges
+                    WHERE tenant_id = %s
+                      AND from_node_id = %s
+                      AND to_node_id = %s
+                      AND kind = %s
+                      AND valid_from IS NOT DISTINCT FROM %s
+                      AND valid_to IS NOT DISTINCT FROM %s
+                      AND metadata = %s
+                    """,
+                    (
+                        edge.tenant_id,
+                        edge.from_node_id,
+                        edge.to_node_id,
+                        edge.kind.value,
+                        edge.valid_from,
+                        edge.valid_to,
+                        dict(edge.metadata),
+                    ),
+                )
+                await self._sync_age_remove_edge(transaction, edge)
 
     async def get_program_tree(self, tenant_id: str, program_id: str, as_of: date) -> GraphTree:
         with _tracer.start_as_current_span("postgres.graph.get_program_tree"):
@@ -192,6 +303,50 @@ class PostgresGraphRepository:
                         valid_to: {valid_to}
                     }}]->(to_node)
                     RETURN edge
+                $$) AS (edge agtype)
+                """
+            )
+
+    async def _sync_age_delete_node(
+        self, session: AsyncSqlSession, tenant_id: str, id: str
+    ) -> None:
+        with _tracer.start_as_current_span("postgres.age.delete_node"):
+            await _prepare_age_session(session)
+            await session.execute(
+                f"""
+                SELECT *
+                FROM cypher('pulseops_graph', $$
+                    MATCH (n:GraphNode {{
+                        tenant_id: {_cypher_string(tenant_id)},
+                        id: {_cypher_string(id)}
+                    }})
+                    DETACH DELETE n
+                    RETURN 1
+                $$) AS (n agtype)
+                """
+            )
+
+    async def _sync_age_remove_edge(self, session: AsyncSqlSession, edge: GraphEdge) -> None:
+        relation = {
+            EdgeKind.CONTAINS: "CONTAINS",
+            EdgeKind.ASSIGNED_TO: "ASSIGNED_TO",
+            EdgeKind.DEPENDS_ON: "DEPENDS_ON",
+        }[edge.kind]
+        with _tracer.start_as_current_span("postgres.age.remove_edge"):
+            await _prepare_age_session(session)
+            await session.execute(
+                f"""
+                SELECT *
+                FROM cypher('pulseops_graph', $$
+                    MATCH (from_node:GraphNode {{
+                        tenant_id: {_cypher_string(edge.tenant_id)},
+                        id: {_cypher_string(edge.from_node_id)}
+                    }})-[edge:{relation}]->(to_node:GraphNode {{
+                        tenant_id: {_cypher_string(edge.tenant_id)},
+                        id: {_cypher_string(edge.to_node_id)}
+                    }})
+                    DELETE edge
+                    RETURN 1
                 $$) AS (edge agtype)
                 """
             )

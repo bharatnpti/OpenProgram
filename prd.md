@@ -45,7 +45,7 @@ Goal: build the skeleton everything else hangs off of — the hexagonal service,
 - The Graph of Truth (Program → Project → Pod → Developer → Task) persisted in Postgres + Apache AGE, with **time-bounded** `dev ↔ pod ↔ project` mappings and an **append-only fact/event log**.
 - At least one capability fully proven through the ports-and-adapters seam end-to-end (a `ChatProvider` with a real adapter + an in-memory fake) and its **shared contract test suite** green.
 - Temporal wired and running a trivial scheduled workflow; LiteLLM + Langfuse reachable; OpenTelemetry traces flowing.
-- One-command local bring-up (`docker compose`), seeded demo graph, and green CI (ruff, mypy --strict, import-linter, unit + contract + integration tests with Testcontainers).
+- One-command local bring-up (`docker compose`), migration-backed graph storage, and green CI (ruff, mypy --strict, import-linter, unit + contract + integration tests with Testcontainers).
 
 ### Open decisions to lock before/at start (blockers)
 These are the open decisions called out at the end of this doc; Phase 0 cannot finish the relevant epics until they're settled.
@@ -67,8 +67,8 @@ Goal: a repeatable, opinionated dev environment so every later story starts from
 - Acceptance: tree matches §4; `import-linter` contract file present; empty packages import cleanly.
 
 **Story 0.0.2** — As a Developer, I want one-command local bring-up so that I can run the whole stack.
-- Tasks: `docker-compose.yml` for Postgres (with AGE + Timescale + pgvector), Redis, Temporal, Langfuse, OTel collector + Grafana/Prometheus; `Makefile`/`justfile` targets (`up`, `migrate`, `seed`, `test`, `lint`).
-- Acceptance: `make up` boots all deps; health endpoint returns 200; `make seed` loads the demo graph.
+- Tasks: `docker-compose.yml` for Postgres (with AGE + Timescale + pgvector), Redis, Temporal, Langfuse, OTel collector + Grafana/Prometheus; `Makefile`/`justfile` targets (`up`, `migrate`, `test`, `lint`).
+- Acceptance: `make up` boots all deps; health endpoint returns 200; `make migrate` prepares the database schema.
 
 **Story 0.0.3** — As Admin, I want config + secrets via `pydantic-settings` so that the app is 12-factor and fails fast.
 - Tasks: `config/settings.py` with typed settings (DB URLs, Redis, Temporal, LiteLLM, provider selectors like `chat_provider=slack`); `.env.example`; boot-time validation.
@@ -89,9 +89,9 @@ Goal: the single source of truth — graph + time-bounded mappings + append-only
 - Tasks: immutable `fact`/`event` table (source, entity ref, payload, observed_at, ingested_at, correlation_id); TimescaleDB hypertable for time-series facts; no UPDATE/DELETE path.
 - Acceptance: facts are insert-only; a status can be traced back to its source facts; Timescale retention/compaction policy configured.
 
-**Story 0.1.4** — As a Developer, I want schema migrations + a seeded demo graph so that environments are reproducible.
-- Tasks: Alembic migrations (incl. AGE/Timescale/pgvector setup); seed script for a small realistic org (1 program, 2 projects, ~3 pods, ~8 devs, tasks).
-- Acceptance: `make migrate && make seed` produces a queryable demo graph on a clean DB.
+**Story 0.1.4** — As a Developer, I want schema migrations so that environments are reproducible.
+- Tasks: Alembic migrations (incl. AGE/Timescale/pgvector setup).
+- Acceptance: `make migrate` prepares a clean DB for graph writes.
 
 ### Epic 0.2 — Identity, roles, and access control (seam only — SSO deferred)
 Goal: per [Architecture.md](Architecture.md), real SSO is deferred. Phase 0 builds the *authorization seam* so it can be layered in later without core changes.
@@ -165,10 +165,10 @@ Applies to every story above:
 - Conventional Commit + small PR referencing the epic/story.
 
 ### Phase 0 suggested sequencing
-1. Epic 0.0 (repo, compose, config) → 2. Epic 0.1 (graph + facts + seed) in parallel with Epic 0.3.1–0.3.2 (ports + contract suite) → 3. Epic 0.3.3–0.3.5 (first real adapter + secrets) and Epic 0.4.1–0.4.3 (API + Temporal + agent skeleton) → 4. Epic 0.2 (auth seam) and Epic 0.4.4–0.4.6 (frontend shell + observability + CI/CD).
+1. Epic 0.0 (repo, compose, config) → 2. Epic 0.1 (graph + facts + migrations) in parallel with Epic 0.3.1–0.3.2 (ports + contract suite) → 3. Epic 0.3.3–0.3.5 (first real adapter + secrets) and Epic 0.4.1–0.4.3 (API + Temporal + agent skeleton) → 4. Epic 0.2 (auth seam) and Epic 0.4.4–0.4.6 (frontend shell + observability + CI/CD).
 
 ### Phase 0 exit criteria (gate into Phase 1)
-- Graph of Truth queryable end-to-end with time-bounded mappings and append-only facts, seeded with demo data.
+- Graph of Truth queryable end-to-end with time-bounded mappings and append-only facts.
 - Ports + shared contract suite exist for all capabilities; the first real adapter (chat) passes its contract suite end-to-end.
 - Temporal runs a scheduled workflow; a LangGraph node calls the LLM with Langfuse tracing.
 - Green CI (lint, types, import-linter, tests, coverage) and an automated deploy to `dev`; one-command local bring-up works.

@@ -2,14 +2,25 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from core.domain.graph import Developer, EdgeKind, EntityRef, FactEvent, GraphEdge, NodeKind
+from core.domain.graph import (
+    Developer,
+    EdgeKind,
+    EntityRef,
+    FactEvent,
+    GraphEdge,
+    NodeKind,
+    Pod,
+    Program,
+    Project,
+    Task,
+)
 from infra.persistence.in_memory_graph import InMemoryGraphStore
-from infra.persistence.seed_data import seed_demo_graph
+from tests.fixtures.demo_graph import populate_demo_graph
 
 
-async def test_seeded_graph_is_queryable_with_time_bounded_edges() -> None:
+async def test_demo_graph_is_queryable_with_time_bounded_edges() -> None:
     store = InMemoryGraphStore()
-    await seed_demo_graph(store, store, "demo")
+    await populate_demo_graph(store, store, "demo")
     tree = await store.get_program_tree("demo", "program-platform", date(2026, 6, 15))
     assert tree.root.id == "program-platform"
     assert {node.id for node in tree.nodes} >= {"project-foundations", "pod-runtime", "dev-asha"}
@@ -50,6 +61,49 @@ async def test_fact_log_inserts_once_by_identity() -> None:
     await store.append_fact(fact)
     facts = await store.list_facts("demo", fact.entity_ref)
     assert facts == [fact]
+
+
+async def test_graph_store_lists_gets_and_deletes_nodes_and_edges() -> None:
+    store = InMemoryGraphStore()
+    program = Program(tenant_id="demo", id="program-1", name="Program")
+    project = Project(tenant_id="demo", id="project-1", name="Project")
+    pod = Pod(tenant_id="demo", id="pod-1", name="Pod")
+    member = Developer(tenant_id="demo", id="dev-1", name="Asha")
+    task = Task(tenant_id="demo", id="task-1", name="Task")
+    for node in (program, project, pod, member, task):
+        await store.upsert_node(node)
+    program_edge = GraphEdge(
+        tenant_id="demo",
+        from_node_id=program.id,
+        to_node_id=project.id,
+        kind=EdgeKind.CONTAINS,
+    )
+    pod_edge = GraphEdge(
+        tenant_id="demo",
+        from_node_id=project.id,
+        to_node_id=pod.id,
+        kind=EdgeKind.CONTAINS,
+    )
+    assignment = GraphEdge(
+        tenant_id="demo",
+        from_node_id=member.id,
+        to_node_id=task.id,
+        kind=EdgeKind.ASSIGNED_TO,
+    )
+    for edge in (program_edge, pod_edge, assignment):
+        await store.add_edge(edge)
+
+    assert await store.get_node("demo", "program-1") == program
+    assert [node.id for node in await store.list_nodes("demo", NodeKind.PROJECT)] == ["project-1"]
+    assert await store.list_edges("demo", from_node_id="project-1") == [pod_edge]
+    assert await store.list_edges("demo", kind=EdgeKind.ASSIGNED_TO) == [assignment]
+
+    await store.remove_edge(pod_edge)
+    assert await store.list_edges("demo", from_node_id="project-1") == []
+
+    await store.delete_node("demo", "dev-1")
+    assert await store.get_node("demo", "dev-1") is None
+    assert await store.list_edges("demo", kind=EdgeKind.ASSIGNED_TO) == []
 
 
 async def test_fact_log_filters_by_observed_since() -> None:

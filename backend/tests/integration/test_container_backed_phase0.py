@@ -32,8 +32,8 @@ from infra.persistence.postgres_status import (
     PostgresStatusRepository,
 )
 from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
-from infra.persistence.seed_data import seed_demo_graph
 from tests.contract.contracts import assert_conversation_repository_contract
+from tests.fixtures.demo_graph import populate_demo_graph
 
 pytestmark = [
     pytest.mark.integration,
@@ -85,7 +85,7 @@ def compose_stack() -> object:
                 os.environ[key] = value
 
 
-async def test_postgres_extensions_seed_vector_and_secret(
+async def test_postgres_extensions_fixture_vector_and_secret(
     compose_stack: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     database_url = _service_url(compose_stack, "postgres", 5432, "pulseops")
@@ -107,7 +107,7 @@ async def test_postgres_extensions_seed_vector_and_secret(
     rollup_repository = PostgresRollupRepository(executor)
     vector_store = PostgresVectorStore(executor)
     try:
-        await seed_demo_graph(
+        await populate_demo_graph(
             graph_repository,
             time_series_repository,
             "demo",
@@ -118,27 +118,27 @@ async def test_postgres_extensions_seed_vector_and_secret(
         assert tree.root.id == "program-platform"
 
         ref = EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="task-api")
-        seeded_facts = await time_series_repository.list_facts("demo", ref)
-        recent_seeded_facts = await time_series_repository.list_facts(
+        fixture_facts = await time_series_repository.list_facts("demo", ref)
+        recent_fixture_facts = await time_series_repository.list_facts(
             "demo",
             ref,
             datetime(2026, 6, 1, tzinfo=UTC),
         )
-        future_seeded_facts = await time_series_repository.list_facts(
+        future_fixture_facts = await time_series_repository.list_facts(
             "demo",
             ref,
             datetime(2026, 6, 16, tzinfo=UTC),
         )
-        await seed_demo_graph(
+        await populate_demo_graph(
             graph_repository,
             time_series_repository,
             "demo",
             status_repository=status_repository,
             rollup_repository=rollup_repository,
         )
-        assert await time_series_repository.list_facts("demo", ref) == seeded_facts
-        assert recent_seeded_facts == seeded_facts
-        assert future_seeded_facts == []
+        assert await time_series_repository.list_facts("demo", ref) == fixture_facts
+        assert recent_fixture_facts == fixture_facts
+        assert future_fixture_facts == []
 
         confirmed = await status_repository.latest_developer_status(
             "demo",

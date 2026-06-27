@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime
 from typing import cast
 
@@ -21,6 +21,7 @@ from core.domain.workflows import (
     ConversationPurgeScheduleConfig,
     DeveloperCheckinDispatch,
     HeartbeatInput,
+    ScheduleBootstrapResult,
     SyncDispatchInput,
     SyncScheduleConfig,
     record_heartbeat,
@@ -36,6 +37,7 @@ from infra.workflows import (
     jira_sync,
     nudge,
     schedule,
+    worker,
 )
 from tests.contract.fakes import FakeChatProvider, FakeIssueTracker, FakeLlmProvider
 
@@ -281,7 +283,81 @@ def test_schedule_configs_use_explicit_sync_targets() -> None:
         ),
         ("vcs", "repo:oneai/program-manager", {"repo_name": "oneai/program-manager"}),
         ("calendar", "user:dev-1", {"user_id": "dev-1", "window_days": 2}),
+        ("directory", "directory", {}),
     ]
+
+
+def test_schedule_configs_include_only_directory_sync_when_targets_are_empty() -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        jira_sync_projects=(),
+        github_sync_repos=(),
+        calendar_sync_user_ids=(),
+    )
+
+    sync_configs = schedule.sync_schedule_configs(settings)
+
+    assert [(config.connector, config.scope, config.payload) for config in sync_configs] == [
+        ("directory", "directory", {})
+    ]
+
+
+async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        heartbeat_schedule_id="heartbeat-test",
+        jira_sync_projects=("PO",),
+        github_sync_repos=("oneai/program-manager",),
+        calendar_sync_user_ids=("dev-1",),
+    )
+    registry = _ScheduleBootstrapRegistry(settings)
+
+    results = await schedule.ensure_workflow_schedules(registry)
+
+    assert registry.scheduler.heartbeat_calls == 1
+    assert registry.scheduler.checkin_configs == [schedule.checkin_fanout_config(settings)]
+    assert registry.scheduler.purge_configs == [schedule.conversation_purge_config(settings)]
+    assert [(config.connector, config.scope) for config in registry.scheduler.sync_configs] == [
+        ("issue", "project:PO"),
+        ("vcs", "repo:oneai/program-manager"),
+        ("calendar", "user:dev-1"),
+        ("directory", "directory"),
+    ]
+    assert [result.schedule_id for result in results] == [
+        "heartbeat-test",
+        settings.checkin_fanout_schedule_id,
+        settings.conversation_purge_schedule_id,
+        *(config.schedule_id for config in registry.scheduler.sync_configs),
+    ]
+
+
+async def test_worker_bootstraps_schedules_before_running_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+    )
+    events: list[str] = []
+    registry = _WorkerStartupRegistry(settings, events)
+
+    async def ensure_schedules(value: _WorkerStartupRegistry) -> list[ScheduleBootstrapResult]:
+        assert value is registry
+        events.append("ensure")
+        return [ScheduleBootstrapResult(schedule_id="heartbeat-test", status="ready")]
+
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+    monkeypatch.setattr(worker, "ServiceRegistry", lambda value: registry)
+    monkeypatch.setattr(worker, "ensure_workflow_schedules", ensure_schedules)
+
+    await worker.main()
+
+    assert events == ["ensure", "worker", "run", "close"]
 
 
 def test_temporal_nudge_child_uses_abandon_parent_close_policy() -> None:
@@ -601,6 +677,70 @@ class _StubIssueSyncService:
                 metadata={"last_item_count": 1},
             ),
         )
+
+
+class _RecordingWorkflowScheduler:
+    def __init__(self, heartbeat_schedule_id: str) -> None:
+        self.heartbeat_schedule_id = heartbeat_schedule_id
+        self.heartbeat_calls = 0
+        self.checkin_configs: list[CheckinScheduleConfig] = []
+        self.purge_configs: list[ConversationPurgeScheduleConfig] = []
+        self.sync_configs: list[SyncScheduleConfig] = []
+
+    async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
+        self.heartbeat_calls += 1
+        return ScheduleBootstrapResult(schedule_id=self.heartbeat_schedule_id, status="ready")
+
+    async def ensure_checkin_fanout_schedule(
+        self, config: CheckinScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        self.checkin_configs.append(config)
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
+
+    async def ensure_conversation_purge_schedule(
+        self, config: ConversationPurgeScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        self.purge_configs.append(config)
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
+
+    async def ensure_sync_schedules(
+        self, configs: Sequence[SyncScheduleConfig]
+    ) -> list[ScheduleBootstrapResult]:
+        self.sync_configs.extend(configs)
+        return [
+            ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
+            for config in configs
+        ]
+
+
+class _ScheduleBootstrapRegistry:
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+        self.scheduler = _RecordingWorkflowScheduler(settings.resolved_heartbeat_schedule_id)
+
+    def workflow_scheduler(self) -> _RecordingWorkflowScheduler:
+        return self.scheduler
+
+
+class _WorkerStartupRegistry:
+    def __init__(self, settings: Settings, events: list[str]) -> None:
+        self.settings = settings
+        self.events = events
+
+    def workflow_worker(self) -> _OneShotWorkflowWorker:
+        self.events.append("worker")
+        return _OneShotWorkflowWorker(self.events)
+
+    async def close(self) -> None:
+        self.events.append("close")
+
+
+class _OneShotWorkflowWorker:
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+
+    async def run(self) -> None:
+        self.events.append("run")
 
 
 class _StubRegistry:

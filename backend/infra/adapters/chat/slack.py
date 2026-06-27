@@ -11,11 +11,18 @@ import httpx
 from opentelemetry import trace
 from redis.asyncio import Redis
 
-from core.domain.errors import ProviderUnavailable
+from core.domain.errors import ProviderConfigurationError, ProviderUnavailable
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from infra.adapters.chat.rate_limit import RateLimiter
 
 _tracer = trace.get_tracer("pulseops.adapters.chat.slack")
+
+_SLACK_CONFIGURATION_ERRORS = frozenset(
+    {"invalid_auth", "missing_scope", "not_authed", "token_revoked"}
+)
+_SLACK_SCOPE_HINTS = {
+    "/users.list": "users:read",
+}
 
 
 class SlackHttpClient(Protocol):
@@ -235,6 +242,10 @@ class HttpSlackClient:
                     raise ProviderUnavailable("slack response was not an object")
                 if payload.get("ok") is not True:
                     error = payload.get("error")
+                    if isinstance(error, str) and error in _SLACK_CONFIGURATION_ERRORS:
+                        raise ProviderConfigurationError(
+                            _slack_configuration_error(path, error, payload)
+                        )
                     raise ProviderUnavailable(f"slack request failed: {error}")
                 return payload
         raise ProviderUnavailable("slack request exhausted retry attempts")
@@ -259,3 +270,24 @@ def _string_field(payload: Mapping[str, object], key: str, default: str | None =
         return default
     message = f"payload missing required string field {key}"
     raise ProviderUnavailable(message)
+
+
+def _slack_configuration_error(path: str, error: str, payload: Mapping[str, object]) -> str:
+    method = path.removeprefix("/")
+    if error == "missing_scope":
+        needed = _optional_string(payload, "needed") or _SLACK_SCOPE_HINTS.get(path)
+        if needed:
+            return (
+                f"slack bot token is missing required OAuth scope(s) for {method}: {needed}. "
+                "Reinstall the Slack app after adding the scope and update slack_bot_token."
+            )
+        return (
+            f"slack bot token is missing required OAuth scope(s) for {method}. "
+            "Reinstall the Slack app after adding the scope and update slack_bot_token."
+        )
+    return f"slack bot token is not authorized for {method}: {error}"
+
+
+def _optional_string(payload: Mapping[str, object], key: str) -> str | None:
+    value = payload.get(key)
+    return value if isinstance(value, str) and value else None

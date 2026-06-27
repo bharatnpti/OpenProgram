@@ -261,6 +261,30 @@ class PostgresStatusRepository:
             )
         return _checkin_preference_from_row(rows[0]) if rows else None
 
+    async def list_checkin_preferences(self, tenant_id: str) -> list[CheckInPreference]:
+        with _tracer.start_as_current_span("postgres.status.list_checkin_preferences"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, developer_id, local_time, timezone, weekdays,
+                       reply_wait_seconds, final_reply_wait_seconds
+                FROM checkin_preferences
+                WHERE tenant_id = %s
+                ORDER BY developer_id
+                """,
+                (tenant_id,),
+            )
+        return [_checkin_preference_from_row(row) for row in rows]
+
+    async def delete_checkin_preference(self, tenant_id: str, developer_id: str) -> None:
+        with _tracer.start_as_current_span("postgres.status.delete_checkin_preference"):
+            await self._executor.execute(
+                """
+                DELETE FROM checkin_preferences
+                WHERE tenant_id = %s AND developer_id = %s
+                """,
+                (tenant_id, developer_id),
+            )
+
     async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None:
         with _tracer.start_as_current_span("postgres.status.record_checkin_schedule_run"):
             await self._executor.execute(
