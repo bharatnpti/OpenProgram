@@ -6,8 +6,8 @@ from redis.asyncio import Redis
 
 from config.settings import Settings
 from core.ports.calendar import CalendarProvider
-from core.ports.directory import DirectoryProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
+from core.ports.directory import DirectoryProvider
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
 from core.ports.readiness import ReadinessProbe
@@ -15,9 +15,13 @@ from core.ports.secrets import SecretStore
 from core.ports.vcs import VcsProvider
 from core.ports.workflows import WorkflowScheduler, WorkflowWorker
 from infra.adapters.calendar.google_adapter import GoogleCalendarAdapter
-from infra.adapters.directory.fake import FakeDirectoryProvider
-from infra.adapters.directory.slack import SlackDirectoryProvider
 from infra.adapters.chat.fake import FakeChatProvider, FakeChatWebhookMapper
+from infra.adapters.chat.mock_slack import (
+    InMemoryMockSlackStore,
+    MockSlackChatAdapter,
+    MockSlackStore,
+    RedisMockSlackStore,
+)
 from infra.adapters.chat.rate_limit import InMemoryRateLimiter, RedisRateLimiter
 from infra.adapters.chat.slack import (
     DisabledSlackHttpClient,
@@ -26,6 +30,9 @@ from infra.adapters.chat.slack import (
     RedisConversationCache,
     SlackChatAdapter,
 )
+from infra.adapters.directory.fake import FakeDirectoryProvider
+from infra.adapters.directory.mock_slack import MockSlackDirectoryProvider
+from infra.adapters.directory.slack import SlackDirectoryProvider
 from infra.adapters.github.github_adapter import GitHubVcsAdapter
 from infra.adapters.integrations.fake import (
     FakeCalendarProvider,
@@ -60,19 +67,20 @@ from infra.adapters.workflows.temporal import (
 )
 
 
-def build_chat_provider(settings: Settings, redis_client: Redis | None = None) -> ChatProvider:
+def build_chat_provider(
+    settings: Settings,
+    redis_client: Redis | None = None,
+    mock_slack_store: MockSlackStore | None = None,
+) -> ChatProvider:
     if settings.chat_provider == "fake":
         return FakeChatProvider(tenant_id=settings.tenant_id)
-    http_client = _slack_http_client(settings)
-    rate_limiter = (
-        InMemoryRateLimiter()
-        if settings.runtime_mode == "memory"
-        else RedisRateLimiter(
-            client=_required_redis(redis_client),
-            window_seconds=settings.redis_rate_limit_window_seconds,
-            max_events=settings.redis_rate_limit_max_events,
+    if settings.chat_provider == "mock_slack":
+        return MockSlackChatAdapter(
+            tenant_id=settings.tenant_id,
+            store=mock_slack_store or build_mock_slack_store(settings, redis_client),
+            rate_limiter=_chat_rate_limiter(settings, redis_client),
         )
-    )
+    http_client = _slack_http_client(settings)
     conversation_cache = (
         InMemoryConversationCache()
         if settings.runtime_mode == "memory"
@@ -84,12 +92,14 @@ def build_chat_provider(settings: Settings, redis_client: Redis | None = None) -
     return SlackChatAdapter(
         tenant_id=settings.tenant_id,
         http_client=http_client,
-        rate_limiter=rate_limiter,
+        rate_limiter=_chat_rate_limiter(settings, redis_client),
         conversation_cache=conversation_cache,
     )
 
 
 def build_directory_provider(settings: Settings) -> DirectoryProvider:
+    if settings.directory_provider == "mock_slack":
+        return MockSlackDirectoryProvider()
     if settings.runtime_mode == "memory" or settings.directory_provider == "fake":
         return FakeDirectoryProvider()
     return SlackDirectoryProvider(http_client=_slack_http_client(settings))
@@ -98,11 +108,20 @@ def build_directory_provider(settings: Settings) -> DirectoryProvider:
 def build_chat_webhook_mapper(settings: Settings, provider: str) -> ChatWebhookMapper | None:
     if provider == "fake":
         return FakeChatWebhookMapper(tenant_id=settings.tenant_id)
-    if provider == "slack":
+    if provider in {"slack", "mock_slack"}:
         from infra.adapters.chat.slack import SlackChatWebhookMapper
 
         return SlackChatWebhookMapper(tenant_id=settings.tenant_id)
     return None
+
+
+def build_mock_slack_store(
+    settings: Settings,
+    redis_client: Redis | None = None,
+) -> MockSlackStore:
+    if settings.runtime_mode == "memory":
+        return InMemoryMockSlackStore()
+    return RedisMockSlackStore(client=_required_redis(redis_client))
 
 
 def build_issue_tracker(
@@ -259,6 +278,18 @@ def _slack_http_client(settings: Settings) -> HttpSlackClient | DisabledSlackHtt
             retry_backoff_seconds=settings.slack_retry_backoff_seconds,
         )
     return DisabledSlackHttpClient()
+
+
+def _chat_rate_limiter(
+    settings: Settings, redis_client: Redis | None
+) -> InMemoryRateLimiter | RedisRateLimiter:
+    if settings.runtime_mode == "memory":
+        return InMemoryRateLimiter()
+    return RedisRateLimiter(
+        client=_required_redis(redis_client),
+        window_seconds=settings.redis_rate_limit_window_seconds,
+        max_events=settings.redis_rate_limit_max_events,
+    )
 
 
 def _required_redis(client: Redis | None) -> Redis:

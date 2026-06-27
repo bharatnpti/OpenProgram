@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { LayoutDashboard, Boxes, FolderKanban, Network, Settings2 } from "lucide-react";
+import {
+  LayoutDashboard,
+  Boxes,
+  FolderKanban,
+  MessageSquare,
+  Network,
+  Settings2,
+} from "lucide-react";
 
 import { appRoles, useRole } from "./RoleContext";
 import { Select } from "../components/ui/select";
@@ -15,6 +22,9 @@ type NavItem = {
 
 export function Layout() {
   const { role, setRole, roleLabel, canAccessPortfolio, canAccessAdmin } = useRole();
+  const canAccessChatSimulator =
+    canAccessAdmin &&
+    (import.meta.env.DEV || import.meta.env.VITE_ENABLE_CHAT_SIMULATOR === "true");
 
   const navItems: NavItem[] = [
     { to: "/me", label: "Dev Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
@@ -34,6 +44,12 @@ export function Layout() {
       label: "Admin Config",
       icon: <Settings2 className="h-4 w-4" />,
       visible: canAccessAdmin,
+    },
+    {
+      to: "/mock-slack",
+      label: "Mock Slack",
+      icon: <MessageSquare className="h-4 w-4" />,
+      visible: canAccessChatSimulator,
     },
   ];
 

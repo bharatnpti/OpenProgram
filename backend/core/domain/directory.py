@@ -16,6 +16,6 @@ class DirectoryUser:
     avatar_url: str | None = None
     title: str | None = None
     is_active: bool = True
-    source: str = "slack"
+    source: str = "directory"
     synced_at: datetime = field(default_factory=lambda: datetime.now(tz=UTC))
     metadata: dict[str, JsonScalar] = field(default_factory=dict)

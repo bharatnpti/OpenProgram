@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime
 
 from cryptography.fernet import Fernet
 from redis.asyncio import Redis
@@ -20,8 +21,8 @@ from core.application.sync_services import (
 from core.domain.messaging import InboundMessage
 from core.ports.auth import AuthProvider, CurrentPrincipal
 from core.ports.calendar import CalendarProvider
-from core.ports.directory import DirectoryProvider, DirectoryUserRepository
 from core.ports.chat import ChatProvider, ChatWebhookMapper
+from core.ports.directory import DirectoryProvider, DirectoryUserRepository
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
 from core.ports.repositories import (
@@ -36,8 +37,9 @@ from core.ports.repositories import (
 from core.ports.secrets import SecretStore
 from core.ports.vcs import VcsProvider
 from core.ports.workflows import WorkflowScheduler, WorkflowWorker
-from infra.adapters.auth.dev import DevAuthProvider, DevCurrentPrincipal
 from infra.adapters import catalog
+from infra.adapters.auth.dev import DevAuthProvider, DevCurrentPrincipal
+from infra.adapters.chat.mock_slack import MockSlackStore, slack_event_payload
 from infra.adapters.redis_client import RedisClientProvider
 from infra.adapters.secrets.encrypted import (
     FernetSecretStore,
@@ -45,12 +47,12 @@ from infra.adapters.secrets.encrypted import (
     PostgresEncryptedSecretRecordStore,
 )
 from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
+from infra.persistence.postgres_directory import PostgresDirectoryUserRepository
 from infra.persistence.postgres_graph import (
     PostgresGraphRepository,
     PostgresTimeSeriesRepository,
     PostgresVectorStore,
 )
-from infra.persistence.postgres_directory import PostgresDirectoryUserRepository
 from infra.persistence.postgres_status import (
     PostgresConversationRepository,
     PostgresRollupRepository,
@@ -58,6 +60,14 @@ from infra.persistence.postgres_status import (
     PostgresSyncCursorRepository,
 )
 from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
+
+_CHAT_SIMULATOR_PROVIDER = "mock_slack"
+
+
+@dataclass(frozen=True)
+class ChatWebhookProcessResult:
+    status: str
+    message_id: str
 
 
 @dataclass
@@ -87,6 +97,7 @@ class ServiceRegistry:
     _vcs_provider: VcsProvider | None = field(default=None, init=False)
     _calendar_provider: CalendarProvider | None = field(default=None, init=False)
     _directory_provider: DirectoryProvider | None = field(default=None, init=False)
+    _mock_slack_store: MockSlackStore | None = field(default=None, init=False)
     _postgres_directory_user_repository: PostgresDirectoryUserRepository | None = field(
         default=None,
         init=False,
@@ -155,7 +166,12 @@ class ServiceRegistry:
 
     def chat_provider(self) -> ChatProvider:
         redis_client = None if self.settings.runtime_mode == "memory" else self._redis_client()
-        return catalog.build_chat_provider(self.settings, redis_client)
+        mock_store = (
+            self._chat_simulator_store()
+            if self.settings.chat_provider == _CHAT_SIMULATOR_PROVIDER
+            else None
+        )
+        return catalog.build_chat_provider(self.settings, redis_client, mock_store)
 
     def chat_webhook_mapper(self, provider: str) -> ChatWebhookMapper | None:
         return catalog.build_chat_webhook_mapper(self.settings, provider)
@@ -165,6 +181,80 @@ class ServiceRegistry:
     ) -> InboundMessage | None:
         mapper = self.chat_webhook_mapper(provider)
         return mapper.map_webhook(payload, correlation_id) if mapper else None
+
+    async def process_chat_webhook(
+        self,
+        provider: str,
+        payload: Mapping[str, object],
+        correlation_id: str,
+        received_at: datetime | None = None,
+    ) -> ChatWebhookProcessResult:
+        message = self.map_chat_webhook(provider, payload, correlation_id)
+        if message is None:
+            return ChatWebhookProcessResult(status="ignored", message_id="unsupported-provider")
+        if received_at is not None:
+            message = replace(message, received_at=received_at)
+        collector = self.status_collector()
+        resolved_correlation_id = await collector.resolve_reply_correlation(message)
+        if resolved_correlation_id is None:
+            return ChatWebhookProcessResult(status="ignored", message_id=message.message_id)
+
+        checkin = await self.status_repository().checkin_by_correlation(
+            message.tenant_id,
+            resolved_correlation_id,
+        )
+        if checkin is not None and checkin.replied_at is not None:
+            return ChatWebhookProcessResult(status="duplicate", message_id=message.message_id)
+
+        outcome = await collector.handle_reply(
+            replace(message, correlation_id=resolved_correlation_id)
+        )
+        return ChatWebhookProcessResult(status=outcome.kind, message_id=message.message_id)
+
+    def chat_simulator_available(self) -> bool:
+        return self.settings.chat_provider == _CHAT_SIMULATOR_PROVIDER
+
+    async def chat_simulator_status(self) -> Mapping[str, object]:
+        messages = await self._chat_simulator_store().list_messages(self.settings.tenant_id)
+        return {
+            "enabled": self.settings.chat_simulator_enabled,
+            "tenant_id": self.settings.tenant_id,
+            "provider": self.settings.chat_provider,
+            "message_count": len(messages),
+        }
+
+    async def chat_simulator_messages(self) -> list[Mapping[str, object]]:
+        messages = await self._chat_simulator_store().list_messages(self.settings.tenant_id)
+        return [message.to_dict() for message in messages]
+
+    async def reset_chat_simulator(self) -> None:
+        await self._chat_simulator_store().reset(self.settings.tenant_id)
+
+    async def inject_chat_simulator_reply(
+        self,
+        *,
+        message_id: str,
+        text: str,
+        received_at: datetime | None,
+        correlation_id: str,
+    ) -> Mapping[str, object]:
+        reply = await self._chat_simulator_store().record_user_reply(
+            tenant_id=self.settings.tenant_id,
+            reply_to_message_id=message_id,
+            text=text,
+            created_at=received_at,
+        )
+        result = await self.process_chat_webhook(
+            _CHAT_SIMULATOR_PROVIDER,
+            slack_event_payload(reply),
+            correlation_id,
+            reply.created_at,
+        )
+        return {
+            "message_id": reply.message_id,
+            "status": result.status,
+            "processed_message_id": result.message_id,
+        }
 
     def llm_provider(self) -> LlmProvider:
         return catalog.build_llm_provider(self.settings)
@@ -313,6 +403,12 @@ class ServiceRegistry:
                 max_connections=self.settings.redis_max_connections,
             )
         return self._redis_provider.client()
+
+    def _chat_simulator_store(self) -> MockSlackStore:
+        if self._mock_slack_store is None:
+            redis_client = None if self.settings.runtime_mode == "memory" else self._redis_client()
+            self._mock_slack_store = catalog.build_mock_slack_store(self.settings, redis_client)
+        return self._mock_slack_store
 
     def _memory_graph_store(self) -> InMemoryGraphStore:
         if self.graph_store is None:

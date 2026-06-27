@@ -1,6 +1,11 @@
 import type {
   CheckinPreferenceResponse,
   CheckinPreferenceUpdateRequest,
+  ChatSimulatorMessagesResponse,
+  ChatSimulatorReplyRequest,
+  ChatSimulatorReplyResponse,
+  ChatSimulatorStatusResponse,
+  CheckinDispatchRequest,
   ConfigEdgeResponse,
   ConfigNodeCreateRequest,
   ConfigNodeResponse,
@@ -21,6 +26,7 @@ import type {
   ProgramTreeResponse,
   ProjectProgressResponse,
   ReadyResponse,
+  WorkflowDispatchResponse,
 } from "./schema";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -51,11 +57,9 @@ export const apiClient = {
   ready: () => requestJson<ReadyResponse>("/ready"),
   programTree: (programId: string) =>
     requestJson<GraphTreeDto>(`/graph/programs/${programId}/tree`),
-  programs: (asOf?: string) =>
-    requestJson<DirectoryItemResponse[]>(withAsOf("/programs", asOf)),
+  programs: (asOf?: string) => requestJson<DirectoryItemResponse[]>(withAsOf("/programs", asOf)),
   pods: (asOf?: string) => requestJson<DirectoryItemResponse[]>(withAsOf("/pods", asOf)),
-  projects: (asOf?: string) =>
-    requestJson<DirectoryItemResponse[]>(withAsOf("/projects", asOf)),
+  projects: (asOf?: string) => requestJson<DirectoryItemResponse[]>(withAsOf("/projects", asOf)),
   focus: (asOf?: string) => requestJson<FocusResponse>(withAsOf("/me/focus", asOf)),
   podBlockers: (podId: string, asOf?: string) =>
     requestJson<PodBlockersResponse>(withAsOf(`/pods/${podId}/blockers`, asOf)),
@@ -75,6 +79,22 @@ export const apiClient = {
       method: "PUT",
       body: input,
     }),
+  dispatchCheckin: (input: CheckinDispatchRequest) =>
+    requestJson<WorkflowDispatchResponse>("/admin/workflows/checkin/dispatch", {
+      method: "POST",
+      body: input,
+    }),
+  chatSimulatorStatus: () =>
+    requestJson<ChatSimulatorStatusResponse>("/test/chat-simulator/status"),
+  chatSimulatorMessages: () =>
+    requestJson<ChatSimulatorMessagesResponse>("/test/chat-simulator/messages"),
+  replyChatSimulatorMessage: (messageId: string, input: ChatSimulatorReplyRequest) =>
+    requestJson<ChatSimulatorReplyResponse>(`/test/chat-simulator/messages/${messageId}/reply`, {
+      method: "POST",
+      body: input,
+    }),
+  resetChatSimulatorState: () =>
+    requestJson<void>("/test/chat-simulator/state", { method: "DELETE" }),
   configPrograms: () => requestJson<ConfigNodeResponse[]>("/config/programs"),
   createConfigProgram: (input: ConfigNodeCreateRequest) =>
     requestJson<ConfigNodeResponse>("/config/programs", { method: "POST", body: input }),
@@ -104,9 +124,10 @@ export const apiClient = {
         offset: String(offset),
       }),
     ),
-  syncDirectory: () => requestJson<DirectorySyncResponse>("/config/directory/sync", {
-    method: "POST",
-  }),
+  syncDirectory: () =>
+    requestJson<DirectorySyncResponse>("/config/directory/sync", {
+      method: "POST",
+    }),
   addMembersFromDirectory: (externalIds: string[]) =>
     requestJson<ConfigNodeResponse[]>("/config/members/from-directory", {
       method: "POST",
@@ -152,10 +173,7 @@ export const apiClient = {
     }),
   configMemberCheckinPreference: (memberId: string) =>
     requestJson<CheckinPreferenceResponse>(`/config/members/${memberId}/checkin-preference`),
-  updateConfigMemberCheckinPreference: (
-    memberId: string,
-    input: CheckinPreferenceUpdateRequest,
-  ) =>
+  updateConfigMemberCheckinPreference: (memberId: string, input: CheckinPreferenceUpdateRequest) =>
     requestJson<CheckinPreferenceResponse>(`/config/members/${memberId}/checkin-preference`, {
       method: "PUT",
       body: input,
