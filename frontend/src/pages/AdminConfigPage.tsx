@@ -1,8 +1,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { DatabaseZap, Link2, Settings2, Trash2, UserPlus } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import { z } from "zod";
 
 import { apiClient } from "../api/client";
@@ -11,13 +12,25 @@ import type {
   ConfigNodeResponse,
   DirectoryUserResponse,
 } from "../api/schema";
+import { DataTable, type DataTableColumn } from "../components/ops/DataTable";
+import {
+  DataPanel,
+  EmptyState,
+  ErrorState,
+  KpiCard,
+  PageHeader,
+  QueryState,
+  SearchInput,
+} from "../components/ops/primitives";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { ConfirmDialog } from "../components/ui/confirm-dialog";
 import { Dialog } from "../components/ui/dialog";
 import { Field } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { Select } from "../components/ui/select";
 import { Slider } from "../components/ui/slider";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
 
 const nodeSchema = z.object({
@@ -28,7 +41,6 @@ const nodeSchema = z.object({
 });
 
 type NodeFormValues = z.infer<typeof nodeSchema>;
-
 type EntityKind = "programs" | "projects" | "pods" | "members";
 
 const entityLabels: Record<EntityKind, string> = {
@@ -48,19 +60,33 @@ const weekdayOptions = [
   { value: 6, label: "Sun" },
 ];
 
+type ConfirmState =
+  | {
+      open: true;
+      title: string;
+      description: string;
+      confirmLabel: string;
+      destructive?: boolean;
+      onConfirm: () => void;
+    }
+  | { open: false };
+
 export function AdminConfigPage() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<EntityKind>("programs");
+  const [activeEntity, setActiveEntity] = useState<EntityKind>("programs");
+  const [entityQuery, setEntityQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ConfigNodeResponse | null>(null);
-  const [directoryDialogOpen, setDirectoryDialogOpen] = useState(false);
-  const [directoryQuery, setDirectoryQuery] = useState("");
-  const [directoryDebouncedQuery, setDirectoryDebouncedQuery] = useState("");
-  const [directoryOffset, setDirectoryOffset] = useState(0);
-  const [selectedDirectoryIds, setSelectedDirectoryIds] = useState<string[]>([]);
+  const [confirm, setConfirm] = useState<ConfirmState>({ open: false });
 
-  const programs = useQuery({ queryKey: ["config", "programs"], queryFn: apiClient.configPrograms });
-  const projects = useQuery({ queryKey: ["config", "projects"], queryFn: apiClient.configProjects });
+  const programs = useQuery({
+    queryKey: ["config", "programs"],
+    queryFn: apiClient.configPrograms,
+  });
+  const projects = useQuery({
+    queryKey: ["config", "projects"],
+    queryFn: apiClient.configProjects,
+  });
   const pods = useQuery({ queryKey: ["config", "pods"], queryFn: apiClient.configPods });
   const members = useQuery({ queryKey: ["config", "members"], queryFn: apiClient.configMembers });
   const checkinPreferences = useQuery({
@@ -68,29 +94,12 @@ export function AdminConfigPage() {
     queryFn: apiClient.configCheckinPreferences,
   });
 
-  const entitiesByTab: Record<EntityKind, ConfigNodeResponse[] | undefined> = {
-    programs: programs.data,
-    projects: projects.data,
-    pods: pods.data,
-    members: members.data,
-  };
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setDirectoryDebouncedQuery(directoryQuery);
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [directoryQuery]);
-
-  useEffect(() => {
-    setDirectoryOffset(0);
-  }, [directoryDebouncedQuery]);
-
-  useEffect(() => {
-    if (!directoryDialogOpen) {
-      setSelectedDirectoryIds([]);
-    }
-  }, [directoryDialogOpen]);
+  const entityQueryByTab = {
+    programs,
+    projects,
+    pods,
+    members,
+  }[activeEntity];
 
   const form = useForm<NodeFormValues>({
     resolver: zodResolver(nodeSchema),
@@ -104,82 +113,253 @@ export function AdminConfigPage() {
     ]);
   };
 
-  const directorySearch = useQuery({
-    queryKey: ["directory", directoryDebouncedQuery, directoryOffset],
-    queryFn: () => apiClient.searchDirectory(directoryDebouncedQuery, 25, directoryOffset),
-    enabled: directoryDialogOpen,
-  });
-
-  const directorySyncMutation = useMutation({
-    mutationFn: apiClient.syncDirectory,
-    onSuccess: invalidateAll,
-  });
-
-  const addDirectoryMembersMutation = useMutation({
-    mutationFn: (externalIds: string[]) => apiClient.addMembersFromDirectory(externalIds),
-    onSuccess: async () => {
-      setDirectoryDialogOpen(false);
-      setSelectedDirectoryIds([]);
-      await invalidateAll();
-    },
-  });
-
   const saveMutation = useMutation({
-    mutationFn: async (values: NodeFormValues) => {
-      const payload = {
-        id: values.id,
-        name: values.name,
-        description: values.description || null,
-        code: values.code || null,
-      };
-      if (editing) {
-        if (activeTab === "programs") {
-          return apiClient.updateConfigProgram(editing.id, payload);
-        }
-        if (activeTab === "projects") {
-          return apiClient.updateConfigProject(editing.id, payload);
-        }
-        if (activeTab === "pods") {
-          return apiClient.updateConfigPod(editing.id, payload);
-        }
-        return apiClient.updateConfigMember(editing.id, payload);
-      }
-      if (activeTab === "programs") {
-        return apiClient.createConfigProgram(payload);
-      }
-      if (activeTab === "projects") {
-        return apiClient.createConfigProject(payload);
-      }
-      if (activeTab === "pods") {
-        return apiClient.createConfigPod(payload);
-      }
-      return apiClient.createConfigMember(payload);
-    },
+    mutationFn: (values: NodeFormValues) => saveNode(activeEntity, values, editing),
     onSuccess: async () => {
       setDialogOpen(false);
       setEditing(null);
       form.reset();
       await invalidateAll();
+      toast.success("Configuration saved.");
     },
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      if (activeTab === "programs") return apiClient.deleteConfigProgram(id);
-      if (activeTab === "projects") return apiClient.deleteConfigProject(id);
-      if (activeTab === "pods") return apiClient.deleteConfigPod(id);
-      return apiClient.deleteConfigMember(id);
+    mutationFn: ({ kind, id }: { kind: EntityKind; id: string }) => deleteNode(kind, id),
+    onSuccess: async () => {
+      await invalidateAll();
+      toast.success("Record deleted.");
     },
-    onSuccess: invalidateAll,
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
-  const openCreate = () => {
+  const currentEntities = useMemo(
+    () =>
+      filterNodes(
+        {
+          programs: programs.data,
+          projects: projects.data,
+          pods: pods.data,
+          members: members.data,
+        }[activeEntity] ?? [],
+        entityQuery,
+      ),
+    [activeEntity, entityQuery, members.data, pods.data, programs.data, projects.data],
+  );
+
+  const columns: DataTableColumn<ConfigNodeResponse>[] = [
+    {
+      accessorKey: "id",
+      header: "ID",
+      cell: ({ row }) => <span className="font-mono text-xs">{row.original.id}</span>,
+    },
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+    },
+    {
+      accessorKey: "description",
+      header: "Description",
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">{row.original.description ?? "-"}</span>
+      ),
+    },
+    {
+      accessorKey: "code",
+      header: "Code",
+      cell: ({ row }) => row.original.code ?? "-",
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      enableSorting: false,
+      cell: ({ row }) => (
+        <div className="flex gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={() => openEdit(row.original)}>
+            Edit
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="text-danger hover:text-danger"
+            disabled={deleteMutation.isPending}
+            onClick={() => confirmDelete(activeEntity, row.original)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <main className="min-h-screen px-4 py-4 sm:px-5 lg:px-6">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
+        <PageHeader
+          eyebrow="Admin"
+          title="Runtime Configuration"
+          description="Manage hierarchy, directory onboarding, graph links, assignments, and check-in timing."
+        />
+
+        <section className="grid gap-3 md:grid-cols-4">
+          <KpiCard label="Programs" value={programs.data?.length ?? "-"} tone="info" />
+          <KpiCard label="Projects" value={projects.data?.length ?? "-"} tone="info" />
+          <KpiCard label="Pods" value={pods.data?.length ?? "-"} tone="info" />
+          <KpiCard label="Members" value={members.data?.length ?? "-"} tone="info" />
+        </section>
+
+        <Tabs defaultValue="entities">
+          <TabsList className="flex w-full flex-wrap justify-start">
+            <TabsTrigger value="entities">
+              <Settings2 className="mr-2 h-4 w-4" />
+              Entities
+            </TabsTrigger>
+            <TabsTrigger value="relationships">
+              <Link2 className="mr-2 h-4 w-4" />
+              Links
+            </TabsTrigger>
+            <TabsTrigger value="directory">
+              <UserPlus className="mr-2 h-4 w-4" />
+              Directory
+            </TabsTrigger>
+            <TabsTrigger value="preferences">
+              <DatabaseZap className="mr-2 h-4 w-4" />
+              Check-ins
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="entities">
+            <DataPanel
+              title="Configured Entities"
+              description="Create and maintain the program, project, pod, and member nodes used by the Graph of Truth."
+              action={
+                <Button type="button" variant="primary" onClick={openCreate}>
+                  Add {entityLabels[activeEntity].slice(0, -1)}
+                </Button>
+              }
+            >
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                {(Object.keys(entityLabels) as EntityKind[]).map((kind) => (
+                  <Button
+                    key={kind}
+                    type="button"
+                    size="sm"
+                    variant={activeEntity === kind ? "primary" : "outline"}
+                    onClick={() => setActiveEntity(kind)}
+                  >
+                    {entityLabels[kind]}
+                  </Button>
+                ))}
+                <SearchInput
+                  value={entityQuery}
+                  onChange={setEntityQuery}
+                  placeholder={`Search ${entityLabels[activeEntity].toLowerCase()}`}
+                  className="min-w-64"
+                />
+              </div>
+              <QueryState query={entityQueryByTab}>
+                {() => (
+                  <DataTable
+                    data={currentEntities}
+                    columns={columns}
+                    emptyTitle="No records"
+                    emptyDescription="Create a record or adjust the search filter."
+                  />
+                )}
+              </QueryState>
+            </DataPanel>
+          </TabsContent>
+
+          <TabsContent value="relationships">
+            <RelationshipPanel
+              programs={programs.data ?? []}
+              projects={projects.data ?? []}
+              pods={pods.data ?? []}
+              members={members.data ?? []}
+              onChanged={invalidateAll}
+              askConfirm={setConfirm}
+            />
+          </TabsContent>
+
+          <TabsContent value="directory">
+            <DirectoryPanel onChanged={invalidateAll} />
+          </TabsContent>
+
+          <TabsContent value="preferences">
+            <CheckinPreferencesPanel
+              members={members.data ?? []}
+              preferences={checkinPreferences.data ?? []}
+              onChanged={invalidateAll}
+            />
+          </TabsContent>
+        </Tabs>
+
+        <Dialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          title={
+            editing
+              ? `Edit ${entityLabels[activeEntity].slice(0, -1)}`
+              : `Create ${entityLabels[activeEntity].slice(0, -1)}`
+          }
+          description="IDs are stable graph identifiers. Editing an existing ID is disabled."
+        >
+          <form
+            className="space-y-3"
+            onSubmit={form.handleSubmit((values) => saveMutation.mutate(values))}
+          >
+            <Field label="ID" htmlFor="node-id" error={form.formState.errors.id?.message}>
+              <Input id="node-id" disabled={Boolean(editing)} {...form.register("id")} />
+            </Field>
+            <Field label="Name" htmlFor="node-name" error={form.formState.errors.name?.message}>
+              <Input id="node-name" {...form.register("name")} />
+            </Field>
+            <Field label="Description" htmlFor="node-description">
+              <Textarea id="node-description" {...form.register("description")} />
+            </Field>
+            {(activeEntity === "projects" || editing?.code) && (
+              <Field label="Code" htmlFor="node-code">
+                <Input id="node-code" {...form.register("code")} />
+              </Field>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={saveMutation.isPending}>
+                Save
+              </Button>
+            </div>
+          </form>
+        </Dialog>
+
+        <ConfirmDialog
+          open={confirm.open}
+          onOpenChange={(open) => !open && setConfirm({ open: false })}
+          title={confirm.open ? confirm.title : ""}
+          description={confirm.open ? confirm.description : ""}
+          confirmLabel={confirm.open ? confirm.confirmLabel : "Confirm"}
+          destructive={confirm.open ? confirm.destructive : false}
+          onConfirm={() => {
+            if (confirm.open) confirm.onConfirm();
+            setConfirm({ open: false });
+          }}
+        />
+      </div>
+    </main>
+  );
+
+  function openCreate() {
     setEditing(null);
     form.reset({ id: "", name: "", description: "", code: "" });
     setDialogOpen(true);
-  };
+  }
 
-  const openEdit = (node: ConfigNodeResponse) => {
+  function openEdit(node: ConfigNodeResponse) {
     setEditing(node);
     form.reset({
       id: node.id,
@@ -188,256 +368,18 @@ export function AdminConfigPage() {
       code: node.code ?? "",
     });
     setDialogOpen(true);
-  };
+  }
 
-  const currentEntities = entitiesByTab[activeTab] ?? [];
-  const directoryItems = directorySearch.data?.items ?? [];
-  const directoryTotal = directorySearch.data?.total ?? 0;
-  const pageSize = 25;
-
-  const toggleDirectorySelection = (id: string) => {
-    setSelectedDirectoryIds((current) =>
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
-    );
-  };
-
-  return (
-    <main className="px-5 py-5">
-      <header className="mb-4 border-b border-border pb-4">
-        <h1 className="text-xl font-semibold">Admin Configuration</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Manage runtime programs, projects, pods, members, links, and check-in timing.
-        </p>
-      </header>
-
-      <div className="mb-4 flex flex-wrap gap-2">
-        {(Object.keys(entityLabels) as EntityKind[]).map((tab) => (
-          <Button
-            key={tab}
-            type="button"
-            className={activeTab === tab ? "border-primary bg-primary/10 text-primary" : ""}
-            onClick={() => setActiveTab(tab)}
-          >
-            {entityLabels[tab]}
-          </Button>
-        ))}
-      </div>
-
-      <section className="rounded border border-border bg-white">
-        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold">{entityLabels[activeTab]}</h2>
-          <div className="flex flex-wrap gap-2">
-            {activeTab === "members" && (
-              <>
-                <Button type="button" onClick={() => setDirectoryDialogOpen(true)}>
-                  Add from directory
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => directorySyncMutation.mutate()}
-                  disabled={directorySyncMutation.isPending}
-                >
-                  Sync directory
-                </Button>
-              </>
-            )}
-            <Button type="button" onClick={openCreate}>
-              Add {entityLabels[activeTab].slice(0, -1)}
-            </Button>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-border text-xs text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 font-medium">ID</th>
-                <th className="px-4 py-2 font-medium">Name</th>
-                <th className="px-4 py-2 font-medium">Description</th>
-                <th className="px-4 py-2 font-medium">Code</th>
-                <th className="px-4 py-2 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {currentEntities.map((node) => (
-                <tr key={node.id} className="border-b border-border last:border-b-0">
-                  <td className="px-4 py-2 font-mono text-xs">{node.id}</td>
-                  <td className="px-4 py-2">{node.name}</td>
-                  <td className="px-4 py-2 text-muted-foreground">{node.description ?? "-"}</td>
-                  <td className="px-4 py-2">{node.code ?? "-"}</td>
-                  <td className="px-4 py-2">
-                    <div className="flex gap-2">
-                      <Button type="button" onClick={() => openEdit(node)}>
-                        Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={() => deleteMutation.mutate(node.id)}
-                        disabled={deleteMutation.isPending}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {currentEntities.length === 0 && (
-            <p className="px-4 py-4 text-sm text-muted-foreground">No records yet.</p>
-          )}
-        </div>
-      </section>
-
-      <RelationshipPanel
-        programs={programs.data ?? []}
-        projects={projects.data ?? []}
-        pods={pods.data ?? []}
-        members={members.data ?? []}
-        onChanged={invalidateAll}
-      />
-
-      <CheckinPreferencesPanel
-        members={members.data ?? []}
-        preferences={checkinPreferences.data ?? []}
-        onChanged={invalidateAll}
-      />
-
-      <Dialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        title={editing ? `Edit ${entityLabels[activeTab].slice(0, -1)}` : `Create ${entityLabels[activeTab].slice(0, -1)}`}
-      >
-        <form
-          className="space-y-3"
-          onSubmit={form.handleSubmit((values) => saveMutation.mutate(values))}
-        >
-          <Field label="ID" htmlFor="node-id" error={form.formState.errors.id?.message}>
-            <Input id="node-id" disabled={Boolean(editing)} {...form.register("id")} />
-          </Field>
-          <Field label="Name" htmlFor="node-name" error={form.formState.errors.name?.message}>
-            <Input id="node-name" {...form.register("name")} />
-          </Field>
-          <Field label="Description" htmlFor="node-description">
-            <Textarea id="node-description" {...form.register("description")} />
-          </Field>
-          {(activeTab === "projects" || editing?.code) && (
-            <Field label="Code" htmlFor="node-code">
-              <Input id="node-code" {...form.register("code")} />
-            </Field>
-          )}
-          {saveMutation.isError && (
-            <p className="text-xs text-red-600">Save failed. Check IDs and permissions.</p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button type="button" onClick={() => setDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saveMutation.isPending}>
-              Save
-            </Button>
-          </div>
-        </form>
-      </Dialog>
-
-      <Dialog
-        open={directoryDialogOpen}
-        onOpenChange={setDirectoryDialogOpen}
-        title="Add members from directory"
-      >
-        <div className="space-y-4">
-          <Field label="Search directory" htmlFor="directory-search">
-            <Input
-              id="directory-search"
-              placeholder="Search by name, email, or handle"
-              value={directoryQuery}
-              onChange={(event) => setDirectoryQuery(event.target.value)}
-            />
-          </Field>
-
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>
-              {directorySearch.isFetching ? "Searching..." : `${directoryTotal} matches`}
-            </span>
-            <span>{selectedDirectoryIds.length} selected</span>
-          </div>
-
-          <div className="max-h-[28rem] overflow-y-auto rounded border border-border">
-            {directoryItems.length === 0 ? (
-              <p className="px-4 py-4 text-sm text-muted-foreground">
-                {directorySearch.isFetching ? "Loading directory users..." : "No matches."}
-              </p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {directoryItems.map((item) => (
-                  <li key={item.external_id} className="px-4 py-3">
-                    <label className="flex cursor-pointer items-center gap-3">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-border"
-                        checked={selectedDirectoryIds.includes(item.external_id)}
-                        onChange={() => toggleDirectorySelection(item.external_id)}
-                      />
-                      <DirectoryUserAvatar user={item} />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium">{item.display_name}</div>
-                        <div className="truncate text-xs text-muted-foreground">
-                          {item.email ?? item.handle ?? item.external_id}
-                        </div>
-                        <div className="mt-1 flex flex-wrap gap-2">
-                          {item.title && <Badge tone="info">{item.title}</Badge>}
-                          {item.handle && <Badge tone="neutral">@{item.handle}</Badge>}
-                        </div>
-                      </div>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                onClick={() => setDirectoryOffset((current) => Math.max(0, current - pageSize))}
-                disabled={directoryOffset === 0 || directorySearch.isFetching}
-              >
-                Previous
-              </Button>
-              <Button
-                type="button"
-                onClick={() => setDirectoryOffset((current) => current + pageSize)}
-                disabled={directoryOffset + pageSize >= directoryTotal || directorySearch.isFetching}
-              >
-                Next
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" onClick={() => setDirectoryDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={() => addDirectoryMembersMutation.mutate(selectedDirectoryIds)}
-                disabled={
-                  selectedDirectoryIds.length === 0 || addDirectoryMembersMutation.isPending
-                }
-              >
-                Add selected
-              </Button>
-            </div>
-          </div>
-
-          {directorySearch.isError && (
-            <p className="text-xs text-red-600">Search failed. Try syncing the directory again.</p>
-          )}
-          {addDirectoryMembersMutation.isError && (
-            <p className="text-xs text-red-600">Add failed. Verify the selected users still exist.</p>
-          )}
-        </div>
-      </Dialog>
-    </main>
-  );
+  function confirmDelete(kind: EntityKind, node: ConfigNodeResponse) {
+    setConfirm({
+      open: true,
+      title: `Delete ${node.name}?`,
+      description: `This removes ${node.id} from ${entityLabels[kind]}. Related links may also become invalid.`,
+      confirmLabel: "Delete",
+      destructive: true,
+      onConfirm: () => deleteMutation.mutate({ kind, id: node.id }),
+    });
+  }
 }
 
 function RelationshipPanel({
@@ -446,12 +388,14 @@ function RelationshipPanel({
   pods,
   members,
   onChanged,
+  askConfirm,
 }: {
   programs: ConfigNodeResponse[];
   projects: ConfigNodeResponse[];
   pods: ConfigNodeResponse[];
   members: ConfigNodeResponse[];
   onChanged: () => Promise<void>;
+  askConfirm: (state: ConfirmState) => void;
 }) {
   const [projectId, setProjectId] = useState("");
   const [programId, setProgramId] = useState("");
@@ -461,183 +405,308 @@ function RelationshipPanel({
   const [memberRole, setMemberRole] = useState("developer");
   const [taskMemberId, setTaskMemberId] = useState("");
   const [taskId, setTaskId] = useState("");
-  const [status, setStatus] = useState<string | null>(null);
 
   const run = async (action: () => Promise<unknown>, message: string) => {
     try {
       await action();
-      setStatus(message);
       await onChanged();
-    } catch {
-      setStatus("Operation failed.");
+      toast.success(message);
+    } catch (error) {
+      toast.error(errorMessage(error));
     }
   };
 
   return (
-    <section className="mt-4 rounded border border-border bg-white">
-      <div className="border-b border-border px-4 py-3 text-sm font-semibold">Links & assignments</div>
-      <div className="grid gap-4 px-4 py-4 lg:grid-cols-2">
+    <DataPanel
+      title="Links & Assignments"
+      description="Maintain graph relationships without leaving empty or ambiguous mutations."
+    >
+      <div className="grid gap-4 lg:grid-cols-2">
         <LinkForm
-          title="Project → Program"
+          title="Project to Program"
+          canSubmit={Boolean(projectId && programId)}
           onSubmit={() =>
-            run(
+            void run(
               () => apiClient.linkProjectProgram(projectId, { program_id: programId }),
               "Linked project to program.",
             )
           }
           onUnlink={() =>
-            run(
-              () => apiClient.unlinkProjectProgram(projectId, programId),
-              "Unlinked project from program.",
+            confirmUnlink(
+              askConfirm,
+              "Unlink project from program?",
+              () =>
+                void run(
+                  () => apiClient.unlinkProjectProgram(projectId, programId),
+                  "Unlinked project from program.",
+                ),
             )
           }
         >
-          <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            <option value="">Select project</option>
-            {projects.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </Select>
-          <Select value={programId} onChange={(e) => setProgramId(e.target.value)}>
-            <option value="">Select program</option>
-            {programs.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </Select>
+          <NodeSelect
+            value={projectId}
+            onChange={setProjectId}
+            items={projects}
+            placeholder="Select project"
+          />
+          <NodeSelect
+            value={programId}
+            onChange={setProgramId}
+            items={programs}
+            placeholder="Select program"
+          />
         </LinkForm>
 
         <LinkForm
-          title="Pod → Project"
+          title="Pod to Project"
+          canSubmit={Boolean(podId && linkProjectId)}
           onSubmit={() =>
-            run(
-              () => apiClient.linkPodProject(podId, linkProjectId),
-              "Linked pod to project.",
-            )
+            void run(() => apiClient.linkPodProject(podId, linkProjectId), "Linked pod to project.")
           }
           onUnlink={() =>
-            run(
-              () => apiClient.unlinkPodProject(podId, linkProjectId),
-              "Unlinked pod from project.",
+            confirmUnlink(
+              askConfirm,
+              "Unlink pod from project?",
+              () =>
+                void run(
+                  () => apiClient.unlinkPodProject(podId, linkProjectId),
+                  "Unlinked pod from project.",
+                ),
             )
           }
         >
-          <Select value={podId} onChange={(e) => setPodId(e.target.value)}>
-            <option value="">Select pod</option>
-            {pods.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </Select>
-          <Select value={linkProjectId} onChange={(e) => setLinkProjectId(e.target.value)}>
-            <option value="">Select project</option>
-            {projects.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </Select>
+          <NodeSelect value={podId} onChange={setPodId} items={pods} placeholder="Select pod" />
+          <NodeSelect
+            value={linkProjectId}
+            onChange={setLinkProjectId}
+            items={projects}
+            placeholder="Select project"
+          />
         </LinkForm>
 
         <LinkForm
-          title="Pod → Member"
+          title="Pod to Member"
+          canSubmit={Boolean(podId && memberId && memberRole.trim())}
           onSubmit={() =>
-            run(
+            void run(
               () => apiClient.linkPodMember(podId, memberId, { role: memberRole }),
               "Linked member to pod.",
             )
           }
           onUnlink={() =>
-            run(() => apiClient.unlinkPodMember(podId, memberId), "Unlinked member from pod.")
+            confirmUnlink(
+              askConfirm,
+              "Unlink member from pod?",
+              () =>
+                void run(
+                  () => apiClient.unlinkPodMember(podId, memberId),
+                  "Unlinked member from pod.",
+                ),
+            )
           }
         >
-          <Select value={podId} onChange={(e) => setPodId(e.target.value)}>
-            <option value="">Select pod</option>
-            {pods.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </Select>
-          <Select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
-            <option value="">Select member</option>
-            {members.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </Select>
+          <NodeSelect value={podId} onChange={setPodId} items={pods} placeholder="Select pod" />
+          <NodeSelect
+            value={memberId}
+            onChange={setMemberId}
+            items={members}
+            placeholder="Select member"
+          />
           <Input
-            placeholder="Role in pod"
             value={memberRole}
-            onChange={(e) => setMemberRole(e.target.value)}
+            onChange={(event) => setMemberRole(event.target.value)}
+            placeholder="Role in pod"
           />
         </LinkForm>
 
         <LinkForm
-          title="Member → Task"
+          title="Member to Task"
+          canSubmit={Boolean(taskMemberId && taskId.trim())}
           onSubmit={() =>
-            run(
+            void run(
               () => apiClient.assignMemberTask(taskMemberId, { task_id: taskId }),
               "Assigned task to member.",
             )
           }
           onUnlink={() =>
-            run(
-              () => apiClient.unassignMemberTask(taskMemberId, taskId),
-              "Unassigned task from member.",
+            confirmUnlink(
+              askConfirm,
+              "Unassign task from member?",
+              () =>
+                void run(
+                  () => apiClient.unassignMemberTask(taskMemberId, taskId),
+                  "Unassigned task from member.",
+                ),
             )
           }
         >
-          <Select value={taskMemberId} onChange={(e) => setTaskMemberId(e.target.value)}>
-            <option value="">Select member</option>
-            {members.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </Select>
+          <NodeSelect
+            value={taskMemberId}
+            onChange={setTaskMemberId}
+            items={members}
+            placeholder="Select member"
+          />
           <Input
             placeholder="Task ID"
             value={taskId}
-            onChange={(e) => setTaskId(e.target.value)}
+            onChange={(event) => setTaskId(event.target.value)}
           />
         </LinkForm>
       </div>
-      {status && <p className="px-4 pb-4 text-xs text-muted-foreground">{status}</p>}
-    </section>
+    </DataPanel>
   );
 }
 
-function LinkForm({
-  title,
-  children,
-  onSubmit,
-  onUnlink,
-}: {
-  title: string;
-  children: ReactNode;
-  onSubmit: () => void;
-  onUnlink: () => void;
-}) {
+function DirectoryPanel({ onChanged }: { onChanged: () => Promise<void> }) {
+  const [directoryQuery, setDirectoryQuery] = useState("");
+  const [directoryDebouncedQuery, setDirectoryDebouncedQuery] = useState("");
+  const [directoryOffset, setDirectoryOffset] = useState(0);
+  const [selectedDirectoryIds, setSelectedDirectoryIds] = useState<string[]>([]);
+  const pageSize = 25;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDirectoryDebouncedQuery(directoryQuery), 300);
+    return () => window.clearTimeout(timer);
+  }, [directoryQuery]);
+
+  useEffect(() => {
+    setDirectoryOffset(0);
+  }, [directoryDebouncedQuery]);
+
+  const directorySearch = useQuery({
+    queryKey: ["directory", directoryDebouncedQuery, directoryOffset],
+    queryFn: () => apiClient.searchDirectory(directoryDebouncedQuery, pageSize, directoryOffset),
+  });
+  const directoryItems = directorySearch.data?.items ?? [];
+  const directoryTotal = directorySearch.data?.total ?? 0;
+
+  const directorySyncMutation = useMutation({
+    mutationFn: apiClient.syncDirectory,
+    onSuccess: async (data) => {
+      await onChanged();
+      toast.success(
+        `Directory synced: ${data.synced_count} synced, ${data.deactivated_count} deactivated.`,
+      );
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+  const addDirectoryMembersMutation = useMutation({
+    mutationFn: (externalIds: string[]) => apiClient.addMembersFromDirectory(externalIds),
+    onSuccess: async (data) => {
+      setSelectedDirectoryIds([]);
+      await onChanged();
+      toast.success(`Added ${data.length} member${data.length === 1 ? "" : "s"}.`);
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   return (
-    <div className="space-y-2 rounded border border-border p-3">
-      <div className="text-sm font-medium">{title}</div>
-      <div className="space-y-2">{children}</div>
-      <div className="flex gap-2">
-        <Button type="button" onClick={onSubmit}>
-          Link
+    <DataPanel
+      title="Directory Import"
+      description="Search synced users and promote selected people into configured members."
+      action={
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => directorySyncMutation.mutate()}
+          disabled={directorySyncMutation.isPending}
+        >
+          <DatabaseZap className="h-4 w-4" />
+          Sync directory
         </Button>
-        <Button type="button" onClick={onUnlink}>
-          Unlink
-        </Button>
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <SearchInput
+            value={directoryQuery}
+            onChange={setDirectoryQuery}
+            placeholder="Search by name, email, or handle"
+            className="min-w-72"
+          />
+          <Badge tone="neutral">
+            {directorySearch.isFetching ? "Searching" : `${directoryTotal} matches`}
+          </Badge>
+          <Badge tone="info">{selectedDirectoryIds.length} selected</Badge>
+        </div>
+
+        {directorySearch.isError ? (
+          <ErrorState
+            error={directorySearch.error}
+            onRetry={() => void directorySearch.refetch()}
+          />
+        ) : directoryItems.length === 0 ? (
+          <EmptyState
+            title={directorySearch.isFetching ? "Loading users" : "No directory matches"}
+          />
+        ) : (
+          <div className="max-h-[32rem] overflow-y-auto rounded-md border border-border scrollbar-thin">
+            <ul className="divide-y divide-border">
+              {directoryItems.map((item) => (
+                <li key={item.external_id} className="px-4 py-3">
+                  <label className="flex cursor-pointer items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-border accent-primary"
+                      checked={selectedDirectoryIds.includes(item.external_id)}
+                      onChange={() => toggleSelection(item.external_id)}
+                    />
+                    <DirectoryUserAvatar user={item} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium">{item.display_name}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {item.email ?? item.handle ?? item.external_id}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {item.title && <Badge tone="info">{item.title}</Badge>}
+                        {item.handle && <Badge tone="neutral">@{item.handle}</Badge>}
+                      </div>
+                    </div>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDirectoryOffset((current) => Math.max(0, current - pageSize))}
+              disabled={directoryOffset === 0 || directorySearch.isFetching}
+            >
+              Previous
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDirectoryOffset((current) => current + pageSize)}
+              disabled={directoryOffset + pageSize >= directoryTotal || directorySearch.isFetching}
+            >
+              Next
+            </Button>
+          </div>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => addDirectoryMembersMutation.mutate(selectedDirectoryIds)}
+            disabled={selectedDirectoryIds.length === 0 || addDirectoryMembersMutation.isPending}
+          >
+            <UserPlus className="h-4 w-4" />
+            Add selected
+          </Button>
+        </div>
       </div>
-    </div>
+    </DataPanel>
   );
+
+  function toggleSelection(id: string) {
+    setSelectedDirectoryIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
+  }
 }
 
 function CheckinPreferencesPanel({
@@ -656,37 +725,34 @@ function CheckinPreferencesPanel({
   const [replyWait, setReplyWait] = useState(300);
   const [finalReplyWait, setFinalReplyWait] = useState(900);
 
-  const toggleWeekday = (day: number) => {
-    setWeekdays((current) =>
-      current.includes(day) ? current.filter((item) => item !== day) : [...current, day].sort(),
-    );
-  };
-
-  const save = async () => {
-    if (!memberId) return;
-    await apiClient.updateConfigMemberCheckinPreference(memberId, {
-      local_time: localTime,
-      timezone,
-      weekdays,
-      reply_wait_seconds: replyWait,
-      final_reply_wait_seconds: finalReplyWait,
-    });
-    await onChanged();
-  };
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      apiClient.updateConfigMemberCheckinPreference(memberId, {
+        local_time: localTime,
+        timezone,
+        weekdays,
+        reply_wait_seconds: replyWait,
+        final_reply_wait_seconds: finalReplyWait,
+      }),
+    onSuccess: async () => {
+      await onChanged();
+      toast.success("Check-in preference saved.");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
 
   return (
-    <section className="mt-4 rounded border border-border bg-white">
-      <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-        Check-in preferences
-      </div>
-      <div className="grid gap-4 px-4 py-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-3">
+    <DataPanel
+      title="Check-in Preferences"
+      description="Set local check-in timing, weekdays, and reply windows per member."
+    >
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-4">
           <Field label="Member" htmlFor="checkin-member">
-            <Select
+            <NodeSelect
               id="checkin-member"
               value={memberId}
-              onChange={(event) => {
-                const nextMember = event.target.value;
+              onChange={(nextMember) => {
                 setMemberId(nextMember);
                 const pref = preferences.find((item) => item.developer_id === nextMember);
                 if (pref) {
@@ -697,14 +763,9 @@ function CheckinPreferencesPanel({
                   setFinalReplyWait(pref.final_reply_wait_seconds);
                 }
               }}
-            >
-              <option value="">Select member</option>
-              {members.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.name}
-                </option>
-              ))}
-            </Select>
+              items={members}
+              placeholder="Select member"
+            />
           </Field>
           <div className="grid gap-3 md:grid-cols-2">
             <Field label="Local time" htmlFor="checkin-time">
@@ -729,10 +790,10 @@ function CheckinPreferencesPanel({
                 <button
                   key={day.value}
                   type="button"
-                  className={`rounded border px-2 py-1 text-xs ${
+                  className={`min-h-8 rounded-md border px-3 text-xs font-medium ${
                     weekdays.includes(day.value)
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border text-muted-foreground"
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:bg-surface-muted"
                   }`}
                   onClick={() => toggleWeekday(day.value)}
                 >
@@ -759,31 +820,97 @@ function CheckinPreferencesPanel({
             valueLabel={`${finalReplyWait}s`}
             onChange={(event) => setFinalReplyWait(Number(event.target.value))}
           />
-          <Button type="button" onClick={() => void save()} disabled={!memberId}>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => updateMutation.mutate()}
+            disabled={!memberId || updateMutation.isPending}
+          >
             Save preference
           </Button>
         </div>
         <div>
           <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
-            Configured preferences
+            Configured
           </div>
-          <div className="divide-y divide-border rounded border border-border">
-            {preferences.length === 0 && (
-              <p className="px-3 py-3 text-sm text-muted-foreground">No preferences yet.</p>
-            )}
-            {preferences.map((pref) => (
-              <div key={pref.developer_id} className="px-3 py-2 text-sm">
-                <div className="font-medium">{pref.developer_id}</div>
-                <div className="text-xs text-muted-foreground">
-                  {pref.local_time} / {pref.weekdays.join(",")}
+          {preferences.length === 0 ? (
+            <EmptyState title="No preferences yet" />
+          ) : (
+            <div className="max-h-[32rem] divide-y divide-border overflow-y-auto rounded-md border border-border scrollbar-thin">
+              {preferences.map((pref) => (
+                <div key={pref.developer_id} className="px-3 py-2 text-sm">
+                  <div className="font-medium">{pref.developer_id}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {pref.local_time} / {pref.timezone ?? "UTC"} / {pref.weekdays.join(",")}
+                  </div>
+                  <Badge tone="info">{pref.reply_wait_seconds}s wait</Badge>
                 </div>
-                <Badge tone="info">{pref.reply_wait_seconds}s wait</Badge>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
+    </DataPanel>
+  );
+
+  function toggleWeekday(day: number) {
+    setWeekdays((current) =>
+      current.includes(day) ? current.filter((item) => item !== day) : [...current, day].sort(),
+    );
+  }
+}
+
+function LinkForm({
+  title,
+  children,
+  canSubmit,
+  onSubmit,
+  onUnlink,
+}: {
+  title: string;
+  children: ReactNode;
+  canSubmit: boolean;
+  onSubmit: () => void;
+  onUnlink: () => void;
+}) {
+  return (
+    <section className="space-y-3 rounded-lg border border-border bg-surface-muted/40 p-3">
+      <div className="text-sm font-semibold">{title}</div>
+      <div className="space-y-2">{children}</div>
+      <div className="flex gap-2">
+        <Button type="button" variant="primary" onClick={onSubmit} disabled={!canSubmit}>
+          Link
+        </Button>
+        <Button type="button" variant="outline" onClick={onUnlink} disabled={!canSubmit}>
+          Unlink
+        </Button>
+      </div>
     </section>
+  );
+}
+
+function NodeSelect({
+  items,
+  value,
+  onChange,
+  placeholder,
+  id,
+}: {
+  items: ConfigNodeResponse[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  id?: string;
+}) {
+  return (
+    <Select id={id} value={value} onChange={(event) => onChange(event.target.value)}>
+      <option value="">{placeholder}</option>
+      {items.map((item) => (
+        <option key={item.id} value={item.id}>
+          {item.name}
+        </option>
+      ))}
+    </Select>
   );
 }
 
@@ -796,11 +923,7 @@ function DirectoryUserAvatar({ user }: { user: DirectoryUserResponse }) {
     .join("");
   if (user.avatar_url) {
     return (
-      <img
-        src={user.avatar_url}
-        alt=""
-        className="h-10 w-10 shrink-0 rounded-full object-cover"
-      />
+      <img src={user.avatar_url} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
     );
   }
   return (
@@ -808,4 +931,62 @@ function DirectoryUserAvatar({ user }: { user: DirectoryUserResponse }) {
       {initials || "?"}
     </div>
   );
+}
+
+function saveNode(kind: EntityKind, values: NodeFormValues, editing: ConfigNodeResponse | null) {
+  const payload = {
+    id: values.id,
+    name: values.name,
+    description: values.description || null,
+    code: values.code || null,
+  };
+  if (editing) {
+    if (kind === "programs") return apiClient.updateConfigProgram(editing.id, payload);
+    if (kind === "projects") return apiClient.updateConfigProject(editing.id, payload);
+    if (kind === "pods") return apiClient.updateConfigPod(editing.id, payload);
+    return apiClient.updateConfigMember(editing.id, payload);
+  }
+  if (kind === "programs") return apiClient.createConfigProgram(payload);
+  if (kind === "projects") return apiClient.createConfigProject(payload);
+  if (kind === "pods") return apiClient.createConfigPod(payload);
+  return apiClient.createConfigMember(payload);
+}
+
+function deleteNode(kind: EntityKind, id: string) {
+  if (kind === "programs") return apiClient.deleteConfigProgram(id);
+  if (kind === "projects") return apiClient.deleteConfigProject(id);
+  if (kind === "pods") return apiClient.deleteConfigPod(id);
+  return apiClient.deleteConfigMember(id);
+}
+
+function filterNodes(nodes: ConfigNodeResponse[], query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return nodes;
+  return nodes.filter((node) =>
+    [node.id, node.name, node.description ?? "", node.code ?? ""]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalized),
+  );
+}
+
+function confirmUnlink(
+  askConfirm: (state: ConfirmState) => void,
+  title: string,
+  onConfirm: () => void,
+) {
+  askConfirm({
+    open: true,
+    title,
+    description:
+      "This removes an existing graph relationship. The underlying nodes remain configured.",
+    confirmLabel: "Unlink",
+    destructive: true,
+    onConfirm,
+  });
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return "Operation failed.";
 }

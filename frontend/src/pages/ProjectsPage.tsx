@@ -1,64 +1,169 @@
 import { useQuery } from "@tanstack/react-query";
+import { FolderKanban } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { apiClient } from "../api/client";
-import type { Rag } from "../api/schema";
-import { Badge } from "../components/ui/badge";
+import type { DirectoryItemResponse } from "../api/schema";
+import { DataTable, type DataTableColumn } from "../components/ops/DataTable";
+import {
+  AsOfControl,
+  KpiCard,
+  PageHeader,
+  QueryState,
+  RefreshButton,
+  SearchInput,
+  Toolbar,
+} from "../components/ops/primitives";
+import { StatusBadge } from "../components/ops/status";
 
-function toneForRag(rag: Rag | null): "neutral" | "success" | "warning" | "danger" {
-  if (rag === "green") return "success";
-  if (rag === "amber") return "warning";
-  if (rag === "red") return "danger";
-  return "neutral";
-}
+const todayIso = () => new Date().toISOString().slice(0, 10);
 
 export function ProjectsPage() {
+  const [asOf, setAsOf] = useState(todayIso);
+  const [query, setQuery] = useState("");
   const projects = useQuery({
-    queryKey: ["directory", "projects"],
-    queryFn: () => apiClient.projects(),
+    queryKey: ["directory", "projects", asOf],
+    queryFn: () => apiClient.projects(asOf),
   });
 
-  return (
-    <main className="px-5 py-5">
-      <header className="mb-4 border-b border-border pb-4">
-        <h1 className="text-xl font-semibold">Projects</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Configured projects with latest rollup status.
-        </p>
-      </header>
-      {projects.isLoading && <p className="text-sm text-muted-foreground">Loading projects...</p>}
-      {projects.isError && <p className="text-sm text-red-600">Failed to load projects.</p>}
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {projects.data?.map((project) => (
+  const filteredProjects = useMemo(
+    () => filterDirectoryItems(projects.data ?? [], query),
+    [projects.data, query],
+  );
+
+  const columns = useMemo<DataTableColumn<DirectoryItemResponse>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: "Project",
+        cell: ({ row }) => (
+          <div className="min-w-0">
+            <Link
+              className="font-medium text-foreground hover:text-primary"
+              to={`/projects/${row.original.id}`}
+            >
+              {row.original.name}
+            </Link>
+            <div className="mt-0.5 font-mono text-xs text-muted-foreground">
+              {row.original.code ?? row.original.id}
+            </div>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "rag",
+        header: "RAG",
+        cell: ({ row }) => <StatusBadge rag={row.original.rag} />,
+      },
+      {
+        accessorFn: (row) => row.pod_ids.length,
+        id: "pods",
+        header: "Pods",
+        cell: ({ row }) => <span className="tabular-nums">{row.original.pod_ids.length}</span>,
+      },
+      {
+        accessorFn: (row) => row.program_ids.length,
+        id: "programs",
+        header: "Programs",
+        cell: ({ row }) => <span className="tabular-nums">{row.original.program_ids.length}</span>,
+      },
+      {
+        accessorKey: "description",
+        header: "Description",
+        cell: ({ row }) => (
+          <span className="line-clamp-2 text-muted-foreground">
+            {row.original.description ?? "-"}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "Open",
+        enableSorting: false,
+        cell: ({ row }) => (
           <Link
-            key={project.id}
-            to={`/projects/${project.id}`}
-            className="rounded border border-border bg-white px-4 py-3 transition hover:border-primary/40"
+            to={`/projects/${row.original.id}`}
+            className="inline-flex h-8 items-center rounded-md border border-border px-2.5 text-xs font-medium hover:bg-surface-muted"
           >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="font-medium">{project.name}</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {project.code ?? project.id}
-                </div>
-              </div>
-              {project.rag && <Badge tone={toneForRag(project.rag)}>{project.rag}</Badge>}
-            </div>
-            {project.description && (
-              <p className="mt-2 text-sm text-muted-foreground">{project.description}</p>
-            )}
-            <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <span>{project.pod_ids.length} pods</span>
-              <span>{project.program_ids.length} programs</span>
-            </div>
+            Details
           </Link>
-        ))}
+        ),
+      },
+    ],
+    [],
+  );
+
+  return (
+    <main className="min-h-screen px-4 py-4 sm:px-5 lg:px-6">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
+        <PageHeader
+          eyebrow="Runtime directory"
+          title="Projects"
+          description="Configured projects with current rollup status and delivery structure links."
+        />
+
+        <Toolbar>
+          <SearchInput
+            value={query}
+            onChange={setQuery}
+            placeholder="Search projects"
+            className="min-w-64"
+          />
+          <AsOfControl value={asOf} onChange={setAsOf} />
+          <RefreshButton refreshing={projects.isFetching} onClick={() => void projects.refetch()} />
+        </Toolbar>
+
+        <section className="grid gap-3 md:grid-cols-3">
+          <KpiCard
+            icon={<FolderKanban className="h-4 w-4" />}
+            label="Projects"
+            value={projects.data?.length ?? "-"}
+            detail={`${filteredProjects.length} shown`}
+            tone="info"
+          />
+          <KpiCard
+            label="Pods"
+            value={sum(projects.data, (project) => project.pod_ids.length)}
+            detail="project-pod links"
+          />
+          <KpiCard
+            label="Programs"
+            value={sum(projects.data, (project) => project.program_ids.length)}
+            detail="program links"
+          />
+        </section>
+
+        <QueryState query={projects}>
+          {() => (
+            <DataTable
+              data={filteredProjects}
+              columns={columns}
+              emptyTitle="No projects found"
+              emptyDescription="Adjust the search, date filter, or create projects in Admin Config."
+            />
+          )}
+        </QueryState>
       </div>
-      {projects.data?.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No projects configured yet. Use Admin Config to create projects and links.
-        </p>
-      )}
     </main>
   );
+}
+
+function filterDirectoryItems(items: DirectoryItemResponse[], query: string) {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return items;
+  return items.filter((item) =>
+    [item.id, item.name, item.code ?? "", item.description ?? ""]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalized),
+  );
+}
+
+function sum(
+  items: DirectoryItemResponse[] | undefined,
+  selector: (item: DirectoryItemResponse) => number,
+) {
+  if (!items) return "-";
+  return items.reduce((total, item) => total + selector(item), 0);
 }
