@@ -1,0 +1,23 @@
+import type { Rag, StatusSource } from "../../api/schema";
+
+export type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
+
+export function toneForRag(rag: Rag | null | undefined): BadgeTone {
+  if (rag === "green") return "success";
+  if (rag === "amber") return "warning";
+  if (rag === "red") return "danger";
+  if (rag === "unknown") return "neutral";
+  return "neutral";
+}
+
+export function toneForSource(source: StatusSource | undefined): BadgeTone {
+  if (source === "confirmed") return "success";
+  if (source === "stale") return "warning";
+  if (source === "inferred") return "info";
+  if (source === "unknown" || !source) return "neutral";
+  return "neutral";
+}
+
+export function sourceLine(source: StatusSource, confidence: number | null): string {
+  return `${source}${confidence === null ? "" : ` / ${Math.round(confidence * 100)}%`}`;
+}

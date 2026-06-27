@@ -31,6 +31,18 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 
+export class ApiError extends Error {
+  status: number;
+  detail: unknown;
+
+  constructor(status: number, message: string, detail?: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 async function requestJson<T>(
   path: string,
   options: { method?: string; body?: unknown } = {},
@@ -44,7 +56,8 @@ async function requestJson<T>(
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    const detail = await parseErrorBody(response);
+    throw new ApiError(response.status, errorMessage(response.status, detail), detail);
   }
   if (response.status === 204) {
     return undefined as T;
@@ -198,4 +211,35 @@ function withQuery(path: string, params: Record<string, string | undefined>): st
   });
   const query = search.toString();
   return query ? `${path}?${query}` : path;
+}
+
+async function parseErrorBody(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
+  try {
+    if (contentType.includes("application/json")) {
+      return await response.json();
+    }
+    return await response.text();
+  } catch {
+    return undefined;
+  }
+}
+
+function errorMessage(status: number, detail: unknown): string {
+  if (typeof detail === "object" && detail !== null && "detail" in detail) {
+    const value = (detail as { detail?: unknown }).detail;
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+  if (typeof detail === "string" && detail.trim()) {
+    return detail;
+  }
+  if (status === 403) {
+    return "Role scope does not include this view.";
+  }
+  if (status === 404) {
+    return "The requested resource was not found.";
+  }
+  return `Request failed with status ${status}.`;
 }

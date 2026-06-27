@@ -1,11 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { Network, TableCellsSplit } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "../api/client";
+import {
+  AsOfControl,
+  DataPanel,
+  EmptyState,
+  EntitySelector,
+  KpiCard,
+  PageHeader,
+  QueryState,
+  RefreshButton,
+  Toolbar,
+} from "../components/ops/primitives";
+import { StatusBadge } from "../components/ops/status";
 import { resolveSelection } from "../lib/selection";
-import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
-import { Select } from "../components/ui/select";
 import { HeatmapChart } from "../features/personas/HeatmapChart";
 import { HierarchyFlow } from "../features/personas/HierarchyFlow";
 
@@ -24,6 +34,13 @@ export function PortfolioPage() {
     [programId, programs.data],
   );
 
+  useEffect(() => {
+    if (selectedProgramId !== programId) {
+      setProgramId(selectedProgramId);
+    }
+  }, [programId, selectedProgramId]);
+
+  const selectedProgram = programs.data?.find((program) => program.id === selectedProgramId);
   const tree = useQuery({
     queryKey: ["persona", "tree", selectedProgramId, asOf],
     queryFn: () => apiClient.personaProgramTree(selectedProgramId, asOf),
@@ -36,92 +53,106 @@ export function PortfolioPage() {
     enabled: Boolean(selectedProgramId),
     staleTime: 5 * 60_000,
   });
+  const refreshing = [programs, tree, heatmap].some((query) => query.isFetching);
 
   return (
-    <main className="px-5 py-5">
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-        <div>
-          <h1 className="text-xl font-semibold">Portfolio</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Program tree and heatmap for configured programs.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
+    <main className="min-h-screen px-4 py-4 sm:px-5 lg:px-6">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
+        <PageHeader
+          eyebrow="Portfolio"
+          title="Program Health"
+          description="Program hierarchy and heatmap for configured programs. Raw developer messages are not exposed here."
+          actions={selectedProgram?.rag && <StatusBadge rag={selectedProgram.rag} />}
+        />
+
+        <Toolbar>
+          <EntitySelector
             value={selectedProgramId}
-            onChange={(event) => setProgramId(event.target.value)}
-            className="min-w-48"
-          >
-            {programs.data?.map((program) => (
-              <option key={program.id} value={program.id}>
-                {program.name}
-              </option>
-            ))}
-          </Select>
-          <input
-            type="date"
-            className="h-9 rounded border border-border bg-white px-3 text-sm"
-            value={asOf}
-            onChange={(event) => setAsOf(event.target.value)}
+            onChange={setProgramId}
+            items={programs.data ?? []}
+            placeholder="Select program"
+            className="min-w-56"
           />
-          <Button
+          <AsOfControl value={asOf} onChange={setAsOf} />
+          <RefreshButton
+            refreshing={refreshing}
             onClick={() => {
               void programs.refetch();
               void tree.refetch();
               void heatmap.refetch();
             }}
-          >
-            Refresh
-          </Button>
-        </div>
-      </header>
+          />
+        </Toolbar>
 
-      {!selectedProgramId && (
-        <p className="text-sm text-muted-foreground">
-          No programs configured. Add a program in Admin Config first.
-        </p>
-      )}
+        {!selectedProgramId ? (
+          <EmptyState
+            title="No programs configured"
+            description="Add a program in Admin Config before reviewing portfolio health."
+          />
+        ) : (
+          <>
+            <section className="grid gap-3 md:grid-cols-3">
+              <KpiCard
+                icon={<Network className="h-4 w-4" />}
+                label="Program"
+                value={selectedProgram?.name ?? selectedProgramId}
+                detail={selectedProgram?.id}
+                tone="info"
+              />
+              <KpiCard
+                label="Tree nodes"
+                value={tree.data?.nodes.length ?? "-"}
+                detail={tree.isFetching ? "refreshing" : "hierarchy"}
+              />
+              <KpiCard
+                icon={<TableCellsSplit className="h-4 w-4" />}
+                label="Heatmap cells"
+                value={heatmap.data?.cells.length ?? "-"}
+                detail={heatmap.isFetching ? "refreshing" : "RAG cells"}
+                tone="warning"
+              />
+            </section>
 
-      {selectedProgramId && (
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <Panel title="Program tree">
-            {tree.isLoading && <p className="text-sm text-muted-foreground">Loading tree...</p>}
-            {tree.isError && <p className="text-sm text-red-600">Tree unavailable.</p>}
-            {tree.data && <HierarchyFlow data={tree.data} />}
-          </Panel>
-          <Panel title="Portfolio heatmap">
-            {heatmap.isLoading && <p className="text-sm text-muted-foreground">Loading heatmap...</p>}
-            {heatmap.isError && <p className="text-sm text-red-600">Heatmap unavailable.</p>}
-            {heatmap.data && (
-              <>
-                <HeatmapChart data={heatmap.data} />
-                <div className="mt-2 divide-y divide-border">
-                  {heatmap.data.cells.map((cell) => (
-                    <div
-                      key={`${cell.entity_ref.kind}-${cell.entity_ref.id}`}
-                      className="flex items-center justify-between gap-2 py-2 text-sm"
-                    >
-                      <span>
-                        {cell.entity_ref.kind}:{cell.entity_ref.id}
-                      </span>
-                      <Badge tone="info">{cell.rag}</Badge>
+            <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_460px]">
+              <DataPanel
+                title="Program Tree"
+                description="Graph-backed hierarchy with rollup status at each layer."
+              >
+                <QueryState query={tree} loadingRows={6}>
+                  {(data) => <HierarchyFlow data={data} />}
+                </QueryState>
+              </DataPanel>
+              <DataPanel title="Portfolio Heatmap" description="RAG rollup cells and reasons.">
+                <QueryState query={heatmap} loadingRows={6}>
+                  {(data) => (
+                    <div className="space-y-3">
+                      <HeatmapChart data={data} />
+                      <div className="max-h-80 divide-y divide-border overflow-y-auto rounded-md border border-border scrollbar-thin">
+                        {data.cells.map((cell) => (
+                          <div
+                            key={`${cell.entity_ref.kind}-${cell.entity_ref.id}`}
+                            className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 text-sm"
+                          >
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">
+                                {cell.entity_ref.kind}:{cell.entity_ref.id}
+                              </div>
+                              <div className="truncate text-xs text-muted-foreground">
+                                {cell.why} / {cell.source}
+                              </div>
+                            </div>
+                            <StatusBadge rag={cell.rag} />
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </Panel>
-        </section>
-      )}
+                  )}
+                </QueryState>
+              </DataPanel>
+            </section>
+          </>
+        )}
+      </div>
     </main>
-  );
-}
-
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded border border-border bg-white">
-      <div className="border-b border-border px-4 py-3 text-sm font-semibold">{title}</div>
-      <div className="px-4 py-4">{children}</div>
-    </section>
   );
 }

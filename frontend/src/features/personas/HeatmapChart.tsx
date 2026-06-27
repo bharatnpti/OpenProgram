@@ -21,7 +21,7 @@ export function HeatmapChart({ data }: { data: PortfolioHeatmapResponse | undefi
   const option = useMemo<EChartsOption>(
     () => ({
       animation: false,
-      grid: { top: 8, right: 16, bottom: 28, left: 72 },
+      grid: { top: 12, right: 16, bottom: 32, left: 84 },
       tooltip: {
         formatter: (params: unknown) => {
           const value = cellValue(params);
@@ -102,7 +102,7 @@ export function HeatmapChart({ data }: { data: PortfolioHeatmapResponse | undefi
     };
   }, [option]);
 
-  return <div ref={elementRef} className="h-56 w-full" />;
+  return <div ref={elementRef} className="h-72 w-full min-w-0" />;
 }
 
 function cellValue(params: unknown): { columnIndex: number; rowIndex: number; score: number } {

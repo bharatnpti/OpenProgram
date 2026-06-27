@@ -1,25 +1,31 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState, type ReactNode } from "react";
+import { ArrowLeft, Boxes } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { apiClient } from "../api/client";
-import type { Rag } from "../api/schema";
+import {
+  AsOfControl,
+  DataPanel,
+  EmptyState,
+  KpiCard,
+  PageHeader,
+  QueryState,
+  RefreshButton,
+  Toolbar,
+} from "../components/ops/primitives";
+import { StateBadge, StatusBadge } from "../components/ops/status";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
-
-function toneForRag(rag: Rag | null): "neutral" | "success" | "warning" | "danger" {
-  if (rag === "green") return "success";
-  if (rag === "amber") return "warning";
-  if (rag === "red") return "danger";
-  return "neutral";
-}
 
 export function PodDetailPage() {
   const { podId = "" } = useParams();
   const [asOf, setAsOf] = useState(todayIso);
-  const pods = useQuery({ queryKey: ["directory", "pods", asOf], queryFn: () => apiClient.pods(asOf) });
+  const pods = useQuery({
+    queryKey: ["directory", "pods", asOf],
+    queryFn: () => apiClient.pods(asOf),
+  });
   const projects = useQuery({
     queryKey: ["directory", "projects", asOf],
     queryFn: () => apiClient.projects(asOf),
@@ -40,147 +46,164 @@ export function PodDetailPage() {
     () => projects.data?.filter((project) => pod?.project_ids.includes(project.id)) ?? [],
     [projects.data, pod?.project_ids],
   );
+  const refreshing = [pods, projects, blockers, checkins].some((query) => query.isFetching);
 
   return (
-    <main className="px-5 py-5">
-      <header className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-        <div>
-          <Link to="/pods" className="text-xs text-muted-foreground hover:text-foreground">
-            Back to pods
-          </Link>
-          <h1 className="mt-1 text-xl font-semibold">{pod?.name ?? podId}</h1>
-          {pod?.description && (
-            <p className="mt-1 text-sm text-muted-foreground">{pod.description}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="date"
-            className="h-9 rounded border border-border bg-white px-3 text-sm"
-            value={asOf}
-            onChange={(event) => setAsOf(event.target.value)}
-          />
-          <Button
+    <main className="min-h-screen px-4 py-4 sm:px-5 lg:px-6">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
+        <PageHeader
+          eyebrow={
+            <Link
+              to="/pods"
+              className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Back to pods
+            </Link>
+          }
+          title={pod?.name ?? podId}
+          description={
+            pod?.description ?? "Pod delivery health, related projects, check-ins, and blockers."
+          }
+          actions={pod?.rag && <StatusBadge rag={pod.rag} />}
+        />
+
+        <Toolbar>
+          <AsOfControl value={asOf} onChange={setAsOf} />
+          <RefreshButton
+            refreshing={refreshing}
             onClick={() => {
               void pods.refetch();
               void projects.refetch();
               void blockers.refetch();
               void checkins.refetch();
             }}
+          />
+        </Toolbar>
+
+        <section className="grid gap-3 md:grid-cols-3">
+          <KpiCard
+            icon={<Boxes className="h-4 w-4" />}
+            label="Members"
+            value={pod?.member_ids.length ?? "-"}
+            detail={pod?.id ?? "loading"}
+            tone="info"
+          />
+          <KpiCard
+            label="Projects"
+            value={pod?.project_ids.length ?? "-"}
+            detail={`${relatedProjects.length} loaded`}
+          />
+          <KpiCard
+            label="Blockers"
+            value={blockers.data?.blockers.length ?? "-"}
+            detail={blockers.isFetching ? "refreshing" : "open"}
+            tone={blockers.data?.blockers.length ? "warning" : "success"}
+          />
+        </section>
+
+        <div className="grid gap-4 xl:grid-cols-2">
+          <DataPanel
+            title="Related Projects"
+            description="Projects linked to this pod at the selected date."
           >
-            Refresh
-          </Button>
-        </div>
-      </header>
-
-      <section className="mb-4 grid gap-3 md:grid-cols-3">
-        <Stat label="Members" value={pod?.member_ids.length ?? 0} />
-        <Stat label="Projects" value={pod?.project_ids.length ?? 0} />
-        <Stat label="Blockers" value={blockers.data?.blockers.length ?? 0} />
-      </section>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Panel title="Related projects">
-          {relatedProjects.length === 0 && (
-            <p className="text-sm text-muted-foreground">No linked projects.</p>
-          )}
-          <div className="divide-y divide-border">
-            {relatedProjects.map((project) => (
-              <Link
-                key={project.id}
-                to={`/projects/${project.id}`}
-                className="flex items-center justify-between gap-3 py-2 text-sm hover:text-primary"
-              >
-                <span>{project.name}</span>
-                {project.rag && <Badge tone={toneForRag(project.rag)}>{project.rag}</Badge>}
-              </Link>
-            ))}
-          </div>
-        </Panel>
-
-        <Panel title="Check-ins">
-          {checkins.isLoading && <p className="text-sm text-muted-foreground">Loading...</p>}
-          {checkins.data && (
-            <div className="space-y-2 text-sm">
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <Stat label="Confirmed" value={checkins.data.confirmed} compact />
-                <Stat label="Stale" value={checkins.data.stale} compact />
-                <Stat label="Missing" value={checkins.data.missing} compact />
-              </div>
-              <div className="divide-y divide-border">
-                {checkins.data.developers.map((developer) => (
-                  <div
-                    key={developer.developer_id}
-                    className="flex items-center justify-between gap-2 py-2"
-                  >
-                    <div>
-                      <div className="font-medium">{developer.developer_name}</div>
-                      <div className="text-xs text-muted-foreground">{developer.summary}</div>
-                    </div>
-                    <Badge tone={developer.state === "confirmed" ? "success" : "warning"}>
-                      {developer.state}
-                    </Badge>
+            <QueryState query={projects}>
+              {() =>
+                relatedProjects.length === 0 ? (
+                  <EmptyState title="No linked projects" />
+                ) : (
+                  <div className="divide-y divide-border rounded-md border border-border">
+                    {relatedProjects.map((project) => (
+                      <Link
+                        key={project.id}
+                        to={`/projects/${project.id}`}
+                        className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-sm hover:bg-surface-muted/50"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{project.name}</div>
+                          <div className="truncate font-mono text-xs text-muted-foreground">
+                            {project.code ?? project.id}
+                          </div>
+                        </div>
+                        <StatusBadge rag={project.rag} />
+                      </Link>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </Panel>
+                )
+              }
+            </QueryState>
+          </DataPanel>
 
-        <Panel title="Open blockers" className="xl:col-span-2">
-          {blockers.isLoading && <p className="text-sm text-muted-foreground">Loading...</p>}
-          {blockers.data?.blockers.length === 0 && (
-            <p className="text-sm text-muted-foreground">No blockers reported.</p>
-          )}
-          <div className="divide-y divide-border">
-            {blockers.data?.blockers.map((blocker) => (
-              <div key={blocker.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                <div>
-                  <div className="font-medium">{blocker.description}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {blocker.owner_name} / {blocker.source}
+          <DataPanel title="Check-ins" description="Completeness by developer for this pod.">
+            <QueryState query={checkins}>
+              {(data) => (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <MiniStat label="Confirmed" value={data.confirmed} />
+                    <MiniStat label="Stale" value={data.stale} />
+                    <MiniStat label="Missing" value={data.missing} />
+                  </div>
+                  <div className="divide-y divide-border rounded-md border border-border">
+                    {data.developers.map((developer) => (
+                      <div
+                        key={developer.developer_id}
+                        className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-sm"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{developer.developer_name}</div>
+                          <div className="truncate text-xs text-muted-foreground">
+                            {developer.summary}
+                          </div>
+                        </div>
+                        <StateBadge state={developer.state} />
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <Badge tone="warning">{blocker.age_days}d</Badge>
-              </div>
-            ))}
-          </div>
-        </Panel>
+              )}
+            </QueryState>
+          </DataPanel>
+        </div>
+
+        <DataPanel
+          title="Open Blockers"
+          description="Owner, source, and blocker age for escalation."
+        >
+          <QueryState query={blockers}>
+            {(data) =>
+              data.blockers.length === 0 ? (
+                <EmptyState title="No blockers reported" />
+              ) : (
+                <div className="divide-y divide-border rounded-md border border-border">
+                  {data.blockers.map((blocker) => (
+                    <div
+                      key={blocker.id}
+                      className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{blocker.description}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {blocker.owner_name} / {blocker.source}
+                        </div>
+                      </div>
+                      <Badge tone="warning">{blocker.age_days}d</Badge>
+                    </div>
+                  ))}
+                </div>
+              )
+            }
+          </QueryState>
+        </DataPanel>
       </div>
     </main>
   );
 }
 
-function Panel({
-  title,
-  children,
-  className,
-}: {
-  title: string;
-  children: React.ReactNode;
-  className?: string;
-}) {
+function MiniStat({ label, value }: { label: string; value: number }) {
   return (
-    <section className={`rounded border border-border bg-white ${className ?? ""}`}>
-      <div className="border-b border-border px-4 py-3 text-sm font-semibold">{title}</div>
-      <div className="px-4 py-3">{children}</div>
-    </section>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  compact,
-}: {
-  label: string;
-  value: number;
-  compact?: boolean;
-}) {
-  return (
-    <div className={`rounded border border-border bg-white ${compact ? "px-2 py-2" : "px-4 py-3"}`}>
+    <div className="rounded-md border border-border bg-surface px-3 py-2">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`font-semibold ${compact ? "text-base" : "text-2xl"}`}>{value}</div>
+      <div className="text-lg font-semibold tabular-nums">{value}</div>
     </div>
   );
 }

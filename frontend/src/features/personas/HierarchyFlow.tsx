@@ -35,14 +35,14 @@ export function HierarchyFlow({ data }: { data: ProgramTreeResponse | undefined 
 
   if (!data) {
     return (
-      <div className="flex h-72 items-center justify-center text-sm text-muted-foreground">
+      <div className="flex h-[28rem] items-center justify-center text-sm text-muted-foreground">
         Loading hierarchy...
       </div>
     );
   }
 
   return (
-    <div className="h-72 w-full">
+    <div className="h-[28rem] w-full min-w-0 overflow-hidden rounded-md border border-border">
       <ReactFlow
         nodes={nodes}
         edges={edges}
