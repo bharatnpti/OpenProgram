@@ -105,8 +105,20 @@ def test_settings_fail_fast_on_invalid_secret_key() -> None:
 
 
 def test_settings_validate_provider_selectors() -> None:
+    settings = _settings(
+        secret_key=SECRET_KEY,
+        chat_provider="mock_slack",
+        directory_provider="mock_slack",
+        chat_simulator_enabled=True,
+    )
+    assert settings.chat_provider == "mock_slack"
+    assert settings.directory_provider == "mock_slack"
+    assert settings.chat_simulator_enabled is True
+
     with pytest.raises(ValidationError):
         _settings(secret_key=SECRET_KEY, chat_provider="teams")
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, directory_provider="ldap")
     with pytest.raises(ValidationError):
         _settings(secret_key=SECRET_KEY, issue_tracker_provider="linear")
     with pytest.raises(ValidationError):

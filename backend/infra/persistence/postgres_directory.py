@@ -69,7 +69,7 @@ class PostgresDirectoryUserRepository(DirectoryUserRepository):
                 tenant_id, external_id, display_name, email, handle, avatar_url,
                 title, is_active, source, metadata, synced_at
             )
-            VALUES {', '.join(placeholders)}
+            VALUES {", ".join(placeholders)}
             ON CONFLICT (tenant_id, external_id)
             DO UPDATE SET
                 display_name = EXCLUDED.display_name,
@@ -143,7 +143,7 @@ class PostgresDirectoryUserRepository(DirectoryUserRepository):
                     """,
                     (tenant_id,),
                 )
-                return int(rows[0]["count"]) if rows else 0
+                return _int_value(rows[0].get("count")) if rows else 0
 
             like = _search_pattern(cleaned_query)
             rows = await self._executor.fetch(
@@ -161,7 +161,7 @@ class PostgresDirectoryUserRepository(DirectoryUserRepository):
                 """,
                 (tenant_id, like, like, like, like),
             )
-        return int(rows[0]["count"]) if rows else 0
+        return _int_value(rows[0].get("count")) if rows else 0
 
     async def get(self, tenant_id: str, external_id: str) -> DirectoryUser | None:
         with _tracer.start_as_current_span("postgres.directory.get"):
@@ -209,10 +209,10 @@ def _user_from_row(row: dict[str, object]) -> DirectoryUser:
         tenant_id=str(row["tenant_id"]),
         external_id=str(row["external_id"]),
         display_name=str(row["display_name"]),
-        email=row.get("email") if isinstance(row.get("email"), str) else None,
-        handle=row.get("handle") if isinstance(row.get("handle"), str) else None,
-        avatar_url=row.get("avatar_url") if isinstance(row.get("avatar_url"), str) else None,
-        title=row.get("title") if isinstance(row.get("title"), str) else None,
+        email=_optional_string(row.get("email")),
+        handle=_optional_string(row.get("handle")),
+        avatar_url=_optional_string(row.get("avatar_url")),
+        title=_optional_string(row.get("title")),
         is_active=bool(row.get("is_active", True)),
         source=str(row.get("source") or "slack"),
         synced_at=synced_at,
@@ -223,3 +223,15 @@ def _user_from_row(row: dict[str, object]) -> DirectoryUser:
             and (value is None or isinstance(value, str | int | float | bool))
         },
     )
+
+
+def _int_value(value: object) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        return int(value)
+    return 0
+
+
+def _optional_string(value: object) -> str | None:
+    return value if isinstance(value, str) else None

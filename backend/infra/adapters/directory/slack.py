@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import cast
 
 from core.domain.directory import DirectoryUser
 from core.domain.errors import ProviderUnavailable
@@ -36,7 +37,8 @@ def _map_user(tenant_id: str, payload: object, synced_at: datetime) -> Directory
     if payload.get("deleted") is True or payload.get("is_bot") is True:
         return None
     external_id = _string_field(payload, "id")
-    profile = payload.get("profile") if isinstance(payload.get("profile"), Mapping) else {}
+    raw_profile = payload.get("profile")
+    profile = cast(Mapping[str, object], raw_profile) if isinstance(raw_profile, Mapping) else {}
     display_name = _first_string(
         _profile_string(profile, "display_name"),
         _profile_string(profile, "real_name"),

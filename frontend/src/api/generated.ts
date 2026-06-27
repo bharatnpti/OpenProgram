@@ -617,6 +617,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/test/chat-simulator/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Chat Simulator Status */
+    get: operations["chat_simulator_status_test_chat_simulator_status_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/test/chat-simulator/messages": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Chat Simulator Messages */
+    get: operations["chat_simulator_messages_test_chat_simulator_messages_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/test/chat-simulator/messages/{message_id}/reply": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Chat Simulator Reply */
+    post: operations["chat_simulator_reply_test_chat_simulator_messages__message_id__reply_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/test/chat-simulator/state": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Reset Chat Simulator */
+    delete: operations["reset_chat_simulator_test_chat_simulator_state_delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/webhooks/chat/{provider}": {
     parameters: {
       query?: never;
@@ -678,6 +746,68 @@ export interface components {
       display_name?: string | null;
       /** Observed At */
       observed_at?: string | null;
+    };
+    /** ChatSimulatorMessageResponse */
+    ChatSimulatorMessageResponse: {
+      /** Tenant Id */
+      tenant_id: string;
+      /** Message Id */
+      message_id: string;
+      /** Channel Id */
+      channel_id: string;
+      /** User Id */
+      user_id: string;
+      /** Direction */
+      direction: string;
+      /** Text */
+      text: string;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Correlation Id */
+      correlation_id?: string | null;
+      /** Purpose */
+      purpose?: string | null;
+      /** Reply To Message Id */
+      reply_to_message_id?: string | null;
+      /** Metadata */
+      metadata: {
+        [key: string]: string | number | boolean | null;
+      };
+    };
+    /** ChatSimulatorMessagesResponse */
+    ChatSimulatorMessagesResponse: {
+      /** Items */
+      items: components["schemas"]["ChatSimulatorMessageResponse"][];
+    };
+    /** ChatSimulatorReplyRequest */
+    ChatSimulatorReplyRequest: {
+      /** Text */
+      text: string;
+      /** Received At */
+      received_at?: string | null;
+    };
+    /** ChatSimulatorReplyResponse */
+    ChatSimulatorReplyResponse: {
+      /** Message Id */
+      message_id: string;
+      /** Status */
+      status: string;
+      /** Processed Message Id */
+      processed_message_id: string;
+    };
+    /** ChatSimulatorStatusResponse */
+    ChatSimulatorStatusResponse: {
+      /** Enabled */
+      enabled: boolean;
+      /** Tenant Id */
+      tenant_id: string;
+      /** Provider */
+      provider: string;
+      /** Message Count */
+      message_count: number;
     };
     /** ChatWebhookResponse */
     ChatWebhookResponse: {
@@ -2968,6 +3098,134 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["PortfolioHeatmapResponse"];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  chat_simulator_status_test_chat_simulator_status_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ChatSimulatorStatusResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  chat_simulator_messages_test_chat_simulator_messages_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ChatSimulatorMessagesResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  chat_simulator_reply_test_chat_simulator_messages__message_id__reply_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        message_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChatSimulatorReplyRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ChatSimulatorReplyResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  reset_chat_simulator_test_chat_simulator_state_delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Validation Error */
       422: {

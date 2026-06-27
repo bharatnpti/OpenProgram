@@ -32,3 +32,15 @@ Inbound webhooks map to `InboundMessage`. Outbound text maps from `OutboundMessa
 
 - Shared `ChatProvider` and `ChatWebhookMapper` contracts run against fakes and real adapters.
 - Adapter tests use a fake HTTP client plus recorded-style `respx` Slack Web API fixtures for open DM, send, reply, retry, and provider failures.
+
+## Local Manual E2E
+
+Use the local chat simulator when a tester needs a Slack-shaped roundtrip without real Slack credentials.
+
+1. Set `PULSEOPS_CHAT_PROVIDER=mock_slack`, `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`, and `PULSEOPS_CHAT_SIMULATOR_ENABLED=true` in `.env`.
+2. Start the stack and frontend, then sync the directory from Admin Config.
+3. Add one or more synced users as members.
+4. Open `/mock-slack`, dispatch a check-in, inspect the outbound bot DM, and submit a reply.
+5. Verify the developer dashboard or pod check-in view shows the confirmed status.
+
+The simulator state is in memory during `runtime_mode=memory` and Redis-backed in container mode so backend, worker, and scheduler processes share the same local mailbox.

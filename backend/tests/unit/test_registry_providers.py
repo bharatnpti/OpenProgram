@@ -6,7 +6,9 @@ from typing import cast
 from config.settings import Settings
 from infra.adapters.calendar.google_adapter import GoogleCalendarAdapter
 from infra.adapters.chat.fake import FakeChatProvider, FakeChatWebhookMapper
+from infra.adapters.chat.mock_slack import InMemoryMockSlackStore, MockSlackChatAdapter
 from infra.adapters.chat.slack import SlackChatAdapter, SlackChatWebhookMapper
+from infra.adapters.directory.mock_slack import MockSlackDirectoryProvider
 from infra.adapters.github.github_adapter import GitHubVcsAdapter
 from infra.adapters.integrations.fake import (
     FakeCalendarProvider,
@@ -96,6 +98,33 @@ def test_registry_selects_real_configured_provider_adapters() -> None:
     assert isinstance(workflow_scheduler, TemporalWorkflowScheduler)
     assert workflow_scheduler.schedule_id == "temporal-heartbeat"
     assert isinstance(registry.workflow_worker(), TemporalWorkflowWorker)
+
+
+async def test_registry_selects_mock_slack_provider_adapters() -> None:
+    registry = ServiceRegistry(
+        _settings(
+            secret_key=SECRET_KEY,
+            runtime_mode="memory",
+            chat_provider="mock_slack",
+            directory_provider="mock_slack",
+            issue_tracker_provider="fake",
+            vcs_provider="fake",
+            calendar_provider="fake",
+            llm_provider="fake",
+            workflow_provider="fake",
+            chat_simulator_enabled=True,
+        )
+    )
+
+    chat_provider = registry.chat_provider()
+    assert isinstance(chat_provider, MockSlackChatAdapter)
+    assert isinstance(registry.chat_webhook_mapper("mock_slack"), SlackChatWebhookMapper)
+    assert isinstance(registry.directory_provider(), MockSlackDirectoryProvider)
+    assert isinstance(registry._chat_simulator_store(), InMemoryMockSlackStore)
+    assert registry.chat_simulator_available() is True
+    status = await registry.chat_simulator_status()
+    assert status["provider"] == "mock_slack"
+    assert status["message_count"] == 0
 
 
 def test_registry_defaults_to_dbos_workflow_provider() -> None:

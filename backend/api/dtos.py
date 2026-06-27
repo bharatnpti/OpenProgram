@@ -5,7 +5,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from core.domain.directory import DirectoryUser
 from core.application.config_service import DirectoryItemView
 from core.application.persona_views import (
     BlockerView,
@@ -23,6 +22,7 @@ from core.application.persona_views import (
     TreeEdgeView,
     TreeNodeView,
 )
+from core.domain.directory import DirectoryUser
 from core.domain.graph import EdgeKind, GraphEdge, GraphNode, GraphTree, NodeKind
 from core.domain.rollup import Rag, RollupFactor
 from core.domain.status import CheckInPreference, StatusSource
@@ -267,6 +267,52 @@ class ChatWebhookResponse(BaseModel):
 
     status: str
     message_id: str
+
+
+class ChatSimulatorStatusResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool
+    tenant_id: str
+    provider: str
+    message_count: int
+
+
+class ChatSimulatorMessageResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    tenant_id: str
+    message_id: str
+    channel_id: str
+    user_id: str
+    direction: str
+    text: str
+    created_at: datetime
+    correlation_id: str | None = None
+    purpose: str | None = None
+    reply_to_message_id: str | None = None
+    metadata: dict[str, str | int | float | bool | None]
+
+
+class ChatSimulatorMessagesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    items: list[ChatSimulatorMessageResponse]
+
+
+class ChatSimulatorReplyRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    text: str = Field(min_length=1)
+    received_at: datetime | None = None
+
+
+class ChatSimulatorReplyResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    message_id: str
+    status: str
+    processed_message_id: str
 
 
 class EntityRefDto(BaseModel):

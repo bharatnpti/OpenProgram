@@ -7,9 +7,7 @@
   "paths": {
     "/health": {
       "get": {
-        "tags": [
-          "health"
-        ],
+        "tags": ["health"],
         "summary": "Health",
         "operationId": "health_health_get",
         "responses": {
@@ -28,9 +26,7 @@
     },
     "/ready": {
       "get": {
-        "tags": [
-          "health"
-        ],
+        "tags": ["health"],
         "summary": "Ready",
         "operationId": "ready_ready_get",
         "responses": {
@@ -49,9 +45,7 @@
     },
     "/metrics": {
       "get": {
-        "tags": [
-          "health"
-        ],
+        "tags": ["health"],
         "summary": "Metrics",
         "operationId": "metrics_metrics_get",
         "responses": {
@@ -68,9 +62,7 @@
     },
     "/graph/programs/{program_id}/tree": {
       "get": {
-        "tags": [
-          "graph"
-        ],
+        "tags": ["graph"],
         "summary": "Program Tree",
         "operationId": "program_tree_graph_programs__program_id__tree_get",
         "parameters": [
@@ -136,9 +128,7 @@
     },
     "/admin/workflows/checkin/dispatch": {
       "post": {
-        "tags": [
-          "admin"
-        ],
+        "tags": ["admin"],
         "summary": "Dispatch Checkin",
         "operationId": "dispatch_checkin_admin_workflows_checkin_dispatch_post",
         "parameters": [
@@ -195,9 +185,7 @@
     },
     "/admin/workflows/sync/jira": {
       "post": {
-        "tags": [
-          "admin"
-        ],
+        "tags": ["admin"],
         "summary": "Dispatch Jira Sync",
         "operationId": "dispatch_jira_sync_admin_workflows_sync_jira_post",
         "parameters": [
@@ -254,9 +242,7 @@
     },
     "/admin/workflows/sync/github": {
       "post": {
-        "tags": [
-          "admin"
-        ],
+        "tags": ["admin"],
         "summary": "Dispatch Github Sync",
         "operationId": "dispatch_github_sync_admin_workflows_sync_github_post",
         "parameters": [
@@ -313,9 +299,7 @@
     },
     "/admin/workflows/sync/calendar": {
       "post": {
-        "tags": [
-          "admin"
-        ],
+        "tags": ["admin"],
         "summary": "Dispatch Calendar Sync",
         "operationId": "dispatch_calendar_sync_admin_workflows_sync_calendar_post",
         "parameters": [
@@ -372,9 +356,7 @@
     },
     "/config/programs": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Config Programs",
         "operationId": "list_config_programs_config_programs_get",
         "parameters": [
@@ -423,9 +405,7 @@
         }
       },
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Create Config Program",
         "operationId": "create_config_program_config_programs_post",
         "parameters": [
@@ -482,9 +462,7 @@
     },
     "/config/programs/{program_id}": {
       "put": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Update Config Program",
         "operationId": "update_config_program_config_programs__program_id__put",
         "parameters": [
@@ -548,9 +526,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Delete Config Program",
         "operationId": "delete_config_program_config_programs__program_id__delete",
         "parameters": [
@@ -597,9 +573,7 @@
         }
       },
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Get Config Program",
         "operationId": "get_config_program_config_programs__program_id__get",
         "parameters": [
@@ -655,9 +629,7 @@
     },
     "/config/projects": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Config Projects",
         "operationId": "list_config_projects_config_projects_get",
         "parameters": [
@@ -706,9 +678,7 @@
         }
       },
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Create Config Project",
         "operationId": "create_config_project_config_projects_post",
         "parameters": [
@@ -765,9 +735,7 @@
     },
     "/config/projects/{project_id}": {
       "put": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Update Config Project",
         "operationId": "update_config_project_config_projects__project_id__put",
         "parameters": [
@@ -831,9 +799,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Delete Config Project",
         "operationId": "delete_config_project_config_projects__project_id__delete",
         "parameters": [
@@ -880,9 +846,7 @@
         }
       },
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Get Config Project",
         "operationId": "get_config_project_config_projects__project_id__get",
         "parameters": [
@@ -938,9 +902,7 @@
     },
     "/config/pods": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Config Pods",
         "operationId": "list_config_pods_config_pods_get",
         "parameters": [
@@ -989,9 +951,7 @@
         }
       },
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Create Config Pod",
         "operationId": "create_config_pod_config_pods_post",
         "parameters": [
@@ -1048,9 +1008,7 @@
     },
     "/config/pods/{pod_id}": {
       "put": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Update Config Pod",
         "operationId": "update_config_pod_config_pods__pod_id__put",
         "parameters": [
@@ -1114,9 +1072,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Delete Config Pod",
         "operationId": "delete_config_pod_config_pods__pod_id__delete",
         "parameters": [
@@ -1163,9 +1119,7 @@
         }
       },
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Get Config Pod",
         "operationId": "get_config_pod_config_pods__pod_id__get",
         "parameters": [
@@ -1221,9 +1175,7 @@
     },
     "/config/members": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Config Members",
         "operationId": "list_config_members_config_members_get",
         "parameters": [
@@ -1272,9 +1224,7 @@
         }
       },
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Create Config Member",
         "operationId": "create_config_member_config_members_post",
         "parameters": [
@@ -1331,9 +1281,7 @@
     },
     "/config/directory/users": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Search Config Directory Users",
         "operationId": "search_config_directory_users_config_directory_users_get",
         "parameters": [
@@ -1413,9 +1361,7 @@
     },
     "/config/directory/sync": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Sync Config Directory",
         "operationId": "sync_config_directory_config_directory_sync_post",
         "parameters": [
@@ -1462,9 +1408,7 @@
     },
     "/config/members/from-directory": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Create Config Members From Directory",
         "operationId": "create_config_members_from_directory_config_members_from_directory_post",
         "parameters": [
@@ -1525,9 +1469,7 @@
     },
     "/config/members/{member_id}": {
       "put": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Update Config Member",
         "operationId": "update_config_member_config_members__member_id__put",
         "parameters": [
@@ -1591,9 +1533,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Delete Config Member",
         "operationId": "delete_config_member_config_members__member_id__delete",
         "parameters": [
@@ -1640,9 +1580,7 @@
         }
       },
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Get Config Member",
         "operationId": "get_config_member_config_members__member_id__get",
         "parameters": [
@@ -1698,9 +1636,7 @@
     },
     "/config/projects/{project_id}/program": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Link Config Project Program",
         "operationId": "link_config_project_program_config_projects__project_id__program_post",
         "parameters": [
@@ -1764,9 +1700,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Unlink Config Project Program",
         "operationId": "unlink_config_project_program_config_projects__project_id__program_delete",
         "parameters": [
@@ -1831,9 +1765,7 @@
     },
     "/config/pods/{pod_id}/projects/{project_id}": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Link Config Pod Project",
         "operationId": "link_config_pod_project_config_pods__pod_id__projects__project_id__post",
         "parameters": [
@@ -1896,9 +1828,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Unlink Config Pod Project",
         "operationId": "unlink_config_pod_project_config_pods__pod_id__projects__project_id__delete",
         "parameters": [
@@ -1956,9 +1886,7 @@
     },
     "/config/pods/{pod_id}/members/{member_id}": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Link Config Pod Member",
         "operationId": "link_config_pod_member_config_pods__pod_id__members__member_id__post",
         "parameters": [
@@ -2031,9 +1959,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Unlink Config Pod Member",
         "operationId": "unlink_config_pod_member_config_pods__pod_id__members__member_id__delete",
         "parameters": [
@@ -2091,9 +2017,7 @@
     },
     "/config/members/{member_id}/tasks": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Assign Config Member Task",
         "operationId": "assign_config_member_task_config_members__member_id__tasks_post",
         "parameters": [
@@ -2157,9 +2081,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Unassign Config Member Task",
         "operationId": "unassign_config_member_task_config_members__member_id__tasks_delete",
         "parameters": [
@@ -2218,9 +2140,7 @@
     },
     "/config/members/{member_id}/checkin-preference": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Get Config Member Checkin Preference",
         "operationId": "get_config_member_checkin_preference_config_members__member_id__checkin_preference_get",
         "parameters": [
@@ -2274,9 +2194,7 @@
         }
       },
       "put": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Update Config Member Checkin Preference",
         "operationId": "update_config_member_checkin_preference_config_members__member_id__checkin_preference_put",
         "parameters": [
@@ -2342,9 +2260,7 @@
     },
     "/config/checkin-preferences": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Config Checkin Preferences",
         "operationId": "list_config_checkin_preferences_config_checkin_preferences_get",
         "parameters": [
@@ -2395,9 +2311,7 @@
     },
     "/programs": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Programs",
         "operationId": "list_programs_programs_get",
         "parameters": [
@@ -2458,9 +2372,7 @@
     },
     "/projects": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Projects",
         "operationId": "list_projects_projects_get",
         "parameters": [
@@ -2521,9 +2433,7 @@
     },
     "/pods": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Pods",
         "operationId": "list_pods_pods_get",
         "parameters": [
@@ -2584,9 +2494,7 @@
     },
     "/me/checkin-preference": {
       "get": {
-        "tags": [
-          "checkins"
-        ],
+        "tags": ["checkins"],
         "summary": "Get Checkin Preference",
         "operationId": "get_checkin_preference_me_checkin_preference_get",
         "parameters": [
@@ -2631,9 +2539,7 @@
         }
       },
       "put": {
-        "tags": [
-          "checkins"
-        ],
+        "tags": ["checkins"],
         "summary": "Update Checkin Preference",
         "operationId": "update_checkin_preference_me_checkin_preference_put",
         "parameters": [
@@ -2690,9 +2596,7 @@
     },
     "/me/focus": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "My Focus",
         "operationId": "my_focus_me_focus_get",
         "parameters": [
@@ -2749,9 +2653,7 @@
     },
     "/pods/{pod_id}/blockers": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Pod Blockers",
         "operationId": "pod_blockers_pods__pod_id__blockers_get",
         "parameters": [
@@ -2817,9 +2719,7 @@
     },
     "/pods/{pod_id}/checkins": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Pod Checkins",
         "operationId": "pod_checkins_pods__pod_id__checkins_get",
         "parameters": [
@@ -2885,9 +2785,7 @@
     },
     "/projects/{project_id}/progress": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Project Progress",
         "operationId": "project_progress_projects__project_id__progress_get",
         "parameters": [
@@ -2953,9 +2851,7 @@
     },
     "/programs/{program_id}/tree": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Program Tree",
         "operationId": "program_tree_programs__program_id__tree_get",
         "parameters": [
@@ -3021,9 +2917,7 @@
     },
     "/portfolio/heatmap": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Portfolio Heatmap",
         "operationId": "portfolio_heatmap_portfolio_heatmap_get",
         "parameters": [
@@ -3094,11 +2988,209 @@
         }
       }
     },
+    "/test/chat-simulator/status": {
+      "get": {
+        "tags": ["test-support"],
+        "summary": "Chat Simulator Status",
+        "operationId": "chat_simulator_status_test_chat_simulator_status_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSimulatorStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/test/chat-simulator/messages": {
+      "get": {
+        "tags": ["test-support"],
+        "summary": "Chat Simulator Messages",
+        "operationId": "chat_simulator_messages_test_chat_simulator_messages_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSimulatorMessagesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/test/chat-simulator/messages/{message_id}/reply": {
+      "post": {
+        "tags": ["test-support"],
+        "summary": "Chat Simulator Reply",
+        "operationId": "chat_simulator_reply_test_chat_simulator_messages__message_id__reply_post",
+        "parameters": [
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatSimulatorReplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSimulatorReplyResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/test/chat-simulator/state": {
+      "delete": {
+        "tags": ["test-support"],
+        "summary": "Reset Chat Simulator",
+        "operationId": "reset_chat_simulator_test_chat_simulator_state_delete",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/webhooks/chat/{provider}": {
       "post": {
-        "tags": [
-          "webhooks"
-        ],
+        "tags": ["webhooks"],
         "summary": "Chat Webhook",
         "operationId": "chat_webhook_webhooks_chat__provider__post",
         "parameters": [
@@ -3231,13 +3323,189 @@
           }
         },
         "type": "object",
+        "required": ["tenant_id", "user_id", "start", "end"],
+        "title": "CalendarSyncDispatchRequest"
+      },
+      "ChatSimulatorMessageResponse": {
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id"
+          },
+          "channel_id": {
+            "type": "string",
+            "title": "Channel Id"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "direction": {
+            "type": "string",
+            "title": "Direction"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "reply_to_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To Message Id"
+          },
+          "metadata": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
         "required": [
           "tenant_id",
+          "message_id",
+          "channel_id",
           "user_id",
-          "start",
-          "end"
+          "direction",
+          "text",
+          "created_at",
+          "metadata"
         ],
-        "title": "CalendarSyncDispatchRequest"
+        "title": "ChatSimulatorMessageResponse"
+      },
+      "ChatSimulatorMessagesResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChatSimulatorMessageResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["items"],
+        "title": "ChatSimulatorMessagesResponse"
+      },
+      "ChatSimulatorReplyRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text"
+          },
+          "received_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Received At"
+          }
+        },
+        "type": "object",
+        "required": ["text"],
+        "title": "ChatSimulatorReplyRequest"
+      },
+      "ChatSimulatorReplyResponse": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "title": "Message Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "processed_message_id": {
+            "type": "string",
+            "title": "Processed Message Id"
+          }
+        },
+        "type": "object",
+        "required": ["message_id", "status", "processed_message_id"],
+        "title": "ChatSimulatorReplyResponse"
+      },
+      "ChatSimulatorStatusResponse": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count"
+          }
+        },
+        "type": "object",
+        "required": ["enabled", "tenant_id", "provider", "message_count"],
+        "title": "ChatSimulatorStatusResponse"
       },
       "ChatWebhookResponse": {
         "properties": {
@@ -3251,10 +3519,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "status",
-          "message_id"
-        ],
+        "required": ["status", "message_id"],
         "title": "ChatWebhookResponse"
       },
       "CheckinDeveloperDto": {
@@ -3269,11 +3534,7 @@
           },
           "state": {
             "type": "string",
-            "enum": [
-              "confirmed",
-              "stale",
-              "missing"
-            ],
+            "enum": ["confirmed", "stale", "missing"],
             "title": "State"
           },
           "source": {
@@ -3353,10 +3614,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "tenant_id",
-          "developer_id"
-        ],
+        "required": ["tenant_id", "developer_id"],
         "title": "CheckinDispatchRequest"
       },
       "CheckinPreferenceResponse": {
@@ -3537,14 +3795,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "from_node_id",
-          "to_node_id",
-          "kind",
-          "valid_from",
-          "valid_to",
-          "metadata"
-        ],
+        "required": ["from_node_id", "to_node_id", "kind", "valid_from", "valid_to", "metadata"],
         "title": "ConfigEdgeResponse"
       },
       "ConfigNodeCreateRequest": {
@@ -3606,10 +3857,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name"
-        ],
+        "required": ["id", "name"],
         "title": "ConfigNodeCreateRequest"
       },
       "ConfigNodeResponse": {
@@ -3672,12 +3920,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "kind",
-          "name",
-          "metadata"
-        ],
+        "required": ["id", "kind", "name", "metadata"],
         "title": "ConfigNodeResponse"
       },
       "ConfigNodeUpdateRequest": {
@@ -3897,10 +4140,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "items",
-          "total"
-        ],
+        "required": ["items", "total"],
         "title": "DirectorySearchResponse"
       },
       "DirectorySyncResponse": {
@@ -3919,11 +4159,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "tenant_id",
-          "synced_count",
-          "deactivated_count"
-        ],
+        "required": ["tenant_id", "synced_count", "deactivated_count"],
         "title": "DirectorySyncResponse"
       },
       "DirectoryUserResponse": {
@@ -4028,11 +4264,7 @@
       },
       "EdgeKind": {
         "type": "string",
-        "enum": [
-          "contains",
-          "assigned_to",
-          "depends_on"
-        ],
+        "enum": ["contains", "assigned_to", "depends_on"],
         "title": "EdgeKind"
       },
       "EntityRefDto": {
@@ -4050,21 +4282,14 @@
           }
         },
         "type": "object",
-        "required": [
-          "tenant_id",
-          "kind",
-          "id"
-        ],
+        "required": ["tenant_id", "kind", "id"],
         "title": "EntityRefDto"
       },
       "FocusItemDto": {
         "properties": {
           "kind": {
             "type": "string",
-            "enum": [
-              "task",
-              "blocker"
-            ],
+            "enum": ["task", "blocker"],
             "title": "Kind"
           },
           "label": {
@@ -4102,14 +4327,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "kind",
-          "label",
-          "source",
-          "source_ref",
-          "confidence",
-          "deadline"
-        ],
+        "required": ["kind", "label", "source", "source_ref", "confidence", "deadline"],
         "title": "FocusItemDto"
       },
       "FocusResponse": {
@@ -4223,14 +4441,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "rag",
-          "source",
-          "confidence",
-          "deadline"
-        ],
+        "required": ["id", "name", "rag", "source", "confidence", "deadline"],
         "title": "FocusTaskDto"
       },
       "GithubSyncDispatchRequest": {
@@ -4257,10 +4468,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "tenant_id",
-          "repo_name"
-        ],
+        "required": ["tenant_id", "repo_name"],
         "title": "GithubSyncDispatchRequest"
       },
       "GraphEdgeDto": {
@@ -4302,13 +4510,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "from_node_id",
-          "to_node_id",
-          "kind",
-          "valid_from",
-          "valid_to"
-        ],
+        "required": ["from_node_id", "to_node_id", "kind", "valid_from", "valid_to"],
         "title": "GraphEdgeDto"
       },
       "GraphNodeDto": {
@@ -4349,12 +4551,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "kind",
-          "name",
-          "metadata"
-        ],
+        "required": ["id", "kind", "name", "metadata"],
         "title": "GraphNodeDto"
       },
       "GraphTreeDto": {
@@ -4378,11 +4575,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "root",
-          "nodes",
-          "edges"
-        ],
+        "required": ["root", "nodes", "edges"],
         "title": "GraphTreeDto"
       },
       "HTTPValidationError": {
@@ -4418,12 +4611,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "status",
-          "environment",
-          "tenant_id",
-          "correlation_id"
-        ],
+        "required": ["status", "environment", "tenant_id", "correlation_id"],
         "title": "HealthResponse"
       },
       "HeatmapCellDto": {
@@ -4454,15 +4642,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "row",
-          "column",
-          "entity_ref",
-          "rag",
-          "source",
-          "why",
-          "source_ref"
-        ],
+        "required": ["row", "column", "entity_ref", "rag", "source", "why", "source_ref"],
         "title": "HeatmapCellDto"
       },
       "JiraSyncDispatchRequest": {
@@ -4500,10 +4680,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "tenant_id",
-          "project_key"
-        ],
+        "required": ["tenant_id", "project_key"],
         "title": "JiraSyncDispatchRequest"
       },
       "MemberFromDirectoryRequest": {
@@ -4518,9 +4695,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "external_ids"
-        ],
+        "required": ["external_ids"],
         "title": "MemberFromDirectoryRequest"
       },
       "MemberTaskAssignmentRequest": {
@@ -4532,22 +4707,12 @@
           }
         },
         "type": "object",
-        "required": [
-          "task_id"
-        ],
+        "required": ["task_id"],
         "title": "MemberTaskAssignmentRequest"
       },
       "NodeKind": {
         "type": "string",
-        "enum": [
-          "program",
-          "project",
-          "sprint",
-          "repo",
-          "pod",
-          "developer",
-          "task"
-        ],
+        "enum": ["program", "project", "sprint", "repo", "pod", "developer", "task"],
         "title": "NodeKind"
       },
       "PersonaTreeEdgeDto": {
@@ -4565,11 +4730,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "from_node_id",
-          "to_node_id",
-          "kind"
-        ],
+        "required": ["from_node_id", "to_node_id", "kind"],
         "title": "PersonaTreeEdgeDto"
       },
       "PersonaTreeNodeDto": {
@@ -4625,15 +4786,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "kind",
-          "name",
-          "rag",
-          "source",
-          "confidence",
-          "factors"
-        ],
+        "required": ["id", "kind", "name", "rag", "source", "confidence", "factors"],
         "title": "PersonaTreeNodeDto"
       },
       "PodBlockersResponse": {
@@ -4660,12 +4813,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "pod_id",
-          "pod_name",
-          "as_of",
-          "blockers"
-        ],
+        "required": ["pod_id", "pod_name", "as_of", "blockers"],
         "title": "PodBlockersResponse"
       },
       "PodCheckinsResponse": {
@@ -4704,15 +4852,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "pod_id",
-          "pod_name",
-          "as_of",
-          "confirmed",
-          "stale",
-          "missing",
-          "developers"
-        ],
+        "required": ["pod_id", "pod_name", "as_of", "confirmed", "stale", "missing", "developers"],
         "title": "PodCheckinsResponse"
       },
       "PodMemberLinkRequest": {
@@ -4724,9 +4864,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "role"
-        ],
+        "required": ["role"],
         "title": "PodMemberLinkRequest"
       },
       "PortfolioHeatmapResponse": {
@@ -4759,12 +4897,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "as_of",
-          "rows",
-          "columns",
-          "cells"
-        ],
+        "required": ["as_of", "rows", "columns", "cells"],
         "title": "PortfolioHeatmapResponse"
       },
       "ProgramProjectLinkRequest": {
@@ -4776,9 +4909,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "program_id"
-        ],
+        "required": ["program_id"],
         "title": "ProgramProjectLinkRequest"
       },
       "ProgramTreeResponse": {
@@ -4808,12 +4939,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "root_id",
-          "as_of",
-          "nodes",
-          "edges"
-        ],
+        "required": ["root_id", "as_of", "nodes", "edges"],
         "title": "ProgramTreeResponse"
       },
       "ProjectProgressResponse": {
@@ -4908,12 +5034,7 @@
       },
       "Rag": {
         "type": "string",
-        "enum": [
-          "green",
-          "amber",
-          "red",
-          "unknown"
-        ],
+        "enum": ["green", "amber", "red", "unknown"],
         "title": "Rag"
       },
       "ReadyResponse": {
@@ -4931,10 +5052,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "status",
-          "dependencies"
-        ],
+        "required": ["status", "dependencies"],
         "title": "ReadyResponse"
       },
       "RollupFactorDto": {
@@ -4951,21 +5069,12 @@
           }
         },
         "type": "object",
-        "required": [
-          "description",
-          "contributes",
-          "source_ref"
-        ],
+        "required": ["description", "contributes", "source_ref"],
         "title": "RollupFactorDto"
       },
       "StatusSource": {
         "type": "string",
-        "enum": [
-          "confirmed",
-          "inferred",
-          "stale",
-          "unknown"
-        ],
+        "enum": ["confirmed", "inferred", "stale", "unknown"],
         "title": "StatusSource"
       },
       "TaskProgressDto": {
@@ -5009,14 +5118,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "rag",
-          "source",
-          "confidence",
-          "deadline"
-        ],
+        "required": ["id", "name", "rag", "source", "confidence", "deadline"],
         "title": "TaskProgressDto"
       },
       "ValidationError": {
@@ -5052,11 +5154,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
+        "required": ["loc", "msg", "type"],
         "title": "ValidationError"
       },
       "WorkflowDispatchResponse": {
@@ -5067,9 +5165,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "workflow_id"
-        ],
+        "required": ["workflow_id"],
         "title": "WorkflowDispatchResponse"
       }
     }

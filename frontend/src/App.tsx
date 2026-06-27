@@ -4,6 +4,7 @@ import { Layout } from "./app/Layout";
 import { RoleProvider } from "./app/RoleContext";
 import { PersonaDashboard } from "./features/personas/PersonaDashboard";
 import { AdminConfigPage } from "./pages/AdminConfigPage";
+import { MockSlackPage } from "./pages/MockSlackPage";
 import { PodDetailPage } from "./pages/PodDetailPage";
 import { PodsPage } from "./pages/PodsPage";
 import { PortfolioPage } from "./pages/PortfolioPage";
@@ -27,6 +28,7 @@ export function App() {
             <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
             <Route path="/portfolio" element={<PortfolioPage />} />
             <Route path="/admin" element={<AdminConfigPage />} />
+            <Route path="/mock-slack" element={<MockSlackPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
