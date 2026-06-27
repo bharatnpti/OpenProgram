@@ -19,8 +19,8 @@ from api.dtos import (
     ConfigNodeCreateRequest,
     ConfigNodeResponse,
     ConfigNodeUpdateRequest,
-    DirectorySearchResponse,
     DirectoryItemResponse,
+    DirectorySearchResponse,
     DirectorySyncResponse,
     DirectoryUserResponse,
     MemberFromDirectoryRequest,
@@ -38,7 +38,7 @@ from core.application.config_service import (
 )
 from core.application.directory_sync_service import DirectorySyncService
 from core.domain.auth import Principal
-from core.domain.errors import AuthorizationDenied, GraphNotFound
+from core.domain.errors import AuthorizationDenied, GraphNotFound, ProviderUnavailable
 from core.domain.graph import GraphNode, JsonScalar, NodeKind
 from core.domain.status import CheckInPreference
 
@@ -277,7 +277,10 @@ async def sync_config_directory(
     service: Annotated[DirectorySyncService, Depends(get_directory_sync_service)],
 ) -> DirectorySyncResponse:
     _ensure(principal, Capability.MANAGE_CONFIG)
-    result = await service.sync(principal.tenant_id)
+    try:
+        result = await service.sync(principal.tenant_id)
+    except ProviderUnavailable as exc:
+        raise _http_error(exc) from exc
     return DirectorySyncResponse(
         tenant_id=result.tenant_id,
         synced_count=result.synced_count,
@@ -285,21 +288,25 @@ async def sync_config_directory(
     )
 
 
-@router.post("/config/members/from-directory", response_model=list[ConfigNodeResponse], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/config/members/from-directory",
+    response_model=list[ConfigNodeResponse],
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_config_members_from_directory(
     request: MemberFromDirectoryRequest,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ConfigService, Depends(get_config_service)],
 ) -> list[ConfigNodeResponse]:
     _ensure(principal, Capability.MANAGE_CONFIG)
-    members: list[ConfigNodeResponse] = []
-    for external_id in request.external_ids:
-        members.append(
-            ConfigNodeResponse.from_domain(
-                await service.add_member_from_directory(principal.tenant_id, external_id)
-            )
+    try:
+        members = await service.add_members_from_directory(
+            principal.tenant_id,
+            request.external_ids,
         )
-    return members
+    except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return [ConfigNodeResponse.from_domain(member) for member in members]
 
 
 @router.post(
@@ -712,6 +719,8 @@ def _ensure(principal: Principal, capability: Capability) -> None:
 
 
 def _http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, ProviderUnavailable):
+        return HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
     if isinstance(exc, GraphNotFound):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, ConfigConflict):

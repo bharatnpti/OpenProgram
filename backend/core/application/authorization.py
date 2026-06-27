@@ -8,6 +8,7 @@ from core.domain.errors import AuthorizationDenied
 
 class Capability(StrEnum):
     READ_OWN_WORK = "read_own_work"
+    READ_DIRECTORY = "read_directory"
     READ_TEAM_AGGREGATE = "read_team_aggregate"
     READ_EXEC_AGGREGATE = "read_exec_aggregate"
     READ_POD_BLOCKERS = "read_pod_blockers"
@@ -18,6 +19,7 @@ class Capability(StrEnum):
     READ_RAW_DM = "read_raw_dm"
     WRITE_CONNECTOR_SECRET = "write_connector_secret"
     DISPATCH_WORKFLOWS = "dispatch_workflows"
+    MANAGE_CONFIG = "manage_config"
 
 
 class SensitiveField(StrEnum):
@@ -28,16 +30,24 @@ class SensitiveField(StrEnum):
 class AuthorizationPolicy:
     def can(self, principal: Principal, capability: Capability) -> bool:
         allowed = {
-            Role.ADMIN: frozenset({Capability.DISPATCH_WORKFLOWS}),
-            Role.DEV: frozenset({Capability.READ_OWN_WORK, Capability.READ_RAW_DM}),
+            Role.ADMIN: frozenset({Capability.DISPATCH_WORKFLOWS, Capability.MANAGE_CONFIG}),
+            Role.DEV: frozenset(
+                {
+                    Capability.READ_OWN_WORK,
+                    Capability.READ_DIRECTORY,
+                    Capability.READ_RAW_DM,
+                }
+            ),
             Role.PO: frozenset(
                 {
+                    Capability.READ_DIRECTORY,
                     Capability.READ_TEAM_AGGREGATE,
                     Capability.READ_PROJECT_PROGRESS,
                 }
             ),
             Role.SM: frozenset(
                 {
+                    Capability.READ_DIRECTORY,
                     Capability.READ_TEAM_AGGREGATE,
                     Capability.READ_POD_BLOCKERS,
                     Capability.READ_POD_CHECKINS,
@@ -46,6 +56,7 @@ class AuthorizationPolicy:
             ),
             Role.MGR: frozenset(
                 {
+                    Capability.READ_DIRECTORY,
                     Capability.READ_TEAM_AGGREGATE,
                     Capability.READ_EXEC_AGGREGATE,
                     Capability.READ_PROJECT_PROGRESS,
@@ -55,6 +66,7 @@ class AuthorizationPolicy:
             ),
             Role.EXEC: frozenset(
                 {
+                    Capability.READ_DIRECTORY,
                     Capability.READ_EXEC_AGGREGATE,
                     Capability.READ_PROGRAM_ROLLUP,
                     Capability.READ_PORTFOLIO_HEATMAP,

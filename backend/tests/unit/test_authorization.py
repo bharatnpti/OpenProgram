@@ -37,15 +37,18 @@ def test_persona_capabilities_follow_role_scope() -> None:
     mgr = Principal(tenant_id="demo", subject="mgr", roles=frozenset({Role.MGR}))
 
     assert policy.can(dev, Capability.READ_OWN_WORK)
+    assert policy.can(dev, Capability.READ_DIRECTORY)
     assert policy.can(dev, Capability.READ_RAW_DM)
     assert policy.can_read_field(dev, SensitiveField.RAW_DM_CONTENT)
     assert not policy.can(dev, Capability.READ_POD_BLOCKERS)
+    assert policy.can(sm, Capability.READ_DIRECTORY)
     assert policy.can(sm, Capability.READ_POD_BLOCKERS)
     assert policy.can(sm, Capability.READ_POD_CHECKINS)
     assert policy.can(sm, Capability.READ_RAW_DM)
     assert policy.can_read_field(sm, SensitiveField.RAW_DM_CONTENT)
     assert not policy.can(sm, Capability.READ_PROJECT_PROGRESS)
     assert policy.can(po, Capability.READ_PROJECT_PROGRESS)
+    assert policy.can(po, Capability.READ_DIRECTORY)
     assert not policy.can(po, Capability.READ_POD_CHECKINS)
     assert policy.can(mgr, Capability.READ_PROGRAM_ROLLUP)
     assert policy.can(mgr, Capability.READ_PORTFOLIO_HEATMAP)
@@ -62,7 +65,9 @@ def test_dispatch_workflows_is_admin_only() -> None:
     manager = Principal(tenant_id="demo", subject="mgr", roles=frozenset({Role.MGR}))
 
     assert policy.can(admin, Capability.DISPATCH_WORKFLOWS)
+    assert policy.can(admin, Capability.MANAGE_CONFIG)
     assert not policy.can(manager, Capability.DISPATCH_WORKFLOWS)
+    assert not policy.can(manager, Capability.MANAGE_CONFIG)
 
 
 def test_unknown_sensitive_field_and_scope_default_to_false() -> None:

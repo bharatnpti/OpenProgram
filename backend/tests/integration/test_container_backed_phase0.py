@@ -263,6 +263,33 @@ async def test_developer_status_signals_migration_and_repository_round_trip(
         await _drop_database(admin_database_url, database_name)
 
 
+async def test_directory_user_search_indexes_migration(
+    compose_stack: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admin_database_url = _service_url(compose_stack, "postgres", 5432, "postgres")
+    database_name = f"pulseops_it_0010_{uuid4().hex[:12]}"
+    database_url = _service_url(compose_stack, "postgres", 5432, database_name)
+    await _create_database(admin_database_url, database_name)
+    try:
+        _run_alembic(monkeypatch, database_url, "upgrade", "head")
+        executor = PsycopgAsyncExecutor(database_url)
+        try:
+            assert await _directory_user_search_indexes_exist(executor)
+        finally:
+            await executor.close()
+
+        _run_alembic(monkeypatch, database_url, "downgrade", "0009_directory_users")
+        executor = PsycopgAsyncExecutor(database_url)
+        try:
+            assert not await _directory_user_search_indexes_exist(executor)
+        finally:
+            await executor.close()
+    finally:
+        get_settings.cache_clear()
+        await _drop_database(admin_database_url, database_name)
+
+
 async def test_redis_rate_limiter_uses_container(compose_stack: object) -> None:
     redis_url = _redis_url(compose_stack)
     redis_provider = RedisClientProvider(redis_url=redis_url, max_connections=2)
@@ -512,6 +539,43 @@ async def _developer_status_signal_columns_exist(executor: PsycopgAsyncExecutor)
         """
     )
     return {str(row["column_name"]) for row in rows} == {"eta_change_days", "mood"}
+
+
+async def _directory_user_search_indexes_exist(executor: PsycopgAsyncExecutor) -> bool:
+    rows = await executor.fetch(
+        """
+        SELECT indexname, indexdef
+        FROM pg_indexes
+        WHERE schemaname = 'public'
+          AND tablename = 'directory_users'
+          AND indexname IN (
+            'directory_users_active_listing_idx',
+            'directory_users_handle_trgm_idx',
+            'directory_users_external_id_trgm_idx'
+          )
+        """
+    )
+    definitions = {
+        str(row["indexname"]): str(row["indexdef"]).lower()
+        for row in rows
+    }
+    active_listing = definitions.get("directory_users_active_listing_idx", "")
+    handle_trgm = definitions.get("directory_users_handle_trgm_idx", "")
+    external_id_trgm = definitions.get("directory_users_external_id_trgm_idx", "")
+    return (
+        "using btree" in active_listing
+        and "tenant_id" in active_listing
+        and "display_name" in active_listing
+        and "external_id" in active_listing
+        and "where" in active_listing
+        and "is_active" in active_listing
+        and "using gin" in handle_trgm
+        and "handle" in handle_trgm
+        and "gin_trgm_ops" in handle_trgm
+        and "using gin" in external_id_trgm
+        and "external_id" in external_id_trgm
+        and "gin_trgm_ops" in external_id_trgm
+    )
 
 
 async def _create_database(admin_database_url: str, database_name: str) -> None:

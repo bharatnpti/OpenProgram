@@ -160,3 +160,70 @@ async def test_directory_search_and_add_member_from_directory() -> None:
     assert member.metadata["email"] == "asha@example.com"
 
     assert await service.add_member_from_directory("demo", "U1001") == member
+
+
+async def test_add_member_from_directory_rejects_inactive_user() -> None:
+    store = InMemoryGraphStore()
+    directory = FakeDirectoryUserRepository()
+    service = ConfigService(store, store, directory)
+    await directory.upsert_users(
+        [
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U1001",
+                display_name="Inactive User",
+                email="inactive@example.com",
+                handle="inactive",
+                is_active=False,
+                source="slack",
+            )
+        ]
+    )
+
+    with pytest.raises(GraphNotFound, match="active directory user U1001 not found"):
+        await service.add_member_from_directory("demo", "U1001")
+
+    assert await store.get_node("demo", "U1001") is None
+
+
+async def test_add_members_from_directory_validates_batch_before_writing() -> None:
+    store = InMemoryGraphStore()
+    directory = FakeDirectoryUserRepository()
+    service = ConfigService(store, store, directory)
+    await directory.upsert_users(
+        [
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U1001",
+                display_name="Asha Rao",
+                email="asha@example.com",
+                handle="asha",
+                source="slack",
+            )
+        ]
+    )
+
+    with pytest.raises(GraphNotFound, match="active directory user missing-user not found"):
+        await service.add_members_from_directory("demo", ["U1001", "missing-user"])
+
+    assert await store.get_node("demo", "U1001") is None
+
+
+async def test_add_member_from_directory_rejects_wrong_kind_conflict() -> None:
+    store = InMemoryGraphStore()
+    directory = FakeDirectoryUserRepository()
+    service = ConfigService(store, store, directory)
+    await directory.upsert_users(
+        [
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U1001",
+                display_name="Asha Rao",
+                source="slack",
+            )
+        ]
+    )
+    await service.create_node("demo", NodeKind.PROJECT, "U1001", "Project")
+
+    with pytest.raises(ConfigConflict, match="exists as a project, not a developer"):
+        await service.add_member_from_directory("demo", "U1001")
