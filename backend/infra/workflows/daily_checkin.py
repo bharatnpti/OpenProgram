@@ -5,7 +5,6 @@ from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from core.domain.integrations import UserRef
 from core.domain.status import CheckIn, CheckInPreference, CheckInScheduleRun
 from core.ports.repositories import StatusRepository
 from infra.workflows.nudge import NudgeInput
@@ -105,34 +104,8 @@ async def start_daily_checkin_activity(payload: DailyCheckinInput) -> DailyCheck
                 final_reply_wait_seconds=preference.final_reply_wait_seconds,
             )
 
-        availability = await registry.availability_service().availability_for(
-            UserRef(
-                tenant_id=payload.tenant_id,
-                external_id=payload.developer_id,
-                display_name=payload.developer_name,
-            ),
-            checkin_date,
-            default_timezone=preference.timezone or settings.tenant_default_timezone,
-        )
-        timezone = preference.timezone or availability.timezone or settings.tenant_default_timezone
+        timezone = preference.timezone or settings.tenant_default_timezone
         scheduled_at = _scheduled_at(checkin_date, preference, timezone)
-        if not availability.available:
-            run = await _record_schedule_run(
-                repository,
-                tenant_id=payload.tenant_id,
-                developer_id=payload.developer_id,
-                checkin_date=checkin_date,
-                correlation_id=correlation_id,
-                status="skipped_unavailable",
-                scheduled_at=scheduled_at,
-                reason="calendar marks developer unavailable",
-            )
-            return _run_result(
-                run,
-                already_recorded=False,
-                reply_wait_seconds=preference.reply_wait_seconds,
-                final_reply_wait_seconds=preference.final_reply_wait_seconds,
-            )
 
         existing = None
         if payload.correlation_id is not None:

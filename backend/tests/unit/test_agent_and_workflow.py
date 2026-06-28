@@ -12,7 +12,7 @@ from core.application.conversation_history import llm_messages_from_turns
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import SyncRunResult
 from core.domain.conversation import ConversationRole, ConversationTurn
-from core.domain.integrations import SyncCursor, UserRef
+from core.domain.integrations import SyncCursor
 from core.domain.status import CheckIn, CheckInScheduleRun, DeveloperStatus, StatusSource
 from core.domain.workflows import (
     CheckinFanoutInput,
@@ -564,7 +564,7 @@ async def test_daily_checkin_activity_is_idempotent_for_existing_correlation(
 async def test_daily_checkin_activity_skips_weekends_idempotently(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    registry = _DailyCheckinRegistry(available=True)
+    registry = _DailyCheckinRegistry()
     monkeypatch.setattr(daily_checkin, "_service_registry", lambda: registry)
     payload = daily_checkin.DailyCheckinInput(
         tenant_id="demo",
@@ -586,10 +586,10 @@ async def test_daily_checkin_activity_skips_weekends_idempotently(
     assert registry.collector_called is False
 
 
-async def test_daily_checkin_activity_skips_calendar_unavailable_day(
+async def test_daily_checkin_activity_sends_without_calendar_availability_gate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    registry = _DailyCheckinRegistry(available=False)
+    registry = _DailyCheckinRegistry(collector=_RecordingStatusCollector())
     monkeypatch.setattr(daily_checkin, "_service_registry", lambda: registry)
 
     result = await daily_checkin.start_daily_checkin_activity(
@@ -601,9 +601,15 @@ async def test_daily_checkin_activity_skips_calendar_unavailable_day(
         )
     )
 
-    assert result.status == "skipped_unavailable"
-    assert result.skipped_reason == "calendar marks developer unavailable"
-    assert registry.collector_called is False
+    assert result.status == "sent"
+    assert result.skipped_reason is None
+    assert registry.collector_called is True
+    assert (
+        registry.repository.schedule_runs[
+            ("demo", "dev-1", date.fromisoformat("2026-01-12"))
+        ].status
+        == "sent"
+    )
 
 
 async def test_nudge_activities_send_once_then_close_unknown(
@@ -826,6 +832,21 @@ class _ExplodingStatusCollector:
         raise AssertionError("start_checkin should not be called for an existing correlation")
 
 
+class _RecordingStatusCollector:
+    async def start_checkin(self, **kwargs: object) -> CheckIn:
+        asked_at = kwargs["asked_at"]
+        assert isinstance(asked_at, datetime)
+        return CheckIn(
+            tenant_id=cast(str, kwargs["tenant_id"]),
+            developer_id=cast(str, kwargs["developer_id"]),
+            correlation_id=cast(str, kwargs["correlation_id"]),
+            asked_at=asked_at,
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+
+
 class _ExistingCheckinRegistry:
     def __init__(self, checkin: CheckIn) -> None:
         self.closed = False
@@ -841,31 +862,24 @@ class _ExistingCheckinRegistry:
         self.collector_called = True
         return self._collector
 
-    def availability_service(self) -> _AvailableService:
-        return _AvailableService()
-
     async def close(self) -> None:
         self.closed = True
 
 
 class _DailyCheckinRegistry:
-    def __init__(self, *, available: bool) -> None:
+    def __init__(self, *, collector: object | None = None) -> None:
         self.closed = False
         self.collector_called = False
         self.settings = _WorkflowSettings()
         self.repository = _DailyCheckinRepository()
-        self._availability = _AvailableService(available=available)
-        self._collector = _ExplodingStatusCollector()
+        self._collector = collector or _ExplodingStatusCollector()
 
     def status_repository(self) -> _DailyCheckinRepository:
         return self.repository
 
-    def status_collector(self) -> _ExplodingStatusCollector:
+    def status_collector(self) -> object:
         self.collector_called = True
         return self._collector
-
-    def availability_service(self) -> _AvailableService:
-        return self._availability
 
     async def close(self) -> None:
         self.closed = True
@@ -916,26 +930,6 @@ class _ConversationPurgeRegistry:
 
     async def close(self) -> None:
         self.closed = True
-
-
-class _AvailableService:
-    def __init__(self, *, available: bool = True) -> None:
-        self._available = available
-
-    async def availability_for(
-        self,
-        user: UserRef,
-        as_of: date,
-        *,
-        default_timezone: str = "UTC",
-    ) -> _AvailabilityResult:
-        return _AvailabilityResult(available=self._available, timezone=default_timezone)
-
-
-class _AvailabilityResult:
-    def __init__(self, *, available: bool, timezone: str) -> None:
-        self.available = available
-        self.timezone = timezone
 
 
 class _WorkflowSettings:
