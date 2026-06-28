@@ -124,6 +124,43 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
     assert checkin.developer_id == "dev-1"
     assert checkin.raw_reply == "blocked on dependency"
 
+    await repository.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-once",
+            asked_at=asked_at,
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    assert await repository.record_checkin_reply_once(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-once",
+            asked_at=asked_at,
+            replied_at=replied_at,
+            raw_reply="first final reply",
+            signals=CheckInSignals(progress_note="first"),
+        )
+    )
+    assert not await repository.record_checkin_reply_once(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-once",
+            asked_at=asked_at,
+            replied_at=replied_at,
+            raw_reply="second final reply",
+            signals=CheckInSignals(progress_note="second"),
+        )
+    )
+    once_checkin = await repository.checkin_by_correlation("demo", "corr-once")
+    assert once_checkin is not None
+    assert once_checkin.raw_reply == "first final reply"
+
     correlation = CheckInCorrelation(
         tenant_id="demo",
         developer_id="dev-1",
