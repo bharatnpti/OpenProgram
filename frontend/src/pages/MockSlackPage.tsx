@@ -53,25 +53,43 @@ export function MockSlackPage() {
   const configuredMembers = useMemo(() => members.data ?? [], [members.data]);
   const selectedMember = configuredMembers.find((member) => member.id === memberId);
   const items = useMemo(() => messages.data?.items ?? [], [messages.data?.items]);
-  const botMessages = items.filter((message) => message.direction === "bot");
+  const botMessages = useMemo(
+    () => items.filter((message) => message.direction === "bot"),
+    [items],
+  );
   const selectedMessage = botMessages.find((message) => message.message_id === selectedMessageId);
   const groups = useMemo(() => groupByUser(items), [items]);
 
   useEffect(() => {
-    if (!memberId && configuredMembers.length > 0) {
-      setMemberId(configuredMembers[0].id);
-      setChatExternalId(configuredMembers[0].id);
+    if (configuredMembers.length === 0) {
+      if (memberId) setMemberId("");
+      if (chatExternalId) setChatExternalId("");
+      return;
     }
-  }, [configuredMembers, memberId]);
+    const selectedMemberExists = configuredMembers.some((member) => member.id === memberId);
+    if (!memberId || !selectedMemberExists) {
+      const firstMember = configuredMembers[0];
+      setMemberId(firstMember.id);
+      setChatExternalId(firstMember.id);
+    }
+  }, [chatExternalId, configuredMembers, memberId]);
 
   useEffect(() => {
-    if (!selectedMessageId && botMessages.length > 0) {
+    if (botMessages.length === 0) {
+      if (selectedMessageId) setSelectedMessageId("");
+      return;
+    }
+    const selectedMessageExists = botMessages.some(
+      (message) => message.message_id === selectedMessageId,
+    );
+    if (!selectedMessageId || !selectedMessageExists) {
       setSelectedMessageId(botMessages[botMessages.length - 1].message_id);
     }
   }, [botMessages, selectedMessageId]);
 
   const invalidateSimulator = async () => {
     await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["config", "members"] }),
       queryClient.invalidateQueries({ queryKey: ["chat-simulator"] }),
       queryClient.invalidateQueries({ queryKey: ["persona"] }),
     ]);

@@ -1,8 +1,9 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { Layout } from "./app/Layout";
 import { RoleProvider } from "./app/RoleProvider";
+import { useRole } from "./app/role";
 import { Skeleton } from "./components/ui/skeleton";
 
 const PersonaDashboard = lazy(() =>
@@ -34,6 +35,9 @@ const ProjectsPage = lazy(() =>
   import("./pages/ProjectsPage").then((module) => ({ default: module.ProjectsPage })),
 );
 
+const chatSimulatorFrontendEnabled =
+  import.meta.env.DEV || import.meta.env.VITE_ENABLE_CHAT_SIMULATOR === "true";
+
 export function App() {
   return (
     <RoleProvider>
@@ -51,14 +55,54 @@ export function App() {
               <Route path="/pods/:podId" element={<PodDetailPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
-              <Route path="/portfolio" element={<PortfolioPage />} />
-              <Route path="/admin" element={<AdminConfigPage />} />
-              <Route path="/mock-slack" element={<MockSlackPage />} />
+              <Route
+                path="/portfolio"
+                element={
+                  <RequirePortfolioAccess>
+                    <PortfolioPage />
+                  </RequirePortfolioAccess>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <RequireAdminAccess>
+                    <AdminConfigPage />
+                  </RequireAdminAccess>
+                }
+              />
+              <Route
+                path="/mock-slack"
+                element={
+                  <RequireChatSimulatorAccess>
+                    <MockSlackPage />
+                  </RequireChatSimulatorAccess>
+                }
+              />
             </Route>
           </Routes>
         </Suspense>
       </BrowserRouter>
     </RoleProvider>
+  );
+}
+
+function RequireAdminAccess({ children }: { children: ReactNode }) {
+  const { canAccessAdmin } = useRole();
+  return canAccessAdmin ? children : <Navigate to="/me" replace />;
+}
+
+function RequirePortfolioAccess({ children }: { children: ReactNode }) {
+  const { canAccessPortfolio } = useRole();
+  return canAccessPortfolio ? children : <Navigate to="/me" replace />;
+}
+
+function RequireChatSimulatorAccess({ children }: { children: ReactNode }) {
+  const { canAccessAdmin } = useRole();
+  return canAccessAdmin && chatSimulatorFrontendEnabled ? (
+    children
+  ) : (
+    <Navigate to="/me" replace />
   );
 }
 
