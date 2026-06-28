@@ -23,7 +23,6 @@ from core.domain.graph import (
     Project,
     Task,
 )
-from core.domain.integrations import UserRef
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
 from core.domain.status import CheckIn, CheckInSignals, DeveloperStatus, Mood, StatusSource
 from infra.registry import ServiceRegistry
@@ -411,16 +410,6 @@ async def _prove_sync_facts(registry: ServiceRegistry) -> None:
         repo_name="pulseops",
         observed_at=datetime(2026, 1, 13, 10, 0, tzinfo=UTC),
     )
-    calendar_result = await registry.calendar_read_sync_service().sync_user(
-        user=UserRef(
-            tenant_id=registry.settings.tenant_id,
-            external_id="dev-asha",
-            display_name="Asha",
-        ),
-        start=date(2026, 1, 12),
-        end=date(2026, 1, 13),
-        observed_at=datetime(2026, 1, 13, 10, 0, tzinfo=UTC),
-    )
     task_facts = await registry.time_series_repository().list_facts(
         registry.settings.tenant_id,
         EntityRef(tenant_id=registry.settings.tenant_id, kind=NodeKind.TASK, id="PO-1"),
@@ -431,10 +420,8 @@ async def _prove_sync_facts(registry: ServiceRegistry) -> None:
     )
     _assert(issue_result.items_synced > 0, "issue sync did not populate facts")
     _assert(vcs_result.items_synced > 0, "vcs sync did not populate facts")
-    _assert(calendar_result.items_synced > 0, "calendar sync did not populate facts")
     _assert(any(fact.source == "issue" for fact in task_facts), "issue fact missing")
     _assert(any(fact.source == "vcs_commit" for fact in dev_facts), "commit fact missing")
-    _assert(any(fact.source == "calendar" for fact in dev_facts), "calendar fact missing")
 
 
 async def _prove_config_crud(settings: Settings, registry: ServiceRegistry) -> None:

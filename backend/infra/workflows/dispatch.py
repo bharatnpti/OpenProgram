@@ -5,8 +5,8 @@ from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 
 from core.domain.workflows import (
-    DirectorySyncInput,
     DeveloperCheckinDispatch,
+    DirectorySyncInput,
     SyncDispatchInput,
     SyncScheduleConfig,
 )

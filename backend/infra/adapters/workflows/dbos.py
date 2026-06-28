@@ -11,8 +11,6 @@ import psycopg
 from dbos import DBOS, DBOSConfig, ScheduleInput, SetWorkflowID
 
 from core.domain.workflows import (
-    DirectorySyncInput,
-    DirectorySyncResult,
     CheckinFanoutInput,
     CheckinFanoutResult,
     CheckinScheduleConfig,
@@ -20,6 +18,8 @@ from core.domain.workflows import (
     ConversationPurgeResult,
     ConversationPurgeScheduleConfig,
     DeveloperCheckinDispatch,
+    DirectorySyncInput,
+    DirectorySyncResult,
     HeartbeatInput,
     HeartbeatResult,
     ScheduleBootstrapResult,
@@ -49,6 +49,13 @@ from infra.workflows.dispatch import (
 from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import NudgeInput, NudgeResult
+
+SyncWorkflowResult = (
+    ReadSyncWorkflowResult
+    | GitSyncWorkflowResult
+    | CalendarSyncWorkflowResult
+    | DirectorySyncResult
+)
 
 
 @dataclass(frozen=True)
@@ -185,7 +192,7 @@ async def dbos_directory_sync_workflow(
 async def dbos_scheduled_sync_workflow(
     scheduled_time: datetime,
     context: dict[str, Any],
-) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult | DirectorySyncResult:
+) -> SyncWorkflowResult:
     return await _run_sync_dispatch(
         sync_dispatch_for_schedule(_sync_schedule_config_from_context(context), scheduled_time)
     )
@@ -259,7 +266,7 @@ async def dbos_nudge_workflow(payload: NudgeInput) -> NudgeResult:
 
 async def _run_sync_dispatch(
     input: SyncDispatchInput,
-) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult | DirectorySyncResult:
+) -> SyncWorkflowResult:
     workflow_input = sync_workflow_input(input)
     if isinstance(workflow_input, JiraSyncInput):
         return await dbos_sync_jira_project_step(workflow_input)

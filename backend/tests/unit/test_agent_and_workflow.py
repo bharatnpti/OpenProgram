@@ -247,7 +247,7 @@ async def test_checkin_fanout_dispatches_developers_without_checkin(
     assert registry.closed is True
 
 
-def test_schedule_configs_use_explicit_sync_targets() -> None:
+def test_schedule_configs_ignore_calendar_read_sync_targets() -> None:
     settings_factory = cast(Callable[..., Settings], Settings)
     settings = settings_factory(
         _env_file=None,
@@ -282,7 +282,6 @@ def test_schedule_configs_use_explicit_sync_targets() -> None:
             {"project_key": "API", "container_id": "pod-runtime", "board_id": "board-1"},
         ),
         ("vcs", "repo:oneai/program-manager", {"repo_name": "oneai/program-manager"}),
-        ("calendar", "user:dev-1", {"user_id": "dev-1", "window_days": 2}),
         ("directory", "directory", {}),
     ]
 
@@ -324,7 +323,6 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
     assert [(config.connector, config.scope) for config in registry.scheduler.sync_configs] == [
         ("issue", "project:PO"),
         ("vcs", "repo:oneai/program-manager"),
-        ("calendar", "user:dev-1"),
         ("directory", "directory"),
     ]
     assert [result.schedule_id for result in results] == [

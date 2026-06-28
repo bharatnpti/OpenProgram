@@ -555,10 +555,7 @@ async def _directory_user_search_indexes_exist(executor: PsycopgAsyncExecutor) -
           )
         """
     )
-    definitions = {
-        str(row["indexname"]): str(row["indexdef"]).lower()
-        for row in rows
-    }
+    definitions = {str(row["indexname"]): str(row["indexdef"]).lower() for row in rows}
     active_listing = definitions.get("directory_users_active_listing_idx", "")
     handle_trgm = definitions.get("directory_users_handle_trgm_idx", "")
     external_id_trgm = definitions.get("directory_users_external_id_trgm_idx", "")

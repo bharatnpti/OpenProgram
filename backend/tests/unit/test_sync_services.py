@@ -21,7 +21,21 @@ from core.domain.integrations import (
     UserRef,
 )
 from infra.persistence.in_memory_graph import InMemoryGraphStore
-from tests.contract.fakes import FakeCalendarProvider, FakeIssueTracker, FakeVcsProvider
+from tests.contract.fakes import FakeIssueTracker, FakeVcsProvider
+
+
+class RaisingCalendarProvider:
+    def __init__(self) -> None:
+        self.called = False
+
+    async def list_events(
+        self,
+        user: UserRef,
+        start: date,
+        end: date,
+    ) -> list[CalendarEvent]:
+        self.called = True
+        raise AssertionError("calendar read-sync should not fetch events")
 
 
 async def test_issue_read_sync_creates_task_edges_facts_and_cursor() -> None:
@@ -224,22 +238,11 @@ async def test_vcs_read_sync_appends_commit_and_pull_request_facts_and_cursor() 
     )
 
 
-async def test_calendar_read_sync_appends_event_facts_and_cursor() -> None:
+async def test_calendar_read_sync_noops_without_provider_facts_or_cursor() -> None:
     store = InMemoryGraphStore()
     user = UserRef(tenant_id="demo", external_id="dev-1")
     observed_at = datetime(2026, 1, 10, 10, 0, tzinfo=UTC)
-    provider = FakeCalendarProvider(
-        events=[
-            CalendarEvent(
-                tenant_id="demo",
-                user=user,
-                starts_on=date(2026, 1, 10),
-                ends_on=date(2026, 1, 11),
-                kind="pto",
-                metadata={"timezone": "Europe/Berlin"},
-            )
-        ]
-    )
+    provider = RaisingCalendarProvider()
     service = CalendarReadSyncService(
         calendar_provider=provider,
         time_series_repository=store,
@@ -259,29 +262,13 @@ async def test_calendar_read_sync_appends_event_facts_and_cursor() -> None:
     )
     cursor = await store.get_cursor("demo", "calendar", "user:dev-1")
 
-    assert result.items_synced == 1
-    assert facts[0].source == "calendar"
-    assert facts[0].payload["timezone"] == "Europe/Berlin"
-    assert facts[0].correlation_id == "calendar:demo:dev-1:2026-01-10:2026-01-11:pto"
-    assert cursor.value == "2026-01-11"
-    assert cursor.metadata["last_item_count"] == 1
-
-    await store.record_cursor("demo", "calendar", "user:dev-1", SyncCursor())
-    await service.sync_user(
-        user=user,
-        start=date(2026, 1, 10),
-        end=date(2026, 1, 11),
-        observed_at=observed_at,
-    )
-    assert (
-        len(
-            await store.list_facts(
-                "demo",
-                EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
-            )
-        )
-        == 1
-    )
+    assert provider.called is False
+    assert result.connector == "calendar"
+    assert result.scope == "user:dev-1"
+    assert result.items_synced == 0
+    assert result.cursor == SyncCursor()
+    assert facts == []
+    assert cursor == SyncCursor()
 
 
 async def test_issue_sync_uses_fallback_project_and_sprint_name_matching() -> None:
@@ -450,39 +437,3 @@ async def test_vcs_sync_creates_placeholder_repo_when_provider_has_no_match() ->
     assert cursor.value is None
     assert cursor.updated_at is None
     assert cursor.metadata["last_item_count"] == 0
-
-
-async def test_calendar_sync_uses_timezone_alias_metadata() -> None:
-    store = InMemoryGraphStore()
-    user = UserRef(tenant_id="demo", external_id="dev-1")
-    provider = FakeCalendarProvider(
-        events=[
-            CalendarEvent(
-                tenant_id="demo",
-                user=user,
-                starts_on=date(2026, 1, 10),
-                ends_on=date(2026, 1, 11),
-                kind="focus",
-                metadata={"time_zone": "Asia/Kolkata"},
-            )
-        ]
-    )
-    service = CalendarReadSyncService(
-        calendar_provider=provider,
-        time_series_repository=store,
-        cursor_repository=store,
-    )
-
-    await service.sync_user(
-        user=user,
-        start=date(2026, 1, 10),
-        end=date(2026, 1, 11),
-        observed_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
-    )
-
-    facts = await store.list_facts(
-        "demo",
-        EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
-    )
-
-    assert facts[0].payload["timezone"] == "Asia/Kolkata"
