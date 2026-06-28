@@ -89,21 +89,6 @@ def sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
                 cron=settings.github_sync_cron,
             )
         )
-    for user_id in settings.calendar_sync_user_ids:
-        scope = f"user:{user_id}"
-        configs.append(
-            SyncScheduleConfig(
-                schedule_id=safe_workflow_id(f"pulseops-sync-calendar-{scope}"),
-                tenant_id=settings.tenant_id,
-                connector="calendar",
-                scope=scope,
-                payload={
-                    "user_id": user_id,
-                    "window_days": settings.calendar_sync_window_days,
-                },
-                cron=settings.calendar_sync_cron,
-            )
-        )
     configs.append(
         SyncScheduleConfig(
             schedule_id=settings.directory_sync_schedule_id,

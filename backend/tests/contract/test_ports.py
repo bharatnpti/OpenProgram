@@ -13,11 +13,11 @@ from core.domain.integrations import (
 from infra.adapters.chat.fake import FakeChatWebhookMapper
 from tests.contract.contracts import (
     assert_calendar_contract,
-    assert_directory_user_repository_contract,
     assert_chat_contract,
     assert_chat_webhook_mapper_contract,
     assert_ci_contract,
     assert_conversation_repository_contract,
+    assert_directory_user_repository_contract,
     assert_issue_tracker_contract,
     assert_rollup_repository_contract,
     assert_status_repository_contract,

@@ -10,8 +10,6 @@ from uuid import uuid4
 from temporalio import activity, workflow
 
 from core.domain.workflows import (
-    DirectorySyncInput,
-    DirectorySyncResult,
     CheckinFanoutInput,
     CheckinFanoutResult,
     CheckinScheduleConfig,
@@ -19,6 +17,8 @@ from core.domain.workflows import (
     ConversationPurgeResult,
     ConversationPurgeScheduleConfig,
     DeveloperCheckinDispatch,
+    DirectorySyncInput,
+    DirectorySyncResult,
     HeartbeatInput,
     HeartbeatResult,
     ScheduleBootstrapResult,
@@ -48,6 +48,13 @@ from infra.workflows.dispatch import (
 from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import NudgeInput, NudgeResult
+
+SyncWorkflowResult = (
+    ReadSyncWorkflowResult
+    | GitSyncWorkflowResult
+    | CalendarSyncWorkflowResult
+    | DirectorySyncResult
+)
 
 if TYPE_CHECKING:
     from temporalio.client import Client
@@ -205,7 +212,7 @@ class ScheduledSyncWorkflow:
     async def run(
         self,
         config: SyncScheduleConfig,
-    ) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult | DirectorySyncResult:
+    ) -> SyncWorkflowResult:
         return await _execute_sync_activity(
             sync_workflow_input(sync_dispatch_for_schedule(config, workflow.now()))
         )
@@ -290,7 +297,7 @@ class NudgeWorkflow:
 
 async def _execute_sync_activity(
     payload: JiraSyncInput | GitSyncInput | CalendarSyncInput | DirectorySyncInput,
-) -> ReadSyncWorkflowResult | GitSyncWorkflowResult | CalendarSyncWorkflowResult | DirectorySyncResult:
+) -> SyncWorkflowResult:
     if isinstance(payload, JiraSyncInput):
         return await workflow.execute_activity(
             sync_jira_project_activity,

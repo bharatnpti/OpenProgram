@@ -629,7 +629,9 @@ class InMemoryDirectoryUserRepository(DirectoryUserRepository):
         limit: int = 25,
         offset: int = 0,
     ) -> list[DirectoryUser]:
-        return await self.store.search_directory_users(tenant_id, query=query, limit=limit, offset=offset)
+        return await self.store.search_directory_users(
+            tenant_id, query=query, limit=limit, offset=offset
+        )
 
     async def count(self, tenant_id: str, query: str = "") -> int:
         return await self.store.count_directory_users(tenant_id, query=query)

@@ -36,9 +36,9 @@ from core.domain.status import (
     StatusSource,
 )
 from core.ports.calendar import CalendarProvider
-from core.ports.directory import DirectoryUserRepository
 from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.ci import CiProvider
+from core.ports.directory import DirectoryUserRepository
 from core.ports.issue_tracker import IssueTracker
 from core.ports.repositories import (
     ConversationRepository,

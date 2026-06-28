@@ -20,7 +20,6 @@ from core.domain.graph import (
     Project as GraphProject,
 )
 from core.domain.integrations import (
-    CalendarEvent,
     Commit,
     Issue,
     Project,
@@ -380,57 +379,12 @@ class CalendarReadSyncService:
         end: date,
         observed_at: datetime | None = None,
     ) -> SyncRunResult:
-        observed = _timestamp(observed_at)
         scope = f"user:{user.external_id}"
-        events = await self._calendar_provider.list_events(user, start, end)
-
-        for event in events:
-            await self._append_event_fact(event, observed)
-
-        cursor = _with_sync_metadata(
-            SyncCursor(
-                value=end.isoformat(),
-                updated_at=observed,
-                metadata={"start": start.isoformat(), "end": end.isoformat()},
-            ),
-            observed,
-            len(events),
-        )
-        await self._cursor_repository.record_cursor(
-            user.tenant_id,
-            self.connector,
-            scope,
-            cursor,
-        )
         return SyncRunResult(
             connector=self.connector,
             scope=scope,
-            items_synced=len(events),
-            cursor=cursor,
-        )
-
-    async def _append_event_fact(self, event: CalendarEvent, observed_at: datetime) -> None:
-        await self._time_series_repository.append_fact_once(
-            FactEvent(
-                tenant_id=event.tenant_id,
-                source=self.connector,
-                entity_ref=EntityRef(
-                    tenant_id=event.tenant_id,
-                    kind=NodeKind.DEVELOPER,
-                    id=event.user.external_id,
-                ),
-                payload={
-                    "kind": event.kind,
-                    "starts_on": event.starts_on.isoformat(),
-                    "ends_on": event.ends_on.isoformat(),
-                    "timezone": _calendar_timezone(event),
-                },
-                observed_at=observed_at,
-                correlation_id=(
-                    f"{self.connector}:{event.tenant_id}:{event.user.external_id}:"
-                    f"{event.starts_on.isoformat()}:{event.ends_on.isoformat()}:{event.kind}"
-                ),
-            )
+            items_synced=0,
+            cursor=SyncCursor(),
         )
 
 
@@ -549,11 +503,3 @@ def _string_metadata(metadata: Mapping[str, JsonScalar], key: str) -> str | None
 
 def _datetime_iso(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
-
-
-def _calendar_timezone(event: CalendarEvent) -> str | None:
-    for key in ("timezone", "time_zone", "tz"):
-        value = event.metadata.get(key)
-        if isinstance(value, str) and value.strip():
-            return value
-    return None
