@@ -91,14 +91,16 @@ async def dbos_scheduled_heartbeat_workflow(
     )
 
 
-@DBOS.step(name="pulseops_checkin_fanout", retries_allowed=True)
-async def dbos_checkin_fanout_step(payload: CheckinFanoutInput) -> CheckinFanoutResult:
-    return await checkin_fanout.dispatch_checkins_for_tenant_activity(payload)
+@DBOS.step(name="pulseops_prepare_checkin_fanout", retries_allowed=True)
+async def dbos_prepare_checkin_fanout_step(
+    payload: CheckinFanoutInput,
+) -> list[DeveloperCheckinDispatch]:
+    return await checkin_fanout.developer_checkin_dispatches_for_tenant_activity(payload)
 
 
 @DBOS.workflow(name="pulseops_checkin_fanout")
 async def dbos_checkin_fanout_workflow(payload: CheckinFanoutInput) -> CheckinFanoutResult:
-    return await dbos_checkin_fanout_step(payload)
+    return await _run_dbos_checkin_fanout(payload)
 
 
 @DBOS.workflow(name="pulseops_scheduled_checkin_fanout")
@@ -106,7 +108,7 @@ async def dbos_scheduled_checkin_fanout_workflow(
     scheduled_time: datetime,
     context: dict[str, str],
 ) -> CheckinFanoutResult:
-    return await dbos_checkin_fanout_step(
+    return await _run_dbos_checkin_fanout(
         CheckinFanoutInput(
             tenant_id=context["tenant_id"],
             checkin_date=scheduled_time.date().isoformat(),
@@ -230,6 +232,36 @@ async def dbos_daily_checkin_workflow(payload: DailyCheckinInput) -> DailyChecki
             )
         return replace(result, nudge_workflow_id=nudge_workflow_id)
     return result
+
+
+async def _run_dbos_checkin_fanout(payload: CheckinFanoutInput) -> CheckinFanoutResult:
+    dispatches = await dbos_prepare_checkin_fanout_step(payload)
+    workflow_ids: list[str] = []
+    for dispatch in dispatches:
+        workflow_ids.append(await _start_daily_checkin_workflow(dispatch))
+    return CheckinFanoutResult(
+        tenant_id=payload.tenant_id,
+        checkin_date=payload.checkin_date,
+        dispatched=len(workflow_ids),
+        workflow_ids=workflow_ids,
+    )
+
+
+async def _start_daily_checkin_workflow(input: DeveloperCheckinDispatch) -> str:
+    workflow_id = safe_workflow_id(
+        "checkin-"
+        f"{input.tenant_id}-{input.developer_id}-"
+        f"{input.checkin_date or datetime.now(tz=UTC).date().isoformat()}-{uuid4()}"
+    )
+    # Drive check-ins to completion so outbound chat messages exist before the
+    # caller observes the workflow ID.
+    with SetWorkflowID(workflow_id):
+        handle = await DBOS.start_workflow_async(
+            dbos_daily_checkin_workflow,
+            daily_checkin_input(input),
+        )
+    await handle.get_result()
+    return workflow_id
 
 
 @DBOS.step(name="pulseops_send_checkin_nudge", retries_allowed=True)
@@ -363,26 +395,13 @@ class DbosWorkflowScheduler:
         ]
 
     async def dispatch_developer_checkin(self, input: DeveloperCheckinDispatch) -> str:
-        workflow_id = safe_workflow_id(
-            "checkin-"
-            f"{input.tenant_id}-{input.developer_id}-"
-            f"{input.checkin_date or datetime.now(tz=UTC).date().isoformat()}-{uuid4()}"
-        )
         _ensure_dbos_runtime(
             DbosRuntimeConfig(
                 app_name=self.app_name,
                 system_database_url=self.system_database_url,
             )
         )
-        # Keep the runtime alive and drive this manually dispatched check-in to
-        # completion so the outbound chat message exists before the API returns.
-        with SetWorkflowID(workflow_id):
-            handle = await DBOS.start_workflow_async(
-                dbos_daily_checkin_workflow,
-                daily_checkin_input(input),
-            )
-        await handle.get_result()
-        return workflow_id
+        return await _start_daily_checkin_workflow(input)
 
     async def dispatch_sync(self, input: SyncDispatchInput) -> str:
         workflow_input = sync_workflow_input(input)

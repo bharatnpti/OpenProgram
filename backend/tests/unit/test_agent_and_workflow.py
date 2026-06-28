@@ -425,6 +425,48 @@ async def test_dbos_dispatch_keeps_runtime_alive_for_started_workflows(
     assert [call[0] for call in calls].count("result") == 1
 
 
+async def test_dbos_checkin_fanout_starts_children_from_workflow_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = CheckinFanoutInput(tenant_id="demo", checkin_date="2026-01-10")
+    dispatches = [
+        DeveloperCheckinDispatch(
+            tenant_id="demo",
+            developer_id="dev-1",
+            checkin_date="2026-01-10",
+        ),
+        DeveloperCheckinDispatch(
+            tenant_id="demo",
+            developer_id="dev-2",
+            checkin_date="2026-01-10",
+        ),
+    ]
+    calls: list[tuple[str, object]] = []
+
+    async def prepare(input: CheckinFanoutInput) -> list[DeveloperCheckinDispatch]:
+        calls.append(("prepare", input))
+        return dispatches
+
+    async def start(input: DeveloperCheckinDispatch) -> str:
+        calls.append(("start", input))
+        return f"child-{input.developer_id}"
+
+    monkeypatch.setattr(dbos_workflows, "dbos_prepare_checkin_fanout_step", prepare)
+    monkeypatch.setattr(dbos_workflows, "_start_daily_checkin_workflow", start)
+
+    result = await dbos_workflows._run_dbos_checkin_fanout(payload)
+
+    assert result.tenant_id == "demo"
+    assert result.checkin_date == "2026-01-10"
+    assert result.dispatched == 2
+    assert result.workflow_ids == ["child-dev-1", "child-dev-2"]
+    assert calls == [
+        ("prepare", payload),
+        ("start", dispatches[0]),
+        ("start", dispatches[1]),
+    ]
+
+
 def test_temporal_nudge_child_uses_abandon_parent_close_policy() -> None:
     source = temporal_workflows.DailyCheckinWorkflow.run.__code__.co_names
     assert "ParentClosePolicy" in source
