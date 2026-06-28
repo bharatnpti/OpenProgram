@@ -174,7 +174,7 @@ export function MockSlackPage() {
           />
           <KpiCard
             label="Messages"
-            value={status.data?.message_count ?? items.length}
+            value={messages.data ? items.length : (status.data?.message_count ?? items.length)}
             detail={messages.isFetching ? "polling" : "current"}
           />
           <KpiCard label="Members" value={configuredMembers.length} detail="configured" />
