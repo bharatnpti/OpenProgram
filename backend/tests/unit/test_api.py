@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
@@ -12,6 +13,14 @@ from api.main import create_app
 from config.settings import Settings
 from core.domain.errors import ProviderConfigurationError
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
+from core.domain.workflows import (
+    CheckinScheduleConfig,
+    ConversationPurgeScheduleConfig,
+    DeveloperCheckinDispatch,
+    ScheduleBootstrapResult,
+    SyncDispatchInput,
+    SyncScheduleConfig,
+)
 from core.ports.llm import LlmProvider
 from infra.registry import ServiceRegistry
 from tests.fixtures.demo_graph import populate_demo_graph
@@ -367,6 +376,7 @@ def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
 def test_admin_workflow_dispatch_routes_are_admin_only(settings: Settings) -> None:
     app = create_app(settings=settings.model_copy(update={"workflow_provider": "fake"}))
     with TestClient(app) as client:
+        member = client.post("/config/members", json={"id": "dev-1", "name": "Dev One"})
         checkin = client.post(
             "/admin/workflows/checkin/dispatch",
             json={
@@ -393,6 +403,7 @@ def test_admin_workflow_dispatch_routes_are_admin_only(settings: Settings) -> No
             },
         )
 
+    assert member.status_code == 201
     assert checkin.status_code == 200
     assert checkin.json()["workflow_id"] == "fake-checkin-demo-dev-1-2026-01-10"
     assert jira.status_code == 200
@@ -414,6 +425,43 @@ def test_admin_workflow_dispatch_routes_are_admin_only(settings: Settings) -> No
         )
 
     assert denied.status_code == 403
+
+
+def test_admin_checkin_dispatch_rejects_unknown_developer_without_dispatch(
+    settings: Settings,
+) -> None:
+    configured = settings.model_copy(update={"workflow_provider": "fake"})
+    registry = _RecordingWorkflowRegistry(configured)
+    app = create_app(settings=configured, registry=registry)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/admin/workflows/checkin/dispatch",
+            json={
+                "tenant_id": "demo",
+                "developer_id": "UQA_UNKNOWN",
+                "checkin_date": "2026-01-10",
+            },
+        )
+
+    schedule_run = asyncio.run(
+        registry.status_repository().checkin_schedule_run(
+            "demo",
+            "UQA_UNKNOWN",
+            date(2026, 1, 10),
+        )
+    )
+    checkin = asyncio.run(
+        registry.status_repository().checkin_by_correlation(
+            "demo",
+            "checkin-UQA_UNKNOWN-2026-01-10",
+        )
+    )
+
+    assert response.status_code == 404
+    assert "UQA_UNKNOWN" in response.json()["detail"]
+    assert registry.scheduler.checkin_inputs == []
+    assert schedule_run is None
+    assert checkin is None
 
 
 def test_checkin_preference_routes_merge_and_validate(settings: Settings) -> None:
@@ -683,6 +731,53 @@ class _ScriptedLlmRegistry(ServiceRegistry):
 
     def llm_provider(self) -> LlmProvider:
         return self._scripted_llm
+
+
+@dataclass
+class _RecordingDispatchScheduler:
+    checkin_inputs: list[DeveloperCheckinDispatch] = field(default_factory=list)
+    sync_inputs: list[SyncDispatchInput] = field(default_factory=list)
+
+    async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
+        return ScheduleBootstrapResult(schedule_id="recorded-heartbeat", status="ready")
+
+    async def ensure_checkin_fanout_schedule(
+        self,
+        config: CheckinScheduleConfig,
+    ) -> ScheduleBootstrapResult:
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
+
+    async def ensure_conversation_purge_schedule(
+        self,
+        config: ConversationPurgeScheduleConfig,
+    ) -> ScheduleBootstrapResult:
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
+
+    async def ensure_sync_schedules(
+        self,
+        configs: Sequence[SyncScheduleConfig],
+    ) -> list[ScheduleBootstrapResult]:
+        return [
+            ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
+            for config in configs
+        ]
+
+    async def dispatch_developer_checkin(self, input: DeveloperCheckinDispatch) -> str:
+        self.checkin_inputs.append(input)
+        return f"recorded-checkin-{input.developer_id}"
+
+    async def dispatch_sync(self, input: SyncDispatchInput) -> str:
+        self.sync_inputs.append(input)
+        return f"recorded-sync-{input.connector}-{input.scope}"
+
+
+class _RecordingWorkflowRegistry(ServiceRegistry):
+    def __init__(self, settings: Settings) -> None:
+        super().__init__(settings)
+        self.scheduler = _RecordingDispatchScheduler()
+
+    def workflow_scheduler(self) -> _RecordingDispatchScheduler:
+        return self.scheduler
 
 
 def _populate_graph_fixture(app: FastAPI, settings: Settings) -> None:

@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from api.dependencies import get_current_principal, get_registry
+from api.dependencies import get_config_service, get_current_principal, get_registry
 from api.dtos import (
     CalendarSyncDispatchRequest,
     CheckinDispatchRequest,
@@ -13,8 +13,10 @@ from api.dtos import (
     WorkflowDispatchResponse,
 )
 from core.application.authorization import AuthorizationPolicy, Capability
+from core.application.config_service import ConfigService
 from core.domain.auth import Principal
-from core.domain.errors import AuthorizationDenied
+from core.domain.errors import AuthorizationDenied, GraphNotFound
+from core.domain.graph import NodeKind
 from core.domain.workflows import DeveloperCheckinDispatch, SyncDispatchInput
 from infra.registry import ServiceRegistry
 
@@ -26,8 +28,10 @@ async def dispatch_checkin(
     request: CheckinDispatchRequest,
     principal: Annotated[Principal, Depends(get_current_principal)],
     registry: Annotated[ServiceRegistry, Depends(get_registry)],
+    config_service: Annotated[ConfigService, Depends(get_config_service)],
 ) -> WorkflowDispatchResponse:
     _ensure_admin_dispatch(principal)
+    await _ensure_configured_developer(config_service, request.tenant_id, request.developer_id)
     workflow_id = await registry.workflow_scheduler().dispatch_developer_checkin(
         DeveloperCheckinDispatch(
             tenant_id=request.tenant_id,
@@ -117,3 +121,14 @@ def _ensure_admin_dispatch(principal: Principal) -> None:
         AuthorizationPolicy().ensure(principal, Capability.DISPATCH_WORKFLOWS)
     except AuthorizationDenied as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+async def _ensure_configured_developer(
+    service: ConfigService,
+    tenant_id: str,
+    developer_id: str,
+) -> None:
+    try:
+        await service.get_node(tenant_id, developer_id, NodeKind.DEVELOPER)
+    except GraphNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
