@@ -368,21 +368,20 @@ class DbosWorkflowScheduler:
             f"{input.tenant_id}-{input.developer_id}-"
             f"{input.checkin_date or datetime.now(tz=UTC).date().isoformat()}-{uuid4()}"
         )
-        started_runtime = _ensure_dbos_runtime(
+        _ensure_dbos_runtime(
             DbosRuntimeConfig(
                 app_name=self.app_name,
                 system_database_url=self.system_database_url,
             )
         )
-        try:
-            with SetWorkflowID(workflow_id):
-                await DBOS.start_workflow_async(
-                    dbos_daily_checkin_workflow,
-                    daily_checkin_input(input),
-                )
-        finally:
-            if started_runtime:
-                destroy_dbos_runtime()
+        # Keep the runtime alive and drive this manually dispatched check-in to
+        # completion so the outbound chat message exists before the API returns.
+        with SetWorkflowID(workflow_id):
+            handle = await DBOS.start_workflow_async(
+                dbos_daily_checkin_workflow,
+                daily_checkin_input(input),
+            )
+        await handle.get_result()
         return workflow_id
 
     async def dispatch_sync(self, input: SyncDispatchInput) -> str:
@@ -391,25 +390,21 @@ class DbosWorkflowScheduler:
         workflow_id = safe_workflow_id(
             f"sync-{workflow_name}-{input.tenant_id}-{input.scope}-{uuid4()}"
         )
-        started_runtime = _ensure_dbos_runtime(
+        _ensure_dbos_runtime(
             DbosRuntimeConfig(
                 app_name=self.app_name,
                 system_database_url=self.system_database_url,
             )
         )
-        try:
-            with SetWorkflowID(workflow_id):
-                if isinstance(workflow_input, JiraSyncInput):
-                    await DBOS.start_workflow_async(dbos_jira_sync_workflow, workflow_input)
-                elif isinstance(workflow_input, GitSyncInput):
-                    await DBOS.start_workflow_async(dbos_git_sync_workflow, workflow_input)
-                elif isinstance(workflow_input, CalendarSyncInput):
-                    await DBOS.start_workflow_async(dbos_calendar_sync_workflow, workflow_input)
-                else:
-                    raise ValueError(f"unsupported sync connector: {input.connector}")
-        finally:
-            if started_runtime:
-                destroy_dbos_runtime()
+        with SetWorkflowID(workflow_id):
+            if isinstance(workflow_input, JiraSyncInput):
+                await DBOS.start_workflow_async(dbos_jira_sync_workflow, workflow_input)
+            elif isinstance(workflow_input, GitSyncInput):
+                await DBOS.start_workflow_async(dbos_git_sync_workflow, workflow_input)
+            elif isinstance(workflow_input, CalendarSyncInput):
+                await DBOS.start_workflow_async(dbos_calendar_sync_workflow, workflow_input)
+            else:
+                raise ValueError(f"unsupported sync connector: {input.connector}")
         return workflow_id
 
 
