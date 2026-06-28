@@ -358,6 +358,73 @@ async def test_worker_bootstraps_schedules_before_running_worker(
     assert events == ["ensure", "worker", "run", "close"]
 
 
+async def test_dbos_dispatch_keeps_runtime_alive_for_started_workflows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, object]] = []
+
+    def ensure(config: dbos_workflows.DbosRuntimeConfig) -> bool:
+        calls.append(("ensure", config))
+        return True
+
+    def destroy() -> None:
+        calls.append(("destroy", None))
+
+    class WorkflowHandle:
+        async def get_result(self) -> None:
+            calls.append(("result", None))
+
+    class WorkflowIdContext:
+        def __init__(self, workflow_id: str) -> None:
+            self.workflow_id = workflow_id
+
+        def __enter__(self) -> None:
+            calls.append(("workflow_id", self.workflow_id))
+
+        def __exit__(self, *args: object) -> None:
+            calls.append(("workflow_id_exit", self.workflow_id))
+
+    async def start_workflow(workflow: object, payload: object) -> WorkflowHandle:
+        calls.append(("start", (workflow, payload)))
+        return WorkflowHandle()
+
+    monkeypatch.setattr(dbos_workflows, "_ensure_dbos_runtime", ensure)
+    monkeypatch.setattr(dbos_workflows, "destroy_dbos_runtime", destroy)
+    monkeypatch.setattr(dbos_workflows, "SetWorkflowID", WorkflowIdContext)
+    monkeypatch.setattr(dbos_workflows.DBOS, "start_workflow_async", staticmethod(start_workflow))
+
+    scheduler = dbos_workflows.DbosWorkflowScheduler(
+        app_name="pulseops-test",
+        system_database_url="postgresql://pulseops:pulseops@localhost:5432/pulseops",
+        schedule_id="heartbeat-test",
+        tenant_id="demo",
+        heartbeat_cron="0 * * * * *",
+    )
+
+    checkin_workflow_id = await scheduler.dispatch_developer_checkin(
+        DeveloperCheckinDispatch(
+            tenant_id="demo",
+            developer_id="dev-1",
+            checkin_date="2026-01-10",
+        )
+    )
+    sync_workflow_id = await scheduler.dispatch_sync(
+        SyncDispatchInput(
+            tenant_id="demo",
+            connector="vcs",
+            scope="repo:oneai/program-manager",
+            payload={"repo_name": "oneai/program-manager"},
+        )
+    )
+
+    assert checkin_workflow_id.startswith("checkin-demo-dev-1-2026-01-10-")
+    assert sync_workflow_id.startswith("sync-git-demo-repo-oneai-program-manager-")
+    assert ("destroy", None) not in calls
+    assert [call[0] for call in calls].count("ensure") == 2
+    assert [call[0] for call in calls].count("start") == 2
+    assert [call[0] for call in calls].count("result") == 1
+
+
 def test_temporal_nudge_child_uses_abandon_parent_close_policy() -> None:
     source = temporal_workflows.DailyCheckinWorkflow.run.__code__.co_names
     assert "ParentClosePolicy" in source
