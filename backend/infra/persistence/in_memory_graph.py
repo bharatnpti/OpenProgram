@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -55,6 +56,7 @@ class InMemoryGraphStore:
     _sync_cursors: dict[tuple[str, str, str], SyncCursor] = field(default_factory=dict)
     _directory_users: dict[tuple[str, str], DirectoryUser] = field(default_factory=dict)
     _conversation_turns: list[ConversationTurn] = field(default_factory=list)
+    _checkin_reply_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
         return sorted(
@@ -186,6 +188,14 @@ class InMemoryGraphStore:
             )
         ]
         self._checkins.append(checkin)
+
+    async def record_checkin_reply_once(self, checkin: CheckIn) -> bool:
+        async with self._checkin_reply_lock:
+            existing = await self.checkin_by_correlation(checkin.tenant_id, checkin.correlation_id)
+            if existing is not None and existing.replied_at is not None:
+                return False
+            await self.record_checkin(checkin)
+            return True
 
     async def checkin_by_correlation(self, tenant_id: str, correlation_id: str) -> CheckIn | None:
         for checkin in reversed(self._checkins):

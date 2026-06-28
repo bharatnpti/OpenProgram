@@ -155,6 +155,13 @@ class FakeStatusRepository:
         ]
         self.checkins.append(checkin)
 
+    async def record_checkin_reply_once(self, checkin: CheckIn) -> bool:
+        existing = await self.checkin_by_correlation(checkin.tenant_id, checkin.correlation_id)
+        if existing is not None and existing.replied_at is not None:
+            return False
+        await self.record_checkin(checkin)
+        return True
+
     async def checkin_by_correlation(self, tenant_id: str, correlation_id: str) -> CheckIn | None:
         for checkin in reversed(self.checkins):
             if checkin.tenant_id == tenant_id and checkin.correlation_id == correlation_id:

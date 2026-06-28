@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from inspect import Parameter, signature
@@ -321,6 +322,91 @@ async def test_status_collector_handles_reply_by_correlation(
     assert duplicate_checkin == updated
     assert len(parser_llm.requests) == 1
     assert duplicate_facts == facts
+
+
+async def test_status_collector_records_only_first_rapid_final_reply() -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    second_may_persist = asyncio.Event()
+    second_is_waiting = asyncio.Event()
+    original_record_once = store.record_checkin_reply_once
+
+    async def delayed_record_once(checkin: CheckIn) -> bool:
+        if checkin.raw_reply == "Second final reply.":
+            second_is_waiting.set()
+            await second_may_persist.wait()
+        return await original_record_once(checkin)
+
+    store.record_checkin_reply_once = delayed_record_once
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(
+            texts=[
+                '{"is_status_update":true,"sufficient":true,"question":null,'
+                '"signals":{"progress_note":"second","blockers":[],"eta_change_days":null,'
+                '"mood":"neutral"}}',
+                '{"is_status_update":true,"sufficient":true,"question":null,'
+                '"signals":{"progress_note":"first","blockers":[],"eta_change_days":null,'
+                '"mood":"neutral"}}',
+            ]
+        ),
+        status_repository=store,
+        time_series_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    second_task = asyncio.create_task(
+        collector.handle_reply(
+            InboundMessage(
+                tenant_id="demo",
+                user=ChatUserRef(tenant_id="demo", external_id="U123"),
+                text="Second final reply.",
+                thread_id="thread-1",
+                message_id="msg-2",
+                correlation_id="corr-1",
+                received_at=datetime(2026, 1, 10, 9, 8, tzinfo=UTC),
+            )
+        )
+    )
+    await second_is_waiting.wait()
+    first = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="First final reply.",
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
+        )
+    )
+    second_may_persist.set()
+    second = await second_task
+
+    checkin = await store.checkin_by_correlation("demo", "corr-1")
+    facts = await store.list_facts(
+        "demo",
+        EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
+    )
+    statuses = [outcome.status.summary for outcome in (first, second) if outcome.status is not None]
+
+    assert checkin is not None
+    assert checkin.raw_reply == "First final reply."
+    assert statuses == ["first", "first"]
+    assert len(facts) == 1
+    assert facts[0].payload["raw_reply"] == "First final reply."
 
 
 async def test_status_collector_sends_clarification_and_keeps_checkin_open() -> None:

@@ -66,6 +66,36 @@ class PostgresStatusRepository:
                 ),
             )
 
+    async def record_checkin_reply_once(self, checkin: CheckIn) -> bool:
+        with _tracer.start_as_current_span("postgres.status.record_checkin_reply_once"):
+            result = await self._executor.execute(
+                """
+                INSERT INTO checkins (
+                    tenant_id, developer_id, correlation_id, asked_at,
+                    replied_at, raw_reply, signals
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, correlation_id)
+                DO UPDATE SET
+                    developer_id = EXCLUDED.developer_id,
+                    asked_at = EXCLUDED.asked_at,
+                    replied_at = EXCLUDED.replied_at,
+                    raw_reply = EXCLUDED.raw_reply,
+                    signals = EXCLUDED.signals
+                WHERE checkins.replied_at IS NULL
+                """,
+                (
+                    checkin.tenant_id,
+                    checkin.developer_id,
+                    checkin.correlation_id,
+                    checkin.asked_at,
+                    checkin.replied_at,
+                    checkin.raw_reply,
+                    _signals_to_json(checkin.signals),
+                ),
+            )
+        return int(getattr(result, "rowcount", 0) or 0) > 0
+
     async def checkin_by_correlation(self, tenant_id: str, correlation_id: str) -> CheckIn | None:
         with _tracer.start_as_current_span("postgres.status.checkin_by_correlation"):
             rows = await self._executor.fetch(

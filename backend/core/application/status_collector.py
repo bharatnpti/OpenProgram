@@ -825,7 +825,13 @@ class StatusCollector:
             raw_reply=raw_reply,
             signals=final_signals,
         )
-        await self._status_repository.record_checkin(updated)
+        recorded = await self._status_repository.record_checkin_reply_once(updated)
+        if not recorded:
+            duplicate = await self._status_repository.checkin_by_correlation(
+                checkin.tenant_id,
+                checkin.correlation_id,
+            )
+            return await self._confirmed_status_for_duplicate(duplicate or checkin)
 
         status = DeveloperStatus(
             tenant_id=checkin.tenant_id,
