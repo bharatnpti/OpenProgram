@@ -12,6 +12,12 @@ EXPECTED_PROVIDER_ENV = {
     "PULSEOPS_ISSUE_TRACKER_PROVIDER": "${PULSEOPS_ISSUE_TRACKER_PROVIDER:-jira}",
     "PULSEOPS_VCS_PROVIDER": "${PULSEOPS_VCS_PROVIDER:-github}",
 }
+EXPECTED_SCHEDULE_ENV = {
+    "PULSEOPS_CHECKIN_FANOUT_CRON": "${PULSEOPS_CHECKIN_FANOUT_CRON:-30 9 * * 1-5}",
+}
+EXPECTED_RUNTIME_ENV = {
+    "PULSEOPS_ENVIRONMENT": "${PULSEOPS_ENVIRONMENT:-local}",
+}
 
 
 def test_testcontainers_compose_import_is_available() -> None:
@@ -20,13 +26,12 @@ def test_testcontainers_compose_import_is_available() -> None:
     assert DockerCompose.__name__ == "DockerCompose"
 
 
-def test_backend_and_worker_provider_defaults_are_env_overrideable() -> None:
+def test_backend_and_worker_provider_and_schedule_defaults_are_env_overrideable() -> None:
     compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
 
     for service_name in ("backend", "worker"):
         environment = compose["services"][service_name]["environment"]
 
-        assert {
-            key: environment.get(key)
-            for key in EXPECTED_PROVIDER_ENV
-        } == EXPECTED_PROVIDER_ENV
+        assert {key: environment.get(key) for key in EXPECTED_PROVIDER_ENV} == EXPECTED_PROVIDER_ENV
+        assert {key: environment.get(key) for key in EXPECTED_SCHEDULE_ENV} == EXPECTED_SCHEDULE_ENV
+        assert {key: environment.get(key) for key in EXPECTED_RUNTIME_ENV} == EXPECTED_RUNTIME_ENV
