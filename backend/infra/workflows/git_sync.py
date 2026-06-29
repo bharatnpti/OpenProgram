@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 class GitSyncInput:
     tenant_id: str
     repo_name: str
+    container_ids: str | None = None
     observed_at: str | None = None
 
 
@@ -34,6 +35,7 @@ async def sync_git_repo_activity(payload: GitSyncInput) -> GitSyncWorkflowResult
         result = await registry.vcs_read_sync_service().sync_repo(
             tenant_id=payload.tenant_id,
             repo_name=payload.repo_name,
+            container_ids=_csv_tuple(payload.container_ids),
             observed_at=_optional_datetime(payload.observed_at),
         )
         return _workflow_result(result)
@@ -58,6 +60,12 @@ def _optional_datetime(value: str | None) -> datetime | None:
     if value is None:
         return None
     return datetime.fromisoformat(value)
+
+
+def _csv_tuple(value: str | None) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
 def _service_registry() -> ServiceRegistry:

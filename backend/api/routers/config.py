@@ -619,7 +619,38 @@ async def _create_node(
             kind,
             request.id,
             request.name,
-            _node_metadata(request.metadata, request.description, request.code),
+            _node_metadata(
+                request.metadata,
+                description=request.description,
+                code=request.code,
+                jira_project_key=(
+                    request.jira_project_key
+                    if "jira_project_key" in request.model_fields_set
+                    else _UNCHANGED
+                ),
+                jira_base_jql=(
+                    request.jira_base_jql
+                    if "jira_base_jql" in request.model_fields_set
+                    else _UNCHANGED
+                ),
+                jira_board_id=(
+                    request.jira_board_id
+                    if "jira_board_id" in request.model_fields_set
+                    else _UNCHANGED
+                ),
+                jira_filter_jql=(
+                    request.jira_filter_jql
+                    if "jira_filter_jql" in request.model_fields_set
+                    else _UNCHANGED
+                ),
+                github_repos=(
+                    request.github_repos
+                    if "github_repos" in request.model_fields_set
+                    else _UNCHANGED
+                ),
+                description_set="description" in request.model_fields_set,
+                code_set="code" in request.model_fields_set,
+            ),
         )
     except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
         raise _http_error(exc) from exc
@@ -637,8 +668,38 @@ async def _update_node(
         request.metadata is not None
         or "description" in request.model_fields_set
         or "code" in request.model_fields_set
+        or "jira_project_key" in request.model_fields_set
+        or "jira_base_jql" in request.model_fields_set
+        or "jira_board_id" in request.model_fields_set
+        or "jira_filter_jql" in request.model_fields_set
+        or "github_repos" in request.model_fields_set
     ):
-        metadata = _node_metadata(request.metadata or {}, request.description, request.code)
+        metadata = _node_metadata(
+            request.metadata or {},
+            description=request.description,
+            code=request.code,
+            jira_project_key=(
+                request.jira_project_key
+                if "jira_project_key" in request.model_fields_set
+                else _UNCHANGED
+            ),
+            jira_base_jql=(
+                request.jira_base_jql if "jira_base_jql" in request.model_fields_set else _UNCHANGED
+            ),
+            jira_board_id=(
+                request.jira_board_id if "jira_board_id" in request.model_fields_set else _UNCHANGED
+            ),
+            jira_filter_jql=(
+                request.jira_filter_jql
+                if "jira_filter_jql" in request.model_fields_set
+                else _UNCHANGED
+            ),
+            github_repos=(
+                request.github_repos if "github_repos" in request.model_fields_set else _UNCHANGED
+            ),
+            description_set="description" in request.model_fields_set,
+            code_set="code" in request.model_fields_set,
+        )
     try:
         return await service.update_node(tenant_id, id, kind, request.name, metadata)
     except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
@@ -657,17 +718,45 @@ async def _delete_node(
         raise _http_error(exc) from exc
 
 
+_UNCHANGED = object()
+
+
 def _node_metadata(
     metadata: dict[str, JsonScalar],
+    *,
     description: str | None,
     code: str | None,
+    jira_project_key: str | None | object = _UNCHANGED,
+    jira_base_jql: str | None | object = _UNCHANGED,
+    jira_board_id: str | None | object = _UNCHANGED,
+    jira_filter_jql: str | None | object = _UNCHANGED,
+    github_repos: list[str] | None | object = _UNCHANGED,
+    description_set: bool = True,
+    code_set: bool = True,
 ) -> dict[str, JsonScalar]:
     merged = dict(metadata)
-    if description is not None:
+    if description_set:
         merged["description"] = description if description != "" else None
-    if code is not None:
+    if code_set:
         merged["code"] = code if code != "" else None
+    _set_optional_string(merged, "jira_project_key", jira_project_key)
+    _set_optional_string(merged, "jira_base_jql", jira_base_jql)
+    _set_optional_string(merged, "jira_board_id", jira_board_id)
+    _set_optional_string(merged, "jira_filter_jql", jira_filter_jql)
+    if github_repos is not _UNCHANGED:
+        repos = github_repos if isinstance(github_repos, list) else []
+        merged["github_repos"] = ",".join(repos) if repos else None
     return merged
+
+
+def _set_optional_string(
+    metadata: dict[str, JsonScalar],
+    key: str,
+    value: str | None | object,
+) -> None:
+    if value is _UNCHANGED:
+        return
+    metadata[key] = value if isinstance(value, str) and value else None
 
 
 def _default_preference(

@@ -3832,6 +3832,57 @@
             ],
             "title": "Code"
           },
+          "jira_project_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Project Key"
+          },
+          "jira_base_jql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Base Jql"
+          },
+          "jira_board_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Board Id"
+          },
+          "jira_filter_jql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Filter Jql"
+          },
+          "github_repos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Github Repos"
+          },
           "metadata": {
             "additionalProperties": {
               "anyOf": [
@@ -3894,6 +3945,57 @@
               }
             ],
             "title": "Code"
+          },
+          "jira_project_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Project Key"
+          },
+          "jira_base_jql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Base Jql"
+          },
+          "jira_board_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Board Id"
+          },
+          "jira_filter_jql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Filter Jql"
+          },
+          "github_repos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Github Repos"
           },
           "metadata": {
             "additionalProperties": {
@@ -3958,6 +4060,64 @@
               }
             ],
             "title": "Code"
+          },
+          "jira_project_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Project Key"
+          },
+          "jira_base_jql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Base Jql"
+          },
+          "jira_board_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Board Id"
+          },
+          "jira_filter_jql": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Filter Jql"
+          },
+          "github_repos": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Github Repos"
           },
           "metadata": {
             "anyOf": [
