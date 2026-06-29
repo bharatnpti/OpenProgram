@@ -903,6 +903,16 @@ export interface components {
       description?: string | null;
       /** Code */
       code?: string | null;
+      /** Jira Project Key */
+      jira_project_key?: string | null;
+      /** Jira Base Jql */
+      jira_base_jql?: string | null;
+      /** Jira Board Id */
+      jira_board_id?: string | null;
+      /** Jira Filter Jql */
+      jira_filter_jql?: string | null;
+      /** Github Repos */
+      github_repos?: string[];
       /** Metadata */
       metadata?: {
         [key: string]: string | number | boolean | null;
@@ -919,6 +929,16 @@ export interface components {
       description?: string | null;
       /** Code */
       code?: string | null;
+      /** Jira Project Key */
+      jira_project_key?: string | null;
+      /** Jira Base Jql */
+      jira_base_jql?: string | null;
+      /** Jira Board Id */
+      jira_board_id?: string | null;
+      /** Jira Filter Jql */
+      jira_filter_jql?: string | null;
+      /** Github Repos */
+      github_repos?: string[];
       /** Metadata */
       metadata: {
         [key: string]: string | number | boolean | null;
@@ -932,6 +952,16 @@ export interface components {
       description?: string | null;
       /** Code */
       code?: string | null;
+      /** Jira Project Key */
+      jira_project_key?: string | null;
+      /** Jira Base Jql */
+      jira_base_jql?: string | null;
+      /** Jira Board Id */
+      jira_board_id?: string | null;
+      /** Jira Filter Jql */
+      jira_filter_jql?: string | null;
+      /** Github Repos */
+      github_repos?: string[] | null;
       /** Metadata */
       metadata?: {
         [key: string]: string | number | boolean | null;

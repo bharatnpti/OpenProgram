@@ -7,7 +7,7 @@ from core.application.sync_services import (
     IssueReadSyncService,
     VcsReadSyncService,
 )
-from core.domain.graph import EdgeKind, EntityRef, GraphEdge, NodeKind, Pod, Program
+from core.domain.graph import EdgeKind, EntityRef, GraphEdge, GraphNode, NodeKind, Pod, Program
 from core.domain.integrations import (
     CalendarEvent,
     Commit,
@@ -135,6 +135,58 @@ async def test_issue_read_sync_creates_task_edges_facts_and_cursor() -> None:
     )
 
 
+async def test_issue_read_sync_query_attaches_tasks_to_configured_target() -> None:
+    store = InMemoryGraphStore()
+    await store.upsert_node(
+        GraphNode(tenant_id="demo", id="project-alpha", kind=NodeKind.PROJECT, name="Alpha")
+    )
+    await store.upsert_node(
+        GraphNode(tenant_id="demo", id="pod-runtime", kind=NodeKind.POD, name="Runtime")
+    )
+    updated_at = datetime(2026, 1, 10, 8, 30, tzinfo=UTC)
+    tracker = FakeIssueTracker(
+        issues={
+            "PO-1": Issue(
+                tenant_id="demo",
+                key="PO-1",
+                title="Build query sync",
+                state=IssueState.IN_PROGRESS,
+                assignee=None,
+                metadata={"project_key": "PO"},
+                updated_at=updated_at,
+            )
+        },
+    )
+    service = IssueReadSyncService(
+        issue_tracker=tracker,
+        graph_repository=store,
+        time_series_repository=store,
+        cursor_repository=store,
+    )
+
+    result = await service.sync_query(
+        tenant_id="demo",
+        jql='project = "PO" AND component = API',
+        target_node_id="pod-runtime",
+        target_node_kind=NodeKind.POD,
+        cursor_scope="query:pod:pod-runtime:hash",
+        observed_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+    )
+
+    edges = await store.list_edges("demo", kind=EdgeKind.CONTAINS)
+    facts = await store.list_facts(
+        "demo",
+        EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="PO-1"),
+    )
+    cursor = await store.get_cursor("demo", "issue", "query:pod:pod-runtime:hash")
+
+    assert result.scope == "query:pod:pod-runtime:hash"
+    assert ("pod-runtime", "PO-1") in {(edge.from_node_id, edge.to_node_id) for edge in edges}
+    assert not any(edge.from_node_id == "PO" and edge.to_node_id == "PO-1" for edge in edges)
+    assert facts[0].payload["project_key"] == "PO"
+    assert cursor.updated_at == updated_at
+
+
 async def test_vcs_read_sync_appends_commit_and_pull_request_facts_and_cursor() -> None:
     store = InMemoryGraphStore()
     author = UserRef(tenant_id="demo", external_id="dev-1")
@@ -236,6 +288,39 @@ async def test_vcs_read_sync_appends_commit_and_pull_request_facts_and_cursor() 
         )
         == 1
     )
+
+
+async def test_vcs_read_sync_links_repo_to_configured_containers() -> None:
+    store = InMemoryGraphStore()
+    await store.upsert_node(
+        GraphNode(tenant_id="demo", id="project-alpha", kind=NodeKind.PROJECT, name="Alpha")
+    )
+    await store.upsert_node(
+        GraphNode(tenant_id="demo", id="pod-runtime", kind=NodeKind.POD, name="Runtime")
+    )
+    provider = FakeVcsProvider(
+        repos=[Repo(tenant_id="demo", id="repo-external-1", name="repo-1", default_branch="main")]
+    )
+    service = VcsReadSyncService(
+        vcs_provider=provider,
+        graph_repository=store,
+        time_series_repository=store,
+        cursor_repository=store,
+    )
+
+    result = await service.sync_repo(
+        tenant_id="demo",
+        repo_name="repo-1",
+        container_ids=("project-alpha", "pod-runtime", "missing-container"),
+        observed_at=datetime(2026, 1, 10, 10, 0, tzinfo=UTC),
+    )
+
+    edges = await store.list_edges("demo", kind=EdgeKind.CONTAINS)
+
+    assert result.items_synced == 0
+    assert {
+        (edge.from_node_id, edge.to_node_id) for edge in edges if edge.to_node_id == "repo-1"
+    } == {("project-alpha", "repo-1"), ("pod-runtime", "repo-1")}
 
 
 async def test_calendar_read_sync_noops_without_provider_facts_or_cursor() -> None:

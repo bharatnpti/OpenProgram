@@ -36,6 +36,7 @@ async def test_jira_adapter_maps_read_payloads_and_rejects_writes() -> None:
     respx.get("https://jira.test/rest/api/3/search").mock(
         side_effect=[
             httpx.Response(200, json={"issues": [_issue_payload("PO-1")]}),
+            httpx.Response(200, json={"issues": [_issue_payload("PO-3")]}),
             httpx.Response(200, json={"issues": [_issue_payload("PO-2")]}),
         ]
     )
@@ -65,12 +66,18 @@ async def test_jira_adapter_maps_read_payloads_and_rejects_writes() -> None:
         "PO",
         SyncCursor(updated_at=datetime(2026, 1, 1, tzinfo=UTC)),
     )
+    query_issues = await adapter.list_issues_for_query(
+        "demo",
+        'project = "PO" AND component = API',
+        SyncCursor(updated_at=datetime(2026, 1, 2, tzinfo=UTC)),
+    )
     sprints = await adapter.list_sprints("demo", "board-1")
     issue = await adapter.get_issue("demo", "PO-1")
     active = await adapter.list_active_for(UserRef(tenant_id="demo", external_id="account-1"))
 
     assert projects[0].key == "PO"
     assert issues[0].key == "PO-1"
+    assert query_issues[0].key == "PO-3"
     assert issues[0].state is IssueState.IN_PROGRESS
     assert issues[0].assignee is not None
     assert issues[0].assignee.external_id == "account-1"
@@ -84,6 +91,15 @@ async def test_jira_adapter_maps_read_payloads_and_rejects_writes() -> None:
     with pytest.raises(ProviderUnavailable):
         await adapter.add_comment("demo", "PO-1", "done")
     assert {call.request.method for call in respx.calls} == {"GET"}
+    search_jqls = [
+        str(call.request.url.params["jql"])
+        for call in respx.calls
+        if call.request.url.path == "/rest/api/3/search"
+    ]
+    assert (
+        '(project = "PO" AND component = API) AND updated > "2026-01-02T00:00:00+00:00" '
+        "ORDER BY updated ASC"
+    ) in search_jqls
 
 
 def _issue_payload(key: str) -> dict[str, object]:

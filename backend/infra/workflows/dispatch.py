@@ -14,8 +14,11 @@ from infra.workflows.calendar_sync import CalendarSyncInput
 from infra.workflows.daily_checkin import DailyCheckinInput
 from infra.workflows.git_sync import GitSyncInput
 from infra.workflows.jira_sync import JiraSyncInput
+from infra.workflows.runtime_sync import RuntimeSyncInput
 
-type SyncWorkflowInput = JiraSyncInput | GitSyncInput | CalendarSyncInput | DirectorySyncInput
+type SyncWorkflowInput = (
+    JiraSyncInput | GitSyncInput | CalendarSyncInput | DirectorySyncInput | RuntimeSyncInput
+)
 
 
 def daily_checkin_input(payload: DeveloperCheckinDispatch) -> DailyCheckinInput:
@@ -51,9 +54,17 @@ def sync_dispatch_for_schedule(
 def sync_workflow_input(input: SyncDispatchInput) -> SyncWorkflowInput:
     connector = _connector(input.connector)
     if connector == "issue":
+        project_key = _optional_str(input.payload, "project_key")
+        jql = _optional_str(input.payload, "jql")
+        if project_key is None and jql is None:
+            raise ValueError("sync payload requires project_key or jql for issue sync")
         return JiraSyncInput(
             tenant_id=input.tenant_id,
-            project_key=_required_str(input.payload, "project_key"),
+            project_key=project_key,
+            jql=jql,
+            target_node_id=_optional_str(input.payload, "target_node_id"),
+            target_node_kind=_optional_str(input.payload, "target_node_kind"),
+            cursor_scope=_optional_str(input.payload, "cursor_scope"),
             container_id=_optional_str(input.payload, "container_id"),
             board_id=_optional_str(input.payload, "board_id"),
             observed_at=_optional_str(input.payload, "observed_at"),
@@ -62,6 +73,7 @@ def sync_workflow_input(input: SyncDispatchInput) -> SyncWorkflowInput:
         return GitSyncInput(
             tenant_id=input.tenant_id,
             repo_name=_required_str(input.payload, "repo_name"),
+            container_ids=_optional_str(input.payload, "container_ids"),
             observed_at=_optional_str(input.payload, "observed_at"),
         )
     if connector == "calendar":
@@ -75,6 +87,11 @@ def sync_workflow_input(input: SyncDispatchInput) -> SyncWorkflowInput:
         )
     if connector == "directory":
         return DirectorySyncInput(tenant_id=input.tenant_id)
+    if connector == "runtime":
+        return RuntimeSyncInput(
+            tenant_id=input.tenant_id,
+            connector=_optional_str(input.payload, "connector"),
+        )
     raise ValueError(f"unsupported sync connector: {input.connector}")
 
 
@@ -88,6 +105,8 @@ def sync_workflow_name(input: SyncDispatchInput) -> str:
         return "calendar"
     if connector == "directory":
         return "directory"
+    if connector == "runtime":
+        return "runtime"
     raise ValueError(f"unsupported sync connector: {input.connector}")
 
 
@@ -106,6 +125,8 @@ def _connector(value: str) -> str:
         return "calendar"
     if normalized in {"directory", "directory_users"}:
         return "directory"
+    if normalized in {"runtime", "runtime_issue", "runtime_vcs", "runtime_sync"}:
+        return "runtime"
     return normalized
 
 

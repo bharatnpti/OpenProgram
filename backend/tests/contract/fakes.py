@@ -65,11 +65,17 @@ class FakeIssueTracker:
     async def list_issues_updated_since(
         self, tenant_id: str, project_key: str, cursor: SyncCursor
     ) -> list[Issue]:
+        return await self.list_issues_for_query(tenant_id, f"project = {project_key}", cursor)
+
+    async def list_issues_for_query(
+        self, tenant_id: str, jql: str, cursor: SyncCursor
+    ) -> list[Issue]:
+        project_key = _project_key_from_jql(jql)
         return [
             issue
             for issue in self.issues.values()
             if issue.tenant_id == tenant_id
-            and _issue_matches_project(issue, project_key)
+            and (project_key is None or _issue_matches_project(issue, project_key))
             and _is_after_cursor(issue.updated_at, cursor)
         ]
 
@@ -282,6 +288,14 @@ class FakeStatusRepository:
         self, tenant_id: str, developer_id: str, checkin_date: date
     ) -> CheckInScheduleRun | None:
         return self.checkin_schedule_runs.get((tenant_id, developer_id, checkin_date))
+
+    async def checkin_schedule_run_for_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> CheckInScheduleRun | None:
+        for run in self.checkin_schedule_runs.values():
+            if run.tenant_id == tenant_id and run.correlation_id == correlation_id:
+                return run
+        return None
 
     async def record_checkin_nudge(self, nudge: CheckInNudge) -> CheckInNudge:
         key = (nudge.tenant_id, nudge.correlation_id, nudge.nudge_number)
@@ -591,6 +605,18 @@ def _issue_matches_project(issue: Issue, project_key: str) -> bool:
     return issue.metadata.get("project_key") == project_key or issue.key.startswith(
         f"{project_key}-"
     )
+
+
+def _project_key_from_jql(jql: str) -> str | None:
+    normalized = jql.replace("'", '"')
+    marker = "project ="
+    index = normalized.lower().find(marker)
+    if index < 0:
+        return None
+    value = normalized[index + len(marker) :].strip()
+    if value.startswith('"'):
+        return value.split('"', maxsplit=2)[1] if value.count('"') >= 2 else None
+    return value.split(maxsplit=1)[0].strip("()") or None
 
 
 def _pull_request_matches_repo(pull_request: PullRequest, repo: str) -> bool:

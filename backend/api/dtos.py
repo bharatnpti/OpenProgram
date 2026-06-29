@@ -28,6 +28,48 @@ from core.domain.rollup import Rag, RollupFactor
 from core.domain.status import CheckInPreference, StatusSource
 
 
+def _metadata_string(
+    metadata: dict[str, str | int | float | bool | None],
+    key: str,
+) -> str | None:
+    value = metadata.get(key)
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _metadata_list(
+    metadata: dict[str, str | int | float | bool | None],
+    key: str,
+) -> list[str]:
+    return _repo_list(metadata.get(key))
+
+
+def _blank_to_none(value: object) -> object:
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    return value
+
+
+def _repo_list(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        raw_items = value.replace("\n", ",").split(",")
+    elif isinstance(value, list | tuple | set):
+        raw_items = [str(item) for item in value]
+    else:
+        raw_items = [str(value)]
+    repos: list[str] = []
+    seen: set[str] = set()
+    for raw_item in raw_items:
+        repo = raw_item.strip()
+        if not repo or repo in seen:
+            continue
+        seen.add(repo)
+        repos.append(repo)
+    return repos
+
+
 class HealthResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -101,6 +143,11 @@ class ConfigNodeResponse(BaseModel):
     name: str
     description: str | None = None
     code: str | None = None
+    jira_project_key: str | None = None
+    jira_base_jql: str | None = None
+    jira_board_id: str | None = None
+    jira_filter_jql: str | None = None
+    github_repos: list[str] = Field(default_factory=list)
     metadata: dict[str, str | int | float | bool | None]
 
     @classmethod
@@ -114,6 +161,11 @@ class ConfigNodeResponse(BaseModel):
             name=node.name,
             description=description if isinstance(description, str) else None,
             code=code if isinstance(code, str) else None,
+            jira_project_key=_metadata_string(metadata, "jira_project_key"),
+            jira_base_jql=_metadata_string(metadata, "jira_base_jql"),
+            jira_board_id=_metadata_string(metadata, "jira_board_id"),
+            jira_filter_jql=_metadata_string(metadata, "jira_filter_jql"),
+            github_repos=_metadata_list(metadata, "github_repos"),
             metadata=metadata,
         )
 
@@ -125,7 +177,28 @@ class ConfigNodeCreateRequest(BaseModel):
     name: str = Field(min_length=1)
     description: str | None = None
     code: str | None = None
+    jira_project_key: str | None = None
+    jira_base_jql: str | None = None
+    jira_board_id: str | None = None
+    jira_filter_jql: str | None = None
+    github_repos: list[str] = Field(default_factory=list)
     metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+    @field_validator(
+        "jira_project_key",
+        "jira_base_jql",
+        "jira_board_id",
+        "jira_filter_jql",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_integration_string(cls, value: object) -> object:
+        return _blank_to_none(value)
+
+    @field_validator("github_repos", mode="before")
+    @classmethod
+    def normalize_github_repos(cls, value: object) -> object:
+        return _repo_list(value)
 
 
 class ConfigNodeUpdateRequest(BaseModel):
@@ -134,7 +207,30 @@ class ConfigNodeUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     description: str | None = None
     code: str | None = None
+    jira_project_key: str | None = None
+    jira_base_jql: str | None = None
+    jira_board_id: str | None = None
+    jira_filter_jql: str | None = None
+    github_repos: list[str] | None = None
     metadata: dict[str, str | int | float | bool | None] | None = None
+
+    @field_validator(
+        "jira_project_key",
+        "jira_base_jql",
+        "jira_board_id",
+        "jira_filter_jql",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_integration_string(cls, value: object) -> object:
+        return _blank_to_none(value)
+
+    @field_validator("github_repos", mode="before")
+    @classmethod
+    def normalize_github_repos(cls, value: object) -> object:
+        if value is None:
+            return None
+        return _repo_list(value)
 
 
 class ConfigEdgeResponse(BaseModel):

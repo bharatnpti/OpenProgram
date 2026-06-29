@@ -10,6 +10,7 @@ from core.domain.graph import (
     EntityRef,
     FactEvent,
     GraphEdge,
+    GraphNode,
     JsonScalar,
     NodeKind,
     RepoNode,
@@ -100,6 +101,45 @@ class IssueReadSyncService:
             cursor=recorded_cursor,
         )
 
+    async def sync_query(
+        self,
+        *,
+        tenant_id: str,
+        jql: str,
+        target_node_id: str,
+        target_node_kind: NodeKind,
+        cursor_scope: str,
+        board_id: str | None = None,
+        observed_at: datetime | None = None,
+    ) -> SyncRunResult:
+        observed = _timestamp(observed_at)
+        cursor = await self._cursor_repository.get_cursor(tenant_id, self.connector, cursor_scope)
+        target = await self._sync_target_node(tenant_id, target_node_id, target_node_kind)
+        sprints = (
+            await self._sync_sprint_nodes(tenant_id, target.id, board_id)
+            if board_id is not None and target.kind is NodeKind.PROJECT
+            else []
+        )
+        issues = await self._issue_tracker.list_issues_for_query(tenant_id, jql, cursor)
+
+        for issue in issues:
+            await self._sync_issue(issue, target, sprints, observed)
+
+        next_cursor = _next_cursor(cursor, (_issue_updated_at(issue, observed) for issue in issues))
+        recorded_cursor = _with_sync_metadata(next_cursor, observed, len(issues))
+        await self._cursor_repository.record_cursor(
+            tenant_id,
+            self.connector,
+            cursor_scope,
+            recorded_cursor,
+        )
+        return SyncRunResult(
+            connector=self.connector,
+            scope=cursor_scope,
+            items_synced=len(issues),
+            cursor=recorded_cursor,
+        )
+
     async def _sync_project_node(
         self,
         tenant_id: str,
@@ -128,6 +168,23 @@ class IssueReadSyncService:
                     kind=EdgeKind.CONTAINS,
                 )
             )
+        return node
+
+    async def _sync_target_node(
+        self,
+        tenant_id: str,
+        target_node_id: str,
+        target_node_kind: NodeKind,
+    ) -> GraphNode:
+        node = await self._graph_repository.get_node(tenant_id, target_node_id)
+        if node is None:
+            node = GraphNode(
+                tenant_id=tenant_id,
+                id=target_node_id,
+                kind=target_node_kind,
+                name=target_node_id,
+            )
+            await self._graph_repository.upsert_node(node)
         return node
 
     async def _sync_sprint_nodes(
@@ -165,7 +222,7 @@ class IssueReadSyncService:
     async def _sync_issue(
         self,
         issue: Issue,
-        project: GraphProject,
+        parent: GraphNode,
         sprints: list[SprintNode],
         observed_at: datetime,
     ) -> None:
@@ -173,7 +230,7 @@ class IssueReadSyncService:
             **_scalar_mapping(issue.metadata),
             "key": issue.key,
             "state": issue.state.value,
-            "project_key": project.id,
+            "project_key": _project_key_for_issue(issue, parent.id),
         }
         await self._graph_repository.upsert_node(
             Task(
@@ -186,7 +243,7 @@ class IssueReadSyncService:
         await self._graph_repository.add_edge(
             GraphEdge(
                 tenant_id=issue.tenant_id,
-                from_node_id=_issue_parent_id(issue, project.id, sprints),
+                from_node_id=_issue_parent_id(issue, parent.id, sprints),
                 to_node_id=issue.key,
                 kind=EdgeKind.CONTAINS,
             )
@@ -208,7 +265,7 @@ class IssueReadSyncService:
                 tenant_id=issue.tenant_id,
                 source=self.connector,
                 entity_ref=EntityRef(tenant_id=issue.tenant_id, kind=NodeKind.TASK, id=issue.key),
-                payload=_issue_fact_payload(issue, project.id),
+                payload=_issue_fact_payload(issue, _project_key_for_issue(issue, parent.id)),
                 observed_at=issue_observed_at,
                 correlation_id=(
                     f"{self.connector}:{issue.tenant_id}:{issue.key}:"
@@ -248,12 +305,15 @@ class VcsReadSyncService:
         *,
         tenant_id: str,
         repo_name: str,
+        container_ids: tuple[str, ...] = (),
         observed_at: datetime | None = None,
     ) -> SyncRunResult:
         observed = _timestamp(observed_at)
         scope = f"repo:{repo_name}"
         cursor = await self._cursor_repository.get_cursor(tenant_id, self.connector, scope)
         repo = await self._sync_repo_node(tenant_id, repo_name)
+        for container_id in container_ids:
+            await self._link_repo_container(tenant_id, container_id, repo.id)
         commits = await self._vcs_provider.list_commits(tenant_id, repo_name, cursor)
         pull_requests = await self._vcs_provider.list_pull_requests(tenant_id, repo_name, cursor)
 
@@ -297,6 +357,19 @@ class VcsReadSyncService:
         )
         await self._graph_repository.upsert_node(node)
         return node
+
+    async def _link_repo_container(self, tenant_id: str, container_id: str, repo_id: str) -> None:
+        container = await self._graph_repository.get_node(tenant_id, container_id)
+        if container is None:
+            return
+        await self._graph_repository.add_edge(
+            GraphEdge(
+                tenant_id=tenant_id,
+                from_node_id=container.id,
+                to_node_id=repo_id,
+                kind=EdgeKind.CONTAINS,
+            )
+        )
 
     async def _append_commit_fact(self, commit: Commit, repo_ref: EntityRef) -> None:
         if commit.author is not None:
@@ -396,6 +469,11 @@ def _issue_fact_payload(issue: Issue, project_key: str) -> dict[str, JsonScalar]
         "project_key": project_key,
         "assignee_id": issue.assignee.external_id if issue.assignee else None,
     }
+
+
+def _project_key_for_issue(issue: Issue, fallback: str) -> str:
+    value = issue.metadata.get("project_key")
+    return value if isinstance(value, str) and value else fallback
 
 
 def _project_for_key(projects: list[Project], project_key: str) -> Project:

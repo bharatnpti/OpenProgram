@@ -649,9 +649,31 @@ def test_config_crud_full_lifecycle(settings: Settings) -> None:
         )
         project = client.post(
             "/config/projects",
-            json={"id": "project-alpha", "name": "Alpha Project", "code": "ALPHA"},
+            json={
+                "id": "project-alpha",
+                "name": "Alpha Project",
+                "code": "ALPHA",
+                "jira_project_key": "PO",
+                "jira_board_id": "board-1",
+                "github_repos": ["oneai/program-manager", "oneai/api", "oneai/api"],
+            },
         )
-        pod = client.post("/config/pods", json={"id": "pod-alpha", "name": "Alpha Pod"})
+        updated_project = client.put(
+            "/config/projects/project-alpha",
+            json={"jira_base_jql": 'labels = "alpha"', "github_repos": "oneai/program-manager"},
+        )
+        fetched_project = client.get("/config/projects/project-alpha")
+        pod = client.post(
+            "/config/pods",
+            json={
+                "id": "pod-alpha",
+                "name": "Alpha Pod",
+                "jira_filter_jql": "component = API",
+                "github_repos": ["oneai/program-manager"],
+            },
+        )
+        updated_pod = client.put("/config/pods/pod-alpha", json={"github_repos": []})
+        fetched_pod = client.get("/config/pods/pod-alpha")
         member = client.post("/config/members", json={"id": "dev-ada", "name": "Ada"})
         fetched_program = client.get("/config/programs/program-alpha")
         updated_program = client.put(
@@ -675,7 +697,21 @@ def test_config_crud_full_lifecycle(settings: Settings) -> None:
 
     assert program.status_code == 201
     assert project.status_code == 201
+    assert project.json()["jira_project_key"] == "PO"
+    assert project.json()["jira_board_id"] == "board-1"
+    assert project.json()["github_repos"] == ["oneai/program-manager", "oneai/api"]
+    assert updated_project.status_code == 200
+    assert updated_project.json()["jira_base_jql"] == 'labels = "alpha"'
+    assert updated_project.json()["github_repos"] == ["oneai/program-manager"]
+    assert fetched_project.status_code == 200
+    assert fetched_project.json()["metadata"]["github_repos"] == "oneai/program-manager"
     assert pod.status_code == 201
+    assert pod.json()["jira_filter_jql"] == "component = API"
+    assert pod.json()["github_repos"] == ["oneai/program-manager"]
+    assert updated_pod.status_code == 200
+    assert updated_pod.json()["github_repos"] == []
+    assert fetched_pod.status_code == 200
+    assert fetched_pod.json()["metadata"]["github_repos"] is None
     assert member.status_code == 201
     assert fetched_program.status_code == 200
     assert fetched_program.json()["name"] == "Alpha Program"

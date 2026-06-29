@@ -42,18 +42,13 @@ class JiraIssueTrackerAdapter:
     ) -> list[Issue]:
         with _tracer.start_as_current_span("jira.list_issues_updated_since"):
             jql = f"project = {_jql_string(project_key)}"
-            if cursor.updated_at is not None:
-                jql = f"{jql} AND updated > {_jql_string(cursor.updated_at.isoformat())}"
-            payload = await self._get(
-                tenant_id,
-                "/rest/api/3/search",
-                params={
-                    "jql": f"{jql} ORDER BY updated ASC",
-                    "fields": _ISSUE_FIELDS,
-                    "maxResults": "100",
-                },
-            )
-            return [_map_issue(tenant_id, item) for item in _items(payload, "issues")]
+            return await self._search_issues(tenant_id, jql, cursor)
+
+    async def list_issues_for_query(
+        self, tenant_id: str, jql: str, cursor: SyncCursor
+    ) -> list[Issue]:
+        with _tracer.start_as_current_span("jira.list_issues_for_query"):
+            return await self._search_issues(tenant_id, jql, cursor)
 
     async def list_sprints(self, tenant_id: str, board_id: str) -> list[Sprint]:
         with _tracer.start_as_current_span("jira.list_sprints"):
@@ -124,6 +119,28 @@ class JiraIssueTrackerAdapter:
         if not isinstance(payload, Mapping):
             raise ProviderUnavailable("issue tracker response was not an object")
         return cast(Mapping[str, object], payload)
+
+    async def _search_issues(
+        self,
+        tenant_id: str,
+        jql: str,
+        cursor: SyncCursor,
+    ) -> list[Issue]:
+        effective_jql = jql
+        if cursor.updated_at is not None:
+            effective_jql = (
+                f"({effective_jql}) AND updated > {_jql_string(cursor.updated_at.isoformat())}"
+            )
+        payload = await self._get(
+            tenant_id,
+            "/rest/api/3/search",
+            params={
+                "jql": f"{effective_jql} ORDER BY updated ASC",
+                "fields": _ISSUE_FIELDS,
+                "maxResults": "100",
+            },
+        )
+        return [_map_issue(tenant_id, item) for item in _items(payload, "issues")]
 
     async def _credentials(self, tenant_id: str) -> JiraCredentials:
         base_url = self.base_url or await self._secret(tenant_id, "base_url")
