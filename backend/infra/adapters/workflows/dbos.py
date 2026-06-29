@@ -36,6 +36,7 @@ from infra.workflows import (
     git_sync,
     jira_sync,
     nudge,
+    runtime_sync,
 )
 from infra.workflows.calendar_sync import CalendarSyncInput, CalendarSyncWorkflowResult
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
@@ -49,12 +50,14 @@ from infra.workflows.dispatch import (
 from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import NudgeInput, NudgeResult
+from infra.workflows.runtime_sync import RuntimeSyncInput, RuntimeSyncWorkflowResult
 
 SyncWorkflowResult = (
     ReadSyncWorkflowResult
     | GitSyncWorkflowResult
     | CalendarSyncWorkflowResult
     | DirectorySyncResult
+    | RuntimeSyncWorkflowResult
 )
 
 
@@ -190,6 +193,18 @@ async def dbos_directory_sync_workflow(
     return await dbos_sync_directory_step(payload)
 
 
+@DBOS.step(name="pulseops_runtime_config_sync", retries_allowed=True)
+async def dbos_runtime_config_sync_step(payload: RuntimeSyncInput) -> RuntimeSyncWorkflowResult:
+    return await runtime_sync.run_runtime_config_sync_activity(payload)
+
+
+@DBOS.workflow(name="pulseops_runtime_config_sync")
+async def dbos_runtime_config_sync_workflow(
+    payload: RuntimeSyncInput,
+) -> RuntimeSyncWorkflowResult:
+    return await dbos_runtime_config_sync_step(payload)
+
+
 @DBOS.workflow(name="pulseops_scheduled_sync")
 async def dbos_scheduled_sync_workflow(
     scheduled_time: datetime,
@@ -308,6 +323,8 @@ async def _run_sync_dispatch(
         return await dbos_sync_calendar_user_step(workflow_input)
     if isinstance(workflow_input, DirectorySyncInput):
         return await dbos_sync_directory_step(workflow_input)
+    if isinstance(workflow_input, RuntimeSyncInput):
+        return await dbos_runtime_config_sync_step(workflow_input)
     raise ValueError(f"unsupported sync connector: {input.connector}")
 
 
@@ -422,6 +439,8 @@ class DbosWorkflowScheduler:
                 await DBOS.start_workflow_async(dbos_git_sync_workflow, workflow_input)
             elif isinstance(workflow_input, CalendarSyncInput):
                 await DBOS.start_workflow_async(dbos_calendar_sync_workflow, workflow_input)
+            elif isinstance(workflow_input, RuntimeSyncInput):
+                await DBOS.start_workflow_async(dbos_runtime_config_sync_workflow, workflow_input)
             else:
                 raise ValueError(f"unsupported sync connector: {input.connector}")
         return workflow_id

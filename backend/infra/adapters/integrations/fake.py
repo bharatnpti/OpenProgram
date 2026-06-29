@@ -83,11 +83,17 @@ class FakeIssueTracker:
     async def list_issues_updated_since(
         self, tenant_id: str, project_key: str, cursor: SyncCursor
     ) -> list[Issue]:
+        return await self.list_issues_for_query(tenant_id, f"project = {project_key}", cursor)
+
+    async def list_issues_for_query(
+        self, tenant_id: str, jql: str, cursor: SyncCursor
+    ) -> list[Issue]:
+        project_key = _project_key_from_jql(jql)
         return [
             issue
             for issue in self.issues
             if issue.tenant_id == tenant_id
-            and _issue_project_key(issue) == project_key
+            and (project_key is None or _issue_project_key(issue) == project_key)
             and _after_cursor(issue.updated_at, cursor)
         ]
 
@@ -232,6 +238,18 @@ def _issue_project_key(issue: Issue) -> str | None:
     if "-" in issue.key:
         return issue.key.split("-", maxsplit=1)[0]
     return None
+
+
+def _project_key_from_jql(jql: str) -> str | None:
+    normalized = jql.replace("'", '"')
+    marker = "project ="
+    index = normalized.lower().find(marker)
+    if index < 0:
+        return None
+    value = normalized[index + len(marker) :].strip()
+    if value.startswith('"'):
+        return value.split('"', maxsplit=2)[1] if value.count('"') >= 2 else None
+    return value.split(maxsplit=1)[0].strip("()") or None
 
 
 def _after_cursor(updated_at: datetime | None, cursor: SyncCursor) -> bool:

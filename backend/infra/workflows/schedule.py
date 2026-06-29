@@ -56,15 +56,40 @@ def conversation_purge_config(settings: Settings) -> ConversationPurgeScheduleCo
 
 
 def sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
+    return (
+        SyncScheduleConfig(
+            schedule_id="pulseops-runtime-issue-sync",
+            tenant_id=settings.tenant_id,
+            connector="runtime",
+            scope="issue",
+            payload={"connector": "issue"},
+            cron=settings.jira_sync_cron,
+        ),
+        SyncScheduleConfig(
+            schedule_id="pulseops-runtime-vcs-sync",
+            tenant_id=settings.tenant_id,
+            connector="runtime",
+            scope="vcs",
+            payload={"connector": "vcs"},
+            cron=settings.github_sync_cron,
+        ),
+        SyncScheduleConfig(
+            schedule_id=settings.directory_sync_schedule_id,
+            tenant_id=settings.tenant_id,
+            connector="directory",
+            scope="directory",
+            payload={},
+            cron=settings.directory_sync_cron,
+        ),
+    )
+
+
+def legacy_sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
     configs: list[SyncScheduleConfig] = []
-    for entry in settings.jira_sync_projects:
-        project_key, container_id, board_id = _jira_project_target(entry)
+    for project_key, container_id, board_id in (
+        _jira_project_target(entry) for entry in settings.jira_sync_projects
+    ):
         scope = f"project:{project_key}"
-        payload: dict[str, str | int | float | bool | None] = {"project_key": project_key}
-        if container_id is not None:
-            payload["container_id"] = container_id
-        if board_id is not None:
-            payload["board_id"] = board_id
         configs.append(
             SyncScheduleConfig(
                 schedule_id=safe_workflow_id(
@@ -73,31 +98,20 @@ def sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
                 tenant_id=settings.tenant_id,
                 connector="issue",
                 scope=scope,
-                payload=payload,
+                payload=_jira_payload(project_key, container_id, board_id),
                 cron=settings.jira_sync_cron,
             )
         )
-    for repo_name in settings.github_sync_repos:
-        scope = f"repo:{repo_name}"
-        configs.append(
-            SyncScheduleConfig(
-                schedule_id=safe_workflow_id(f"pulseops-sync-vcs-{scope}"),
-                tenant_id=settings.tenant_id,
-                connector="vcs",
-                scope=scope,
-                payload={"repo_name": repo_name},
-                cron=settings.github_sync_cron,
-            )
-        )
-    configs.append(
+    configs.extend(
         SyncScheduleConfig(
-            schedule_id=settings.directory_sync_schedule_id,
+            schedule_id=safe_workflow_id(f"pulseops-sync-vcs-repo:{repo_name}"),
             tenant_id=settings.tenant_id,
-            connector="directory",
-            scope="directory",
-            payload={},
-            cron=settings.directory_sync_cron,
+            connector="vcs",
+            scope=f"repo:{repo_name}",
+            payload={"repo_name": repo_name},
+            cron=settings.github_sync_cron,
         )
+        for repo_name in settings.github_sync_repos
     )
     return tuple(configs)
 
@@ -108,6 +122,19 @@ def _jira_project_target(entry: str) -> tuple[str, str | None, str | None]:
     container_id = parts[1] if len(parts) >= 2 else None
     board_id = parts[2] if len(parts) >= 3 else None
     return project_key, container_id, board_id
+
+
+def _jira_payload(
+    project_key: str,
+    container_id: str | None,
+    board_id: str | None,
+) -> dict[str, str | int | float | bool | None]:
+    payload: dict[str, str | int | float | bool | None] = {"project_key": project_key}
+    if container_id is not None:
+        payload["container_id"] = container_id
+    if board_id is not None:
+        payload["board_id"] = board_id
+    return payload
 
 
 if __name__ == "__main__":

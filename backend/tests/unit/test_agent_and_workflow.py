@@ -12,6 +12,7 @@ from core.application.conversation_history import llm_messages_from_turns
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import SyncRunResult
 from core.domain.conversation import ConversationRole, ConversationTurn
+from core.domain.graph import GraphNode, NodeKind
 from core.domain.integrations import SyncCursor
 from core.domain.status import CheckIn, CheckInScheduleRun, DeveloperStatus, StatusSource
 from core.domain.workflows import (
@@ -36,6 +37,7 @@ from infra.workflows import (
     daily_checkin,
     jira_sync,
     nudge,
+    runtime_sync,
     schedule,
     worker,
 )
@@ -270,6 +272,29 @@ def test_schedule_configs_ignore_calendar_read_sync_targets() -> None:
         cron="0 3 * * *",
     )
     assert [(config.connector, config.scope, config.payload) for config in sync_configs] == [
+        ("runtime", "issue", {"connector": "issue"}),
+        ("runtime", "vcs", {"connector": "vcs"}),
+        ("directory", "directory", {}),
+    ]
+    assert [config.cron for config in sync_configs] == [
+        settings.jira_sync_cron,
+        settings.github_sync_cron,
+        settings.directory_sync_cron,
+    ]
+
+
+def test_legacy_sync_schedule_configs_preserve_env_target_shapes() -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        jira_sync_projects=("PO", "ENG:program-platform", "API:pod-runtime:board-1"),
+        github_sync_repos=("oneai/program-manager",),
+    )
+
+    sync_configs = schedule.legacy_sync_schedule_configs(settings)
+
+    assert [(config.connector, config.scope, config.payload) for config in sync_configs] == [
         ("issue", "project:PO", {"project_key": "PO"}),
         (
             "issue",
@@ -282,11 +307,10 @@ def test_schedule_configs_ignore_calendar_read_sync_targets() -> None:
             {"project_key": "API", "container_id": "pod-runtime", "board_id": "board-1"},
         ),
         ("vcs", "repo:oneai/program-manager", {"repo_name": "oneai/program-manager"}),
-        ("directory", "directory", {}),
     ]
 
 
-def test_schedule_configs_include_only_directory_sync_when_targets_are_empty() -> None:
+def test_schedule_configs_include_runtime_fanout_and_directory_when_targets_are_empty() -> None:
     settings_factory = cast(Callable[..., Settings], Settings)
     settings = settings_factory(
         _env_file=None,
@@ -299,7 +323,9 @@ def test_schedule_configs_include_only_directory_sync_when_targets_are_empty() -
     sync_configs = schedule.sync_schedule_configs(settings)
 
     assert [(config.connector, config.scope, config.payload) for config in sync_configs] == [
-        ("directory", "directory", {})
+        ("runtime", "issue", {"connector": "issue"}),
+        ("runtime", "vcs", {"connector": "vcs"}),
+        ("directory", "directory", {}),
     ]
 
 
@@ -321,8 +347,8 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
     assert registry.scheduler.checkin_configs == [schedule.checkin_fanout_config(settings)]
     assert registry.scheduler.purge_configs == [schedule.conversation_purge_config(settings)]
     assert [(config.connector, config.scope) for config in registry.scheduler.sync_configs] == [
-        ("issue", "project:PO"),
-        ("vcs", "repo:oneai/program-manager"),
+        ("runtime", "issue"),
+        ("runtime", "vcs"),
         ("directory", "directory"),
     ]
     assert [result.schedule_id for result in results] == [
@@ -472,6 +498,15 @@ def test_temporal_nudge_child_uses_abandon_parent_close_policy() -> None:
     assert "ParentClosePolicy" in source
 
 
+def test_temporal_runtime_sync_workflow_is_registered() -> None:
+    worker_source = temporal_workflows.TemporalWorkflowWorker.run.__code__.co_names
+    dispatch_source = temporal_workflows.TemporalWorkflowScheduler.dispatch_sync.__code__.co_names
+
+    assert "RuntimeSyncWorkflow" in worker_source
+    assert "run_runtime_config_sync_activity" in worker_source
+    assert "RuntimeSyncWorkflow" in dispatch_source
+
+
 async def test_temporal_connect_retries_until_ready(monkeypatch: pytest.MonkeyPatch) -> None:
     from temporalio.client import Client
 
@@ -593,6 +628,98 @@ async def test_jira_sync_activity_returns_json_native_cursor(
     assert result.cursor_metadata == {"last_item_count": 1}
     assert registry._service.board_id == "board-1"
     assert registry.closed is True
+
+
+async def test_jira_sync_activity_uses_configured_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = _StubRegistry()
+    monkeypatch.setattr(jira_sync, "_service_registry", lambda: registry)
+
+    result = await jira_sync.sync_jira_project_activity(
+        jira_sync.JiraSyncInput(
+            tenant_id="demo",
+            jql='project = "PO" AND component = API',
+            target_node_id="pod-runtime",
+            target_node_kind="pod",
+            cursor_scope="query:pod:pod-runtime:123456789abc",
+            observed_at="2026-01-10T09:00:00+00:00",
+        )
+    )
+
+    assert result.connector == "issue"
+    assert result.scope == "query:pod:pod-runtime:123456789abc"
+    assert registry._service.jql == 'project = "PO" AND component = API'
+    assert registry._service.target_node_id == "pod-runtime"
+    assert registry._service.target_node_kind is NodeKind.POD
+    assert registry.closed is True
+
+
+async def test_runtime_config_sync_activity_dispatches_configured_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+    )
+    store = InMemoryGraphStore()
+    await store.upsert_node(
+        GraphNode(
+            tenant_id="demo",
+            id="project-alpha",
+            kind=NodeKind.PROJECT,
+            name="Alpha",
+            metadata={"jira_project_key": "PO", "github_repos": "oneai/program-manager"},
+        )
+    )
+    registry = _RuntimeSyncRegistry(settings, store)
+    monkeypatch.setattr(runtime_sync, "_service_registry", lambda: registry)
+
+    result = await runtime_sync.run_runtime_config_sync_activity(
+        runtime_sync.RuntimeSyncInput(tenant_id="demo")
+    )
+
+    assert result.dispatched == 2
+    assert result.workflow_ids[0].startswith("dispatch-issue-query-project-project-alpha-")
+    assert result.workflow_ids[1] == "dispatch-vcs-repo-oneai-program-manager"
+    assert [
+        (item.connector, item.payload["target_node_id"]) for item in registry.scheduler.inputs[:1]
+    ] == [("issue", "project-alpha")]
+    assert registry.scheduler.inputs[1].payload == {
+        "repo_name": "oneai/program-manager",
+        "container_ids": "project-alpha",
+    }
+    assert registry.closed is True
+
+
+async def test_runtime_config_sync_activity_uses_legacy_fallback_when_runtime_targets_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        jira_sync_projects=("PO:pod-runtime:board-1",),
+        github_sync_repos=("oneai/program-manager",),
+    )
+    registry = _RuntimeSyncRegistry(settings, InMemoryGraphStore())
+    monkeypatch.setattr(runtime_sync, "_service_registry", lambda: registry)
+
+    result = await runtime_sync.run_runtime_config_sync_activity(
+        runtime_sync.RuntimeSyncInput(tenant_id="tenant-override", connector="jira")
+    )
+
+    assert result.connector == "issue"
+    assert result.dispatched == 1
+    assert registry.scheduler.inputs == [
+        SyncDispatchInput(
+            tenant_id="tenant-override",
+            connector="issue",
+            scope="project:PO",
+            payload={"project_key": "PO", "container_id": "pod-runtime", "board_id": "board-1"},
+        )
+    ]
 
 
 async def test_conversation_purge_activity_deletes_older_turns(
@@ -769,6 +896,9 @@ async def test_nudge_activities_send_once_then_close_unknown(
 
 class _StubIssueSyncService:
     board_id: str | None = None
+    jql: str | None = None
+    target_node_id: str | None = None
+    target_node_kind: NodeKind | None = None
 
     async def sync_project(
         self,
@@ -783,6 +913,32 @@ class _StubIssueSyncService:
         return SyncRunResult(
             connector="issue",
             scope=f"project:{project_key}",
+            items_synced=1,
+            cursor=SyncCursor(
+                value="cursor-1",
+                updated_at=observed_at,
+                metadata={"last_item_count": 1},
+            ),
+        )
+
+    async def sync_query(
+        self,
+        *,
+        tenant_id: str,
+        jql: str,
+        target_node_id: str,
+        target_node_kind: NodeKind,
+        cursor_scope: str,
+        board_id: str | None = None,
+        observed_at: datetime | None = None,
+    ) -> SyncRunResult:
+        self.jql = jql
+        self.target_node_id = target_node_id
+        self.target_node_kind = target_node_kind
+        self.board_id = board_id
+        return SyncRunResult(
+            connector="issue",
+            scope=cursor_scope,
             items_synced=1,
             cursor=SyncCursor(
                 value="cursor-1",
@@ -868,6 +1024,33 @@ class _StubRegistry:
         self.closed = True
 
 
+class _RuntimeSyncScheduler:
+    def __init__(self) -> None:
+        self.inputs: list[SyncDispatchInput] = []
+
+    async def dispatch_sync(self, input: SyncDispatchInput) -> str:
+        self.inputs.append(input)
+        normalized_scope = input.scope.replace(":", "-").replace("/", "-")
+        return f"dispatch-{input.connector}-{normalized_scope}"
+
+
+class _RuntimeSyncRegistry:
+    def __init__(self, settings: Settings, store: InMemoryGraphStore) -> None:
+        self.settings = settings
+        self.closed = False
+        self.scheduler = _RuntimeSyncScheduler()
+        self._store = store
+
+    def graph_repository(self) -> InMemoryGraphStore:
+        return self._store
+
+    def workflow_scheduler(self) -> _RuntimeSyncScheduler:
+        return self.scheduler
+
+    async def close(self) -> None:
+        self.closed = True
+
+
 class _FanoutScheduler:
     def __init__(self) -> None:
         self.inputs: list[DeveloperCheckinDispatch] = []
@@ -911,6 +1094,14 @@ class _ExistingCheckinRepository:
     ) -> None:
         return None
 
+    async def checkin_schedule_run_for_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> CheckInScheduleRun | None:
+        for run in self.schedule_runs:
+            if run.tenant_id == tenant_id and run.correlation_id == correlation_id:
+                return run
+        return None
+
     async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None:
         self.schedule_runs.append(run)
 
@@ -929,6 +1120,14 @@ class _DailyCheckinRepository:
         self, tenant_id: str, developer_id: str, checkin_date: date
     ) -> CheckInScheduleRun | None:
         return self.schedule_runs.get((tenant_id, developer_id, checkin_date))
+
+    async def checkin_schedule_run_for_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> CheckInScheduleRun | None:
+        for run in self.schedule_runs.values():
+            if run.tenant_id == tenant_id and run.correlation_id == correlation_id:
+                return run
+        return None
 
     async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None:
         self.schedule_runs[(run.tenant_id, run.developer_id, run.checkin_date)] = run

@@ -38,6 +38,11 @@ const nodeSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
   code: z.string().optional(),
+  jira_project_key: z.string().optional(),
+  jira_base_jql: z.string().optional(),
+  jira_board_id: z.string().optional(),
+  jira_filter_jql: z.string().optional(),
+  github_repos: z.string().optional(),
 });
 
 type NodeFormValues = z.infer<typeof nodeSchema>;
@@ -103,7 +108,7 @@ export function AdminConfigPage() {
 
   const form = useForm<NodeFormValues>({
     resolver: zodResolver(nodeSchema),
-    defaultValues: { id: "", name: "", description: "", code: "" },
+    defaultValues: defaultNodeValues(),
   });
 
   const invalidateAll = async () => {
@@ -118,7 +123,7 @@ export function AdminConfigPage() {
     onSuccess: async () => {
       setDialogOpen(false);
       setEditing(null);
-      form.reset();
+      form.reset(defaultNodeValues());
       await invalidateAll();
       toast.success("Configuration saved.");
     },
@@ -170,6 +175,11 @@ export function AdminConfigPage() {
       accessorKey: "code",
       header: "Code",
       cell: ({ row }) => row.original.code ?? "-",
+    },
+    {
+      id: "integrations",
+      header: "Integrations",
+      cell: ({ row }) => <IntegrationSummary node={row.original} />,
     },
     {
       id: "actions",
@@ -326,6 +336,36 @@ export function AdminConfigPage() {
                 <Input id="node-code" {...form.register("code")} />
               </Field>
             )}
+            {activeEntity === "projects" && (
+              <div className="space-y-3 rounded-md border border-border bg-surface-muted/30 p-3">
+                <div className="text-sm font-semibold">Project Integrations</div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="Jira project key" htmlFor="project-jira-key">
+                    <Input id="project-jira-key" {...form.register("jira_project_key")} />
+                  </Field>
+                  <Field label="Jira board ID" htmlFor="project-jira-board">
+                    <Input id="project-jira-board" {...form.register("jira_board_id")} />
+                  </Field>
+                </div>
+                <Field label="Jira base JQL" htmlFor="project-jira-jql">
+                  <Textarea id="project-jira-jql" {...form.register("jira_base_jql")} />
+                </Field>
+                <Field label="GitHub repos" htmlFor="project-github-repos">
+                  <Textarea id="project-github-repos" {...form.register("github_repos")} />
+                </Field>
+              </div>
+            )}
+            {activeEntity === "pods" && (
+              <div className="space-y-3 rounded-md border border-border bg-surface-muted/30 p-3">
+                <div className="text-sm font-semibold">Pod Integrations</div>
+                <Field label="Jira filter JQL" htmlFor="pod-jira-filter">
+                  <Textarea id="pod-jira-filter" {...form.register("jira_filter_jql")} />
+                </Field>
+                <Field label="GitHub repo subset" htmlFor="pod-github-repos">
+                  <Textarea id="pod-github-repos" {...form.register("github_repos")} />
+                </Field>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancel
@@ -355,7 +395,7 @@ export function AdminConfigPage() {
 
   function openCreate() {
     setEditing(null);
-    form.reset({ id: "", name: "", description: "", code: "" });
+    form.reset(defaultNodeValues());
     setDialogOpen(true);
   }
 
@@ -366,6 +406,11 @@ export function AdminConfigPage() {
       name: node.name,
       description: node.description ?? "",
       code: node.code ?? "",
+      jira_project_key: node.jira_project_key ?? "",
+      jira_base_jql: node.jira_base_jql ?? "",
+      jira_board_id: node.jira_board_id ?? "",
+      jira_filter_jql: node.jira_filter_jql ?? "",
+      github_repos: (node.github_repos ?? []).join("\n"),
     });
     setDialogOpen(true);
   }
@@ -380,6 +425,29 @@ export function AdminConfigPage() {
       onConfirm: () => deleteMutation.mutate({ kind, id: node.id }),
     });
   }
+}
+
+function IntegrationSummary({ node }: { node: ConfigNodeResponse }) {
+  const items = [
+    node.jira_project_key && `Jira ${node.jira_project_key}`,
+    node.jira_base_jql && "Jira JQL",
+    node.jira_board_id && `Board ${node.jira_board_id}`,
+    node.jira_filter_jql && "Jira filter",
+    ...(node.github_repos ?? []).map((repo) => `GitHub ${repo}`),
+  ].filter((item): item is string => Boolean(item));
+
+  if (items.length === 0) {
+    return <span className="text-muted-foreground">-</span>;
+  }
+  return (
+    <div className="flex max-w-80 flex-wrap gap-1">
+      {items.map((item) => (
+        <Badge key={item} tone="neutral">
+          {item}
+        </Badge>
+      ))}
+    </div>
+  );
 }
 
 function RelationshipPanel({
@@ -937,8 +1005,22 @@ function saveNode(kind: EntityKind, values: NodeFormValues, editing: ConfigNodeR
   const payload = {
     id: values.id,
     name: values.name,
-    description: values.description || null,
-    code: values.code || null,
+    description: blankToNull(values.description),
+    code: blankToNull(values.code),
+    ...(kind === "projects"
+      ? {
+          jira_project_key: blankToNull(values.jira_project_key),
+          jira_base_jql: blankToNull(values.jira_base_jql),
+          jira_board_id: blankToNull(values.jira_board_id),
+          github_repos: repoList(values.github_repos),
+        }
+      : {}),
+    ...(kind === "pods"
+      ? {
+          jira_filter_jql: blankToNull(values.jira_filter_jql),
+          github_repos: repoList(values.github_repos),
+        }
+      : {}),
   };
   if (editing) {
     if (kind === "programs") return apiClient.updateConfigProgram(editing.id, payload);
@@ -963,11 +1045,52 @@ function filterNodes(nodes: ConfigNodeResponse[], query: string) {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return nodes;
   return nodes.filter((node) =>
-    [node.id, node.name, node.description ?? "", node.code ?? ""]
+    [
+      node.id,
+      node.name,
+      node.description ?? "",
+      node.code ?? "",
+      node.jira_project_key ?? "",
+      node.jira_base_jql ?? "",
+      node.jira_board_id ?? "",
+      node.jira_filter_jql ?? "",
+      (node.github_repos ?? []).join(" "),
+    ]
       .join(" ")
       .toLowerCase()
       .includes(normalized),
   );
+}
+
+function defaultNodeValues(): NodeFormValues {
+  return {
+    id: "",
+    name: "",
+    description: "",
+    code: "",
+    jira_project_key: "",
+    jira_base_jql: "",
+    jira_board_id: "",
+    jira_filter_jql: "",
+    github_repos: "",
+  };
+}
+
+function blankToNull(value: string | undefined): string | null {
+  const normalized = value?.trim() ?? "";
+  return normalized ? normalized : null;
+}
+
+function repoList(value: string | undefined): string[] {
+  const seen = new Set<string>();
+  const repos: string[] = [];
+  for (const item of (value ?? "").split(/[,\n]/)) {
+    const repo = item.trim();
+    if (!repo || seen.has(repo)) continue;
+    seen.add(repo);
+    repos.push(repo);
+  }
+  return repos;
 }
 
 function confirmUnlink(
