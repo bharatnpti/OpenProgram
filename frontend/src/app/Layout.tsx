@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Network,
   Settings2,
+  ShieldAlert,
   UserRoundCog,
 } from "lucide-react";
 
@@ -49,6 +50,12 @@ export function Layout() {
       to: "/portfolio",
       label: "Portfolio",
       icon: <Network className="h-4 w-4" />,
+      visible: canAccessPortfolio,
+    },
+    {
+      to: "/risks",
+      label: "Risks",
+      icon: <ShieldAlert className="h-4 w-4" />,
       visible: canAccessPortfolio,
     },
     {

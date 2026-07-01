@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     chat_simulator_enabled: bool = False
     directory_sync_cron: str = "0 */6 * * *"
     directory_sync_schedule_id: str = "pulseops-directory-sync"
+    risk_assessment_cron: str = "*/30 * * * *"
+    risk_default_no_pr_days: int = 3
+    risk_default_pr_age_days: int = 3
+    risk_default_stale_days: int = 7
+    risk_run_default_local_time: str = "18:00"
     temporal_target: str = "localhost:7233"
     temporal_task_queue: str = "pulseops-foundation"
     temporal_schedule_id: str = "pulseops-heartbeat"
@@ -234,6 +239,8 @@ class Settings(BaseSettings):
         "conversation_purge_schedule_id",
         "directory_sync_cron",
         "directory_sync_schedule_id",
+        "risk_assessment_cron",
+        "risk_run_default_local_time",
     )
     @classmethod
     def validate_non_empty_string(cls, value: str) -> str:
@@ -263,6 +270,9 @@ class Settings(BaseSettings):
         "redis_max_connections",
         "calendar_sync_window_days",
         "conversation_retention_days",
+        "risk_default_no_pr_days",
+        "risk_default_pr_age_days",
+        "risk_default_stale_days",
     )
     @classmethod
     def validate_positive_int(cls, value: int) -> int:

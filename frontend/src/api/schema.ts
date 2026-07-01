@@ -40,6 +40,10 @@ export type ProgramTreeResponse = components["schemas"]["ProgramTreeResponse"];
 export type PortfolioHeatmapResponse = components["schemas"]["PortfolioHeatmapResponse"];
 export type CheckinDispatchRequest = components["schemas"]["CheckinDispatchRequest"];
 export type WorkflowDispatchResponse = components["schemas"]["WorkflowDispatchResponse"];
+export type RiskEvidenceDto = components["schemas"]["RiskEvidenceDto"];
+export type RiskFindingResponse = components["schemas"]["RiskFindingResponse"];
+export type ProjectRisksResponse = components["schemas"]["ProjectRisksResponse"];
+export type PortfolioRisksResponse = components["schemas"]["PortfolioRisksResponse"];
 
 export interface WorkItemFlowResponse {
   id: string;

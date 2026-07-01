@@ -9,7 +9,7 @@ from core.ports.repositories import TimeSeriesRepository
 
 DEFAULT_FEED_LOOKBACK_DAYS = 7
 DEFAULT_FEED_LIMIT = 50
-DEFAULT_FEED_SOURCES = ("work_item", "vcs_pull_request", "vcs_commit", "issue", "checkin")
+DEFAULT_FEED_SOURCES = ("work_item", "vcs_pull_request", "vcs_commit", "issue", "checkin", "risk")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -73,7 +73,13 @@ def _kind_for_fact(fact: FactEvent) -> str:
         "vcs_commit": "commit",
         "issue": "issue_update",
         "checkin": "checkin_update",
+        "risk": _risk_feed_kind(fact),
     }.get(fact.source, fact.source)
+
+
+def _risk_feed_kind(fact: FactEvent) -> str:
+    transition = _payload_string(fact.payload, "transition")
+    return "risk_cleared" if transition == "cleared" else "risk_opened"
 
 
 def _summary_for_fact(fact: FactEvent) -> str:
@@ -110,7 +116,17 @@ def _summary_for_fact(fact: FactEvent) -> str:
             f"Check-in updated for {developer}: {status_source}, "
             f"{blocker_count} blocker(s){eta_text}"
         )
+    if fact.source == "risk":
+        return _risk_summary(fact)
     return fact.source
+
+
+def _risk_summary(fact: FactEvent) -> str:
+    reason = _payload_string(fact.payload, "reason") or "signal-derived risk"
+    transition = _payload_string(fact.payload, "transition")
+    if transition == "cleared":
+        return f"Risk cleared: {reason}"
+    return f"Risk opened: {reason}"
 
 
 def _details_for_fact(fact: FactEvent) -> Mapping[str, JsonScalar]:
@@ -144,6 +160,14 @@ def _details_for_fact(fact: FactEvent) -> Mapping[str, JsonScalar]:
         return {
             "key": _payload_string(fact.payload, "key"),
             "state": _payload_string(fact.payload, "state"),
+        }
+    if fact.source == "risk":
+        return {
+            "rule_id": _payload_string(fact.payload, "rule_id"),
+            "severity": _payload_string(fact.payload, "severity"),
+            "transition": _payload_string(fact.payload, "transition"),
+            "evidence_url": _payload_string(fact.payload, "evidence_url"),
+            "age_days": _payload_int(fact.payload, "age_days"),
         }
     return {}
 

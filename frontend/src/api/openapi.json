@@ -4696,6 +4696,133 @@
         }
       }
     },
+    "/projects/{project_id}/risks": {
+      "get": {
+        "tags": [
+          "personas"
+        ],
+        "summary": "Project Risks",
+        "operationId": "project_risks_projects__project_id__risks_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectRisksResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portfolio/risks": {
+      "get": {
+        "tags": [
+          "personas"
+        ],
+        "summary": "Portfolio Risks",
+        "operationId": "portfolio_risks_portfolio_risks_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioRisksResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/test/chat-simulator/status": {
       "get": {
         "tags": [
@@ -7157,6 +7284,28 @@
         ],
         "title": "PortfolioHeatmapResponse"
       },
+      "PortfolioRisksResponse": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "risks": {
+            "items": {
+              "$ref": "#/components/schemas/RiskFindingResponse"
+            },
+            "type": "array",
+            "title": "Risks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "risks"
+        ],
+        "title": "PortfolioRisksResponse"
+      },
       "ProgramProjectLinkRequest": {
         "properties": {
           "program_id": {
@@ -7296,6 +7445,33 @@
         ],
         "title": "ProjectProgressResponse"
       },
+      "ProjectRisksResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "risks": {
+            "items": {
+              "$ref": "#/components/schemas/RiskFindingResponse"
+            },
+            "type": "array",
+            "title": "Risks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "as_of",
+          "risks"
+        ],
+        "title": "ProjectRisksResponse"
+      },
       "Rag": {
         "type": "string",
         "enum": [
@@ -7326,6 +7502,152 @@
           "dependencies"
         ],
         "title": "ReadyResponse"
+      },
+      "RiskEvidenceDto": {
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "title": "Identifier"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "url_is_user_supplied": {
+            "type": "boolean",
+            "title": "Url Is User Supplied"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifier",
+          "url",
+          "url_is_user_supplied"
+        ],
+        "title": "RiskEvidenceDto"
+      },
+      "RiskFindingResponse": {
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "title": "Rule Id"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "entity_ref": {
+            "$ref": "#/components/schemas/EntityRefDto"
+          },
+          "workstream_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workstream Id"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/RiskEvidenceDto"
+          },
+          "age_days": {
+            "type": "integer",
+            "title": "Age Days"
+          },
+          "detected_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Detected At"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "owner_status_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Status Summary"
+          },
+          "owner_status_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatusSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "owner_status_as_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Status As Of"
+          },
+          "owner_status_has_blockers": {
+            "type": "boolean",
+            "title": "Owner Status Has Blockers"
+          },
+          "is_watermelon": {
+            "type": "boolean",
+            "title": "Is Watermelon"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rule_id",
+          "severity",
+          "entity_ref",
+          "workstream_id",
+          "reason",
+          "evidence",
+          "age_days",
+          "detected_at",
+          "status",
+          "owner_id",
+          "owner_status_summary",
+          "owner_status_source",
+          "owner_status_as_of",
+          "owner_status_has_blockers",
+          "is_watermelon"
+        ],
+        "title": "RiskFindingResponse"
       },
       "RollupFactorDto": {
         "properties": {
