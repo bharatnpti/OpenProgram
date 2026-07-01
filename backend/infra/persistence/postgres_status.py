@@ -19,7 +19,6 @@ from core.domain.status import (
     CheckInScheduleRun,
     CheckInSignals,
     DeveloperStatus,
-    Mood,
     StatusSource,
 )
 
@@ -359,6 +358,22 @@ class PostgresStatusRepository:
             )
         return _checkin_schedule_run_from_row(rows[0]) if rows else None
 
+    async def checkin_schedule_run_for_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> CheckInScheduleRun | None:
+        with _tracer.start_as_current_span("postgres.status.checkin_schedule_run_for_correlation"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, developer_id, checkin_date, correlation_id, status,
+                       scheduled_at, reason
+                FROM checkin_schedule_runs
+                WHERE tenant_id = %s AND correlation_id = %s
+                LIMIT 1
+                """,
+                (tenant_id, correlation_id),
+            )
+        return _checkin_schedule_run_from_row(rows[0]) if rows else None
+
     async def record_checkin_nudge(self, nudge: CheckInNudge) -> CheckInNudge:
         with _tracer.start_as_current_span("postgres.status.record_checkin_nudge"):
             rows = await self._executor.fetch(
@@ -451,16 +466,15 @@ class PostgresStatusRepository:
                 """
                 INSERT INTO developer_statuses (
                     tenant_id, developer_id, as_of, source, blockers, summary,
-                    eta_change_days, mood
+                    eta_change_days
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id, developer_id, as_of)
                 DO UPDATE SET
                     source = EXCLUDED.source,
                     blockers = EXCLUDED.blockers,
                     summary = EXCLUDED.summary,
                     eta_change_days = EXCLUDED.eta_change_days,
-                    mood = EXCLUDED.mood,
                     updated_at = now()
                 """,
                 (
@@ -471,7 +485,6 @@ class PostgresStatusRepository:
                     _string_tuple_to_json(status.blockers),
                     status.summary,
                     status.eta_change_days,
-                    status.mood.value if status.mood else None,
                 ),
             )
 
@@ -482,7 +495,7 @@ class PostgresStatusRepository:
             rows = await self._executor.fetch(
                 """
                 SELECT tenant_id, developer_id, as_of, source, blockers, summary,
-                       eta_change_days, mood
+                       eta_change_days
                 FROM developer_statuses
                 WHERE tenant_id = %s AND developer_id = %s AND as_of <= %s
                 ORDER BY as_of DESC
@@ -855,7 +868,6 @@ def _developer_status_from_row(row: Mapping[str, object]) -> DeveloperStatus:
         eta_change_days=eta_change_days
         if isinstance(eta_change_days, int) and not isinstance(eta_change_days, bool)
         else None,
-        mood=_mood_from_json(row.get("mood")),
     )
 
 
@@ -905,7 +917,6 @@ def _signals_to_json(signals: CheckInSignals | None) -> dict[str, object] | None
         "progress_note": signals.progress_note,
         "blockers": list(signals.blockers),
         "eta_change_days": signals.eta_change_days,
-        "mood": signals.mood.value if signals.mood else None,
     }
 
 
@@ -922,7 +933,6 @@ def _signals_from_json(value: object) -> CheckInSignals | None:
         eta_change_days=eta_change_days
         if isinstance(eta_change_days, int) and not isinstance(eta_change_days, bool)
         else None,
-        mood=_mood_from_json(value.get("mood")),
     )
 
 
@@ -1008,17 +1018,6 @@ def _items_from_json(value: object) -> tuple[object, ...]:
     if isinstance(raw_items, list | tuple):
         return tuple(raw_items)
     return ()
-
-
-def _mood_from_json(value: object) -> Mood | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        return Mood(value)
-    except ValueError:
-        return None
-
-
 def _rag_from_json(value: object) -> Rag | None:
     if not isinstance(value, str):
         return None

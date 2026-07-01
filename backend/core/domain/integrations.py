@@ -70,6 +70,7 @@ class PullRequest:
     merged: bool
     metadata: Mapping[str, JsonScalar] = field(default_factory=dict)
     updated_at: datetime | None = None
+    opened_at: datetime | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

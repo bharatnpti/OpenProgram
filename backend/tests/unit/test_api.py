@@ -12,6 +12,7 @@ from api.dependencies import get_directory_sync_service
 from api.main import create_app
 from config.settings import Settings
 from core.domain.errors import ProviderConfigurationError
+from core.domain.graph import Task
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 from core.domain.workflows import (
     CheckinScheduleConfig,
@@ -562,15 +563,45 @@ def test_admin_config_crud_populates_directory_and_dashboards(settings: Settings
             "/config/pods",
             json={"id": "pod-alpha", "name": "Alpha Pod"},
         )
+        workstream = client.post(
+            "/config/workstreams",
+            json={
+                "id": "workstream-alpha",
+                "name": "Runtime Config Admin",
+                "metadata": {
+                    "type": "feature",
+                    "phase": "build",
+                    "owner_id": "dev-ada",
+                    "target_date": as_of,
+                    "confidence": 0.7,
+                    "summary": "Configuring workstream graph controls.",
+                },
+            },
+        )
         member = client.post(
             "/config/members",
             json={"id": "dev-ada", "name": "Ada"},
+        )
+        asyncio.run(
+            app.state.registry.graph_repository().upsert_node(
+                Task(
+                    tenant_id=settings.tenant_id,
+                    id="task-alpha",
+                    name="Alpha task",
+                    metadata={"status": "blocked"},
+                )
+            )
         )
         program_link = client.post(
             "/config/projects/project-alpha/program",
             json={"program_id": "program-alpha"},
         )
         pod_link = client.post("/config/pods/pod-alpha/projects/project-alpha")
+        workstream_link = client.post(
+            "/config/projects/project-alpha/workstreams/workstream-alpha"
+        )
+        pod_workstream_link = client.post("/config/pods/pod-alpha/workstreams/workstream-alpha")
+        workstream_task_link = client.post("/config/workstreams/workstream-alpha/tasks/task-alpha")
         member_link = client.post(
             "/config/pods/pod-alpha/members/dev-ada",
             json={"role": "engineer"},
@@ -585,9 +616,17 @@ def test_admin_config_crud_populates_directory_and_dashboards(settings: Settings
         )
         preference_list = client.get("/config/checkin-preferences")
         projects = client.get(f"/projects?as_of={as_of}")
+        workstreams = client.get(f"/workstreams?as_of={as_of}")
+        workstream_detail = client.get(f"/workstreams/workstream-alpha?as_of={as_of}")
+        project_workstreams = client.get(
+            f"/projects/project-alpha/workstreams?as_of={as_of}"
+        )
         pods = client.get(f"/pods?as_of={as_of}")
         checkins = client.get(f"/pods/pod-alpha/checkins?as_of={as_of}")
         progress = client.get(f"/projects/project-alpha/progress?as_of={as_of}")
+        workstream_progress = client.get(
+            f"/workstreams/workstream-alpha/progress?as_of={as_of}"
+        )
         heatmap = client.get(f"/portfolio/heatmap?as_of={as_of}")
         delete_member_link = client.delete("/config/pods/pod-alpha/members/dev-ada")
         delete_project = client.delete("/config/projects/project-alpha")
@@ -599,9 +638,15 @@ def test_admin_config_crud_populates_directory_and_dashboards(settings: Settings
     assert project.status_code == 201
     assert project.json()["metadata"]["code"] == "ALPHA"
     assert pod.status_code == 201
+    assert workstream.status_code == 201
+    assert workstream.json()["kind"] == "workstream"
     assert member.status_code == 201
     assert program_link.status_code == 200
     assert pod_link.status_code == 200
+    assert workstream_link.status_code == 200
+    assert pod_workstream_link.status_code == 200
+    assert pod_workstream_link.json()["kind"] == "assigned_to"
+    assert workstream_task_link.status_code == 200
     assert member_link.status_code == 200
     assert member_link.json()["metadata"]["role"] == "engineer"
     assert duplicate_member_link.status_code == 409
@@ -613,12 +658,25 @@ def test_admin_config_crud_populates_directory_and_dashboards(settings: Settings
     assert projects.status_code == 200
     assert projects.json()[0]["program_ids"] == ["program-alpha"]
     assert projects.json()[0]["pod_ids"] == ["pod-alpha"]
+    assert projects.json()[0]["workstream_ids"] == ["workstream-alpha"]
+    assert workstreams.status_code == 200
+    assert workstreams.json()[0]["project_ids"] == ["project-alpha"]
+    assert workstreams.json()[0]["pod_ids"] == ["pod-alpha"]
+    assert workstreams.json()[0]["task_ids"] == ["task-alpha"]
+    assert workstream_detail.status_code == 200
+    assert workstream_detail.json()["id"] == "workstream-alpha"
+    assert project_workstreams.status_code == 200
+    assert [item["id"] for item in project_workstreams.json()] == ["workstream-alpha"]
     assert pods.status_code == 200
+    assert pods.json()[0]["workstream_ids"] == ["workstream-alpha"]
     assert pods.json()[0]["member_ids"] == ["dev-ada"]
     assert checkins.status_code == 200
     assert checkins.json()["missing"] == 1
     assert progress.status_code == 200
     assert progress.json()["project_id"] == "project-alpha"
+    assert workstream_progress.status_code == 200
+    assert workstream_progress.json()["workstream_id"] == "workstream-alpha"
+    assert workstream_progress.json()["rag"] == "red"
     assert heatmap.status_code == 200
     assert heatmap.json()["cells"]
     assert delete_member_link.status_code == 204

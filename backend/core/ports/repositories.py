@@ -68,6 +68,14 @@ class TimeSeriesRepository(Protocol):
         since: datetime | None = None,
     ) -> list[FactEvent]: ...
 
+    async def list_recent_facts(
+        self,
+        tenant_id: str,
+        since: datetime | None = None,
+        sources: Sequence[str] | None = None,
+        limit: int = 100,
+    ) -> list[FactEvent]: ...
+
 
 class StatusRepository(Protocol):
     async def record_checkin(self, checkin: CheckIn) -> None: ...
@@ -118,6 +126,10 @@ class StatusRepository(Protocol):
 
     async def checkin_schedule_run(
         self, tenant_id: str, developer_id: str, checkin_date: date
+    ) -> CheckInScheduleRun | None: ...
+
+    async def checkin_schedule_run_for_correlation(
+        self, tenant_id: str, correlation_id: str
     ) -> CheckInScheduleRun | None: ...
 
     async def record_checkin_nudge(self, nudge: CheckInNudge) -> CheckInNudge: ...

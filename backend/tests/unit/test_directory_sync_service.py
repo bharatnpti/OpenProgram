@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from core.application.directory_sync_service import DirectorySyncService
 from core.domain.directory import DirectoryUser
+from infra.adapters.chat.mock_slack import InMemoryMockSlackStore, MockSlackHttpClient
 from infra.adapters.directory.slack import SlackDirectoryProvider
 from infra.persistence.postgres_directory import PostgresDirectoryUserRepository
 from tests.contract.fakes import FakeDirectoryUserRepository
@@ -182,6 +183,46 @@ async def test_slack_directory_provider_paginates_and_filters() -> None:
     assert users[0].avatar_url == "https://example.com/asha.png"
     assert users[1].display_name == "Liam Chen"
     assert users[1].email == "liam@example.com"
+
+
+async def test_directory_sync_service_with_mock_slack_http_client_is_idempotent() -> None:
+    repository = FakeDirectoryUserRepository()
+    await repository.upsert_users(
+        [
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U9999",
+                display_name="Stale User",
+                email="stale@example.com",
+                handle="stale",
+                source="slack",
+            )
+        ]
+    )
+    service = DirectorySyncService(
+        provider=SlackDirectoryProvider(
+            http_client=MockSlackHttpClient(
+                tenant_id="demo",
+                store=InMemoryMockSlackStore(),
+            )
+        ),
+        repository=repository,
+    )
+
+    first = await service.sync("demo")
+    second = await service.sync("demo")
+
+    assert first.tenant_id == "demo"
+    assert first.synced_count == 3
+    assert first.deactivated_count == 1
+    assert second.tenant_id == "demo"
+    assert second.synced_count == 3
+    assert second.deactivated_count == 0
+    assert [user.external_id for user in await repository.search("demo", "", 10)] == [
+        "U1001",
+        "U1002",
+        "U1003",
+    ]
 
 
 async def test_postgres_directory_repository_batches_large_upserts() -> None:

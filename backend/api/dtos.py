@@ -5,7 +5,14 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from core.application.ask_service import AskResponseView
 from core.application.config_service import DirectoryItemView
+from core.application.flow_metrics_service import (
+    PortfolioFlowView,
+    WorkItemFlowView,
+    WorkstreamFlowSummaryView,
+    WorkstreamFlowView,
+)
 from core.application.persona_views import (
     BlockerView,
     CheckinDeveloperView,
@@ -21,7 +28,9 @@ from core.application.persona_views import (
     TaskProgressView,
     TreeEdgeView,
     TreeNodeView,
+    WorkstreamProgressView,
 )
+from core.application.portfolio_feed_service import PortfolioFeedItemView, PortfolioFeedView
 from core.domain.directory import DirectoryUser
 from core.domain.graph import EdgeKind, GraphEdge, GraphNode, GraphTree, NodeKind
 from core.domain.rollup import Rag, RollupFactor
@@ -273,6 +282,48 @@ class MemberTaskAssignmentRequest(BaseModel):
     task_id: str = Field(min_length=1)
 
 
+class WorkItemCreateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    state: str = Field(default="proposed", min_length=1)
+    item_type: str = Field(default="feature", min_length=1)
+    repo: str | None = None
+    branch: str | None = None
+    pr_id: str | None = None
+    workstream_id: str | None = None
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
+class WorkItemFromBranchRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    repo: str = Field(min_length=1)
+    branch: str = Field(min_length=1)
+    name: str | None = None
+    item_type: str = Field(default="feature", min_length=1)
+    workstream_id: str | None = None
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
+class WorkItemFromPrRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    repo: str = Field(min_length=1)
+    pr_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    item_type: str = Field(default="feature", min_length=1)
+    workstream_id: str | None = None
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+
+class WorkItemTransitionRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    new_state: str = Field(min_length=1)
+
+
 class DirectoryItemResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -286,6 +337,7 @@ class DirectoryItemResponse(BaseModel):
     source: StatusSource | None
     program_ids: list[str]
     project_ids: list[str]
+    workstream_ids: list[str]
     pod_ids: list[str]
     member_ids: list[str]
     task_ids: list[str]
@@ -303,6 +355,7 @@ class DirectoryItemResponse(BaseModel):
             source=view.source,
             program_ids=list(view.program_ids),
             project_ids=list(view.project_ids),
+            workstream_ids=list(view.workstream_ids),
             pod_ids=list(view.pod_ids),
             member_ids=list(view.member_ids),
             task_ids=list(view.task_ids),
@@ -669,6 +722,44 @@ class ProjectProgressResponse(BaseModel):
         )
 
 
+class WorkstreamProgressResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    workstream_id: str
+    workstream_name: str
+    as_of: date
+    rag: Rag
+    source: StatusSource
+    confidence: float | None
+    percent_complete: float
+    total_tasks: int
+    green_tasks: int
+    amber_tasks: int
+    red_tasks: int
+    unknown_tasks: int
+    factors: list[RollupFactorDto]
+    tasks: list[TaskProgressDto]
+
+    @classmethod
+    def from_view(cls, view: WorkstreamProgressView) -> WorkstreamProgressResponse:
+        return cls(
+            workstream_id=view.workstream_id,
+            workstream_name=view.workstream_name,
+            as_of=view.as_of,
+            rag=view.rag,
+            source=view.source,
+            confidence=view.confidence,
+            percent_complete=view.percent_complete,
+            total_tasks=view.total_tasks,
+            green_tasks=view.green_tasks,
+            amber_tasks=view.amber_tasks,
+            red_tasks=view.red_tasks,
+            unknown_tasks=view.unknown_tasks,
+            factors=[RollupFactorDto.from_domain(factor) for factor in view.factors],
+            tasks=[TaskProgressDto.from_view(task) for task in view.tasks],
+        )
+
+
 class PersonaTreeNodeDto(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -775,6 +866,193 @@ class PortfolioHeatmapResponse(BaseModel):
             columns=list(view.columns),
             cells=[HeatmapCellDto.from_view(cell) for cell in view.cells],
         )
+
+
+class WorkItemFlowDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    name: str
+    state: str
+    item_type: str
+    repo: str | None
+    branch: str | None
+    pr_id: str | None
+    workstream_ids: list[str]
+    age_days: int | None
+    cycle_time_days: float | None
+    last_transition_at: datetime | None
+
+    @classmethod
+    def from_view(cls, view: WorkItemFlowView) -> WorkItemFlowDto:
+        return cls(
+            id=view.id,
+            name=view.name,
+            state=view.state,
+            item_type=view.item_type,
+            repo=view.repo,
+            branch=view.branch,
+            pr_id=view.pr_id,
+            workstream_ids=list(view.workstream_ids),
+            age_days=view.age_days,
+            cycle_time_days=view.cycle_time_days,
+            last_transition_at=view.last_transition_at,
+        )
+
+
+class WorkstreamFlowSummaryDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    workstream_id: str
+    workstream_name: str
+    active_count: int
+    features_in_flight: int
+    completed_count: int
+    stale_count: int
+    abandoned_count: int
+    avg_cycle_time_days: float | None
+    avg_pr_age_days: float | None
+
+    @classmethod
+    def from_view(cls, view: WorkstreamFlowSummaryView) -> WorkstreamFlowSummaryDto:
+        return cls(
+            workstream_id=view.workstream_id,
+            workstream_name=view.workstream_name,
+            active_count=view.active_count,
+            features_in_flight=view.features_in_flight,
+            completed_count=view.completed_count,
+            stale_count=view.stale_count,
+            abandoned_count=view.abandoned_count,
+            avg_cycle_time_days=view.avg_cycle_time_days,
+            avg_pr_age_days=view.avg_pr_age_days,
+        )
+
+
+class WorkstreamFlowResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    workstream_id: str
+    workstream_name: str
+    as_of: date
+    active_count: int
+    features_in_flight: int
+    completed_count: int
+    stale_count: int
+    abandoned_count: int
+    avg_cycle_time_days: float | None
+    avg_pr_age_days: float | None
+    work_items: list[WorkItemFlowDto]
+
+    @classmethod
+    def from_view(cls, view: WorkstreamFlowView) -> WorkstreamFlowResponse:
+        return cls(
+            workstream_id=view.workstream_id,
+            workstream_name=view.workstream_name,
+            as_of=view.as_of,
+            active_count=view.active_count,
+            features_in_flight=view.features_in_flight,
+            completed_count=view.completed_count,
+            stale_count=view.stale_count,
+            abandoned_count=view.abandoned_count,
+            avg_cycle_time_days=view.avg_cycle_time_days,
+            avg_pr_age_days=view.avg_pr_age_days,
+            work_items=[WorkItemFlowDto.from_view(item) for item in view.work_items],
+        )
+
+
+class PortfolioFlowResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    as_of: date
+    active_count: int
+    features_in_flight: int
+    completed_count: int
+    stale_count: int
+    abandoned_count: int
+    avg_cycle_time_days: float | None
+    avg_pr_age_days: float | None
+    workstreams: list[WorkstreamFlowSummaryDto]
+
+    @classmethod
+    def from_view(cls, view: PortfolioFlowView) -> PortfolioFlowResponse:
+        return cls(
+            as_of=view.as_of,
+            active_count=view.active_count,
+            features_in_flight=view.features_in_flight,
+            completed_count=view.completed_count,
+            stale_count=view.stale_count,
+            abandoned_count=view.abandoned_count,
+            avg_cycle_time_days=view.avg_cycle_time_days,
+            avg_pr_age_days=view.avg_pr_age_days,
+            workstreams=[WorkstreamFlowSummaryDto.from_view(item) for item in view.workstreams],
+        )
+
+
+class PortfolioFeedItemResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    source: str
+    kind: str
+    summary: str
+    entity_ref: EntityRefDto
+    observed_at: datetime
+    details: dict[str, str | int | float | bool | None]
+
+    @classmethod
+    def from_view(cls, view: PortfolioFeedItemView) -> PortfolioFeedItemResponse:
+        return cls(
+            source=view.source,
+            kind=view.kind,
+            summary=view.summary,
+            entity_ref=EntityRefDto(
+                tenant_id=view.entity_ref.tenant_id,
+                kind=view.entity_ref.kind,
+                id=view.entity_ref.id,
+            ),
+            observed_at=view.observed_at,
+            details=dict(view.details),
+        )
+
+
+class PortfolioFeedResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    as_of: datetime
+    since: datetime
+    items: list[PortfolioFeedItemResponse]
+
+    @classmethod
+    def from_view(cls, view: PortfolioFeedView) -> PortfolioFeedResponse:
+        return cls(
+            as_of=view.as_of,
+            since=view.since,
+            items=[PortfolioFeedItemResponse.from_view(item) for item in view.items],
+        )
+
+
+class AskResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    answer: str
+    references: list[str]
+    tools_used: list[str]
+    trace_id: str
+
+    @classmethod
+    def from_view(cls, view: AskResponseView) -> AskResponse:
+        return cls(
+            answer=view.answer,
+            references=list(view.references),
+            tools_used=list(view.tools_used),
+            trace_id=view.trace_id,
+        )
+
+
+class AskRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    question: str = Field(min_length=1)
+    as_of: date | None = None
 
 
 class WorkflowDispatchResponse(BaseModel):

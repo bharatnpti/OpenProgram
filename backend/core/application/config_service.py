@@ -2,15 +2,28 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 
 from core.domain.directory import DirectoryUser
 from core.domain.errors import GraphNotFound, PulseOpsError
-from core.domain.graph import EdgeKind, GraphEdge, GraphNode, JsonScalar, NodeKind
+from core.domain.graph import (
+    EdgeKind,
+    FactEvent,
+    GraphEdge,
+    GraphNode,
+    JsonScalar,
+    NodeKind,
+    WorkItem,
+)
 from core.domain.rollup import Rag
 from core.domain.status import CheckInPreference, StatusSource
 from core.ports.directory import DirectoryUserRepository
-from core.ports.repositories import GraphRepository, RollupRepository, StatusRepository
+from core.ports.repositories import (
+    GraphRepository,
+    RollupRepository,
+    StatusRepository,
+    TimeSeriesRepository,
+)
 
 
 class ConfigValidationError(PulseOpsError):
@@ -33,6 +46,7 @@ class DirectoryItemView:
     source: StatusSource | None = None
     program_ids: tuple[str, ...] = ()
     project_ids: tuple[str, ...] = ()
+    workstream_ids: tuple[str, ...] = ()
     pod_ids: tuple[str, ...] = ()
     member_ids: tuple[str, ...] = ()
     task_ids: tuple[str, ...] = ()
@@ -44,10 +58,12 @@ class ConfigService:
         graph_repository: GraphRepository,
         status_repository: StatusRepository,
         directory_repository: DirectoryUserRepository | None = None,
+        time_series_repository: TimeSeriesRepository | None = None,
     ) -> None:
         self._graph_repository = graph_repository
         self._status_repository = status_repository
         self._directory_repository = directory_repository
+        self._time_series_repository = time_series_repository
 
     async def list_nodes(self, tenant_id: str, kind: NodeKind) -> list[GraphNode]:
         return await self._graph_repository.list_nodes(tenant_id, kind)
@@ -169,6 +185,81 @@ class ConfigService:
         await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
         await self._remove_exact_edge(tenant_id, project_id, pod_id, EdgeKind.CONTAINS)
 
+    async def link_project_workstream(
+        self,
+        tenant_id: str,
+        project_id: str,
+        workstream_id: str,
+    ) -> GraphEdge:
+        await self._ensure_node(tenant_id, project_id, NodeKind.PROJECT)
+        await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
+        return await self._add_unique_edge(
+            tenant_id,
+            project_id,
+            workstream_id,
+            EdgeKind.CONTAINS,
+        )
+
+    async def unlink_project_workstream(
+        self,
+        tenant_id: str,
+        project_id: str,
+        workstream_id: str,
+    ) -> None:
+        await self._ensure_node(tenant_id, project_id, NodeKind.PROJECT)
+        await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
+        await self._remove_exact_edge(tenant_id, project_id, workstream_id, EdgeKind.CONTAINS)
+
+    async def assign_pod_workstream(
+        self,
+        tenant_id: str,
+        pod_id: str,
+        workstream_id: str,
+    ) -> GraphEdge:
+        await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
+        await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
+        return await self._add_unique_edge(
+            tenant_id,
+            pod_id,
+            workstream_id,
+            EdgeKind.ASSIGNED_TO,
+        )
+
+    async def unassign_pod_workstream(
+        self,
+        tenant_id: str,
+        pod_id: str,
+        workstream_id: str,
+    ) -> None:
+        await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
+        await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
+        await self._remove_exact_edge(tenant_id, pod_id, workstream_id, EdgeKind.ASSIGNED_TO)
+
+    async def link_workstream_task(
+        self,
+        tenant_id: str,
+        workstream_id: str,
+        task_id: str,
+    ) -> GraphEdge:
+        await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
+        await self._ensure_node(tenant_id, task_id, NodeKind.TASK)
+        return await self._add_unique_edge(
+            tenant_id,
+            workstream_id,
+            task_id,
+            EdgeKind.CONTAINS,
+        )
+
+    async def unlink_workstream_task(
+        self,
+        tenant_id: str,
+        workstream_id: str,
+        task_id: str,
+    ) -> None:
+        await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
+        await self._ensure_node(tenant_id, task_id, NodeKind.TASK)
+        await self._remove_exact_edge(tenant_id, workstream_id, task_id, EdgeKind.CONTAINS)
+
     async def link_pod_member(
         self,
         tenant_id: str,
@@ -187,6 +278,132 @@ class ConfigService:
             valid_from=valid_from,
             metadata={"role": _clean_required(role, "role")},
         )
+
+    async def create_work_item(
+        self,
+        tenant_id: str,
+        id: str,
+        name: str,
+        metadata: Mapping[str, JsonScalar] | None = None,
+    ) -> GraphNode:
+        normalized_id = _clean_required(id, "id")
+        normalized_name = _clean_required(name, "name")
+        existing = await self._graph_repository.get_node(tenant_id, normalized_id)
+        if existing is not None:
+            raise ConfigConflict(f"node {normalized_id} already exists")
+        node = WorkItem(
+            tenant_id=tenant_id,
+            id=normalized_id,
+            name=normalized_name,
+            metadata=_work_item_metadata(metadata),
+        )
+        await self._graph_repository.upsert_node(node)
+        return node
+
+    async def create_work_item_from_branch(
+        self,
+        tenant_id: str,
+        repo: str,
+        branch: str,
+        name: str | None = None,
+        metadata: Mapping[str, JsonScalar] | None = None,
+    ) -> GraphNode:
+        branch_name = _clean_required(branch, "branch")
+        derived_id = f"branch-{_slugify_identifier(repo)}-{_slugify_identifier(branch_name)}"
+        merged_metadata = dict(metadata or {})
+        merged_metadata.setdefault("repo", repo)
+        merged_metadata.setdefault("branch", branch_name)
+        merged_metadata.setdefault("item_type", "feature")
+        merged_metadata.setdefault("state", "proposed")
+        return await self.create_work_item(
+            tenant_id,
+            derived_id,
+            name or branch_name,
+            merged_metadata,
+        )
+
+    async def create_work_item_from_pr(
+        self,
+        tenant_id: str,
+        repo: str,
+        pr_id: str,
+        title: str,
+        metadata: Mapping[str, JsonScalar] | None = None,
+    ) -> GraphNode:
+        normalized_pr_id = _clean_required(pr_id, "pr_id")
+        derived_id = f"pr-{_slugify_identifier(repo)}-{_slugify_identifier(normalized_pr_id)}"
+        merged_metadata = dict(metadata or {})
+        merged_metadata.setdefault("repo", repo)
+        merged_metadata.setdefault("pr_id", normalized_pr_id)
+        merged_metadata.setdefault("item_type", "feature")
+        merged_metadata.setdefault("state", "proposed")
+        return await self.create_work_item(tenant_id, derived_id, title, merged_metadata)
+
+    async def transition_work_item(
+        self,
+        tenant_id: str,
+        id: str,
+        new_state: str,
+    ) -> GraphNode:
+        existing = await self._ensure_node(tenant_id, id, NodeKind.WORK_ITEM)
+        updated_metadata = dict(existing.metadata)
+        normalized_state = _clean_required(new_state, "new_state")
+        previous_state = updated_metadata.get("state")
+        transition_at = datetime.now(tz=UTC)
+        updated_metadata["state"] = normalized_state
+        updated_metadata["last_transition_at"] = transition_at.isoformat()
+        updated = WorkItem(
+            tenant_id=existing.tenant_id,
+            id=existing.id,
+            name=existing.name,
+            metadata=updated_metadata,
+        )
+        await self._graph_repository.upsert_node(updated)
+        await self._time_series_repository_or_raise().append_fact_once(
+            FactEvent(
+                tenant_id=tenant_id,
+                source="work_item",
+                entity_ref=updated.ref,
+                payload={
+                    "work_item_id": updated.id,
+                    "name": updated.name,
+                    "from_state": previous_state if isinstance(previous_state, str) else None,
+                    "to_state": normalized_state,
+                    "item_type": updated_metadata.get("item_type"),
+                    "repo": updated_metadata.get("repo"),
+                    "branch": updated_metadata.get("branch"),
+                    "pr_id": updated_metadata.get("pr_id"),
+                },
+                observed_at=transition_at,
+                correlation_id=f"work_item:{tenant_id}:{updated.id}:{normalized_state}:{updated_metadata['last_transition_at']}",
+            )
+        )
+        return updated
+
+    async def link_work_item_to_workstream(
+        self,
+        tenant_id: str,
+        workstream_id: str,
+        work_item_id: str,
+    ) -> GraphEdge:
+        await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
+        await self._ensure_node(tenant_id, work_item_id, NodeKind.WORK_ITEM)
+        return await self._add_unique_edge(
+            tenant_id,
+            workstream_id,
+            work_item_id,
+            EdgeKind.CONTAINS,
+        )
+
+    async def unlink_work_item_from_workstream(
+        self,
+        tenant_id: str,
+        workstream_id: str,
+        work_item_id: str,
+    ) -> None:
+        await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
+        await self._ensure_node(tenant_id, work_item_id, NodeKind.WORK_ITEM)
+        await self._remove_exact_edge(tenant_id, workstream_id, work_item_id, EdgeKind.CONTAINS)
 
     async def unlink_pod_member(self, tenant_id: str, pod_id: str, member_id: str) -> None:
         await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
@@ -378,6 +595,11 @@ class ConfigService:
             raise ConfigValidationError("directory repository is not configured")
         return self._directory_repository
 
+    def _time_series_repository_or_raise(self) -> TimeSeriesRepository:
+        if self._time_series_repository is None:
+            raise ConfigValidationError("time series repository is not configured")
+        return self._time_series_repository
+
 
 class DirectoryService:
     def __init__(
@@ -393,6 +615,34 @@ class DirectoryService:
 
     async def list_projects(self, tenant_id: str, as_of: date) -> list[DirectoryItemView]:
         return await self._list_items(tenant_id, NodeKind.PROJECT, as_of)
+
+    async def list_workstreams(self, tenant_id: str, as_of: date) -> list[DirectoryItemView]:
+        return await self._list_items(tenant_id, NodeKind.WORKSTREAM, as_of)
+
+    async def get_workstream(
+        self,
+        tenant_id: str,
+        workstream_id: str,
+        as_of: date,
+    ) -> DirectoryItemView:
+        await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
+        for item in await self.list_workstreams(tenant_id, as_of):
+            if item.id == workstream_id:
+                return item
+        raise GraphNotFound(f"workstream {workstream_id} not found for tenant {tenant_id}")
+
+    async def list_project_workstreams(
+        self,
+        tenant_id: str,
+        project_id: str,
+        as_of: date,
+    ) -> list[DirectoryItemView]:
+        await self._ensure_node(tenant_id, project_id, NodeKind.PROJECT)
+        return [
+            item
+            for item in await self.list_workstreams(tenant_id, as_of)
+            if project_id in item.project_ids
+        ]
 
     async def list_pods(self, tenant_id: str, as_of: date) -> list[DirectoryItemView]:
         return await self._list_items(tenant_id, NodeKind.POD, as_of)
@@ -429,6 +679,11 @@ class DirectoryService:
                 for edge in edges
                 if edge.from_node_id == node.id and edge.kind is EdgeKind.ASSIGNED_TO
             ]
+            incoming_assignments = [
+                edge
+                for edge in edges
+                if edge.to_node_id == node.id and edge.kind is EdgeKind.ASSIGNED_TO
+            ]
             views.append(
                 DirectoryItemView(
                     id=node.id,
@@ -448,11 +703,26 @@ class DirectoryService:
                             )
                         )
                     ),
+                    workstream_ids=tuple(
+                        dict.fromkeys(
+                            (
+                                *_source_ids(incoming, node_by_id, NodeKind.WORKSTREAM),
+                                *_target_ids(outgoing, node_by_id, NodeKind.WORKSTREAM),
+                                *_source_ids(
+                                    incoming_assignments,
+                                    node_by_id,
+                                    NodeKind.WORKSTREAM,
+                                ),
+                                *_target_ids(assignments, node_by_id, NodeKind.WORKSTREAM),
+                            )
+                        )
+                    ),
                     pod_ids=tuple(
                         dict.fromkeys(
                             (
                                 *_source_ids(incoming, node_by_id, NodeKind.POD),
                                 *_target_ids(outgoing, node_by_id, NodeKind.POD),
+                                *_source_ids(incoming_assignments, node_by_id, NodeKind.POD),
                             )
                         )
                     ),
@@ -468,6 +738,19 @@ class DirectoryService:
                 )
             )
         return sorted(views, key=lambda item: (item.name, item.id))
+
+    async def _ensure_node(
+        self,
+        tenant_id: str,
+        id: str,
+        kind: NodeKind,
+    ) -> GraphNode:
+        node = await self._graph_repository.get_node(tenant_id, id)
+        if node is None:
+            raise GraphNotFound(f"{kind.value} {id} not found for tenant {tenant_id}")
+        if node.kind is not kind:
+            raise GraphNotFound(f"{id} exists as a {node.kind.value}, not a {kind.value}")
+        return node
 
 
 def _source_ids(
@@ -506,11 +789,34 @@ def _metadata(metadata: Mapping[str, JsonScalar] | None) -> dict[str, JsonScalar
     }
 
 
+def _work_item_metadata(metadata: Mapping[str, JsonScalar] | None) -> dict[str, JsonScalar]:
+    merged = _metadata(metadata)
+    merged.setdefault("state", "proposed")
+    merged.setdefault("item_type", "feature")
+    merged.setdefault("created_at", datetime.now(tz=UTC).isoformat())
+    return merged
+
+
 def _clean_required(value: str, field: str) -> str:
     cleaned = value.strip()
     if not cleaned:
         raise ConfigValidationError(f"{field} must not be empty")
     return cleaned
+
+
+def _slugify_identifier(value: str) -> str:
+    cleaned = value.strip().lower()
+    result: list[str] = []
+    previous_dash = False
+    for char in cleaned:
+        if char.isalnum():
+            result.append(char)
+            previous_dash = False
+        elif not previous_dash:
+            result.append("-")
+            previous_dash = True
+    slug = "".join(result).strip("-")
+    return slug or "item"
 
 
 def _string_metadata(node: GraphNode, key: str) -> str | None:

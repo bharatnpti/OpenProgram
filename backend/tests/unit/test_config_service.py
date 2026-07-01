@@ -16,7 +16,7 @@ from tests.contract.fakes import FakeDirectoryUserRepository
 
 async def test_config_service_crud_links_assignments_and_preferences() -> None:
     store = InMemoryGraphStore()
-    service = ConfigService(store, store)
+    service = ConfigService(store, store, time_series_repository=store)
 
     program = await service.create_node(
         "demo",
@@ -26,15 +26,40 @@ async def test_config_service_crud_links_assignments_and_preferences() -> None:
         {"description": "Runtime program"},
     )
     project = await service.create_node("demo", NodeKind.PROJECT, "project-1", "Project")
+    workstream = await service.create_node(
+        "demo",
+        NodeKind.WORKSTREAM,
+        "workstream-1",
+        "Workstream",
+        {
+            "type": "feature",
+            "phase": "build",
+            "owner_id": "dev-1",
+            "target_date": "2026-01-31",
+        },
+    )
     pod = await service.create_node("demo", NodeKind.POD, "pod-1", "Pod")
     member = await service.create_node("demo", NodeKind.DEVELOPER, "dev-1", "Asha")
     task = await service.create_node("demo", NodeKind.TASK, "task-1", "Task")
+    work_item = await service.create_work_item(
+        "demo",
+        "work-item-1",
+        "Feature slice",
+        {"state": "proposed", "item_type": "feature", "repo": "repo-1"},
+    )
 
     assert program.metadata["description"] == "Runtime program"
     assert [node.id for node in await service.list_nodes("demo", NodeKind.PROJECT)] == ["project-1"]
+    assert [node.id for node in await service.list_nodes("demo", NodeKind.WORKSTREAM)] == [
+        "workstream-1"
+    ]
 
     program_edge = await service.link_program_project("demo", program.id, project.id)
     project_edge = await service.link_project_pod("demo", project.id, pod.id)
+    workstream_edge = await service.link_project_workstream("demo", project.id, workstream.id)
+    pod_workstream_edge = await service.assign_pod_workstream("demo", pod.id, workstream.id)
+    workstream_task_edge = await service.link_workstream_task("demo", workstream.id, task.id)
+    work_item_edge = await service.link_work_item_to_workstream("demo", workstream.id, work_item.id)
     member_edge = await service.link_pod_member(
         "demo",
         pod.id,
@@ -46,12 +71,25 @@ async def test_config_service_crud_links_assignments_and_preferences() -> None:
 
     assert program_edge.kind is EdgeKind.CONTAINS
     assert project_edge.kind is EdgeKind.CONTAINS
+    assert workstream_edge.kind is EdgeKind.CONTAINS
+    assert pod_workstream_edge.kind is EdgeKind.ASSIGNED_TO
+    assert workstream_task_edge.kind is EdgeKind.CONTAINS
+    assert work_item_edge.kind is EdgeKind.CONTAINS
     assert member_edge.metadata["role"] == "tech lead"
     assert member_edge.valid_from == date(2026, 1, 10)
     assert assignment.kind is EdgeKind.ASSIGNED_TO
 
+    transitioned = await service.transition_work_item("demo", work_item.id, "in_progress")
+    assert transitioned.metadata["state"] == "in_progress"
+    assert transitioned.metadata["last_transition_at"]
+    work_item_facts = await store.list_recent_facts("demo", sources=("work_item",), limit=10)
+    assert work_item_facts[0].payload["to_state"] == "in_progress"
+    assert work_item_facts[0].payload["repo"] == "repo-1"
+
     with pytest.raises(ConfigConflict):
         await service.link_program_project("demo", program.id, project.id)
+    with pytest.raises(ConfigConflict):
+        await service.link_project_workstream("demo", project.id, workstream.id)
 
     preference = await service.record_checkin_preference(
         CheckInPreference(
@@ -66,6 +104,14 @@ async def test_config_service_crud_links_assignments_and_preferences() -> None:
 
     await service.unlink_project_pod("demo", project.id, pod.id)
     assert project_edge not in await service.list_edges("demo")
+    await service.unlink_project_workstream("demo", project.id, workstream.id)
+    await service.unassign_pod_workstream("demo", pod.id, workstream.id)
+    await service.unlink_workstream_task("demo", workstream.id, task.id)
+    await service.unlink_work_item_from_workstream("demo", workstream.id, work_item.id)
+    assert workstream_edge not in await service.list_edges("demo")
+    assert pod_workstream_edge not in await service.list_edges("demo")
+    assert workstream_task_edge not in await service.list_edges("demo")
+    assert work_item_edge not in await service.list_edges("demo")
 
     await service.delete_node("demo", member.id, NodeKind.DEVELOPER)
     assert await service.list_checkin_preferences("demo") == []
@@ -88,9 +134,20 @@ async def test_directory_service_lists_configured_relationships_and_rollup() -> 
         {"description": "Foundations", "code": "FOUND"},
     )
     pod = await service.create_node("demo", NodeKind.POD, "pod-1", "Pod")
+    workstream = await service.create_node(
+        "demo",
+        NodeKind.WORKSTREAM,
+        "workstream-1",
+        "Runtime Admin",
+        {"type": "feature", "phase": "build"},
+    )
     member = await service.create_node("demo", NodeKind.DEVELOPER, "dev-1", "Asha")
+    task = await service.create_node("demo", NodeKind.TASK, "task-1", "Task")
     await service.link_program_project("demo", program.id, project.id)
     await service.link_project_pod("demo", project.id, pod.id)
+    await service.link_project_workstream("demo", project.id, workstream.id)
+    await service.assign_pod_workstream("demo", pod.id, workstream.id)
+    await service.link_workstream_task("demo", workstream.id, task.id)
     await service.link_pod_member("demo", pod.id, member.id, "engineer", as_of)
     await store.record_node_status(
         NodeStatus(
@@ -103,6 +160,7 @@ async def test_directory_service_lists_configured_relationships_and_rollup() -> 
     )
 
     projects = await directory.list_projects("demo", as_of)
+    workstreams = await directory.list_workstreams("demo", as_of)
     pods = await directory.list_pods("demo", as_of)
 
     assert projects[0].id == project.id
@@ -110,8 +168,17 @@ async def test_directory_service_lists_configured_relationships_and_rollup() -> 
     assert projects[0].code == "FOUND"
     assert projects[0].rag is Rag.AMBER
     assert projects[0].program_ids == (program.id,)
+    assert projects[0].workstream_ids == (workstream.id,)
     assert projects[0].pod_ids == (pod.id,)
+    assert workstreams[0].id == workstream.id
+    assert workstreams[0].project_ids == (project.id,)
+    assert workstreams[0].pod_ids == (pod.id,)
+    assert workstreams[0].task_ids == (task.id,)
+    assert (await directory.get_workstream("demo", workstream.id, as_of)).id == workstream.id
+    project_workstreams = await directory.list_project_workstreams("demo", project.id, as_of)
+    assert [item.id for item in project_workstreams] == [workstream.id]
     assert pods[0].project_ids == (project.id,)
+    assert pods[0].workstream_ids == (workstream.id,)
     assert pods[0].member_ids == (member.id,)
 
 

@@ -62,6 +62,7 @@ async def test_github_adapter_maps_recorded_rest_payloads() -> None:
                     "title": "Read sync",
                     "user": {"login": "asha"},
                     "state": "closed",
+                    "created_at": "2026-01-10T08:45:00Z",
                     "merged_at": "2026-01-10T09:00:00Z",
                     "updated_at": "2026-01-10T09:30:00Z",
                     "draft": False,
@@ -105,6 +106,7 @@ async def test_github_adapter_maps_recorded_rest_payloads() -> None:
     assert commits[0].author.external_id == "asha"
     assert pull_requests[0].id == "7"
     assert pull_requests[0].merged is True
+    assert pull_requests[0].opened_at == datetime(2026, 1, 10, 8, 45, tzinfo=UTC)
     assert pull_requests[0].metadata["repo"] == "repo"
     assert authored[0].metadata["repo"] == "acme/repo"
     assert {call.request.method for call in respx.calls} == {"GET"}
