@@ -2,7 +2,7 @@
 
 ## Current Status
 
-Status: `Complete - All Mock Slack E2E rows passed`
+Status: `Complete - Attempt 30 browser QA passed with documented caveats`
 
 Attempt 9 remains the last fully verified Chrome-extension `/mock-slack` happy
 path: dispatch created an outbound mock Slack DM, a reply was processed through
@@ -25,7 +25,11 @@ compose environment pass-through and verified non-local simulator routes return
 the local admin Mock Slack stack and verified `MS-E2E-012`: admin navigation
 exposes `/mock-slack`, non-admin role navigation hides Mock Slack/Admin Config,
 and protected simulator APIs return `403` when the backend dev principal is
-non-admin. All matrix rows are now complete.
+non-admin. Attempt 29 added the missing directory-sync idempotency coverage and
+the restart-persistence check. Attempt 30 reverified the browser-visible Mock
+Slack rows through the existing Chrome session, fixed scheduled-date reply
+persistence and trivial non-status reply handling, and passed the full backend
+unit suite. All matrix rows through `MS-E2E-045` are covered.
 
 ## E2E Test Case Matrix
 
@@ -35,47 +39,158 @@ MS-E2E-001,Preflight,P0,"Simulator enabled local admin preflight","Local backend
 MS-E2E-002,Provider Config,P0,"Full local provider stack avoids real integrations","Backend and worker env use mock_slack chat/directory plus fake calendar/issue/VCS","Inspect backend and worker env; dispatch one check-in","Dispatch does not call real Slack/Jira/GitHub/Google; outbound DM appears","Passed Attempt 22","Backend/worker env used mock_slack chat/directory plus fake calendar/issue/VCS; U1003 dispatch created mock Slack bot 1782638093.000001 without real Slack/Jira/GitHub/Google"
 MS-E2E-003,Schedule Config,P0,"Daily check-in fanout can be configured to 15 minutes","Compose stack started with PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *","Inspect backend and worker env; inspect worker schedule bootstrap logs","Both containers expose the override; check-in fanout schedule is configured with */15 * * * *","Passed Attempt 13","Schedule table has */15 * * * *; deterministic trigger and natural 05:45 UTC cron both succeeded after DBOS fanout fix"
 MS-E2E-004,Directory,P0,"Mock directory sync exposes stable users","PULSEOPS_DIRECTORY_PROVIDER=mock_slack; admin role","POST /config/directory/sync; search users; add missing mock users","Mock users such as U1001/U1002/U1003 are available and can become configured members","Passed Attempt 11","Directory sync 200; total=3; U1002/Liam Chen added as mock_slack member"
-MS-E2E-005,Happy Path,P0,"Dispatch and reply confirm member status","Eligible configured member; no blocking same-date stale schedule run; simulator empty","Open /mock-slack; select member; Send DM; select bot DM; Submit reply; check pod status","Bot DM recorded; reply status=processed; member check-in becomes confirmed with reply summary","Passed Attempt 12","UI dispatch/reply for Bharat created bot 1782624037.000001 and user 1782624062.000002; pod confirmed=2 missing=0"
-MS-E2E-006,Simulator State,P1,"Refresh does not duplicate messages","At least one bot DM exists","Record message_count; click Refresh multiple times; GET messages","Messages reload and count remains unchanged","Passed Attempt 12","Two UI Refresh clicks left Messages KPI at 2 and timeline at one bot plus one user message"
-MS-E2E-007,Simulator State,P0,"Reset clears simulator mailbox only","Messages exist; member/status data exists","Click Reset; confirm; GET messages; check members and pod check-ins","Messages empty and message_count=0; configured members and persisted check-ins remain","Passed Attempt 11","DELETE state 204; messages empty; members and persisted pod check-in data remained"
+MS-E2E-005,Happy Path,P0,"Dispatch and reply confirm member status","Eligible configured member; no blocking same-date stale schedule run; simulator empty","Open /mock-slack; select member; Send DM; select bot DM; Submit reply; check pod status","Bot DM recorded; reply status=processed; member check-in becomes confirmed with reply summary","Passed Attempt 30","Post-fix Chrome/API retest used U1001 with chat UQA30FIXHAPPY on 2026-09-22; bot 1782678347.000001 and reply 1782678390.000005 processed, raw_reply persisted, correlation consumed, and developer_status stayed on as_of=2026-09-22"
+MS-E2E-006,Simulator State,P1,"Refresh does not duplicate messages","At least one bot DM exists","Record message_count; click Refresh multiple times; GET messages","Messages reload and count remains unchanged","Passed Attempt 30","Attempt 30 Refresh twice kept UI/API Messages KPI at 9 with no duplicate simulator messages"
+MS-E2E-007,Simulator State,P0,"Reset clears simulator mailbox only","Messages exist; member/status data exists","Click Reset; confirm; GET messages; check members and pod check-ins","Messages empty and message_count=0; configured members and persisted check-ins remain","Passed Attempt 30","Attempt 30 UI Reset cleared the timeline to No messages and API status returned message_count=0 while app state remained available"
 MS-E2E-008,Simulator State,P1,"Reply after reset rejects stale message ID","Have bot message ID; simulator reset","POST reply to old message ID","API returns 404; no user message is created","Passed Attempt 11","Reply to old 1782622890.000001 returned 404; mailbox stayed empty"
 MS-E2E-009,Access Control,P0,"Non-admin cannot use simulator API","Simulator enabled local; caller lacks admin/MANAGE_CONFIG","GET status/messages; POST reply; DELETE state as non-admin","Simulator routes return 403","Passed Attempt 23","Backend restarted with PULSEOPS_DEV_PRINCIPAL_ROLES=dev; status/messages/reply/state all returned 403 with dev-user not authorized for manage_config"
 MS-E2E-010,Access Control,P0,"Simulator disabled returns not found","Backend started with PULSEOPS_CHAT_SIMULATOR_ENABLED=false","GET /test/chat-simulator/status","Route returns 404","Passed Attempt 24","Backend restarted with simulator_enabled=false; status and messages returned 404 not found"
 MS-E2E-011,Access Control,P0,"Non-local environment returns not found","Backend environment is not local; simulator flag true","GET /test/chat-simulator/status","Route returns 404","Passed Attempt 26","After compose env pass-through fix, backend/worker ran with PULSEOPS_ENVIRONMENT=staging; health reported staging; status/messages returned 404 not found"
-MS-E2E-012,Access Control,P1,"Mock Slack navigation is admin/local gated","Frontend local/dev; compare admin and non-admin role views","Open app shell as admin and non-admin","Admin can access Mock Slack; non-admin cannot use protected simulator APIs","Passed Attempt 28","Admin role showed Admin Config and Mock Slack nav; /mock-slack loaded with local admin test surface, 3 messages, 6 members, and no console errors. Developer role hid Mock Slack/Admin Config nav; direct mounted route remains nav-gated caveat. Backend recreated with dev role returned 403 for status/messages/reply/state, then restored to admin with status 200"
+MS-E2E-012,Access Control,P1,"Mock Slack navigation is admin/local gated","Frontend local/dev; compare admin and non-admin role views","Open app shell as admin and non-admin","Admin can access Mock Slack; non-admin cannot use protected simulator APIs","Passed Attempt 30","Attempt 30 showed Admin nav includes Admin Config and Mock Slack; switching to Developer hid both links, then Admin was restored; preflight screenshot showed Viewing as Admin and local / demo with zero console errors"
 MS-E2E-013,Provider Config,P0,"Chat provider mismatch prevents DM capture","Backend/worker not both using mock_slack","Dispatch check-in; inspect simulator and logs","No simulator DM appears; mismatch is detectable in env/logs","Passed Attempt 27","Backend/worker ran with chat_provider=fake and simulator_enabled=true; registry.chat_simulator_available=false; status/messages returned 404 before and after U1003 2026-08-13 dispatch, so no mock simulator DM was capturable"
 MS-E2E-014,Provider Config,P1,"Invalid provider env fails fast","Unsupported provider value configured","Start backend or load settings","Settings validation rejects invalid provider","Passed Attempt 16","Settings rejected invalid chat/directory/calendar/issue/VCS provider values"
 MS-E2E-015,Schedule Fanout,P1,"15-minute fanout dispatches missing eligible members","Two eligible configured members without same-date check-ins","Allow schedule to fire or trigger fanout deterministically; inspect workflows/messages","One check-in workflow is dispatched per missing developer","Passed Attempt 13","DBOS trigger returned dispatched=5 and SUCCESS; natural 05:45 UTC cron also recorded SUCCESS"
 MS-E2E-016,Idempotency,P0,"Same member/date double dispatch does not create second DM","One successful sent schedule run exists for member/date","Dispatch same member/date again","Existing run short-circuits; no duplicate outbound DM","Passed Attempt 12","After reset, redispatch for same Bharat/date left simulator mailbox at 0 and reused one sent schedule run"
 MS-E2E-017,Idempotency,P0,"Stale skipped_weekend run blocks rerun","Member preference changed to allow day but old skipped_weekend run remains","Dispatch same member/date","Workflow returns existing skipped run and sends no DM","Observed Attempt 13","Schedule fanout created skipped_weekend rows for Sunday-ineligible U1001/U1002/U0BAZ8DFLR1; these block same-date sends"
-MS-E2E-018,Duplicate Reply,P0,"Duplicate direct reply to same bot message","One bot DM; first reply already processed","POST second reply to same bot message","Persisted status is not overwritten unexpectedly; duplicate handling is clear","Passed Attempt 12","Second UI reply was recorded as simulator message 1782624179.000003 but persisted summary stayed on the first confirmed reply"
+MS-E2E-018,Duplicate Reply,P0,"Duplicate direct reply to same bot message","One bot DM; first reply already processed","POST second reply to same bot message","Persisted status is not overwritten unexpectedly; duplicate handling is clear","Passed Attempt 30","Attempt 30 duplicate reply 1782678457.000010 against happy bot 1782678347.000001 was recorded in simulator, but checkins.raw_reply and developer_status summary remained the original happy reply"
 MS-E2E-019,Duplicate Reply,P1,"Rapid double submit is safe","Bot DM selected; reply text entered","Double-click Submit reply or send two POSTs quickly","UI/API do not create conflicting final status updates","Passed with API caveat Attempt 22","Two concurrent replies to 1782638093.000001 both returned 200/processed and simulator recorded both user messages; final persistence had one checkin/status/fact containing Reply B, with Reply A counts 0 and no overwrite"
 MS-E2E-020,Invalid IDs,P0,"Unknown simulator message ID is rejected","Simulator enabled","POST /test/chat-simulator/messages/not-real/reply","API returns 404; no user reply recorded","Passed Attempt 11","Reply to does-not-exist-qa-020 returned 404; mailbox stayed empty"
 MS-E2E-021,Invalid IDs,P1,"Reply to a user message ID is rejected","A user reply exists","POST reply using a user message_id as parent","API rejects the reply or does not create nested user replies","Passed Attempt 14","Reply to user message 1782625251.000003 returned 404; no nested user reply was created"
 MS-E2E-022,Invalid IDs,P1,"Unknown member dispatch fails safely","No configured member for developer_id","POST dispatch with unknown developer_id/chat ID","No orphan confirmed status is created; failure is clear","Passed Attempt 21","After rebuild, UQA_GUARD_1782636160 dispatch for 2026-07-09 returned 404; simulator message_count stayed 2; schedule_run/checkins/graph_nodes stayed 0"
 MS-E2E-023,Invalid IDs,P1,"Bad chat_external_id does not corrupt member status","Valid member; nonmatching chat_external_id supplied","Dispatch; reply if a DM is recorded; inspect statuses","No cross-member status corruption occurs","Passed with caveat Attempt 21","U1003 2026-07-10 dispatched with chat_external_id=U1002 sent DM 1782636241.000001 to U1002; reply returned 200/ignored; U1003 raw_reply stayed null and no U1002 schedule row was created"
 MS-E2E-024,Multi-Member,P0,"Replies correlate to the correct member","Two members each have bot DMs","Submit separate replies to each bot DM; inspect pod check-ins","Each member status updates only from its own reply","Passed Attempt 14","U1001/U1002 bot and user replies kept distinct channel/user/correlation IDs; raw replies persisted on matching correlations"
-MS-E2E-025,Multi-Member,P1,"Newest bot message selection is intentional","Existing bot message selected; another dispatch occurs","Observe selected reply target before submit","Tester can clearly select intended DM; reply is not sent to an older wrong target","Passed with UX caveat Attempt 14","Bot selector showed both U1001 and U1002 targets clearly; selected value remained U1001 until changed"
-MS-E2E-026,Reply Parsing,P1,"Short complete status parses without clarification","Bot DM exists; LLM path available","Submit concise progress/no-blockers status","Reply processes and summary preserves intent","Passed Attempt 12","Bharat no-blockers reply persisted exactly as submitted despite parser warning fallback"
-MS-E2E-027,Reply Parsing,P1,"Blocker reply preserves blocker signal","Bot DM exists","Submit status with explicit blocker","Confirmed status includes blocker context in status or blocker view","Passed raw persistence Attempt 14","U1002 blocker reply persisted on its check-in correlation; downstream blocker view not yet separately verified"
-MS-E2E-028,Reply Parsing,P2,"Ambiguous non-status reply does not become false healthy status","Bot DM exists","Submit vague text such as ok","System acknowledges or clarifies instead of falsely recording a healthy detailed status","Passed Attempt 19","Reply ok to 1782635523.000001 returned 200/ignored; user message recorded, but checkin stayed open with no raw_reply/replied_at and correlation unconsumed"
+MS-E2E-025,Multi-Member,P1,"Newest bot message selection is intentional","Existing bot message selected; another dispatch occurs","Observe selected reply target before submit","Tester can clearly select intended DM; reply is not sent to an older wrong target","Passed Attempt 30","Attempt 30 selector showed U1001 and U1002 bot targets; after selecting U1001 bot 1782674440.000001, a new U1002 DM 1782674475.000003 arrived and the selector still showed U1001"
+MS-E2E-026,Reply Parsing,P1,"Short complete status parses without clarification","Bot DM exists; LLM path available","Submit concise progress/no-blockers status","Reply processes and summary preserves intent","Passed Attempt 30","Post-fix Attempt 30 used UQA30FIXSHORT on 2026-09-23; reply 1782678400.000006 persisted raw_reply=Finished sprint review, no blockers, consumed the correlation, and confirmed developer_status for the scheduled date"
+MS-E2E-027,Reply Parsing,P1,"Blocker reply preserves blocker signal","Bot DM exists","Submit status with explicit blocker","Confirmed status includes blocker context in status or blocker view","Passed with blocker-structure caveat Attempt 30","Post-fix Attempt 30 used UQA30FIXBLOCK on 2026-09-24; reply 1782678424.000007 confirmed the scheduled-date status and summary preserved Blocked by flaky seed test. Caveat: structured blockers.items was empty"
+MS-E2E-028,Reply Parsing,P2,"Ambiguous non-status reply does not become false healthy status","Bot DM exists","Submit vague text such as ok","System acknowledges or clarifies instead of falsely recording a healthy detailed status","Passed Attempt 30","Post-fix Attempt 30 submitted ok to bot 1782678350.000004; user reply 1782678446.000008 plus ack bot 1782678446.000009 appeared, but checkin raw_reply/replied_at stayed null, no developer_status was written, and correlation remained unconsumed"
 MS-E2E-029,Reply Parsing,P2,"Parser JSON failures fall back safely","LLM returns malformed/non-JSON output or warning path is hit","Submit normal reply","Warnings may log, but reply still persists with raw reply fallback","Passed Attempt 20","Live logs showed clarification/status parser JSON warnings for U1003 replies; raw replies still persisted and correlations were consumed"
-MS-E2E-030,Reset Persistence,P1,"Reset after confirmed reply preserves app status","Member confirmed from mock reply","Reset simulator; refresh dashboard/check-ins","Simulator empty; member remains confirmed for persisted date","Passed Attempt 12","UI reset cleared mailbox to 0 while Bharat remained confirmed for 2026-06-28"
-MS-E2E-031,UI Polling,P1,"Message polling surfaces delayed DM","Dispatch returns before message is visible","Wait at least two 5-second polling intervals","Timeline updates without full page reload","Passed after fix Attempt 15","Timeline and Messages KPI both updated from 4 to 5 on poll without manual Refresh"
-MS-E2E-032,UI Refresh,P2,"Member list refresh behavior is known","Open /mock-slack; add member from admin in another tab","Click Refresh on Mock Slack page","Simulator/persona data refresh; any config-member dropdown staleness is documented","Observed Attempt 20","After adding U1003, API members=6 but Mock Slack Refresh left Members KPI at 5; full route reload showed 6"
-MS-E2E-033,UI Validation,P1,"Blank or whitespace-only reply cannot be submitted","/mock-slack loaded; at least one bot DM exists","Select a bot DM; enter only spaces/newlines in Message; observe Submit reply; inspect messages count","Submit reply remains disabled; no reply API call is sent; simulator message count is unchanged","Passed Attempt 19","Whitespace-only textarea kept Submit reply disabled; UI KPI and API message_count stayed 7"
+MS-E2E-030,Reset Persistence,P1,"Reset after confirmed reply preserves app status","Member confirmed from mock reply","Reset simulator; refresh dashboard/check-ins","Simulator empty; member remains confirmed for persisted date","Passed Attempt 30","Attempt 30 reset cleared simulator message_count to 0 while existing pod test prj-1 stayed confirmed=2, stale=0, missing=0 for 2026-06-28"
+MS-E2E-031,UI Polling,P1,"Message polling surfaces delayed DM","Dispatch returns before message is visible","Wait at least two 5-second polling intervals","Timeline updates without full page reload","Passed Attempt 30","Attempt 30 reset then API-dispatched U1001 for 2026-09-05; polling surfaced the new bot DM and Messages KPI moved to 1 without clicking Refresh"
+MS-E2E-032,UI Refresh,P2,"Member list refresh behavior is known","Open /mock-slack; add member from admin in another tab","Click Refresh on Mock Slack page","Simulator/persona data refresh; any config-member dropdown staleness is documented","Observed Attempt 30","Attempt 30 did not mutate config because six configured members already existed; Mock Slack Refresh kept Members KPI at 6, matching /config/members"
+MS-E2E-033,UI Validation,P1,"Blank or whitespace-only reply cannot be submitted","/mock-slack loaded; at least one bot DM exists","Select a bot DM; enter only spaces/newlines in Message; observe Submit reply; inspect messages count","Submit reply remains disabled; no reply API call is sent; simulator message count is unchanged","Passed Attempt 30","Attempt 30 whitespace-only reply text kept Submit reply disabled; no reply API call was sent"
 MS-E2E-034,API Validation,P1,"Empty reply payload is rejected without side effects","Simulator enabled; bot DM exists","Record message_count; POST /test/chat-simulator/messages/{bot_id}/reply with text empty string","API returns 422; no user message is recorded; app check-in status is unchanged","Passed Attempt 18","Empty text reply to 1782625563.000005 returned 422 string_too_short; message_count stayed 7; checkin/correlation stayed open"
 MS-E2E-035,API Validation,P1,"Invalid reply received_at is rejected without side effects","Simulator enabled; bot DM exists","Record message_count; POST reply with valid text and invalid received_at value","API returns 422; no user message is recorded; app check-in status is unchanged","Passed Attempt 18","Invalid received_at reply returned 422 datetime parsing error; message_count stayed 7; checkin/correlation stayed open"
-MS-E2E-036,UI State,P1,"Reset clears selected reply target and prevents stale UI reply","Bot DM selected in /mock-slack; reply text present","Click Reset; confirm dialog; inspect reply selector and Submit reply state","Timeline is empty; selected bot target is cleared; Submit reply is disabled until a new bot message exists","Passed Attempt 19","UI Reset changed Messages KPI to 0, timeline to No messages, selector to Select message only, and Submit reply stayed disabled"
-MS-E2E-037,UI State,P1,"New bot message auto-selects only when no reply target is selected","/mock-slack loaded with no selected bot target","Create or dispatch a new bot DM; wait for polling or click Refresh","Newest bot DM becomes selected once; existing intentional selections are not overwritten","Passed Attempt 19","After reset, external dispatch created 1782635523.000001; polling moved KPI to 1 and auto-selected U1001 - status_checkin"
+MS-E2E-036,UI State,P1,"Reset clears selected reply target and prevents stale UI reply","Bot DM selected in /mock-slack; reply text present","Click Reset; confirm dialog; inspect reply selector and Submit reply state","Timeline is empty; selected bot target is cleared; Submit reply is disabled until a new bot message exists","Passed Attempt 30","Attempt 30 reset left the bot selector at Select message only and Submit reply disabled"
+MS-E2E-037,UI State,P1,"New bot message auto-selects only when no reply target is selected","/mock-slack loaded with no selected bot target","Create or dispatch a new bot DM; wait for polling or click Refresh","Newest bot DM becomes selected once; existing intentional selections are not overwritten","Passed Attempt 30","Attempt 30 polling-created bot DM 1782674297.000001 auto-selected as U1001 - status_checkin when no prior target was selected"
 MS-E2E-038,Webhook Path,P1,"Slack-shaped webhook reply processes without test-support reply endpoint","Recorded bot DM with correlation_id exists","POST Slack-shaped event payload to /webhooks/chat/mock_slack using bot channel/user and reply text","Webhook returns processed; matching check-in is updated; simulator state remains internally consistent","Passed Attempt 20","Direct Slack-shaped webhook for U1003 returned processed; raw reply persisted, correlation consumed, simulator mailbox stayed at one bot message"
 MS-E2E-039,Message Contract,P1,"Simulator message payload contract is complete for bot and user messages","At least one bot DM and one user reply exist","GET /test/chat-simulator/messages; inspect bot and user records","Bot records include purpose/status metadata and correlation_id; user records include reply_to_message_id, source metadata, same channel/user/correlation","Passed Attempt 18","All 7 messages had required fields; 5 bot records had purpose=status_checkin/correlation metadata; 2 user replies had reply_to_message_id and source=mock_slack"
-MS-E2E-040,UI Timeline,P2,"Timeline groups multiple Slack users with counts matching API","Simulator has messages for at least two users","Open /mock-slack; compare grouped UI sections and badges with GET messages grouped by user_id","Each user has one group; group counts match API items; timeline remains scrollable/readable","Passed Attempt 19","Before reset, UI groups matched API counts: U1001=3, U1002=2, UQA_UNKNOWN=1, UQA_UNKNOWN_LIVE=1"
+MS-E2E-040,UI Timeline,P2,"Timeline groups multiple Slack users with counts matching API","Simulator has messages for at least two users","Open /mock-slack; compare grouped UI sections and badges with GET messages grouped by user_id","Each user has one group; group counts match API items; timeline remains scrollable/readable","Passed Attempt 30","Attempt 30 API total was 9 and grouped counts were U1001=7 and U1002=2; UI timeline groups and badges matched"
 MS-E2E-041,Simulator State,P1,"Post-reset future-date dispatch reopens mock channel cleanly","Simulator reset is acceptable; member has no schedule run for chosen future date","Reset simulator; dispatch configured member for unused future date; GET messages","A new bot DM appears with deterministic D-channel for the chat user; no channel-not-open error occurs","Passed Attempt 19","After reset, U1001 2026-07-03 dispatch returned 200 and created bot 1782635523.000001 on D1001 with message_count=1"
 MS-E2E-042,Reply Parsing,P2,"Long multiline status reply preserves raw formatting","Bot DM exists; reply text includes multiple lines with progress, blockers, and ETA","Submit multiline reply; inspect simulator timeline and persisted check-in raw_reply","Reply processes; line breaks/content remain readable in timeline and persisted raw reply preserves intent","Passed Attempt 20","Multiline reply to 1782635927.000001 returned processed; simulator user text and persisted raw_reply preserved line breaks"
+MS-E2E-043,UI Route Gating,P1,"Already-mounted Mock Slack route is gated when switching to Developer role","Open /mock-slack as Admin, then switch the shell role to Developer","Switch role while the page is already mounted","The nav links disappear and the already-open /mock-slack route redirects away from the admin-only test surface","Passed Attempt 30","Attempt 30 switched from Admin to Developer on /mock-slack; Mock Slack/Admin Config nav links disappeared and the route redirected to /me instead of staying mounted"
+MS-E2E-044,Simulator State,P2,"Simulator messages survive a backend container restart","Simulator contains messages and backend is recreated without resetting volumes","Record message_count; recreate backend container; recheck status/messages","Simulator state is preserved across backend recreation because the store is Redis-backed","Passed Attempt 29","message_count was 12 before backend recreate and 12 after restore; status/messages still showed the same simulator history"
+MS-E2E-045,Directory Sync,P1,"Directory sync is idempotent when run repeatedly","Mock Slack directory provider is enabled","POST /config/directory/sync twice; inspect directory users each time","Second sync reports the same 3 users without duplicates; active directory total stays stable","Passed Attempt 29","Two sync calls both returned synced_count=3 deactivated_count=0; /config/directory/users stayed at total=3"
 ```
 
 ## Iteration Log
+
+### Attempt 30 - 2026-06-29 Chrome Browser QA And Reply Persistence Fix
+
+Action:
+
+- Executed the browser-visible Mock Slack plan through the existing Chrome
+  session using Playwright MCP screenshots saved as `attempt30-*.png` artifacts.
+- Reverified the admin/local preflight, nav gating, reset/validation states,
+  happy path, reply parsing, duplicate reply behavior, refresh/polling behavior,
+  timeline grouping, selector behavior, reset persistence, and member refresh
+  behavior.
+- Investigated failed first-pass reply-processing rows, fixed the backend, then
+  rebuilt and recreated only backend/worker with the local admin Mock Slack QA
+  env:
+  `PULSEOPS_ENVIRONMENT=local`,
+  `PULSEOPS_CHAT_PROVIDER=mock_slack`,
+  `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`,
+  fake calendar/issue/VCS providers,
+  `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`,
+  `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`, and
+  `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+
+Expected result:
+
+- Browser-visible rows should pass sequentially with screenshot evidence.
+- Fresh future-date dispatch replies should persist against the requested
+  scheduled check-in date, not the runtime date.
+- A trivial `ok` reply should not falsely confirm a healthy status.
+- Duplicate replies must not overwrite the first persisted final reply.
+
+Observed result:
+
+- Preflight passed:
+  - `/me` loaded in Chrome with `Viewing as Admin` and `local / demo`.
+  - Screenshot: `attempt30-step00-preflight.png`.
+  - Console errors: `0`.
+- Route/nav gating passed:
+  - Developer role hid `Admin Config` and `Mock Slack`.
+  - Switching to Developer while already on `/mock-slack` redirected to `/me`;
+    the older mounted-route caveat did not reproduce.
+  - Screenshots:
+    `attempt30-step01-ms-e2e-012-developer-nav-gating.png`,
+    `attempt30-step02-ms-e2e-043-route-switch-redirected.png`.
+- Reset and UI validation passed:
+  - Reset produced `message_count=0`, `No messages`, selector
+    `Select message`, and disabled `Submit reply`.
+  - Whitespace-only reply text kept submit disabled.
+  - Screenshots:
+    `attempt30-step03-ms-e2e-007-reset-clears-mailbox.png`,
+    `attempt30-step04-ms-e2e-036-reset-selector-submit-disabled.png`,
+    `attempt30-step05-ms-e2e-033-whitespace-submit-disabled.png`.
+- Initial fresh-date reply rows exposed two backend issues:
+  - Simulator reset cleared Redis messages but not persisted open correlations,
+    so same-thread fresh-date replies could be ignored as ambiguous.
+  - After isolating each reply with unique mock chat IDs, future-date replies
+    processed but wrote `developer_status` on runtime date `2026-06-28`, and
+    `ok` was processed instead of leaving the check-in open.
+- Backend fixes added:
+  - Status finalization now resolves scheduled check-in `as_of` from the
+    schedule-run correlation before falling back to developer-local reply date.
+  - Clarification evaluation treats trivial acknowledgements such as `ok` as
+    non-status before LLM fallback can confirm them.
+  - Repository contracts/fakes now include schedule-run lookup by correlation.
+- Post-fix Chrome/API retest passed:
+  - `MS-E2E-005`: UQA30FIXHAPPY on `2026-09-22` processed bot
+    `1782678347.000001` and reply `1782678390.000005`; raw reply persisted,
+    correlation consumed, and `developer_status.as_of=2026-09-22`.
+  - `MS-E2E-026`: UQA30FIXSHORT on `2026-09-23` processed reply
+    `1782678400.000006` with raw reply
+    `Finished sprint review, no blockers.`.
+  - `MS-E2E-027`: UQA30FIXBLOCK on `2026-09-24` processed reply
+    `1782678424.000007`; blocker text stayed in the summary. Caveat:
+    structured `blockers.items` was empty.
+  - `MS-E2E-028`: UQA30FIXAMBIG on `2026-09-25` recorded user reply
+    `1782678446.000008` and ack bot `1782678446.000009`, but left
+    `raw_reply=null`, `replied_at=null`, no developer status, and the
+    correlation unconsumed.
+  - `MS-E2E-018`: duplicate reply `1782678457.000010` did not overwrite the
+    first happy reply or scheduled-date developer status.
+  - Screenshots:
+    `attempt30-postfix-step01-happy.png`,
+    `attempt30-postfix-step02-short.png`,
+    `attempt30-postfix-step03-blocked.png`,
+    `attempt30-postfix-step04-ambiguous-ok.png`,
+    `attempt30-postfix-step05-duplicate.png`.
+- Additional browser-visible rows passed/observed:
+  - Refresh twice kept message count unchanged at `9`.
+  - Timeline grouping matched API counts: `U1001=7`, `U1002=2`.
+  - Polling surfaced a new API-dispatched DM and auto-selected it when no prior
+    target was selected.
+  - Reset preserved existing pod check-in status for `test prj-1`
+    (`confirmed=2`, `stale=0`, `missing=0` on `2026-06-28`).
+  - Bot selector preserved the intentional U1001 selection after a U1002 DM
+    arrived.
+  - Member refresh was observed without mutating config; Members stayed `6`,
+    matching `/config/members`.
+- Verification passed:
+  - Focused tests:
+    `PYTHONPATH=backend uv run pytest backend/tests/unit/test_status_parsing.py::test_clarification_evaluator_treats_ok_as_non_status_without_llm backend/tests/unit/test_status_collector.py::test_status_collector_records_scheduled_checkin_status_on_schedule_date backend/tests/unit/test_status_collector.py::test_status_collector_handles_reply_by_correlation backend/tests/unit/test_agent_and_workflow.py::test_daily_checkin_activity_sends_without_calendar_availability_gate backend/tests/contract/test_ports.py::test_fake_status_repository_satisfies_contract --no-cov -q`
+    completed with `5 passed`.
+  - Full backend unit suite:
+    `PYTHONPATH=backend uv run pytest backend/tests/unit --no-cov -q`
+    completed with `173 passed, 1 warning`.
+
+Final status:
+
+- Attempt 30 browser-visible rows passed or have documented caveats.
+- Backend and worker were left running in the local admin Mock Slack QA stack.
 
 ### Attempt 28 - 2026-06-28 Mock Slack Navigation And Final Access Gate
 
@@ -144,6 +259,47 @@ Final status:
 
 - All Mock Slack E2E matrix rows have passed or have documented observed
   behavior/caveats.
+
+### Attempt 29 - 2026-06-28 New Coverage Rerun And Restart Persistence Check
+
+Action:
+
+- Added a focused unit test in `backend/tests/unit/test_directory_sync_service.py`
+  that exercises the real `MockSlackHttpClient` through `SlackDirectoryProvider`
+  and checks repeated sync idempotency.
+- Recreated the backend once during the check, then restored the admin
+  `mock_slack` stack.
+- Re-ran the directory sync API twice and inspected the directory user list.
+
+Expected result:
+
+- Directory sync should stay idempotent across repeated calls.
+- Simulator state should remain available after backend recreation once the
+  stack is restored.
+- Any documented UI route-gating caveat should remain unchanged.
+
+Observed result:
+
+- Focused unit test passed:
+  - `PYTHONPATH=backend uv run pytest backend/tests/unit/test_directory_sync_service.py --no-cov -q`
+    completed with `5 passed`.
+- Directory sync API idempotency passed:
+  - Before sync: `/config/directory/users` returned `total=3`.
+  - First `POST /config/directory/sync` returned
+    `synced_count=3`, `deactivated_count=0`.
+  - Second `POST /config/directory/sync` returned
+    `synced_count=3`, `deactivated_count=0`.
+  - After both calls: `/config/directory/users` still returned `total=3`.
+- Backend recreate persistence check passed:
+  - `message_count` was `12` before backend recreate.
+  - During the restart window, the simulator route briefly returned `404`
+    while the backend settled on the default compose env.
+  - After restoring the admin Mock Slack env, `/test/chat-simulator/status`
+    returned `200` again with `message_count=12`.
+  - This confirms simulator history is preserved across backend recreation.
+- UI route-gating behavior remains documented from Attempt 28:
+  - An already-mounted `/mock-slack` page stays mounted when switching the
+    shell role to Developer; only the navigation visibility changes.
 
 ### Attempt 17 - 2026-06-28 Live MS-E2E-022 Retest And Matrix Expansion
 
