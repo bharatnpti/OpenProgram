@@ -33,6 +33,7 @@ from core.application.persona_views import (
 from core.application.portfolio_feed_service import PortfolioFeedItemView, PortfolioFeedView
 from core.domain.directory import DirectoryUser
 from core.domain.graph import EdgeKind, GraphEdge, GraphNode, GraphTree, NodeKind
+from core.domain.risk import RiskFinding
 from core.domain.rollup import Rag, RollupFactor
 from core.domain.status import CheckInPreference, StatusSource
 
@@ -1028,6 +1029,82 @@ class PortfolioFeedResponse(BaseModel):
             since=view.since,
             items=[PortfolioFeedItemResponse.from_view(item) for item in view.items],
         )
+
+
+class RiskEvidenceDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    identifier: str
+    url: str | None
+    url_is_user_supplied: bool
+
+
+class RiskFindingResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    rule_id: str
+    severity: Rag
+    entity_ref: EntityRefDto
+    workstream_id: str | None
+    reason: str
+    evidence: RiskEvidenceDto
+    age_days: int
+    detected_at: datetime
+    status: str
+    owner_id: str | None
+    owner_status_summary: str | None
+    owner_status_source: StatusSource | None
+    owner_status_as_of: date | None
+    owner_status_has_blockers: bool
+    is_watermelon: bool
+
+    @classmethod
+    def from_domain(cls, finding: RiskFinding) -> RiskFindingResponse:
+        watermelon = (
+            finding.owner_status_source in (StatusSource.CONFIRMED, StatusSource.INFERRED)
+            and not finding.owner_status_has_blockers
+            and finding.owner_status_summary is not None
+        )
+        return cls(
+            rule_id=finding.rule_id.value,
+            severity=finding.severity,
+            entity_ref=EntityRefDto(
+                tenant_id=finding.entity_ref.tenant_id,
+                kind=finding.entity_ref.kind,
+                id=finding.entity_ref.id,
+            ),
+            workstream_id=finding.workstream_id,
+            reason=finding.reason,
+            evidence=RiskEvidenceDto(
+                identifier=finding.evidence.identifier,
+                url=finding.evidence.url,
+                url_is_user_supplied=finding.evidence.url_is_user_supplied,
+            ),
+            age_days=finding.age_days,
+            detected_at=finding.detected_at,
+            status=finding.status.value,
+            owner_id=finding.owner_id,
+            owner_status_summary=finding.owner_status_summary,
+            owner_status_source=finding.owner_status_source,
+            owner_status_as_of=finding.owner_status_as_of,
+            owner_status_has_blockers=finding.owner_status_has_blockers,
+            is_watermelon=watermelon,
+        )
+
+
+class ProjectRisksResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    project_id: str
+    as_of: date
+    risks: list[RiskFindingResponse]
+
+
+class PortfolioRisksResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    as_of: date
+    risks: list[RiskFindingResponse]
 
 
 class AskResponse(BaseModel):

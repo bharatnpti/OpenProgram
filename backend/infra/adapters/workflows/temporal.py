@@ -35,6 +35,7 @@ from infra.workflows import (
     git_sync,
     jira_sync,
     nudge,
+    risk_assessment,
     runtime_sync,
 )
 from infra.workflows.calendar_sync import CalendarSyncInput, CalendarSyncWorkflowResult
@@ -49,6 +50,7 @@ from infra.workflows.dispatch import (
 from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import NudgeInput, NudgeResult
+from infra.workflows.risk_assessment import RiskAssessmentInput, RiskAssessmentWorkflowResult
 from infra.workflows.runtime_sync import RuntimeSyncInput, RuntimeSyncWorkflowResult
 
 SyncWorkflowResult = (
@@ -57,6 +59,7 @@ SyncWorkflowResult = (
     | CalendarSyncWorkflowResult
     | DirectorySyncResult
     | RuntimeSyncWorkflowResult
+    | RiskAssessmentWorkflowResult
 )
 
 if TYPE_CHECKING:
@@ -227,6 +230,24 @@ class RuntimeSyncWorkflow:
         )
 
 
+@activity.defn
+async def run_risk_assessment_activity(
+    payload: RiskAssessmentInput,
+) -> RiskAssessmentWorkflowResult:
+    return await risk_assessment.run_risk_assessment_activity(payload)
+
+
+@workflow.defn
+class RiskAssessmentWorkflow:
+    @workflow.run
+    async def run(self, payload: RiskAssessmentInput) -> RiskAssessmentWorkflowResult:
+        return await workflow.execute_activity(
+            run_risk_assessment_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+
+
 @workflow.defn
 class ScheduledSyncWorkflow:
     @workflow.run
@@ -321,7 +342,8 @@ async def _execute_sync_activity(
     | GitSyncInput
     | CalendarSyncInput
     | DirectorySyncInput
-    | RuntimeSyncInput,
+    | RuntimeSyncInput
+    | RiskAssessmentInput,
 ) -> SyncWorkflowResult:
     if isinstance(payload, JiraSyncInput):
         return await workflow.execute_activity(
@@ -350,6 +372,12 @@ async def _execute_sync_activity(
     if isinstance(payload, RuntimeSyncInput):
         return await workflow.execute_activity(
             run_runtime_config_sync_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+    if isinstance(payload, RiskAssessmentInput):
+        return await workflow.execute_activity(
+            run_risk_assessment_activity,
             payload,
             start_to_close_timeout=timedelta(minutes=5),
         )
@@ -528,6 +556,13 @@ class TemporalWorkflowScheduler:
                 id=workflow_id,
                 task_queue=self.task_queue,
             )
+        elif isinstance(workflow_input, RiskAssessmentInput):
+            await client.start_workflow(
+                RiskAssessmentWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
         else:
             raise ValueError(f"unsupported sync connector: {input.connector}")
         return workflow_id
@@ -556,6 +591,7 @@ class TemporalWorkflowWorker:
                 CalendarSyncWorkflow,
                 DirectorySyncWorkflow,
                 RuntimeSyncWorkflow,
+                RiskAssessmentWorkflow,
                 ScheduledSyncWorkflow,
                 DailyCheckinWorkflow,
                 NudgeWorkflow,
@@ -569,6 +605,7 @@ class TemporalWorkflowWorker:
                 sync_calendar_user_activity,
                 sync_directory_activity,
                 run_runtime_config_sync_activity,
+                run_risk_assessment_activity,
                 start_daily_checkin_activity,
                 send_checkin_nudge_activity,
                 close_checkin_non_response_activity,

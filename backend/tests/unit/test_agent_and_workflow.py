@@ -275,11 +275,13 @@ def test_schedule_configs_ignore_calendar_read_sync_targets() -> None:
         ("runtime", "issue", {"connector": "issue"}),
         ("runtime", "vcs", {"connector": "vcs"}),
         ("directory", "directory", {}),
+        ("risk", "assessment", {}),
     ]
     assert [config.cron for config in sync_configs] == [
         settings.jira_sync_cron,
         settings.github_sync_cron,
         settings.directory_sync_cron,
+        settings.risk_assessment_cron,
     ]
 
 
@@ -326,6 +328,7 @@ def test_schedule_configs_include_runtime_fanout_and_directory_when_targets_are_
         ("runtime", "issue", {"connector": "issue"}),
         ("runtime", "vcs", {"connector": "vcs"}),
         ("directory", "directory", {}),
+        ("risk", "assessment", {}),
     ]
 
 
@@ -350,6 +353,7 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
         ("runtime", "issue"),
         ("runtime", "vcs"),
         ("directory", "directory"),
+        ("risk", "assessment"),
     ]
     assert [result.schedule_id for result in results] == [
         "heartbeat-test",

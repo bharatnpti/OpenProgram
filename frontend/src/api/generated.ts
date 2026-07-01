@@ -931,6 +931,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/projects/{project_id}/risks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Project Risks */
+    get: operations["project_risks_projects__project_id__risks_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/portfolio/risks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Portfolio Risks */
+    get: operations["portfolio_risks_portfolio_risks_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/test/chat-simulator/status": {
     parameters: {
       query?: never;
@@ -1671,6 +1705,16 @@ export interface components {
       /** Cells */
       cells: components["schemas"]["HeatmapCellDto"][];
     };
+    /** PortfolioRisksResponse */
+    PortfolioRisksResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Risks */
+      risks: components["schemas"]["RiskFindingResponse"][];
+    };
     /** ProgramProjectLinkRequest */
     ProgramProjectLinkRequest: {
       /** Program Id */
@@ -1722,6 +1766,18 @@ export interface components {
       /** Tasks */
       tasks: components["schemas"]["TaskProgressDto"][];
     };
+    /** ProjectRisksResponse */
+    ProjectRisksResponse: {
+      /** Project Id */
+      project_id: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Risks */
+      risks: components["schemas"]["RiskFindingResponse"][];
+    };
     /**
      * Rag
      * @enum {string}
@@ -1735,6 +1791,47 @@ export interface components {
       dependencies: {
         [key: string]: boolean;
       };
+    };
+    /** RiskEvidenceDto */
+    RiskEvidenceDto: {
+      /** Identifier */
+      identifier: string;
+      /** Url */
+      url: string | null;
+      /** Url Is User Supplied */
+      url_is_user_supplied: boolean;
+    };
+    /** RiskFindingResponse */
+    RiskFindingResponse: {
+      /** Rule Id */
+      rule_id: string;
+      severity: components["schemas"]["Rag"];
+      entity_ref: components["schemas"]["EntityRefDto"];
+      /** Workstream Id */
+      workstream_id: string | null;
+      /** Reason */
+      reason: string;
+      evidence: components["schemas"]["RiskEvidenceDto"];
+      /** Age Days */
+      age_days: number;
+      /**
+       * Detected At
+       * Format: date-time
+       */
+      detected_at: string;
+      /** Status */
+      status: string;
+      /** Owner Id */
+      owner_id: string | null;
+      /** Owner Status Summary */
+      owner_status_summary: string | null;
+      owner_status_source: components["schemas"]["StatusSource"] | null;
+      /** Owner Status As Of */
+      owner_status_as_of: string | null;
+      /** Owner Status Has Blockers */
+      owner_status_has_blockers: boolean;
+      /** Is Watermelon */
+      is_watermelon: boolean;
     };
     /** RollupFactorDto */
     RollupFactorDto: {
@@ -4586,6 +4683,74 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PortfolioFeedResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_risks_projects__project_id__risks_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectRisksResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  portfolio_risks_portfolio_risks_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PortfolioRisksResponse"];
         };
       };
       /** @description Validation Error */
