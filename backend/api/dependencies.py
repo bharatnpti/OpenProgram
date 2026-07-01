@@ -12,7 +12,9 @@ from core.application.flow_metrics_service import FlowMetricsService
 from core.application.graph_queries import GraphQueryService
 from core.application.persona_views import PersonaViewService
 from core.application.portfolio_feed_service import PortfolioFeedService
+from core.application.risk_service import RiskService
 from core.domain.auth import Principal
+from core.domain.risk import RiskProviderConfig
 from infra.registry import ServiceRegistry
 
 
@@ -61,6 +63,23 @@ def get_flow_metrics_service(request: Request) -> FlowMetricsService:
 def get_portfolio_feed_service(request: Request) -> PortfolioFeedService:
     registry = get_registry(request)
     return PortfolioFeedService(registry.time_series_repository())
+
+
+def get_risk_service(request: Request) -> RiskService:
+    registry = get_registry(request)
+    settings = get_settings_from_request(request)
+    return RiskService(
+        graph_repository=registry.graph_repository(),
+        time_series_repository=registry.time_series_repository(),
+        status_repository=registry.status_repository(),
+        provider_config=RiskProviderConfig(
+            jira_base_url=settings.jira_base_url,
+            github_base_url=settings.github_base_url,
+            default_no_pr_days=settings.risk_default_no_pr_days,
+            default_pr_age_days=settings.risk_default_pr_age_days,
+            default_stale_days=settings.risk_default_stale_days,
+        ),
+    )
 
 
 def get_ask_service(request: Request) -> AskService:

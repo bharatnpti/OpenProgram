@@ -26,9 +26,11 @@ import type {
   PortfolioHeatmapResponse,
   PortfolioFeedResponse,
   PortfolioFlowResponse,
+  PortfolioRisksResponse,
   ProgramProjectLinkRequest,
   ProgramTreeResponse,
   ProjectProgressResponse,
+  ProjectRisksResponse,
   ReadyResponse,
   WorkstreamFlowResponse,
   WorkstreamProgressResponse,
@@ -113,6 +115,12 @@ export const apiClient = {
         limit: String(limit),
       }),
     ),
+  projectRisks: (projectId: string, asOf?: string) =>
+    requestJson<ProjectRisksResponse>(
+      withQuery(`/projects/${projectId}/risks`, { as_of: asOf }),
+    ),
+  portfolioRisks: (asOf?: string) =>
+    requestJson<PortfolioRisksResponse>(withQuery("/portfolio/risks", { as_of: asOf })),
   ask: (input: AskRequest) =>
     requestJson<AskResponse>("/ask", {
       method: "POST",

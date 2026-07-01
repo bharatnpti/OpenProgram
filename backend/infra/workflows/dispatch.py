@@ -14,10 +14,16 @@ from infra.workflows.calendar_sync import CalendarSyncInput
 from infra.workflows.daily_checkin import DailyCheckinInput
 from infra.workflows.git_sync import GitSyncInput
 from infra.workflows.jira_sync import JiraSyncInput
+from infra.workflows.risk_assessment import RiskAssessmentInput
 from infra.workflows.runtime_sync import RuntimeSyncInput
 
 type SyncWorkflowInput = (
-    JiraSyncInput | GitSyncInput | CalendarSyncInput | DirectorySyncInput | RuntimeSyncInput
+    JiraSyncInput
+    | GitSyncInput
+    | CalendarSyncInput
+    | DirectorySyncInput
+    | RuntimeSyncInput
+    | RiskAssessmentInput
 )
 
 
@@ -92,6 +98,12 @@ def sync_workflow_input(input: SyncDispatchInput) -> SyncWorkflowInput:
             tenant_id=input.tenant_id,
             connector=_optional_str(input.payload, "connector"),
         )
+    if connector == "risk":
+        return RiskAssessmentInput(
+            tenant_id=input.tenant_id,
+            project_id=_optional_str(input.payload, "project_id"),
+            observed_at=_optional_str(input.payload, "observed_at"),
+        )
     raise ValueError(f"unsupported sync connector: {input.connector}")
 
 
@@ -107,6 +119,8 @@ def sync_workflow_name(input: SyncDispatchInput) -> str:
         return "directory"
     if connector == "runtime":
         return "runtime"
+    if connector == "risk":
+        return "risk"
     raise ValueError(f"unsupported sync connector: {input.connector}")
 
 
@@ -127,6 +141,8 @@ def _connector(value: str) -> str:
         return "directory"
     if normalized in {"runtime", "runtime_issue", "runtime_vcs", "runtime_sync"}:
         return "runtime"
+    if normalized in {"risk", "risk_assessment"}:
+        return "risk"
     return normalized
 
 

@@ -10,6 +10,7 @@ from api.dependencies import (
     get_flow_metrics_service,
     get_persona_view_service,
     get_portfolio_feed_service,
+    get_risk_service,
 )
 from api.dtos import (
     FocusResponse,
@@ -18,8 +19,11 @@ from api.dtos import (
     PortfolioFeedResponse,
     PortfolioFlowResponse,
     PortfolioHeatmapResponse,
+    PortfolioRisksResponse,
     ProgramTreeResponse,
     ProjectProgressResponse,
+    ProjectRisksResponse,
+    RiskFindingResponse,
     WorkstreamFlowResponse,
     WorkstreamProgressResponse,
 )
@@ -27,8 +31,9 @@ from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.persona_views import PersonaViewService
 from core.application.portfolio_feed_service import PortfolioFeedService
+from core.application.risk_service import RiskService
 from core.domain.auth import Principal
-from core.domain.errors import AuthorizationDenied
+from core.domain.errors import AuthorizationDenied, GraphNotFound
 
 router = APIRouter(tags=["personas"])
 
@@ -148,6 +153,39 @@ async def portfolio_feed(
     _ensure_aggregate(principal)
     view = await service.feed(principal.tenant_id, since)
     return PortfolioFeedResponse.from_view(view)
+
+
+@router.get("/projects/{project_id}/risks", response_model=ProjectRisksResponse)
+async def project_risks(
+    project_id: str,
+    as_of: Annotated[date, Query(default_factory=date.today)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[RiskService, Depends(get_risk_service)],
+) -> ProjectRisksResponse:
+    _ensure_aggregate(principal)
+    try:
+        findings = await service.project_risks(principal.tenant_id, project_id, as_of)
+    except GraphNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ProjectRisksResponse(
+        project_id=project_id,
+        as_of=as_of,
+        risks=[RiskFindingResponse.from_domain(finding) for finding in findings],
+    )
+
+
+@router.get("/portfolio/risks", response_model=PortfolioRisksResponse)
+async def portfolio_risks(
+    as_of: Annotated[date, Query(default_factory=date.today)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[RiskService, Depends(get_risk_service)],
+) -> PortfolioRisksResponse:
+    _ensure_aggregate(principal)
+    findings = await service.portfolio_risks(principal.tenant_id, as_of)
+    return PortfolioRisksResponse(
+        as_of=as_of,
+        risks=[RiskFindingResponse.from_domain(finding) for finding in findings],
+    )
 
 
 def _ensure(principal: Principal, capability: Capability) -> None:

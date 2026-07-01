@@ -81,6 +81,14 @@ def sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
             payload={},
             cron=settings.directory_sync_cron,
         ),
+        SyncScheduleConfig(
+            schedule_id="pulseops-runtime-risk-assessment",
+            tenant_id=settings.tenant_id,
+            connector="risk",
+            scope="assessment",
+            payload={},
+            cron=settings.risk_assessment_cron,
+        ),
     )
 
 

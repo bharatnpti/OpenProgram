@@ -29,6 +29,9 @@ const PortfolioPage = lazy(() =>
 const FlowPage = lazy(() =>
   import("./pages/FlowPage").then((module) => ({ default: module.FlowPage })),
 );
+const RisksPage = lazy(() =>
+  import("./pages/RisksPage").then((module) => ({ default: module.RisksPage })),
+);
 const ProjectDetailPage = lazy(() =>
   import("./pages/ProjectDetailPage").then((module) => ({
     default: module.ProjectDetailPage,
@@ -81,6 +84,14 @@ export function App() {
                 element={
                   <RequirePortfolioAccess>
                     <PortfolioPage />
+                  </RequirePortfolioAccess>
+                }
+              />
+              <Route
+                path="/risks"
+                element={
+                  <RequirePortfolioAccess>
+                    <RisksPage />
                   </RequirePortfolioAccess>
                 }
               />
