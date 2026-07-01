@@ -251,6 +251,130 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/config/workstreams": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Config Workstreams */
+    get: operations["list_config_workstreams_config_workstreams_get"];
+    put?: never;
+    /** Create Config Workstream */
+    post: operations["create_config_workstream_config_workstreams_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/workstreams/{workstream_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Config Workstream */
+    get: operations["get_config_workstream_config_workstreams__workstream_id__get"];
+    /** Update Config Workstream */
+    put: operations["update_config_workstream_config_workstreams__workstream_id__put"];
+    post?: never;
+    /** Delete Config Workstream */
+    delete: operations["delete_config_workstream_config_workstreams__workstream_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/work-items": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Config Work Items */
+    get: operations["list_config_work_items_config_work_items_get"];
+    put?: never;
+    /** Create Config Work Item */
+    post: operations["create_config_work_item_config_work_items_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/work-items/from-branch": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create Config Work Item From Branch */
+    post: operations["create_config_work_item_from_branch_config_work_items_from_branch_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/work-items/from-pr": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create Config Work Item From Pr */
+    post: operations["create_config_work_item_from_pr_config_work_items_from_pr_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/work-items/{work_item_id}/transition": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Transition Config Work Item */
+    post: operations["transition_config_work_item_config_work_items__work_item_id__transition_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/workstreams/{workstream_id}/work-items/{work_item_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Link Config Workstream Work Item */
+    post: operations["link_config_workstream_work_item_config_workstreams__workstream_id__work_items__work_item_id__post"];
+    /** Unlink Config Workstream Work Item */
+    delete: operations["unlink_config_workstream_work_item_config_workstreams__workstream_id__work_items__work_item_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/members": {
     parameters: {
       query?: never;
@@ -375,6 +499,60 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/config/projects/{project_id}/workstreams/{workstream_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Link Config Project Workstream */
+    post: operations["link_config_project_workstream_config_projects__project_id__workstreams__workstream_id__post"];
+    /** Unlink Config Project Workstream */
+    delete: operations["unlink_config_project_workstream_config_projects__project_id__workstreams__workstream_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/pods/{pod_id}/workstreams/{workstream_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Link Config Pod Workstream */
+    post: operations["link_config_pod_workstream_config_pods__pod_id__workstreams__workstream_id__post"];
+    /** Unlink Config Pod Workstream */
+    delete: operations["unlink_config_pod_workstream_config_pods__pod_id__workstreams__workstream_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/workstreams/{workstream_id}/tasks/{task_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Link Config Workstream Task */
+    post: operations["link_config_workstream_task_config_workstreams__workstream_id__tasks__task_id__post"];
+    /** Unlink Config Workstream Task */
+    delete: operations["unlink_config_workstream_task_config_workstreams__workstream_id__tasks__task_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/pods/{pod_id}/members/{member_id}": {
     parameters: {
       query?: never;
@@ -480,6 +658,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/workstreams": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Workstreams */
+    get: operations["list_workstreams_workstreams_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/workstreams/{workstream_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Workstream */
+    get: operations["get_workstream_workstreams__workstream_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/workstreams": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Project Workstreams */
+    get: operations["list_project_workstreams_projects__project_id__workstreams_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/pods": {
     parameters: {
       query?: never;
@@ -491,6 +720,23 @@ export interface paths {
     get: operations["list_pods_pods_get"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/ask": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Ask */
+    post: operations["ask_ask_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -583,6 +829,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/workstreams/{workstream_id}/progress": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Workstream Progress */
+    get: operations["workstream_progress_workstreams__workstream_id__progress_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/programs/{program_id}/tree": {
     parameters: {
       query?: never;
@@ -609,6 +872,57 @@ export interface paths {
     };
     /** Portfolio Heatmap */
     get: operations["portfolio_heatmap_portfolio_heatmap_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/workstreams/{workstream_id}/flow": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Workstream Flow */
+    get: operations["workstream_flow_workstreams__workstream_id__flow_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/portfolio/flow": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Portfolio Flow */
+    get: operations["portfolio_flow_portfolio_flow_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/portfolio/feed": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Portfolio Feed */
+    get: operations["portfolio_feed_portfolio_feed_get"];
     put?: never;
     post?: never;
     delete?: never;
@@ -706,6 +1020,24 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /** AskRequest */
+    AskRequest: {
+      /** Question */
+      question: string;
+      /** As Of */
+      as_of?: string | null;
+    };
+    /** AskResponse */
+    AskResponse: {
+      /** Answer */
+      answer: string;
+      /** References */
+      references: string[];
+      /** Tools Used */
+      tools_used: string[];
+      /** Trace Id */
+      trace_id: string;
+    };
     /** BlockerDto */
     BlockerDto: {
       /** Id */
@@ -988,6 +1320,8 @@ export interface components {
       program_ids: string[];
       /** Project Ids */
       project_ids: string[];
+      /** Workstream Ids */
+      workstream_ids: string[];
       /** Pod Ids */
       pod_ids: string[];
       /** Member Ids */
@@ -1194,7 +1528,16 @@ export interface components {
      * NodeKind
      * @enum {string}
      */
-    NodeKind: "program" | "project" | "sprint" | "repo" | "pod" | "developer" | "task";
+    NodeKind:
+      | "program"
+      | "project"
+      | "workstream"
+      | "sprint"
+      | "repo"
+      | "pod"
+      | "developer"
+      | "task"
+      | "work_item";
     /** PersonaTreeEdgeDto */
     PersonaTreeEdgeDto: {
       /** From Node Id */
@@ -1255,6 +1598,64 @@ export interface components {
     PodMemberLinkRequest: {
       /** Role */
       role: string;
+    };
+    /** PortfolioFeedItemResponse */
+    PortfolioFeedItemResponse: {
+      /** Source */
+      source: string;
+      /** Kind */
+      kind: string;
+      /** Summary */
+      summary: string;
+      entity_ref: components["schemas"]["EntityRefDto"];
+      /**
+       * Observed At
+       * Format: date-time
+       */
+      observed_at: string;
+      /** Details */
+      details: {
+        [key: string]: string | number | boolean | null;
+      };
+    };
+    /** PortfolioFeedResponse */
+    PortfolioFeedResponse: {
+      /**
+       * As Of
+       * Format: date-time
+       */
+      as_of: string;
+      /**
+       * Since
+       * Format: date-time
+       */
+      since: string;
+      /** Items */
+      items: components["schemas"]["PortfolioFeedItemResponse"][];
+    };
+    /** PortfolioFlowResponse */
+    PortfolioFlowResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Active Count */
+      active_count: number;
+      /** Features In Flight */
+      features_in_flight: number;
+      /** Completed Count */
+      completed_count: number;
+      /** Stale Count */
+      stale_count: number;
+      /** Abandoned Count */
+      abandoned_count: number;
+      /** Avg Cycle Time Days */
+      avg_cycle_time_days: number | null;
+      /** Avg Pr Age Days */
+      avg_pr_age_days: number | null;
+      /** Workstreams */
+      workstreams: components["schemas"]["WorkstreamFlowSummaryDto"][];
     };
     /** PortfolioHeatmapResponse */
     PortfolioHeatmapResponse: {
@@ -1373,10 +1774,190 @@ export interface components {
       /** Context */
       ctx?: Record<string, never>;
     };
+    /** WorkItemCreateRequest */
+    WorkItemCreateRequest: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /**
+       * State
+       * @default proposed
+       */
+      state: string;
+      /**
+       * Item Type
+       * @default feature
+       */
+      item_type: string;
+      /** Repo */
+      repo?: string | null;
+      /** Branch */
+      branch?: string | null;
+      /** Pr Id */
+      pr_id?: string | null;
+      /** Workstream Id */
+      workstream_id?: string | null;
+      /** Metadata */
+      metadata?: {
+        [key: string]: string | number | boolean | null;
+      };
+    };
+    /** WorkItemFlowDto */
+    WorkItemFlowDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** State */
+      state: string;
+      /** Item Type */
+      item_type: string;
+      /** Repo */
+      repo: string | null;
+      /** Branch */
+      branch: string | null;
+      /** Pr Id */
+      pr_id: string | null;
+      /** Workstream Ids */
+      workstream_ids: string[];
+      /** Age Days */
+      age_days: number | null;
+      /** Cycle Time Days */
+      cycle_time_days: number | null;
+      /** Last Transition At */
+      last_transition_at: string | null;
+    };
+    /** WorkItemFromBranchRequest */
+    WorkItemFromBranchRequest: {
+      /** Repo */
+      repo: string;
+      /** Branch */
+      branch: string;
+      /** Name */
+      name?: string | null;
+      /**
+       * Item Type
+       * @default feature
+       */
+      item_type: string;
+      /** Workstream Id */
+      workstream_id?: string | null;
+      /** Metadata */
+      metadata?: {
+        [key: string]: string | number | boolean | null;
+      };
+    };
+    /** WorkItemFromPrRequest */
+    WorkItemFromPrRequest: {
+      /** Repo */
+      repo: string;
+      /** Pr Id */
+      pr_id: string;
+      /** Title */
+      title: string;
+      /**
+       * Item Type
+       * @default feature
+       */
+      item_type: string;
+      /** Workstream Id */
+      workstream_id?: string | null;
+      /** Metadata */
+      metadata?: {
+        [key: string]: string | number | boolean | null;
+      };
+    };
+    /** WorkItemTransitionRequest */
+    WorkItemTransitionRequest: {
+      /** New State */
+      new_state: string;
+    };
     /** WorkflowDispatchResponse */
     WorkflowDispatchResponse: {
       /** Workflow Id */
       workflow_id: string;
+    };
+    /** WorkstreamFlowResponse */
+    WorkstreamFlowResponse: {
+      /** Workstream Id */
+      workstream_id: string;
+      /** Workstream Name */
+      workstream_name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Active Count */
+      active_count: number;
+      /** Features In Flight */
+      features_in_flight: number;
+      /** Completed Count */
+      completed_count: number;
+      /** Stale Count */
+      stale_count: number;
+      /** Abandoned Count */
+      abandoned_count: number;
+      /** Avg Cycle Time Days */
+      avg_cycle_time_days: number | null;
+      /** Avg Pr Age Days */
+      avg_pr_age_days: number | null;
+      /** Work Items */
+      work_items: components["schemas"]["WorkItemFlowDto"][];
+    };
+    /** WorkstreamFlowSummaryDto */
+    WorkstreamFlowSummaryDto: {
+      /** Workstream Id */
+      workstream_id: string;
+      /** Workstream Name */
+      workstream_name: string;
+      /** Active Count */
+      active_count: number;
+      /** Features In Flight */
+      features_in_flight: number;
+      /** Completed Count */
+      completed_count: number;
+      /** Stale Count */
+      stale_count: number;
+      /** Abandoned Count */
+      abandoned_count: number;
+      /** Avg Cycle Time Days */
+      avg_cycle_time_days: number | null;
+      /** Avg Pr Age Days */
+      avg_pr_age_days: number | null;
+    };
+    /** WorkstreamProgressResponse */
+    WorkstreamProgressResponse: {
+      /** Workstream Id */
+      workstream_id: string;
+      /** Workstream Name */
+      workstream_name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      rag: components["schemas"]["Rag"];
+      source: components["schemas"]["StatusSource"];
+      /** Confidence */
+      confidence: number | null;
+      /** Percent Complete */
+      percent_complete: number;
+      /** Total Tasks */
+      total_tasks: number;
+      /** Green Tasks */
+      green_tasks: number;
+      /** Amber Tasks */
+      amber_tasks: number;
+      /** Red Tasks */
+      red_tasks: number;
+      /** Unknown Tasks */
+      unknown_tasks: number;
+      /** Factors */
+      factors: components["schemas"]["RollupFactorDto"][];
+      /** Tasks */
+      tasks: components["schemas"]["TaskProgressDto"][];
     };
   };
   responses: never;
@@ -2123,6 +2704,412 @@ export interface operations {
       };
     };
   };
+  list_config_workstreams_config_workstreams_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConfigNodeResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_config_workstream_config_workstreams_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ConfigNodeCreateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConfigNodeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_config_workstream_config_workstreams__workstream_id__get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        workstream_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConfigNodeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_config_workstream_config_workstreams__workstream_id__put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        workstream_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ConfigNodeUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConfigNodeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  delete_config_workstream_config_workstreams__workstream_id__delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        workstream_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_config_work_items_config_work_items_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConfigNodeResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_config_work_item_config_work_items_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WorkItemCreateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConfigNodeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_config_work_item_from_branch_config_work_items_from_branch_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WorkItemFromBranchRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConfigNodeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_config_work_item_from_pr_config_work_items_from_pr_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WorkItemFromPrRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConfigNodeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  transition_config_work_item_config_work_items__work_item_id__transition_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        work_item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WorkItemTransitionRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConfigNodeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  link_config_workstream_work_item_config_workstreams__workstream_id__work_items__work_item_id__post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        workstream_id: string;
+        work_item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConfigEdgeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  unlink_config_workstream_work_item_config_workstreams__workstream_id__work_items__work_item_id__delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        workstream_id: string;
+        work_item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   list_config_members_config_members_get: {
     parameters: {
       query?: never;
@@ -2527,6 +3514,204 @@ export interface operations {
       };
     };
   };
+  link_config_project_workstream_config_projects__project_id__workstreams__workstream_id__post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+        workstream_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConfigEdgeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  unlink_config_project_workstream_config_projects__project_id__workstreams__workstream_id__delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+        workstream_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  link_config_pod_workstream_config_pods__pod_id__workstreams__workstream_id__post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+        workstream_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConfigEdgeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  unlink_config_pod_workstream_config_pods__pod_id__workstreams__workstream_id__delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+        workstream_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  link_config_workstream_task_config_workstreams__workstream_id__tasks__task_id__post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        workstream_id: string;
+        task_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConfigEdgeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  unlink_config_workstream_task_config_workstreams__workstream_id__tasks__task_id__delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        workstream_id: string;
+        task_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   link_config_pod_member_config_pods__pod_id__members__member_id__post: {
     parameters: {
       query?: never;
@@ -2834,6 +4019,109 @@ export interface operations {
       };
     };
   };
+  list_workstreams_workstreams_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DirectoryItemResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_workstream_workstreams__workstream_id__get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        workstream_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DirectoryItemResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_project_workstreams_projects__project_id__workstreams_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DirectoryItemResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   list_pods_pods_get: {
     parameters: {
       query?: {
@@ -2854,6 +4142,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["DirectoryItemResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  ask_ask_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AskRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AskResponse"];
         };
       };
       /** @description Validation Error */
@@ -3071,6 +4394,41 @@ export interface operations {
       };
     };
   };
+  workstream_progress_workstreams__workstream_id__progress_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        workstream_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkstreamProgressResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   program_tree_programs__program_id__tree_get: {
     parameters: {
       query?: {
@@ -3127,6 +4485,107 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PortfolioHeatmapResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  workstream_flow_workstreams__workstream_id__flow_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        workstream_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkstreamFlowResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  portfolio_flow_portfolio_flow_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PortfolioFlowResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  portfolio_feed_portfolio_feed_get: {
+    parameters: {
+      query?: {
+        since?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PortfolioFeedResponse"];
         };
       };
       /** @description Validation Error */

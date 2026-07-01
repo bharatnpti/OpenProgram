@@ -10,7 +10,7 @@ from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.conversation_history import llm_messages_from_turns
 from core.domain.conversation import ConversationTurn
 from core.domain.llm import LlmRequest, LlmResponse
-from core.domain.status import CheckInSignals, Mood
+from core.domain.status import CheckInSignals
 from core.ports.llm import LlmProvider
 from core.ports.tools import AgentTool
 
@@ -119,6 +119,9 @@ class ClarificationEvaluator:
         tools: Iterable[AgentTool] = (),
         prior_blockers: Iterable[str] = (),
     ) -> ClarificationDecision:
+        if _is_trivial_non_status_reply(raw_reply):
+            return ClarificationDecision(sufficient=False, is_status_update=False)
+
         request = LlmRequest(
             tenant_id=tenant_id,
             prompt=_clarification_prompt(raw_reply, prior_blockers=prior_blockers),
@@ -157,8 +160,7 @@ def _parser_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ()) -> str
     return (
         "Extract structured check-in signals from the reply below. "
         "Return only a JSON object with keys: progress_note string, "
-        "blockers array of strings, eta_change_days integer or null, "
-        "mood one of positive, neutral, negative, or null. "
+        "blockers array of strings, eta_change_days integer or null. "
         "Do not invent blockers; use an empty blockers array when no blocker is stated. "
         "Previously open blockers are context only; mark them resolved only if the reply says "
         f"they are resolved.{_prior_blocker_prompt(prior_blockers)}\n\n"
@@ -173,7 +175,7 @@ def _clarification_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ())
         "signals object or null. Set is_status_update false for acknowledgements, thanks, "
         "reactions, or questions that do not provide status progress, blockers, or ETA. "
         "The signals object uses keys: progress_note string, blockers array of strings, "
-        "eta_change_days integer or null, mood one of positive, neutral, negative, or null. "
+        "eta_change_days integer or null. "
         "Do not invent blockers. Previously open blockers are context only; mark them resolved "
         "only if the reply says they are resolved. When sufficient is false, question must ask "
         f"only for the missing status detail.{_prior_blocker_prompt(prior_blockers)}\n\n"
@@ -223,6 +225,20 @@ def _prior_blocker_prompt(prior_blockers: Iterable[str]) -> str:
     return "\n\nPreviously open blockers:\n" + "\n".join(f"- {blocker}" for blocker in blockers)
 
 
+def _is_trivial_non_status_reply(raw_reply: str) -> bool:
+    normalized = " ".join(raw_reply.casefold().strip().split())
+    return normalized in {
+        "k",
+        "kk",
+        "ok",
+        "okay",
+        "sure",
+        "thanks",
+        "thank you",
+        "ty",
+    }
+
+
 def _signals_from_json(value: object, *, fallback_progress_note: str) -> CheckInSignals:
     if not isinstance(value, Mapping):
         return CheckInSignals(progress_note=fallback_progress_note)
@@ -234,7 +250,6 @@ def _signals_from_json(value: object, *, fallback_progress_note: str) -> CheckIn
         else fallback_progress_note,
         blockers=_string_tuple(value.get("blockers")),
         eta_change_days=_optional_int(value.get("eta_change_days")),
-        mood=_optional_mood(value.get("mood")),
     )
 
 
@@ -248,12 +263,3 @@ def _optional_int(value: object) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool):
         return value
     return None
-
-
-def _optional_mood(value: object) -> Mood | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        return Mood(value.lower())
-    except ValueError:
-        return None

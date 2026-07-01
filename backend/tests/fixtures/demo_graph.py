@@ -15,9 +15,10 @@ from core.domain.graph import (
     Program,
     Project,
     Task,
+    Workstream,
 )
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
-from core.domain.status import CheckIn, CheckInSignals, DeveloperStatus, Mood, StatusSource
+from core.domain.status import CheckIn, CheckInSignals, DeveloperStatus, StatusSource
 from core.ports.repositories import (
     GraphRepository,
     RollupRepository,
@@ -31,9 +32,81 @@ def demo_nodes(tenant_id: str) -> tuple[GraphNode, ...]:
         Program(tenant_id=tenant_id, id="program-platform", name="Platform Program"),
         Project(tenant_id=tenant_id, id="project-foundations", name="Foundations"),
         Project(tenant_id=tenant_id, id="project-insights", name="Insights"),
+        Project(
+            tenant_id=tenant_id,
+            id="project-agentic-pm",
+            name="Agentic Program Management",
+            metadata={
+                "description": "Agent-assisted delivery operations and portfolio intelligence.",
+                "code": "APM",
+            },
+        ),
+        Workstream(
+            tenant_id=tenant_id,
+            id="workstream-runtime-config-admin",
+            name="Runtime Config Admin",
+            metadata={
+                "type": "feature",
+                "phase": "rollout",
+                "owner_id": "dev-asha",
+                "tpm_id": "dev-ira",
+                "sm_id": "dev-maya",
+                "target_date": "2026-06-28",
+                "confidence": 0.74,
+                "summary": "Admin graph configuration is ready for controlled rollout.",
+            },
+        ),
+        Workstream(
+            tenant_id=tenant_id,
+            id="workstream-mock-slack-e2e",
+            name="Mock Slack E2E",
+            metadata={
+                "type": "ops",
+                "phase": "review",
+                "owner_id": "dev-maya",
+                "tpm_id": "dev-ira",
+                "sm_id": "dev-maya",
+                "target_date": "2026-06-21",
+                "confidence": 0.68,
+                "summary": "Simulator coverage is validating the check-in loop.",
+            },
+        ),
+        Workstream(
+            tenant_id=tenant_id,
+            id="workstream-jira-git-sync",
+            name="Jira/Git Sync",
+            metadata={
+                "type": "migration",
+                "phase": "build",
+                "owner_id": "dev-liam",
+                "tpm_id": "dev-ira",
+                "sm_id": "dev-maya",
+                "target_date": "2026-07-05",
+                "confidence": 0.52,
+                "summary": "Read-only integration sync is being hardened.",
+            },
+        ),
+        Workstream(
+            tenant_id=tenant_id,
+            id="workstream-portfolio-command-center",
+            name="Portfolio Command Center",
+            metadata={
+                "type": "experiment",
+                "phase": "discovery",
+                "owner_id": "dev-zoe",
+                "tpm_id": "dev-ira",
+                "sm_id": "dev-maya",
+                "target_date": "2026-07-12",
+                "confidence": 0.44,
+                "summary": "Portfolio risk surfaces are being shaped from workstream rollups.",
+            },
+        ),
         Pod(tenant_id=tenant_id, id="pod-runtime", name="Runtime Pod"),
         Pod(tenant_id=tenant_id, id="pod-experience", name="Experience Pod"),
         Pod(tenant_id=tenant_id, id="pod-data", name="Data Pod"),
+        Pod(tenant_id=tenant_id, id="pod-agentic-runtime", name="Agentic Runtime Pod"),
+        Pod(tenant_id=tenant_id, id="pod-agentic-experience", name="Agentic Experience Pod"),
+        Pod(tenant_id=tenant_id, id="pod-agentic-data", name="Agentic Data Pod"),
         Developer(tenant_id=tenant_id, id="dev-asha", name="Asha"),
         Developer(tenant_id=tenant_id, id="dev-liam", name="Liam"),
         Developer(tenant_id=tenant_id, id="dev-maya", name="Maya"),
@@ -46,6 +119,30 @@ def demo_nodes(tenant_id: str) -> tuple[GraphNode, ...]:
         Task(tenant_id=tenant_id, id="task-graph", name="Graph persistence"),
         Task(tenant_id=tenant_id, id="task-chat", name="Chat adapter"),
         Task(tenant_id=tenant_id, id="task-ui", name="React shell"),
+        Task(
+            tenant_id=tenant_id,
+            id="task-runtime-config-ui",
+            name="Workstream admin controls",
+            metadata={"status": "done", "target_date": "2026-06-20"},
+        ),
+        Task(
+            tenant_id=tenant_id,
+            id="task-mock-slack-reset",
+            name="Mock Slack reset scenarios",
+            metadata={"status": "at-risk", "target_date": "2026-06-21"},
+        ),
+        Task(
+            tenant_id=tenant_id,
+            id="task-jira-sync-targets",
+            name="Jira and Git sync targets",
+            metadata={"status": "blocked", "target_date": "2026-07-01"},
+        ),
+        Task(
+            tenant_id=tenant_id,
+            id="task-portfolio-risk",
+            name="Portfolio risk workstream cards",
+            metadata={"status": "unknown", "target_date": "2026-07-08"},
+        ),
     )
 
 
@@ -62,6 +159,12 @@ def demo_edges(tenant_id: str) -> tuple[GraphEdge, ...]:
             tenant_id=tenant_id,
             from_node_id="program-platform",
             to_node_id="project-insights",
+            kind=EdgeKind.CONTAINS,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="program-platform",
+            to_node_id="project-agentic-pm",
             kind=EdgeKind.CONTAINS,
         ),
         GraphEdge(
@@ -83,6 +186,62 @@ def demo_edges(tenant_id: str) -> tuple[GraphEdge, ...]:
             from_node_id="project-insights",
             to_node_id="pod-data",
             kind=EdgeKind.CONTAINS,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="project-agentic-pm",
+            to_node_id="pod-agentic-runtime",
+            kind=EdgeKind.CONTAINS,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="project-agentic-pm",
+            to_node_id="pod-agentic-experience",
+            kind=EdgeKind.CONTAINS,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="project-agentic-pm",
+            to_node_id="pod-agentic-data",
+            kind=EdgeKind.CONTAINS,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="project-agentic-pm",
+            to_node_id="workstream-runtime-config-admin",
+            kind=EdgeKind.CONTAINS,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="project-agentic-pm",
+            to_node_id="workstream-mock-slack-e2e",
+            kind=EdgeKind.CONTAINS,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="project-agentic-pm",
+            to_node_id="workstream-jira-git-sync",
+            kind=EdgeKind.CONTAINS,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="project-agentic-pm",
+            to_node_id="workstream-portfolio-command-center",
+            kind=EdgeKind.CONTAINS,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="workstream-jira-git-sync",
+            to_node_id="workstream-runtime-config-admin",
+            kind=EdgeKind.DEPENDS_ON,
             valid_from=start,
         ),
         GraphEdge(
@@ -143,6 +302,34 @@ def demo_edges(tenant_id: str) -> tuple[GraphEdge, ...]:
         ),
         GraphEdge(
             tenant_id=tenant_id,
+            from_node_id="pod-agentic-runtime",
+            to_node_id="workstream-runtime-config-admin",
+            kind=EdgeKind.ASSIGNED_TO,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="pod-agentic-experience",
+            to_node_id="workstream-mock-slack-e2e",
+            kind=EdgeKind.ASSIGNED_TO,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="pod-agentic-runtime",
+            to_node_id="workstream-jira-git-sync",
+            kind=EdgeKind.ASSIGNED_TO,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="pod-agentic-data",
+            to_node_id="workstream-portfolio-command-center",
+            kind=EdgeKind.ASSIGNED_TO,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
             from_node_id="dev-asha",
             to_node_id="task-api",
             kind=EdgeKind.ASSIGNED_TO,
@@ -169,6 +356,34 @@ def demo_edges(tenant_id: str) -> tuple[GraphEdge, ...]:
             kind=EdgeKind.ASSIGNED_TO,
             valid_from=start,
         ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="workstream-runtime-config-admin",
+            to_node_id="task-runtime-config-ui",
+            kind=EdgeKind.CONTAINS,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="workstream-mock-slack-e2e",
+            to_node_id="task-mock-slack-reset",
+            kind=EdgeKind.CONTAINS,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="workstream-jira-git-sync",
+            to_node_id="task-jira-sync-targets",
+            kind=EdgeKind.CONTAINS,
+            valid_from=start,
+        ),
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="workstream-portfolio-command-center",
+            to_node_id="task-portfolio-risk",
+            kind=EdgeKind.CONTAINS,
+            valid_from=start,
+        ),
     )
 
 
@@ -191,6 +406,42 @@ def demo_facts(tenant_id: str) -> tuple[FactEvent, ...]:
             observed_at=now,
             correlation_id="fixture-demo",
         ),
+        FactEvent(
+            tenant_id=tenant_id,
+            source="fixture",
+            entity_ref=EntityRef(
+                tenant_id=tenant_id,
+                kind=NodeKind.TASK,
+                id="task-runtime-config-ui",
+            ),
+            payload={"status": "green", "source": "confirmed", "confidence": 0.82},
+            observed_at=now,
+            correlation_id="fixture-workstream-runtime-config",
+        ),
+        FactEvent(
+            tenant_id=tenant_id,
+            source="fixture",
+            entity_ref=EntityRef(
+                tenant_id=tenant_id,
+                kind=NodeKind.TASK,
+                id="task-mock-slack-reset",
+            ),
+            payload={"status": "amber", "source": "inferred", "confidence": 0.62},
+            observed_at=now,
+            correlation_id="fixture-workstream-mock-slack",
+        ),
+        FactEvent(
+            tenant_id=tenant_id,
+            source="fixture",
+            entity_ref=EntityRef(
+                tenant_id=tenant_id,
+                kind=NodeKind.TASK,
+                id="task-jira-sync-targets",
+            ),
+            payload={"status": "blocked", "source": "confirmed", "confidence": 0.58},
+            observed_at=now,
+            correlation_id="fixture-workstream-jira-git",
+        ),
     )
 
 
@@ -208,7 +459,6 @@ def demo_checkins(tenant_id: str) -> tuple[CheckIn, ...]:
             signals=CheckInSignals(
                 progress_note="API shell ready for review",
                 blockers=(),
-                mood=Mood.POSITIVE,
             ),
         ),
         CheckIn(

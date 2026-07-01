@@ -4,7 +4,9 @@ import {
   BarChart3,
   Boxes,
   BriefcaseBusiness,
+  Activity,
   FolderKanban,
+  GitBranch,
   MessageSquare,
   Network,
   Settings2,
@@ -36,6 +38,13 @@ export function Layout() {
     { to: "/exec", label: "Executive", icon: <Network className="h-4 w-4" /> },
     { to: "/pods", label: "Pods", icon: <Boxes className="h-4 w-4" /> },
     { to: "/projects", label: "Projects", icon: <FolderKanban className="h-4 w-4" /> },
+    { to: "/workstreams", label: "Workstreams", icon: <GitBranch className="h-4 w-4" /> },
+    {
+      to: "/flow",
+      label: "Flow",
+      icon: <Activity className="h-4 w-4" />,
+      visible: canAccessPortfolio,
+    },
     {
       to: "/portfolio",
       label: "Portfolio",

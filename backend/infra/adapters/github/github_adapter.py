@@ -185,6 +185,7 @@ def _map_pull_request(tenant_id: str, repo: str, payload: Mapping[str, object]) 
         author=author or UserRef(tenant_id=tenant_id, external_id="unknown"),
         merged=_optional_string(payload, "merged_at") is not None,
         updated_at=_datetime_field(payload, "updated_at"),
+        opened_at=_datetime_field(payload, "created_at"),
         metadata=_metadata(
             {
                 "repo": repo,
@@ -206,6 +207,7 @@ def _map_search_pull_request(tenant_id: str, payload: Mapping[str, object]) -> P
         author=author or UserRef(tenant_id=tenant_id, external_id="unknown"),
         merged=_optional_string(pull_request or {}, "merged_at") is not None,
         updated_at=_datetime_field(payload, "updated_at"),
+        opened_at=_datetime_field(pull_request or payload, "created_at"),
         metadata=_metadata(
             {
                 "repo": repo,

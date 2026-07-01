@@ -414,6 +414,41 @@ class PostgresTimeSeriesRepository:
                 )
             return [_fact_from_row(row) for row in rows]
 
+    async def list_recent_facts(
+        self,
+        tenant_id: str,
+        since: datetime | None = None,
+        sources: Sequence[str] | None = None,
+        limit: int = 100,
+    ) -> list[FactEvent]:
+        if limit <= 0:
+            return []
+        clauses = ["tenant_id = %s"]
+        params: list[object] = [tenant_id]
+        if since is not None:
+            clauses.append("observed_at >= %s")
+            params.append(since)
+        if sources is not None:
+            if not sources:
+                return []
+            placeholders = ", ".join(["%s"] * len(sources))
+            clauses.append(f"source IN ({placeholders})")
+            params.extend(sources)
+        params.append(limit)
+        with _tracer.start_as_current_span("postgres.timeseries.list_recent_facts"):
+            rows = await self._executor.fetch(
+                f"""
+                SELECT tenant_id, source, entity_kind, entity_id, payload, observed_at,
+                       ingested_at, correlation_id
+                FROM facts
+                WHERE {" AND ".join(clauses)}
+                ORDER BY observed_at DESC, ingested_at DESC, correlation_id DESC
+                LIMIT %s
+                """,
+                tuple(params),
+            )
+        return [_fact_from_row(row) for row in rows]
+
 
 class PostgresVectorStore:
     def __init__(self, executor: AsyncSqlExecutor) -> None:

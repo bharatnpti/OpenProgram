@@ -131,6 +131,24 @@ class ProjectProgressView:
 
 
 @dataclass(frozen=True, kw_only=True)
+class WorkstreamProgressView:
+    workstream_id: str
+    workstream_name: str
+    as_of: date
+    rag: Rag
+    source: StatusSource
+    confidence: float | None
+    percent_complete: float
+    total_tasks: int
+    green_tasks: int
+    amber_tasks: int
+    red_tasks: int
+    unknown_tasks: int
+    factors: tuple[RollupFactor, ...]
+    tasks: tuple[TaskProgressView, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
 class TreeNodeView:
     id: str
     kind: NodeKind
@@ -333,6 +351,51 @@ class PersonaViewService:
             red_tasks=counts["red"],
             unknown_tasks=counts["unknown"],
             factors=root_status.factors if root_status else (),
+            tasks=tasks,
+        )
+
+    async def workstream_progress(
+        self,
+        tenant_id: str,
+        workstream_id: str,
+        as_of: date,
+    ) -> WorkstreamProgressView:
+        tree = await self._graph_repository.get_program_tree(tenant_id, workstream_id, as_of)
+        statuses = await self._node_statuses_for_tree(tree, as_of)
+        root_status = statuses.get((tree.root.kind, tree.root.id))
+        task_list: list[TaskProgressView] = []
+        for node in _sorted_nodes(tree.nodes):
+            if node.kind is NodeKind.TASK:
+                task_list.append(await self._task_progress(node, as_of))
+        tasks = tuple(task_list)
+        counts = _task_counts(tasks)
+        fallback_rag = _workstream_task_rag(tree.root, tasks, as_of)
+        rag = _dominant_rag(root_status.rag if root_status else Rag.UNKNOWN, fallback_rag)
+        use_root_status = (
+            root_status is not None
+            and root_status.rag is not Rag.UNKNOWN
+            and _rag_severity(root_status.rag) >= _rag_severity(fallback_rag)
+        )
+        if use_root_status and root_status is not None:
+            factors = root_status.factors
+            source = root_status.source
+        else:
+            factors = _workstream_task_factors(tree.root, tasks, fallback_rag, as_of)
+            source = _aggregate_task_source(tasks)
+        return WorkstreamProgressView(
+            workstream_id=tree.root.id,
+            workstream_name=tree.root.name,
+            as_of=as_of,
+            rag=rag,
+            source=source,
+            confidence=_average_confidence(task.confidence for task in tasks),
+            percent_complete=(counts["green"] / len(tasks) * 100.0) if tasks else 0.0,
+            total_tasks=len(tasks),
+            green_tasks=counts["green"],
+            amber_tasks=counts["amber"],
+            red_tasks=counts["red"],
+            unknown_tasks=counts["unknown"],
+            factors=factors,
             tasks=tasks,
         )
 
@@ -551,6 +614,93 @@ def _aggregate_task_source(tasks: tuple[TaskProgressView, ...]) -> StatusSource:
     if StatusSource.INFERRED in sources:
         return StatusSource.INFERRED
     return StatusSource.CONFIRMED
+
+
+def _workstream_task_rag(
+    node: GraphNode,
+    tasks: tuple[TaskProgressView, ...],
+    as_of: date,
+) -> Rag:
+    metadata_rag = _rag_from_value(node.metadata.get("status"))
+    if metadata_rag is Rag.RED or any(task.rag is Rag.RED for task in tasks):
+        return Rag.RED
+    if metadata_rag is Rag.AMBER or any(task.rag is Rag.AMBER for task in tasks):
+        return Rag.AMBER
+    if _approaching_target_date(node, as_of):
+        return Rag.AMBER
+    if any(task.rag is Rag.UNKNOWN for task in tasks):
+        return Rag.AMBER
+    if tasks and all(task.rag is Rag.GREEN for task in tasks):
+        return Rag.GREEN
+    if metadata_rag is Rag.GREEN:
+        return Rag.GREEN
+    return Rag.UNKNOWN
+
+
+def _workstream_task_factors(
+    node: GraphNode,
+    tasks: tuple[TaskProgressView, ...],
+    rag: Rag,
+    as_of: date,
+) -> tuple[RollupFactor, ...]:
+    if not tasks and rag is Rag.UNKNOWN:
+        return (
+            RollupFactor(
+                description="No child task status data is available.",
+                contributes=Rag.UNKNOWN,
+                source_ref=node.ref,
+            ),
+        )
+    factors = [
+        RollupFactor(
+            description=f"Task {task.name} is {task.rag.value}.",
+            contributes=Rag.AMBER if task.rag is Rag.UNKNOWN else task.rag,
+            source_ref=EntityRef(tenant_id=node.tenant_id, kind=NodeKind.TASK, id=task.id),
+        )
+        for task in tasks
+        if task.rag is not Rag.GREEN
+    ]
+    if _approaching_target_date(node, as_of):
+        target_date = _deadline(node)
+        factors.append(
+            RollupFactor(
+                description=f"Target date {target_date} is approaching.",
+                contributes=Rag.AMBER,
+                source_ref=node.ref,
+            )
+        )
+    if factors:
+        return tuple(factors)
+    return (
+        RollupFactor(
+            description="All child tasks show active progress with no blockers.",
+            contributes=Rag.GREEN,
+            source_ref=node.ref,
+        ),
+    )
+
+
+def _dominant_rag(left: Rag, right: Rag) -> Rag:
+    return left if _rag_severity(left) >= _rag_severity(right) else right
+
+
+def _rag_severity(rag: Rag) -> int:
+    return {
+        Rag.UNKNOWN: 0,
+        Rag.GREEN: 1,
+        Rag.AMBER: 2,
+        Rag.RED: 3,
+    }[rag]
+
+
+def _approaching_target_date(node: GraphNode, as_of: date) -> bool:
+    phase = node.metadata.get("phase")
+    if isinstance(phase, str) and phase.strip().lower() == "done":
+        return False
+    deadline = _deadline(node)
+    if deadline is None:
+        return False
+    return as_of <= deadline <= as_of + timedelta(days=14)
 
 
 def _average_confidence(values: Iterable[float | None]) -> float | None:

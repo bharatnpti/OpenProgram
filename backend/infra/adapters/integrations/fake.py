@@ -166,6 +166,7 @@ class FakeVcsProvider:
                     merged=False,
                     metadata={"repo": "pulseops"},
                     updated_at=datetime(2026, 1, 10, 9, 30, tzinfo=UTC),
+                    opened_at=datetime(2026, 1, 10, 8, 45, tzinfo=UTC),
                 )
             ]
 

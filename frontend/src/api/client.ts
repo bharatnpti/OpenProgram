@@ -10,6 +10,8 @@ import type {
   ConfigNodeCreateRequest,
   ConfigNodeResponse,
   ConfigNodeUpdateRequest,
+  AskRequest,
+  AskResponse,
   DirectoryItemResponse,
   DirectorySearchResponse,
   DirectorySyncResponse,
@@ -22,10 +24,14 @@ import type {
   PodBlockersResponse,
   PodCheckinsResponse,
   PortfolioHeatmapResponse,
+  PortfolioFeedResponse,
+  PortfolioFlowResponse,
   ProgramProjectLinkRequest,
   ProgramTreeResponse,
   ProjectProgressResponse,
   ReadyResponse,
+  WorkstreamFlowResponse,
+  WorkstreamProgressResponse,
   WorkflowDispatchResponse,
 } from "./schema";
 
@@ -73,6 +79,12 @@ export const apiClient = {
   programs: (asOf?: string) => requestJson<DirectoryItemResponse[]>(withAsOf("/programs", asOf)),
   pods: (asOf?: string) => requestJson<DirectoryItemResponse[]>(withAsOf("/pods", asOf)),
   projects: (asOf?: string) => requestJson<DirectoryItemResponse[]>(withAsOf("/projects", asOf)),
+  workstreams: (asOf?: string) =>
+    requestJson<DirectoryItemResponse[]>(withAsOf("/workstreams", asOf)),
+  workstream: (workstreamId: string, asOf?: string) =>
+    requestJson<DirectoryItemResponse>(withAsOf(`/workstreams/${workstreamId}`, asOf)),
+  projectWorkstreams: (projectId: string, asOf?: string) =>
+    requestJson<DirectoryItemResponse[]>(withAsOf(`/projects/${projectId}/workstreams`, asOf)),
   focus: (asOf?: string) => requestJson<FocusResponse>(withAsOf("/me/focus", asOf)),
   podBlockers: (podId: string, asOf?: string) =>
     requestJson<PodBlockersResponse>(withAsOf(`/pods/${podId}/blockers`, asOf)),
@@ -80,12 +92,32 @@ export const apiClient = {
     requestJson<PodCheckinsResponse>(withAsOf(`/pods/${podId}/checkins`, asOf)),
   projectProgress: (projectId: string, asOf?: string) =>
     requestJson<ProjectProgressResponse>(withAsOf(`/projects/${projectId}/progress`, asOf)),
+  workstreamProgress: (workstreamId: string, asOf?: string) =>
+    requestJson<WorkstreamProgressResponse>(
+      withAsOf(`/workstreams/${workstreamId}/progress`, asOf),
+    ),
   personaProgramTree: (programId: string, asOf?: string) =>
     requestJson<ProgramTreeResponse>(withAsOf(`/programs/${programId}/tree`, asOf)),
   portfolioHeatmap: (asOf?: string, programRootId?: string) =>
     requestJson<PortfolioHeatmapResponse>(
       withQuery("/portfolio/heatmap", { as_of: asOf, program_root_id: programRootId }),
     ),
+  workstreamFlow: (workstreamId: string, asOf?: string) =>
+    requestJson<WorkstreamFlowResponse>(withQuery(`/workstreams/${workstreamId}/flow`, { as_of: asOf })),
+  portfolioFlow: (asOf?: string) =>
+    requestJson<PortfolioFlowResponse>(withQuery("/portfolio/flow", { as_of: asOf })),
+  portfolioFeed: (since?: string | null, limit = 50) =>
+    requestJson<PortfolioFeedResponse>(
+      withQuery("/portfolio/feed", {
+        since: since ?? undefined,
+        limit: String(limit),
+      }),
+    ),
+  ask: (input: AskRequest) =>
+    requestJson<AskResponse>("/ask", {
+      method: "POST",
+      body: input,
+    }),
   checkinPreference: () => requestJson<CheckinPreferenceResponse>("/me/checkin-preference"),
   updateCheckinPreference: (input: CheckinPreferenceUpdateRequest) =>
     requestJson<CheckinPreferenceResponse>("/me/checkin-preference", {
@@ -122,6 +154,13 @@ export const apiClient = {
     requestJson<ConfigNodeResponse>(`/config/projects/${id}`, { method: "PUT", body: input }),
   deleteConfigProject: (id: string) =>
     requestJson<void>(`/config/projects/${id}`, { method: "DELETE" }),
+  configWorkstreams: () => requestJson<ConfigNodeResponse[]>("/config/workstreams"),
+  createConfigWorkstream: (input: ConfigNodeCreateRequest) =>
+    requestJson<ConfigNodeResponse>("/config/workstreams", { method: "POST", body: input }),
+  updateConfigWorkstream: (id: string, input: ConfigNodeUpdateRequest) =>
+    requestJson<ConfigNodeResponse>(`/config/workstreams/${id}`, { method: "PUT", body: input }),
+  deleteConfigWorkstream: (id: string) =>
+    requestJson<void>(`/config/workstreams/${id}`, { method: "DELETE" }),
   configPods: () => requestJson<ConfigNodeResponse[]>("/config/pods"),
   createConfigPod: (input: ConfigNodeCreateRequest) =>
     requestJson<ConfigNodeResponse>("/config/pods", { method: "POST", body: input }),
@@ -168,6 +207,30 @@ export const apiClient = {
     }),
   unlinkPodProject: (podId: string, projectId: string) =>
     requestJson<void>(`/config/pods/${podId}/projects/${projectId}`, { method: "DELETE" }),
+  linkProjectWorkstream: (projectId: string, workstreamId: string) =>
+    requestJson<ConfigEdgeResponse>(`/config/projects/${projectId}/workstreams/${workstreamId}`, {
+      method: "POST",
+    }),
+  unlinkProjectWorkstream: (projectId: string, workstreamId: string) =>
+    requestJson<void>(`/config/projects/${projectId}/workstreams/${workstreamId}`, {
+      method: "DELETE",
+    }),
+  linkPodWorkstream: (podId: string, workstreamId: string) =>
+    requestJson<ConfigEdgeResponse>(`/config/pods/${podId}/workstreams/${workstreamId}`, {
+      method: "POST",
+    }),
+  unlinkPodWorkstream: (podId: string, workstreamId: string) =>
+    requestJson<void>(`/config/pods/${podId}/workstreams/${workstreamId}`, {
+      method: "DELETE",
+    }),
+  linkWorkstreamTask: (workstreamId: string, taskId: string) =>
+    requestJson<ConfigEdgeResponse>(`/config/workstreams/${workstreamId}/tasks/${taskId}`, {
+      method: "POST",
+    }),
+  unlinkWorkstreamTask: (workstreamId: string, taskId: string) =>
+    requestJson<void>(`/config/workstreams/${workstreamId}/tasks/${taskId}`, {
+      method: "DELETE",
+    }),
   linkPodMember: (podId: string, memberId: string, input: PodMemberLinkRequest) =>
     requestJson<ConfigEdgeResponse>(`/config/pods/${podId}/members/${memberId}`, {
       method: "POST",

@@ -27,6 +27,10 @@ from api.dtos import (
     MemberTaskAssignmentRequest,
     PodMemberLinkRequest,
     ProgramProjectLinkRequest,
+    WorkItemCreateRequest,
+    WorkItemFromBranchRequest,
+    WorkItemFromPrRequest,
+    WorkItemTransitionRequest,
 )
 from config.settings import Settings
 from core.application.authorization import AuthorizationPolicy, Capability
@@ -248,6 +252,242 @@ async def get_config_pod(
     return ConfigNodeResponse.from_domain(node)
 
 
+@router.get("/config/workstreams", response_model=list[ConfigNodeResponse])
+async def list_config_workstreams(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> list[ConfigNodeResponse]:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    return [
+        ConfigNodeResponse.from_domain(node)
+        for node in await service.list_nodes(principal.tenant_id, NodeKind.WORKSTREAM)
+    ]
+
+
+@router.post(
+    "/config/workstreams",
+    response_model=ConfigNodeResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_config_workstream(
+    request: ConfigNodeCreateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> ConfigNodeResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    return ConfigNodeResponse.from_domain(
+        await _create_node(service, principal.tenant_id, NodeKind.WORKSTREAM, request)
+    )
+
+
+@router.put("/config/workstreams/{workstream_id}", response_model=ConfigNodeResponse)
+async def update_config_workstream(
+    workstream_id: str,
+    request: ConfigNodeUpdateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> ConfigNodeResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    return ConfigNodeResponse.from_domain(
+        await _update_node(
+            service,
+            principal.tenant_id,
+            workstream_id,
+            NodeKind.WORKSTREAM,
+            request,
+        )
+    )
+
+
+@router.delete("/config/workstreams/{workstream_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_config_workstream(
+    workstream_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> Response:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    await _delete_node(service, principal.tenant_id, workstream_id, NodeKind.WORKSTREAM)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/config/workstreams/{workstream_id}", response_model=ConfigNodeResponse)
+async def get_config_workstream(
+    workstream_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> ConfigNodeResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        node = await service.get_node(principal.tenant_id, workstream_id, NodeKind.WORKSTREAM)
+    except GraphNotFound as exc:
+        raise _http_error(exc) from exc
+    return ConfigNodeResponse.from_domain(node)
+
+
+@router.get("/config/work-items", response_model=list[ConfigNodeResponse])
+async def list_config_work_items(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> list[ConfigNodeResponse]:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    return [
+        ConfigNodeResponse.from_domain(node)
+        for node in await service.list_nodes(principal.tenant_id, NodeKind.WORK_ITEM)
+    ]
+
+
+@router.post(
+    "/config/work-items",
+    response_model=ConfigNodeResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_config_work_item(
+    request: WorkItemCreateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> ConfigNodeResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    node = await service.create_work_item(
+        principal.tenant_id,
+        request.id,
+        request.name,
+        _work_item_metadata(
+            request.metadata,
+            state=request.state,
+            item_type=request.item_type,
+            repo=request.repo,
+            branch=request.branch,
+            pr_id=request.pr_id,
+        ),
+    )
+    if request.workstream_id is not None:
+        await service.link_work_item_to_workstream(
+            principal.tenant_id, request.workstream_id, request.id
+        )
+    return ConfigNodeResponse.from_domain(node)
+
+
+@router.post(
+    "/config/work-items/from-branch",
+    response_model=ConfigNodeResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_config_work_item_from_branch(
+    request: WorkItemFromBranchRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> ConfigNodeResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    node = await service.create_work_item_from_branch(
+        principal.tenant_id,
+        request.repo,
+        request.branch,
+        request.name,
+        _work_item_metadata(
+            request.metadata,
+            item_type=request.item_type,
+            repo=request.repo,
+            branch=request.branch,
+        ),
+    )
+    if request.workstream_id is not None:
+        await service.link_work_item_to_workstream(
+            principal.tenant_id, request.workstream_id, node.id
+        )
+    return ConfigNodeResponse.from_domain(node)
+
+
+@router.post(
+    "/config/work-items/from-pr",
+    response_model=ConfigNodeResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_config_work_item_from_pr(
+    request: WorkItemFromPrRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> ConfigNodeResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    node = await service.create_work_item_from_pr(
+        principal.tenant_id,
+        request.repo,
+        request.pr_id,
+        request.title,
+        _work_item_metadata(
+            request.metadata,
+            item_type=request.item_type,
+            repo=request.repo,
+            pr_id=request.pr_id,
+        ),
+    )
+    if request.workstream_id is not None:
+        await service.link_work_item_to_workstream(
+            principal.tenant_id, request.workstream_id, node.id
+        )
+    return ConfigNodeResponse.from_domain(node)
+
+
+@router.post("/config/work-items/{work_item_id}/transition", response_model=ConfigNodeResponse)
+async def transition_config_work_item(
+    work_item_id: str,
+    request: WorkItemTransitionRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> ConfigNodeResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        node = await service.transition_work_item(
+            principal.tenant_id, work_item_id, request.new_state
+        )
+    except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return ConfigNodeResponse.from_domain(node)
+
+
+@router.post(
+    "/config/workstreams/{workstream_id}/work-items/{work_item_id}",
+    response_model=ConfigEdgeResponse,
+)
+async def link_config_workstream_work_item(
+    workstream_id: str,
+    work_item_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> ConfigEdgeResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        edge = await service.link_work_item_to_workstream(
+            principal.tenant_id,
+            workstream_id,
+            work_item_id,
+        )
+    except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return ConfigEdgeResponse.from_domain(edge)
+
+
+@router.delete(
+    "/config/workstreams/{workstream_id}/work-items/{work_item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def unlink_config_workstream_work_item(
+    workstream_id: str,
+    work_item_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> Response:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        await service.unlink_work_item_from_workstream(
+            principal.tenant_id,
+            workstream_id,
+            work_item_id,
+        )
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/config/members", response_model=list[ConfigNodeResponse])
 async def list_config_members(
     principal: Annotated[Principal, Depends(get_current_principal)],
@@ -433,6 +673,118 @@ async def unlink_config_pod_project(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.post(
+    "/config/projects/{project_id}/workstreams/{workstream_id}",
+    response_model=ConfigEdgeResponse,
+)
+async def link_config_project_workstream(
+    project_id: str,
+    workstream_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> ConfigEdgeResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        edge = await service.link_project_workstream(
+            principal.tenant_id,
+            project_id,
+            workstream_id,
+        )
+    except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return ConfigEdgeResponse.from_domain(edge)
+
+
+@router.delete(
+    "/config/projects/{project_id}/workstreams/{workstream_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def unlink_config_project_workstream(
+    project_id: str,
+    workstream_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> Response:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        await service.unlink_project_workstream(principal.tenant_id, project_id, workstream_id)
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/config/pods/{pod_id}/workstreams/{workstream_id}",
+    response_model=ConfigEdgeResponse,
+)
+async def link_config_pod_workstream(
+    pod_id: str,
+    workstream_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> ConfigEdgeResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        edge = await service.assign_pod_workstream(principal.tenant_id, pod_id, workstream_id)
+    except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return ConfigEdgeResponse.from_domain(edge)
+
+
+@router.delete(
+    "/config/pods/{pod_id}/workstreams/{workstream_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def unlink_config_pod_workstream(
+    pod_id: str,
+    workstream_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> Response:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        await service.unassign_pod_workstream(principal.tenant_id, pod_id, workstream_id)
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/config/workstreams/{workstream_id}/tasks/{task_id}",
+    response_model=ConfigEdgeResponse,
+)
+async def link_config_workstream_task(
+    workstream_id: str,
+    task_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> ConfigEdgeResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        edge = await service.link_workstream_task(principal.tenant_id, workstream_id, task_id)
+    except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return ConfigEdgeResponse.from_domain(edge)
+
+
+@router.delete(
+    "/config/workstreams/{workstream_id}/tasks/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def unlink_config_workstream_task(
+    workstream_id: str,
+    task_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> Response:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        await service.unlink_workstream_task(principal.tenant_id, workstream_id, task_id)
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/config/pods/{pod_id}/members/{member_id}", response_model=ConfigEdgeResponse)
 async def link_config_pod_member(
     pod_id: str,
@@ -592,6 +944,49 @@ async def list_projects(
         DirectoryItemResponse.from_view(item)
         for item in await service.list_projects(principal.tenant_id, as_of)
     ]
+
+
+@router.get("/workstreams", response_model=list[DirectoryItemResponse])
+async def list_workstreams(
+    as_of: Annotated[date, Query(default_factory=date.today)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[DirectoryService, Depends(get_directory_service)],
+) -> list[DirectoryItemResponse]:
+    _ensure(principal, Capability.READ_DIRECTORY)
+    return [
+        DirectoryItemResponse.from_view(item)
+        for item in await service.list_workstreams(principal.tenant_id, as_of)
+    ]
+
+
+@router.get("/workstreams/{workstream_id}", response_model=DirectoryItemResponse)
+async def get_workstream(
+    workstream_id: str,
+    as_of: Annotated[date, Query(default_factory=date.today)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[DirectoryService, Depends(get_directory_service)],
+) -> DirectoryItemResponse:
+    _ensure(principal, Capability.READ_DIRECTORY)
+    try:
+        item = await service.get_workstream(principal.tenant_id, workstream_id, as_of)
+    except GraphNotFound as exc:
+        raise _http_error(exc) from exc
+    return DirectoryItemResponse.from_view(item)
+
+
+@router.get("/projects/{project_id}/workstreams", response_model=list[DirectoryItemResponse])
+async def list_project_workstreams(
+    project_id: str,
+    as_of: Annotated[date, Query(default_factory=date.today)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[DirectoryService, Depends(get_directory_service)],
+) -> list[DirectoryItemResponse]:
+    _ensure(principal, Capability.READ_DIRECTORY)
+    try:
+        items = await service.list_project_workstreams(principal.tenant_id, project_id, as_of)
+    except GraphNotFound as exc:
+        raise _http_error(exc) from exc
+    return [DirectoryItemResponse.from_view(item) for item in items]
 
 
 @router.get("/pods", response_model=list[DirectoryItemResponse])
@@ -757,6 +1152,24 @@ def _set_optional_string(
     if value is _UNCHANGED:
         return
     metadata[key] = value if isinstance(value, str) and value else None
+
+
+def _work_item_metadata(
+    metadata: dict[str, JsonScalar],
+    *,
+    state: str | object = _UNCHANGED,
+    item_type: str | object = _UNCHANGED,
+    repo: str | None | object = _UNCHANGED,
+    branch: str | None | object = _UNCHANGED,
+    pr_id: str | None | object = _UNCHANGED,
+) -> dict[str, JsonScalar]:
+    merged = dict(metadata)
+    _set_optional_string(merged, "state", state)
+    _set_optional_string(merged, "item_type", item_type)
+    _set_optional_string(merged, "repo", repo)
+    _set_optional_string(merged, "branch", branch)
+    _set_optional_string(merged, "pr_id", pr_id)
+    return merged
 
 
 def _default_preference(

@@ -13,7 +13,7 @@ from core.application.status_parsing import (
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.graph import JsonScalar
 from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
-from core.domain.status import CheckInSignals, Mood
+from core.domain.status import CheckInSignals
 from tests.contract.fakes import FakeLlmProvider
 
 
@@ -66,7 +66,7 @@ async def test_status_parser_converts_valid_json_to_signals() -> None:
     provider = CapturingLlmProvider(
         text=(
             '{"progress_note":"API handoff is ready",'
-            '"blockers":["schema review"],"eta_change_days":2,"mood":"negative"}'
+            '"blockers":["schema review"],"eta_change_days":2}'
         )
     )
     parser = StatusParser(provider, model="test-model")
@@ -117,7 +117,6 @@ async def test_status_parser_converts_valid_json_to_signals() -> None:
         progress_note="API handoff is ready",
         blockers=("schema review",),
         eta_change_days=2,
-        mood=Mood.NEGATIVE,
     )
     assert provider.requests[0].metadata == {
         "service": "status_parser",
@@ -165,7 +164,7 @@ async def test_status_parser_falls_back_when_json_is_not_an_object() -> None:
 
 async def test_status_parser_ignores_wrongly_typed_optional_fields() -> None:
     provider = CapturingLlmProvider(
-        text=('{"progress_note":"   ","blockers":"blocked","eta_change_days":true,"mood":"angry"}')
+        text=('{"progress_note":"   ","blockers":"blocked","eta_change_days":true}')
     )
     parser = StatusParser(provider, model="test-model")
 
@@ -181,9 +180,7 @@ async def test_status_parser_ignores_wrongly_typed_optional_fields() -> None:
 
 async def test_status_parser_includes_prior_blockers_without_resolving_them() -> None:
     provider = CapturingLlmProvider(
-        text=(
-            '{"progress_note":"Same as yesterday","blockers":[],"eta_change_days":null,"mood":null}'
-        )
+        text=('{"progress_note":"Same as yesterday","blockers":[],"eta_change_days":null}')
     )
     parser = StatusParser(provider, model="test-model")
 
@@ -227,7 +224,7 @@ async def test_clarification_evaluator_parses_sufficient_signals() -> None:
         text=(
             '{"sufficient":true,"question":null,'
             '"signals":{"progress_note":"API handoff is ready",'
-            '"blockers":[],"eta_change_days":0,"mood":"positive"}}'
+            '"blockers":[],"eta_change_days":0}}'
         )
     )
     evaluator = ClarificationEvaluator(provider, model="test-model")
@@ -244,7 +241,6 @@ async def test_clarification_evaluator_parses_sufficient_signals() -> None:
         signals=CheckInSignals(
             progress_note="API handoff is ready",
             eta_change_days=0,
-            mood=Mood.POSITIVE,
         ),
     )
 
@@ -264,6 +260,23 @@ async def test_clarification_evaluator_parses_non_status_intent() -> None:
 
     assert decision == ClarificationDecision(sufficient=False, is_status_update=False)
     assert "is_status_update boolean" in provider.requests[0].prompt
+
+
+async def test_clarification_evaluator_treats_ok_as_non_status_without_llm() -> None:
+    provider = CapturingLlmProvider(
+        text='{"is_status_update":true,"sufficient":true,"question":null,"signals":null}'
+    )
+    evaluator = ClarificationEvaluator(provider, model="test-model")
+
+    decision = await evaluator.evaluate(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply=" ok \n",
+        correlation_id="corr-1",
+    )
+
+    assert decision == ClarificationDecision(sufficient=False, is_status_update=False)
+    assert provider.requests == []
 
 
 async def test_clarification_evaluator_parses_final_json_after_tool_cap() -> None:
@@ -293,7 +306,7 @@ async def test_clarification_evaluator_parses_final_json_after_tool_cap() -> Non
                 text=(
                     '{"sufficient":true,"question":null,'
                     '"signals":{"progress_note":"History confirms handoff is ready",'
-                    '"blockers":[],"eta_change_days":0,"mood":"positive"}}'
+                    '"blockers":[],"eta_change_days":0}}'
                 ),
                 finish_reason="stop",
             ),
@@ -319,7 +332,6 @@ async def test_clarification_evaluator_parses_final_json_after_tool_cap() -> Non
         signals=CheckInSignals(
             progress_note="History confirms handoff is ready",
             eta_change_days=0,
-            mood=Mood.POSITIVE,
         ),
     )
     assert len(provider.requests) == 3

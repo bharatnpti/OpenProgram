@@ -26,6 +26,9 @@ const PodsPage = lazy(() =>
 const PortfolioPage = lazy(() =>
   import("./pages/PortfolioPage").then((module) => ({ default: module.PortfolioPage })),
 );
+const FlowPage = lazy(() =>
+  import("./pages/FlowPage").then((module) => ({ default: module.FlowPage })),
+);
 const ProjectDetailPage = lazy(() =>
   import("./pages/ProjectDetailPage").then((module) => ({
     default: module.ProjectDetailPage,
@@ -33,6 +36,14 @@ const ProjectDetailPage = lazy(() =>
 );
 const ProjectsPage = lazy(() =>
   import("./pages/ProjectsPage").then((module) => ({ default: module.ProjectsPage })),
+);
+const WorkstreamDetailPage = lazy(() =>
+  import("./pages/WorkstreamDetailPage").then((module) => ({
+    default: module.WorkstreamDetailPage,
+  })),
+);
+const WorkstreamsPage = lazy(() =>
+  import("./pages/WorkstreamsPage").then((module) => ({ default: module.WorkstreamsPage })),
 );
 
 const chatSimulatorFrontendEnabled =
@@ -55,6 +66,16 @@ export function App() {
               <Route path="/pods/:podId" element={<PodDetailPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+              <Route path="/workstreams" element={<WorkstreamsPage />} />
+              <Route path="/workstreams/:workstreamId" element={<WorkstreamDetailPage />} />
+              <Route
+                path="/flow"
+                element={
+                  <RequirePortfolioAccess>
+                    <FlowPage />
+                  </RequirePortfolioAccess>
+                }
+              />
               <Route
                 path="/portfolio"
                 element={
@@ -99,11 +120,7 @@ function RequirePortfolioAccess({ children }: { children: ReactNode }) {
 
 function RequireChatSimulatorAccess({ children }: { children: ReactNode }) {
   const { canAccessAdmin } = useRole();
-  return canAccessAdmin && chatSimulatorFrontendEnabled ? (
-    children
-  ) : (
-    <Navigate to="/me" replace />
-  );
+  return canAccessAdmin && chatSimulatorFrontendEnabled ? children : <Navigate to="/me" replace />;
 }
 
 function RouteFallback() {

@@ -14,7 +14,7 @@ from psycopg import AsyncConnection, sql
 
 from config.settings import get_settings
 from core.domain.graph import EntityRef, NodeKind
-from core.domain.status import DeveloperStatus, Mood, StatusSource
+from core.domain.status import DeveloperStatus, StatusSource
 from core.domain.workflows import CheckinScheduleConfig, HeartbeatInput
 from core.ports.secrets import SecretRef
 from infra.adapters.chat.rate_limit import RedisRateLimiter
@@ -233,7 +233,6 @@ async def test_developer_status_signals_migration_and_repository_round_trip(
                 blockers=("dependency",),
                 summary="Blocked on dependency.",
                 eta_change_days=2,
-                mood=Mood.NEGATIVE,
             )
             await repository.record_developer_status(status)
             assert (
@@ -535,10 +534,10 @@ async def _developer_status_signal_columns_exist(executor: PsycopgAsyncExecutor)
         FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name = 'developer_statuses'
-          AND column_name IN ('eta_change_days', 'mood')
+          AND column_name = 'eta_change_days'
         """
     )
-    return {str(row["column_name"]) for row in rows} == {"eta_change_days", "mood"}
+    return {str(row["column_name"]) for row in rows} == {"eta_change_days"}
 
 
 async def _directory_user_search_indexes_exist(executor: PsycopgAsyncExecutor) -> bool:

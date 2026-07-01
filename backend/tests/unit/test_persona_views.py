@@ -15,6 +15,7 @@ from core.domain.graph import (
     Program,
     Project,
     Task,
+    Workstream,
 )
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
 from core.domain.status import DeveloperStatus, StatusSource
@@ -167,6 +168,61 @@ async def test_project_progress_aggregates_tasks_when_no_rollup_status_exists() 
     assert view.total_tasks == 2
     assert view.green_tasks == 1
     assert view.amber_tasks == 1
+
+
+async def test_workstream_progress_uses_latest_task_facts_for_rollup() -> None:
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    workstream = Workstream(tenant_id="demo", id="workstream-1", name="Runtime Config Admin")
+    green_task = Task(tenant_id="demo", id="task-green", name="Green task")
+    blocked_task = Task(tenant_id="demo", id="task-blocked", name="Blocked task")
+    for node in (workstream, green_task, blocked_task):
+        await store.upsert_node(node)
+    for task in (green_task, blocked_task):
+        await store.add_edge(
+            GraphEdge(
+                tenant_id="demo",
+                from_node_id=workstream.id,
+                to_node_id=task.id,
+                kind=EdgeKind.CONTAINS,
+            )
+        )
+    await store.append_fact(
+        FactEvent(
+            tenant_id="demo",
+            source="issue",
+            entity_ref=green_task.ref,
+            payload={"status": "green", "source": "confirmed", "confidence": 0.8},
+            observed_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            correlation_id="fact-green",
+        )
+    )
+    await store.append_fact(
+        FactEvent(
+            tenant_id="demo",
+            source="issue",
+            entity_ref=blocked_task.ref,
+            payload={"status": "blocked", "source": "confirmed", "confidence": 0.6},
+            observed_at=datetime(2026, 1, 10, 9, 5, tzinfo=UTC),
+            correlation_id="fact-blocked",
+        )
+    )
+    service = PersonaViewService(
+        graph_repository=store,
+        status_repository=store,
+        rollup_repository=store,
+        time_series_repository=store,
+    )
+
+    view = await service.workstream_progress("demo", workstream.id, as_of)
+
+    assert view.workstream_id == workstream.id
+    assert view.rag is Rag.RED
+    assert view.total_tasks == 2
+    assert view.green_tasks == 1
+    assert view.red_tasks == 1
+    assert view.confidence == 0.7
+    assert any(factor.source_ref == blocked_task.ref for factor in view.factors)
 
 
 async def test_portfolio_heatmap_uses_existing_rollups_without_graph_fallback() -> None:

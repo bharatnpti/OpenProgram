@@ -260,6 +260,8 @@ async def test_vcs_read_sync_appends_commit_and_pull_request_facts_and_cursor() 
         "vcs:commit:demo:repo-1:abc123",
         "vcs:pull_request:demo:repo-1:7:2026-01-10T09:00:00+00:00",
     }
+    pull_request_fact = next(fact for fact in facts if fact.source == "vcs_pull_request")
+    assert pull_request_fact.payload["opened_at"] == "2026-01-10T09:00:00+00:00"
     assert repo_facts[0].correlation_id == "vcs:commit:demo:repo-1:def456"
     assert cursor.updated_at == pull_request_time
     assert cursor.metadata["last_item_count"] == 3

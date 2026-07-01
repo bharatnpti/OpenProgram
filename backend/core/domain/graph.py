@@ -11,11 +11,13 @@ type JsonScalar = str | int | float | bool | None
 class NodeKind(StrEnum):
     PROGRAM = "program"
     PROJECT = "project"
+    WORKSTREAM = "workstream"
     SPRINT = "sprint"
     REPO = "repo"
     POD = "pod"
     DEVELOPER = "developer"
     TASK = "task"
+    WORK_ITEM = "work_item"
 
 
 class EdgeKind(StrEnum):
@@ -55,6 +57,11 @@ class Project(GraphNode):
 
 
 @dataclass(frozen=True, kw_only=True)
+class Workstream(GraphNode):
+    kind: NodeKind = field(default=NodeKind.WORKSTREAM, init=False)
+
+
+@dataclass(frozen=True, kw_only=True)
 class SprintNode(GraphNode):
     kind: NodeKind = field(default=NodeKind.SPRINT, init=False)
 
@@ -77,6 +84,11 @@ class Developer(GraphNode):
 @dataclass(frozen=True, kw_only=True)
 class Task(GraphNode):
     kind: NodeKind = field(default=NodeKind.TASK, init=False)
+
+
+@dataclass(frozen=True, kw_only=True)
+class WorkItem(GraphNode):
+    kind: NodeKind = field(default=NodeKind.WORK_ITEM, init=False)
 
 
 @dataclass(frozen=True, kw_only=True)

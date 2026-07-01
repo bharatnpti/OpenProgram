@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, GitPullRequest } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -35,13 +35,27 @@ export function ProjectDetailPage() {
     queryFn: () => apiClient.projectProgress(projectId, asOf),
     enabled: Boolean(projectId),
   });
+  const workstreams = useQuery({
+    queryKey: ["directory", "project-workstreams", projectId, asOf],
+    queryFn: () => apiClient.projectWorkstreams(projectId, asOf),
+    enabled: Boolean(projectId),
+  });
+  const workstreamProgresses = useQueries({
+    queries: (workstreams.data ?? []).map((workstream) => ({
+      queryKey: ["persona", "workstream-progress", workstream.id, asOf],
+      queryFn: () => apiClient.workstreamProgress(workstream.id, asOf),
+      enabled: Boolean(projectId),
+    })),
+  });
 
   const project = projects.data?.find((item) => item.id === projectId);
   const relatedPods = useMemo(
     () => pods.data?.filter((pod) => project?.pod_ids.includes(pod.id)) ?? [],
     [pods.data, project?.pod_ids],
   );
-  const refreshing = [projects, pods, progress].some((query) => query.isFetching);
+  const refreshing =
+    [projects, pods, progress, workstreams].some((query) => query.isFetching) ||
+    workstreamProgresses.some((query) => query.isFetching);
 
   return (
     <main className="min-h-screen px-4 py-4 sm:px-5 lg:px-6">
@@ -71,6 +85,8 @@ export function ProjectDetailPage() {
               void projects.refetch();
               void pods.refetch();
               void progress.refetch();
+              void workstreams.refetch();
+              workstreamProgresses.forEach((query) => void query.refetch());
             }}
           />
         </Toolbar>
@@ -134,6 +150,58 @@ export function ProjectDetailPage() {
           </DataPanel>
         </div>
 
+        <DataPanel title="Workstreams" description="Delivery streams linked to this project.">
+          <QueryState query={workstreams}>
+            {(items) =>
+              items.length === 0 ? (
+                <EmptyState title="No workstreams linked" />
+              ) : (
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {items.map((workstream, index) => {
+                    const workstreamProgress = workstreamProgresses[index]?.data;
+                    return (
+                      <Link
+                        key={workstream.id}
+                        to={`/workstreams/${workstream.id}`}
+                        className="block rounded-md border border-border bg-surface px-3 py-3 text-sm hover:bg-surface-muted/40"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate font-medium">{workstream.name}</div>
+                            <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                              {metadataText(workstream, "phase") || "phase unknown"} /{" "}
+                              {metadataText(workstream, "type") || "type unknown"}
+                            </div>
+                          </div>
+                          <StatusBadge rag={workstreamProgress?.rag ?? workstream.rag} />
+                        </div>
+                        <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                          <MiniCount label="Tasks" value={workstreamProgress?.total_tasks ?? 0} />
+                          <MiniCount label="Risk" value={workstreamProgress?.amber_tasks ?? 0} />
+                          <MiniCount label="Blocked" value={workstreamProgress?.red_tasks ?? 0} />
+                        </div>
+                        {workstreamProgress?.tasks.length ? (
+                          <div className="mt-3 space-y-1">
+                            {workstreamProgress.tasks.slice(0, 3).map((task) => (
+                              <div
+                                key={task.id}
+                                className="flex items-center justify-between gap-2 rounded-md bg-surface-muted/50 px-2 py-1"
+                              >
+                                <span className="truncate">{task.name}</span>
+                                <StatusBadge rag={task.rag} />
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )
+            }
+          </QueryState>
+        </DataPanel>
+
         <DataPanel title="Task Breakdown" description="Task RAG, source, and confidence.">
           <QueryState query={progress}>
             {(data) =>
@@ -161,4 +229,21 @@ export function ProjectDetailPage() {
       </div>
     </main>
   );
+}
+
+function MiniCount({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-border bg-surface-muted/40 px-2 py-1">
+      <div className="text-muted-foreground">{label}</div>
+      <div className="font-semibold tabular-nums">{value}</div>
+    </div>
+  );
+}
+
+function metadataText(
+  item: { metadata: Record<string, string | number | boolean | null> },
+  key: string,
+) {
+  const value = item.metadata[key];
+  return typeof value === "string" ? value : "";
 }

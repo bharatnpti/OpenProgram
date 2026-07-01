@@ -18,6 +18,7 @@ from core.domain.graph import (
     Program,
     Project,
     Task,
+    Workstream,
 )
 from core.domain.rollup import Rag
 from core.domain.status import DeveloperStatus, StatusSource
@@ -256,6 +257,52 @@ async def test_rollup_edge_level_critical_metadata_escalates_single_blocker() ->
         kind=NodeKind.TASK,
         id="task-1",
     )
+
+
+async def test_workstream_rollup_aggregates_child_task_statuses() -> None:
+    as_of = date(2026, 1, 10)
+    workstream = Workstream(
+        tenant_id="demo",
+        id="workstream-1",
+        name="Runtime Config Admin",
+        metadata={"target_date": "2026-01-15"},
+    )
+    green_task = Task(
+        tenant_id="demo",
+        id="task-green",
+        name="Ready task",
+        metadata={"status": "done"},
+    )
+    blocked_task = Task(
+        tenant_id="demo",
+        id="task-blocked",
+        name="Blocked task",
+        metadata={"status": "blocked"},
+    )
+    tree = GraphTree(
+        root=workstream,
+        nodes=(workstream, green_task, blocked_task),
+        edges=(
+            GraphEdge(
+                tenant_id="demo",
+                from_node_id=workstream.id,
+                to_node_id=green_task.id,
+                kind=EdgeKind.CONTAINS,
+            ),
+            GraphEdge(
+                tenant_id="demo",
+                from_node_id=workstream.id,
+                to_node_id=blocked_task.id,
+                kind=EdgeKind.CONTAINS,
+            ),
+        ),
+    )
+
+    statuses = await RollupService(FakeStatusRepository()).compute(tree, as_of)
+
+    assert [status.entity_ref.id for status in statuses] == [workstream.id]
+    assert statuses[0].rag is Rag.RED
+    assert any("blocked" in factor.description.lower() for factor in statuses[0].factors)
 
 
 def _program_tree(

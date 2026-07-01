@@ -24,7 +24,7 @@ from core.domain.graph import (
     Task,
 )
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
-from core.domain.status import CheckIn, CheckInSignals, DeveloperStatus, Mood, StatusSource
+from core.domain.status import CheckIn, CheckInSignals, DeveloperStatus, StatusSource
 from infra.registry import ServiceRegistry
 from infra.workflows import daily_checkin, nudge
 
@@ -257,7 +257,6 @@ def _smoke_checkins(tenant_id: str) -> tuple[CheckIn, ...]:
             signals=CheckInSignals(
                 progress_note="API shell ready for review",
                 blockers=(),
-                mood=Mood.POSITIVE,
             ),
         ),
         CheckIn(

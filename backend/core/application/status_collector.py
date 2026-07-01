@@ -673,9 +673,8 @@ class StatusCollector:
         return {"checkin": checkin}
 
     async def _confirmed_status_for_duplicate(self, checkin: CheckIn) -> DeveloperStatus:
-        status_as_of = await self._local_date_for_developer(
-            checkin.tenant_id,
-            checkin.developer_id,
+        status_as_of = await self._status_as_of_for_checkin(
+            checkin,
             checkin.replied_at or checkin.asked_at,
         )
         latest = await self._status_repository.latest_developer_status(
@@ -694,7 +693,6 @@ class StatusCollector:
             blockers=signals.blockers,
             summary=signals.progress_note,
             eta_change_days=signals.eta_change_days,
-            mood=signals.mood,
         )
 
     async def _send_clarification(
@@ -836,16 +834,11 @@ class StatusCollector:
         status = DeveloperStatus(
             tenant_id=checkin.tenant_id,
             developer_id=checkin.developer_id,
-            as_of=await self._local_date_for_developer(
-                checkin.tenant_id,
-                checkin.developer_id,
-                replied_at,
-            ),
+            as_of=await self._status_as_of_for_checkin(checkin, replied_at),
             source=StatusSource.CONFIRMED,
             blockers=final_signals.blockers,
             summary=final_signals.progress_note,
             eta_change_days=final_signals.eta_change_days,
-            mood=final_signals.mood,
         )
         await self._status_repository.record_developer_status(status)
         await self._status_repository.consume_checkin_correlation(
@@ -939,7 +932,6 @@ class StatusCollector:
             "blocker_count": len(status.blockers),
             "has_eta_change": signals.eta_change_days is not None if signals else False,
             "eta_change_days": signals.eta_change_days if signals else None,
-            "mood": signals.mood.value if signals and signals.mood else None,
             "raw_reply": checkin.raw_reply,
         }
         await self._time_series_repository.append_fact_once(
@@ -999,6 +991,19 @@ class StatusCollector:
             at, preference.timezone if preference else None, self._tenant_default_timezone
         )
 
+    async def _status_as_of_for_checkin(self, checkin: CheckIn, at: datetime) -> date:
+        schedule_run = await self._status_repository.checkin_schedule_run_for_correlation(
+            checkin.tenant_id,
+            checkin.correlation_id,
+        )
+        if schedule_run is not None:
+            return schedule_run.checkin_date
+        return await self._local_date_for_developer(
+            checkin.tenant_id,
+            checkin.developer_id,
+            at,
+        )
+
     async def _local_date_matches(
         self,
         correlations: Iterable[CheckInCorrelation],
@@ -1029,7 +1034,7 @@ class StatusCollector:
         status = await self._status_repository.latest_developer_status(
             checkin.tenant_id,
             checkin.developer_id,
-            await self._local_date_for_developer(checkin.tenant_id, checkin.developer_id, at),
+            await self._status_as_of_for_checkin(checkin, at),
         )
         return _open_blockers_from_status(status)
 
@@ -1153,7 +1158,6 @@ def _signals_with_note(signals: CheckInSignals, note: str) -> CheckInSignals:
         progress_note=f"{signals.progress_note} {note}",
         blockers=signals.blockers,
         eta_change_days=signals.eta_change_days,
-        mood=signals.mood,
     )
 
 
@@ -1172,7 +1176,6 @@ def _signals_with_carried_blockers(
         ),
         blockers=prior_blockers,
         eta_change_days=signals.eta_change_days,
-        mood=signals.mood,
     )
 
 

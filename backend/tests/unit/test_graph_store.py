@@ -13,6 +13,7 @@ from core.domain.graph import (
     Program,
     Project,
     Task,
+    Workstream,
 )
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from tests.fixtures.demo_graph import populate_demo_graph
@@ -104,6 +105,66 @@ async def test_graph_store_lists_gets_and_deletes_nodes_and_edges() -> None:
     await store.delete_node("demo", "dev-1")
     assert await store.get_node("demo", "dev-1") is None
     assert await store.list_edges("demo", kind=EdgeKind.ASSIGNED_TO) == []
+
+
+async def test_graph_store_traverses_project_workstream_task_tree() -> None:
+    store = InMemoryGraphStore()
+    program = Program(tenant_id="demo", id="program-1", name="Program")
+    project = Project(tenant_id="demo", id="project-1", name="Project")
+    pod = Pod(tenant_id="demo", id="pod-1", name="Pod")
+    workstream = Workstream(tenant_id="demo", id="workstream-1", name="Workstream")
+    task = Task(tenant_id="demo", id="task-1", name="Task")
+    for node in (program, project, pod, workstream, task):
+        await store.upsert_node(node)
+    for edge in (
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id=program.id,
+            to_node_id=project.id,
+            kind=EdgeKind.CONTAINS,
+        ),
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id=project.id,
+            to_node_id=pod.id,
+            kind=EdgeKind.CONTAINS,
+        ),
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id=project.id,
+            to_node_id=workstream.id,
+            kind=EdgeKind.CONTAINS,
+        ),
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id=pod.id,
+            to_node_id=workstream.id,
+            kind=EdgeKind.ASSIGNED_TO,
+        ),
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id=workstream.id,
+            to_node_id=task.id,
+            kind=EdgeKind.CONTAINS,
+        ),
+    ):
+        await store.add_edge(edge)
+
+    tree = await store.get_program_tree("demo", program.id, date(2026, 1, 10))
+
+    assert {node.id for node in tree.nodes} == {
+        program.id,
+        project.id,
+        pod.id,
+        workstream.id,
+        task.id,
+    }
+    assert any(
+        edge.from_node_id == pod.id
+        and edge.to_node_id == workstream.id
+        and edge.kind is EdgeKind.ASSIGNED_TO
+        for edge in tree.edges
+    )
 
 
 async def test_fact_log_filters_by_observed_since() -> None:

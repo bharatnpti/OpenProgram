@@ -35,7 +35,91 @@ export type MemberTaskAssignmentRequest = components["schemas"]["MemberTaskAssig
 export type PodBlockersResponse = components["schemas"]["PodBlockersResponse"];
 export type PodCheckinsResponse = components["schemas"]["PodCheckinsResponse"];
 export type ProjectProgressResponse = components["schemas"]["ProjectProgressResponse"];
+export type WorkstreamProgressResponse = components["schemas"]["WorkstreamProgressResponse"];
 export type ProgramTreeResponse = components["schemas"]["ProgramTreeResponse"];
 export type PortfolioHeatmapResponse = components["schemas"]["PortfolioHeatmapResponse"];
 export type CheckinDispatchRequest = components["schemas"]["CheckinDispatchRequest"];
 export type WorkflowDispatchResponse = components["schemas"]["WorkflowDispatchResponse"];
+
+export interface WorkItemFlowResponse {
+  id: string;
+  name: string;
+  state: string;
+  item_type: string;
+  repo: string | null;
+  branch: string | null;
+  pr_id: string | null;
+  workstream_ids: string[];
+  age_days: number | null;
+  cycle_time_days: number | null;
+  last_transition_at: string | null;
+}
+
+export interface WorkstreamFlowResponse {
+  workstream_id: string;
+  workstream_name: string;
+  as_of: string;
+  active_count: number;
+  features_in_flight: number;
+  completed_count: number;
+  stale_count: number;
+  abandoned_count: number;
+  avg_cycle_time_days: number | null;
+  avg_pr_age_days: number | null;
+  work_items: WorkItemFlowResponse[];
+}
+
+export interface WorkstreamFlowSummaryResponse {
+  workstream_id: string;
+  workstream_name: string;
+  active_count: number;
+  features_in_flight: number;
+  completed_count: number;
+  stale_count: number;
+  abandoned_count: number;
+  avg_cycle_time_days: number | null;
+  avg_pr_age_days: number | null;
+}
+
+export interface PortfolioFlowResponse {
+  as_of: string;
+  active_count: number;
+  features_in_flight: number;
+  completed_count: number;
+  stale_count: number;
+  abandoned_count: number;
+  avg_cycle_time_days: number | null;
+  avg_pr_age_days: number | null;
+  workstreams: WorkstreamFlowSummaryResponse[];
+}
+
+export interface PortfolioFeedItemResponse {
+  source: string;
+  kind: string;
+  summary: string;
+  entity_ref: {
+    tenant_id: string;
+    kind: string;
+    id: string;
+  };
+  observed_at: string;
+  details: Record<string, unknown>;
+}
+
+export interface PortfolioFeedResponse {
+  since: string | null;
+  as_of: string;
+  items: PortfolioFeedItemResponse[];
+}
+
+export interface AskRequest {
+  question: string;
+  as_of?: string | null;
+}
+
+export interface AskResponse {
+  answer: string;
+  references: string[];
+  tools_used: string[];
+  trace_id: string;
+}

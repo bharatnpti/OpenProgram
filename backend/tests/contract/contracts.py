@@ -7,7 +7,7 @@ import pytest
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.directory import DirectoryUser
 from core.domain.errors import ProviderUnavailable
-from core.domain.graph import EntityRef, NodeKind
+from core.domain.graph import EntityRef, FactEvent, NodeKind
 from core.domain.integrations import (
     BuildResult,
     CalendarEvent,
@@ -32,7 +32,6 @@ from core.domain.status import (
     CheckInScheduleRun,
     CheckInSignals,
     DeveloperStatus,
-    Mood,
     StatusSource,
 )
 from core.ports.calendar import CalendarProvider
@@ -45,6 +44,7 @@ from core.ports.repositories import (
     RollupRepository,
     StatusRepository,
     SyncCursorRepository,
+    TimeSeriesRepository,
 )
 from core.ports.vcs import VcsProvider
 
@@ -237,6 +237,7 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
     )
     await repository.record_checkin_schedule_run(schedule_run)
     assert await repository.checkin_schedule_run("demo", "dev-1", date(2026, 1, 10)) == schedule_run
+    assert await repository.checkin_schedule_run_for_correlation("demo", "corr-1") == schedule_run
 
     claimed_nudge = await repository.record_checkin_nudge(
         CheckInNudge(tenant_id="demo", correlation_id="corr-1", nudge_number=1)
@@ -285,7 +286,6 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
         blockers=("dependency",),
         summary="Implementing graph sync; blocked on dependency.",
         eta_change_days=1,
-        mood=Mood.NEGATIVE,
     )
     await repository.record_developer_status(status)
     latest = await repository.latest_developer_status("demo", "dev-1", date(2026, 1, 10))
@@ -487,6 +487,62 @@ async def assert_conversation_repository_contract(repository: ConversationReposi
     assert await repository.list_turns_for_day("demo", "dev-2", date(2026, 1, 10)) == [
         other_developer
     ]
+
+
+async def assert_time_series_repository_contract(repository: TimeSeriesRepository) -> None:
+    created_at = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
+    entity_ref = EntityRef(tenant_id="demo", kind=NodeKind.WORK_ITEM, id="wi-1")
+    older_fact = FactEvent(
+        tenant_id="demo",
+        source="work_item",
+        entity_ref=entity_ref,
+        payload={"name": "Feature 1", "from_state": "proposed", "to_state": "in_progress"},
+        observed_at=created_at,
+        correlation_id="corr-1",
+        ingested_at=created_at,
+    )
+    newer_fact = FactEvent(
+        tenant_id="demo",
+        source="work_item",
+        entity_ref=entity_ref,
+        payload={"name": "Feature 1", "from_state": "in_progress", "to_state": "done"},
+        observed_at=created_at.replace(hour=10),
+        correlation_id="corr-2",
+        ingested_at=created_at.replace(hour=10),
+    )
+    other_source_fact = FactEvent(
+        tenant_id="demo",
+        source="vcs_commit",
+        entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.REPO, id="repo-1"),
+        payload={"repo": "repo-1", "sha": "abc1234", "message": "Update"},
+        observed_at=created_at.replace(hour=11),
+        correlation_id="corr-3",
+        ingested_at=created_at.replace(hour=11),
+    )
+    other_tenant_fact = FactEvent(
+        tenant_id="other",
+        source="work_item",
+        entity_ref=entity_ref,
+        payload={"name": "Other tenant"},
+        observed_at=created_at.replace(hour=12),
+        correlation_id="corr-4",
+        ingested_at=created_at.replace(hour=12),
+    )
+
+    await repository.append_fact(older_fact)
+    await repository.append_fact_once(newer_fact)
+    await repository.append_fact_once(other_source_fact)
+    await repository.append_fact(other_tenant_fact)
+
+    recent = await repository.list_recent_facts(
+        "demo", since=created_at, sources=("work_item",), limit=10
+    )
+    assert recent == [newer_fact, older_fact]
+    assert await repository.list_recent_facts("demo", sources=("vcs_commit",), limit=10) == [
+        other_source_fact
+    ]
+    assert await repository.list_recent_facts("demo", limit=0) == []
+    assert await repository.list_recent_facts("demo", sources=(), limit=10) == []
 
 
 async def assert_ci_contract(provider: CiProvider) -> None:

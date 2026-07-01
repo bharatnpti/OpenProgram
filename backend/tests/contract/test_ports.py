@@ -22,6 +22,7 @@ from tests.contract.contracts import (
     assert_rollup_repository_contract,
     assert_status_repository_contract,
     assert_sync_cursor_repository_contract,
+    assert_time_series_repository_contract,
     assert_vcs_contract,
 )
 from tests.contract.fakes import (
@@ -34,6 +35,7 @@ from tests.contract.fakes import (
     FakeRollupRepository,
     FakeStatusRepository,
     FakeSyncCursorRepository,
+    FakeTimeSeriesRepository,
     FakeVcsProvider,
 )
 
@@ -83,6 +85,10 @@ async def test_fake_vcs_provider_satisfies_contract() -> None:
 
 async def test_fake_status_repository_satisfies_contract() -> None:
     await assert_status_repository_contract(FakeStatusRepository())
+
+
+async def test_fake_time_series_repository_satisfies_contract() -> None:
+    await assert_time_series_repository_contract(FakeTimeSeriesRepository())
 
 
 async def test_fake_rollup_repository_satisfies_contract() -> None:

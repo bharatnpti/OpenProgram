@@ -16,10 +16,12 @@ const levelByKind: Record<NodeKind, number> = {
   program: 0,
   repo: 0,
   project: 1,
+  workstream: 2,
   sprint: 2,
   pod: 2,
   developer: 3,
   task: 4,
+  work_item: 4,
 };
 
 const nodeColors: Record<Rag | "none", string> = {

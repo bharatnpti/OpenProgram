@@ -27,7 +27,7 @@ class RollupService:
             if existing is not None:
                 return existing
             if node.kind is NodeKind.TASK:
-                return None
+                return _task_node_status(node, as_of)
             if node.kind is NodeKind.DEVELOPER:
                 status = await self._developer_status(index, node, as_of)
             else:
@@ -36,7 +36,11 @@ class RollupService:
                     for child in index.contained_children(node.id)
                     if (child_status := await rollup_node(child)) is not None
                 ]
-                status = _aggregate_node(node, child_statuses, as_of)
+                status = (
+                    _aggregate_workstream_node(node, child_statuses, as_of)
+                    if node.kind is NodeKind.WORKSTREAM
+                    else _aggregate_node(node, child_statuses, as_of)
+                )
             statuses[node.id] = status
             return status
 
@@ -222,6 +226,99 @@ def _aggregate_node(
     )
 
 
+def _aggregate_workstream_node(
+    node: GraphNode,
+    child_statuses: Iterable[NodeStatus],
+    as_of: date,
+) -> NodeStatus:
+    children = tuple(child_statuses)
+    if not children:
+        return _node_status(
+            node,
+            Rag.UNKNOWN,
+            StatusSource.UNKNOWN,
+            as_of,
+            (
+                RollupFactor(
+                    description="No child task status data is available.",
+                    contributes=Rag.UNKNOWN,
+                    source_ref=node.ref,
+                ),
+            ),
+        )
+    factors = tuple(
+        factor
+        for child in children
+        if child.rag is not Rag.GREEN
+        for factor in child.factors
+    )
+    target_date = _deadline(node)
+    if _approaching_target_date(node, as_of):
+        factors = (
+            *factors,
+            RollupFactor(
+                description=f"Target date {target_date} is approaching.",
+                contributes=Rag.AMBER,
+                source_ref=node.ref,
+            ),
+        )
+    if not factors:
+        factors = (
+            RollupFactor(
+                description="All child tasks show active progress with no blockers.",
+                contributes=Rag.GREEN,
+                source_ref=node.ref,
+            ),
+        )
+    if any(child.rag is Rag.RED for child in children):
+        rag = Rag.RED
+    elif any(child.rag in {Rag.AMBER, Rag.UNKNOWN} for child in children) or any(
+        factor.contributes is Rag.AMBER for factor in factors
+    ):
+        rag = Rag.AMBER
+    else:
+        rag = Rag.GREEN
+    return _node_status(node, rag, _aggregate_source(children), as_of, factors)
+
+
+def _task_node_status(node: GraphNode, as_of: date) -> NodeStatus:
+    rag = _rag_from_value(node.metadata.get("status")) or Rag.UNKNOWN
+    source = _source_from_value(node.metadata.get("source"), rag)
+    if rag is Rag.UNKNOWN:
+        factors = (
+            RollupFactor(
+                description="Task status is unknown.",
+                contributes=Rag.UNKNOWN,
+                source_ref=node.ref,
+            ),
+        )
+    elif rag is Rag.GREEN:
+        factors = (
+            RollupFactor(
+                description="Task shows active progress.",
+                contributes=Rag.GREEN,
+                source_ref=node.ref,
+            ),
+        )
+    elif rag is Rag.RED:
+        factors = (
+            RollupFactor(
+                description=f"Task {node.name} is blocked.",
+                contributes=Rag.RED,
+                source_ref=node.ref,
+            ),
+        )
+    else:
+        factors = (
+            RollupFactor(
+                description=f"Task {node.name} needs attention.",
+                contributes=Rag.AMBER,
+                source_ref=node.ref,
+            ),
+        )
+    return _node_status(node, rag, source, as_of, factors)
+
+
 def _aggregate_rag(
     children: tuple[NodeStatus, ...],
     factors: tuple[RollupFactor, ...],
@@ -267,3 +364,47 @@ def _node_status(
 
 def _truthy(value: object) -> bool:
     return value is True or (isinstance(value, str) and value.strip().lower() == "true")
+
+
+def _rag_from_value(value: object) -> Rag | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"done", "complete", "completed", "green"}:
+        return Rag.GREEN
+    if normalized in {"at_risk", "at-risk", "amber", "warning"}:
+        return Rag.AMBER
+    if normalized in {"blocked", "red"}:
+        return Rag.RED
+    if normalized == "unknown":
+        return Rag.UNKNOWN
+    return None
+
+
+def _source_from_value(value: object, rag: Rag) -> StatusSource:
+    if isinstance(value, str):
+        try:
+            return StatusSource(value)
+        except ValueError:
+            pass
+    return StatusSource.UNKNOWN if rag is Rag.UNKNOWN else StatusSource.INFERRED
+
+
+def _deadline(node: GraphNode) -> date | None:
+    value = node.metadata.get("target_date")
+    if isinstance(value, str):
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _approaching_target_date(node: GraphNode, as_of: date) -> bool:
+    phase = node.metadata.get("phase")
+    if isinstance(phase, str) and phase.strip().lower() == "done":
+        return False
+    deadline = _deadline(node)
+    if deadline is None:
+        return False
+    return as_of <= deadline <= date.fromordinal(as_of.toordinal() + 14)

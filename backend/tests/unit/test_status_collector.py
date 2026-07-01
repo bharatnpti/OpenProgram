@@ -21,8 +21,8 @@ from core.domain.status import (
     CheckInClarification,
     CheckInCorrelation,
     CheckInPreference,
+    CheckInScheduleRun,
     DeveloperStatus,
-    Mood,
     StatusSource,
 )
 from infra.persistence.in_memory_graph import InMemoryGraphStore
@@ -233,7 +233,7 @@ async def test_status_collector_handles_reply_by_correlation(
     parser_llm = SequenceLlmProvider(
         texts=[
             '{"progress_note":"Graph sync is in review",'
-            '"blockers":["schema review"],"eta_change_days":1,"mood":"neutral"}'
+            '"blockers":["schema review"],"eta_change_days":1}'
         ]
     )
     collector = StatusCollector(
@@ -272,7 +272,6 @@ async def test_status_collector_handles_reply_by_correlation(
     assert status.source is StatusSource.CONFIRMED
     assert status.blockers == ("schema review",)
     assert status.eta_change_days == 1
-    assert status.mood is Mood.NEUTRAL
     assert await store.latest_developer_status("demo", "dev-1", date(2026, 1, 10)) == status
     assert "Graph sync is in review" not in parser_llm.requests[0].metadata.values()
     assert [message.content for message in parser_llm.requests[0].messages] == [
@@ -292,7 +291,6 @@ async def test_status_collector_handles_reply_by_correlation(
         "blocker_count": 1,
         "has_eta_change": True,
         "eta_change_days": 1,
-        "mood": "neutral",
         "raw_reply": "Graph sync is in review, blocked on schema review.",
     }
     turns = await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
@@ -322,6 +320,66 @@ async def test_status_collector_handles_reply_by_correlation(
     assert duplicate_checkin == updated
     assert len(parser_llm.requests) == 1
     assert duplicate_facts == facts
+
+
+async def test_status_collector_records_scheduled_checkin_status_on_schedule_date() -> None:
+    store = InMemoryGraphStore()
+    asked_at = datetime(2026, 6, 28, 9, 0, tzinfo=UTC)
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-scheduled",
+            asked_at=asked_at,
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    await store.record_checkin_schedule_run(
+        CheckInScheduleRun(
+            tenant_id="demo",
+            developer_id="dev-1",
+            checkin_date=date(2026, 9, 21),
+            correlation_id="corr-scheduled",
+            status="sent",
+            scheduled_at=asked_at,
+        )
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(
+            texts=[
+                '{"is_status_update":true,"sufficient":true,"question":null,'
+                '"signals":{"progress_note":"Future-date reply","blockers":[],'
+                '"eta_change_days":null}}',
+            ]
+        ),
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    outcome = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="Future-date reply.",
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-scheduled",
+            received_at=datetime(2026, 6, 28, 9, 5, tzinfo=UTC),
+        )
+    )
+
+    assert outcome.kind == "processed"
+    assert outcome.status is not None
+    assert outcome.status.as_of == date(2026, 9, 21)
+    assert await store.latest_developer_status("demo", "dev-1", date(2026, 6, 28)) is None
+    assert await store.latest_developer_status("demo", "dev-1", date(2026, 9, 21)) == (
+        outcome.status
+    )
 
 
 async def test_status_collector_records_only_first_rapid_final_reply() -> None:
@@ -355,10 +413,10 @@ async def test_status_collector_records_only_first_rapid_final_reply() -> None:
             texts=[
                 '{"is_status_update":true,"sufficient":true,"question":null,'
                 '"signals":{"progress_note":"second","blockers":[],"eta_change_days":null,'
-                '"mood":"neutral"}}',
+                '"eta_change_days":null}}',
                 '{"is_status_update":true,"sufficient":true,"question":null,'
                 '"signals":{"progress_note":"first","blockers":[],"eta_change_days":null,'
-                '"mood":"neutral"}}',
+                '"eta_change_days":null}}',
             ]
         ),
         status_repository=store,
@@ -492,7 +550,7 @@ async def test_status_collector_finalizes_when_clarification_cap_reached() -> No
         texts=[
             '{"sufficient":false,"question":"Any ETA change?",'
             '"signals":{"progress_note":"Cache work is still in progress",'
-            '"blockers":[],"eta_change_days":null,"mood":"neutral"}}'
+            '"blockers":[],"eta_change_days":null}}'
         ]
     )
     collector = StatusCollector(
@@ -570,7 +628,7 @@ async def test_status_collector_tool_agent_fetches_history_and_finalizes_reply()
                 text=(
                     '{"sufficient":true,"question":null,'
                     '"signals":{"progress_note":"Current work is ready",'
-                    '"blockers":[],"eta_change_days":0,"mood":"positive"}}'
+                    '"blockers":[],"eta_change_days":0}}'
                 ),
                 finish_reason="stop",
             ),
@@ -707,7 +765,7 @@ async def test_status_collector_timeout_finalizes_accumulated_clarification_repl
     parser_llm = SequenceLlmProvider(
         texts=[
             '{"progress_note":"Cache work is partly done",'
-            '"blockers":[],"eta_change_days":null,"mood":"neutral"}'
+            '"blockers":[],"eta_change_days":null}'
         ]
     )
     collector = StatusCollector(
@@ -886,7 +944,7 @@ async def test_status_collector_resolves_user_fallback_by_developer_local_date()
         texts=[
             '{"sufficient":true,"question":null,'
             '"signals":{"progress_note":"Finished the rollout",'
-            '"blockers":[],"eta_change_days":0,"mood":"positive"}}'
+            '"blockers":[],"eta_change_days":0}}'
         ]
     )
     collector = StatusCollector(
@@ -1101,7 +1159,7 @@ async def test_status_collector_carries_forward_unresolved_prior_blockers() -> N
         texts=[
             '{"sufficient":true,"question":null,'
             '"signals":{"progress_note":"Same as yesterday",'
-            '"blockers":[],"eta_change_days":null,"mood":"neutral"}}'
+            '"blockers":[],"eta_change_days":null}}'
         ]
     )
     collector = StatusCollector(
@@ -1159,7 +1217,7 @@ async def test_status_collector_does_not_clear_prior_blocker_on_negated_resoluti
         texts=[
             '{"sufficient":true,"question":null,'
             '"signals":{"progress_note":"Release gate is not resolved",'
-            '"blockers":[],"eta_change_days":null,"mood":"negative"}}'
+            '"blockers":[],"eta_change_days":null}}'
         ]
     )
     collector = StatusCollector(

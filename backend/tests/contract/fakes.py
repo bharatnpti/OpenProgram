@@ -7,7 +7,7 @@ from datetime import date, datetime
 from core.domain.conversation import ConversationTurn
 from core.domain.directory import DirectoryUser
 from core.domain.errors import ProviderUnavailable
-from core.domain.graph import EntityRef
+from core.domain.graph import EntityRef, FactEvent
 from core.domain.integrations import (
     BuildResult,
     CalendarEvent,
@@ -32,6 +32,7 @@ from core.domain.status import (
     DeveloperStatus,
 )
 from core.ports.directory import DirectoryUserRepository
+from core.ports.repositories import TimeSeriesRepository
 from infra.adapters.llm.fake import FakeLlmProvider
 
 __all__ = ["FakeLlmProvider"]
@@ -467,6 +468,52 @@ class FakeDirectoryUserRepository(DirectoryUserRepository):
 
 
 @dataclass
+class FakeTimeSeriesRepository(TimeSeriesRepository):
+    facts: list[FactEvent] = field(default_factory=list)
+
+    async def append_fact(self, fact: FactEvent) -> None:
+        if _fact_identity(fact) in {_fact_identity(existing) for existing in self.facts}:
+            return
+        self.facts.append(fact)
+
+    async def append_fact_once(self, fact: FactEvent) -> None:
+        await self.append_fact(fact)
+
+    async def list_facts(
+        self,
+        tenant_id: str,
+        entity_ref: EntityRef,
+        since: datetime | None = None,
+    ) -> list[FactEvent]:
+        return [
+            fact
+            for fact in sorted(self.facts, key=_fact_sort_key)
+            if fact.tenant_id == tenant_id
+            and fact.entity_ref == entity_ref
+            and (since is None or fact.observed_at >= since)
+        ]
+
+    async def list_recent_facts(
+        self,
+        tenant_id: str,
+        since: datetime | None = None,
+        sources: Sequence[str] | None = None,
+        limit: int = 100,
+    ) -> list[FactEvent]:
+        if limit <= 0:
+            return []
+        source_filter = set(sources) if sources is not None else None
+        matching = [
+            fact
+            for fact in sorted(self.facts, key=_fact_sort_key, reverse=True)
+            if fact.tenant_id == tenant_id
+            and (since is None or fact.observed_at >= since)
+            and (source_filter is None or fact.source in source_filter)
+        ]
+        return matching[:limit]
+
+
+@dataclass
 class FakeRollupRepository:
     node_statuses: list[NodeStatus] = field(default_factory=list)
 
@@ -638,4 +685,19 @@ def _conversation_sort_key(
         turn.chat_message_id or "",
         turn.role.value,
         turn.content,
+    )
+
+
+def _fact_sort_key(fact: FactEvent) -> tuple[datetime, datetime, str]:
+    return (fact.observed_at, fact.ingested_at, fact.correlation_id)
+
+
+def _fact_identity(fact: FactEvent) -> tuple[str, str, str, str, str, datetime]:
+    return (
+        fact.tenant_id,
+        fact.source,
+        fact.entity_ref.kind.value,
+        fact.entity_ref.id,
+        fact.correlation_id,
+        fact.observed_at,
     )

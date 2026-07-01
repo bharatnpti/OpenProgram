@@ -411,6 +411,7 @@ class VcsReadSyncService:
                     "id": pull_request.id,
                     "title": pull_request.title,
                     "merged": pull_request.merged,
+                    "opened_at": _datetime_iso(pull_request.opened_at or pull_request.updated_at),
                 },
                 observed_at=pull_request_observed_at,
                 correlation_id=(
