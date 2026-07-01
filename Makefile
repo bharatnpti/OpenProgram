@@ -35,7 +35,7 @@ export PULSEOPS_LANGFUSE_PUBLIC_KEY
 export PULSEOPS_LANGFUSE_SECRET_KEY
 export PULSEOPS_LANGFUSE_PROJECT_ID
 
-.PHONY: up down migrate smoke phase1-smoke integration verify test lint format api openapi openapi-check worker mock-llm frontend-install frontend-dev frontend-lint frontend-format frontend-build frontend-generate
+.PHONY: up down migrate smoke phase1-smoke integration ui-bdd verify test lint format api openapi openapi-check worker mock-llm frontend-install frontend-dev frontend-lint frontend-format frontend-build frontend-generate
 
 up:
 	docker compose up -d
@@ -53,7 +53,12 @@ phase1-smoke:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m infra.phase1_smoke
 
 integration:
-	PULSEOPS_RUN_INTEGRATION=1 PYTHONPATH=$(PYTHONPATH) uv run pytest backend/tests/integration -m integration --no-cov
+	PULSEOPS_RUN_INTEGRATION=1 PYTHONPATH=$(PYTHONPATH) uv run pytest backend/tests/integration backend/tests/bdd -m integration --no-cov
+
+# Playwright-backed Mock Slack BDD scenarios (MS-E2E-012/025/031-033/036/037/040/043).
+# Requires `npm install` in frontend/ and `uv run playwright install chromium` once.
+ui-bdd:
+	PULSEOPS_RUN_UI_BDD=1 PYTHONPATH=$(PYTHONPATH) uv run pytest backend/tests/bdd -m ui_bdd_scenario --no-cov
 
 verify: lint test frontend-lint frontend-build openapi-check integration smoke phase1-smoke
 
