@@ -178,6 +178,29 @@ class InMemoryGraphStore:
             and (since is None or fact.observed_at >= since)
         ]
 
+    async def list_recent_facts(
+        self,
+        tenant_id: str,
+        since: datetime | None = None,
+        sources: Sequence[str] | None = None,
+        limit: int = 100,
+    ) -> list[FactEvent]:
+        if limit <= 0:
+            return []
+        source_filter = set(sources) if sources is not None else None
+        matching = [
+            fact
+            for fact in self._facts
+            if fact.tenant_id == tenant_id
+            and (since is None or fact.observed_at >= since)
+            and (source_filter is None or fact.source in source_filter)
+        ]
+        return sorted(
+            matching,
+            key=lambda fact: (fact.observed_at, fact.ingested_at, fact.correlation_id),
+            reverse=True,
+        )[:limit]
+
     async def record_checkin(self, checkin: CheckIn) -> None:
         self._checkins = [
             existing
@@ -317,6 +340,14 @@ class InMemoryGraphStore:
         self, tenant_id: str, developer_id: str, checkin_date: date
     ) -> CheckInScheduleRun | None:
         return self._checkin_schedule_runs.get((tenant_id, developer_id, checkin_date))
+
+    async def checkin_schedule_run_for_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> CheckInScheduleRun | None:
+        for run in self._checkin_schedule_runs.values():
+            if run.tenant_id == tenant_id and run.correlation_id == correlation_id:
+                return run
+        return None
 
     async def record_checkin_nudge(self, nudge: CheckInNudge) -> CheckInNudge:
         key = (nudge.tenant_id, nudge.correlation_id, nudge.nudge_number)

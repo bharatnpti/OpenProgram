@@ -43,17 +43,29 @@ const nodeSchema = z.object({
   jira_board_id: z.string().optional(),
   jira_filter_jql: z.string().optional(),
   github_repos: z.string().optional(),
+  type: z.string().optional(),
+  phase: z.string().optional(),
+  owner_id: z.string().optional(),
+  tpm_id: z.string().optional(),
+  sm_id: z.string().optional(),
+  target_date: z.string().optional(),
+  confidence: z.string().optional(),
+  summary: z.string().optional(),
 });
 
 type NodeFormValues = z.infer<typeof nodeSchema>;
-type EntityKind = "programs" | "projects" | "pods" | "members";
+type EntityKind = "programs" | "projects" | "workstreams" | "pods" | "members";
 
 const entityLabels: Record<EntityKind, string> = {
   programs: "Programs",
   projects: "Projects",
+  workstreams: "Workstreams",
   pods: "Pods",
   members: "Members",
 };
+
+const workstreamTypes = ["feature", "adhoc", "incident", "migration", "experiment", "ops"];
+const workstreamPhases = ["discovery", "build", "review", "rollout", "done", "paused"];
 
 const weekdayOptions = [
   { value: 0, label: "Mon" },
@@ -92,6 +104,10 @@ export function AdminConfigPage() {
     queryKey: ["config", "projects"],
     queryFn: apiClient.configProjects,
   });
+  const workstreams = useQuery({
+    queryKey: ["config", "workstreams"],
+    queryFn: apiClient.configWorkstreams,
+  });
   const pods = useQuery({ queryKey: ["config", "pods"], queryFn: apiClient.configPods });
   const members = useQuery({ queryKey: ["config", "members"], queryFn: apiClient.configMembers });
   const checkinPreferences = useQuery({
@@ -102,6 +118,7 @@ export function AdminConfigPage() {
   const entityQueryByTab = {
     programs,
     projects,
+    workstreams,
     pods,
     members,
   }[activeEntity];
@@ -145,12 +162,21 @@ export function AdminConfigPage() {
         {
           programs: programs.data,
           projects: projects.data,
+          workstreams: workstreams.data,
           pods: pods.data,
           members: members.data,
         }[activeEntity] ?? [],
         entityQuery,
       ),
-    [activeEntity, entityQuery, members.data, pods.data, programs.data, projects.data],
+    [
+      activeEntity,
+      entityQuery,
+      members.data,
+      pods.data,
+      programs.data,
+      projects.data,
+      workstreams.data,
+    ],
   );
 
   const columns: DataTableColumn<ConfigNodeResponse>[] = [
@@ -215,9 +241,10 @@ export function AdminConfigPage() {
           description="Manage hierarchy, directory onboarding, graph links, assignments, and check-in timing."
         />
 
-        <section className="grid gap-3 md:grid-cols-4">
+        <section className="grid gap-3 md:grid-cols-5">
           <KpiCard label="Programs" value={programs.data?.length ?? "-"} tone="info" />
           <KpiCard label="Projects" value={projects.data?.length ?? "-"} tone="info" />
+          <KpiCard label="Workstreams" value={workstreams.data?.length ?? "-"} tone="info" />
           <KpiCard label="Pods" value={pods.data?.length ?? "-"} tone="info" />
           <KpiCard label="Members" value={members.data?.length ?? "-"} tone="info" />
         </section>
@@ -288,6 +315,7 @@ export function AdminConfigPage() {
             <RelationshipPanel
               programs={programs.data ?? []}
               projects={projects.data ?? []}
+              workstreams={workstreams.data ?? []}
               pods={pods.data ?? []}
               members={members.data ?? []}
               onChanged={invalidateAll}
@@ -366,6 +394,56 @@ export function AdminConfigPage() {
                 </Field>
               </div>
             )}
+            {activeEntity === "workstreams" && (
+              <div className="space-y-3 rounded-md border border-border bg-surface-muted/30 p-3">
+                <div className="text-sm font-semibold">Workstream Metadata</div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="Type" htmlFor="workstream-type">
+                    <Select id="workstream-type" {...form.register("type")}>
+                      <option value="">Select type</option>
+                      {workstreamTypes.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Phase" htmlFor="workstream-phase">
+                    <Select id="workstream-phase" {...form.register("phase")}>
+                      <option value="">Select phase</option>
+                      {workstreamPhases.map((item) => (
+                        <option key={item} value={item}>
+                          {item}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Owner ID" htmlFor="workstream-owner">
+                    <Input id="workstream-owner" {...form.register("owner_id")} />
+                  </Field>
+                  <Field label="TPM ID" htmlFor="workstream-tpm">
+                    <Input id="workstream-tpm" {...form.register("tpm_id")} />
+                  </Field>
+                  <Field label="SM ID" htmlFor="workstream-sm">
+                    <Input id="workstream-sm" {...form.register("sm_id")} />
+                  </Field>
+                  <Field label="Target date" htmlFor="workstream-target">
+                    <Input id="workstream-target" type="date" {...form.register("target_date")} />
+                  </Field>
+                  <Field label="Confidence" htmlFor="workstream-confidence">
+                    <Input
+                      id="workstream-confidence"
+                      inputMode="decimal"
+                      placeholder="0.0 to 1.0"
+                      {...form.register("confidence")}
+                    />
+                  </Field>
+                </div>
+                <Field label="Summary" htmlFor="workstream-summary">
+                  <Textarea id="workstream-summary" {...form.register("summary")} />
+                </Field>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancel
@@ -411,6 +489,14 @@ export function AdminConfigPage() {
       jira_board_id: node.jira_board_id ?? "",
       jira_filter_jql: node.jira_filter_jql ?? "",
       github_repos: (node.github_repos ?? []).join("\n"),
+      type: metadataString(node, "type"),
+      phase: metadataString(node, "phase"),
+      owner_id: metadataString(node, "owner_id"),
+      tpm_id: metadataString(node, "tpm_id"),
+      sm_id: metadataString(node, "sm_id"),
+      target_date: metadataString(node, "target_date"),
+      confidence: metadataNumberString(node, "confidence"),
+      summary: metadataString(node, "summary"),
     });
     setDialogOpen(true);
   }
@@ -453,6 +539,7 @@ function IntegrationSummary({ node }: { node: ConfigNodeResponse }) {
 function RelationshipPanel({
   programs,
   projects,
+  workstreams,
   pods,
   members,
   onChanged,
@@ -460,6 +547,7 @@ function RelationshipPanel({
 }: {
   programs: ConfigNodeResponse[];
   projects: ConfigNodeResponse[];
+  workstreams: ConfigNodeResponse[];
   pods: ConfigNodeResponse[];
   members: ConfigNodeResponse[];
   onChanged: () => Promise<void>;
@@ -469,6 +557,12 @@ function RelationshipPanel({
   const [programId, setProgramId] = useState("");
   const [podId, setPodId] = useState("");
   const [linkProjectId, setLinkProjectId] = useState("");
+  const [workstreamProjectId, setWorkstreamProjectId] = useState("");
+  const [projectWorkstreamId, setProjectWorkstreamId] = useState("");
+  const [workstreamPodId, setWorkstreamPodId] = useState("");
+  const [podWorkstreamId, setPodWorkstreamId] = useState("");
+  const [taskWorkstreamId, setTaskWorkstreamId] = useState("");
+  const [workstreamTaskId, setWorkstreamTaskId] = useState("");
   const [memberId, setMemberId] = useState("");
   const [memberRole, setMemberRole] = useState("developer");
   const [taskMemberId, setTaskMemberId] = useState("");
@@ -553,6 +647,76 @@ function RelationshipPanel({
         </LinkForm>
 
         <LinkForm
+          title="Project to Workstream"
+          canSubmit={Boolean(workstreamProjectId && projectWorkstreamId)}
+          onSubmit={() =>
+            void run(
+              () => apiClient.linkProjectWorkstream(workstreamProjectId, projectWorkstreamId),
+              "Linked project to workstream.",
+            )
+          }
+          onUnlink={() =>
+            confirmUnlink(
+              askConfirm,
+              "Unlink workstream from project?",
+              () =>
+                void run(
+                  () => apiClient.unlinkProjectWorkstream(workstreamProjectId, projectWorkstreamId),
+                  "Unlinked workstream from project.",
+                ),
+            )
+          }
+        >
+          <NodeSelect
+            value={workstreamProjectId}
+            onChange={setWorkstreamProjectId}
+            items={projects}
+            placeholder="Select project"
+          />
+          <NodeSelect
+            value={projectWorkstreamId}
+            onChange={setProjectWorkstreamId}
+            items={workstreams}
+            placeholder="Select workstream"
+          />
+        </LinkForm>
+
+        <LinkForm
+          title="Pod to Workstream"
+          canSubmit={Boolean(workstreamPodId && podWorkstreamId)}
+          onSubmit={() =>
+            void run(
+              () => apiClient.linkPodWorkstream(workstreamPodId, podWorkstreamId),
+              "Linked pod to workstream.",
+            )
+          }
+          onUnlink={() =>
+            confirmUnlink(
+              askConfirm,
+              "Unlink pod from workstream?",
+              () =>
+                void run(
+                  () => apiClient.unlinkPodWorkstream(workstreamPodId, podWorkstreamId),
+                  "Unlinked pod from workstream.",
+                ),
+            )
+          }
+        >
+          <NodeSelect
+            value={workstreamPodId}
+            onChange={setWorkstreamPodId}
+            items={pods}
+            placeholder="Select pod"
+          />
+          <NodeSelect
+            value={podWorkstreamId}
+            onChange={setPodWorkstreamId}
+            items={workstreams}
+            placeholder="Select workstream"
+          />
+        </LinkForm>
+
+        <LinkForm
           title="Pod to Member"
           canSubmit={Boolean(podId && memberId && memberRole.trim())}
           onSubmit={() =>
@@ -584,6 +748,40 @@ function RelationshipPanel({
             value={memberRole}
             onChange={(event) => setMemberRole(event.target.value)}
             placeholder="Role in pod"
+          />
+        </LinkForm>
+
+        <LinkForm
+          title="Workstream to Task"
+          canSubmit={Boolean(taskWorkstreamId && workstreamTaskId.trim())}
+          onSubmit={() =>
+            void run(
+              () => apiClient.linkWorkstreamTask(taskWorkstreamId, workstreamTaskId),
+              "Linked task to workstream.",
+            )
+          }
+          onUnlink={() =>
+            confirmUnlink(
+              askConfirm,
+              "Unlink task from workstream?",
+              () =>
+                void run(
+                  () => apiClient.unlinkWorkstreamTask(taskWorkstreamId, workstreamTaskId),
+                  "Unlinked task from workstream.",
+                ),
+            )
+          }
+        >
+          <NodeSelect
+            value={taskWorkstreamId}
+            onChange={setTaskWorkstreamId}
+            items={workstreams}
+            placeholder="Select workstream"
+          />
+          <Input
+            placeholder="Task ID"
+            value={workstreamTaskId}
+            onChange={(event) => setWorkstreamTaskId(event.target.value)}
           />
         </LinkForm>
 
@@ -1021,15 +1219,22 @@ function saveNode(kind: EntityKind, values: NodeFormValues, editing: ConfigNodeR
           github_repos: repoList(values.github_repos),
         }
       : {}),
+    ...(kind === "workstreams"
+      ? {
+          metadata: workstreamMetadata(values),
+        }
+      : {}),
   };
   if (editing) {
     if (kind === "programs") return apiClient.updateConfigProgram(editing.id, payload);
     if (kind === "projects") return apiClient.updateConfigProject(editing.id, payload);
+    if (kind === "workstreams") return apiClient.updateConfigWorkstream(editing.id, payload);
     if (kind === "pods") return apiClient.updateConfigPod(editing.id, payload);
     return apiClient.updateConfigMember(editing.id, payload);
   }
   if (kind === "programs") return apiClient.createConfigProgram(payload);
   if (kind === "projects") return apiClient.createConfigProject(payload);
+  if (kind === "workstreams") return apiClient.createConfigWorkstream(payload);
   if (kind === "pods") return apiClient.createConfigPod(payload);
   return apiClient.createConfigMember(payload);
 }
@@ -1037,6 +1242,7 @@ function saveNode(kind: EntityKind, values: NodeFormValues, editing: ConfigNodeR
 function deleteNode(kind: EntityKind, id: string) {
   if (kind === "programs") return apiClient.deleteConfigProgram(id);
   if (kind === "projects") return apiClient.deleteConfigProject(id);
+  if (kind === "workstreams") return apiClient.deleteConfigWorkstream(id);
   if (kind === "pods") return apiClient.deleteConfigPod(id);
   return apiClient.deleteConfigMember(id);
 }
@@ -1055,6 +1261,13 @@ function filterNodes(nodes: ConfigNodeResponse[], query: string) {
       node.jira_board_id ?? "",
       node.jira_filter_jql ?? "",
       (node.github_repos ?? []).join(" "),
+      metadataString(node, "type"),
+      metadataString(node, "phase"),
+      metadataString(node, "owner_id"),
+      metadataString(node, "tpm_id"),
+      metadataString(node, "sm_id"),
+      metadataString(node, "target_date"),
+      metadataString(node, "summary"),
     ]
       .join(" ")
       .toLowerCase()
@@ -1073,6 +1286,14 @@ function defaultNodeValues(): NodeFormValues {
     jira_board_id: "",
     jira_filter_jql: "",
     github_repos: "",
+    type: "",
+    phase: "",
+    owner_id: "",
+    tpm_id: "",
+    sm_id: "",
+    target_date: "",
+    confidence: "",
+    summary: "",
   };
 }
 
@@ -1091,6 +1312,37 @@ function repoList(value: string | undefined): string[] {
     repos.push(repo);
   }
   return repos;
+}
+
+function workstreamMetadata(values: NodeFormValues) {
+  return {
+    type: blankToNull(values.type),
+    phase: blankToNull(values.phase),
+    owner_id: blankToNull(values.owner_id),
+    tpm_id: blankToNull(values.tpm_id),
+    sm_id: blankToNull(values.sm_id),
+    target_date: blankToNull(values.target_date),
+    confidence: confidenceValue(values.confidence),
+    summary: blankToNull(values.summary),
+  };
+}
+
+function confidenceValue(value: string | undefined): number | null {
+  const normalized = value?.trim() ?? "";
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.min(1, parsed));
+}
+
+function metadataString(node: ConfigNodeResponse, key: string): string {
+  const value = node.metadata[key];
+  return typeof value === "string" ? value : "";
+}
+
+function metadataNumberString(node: ConfigNodeResponse, key: string): string {
+  const value = node.metadata[key];
+  return typeof value === "number" ? String(value) : "";
 }
 
 function confirmUnlink(

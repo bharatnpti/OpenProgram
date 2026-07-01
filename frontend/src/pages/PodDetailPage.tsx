@@ -30,6 +30,10 @@ export function PodDetailPage() {
     queryKey: ["directory", "projects", asOf],
     queryFn: () => apiClient.projects(asOf),
   });
+  const workstreams = useQuery({
+    queryKey: ["directory", "workstreams", asOf],
+    queryFn: () => apiClient.workstreams(asOf),
+  });
   const blockers = useQuery({
     queryKey: ["persona", "blockers", podId, asOf],
     queryFn: () => apiClient.podBlockers(podId, asOf),
@@ -46,7 +50,14 @@ export function PodDetailPage() {
     () => projects.data?.filter((project) => pod?.project_ids.includes(project.id)) ?? [],
     [projects.data, pod?.project_ids],
   );
-  const refreshing = [pods, projects, blockers, checkins].some((query) => query.isFetching);
+  const relatedWorkstreams = useMemo(
+    () =>
+      workstreams.data?.filter((workstream) => pod?.workstream_ids.includes(workstream.id)) ?? [],
+    [pod?.workstream_ids, workstreams.data],
+  );
+  const refreshing = [pods, projects, workstreams, blockers, checkins].some(
+    (query) => query.isFetching,
+  );
 
   return (
     <main className="min-h-screen px-4 py-4 sm:px-5 lg:px-6">
@@ -75,6 +86,7 @@ export function PodDetailPage() {
             onClick={() => {
               void pods.refetch();
               void projects.refetch();
+              void workstreams.refetch();
               void blockers.refetch();
               void checkins.refetch();
             }}
@@ -102,7 +114,7 @@ export function PodDetailPage() {
           />
         </section>
 
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 xl:grid-cols-3">
           <DataPanel
             title="Related Projects"
             description="Projects linked to this pod at the selected date."
@@ -126,6 +138,37 @@ export function PodDetailPage() {
                           </div>
                         </div>
                         <StatusBadge rag={project.rag} />
+                      </Link>
+                    ))}
+                  </div>
+                )
+              }
+            </QueryState>
+          </DataPanel>
+
+          <DataPanel
+            title="Assigned Workstreams"
+            description="Workstreams this pod contributes to."
+          >
+            <QueryState query={workstreams}>
+              {() =>
+                relatedWorkstreams.length === 0 ? (
+                  <EmptyState title="No assigned workstreams" />
+                ) : (
+                  <div className="divide-y divide-border rounded-md border border-border">
+                    {relatedWorkstreams.map((workstream) => (
+                      <Link
+                        key={workstream.id}
+                        to={`/workstreams/${workstream.id}`}
+                        className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-sm hover:bg-surface-muted/50"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{workstream.name}</div>
+                          <div className="truncate text-xs text-muted-foreground">
+                            {metadataText(workstream, "phase") || workstream.id}
+                          </div>
+                        </div>
+                        <StatusBadge rag={workstream.rag} />
                       </Link>
                     ))}
                   </div>
@@ -197,6 +240,14 @@ export function PodDetailPage() {
       </div>
     </main>
   );
+}
+
+function metadataText(
+  item: { metadata: Record<string, string | number | boolean | null> },
+  key: string,
+) {
+  const value = item.metadata[key];
+  return typeof value === "string" ? value : "";
 }
 
 function MiniStat({ label, value }: { label: string; value: number }) {

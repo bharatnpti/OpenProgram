@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Network, TableCellsSplit } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { apiClient } from "../api/client";
 import {
@@ -15,6 +16,8 @@ import {
   Toolbar,
 } from "../components/ops/primitives";
 import { StatusBadge } from "../components/ops/status";
+import { Button } from "../components/ui/button";
+import { Textarea } from "../components/ui/textarea";
 import { resolveSelection } from "../lib/selection";
 import { HeatmapChart } from "../features/personas/HeatmapChart";
 import { HierarchyFlow } from "../features/personas/HierarchyFlow";
@@ -24,6 +27,8 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 export function PortfolioPage() {
   const [asOf, setAsOf] = useState(todayIso);
   const [programId, setProgramId] = useState("");
+  const [feedSince, setFeedSince] = useState(() => localStorage.getItem("portfolio-feed-since") ?? "");
+  const [question, setQuestion] = useState("");
   const programs = useQuery({
     queryKey: ["directory", "programs", asOf],
     queryFn: () => apiClient.programs(asOf),
@@ -53,7 +58,38 @@ export function PortfolioPage() {
     enabled: Boolean(selectedProgramId),
     staleTime: 5 * 60_000,
   });
-  const refreshing = [programs, tree, heatmap].some((query) => query.isFetching);
+  const workstreams = useQuery({
+    queryKey: ["directory", "workstreams", asOf],
+    queryFn: () => apiClient.workstreams(asOf),
+    enabled: Boolean(selectedProgramId),
+  });
+  const feed = useQuery({
+    queryKey: ["persona", "portfolio-feed", feedSince],
+    queryFn: () => apiClient.portfolioFeed(feedSince || undefined),
+    enabled: Boolean(selectedProgramId),
+    staleTime: 60_000,
+  });
+  const ask = useMutation({
+    mutationFn: async (input: { question: string }) => apiClient.ask({ question: input.question, as_of: asOf }),
+  });
+  const workstreamById = useMemo(
+    () => new Map((workstreams.data ?? []).map((workstream) => [workstream.id, workstream])),
+    [workstreams.data],
+  );
+  const atRiskWorkstreams = useMemo(
+    () =>
+      (heatmap.data?.cells ?? [])
+        .filter(
+          (cell) =>
+            cell.entity_ref.kind === "workstream" && (cell.rag === "red" || cell.rag === "amber"),
+        )
+        .sort((left, right) => ragRank(right.rag) - ragRank(left.rag))
+        .slice(0, 5),
+    [heatmap.data?.cells],
+  );
+  const refreshing = [programs, tree, heatmap, workstreams].some((query) => query.isFetching);
+  const feedItems = feed.data?.items ?? [];
+  const lastFeedSeen = feedItems.length > 0 ? feedItems[0].observed_at : feedSince || null;
 
   return (
     <main className="min-h-screen px-4 py-4 sm:px-5 lg:px-6">
@@ -80,6 +116,8 @@ export function PortfolioPage() {
               void programs.refetch();
               void tree.refetch();
               void heatmap.refetch();
+              void workstreams.refetch();
+              void feed.refetch();
             }}
           />
         </Toolbar>
@@ -127,6 +165,32 @@ export function PortfolioPage() {
                   {(data) => (
                     <div className="space-y-3">
                       <HeatmapChart data={data} />
+                      {atRiskWorkstreams.length === 0 ? (
+                        <EmptyState title="No at-risk workstreams" />
+                      ) : (
+                        <div className="divide-y divide-border rounded-md border border-border">
+                          {atRiskWorkstreams.map((cell) => {
+                            const workstream = workstreamById.get(cell.entity_ref.id);
+                            return (
+                              <Link
+                                key={cell.entity_ref.id}
+                                to={`/workstreams/${cell.entity_ref.id}`}
+                                className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 text-sm hover:bg-surface-muted/50"
+                              >
+                                <div className="min-w-0">
+                                  <div className="truncate font-medium">
+                                    {workstream?.name ?? cell.entity_ref.id}
+                                  </div>
+                                  <div className="truncate text-xs text-muted-foreground">
+                                    {cell.why} / {cell.source}
+                                  </div>
+                                </div>
+                                <StatusBadge rag={cell.rag} />
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      )}
                       <div className="max-h-80 divide-y divide-border overflow-y-auto rounded-md border border-border scrollbar-thin">
                         {data.cells.map((cell) => (
                           <div
@@ -150,9 +214,139 @@ export function PortfolioPage() {
                 </QueryState>
               </DataPanel>
             </section>
+
+            <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <DataPanel
+                title="Portfolio Feed"
+                description="What changed since you last looked."
+                action={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      const next = feedItems[0]?.observed_at ?? "";
+                      setFeedSince(next);
+                      localStorage.setItem("portfolio-feed-since", next);
+                    }}
+                    disabled={feedItems.length === 0}
+                  >
+                    Mark viewed
+                  </Button>
+                }
+              >
+                <QueryState query={feed} loadingRows={4}>
+                  {(data) =>
+                    data.items.length === 0 ? (
+                      <EmptyState
+                        title="Nothing new"
+                        description="No recent portfolio events were found for the current cursor."
+                      />
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="text-xs text-muted-foreground">
+                          Since {data.since ?? lastFeedSeen ?? "the beginning"} · {data.items.length} events
+                        </div>
+                        <div className="divide-y divide-border rounded-md border border-border">
+                          {data.items.map((item) => (
+                            <div key={`${item.source}:${item.entity_ref.kind}:${item.entity_ref.id}:${item.observed_at}`} className="px-3 py-2">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="truncate text-sm font-medium">{item.summary}</div>
+                                  <div className="mt-0.5 text-xs text-muted-foreground">
+                                    {item.entity_ref.kind}:{item.entity_ref.id} · {item.source}
+                                  </div>
+                                </div>
+                                <div className="shrink-0 text-xs text-muted-foreground">
+                                  {new Date(item.observed_at).toLocaleString()}
+                                </div>
+                              </div>
+                              {Object.keys(item.details).length > 0 && (
+                                <div className="mt-2 text-xs text-muted-foreground">
+                                  {Object.entries(item.details)
+                                    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+                                    .map(([key, value]) => `${key}: ${String(value)}`)
+                                    .join(" · ")}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  }
+                </QueryState>
+              </DataPanel>
+
+              <DataPanel title="Ask the graph" description="LLM tool-calling over work items, flow, and recent facts.">
+                <form
+                  className="space-y-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (!question.trim()) return;
+                    ask.mutate({ question: question.trim() });
+                  }}
+                >
+                  <Textarea
+                    value={question}
+                    onChange={(event) => setQuestion(event.target.value)}
+                    rows={5}
+                    placeholder='Try "what is stuck in payments?"'
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button type="submit" disabled={ask.isPending || !question.trim()}>
+                      {ask.isPending ? "Asking..." : "Ask"}
+                    </Button>
+                    {ask.data && (
+                      <span className="text-xs text-muted-foreground">Trace {ask.data.trace_id}</span>
+                    )}
+                  </div>
+                </form>
+                {ask.isError && (
+                  <div className="mt-3 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger">
+                    {(ask.error as Error).message}
+                  </div>
+                )}
+                {ask.data && (
+                  <div className="mt-4 space-y-3">
+                    <div className="rounded-md border border-border px-3 py-2 text-sm">
+                      {ask.data.answer}
+                    </div>
+                    {ask.data.references.length > 0 && (
+                      <div>
+                        <div className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+                          References
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {ask.data.references.map((reference) => (
+                            <span
+                              key={reference}
+                              className="rounded-full border border-border px-2 py-1 text-xs text-muted-foreground"
+                            >
+                              {reference}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {ask.data.tools_used.length > 0 && (
+                      <div className="text-xs text-muted-foreground">
+                        Tools: {ask.data.tools_used.join(", ")}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </DataPanel>
+            </section>
           </>
         )}
       </div>
     </main>
   );
+}
+
+function ragRank(rag: string) {
+  if (rag === "red") return 3;
+  if (rag === "amber") return 2;
+  if (rag === "green") return 1;
+  return 0;
 }

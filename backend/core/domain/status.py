@@ -12,18 +12,11 @@ class StatusSource(StrEnum):
     UNKNOWN = "unknown"
 
 
-class Mood(StrEnum):
-    POSITIVE = "positive"
-    NEUTRAL = "neutral"
-    NEGATIVE = "negative"
-
-
 @dataclass(frozen=True, kw_only=True)
 class CheckInSignals:
     progress_note: str
     blockers: tuple[str, ...] = ()
     eta_change_days: int | None = None
-    mood: Mood | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -99,4 +92,3 @@ class DeveloperStatus:
     blockers: tuple[str, ...]
     summary: str
     eta_change_days: int | None = None
-    mood: Mood | None = None
