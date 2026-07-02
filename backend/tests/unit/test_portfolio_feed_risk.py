@@ -84,3 +84,45 @@ async def test_feed_renders_risk_cleared_fact_descriptively() -> None:
 
     assert feed.items[0].kind == "risk_cleared"
     assert "Risk cleared" in feed.items[0].summary
+
+
+async def test_feed_renders_cross_person_request_fact_descriptively() -> None:
+    store = InMemoryGraphStore()
+    await store.append_fact_once(
+        FactEvent(
+            tenant_id=TENANT,
+            source="cross_person_request",
+            entity_ref=EntityRef(tenant_id=TENANT, kind=NodeKind.DEVELOPER, id="U-alice"),
+            payload={
+                "request_id": "xreq-1",
+                "requester_id": "dev-1",
+                "counterpart_id": "U-alice",
+                "kind": "review",
+                "status": "open",
+                "transition": "opened",
+                "note": "API schema review",
+                "needs_resolution": False,
+            },
+            observed_at=datetime.now(tz=UTC),
+            correlation_id="cross-person:xreq-1:opened",
+        )
+    )
+    service = PortfolioFeedService(store)
+
+    feed = await service.feed(TENANT, sources=("cross_person_request",))
+
+    assert len(feed.items) == 1
+    item = feed.items[0]
+    assert item.kind == "cross_person_request_opened"
+    assert item.summary == (
+        "Cross-person review opened: dev-1 needs U-alice for API schema review"
+    )
+    assert item.details == {
+        "request_id": "xreq-1",
+        "requester_id": "dev-1",
+        "counterpart_id": "U-alice",
+        "kind": "review",
+        "status": "open",
+        "transition": "opened",
+        "needs_resolution": False,
+    }

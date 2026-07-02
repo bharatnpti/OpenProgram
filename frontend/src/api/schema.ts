@@ -44,6 +44,11 @@ export type RiskEvidenceDto = components["schemas"]["RiskEvidenceDto"];
 export type RiskFindingResponse = components["schemas"]["RiskFindingResponse"];
 export type ProjectRisksResponse = components["schemas"]["ProjectRisksResponse"];
 export type PortfolioRisksResponse = components["schemas"]["PortfolioRisksResponse"];
+export type CrossPersonRequestResponse = components["schemas"]["CrossPersonRequestResponse"];
+export type CrossPersonRequestsResponse = components["schemas"]["CrossPersonRequestsResponse"];
+export type CrossPersonRequestStatus = components["schemas"]["CrossPersonRequestStatus"];
+export type CrossPersonRequestStatusUpdateRequest =
+  components["schemas"]["CrossPersonRequestStatusUpdateRequest"];
 
 export interface WorkItemFlowResponse {
   id: string;

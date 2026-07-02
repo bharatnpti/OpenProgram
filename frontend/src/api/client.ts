@@ -10,6 +10,10 @@ import type {
   ConfigNodeCreateRequest,
   ConfigNodeResponse,
   ConfigNodeUpdateRequest,
+  CrossPersonRequestsResponse,
+  CrossPersonRequestResponse,
+  CrossPersonRequestStatus,
+  CrossPersonRequestStatusUpdateRequest,
   AskRequest,
   AskResponse,
   DirectoryItemResponse,
@@ -105,7 +109,9 @@ export const apiClient = {
       withQuery("/portfolio/heatmap", { as_of: asOf, program_root_id: programRootId }),
     ),
   workstreamFlow: (workstreamId: string, asOf?: string) =>
-    requestJson<WorkstreamFlowResponse>(withQuery(`/workstreams/${workstreamId}/flow`, { as_of: asOf })),
+    requestJson<WorkstreamFlowResponse>(
+      withQuery(`/workstreams/${workstreamId}/flow`, { as_of: asOf }),
+    ),
   portfolioFlow: (asOf?: string) =>
     requestJson<PortfolioFlowResponse>(withQuery("/portfolio/flow", { as_of: asOf })),
   portfolioFeed: (since?: string | null, limit = 50) =>
@@ -116,11 +122,25 @@ export const apiClient = {
       }),
     ),
   projectRisks: (projectId: string, asOf?: string) =>
-    requestJson<ProjectRisksResponse>(
-      withQuery(`/projects/${projectId}/risks`, { as_of: asOf }),
-    ),
+    requestJson<ProjectRisksResponse>(withQuery(`/projects/${projectId}/risks`, { as_of: asOf })),
   portfolioRisks: (asOf?: string) =>
     requestJson<PortfolioRisksResponse>(withQuery("/portfolio/risks", { as_of: asOf })),
+  portfolioCrossPersonRequests: (status: CrossPersonRequestStatus | null = "open") =>
+    requestJson<CrossPersonRequestsResponse>(
+      withQuery("/portfolio/cross-person-requests", {
+        status: status ?? undefined,
+      }),
+    ),
+  myCrossPersonRequests: () =>
+    requestJson<CrossPersonRequestsResponse>("/me/cross-person-requests"),
+  updateCrossPersonRequestStatus: (
+    requestId: string,
+    input: CrossPersonRequestStatusUpdateRequest,
+  ) =>
+    requestJson<CrossPersonRequestResponse>(`/cross-person-requests/${requestId}/status`, {
+      method: "POST",
+      body: input,
+    }),
   ask: (input: AskRequest) =>
     requestJson<AskResponse>("/ask", {
       method: "POST",

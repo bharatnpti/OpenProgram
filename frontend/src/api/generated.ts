@@ -931,6 +931,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/portfolio/cross-person-requests": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Portfolio Cross Person Requests */
+    get: operations["portfolio_cross_person_requests_portfolio_cross_person_requests_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/cross-person-requests": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** My Cross Person Requests */
+    get: operations["my_cross_person_requests_me_cross_person_requests_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/cross-person-requests/{request_id}/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Update Cross Person Request Status */
+    post: operations["update_cross_person_request_status_cross_person_requests__request_id__status_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/projects/{project_id}/risks": {
     parameters: {
       query?: never;
@@ -1332,6 +1383,57 @@ export interface components {
       metadata?: {
         [key: string]: string | number | boolean | null;
       } | null;
+    };
+    /** CrossPersonRequestResponse */
+    CrossPersonRequestResponse: {
+      /** Id */
+      id: string;
+      /** Requester Id */
+      requester_id: string;
+      /** Counterpart Id */
+      counterpart_id: string | null;
+      /** Counterpart Display Name */
+      counterpart_display_name: string | null;
+      /** Counterpart Email */
+      counterpart_email: string | null;
+      /** Kind */
+      kind: string;
+      status: components["schemas"]["CrossPersonRequestStatus"];
+      /** Note */
+      note: string;
+      /** Raw Name */
+      raw_name: string | null;
+      /** Source Correlation Id */
+      source_correlation_id: string;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+    };
+    /**
+     * CrossPersonRequestStatus
+     * @enum {string}
+     */
+    CrossPersonRequestStatus:
+      | "open"
+      | "acknowledged"
+      | "resolved"
+      | "dismissed"
+      | "needs_resolution";
+    /** CrossPersonRequestStatusUpdateRequest */
+    CrossPersonRequestStatusUpdateRequest: {
+      status: components["schemas"]["CrossPersonRequestStatus"];
+    };
+    /** CrossPersonRequestsResponse */
+    CrossPersonRequestsResponse: {
+      /** Requests */
+      requests: components["schemas"]["CrossPersonRequestResponse"][];
     };
     /** DirectoryItemResponse */
     DirectoryItemResponse: {
@@ -4683,6 +4785,107 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PortfolioFeedResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  portfolio_cross_person_requests_portfolio_cross_person_requests_get: {
+    parameters: {
+      query?: {
+        status?: components["schemas"]["CrossPersonRequestStatus"] | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CrossPersonRequestsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  my_cross_person_requests_me_cross_person_requests_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CrossPersonRequestsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_cross_person_request_status_cross_person_requests__request_id__status_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        request_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CrossPersonRequestStatusUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CrossPersonRequestResponse"];
         };
       };
       /** @description Validation Error */

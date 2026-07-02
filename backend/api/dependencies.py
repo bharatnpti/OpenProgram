@@ -7,6 +7,7 @@ from fastapi import Header, Request
 from config.settings import Settings
 from core.application.ask_service import AskService
 from core.application.config_service import ConfigService, DirectoryService
+from core.application.cross_person_service import CrossPersonRequestService
 from core.application.directory_sync_service import DirectorySyncService
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.graph_queries import GraphQueryService
@@ -63,6 +64,11 @@ def get_flow_metrics_service(request: Request) -> FlowMetricsService:
 def get_portfolio_feed_service(request: Request) -> PortfolioFeedService:
     registry = get_registry(request)
     return PortfolioFeedService(registry.time_series_repository())
+
+
+def get_cross_person_request_service(request: Request) -> CrossPersonRequestService:
+    registry = get_registry(request)
+    return registry.cross_person_request_service()
 
 
 def get_risk_service(request: Request) -> RiskService:

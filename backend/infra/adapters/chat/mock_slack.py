@@ -474,6 +474,7 @@ def slack_event_payload(message: MockSlackMessage) -> dict[str, object]:
             "ts": message.message_id,
             "channel": message.channel_id,
             "client_msg_id": message.message_id,
+            "correlation_id": message.correlation_id,
         }
     }
 

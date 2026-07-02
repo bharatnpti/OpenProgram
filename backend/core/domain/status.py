@@ -13,10 +13,19 @@ class StatusSource(StrEnum):
 
 
 @dataclass(frozen=True, kw_only=True)
+class CrossPersonMention:
+    raw_name: str
+    kind: str
+    note: str
+    email: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
 class CheckInSignals:
     progress_note: str
     blockers: tuple[str, ...] = ()
     eta_change_days: int | None = None
+    requests: tuple[CrossPersonMention, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)

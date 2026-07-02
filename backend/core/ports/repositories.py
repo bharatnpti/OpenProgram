@@ -5,6 +5,7 @@ from datetime import date, datetime
 from typing import Protocol
 
 from core.domain.conversation import ConversationTurn
+from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
 from core.domain.graph import (
     EdgeKind,
     EntityRef,
@@ -75,6 +76,52 @@ class TimeSeriesRepository(Protocol):
         sources: Sequence[str] | None = None,
         limit: int = 100,
     ) -> list[FactEvent]: ...
+
+
+class CrossPersonRequestRepository(Protocol):
+    async def create(self, request: CrossPersonRequest) -> CrossPersonRequest: ...
+
+    async def get(self, tenant_id: str, request_id: str) -> CrossPersonRequest | None: ...
+
+    async def update_status(
+        self,
+        tenant_id: str,
+        request_id: str,
+        status: CrossPersonRequestStatus,
+        updated_at: datetime,
+    ) -> CrossPersonRequest | None: ...
+
+    async def record_notification(
+        self,
+        tenant_id: str,
+        request_id: str,
+        *,
+        notify_message_id: str,
+        notify_correlation_id: str,
+        updated_at: datetime,
+    ) -> CrossPersonRequest | None: ...
+
+    async def list_for_counterpart(
+        self,
+        tenant_id: str,
+        counterpart_id: str,
+        statuses: Sequence[CrossPersonRequestStatus] | None = None,
+    ) -> list[CrossPersonRequest]: ...
+
+    async def list_for_requester(
+        self,
+        tenant_id: str,
+        requester_id: str,
+        statuses: Sequence[CrossPersonRequestStatus] | None = None,
+    ) -> list[CrossPersonRequest]: ...
+
+    async def list_open(self, tenant_id: str) -> list[CrossPersonRequest]: ...
+
+    async def get_by_notify_correlation(
+        self,
+        tenant_id: str,
+        notify_correlation_id: str,
+    ) -> CrossPersonRequest | None: ...
 
 
 class StatusRepository(Protocol):

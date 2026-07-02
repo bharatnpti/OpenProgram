@@ -31,6 +31,7 @@ from core.application.persona_views import (
     WorkstreamProgressView,
 )
 from core.application.portfolio_feed_service import PortfolioFeedItemView, PortfolioFeedView
+from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
 from core.domain.directory import DirectoryUser
 from core.domain.graph import EdgeKind, GraphEdge, GraphNode, GraphTree, NodeKind
 from core.domain.risk import RiskFinding
@@ -1090,6 +1091,52 @@ class RiskFindingResponse(BaseModel):
             owner_status_has_blockers=finding.owner_status_has_blockers,
             is_watermelon=watermelon,
         )
+
+
+class CrossPersonRequestResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    requester_id: str
+    counterpart_id: str | None
+    counterpart_display_name: str | None
+    counterpart_email: str | None
+    kind: str
+    status: CrossPersonRequestStatus
+    note: str
+    raw_name: str | None
+    source_correlation_id: str
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_domain(cls, request: CrossPersonRequest) -> CrossPersonRequestResponse:
+        return cls(
+            id=request.id,
+            requester_id=request.requester_id,
+            counterpart_id=request.counterpart_id,
+            counterpart_display_name=request.counterpart_display_name,
+            counterpart_email=request.counterpart_email,
+            kind=request.kind.value,
+            status=request.status,
+            note=request.note,
+            raw_name=request.raw_name,
+            source_correlation_id=request.source_correlation_id,
+            created_at=request.created_at,
+            updated_at=request.updated_at,
+        )
+
+
+class CrossPersonRequestsResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    requests: list[CrossPersonRequestResponse]
+
+
+class CrossPersonRequestStatusUpdateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: CrossPersonRequestStatus
 
 
 class ProjectRisksResponse(BaseModel):

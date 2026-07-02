@@ -141,7 +141,7 @@ class SlackChatWebhookMapper:
                 text=_string_field(event, "text"),
                 thread_id=thread_id,
                 message_id=_string_field(event, "ts"),
-                correlation_id=correlation_id,
+                correlation_id=_string_field(event, "correlation_id", default=correlation_id),
                 received_at=datetime.now(tz=UTC),
                 metadata={"source": "slack"},
             )

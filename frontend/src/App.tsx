@@ -32,6 +32,11 @@ const FlowPage = lazy(() =>
 const RisksPage = lazy(() =>
   import("./pages/RisksPage").then((module) => ({ default: module.RisksPage })),
 );
+const CrossPersonRequestsPage = lazy(() =>
+  import("./pages/CrossPersonRequestsPage").then((module) => ({
+    default: module.CrossPersonRequestsPage,
+  })),
+);
 const ProjectDetailPage = lazy(() =>
   import("./pages/ProjectDetailPage").then((module) => ({
     default: module.ProjectDetailPage,
@@ -92,6 +97,14 @@ export function App() {
                 element={
                   <RequirePortfolioAccess>
                     <RisksPage />
+                  </RequirePortfolioAccess>
+                }
+              />
+              <Route
+                path="/cross-person-requests"
+                element={
+                  <RequirePortfolioAccess>
+                    <CrossPersonRequestsPage />
                   </RequirePortfolioAccess>
                 }
               />

@@ -9,8 +9,9 @@ import structlog
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.conversation_history import llm_messages_from_turns
 from core.domain.conversation import ConversationTurn
+from core.domain.cross_person import CrossPersonRequestKind
 from core.domain.llm import LlmRequest, LlmResponse
-from core.domain.status import CheckInSignals
+from core.domain.status import CheckInSignals, CrossPersonMention
 from core.ports.llm import LlmProvider
 from core.ports.tools import AgentTool
 
@@ -160,8 +161,12 @@ def _parser_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ()) -> str
     return (
         "Extract structured check-in signals from the reply below. "
         "Return only a JSON object with keys: progress_note string, "
-        "blockers array of strings, eta_change_days integer or null. "
+        "blockers array of strings, eta_change_days integer or null, and requests array. "
+        "Each requests item uses keys: name string, kind dependency/review/input, "
+        "note string, email string or null. "
         "Do not invent blockers; use an empty blockers array when no blocker is stated. "
+        "Only include a request when the reply explicitly needs a deliverable, review, "
+        "or input from a specific named person. Use an empty requests array otherwise. "
         "Previously open blockers are context only; mark them resolved only if the reply says "
         f"they are resolved.{_prior_blocker_prompt(prior_blockers)}\n\n"
         f"Reply:\n{raw_reply}"
@@ -175,10 +180,13 @@ def _clarification_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ())
         "signals object or null. Set is_status_update false for acknowledgements, thanks, "
         "reactions, or questions that do not provide status progress, blockers, or ETA. "
         "The signals object uses keys: progress_note string, blockers array of strings, "
-        "eta_change_days integer or null. "
+        "eta_change_days integer or null, and requests array. Each requests item uses keys: "
+        "name string, kind dependency/review/input, note string, email string or null. "
         "Do not invent blockers. Previously open blockers are context only; mark them resolved "
-        "only if the reply says they are resolved. When sufficient is false, question must ask "
-        f"only for the missing status detail.{_prior_blocker_prompt(prior_blockers)}\n\n"
+        "only if the reply says they are resolved. Only include a request when the reply "
+        "explicitly needs a deliverable, review, or input from a specific named person. "
+        "When sufficient is false, question must ask only for the missing status detail."
+        f"{_prior_blocker_prompt(prior_blockers)}\n\n"
         f"Latest reply:\n{raw_reply}"
     )
 
@@ -250,6 +258,7 @@ def _signals_from_json(value: object, *, fallback_progress_note: str) -> CheckIn
         else fallback_progress_note,
         blockers=_string_tuple(value.get("blockers")),
         eta_change_days=_optional_int(value.get("eta_change_days")),
+        requests=_request_tuple(value.get("requests")),
     )
 
 
@@ -263,3 +272,42 @@ def _optional_int(value: object) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool):
         return value
     return None
+
+
+def _request_tuple(value: object) -> tuple[CrossPersonMention, ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    requests: list[CrossPersonMention] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        raw_name = _clean_string(item.get("name") or item.get("raw_name"))
+        kind = _clean_kind(item.get("kind"))
+        note = _clean_string(item.get("note"))
+        if raw_name is None or kind is None or note is None:
+            continue
+        requests.append(
+            CrossPersonMention(
+                raw_name=raw_name,
+                kind=kind.value,
+                note=note,
+                email=_clean_string(item.get("email")),
+            )
+        )
+    return tuple(requests)
+
+
+def _clean_kind(value: object) -> CrossPersonRequestKind | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return CrossPersonRequestKind(value.strip().lower())
+    except ValueError:
+        return None
+
+
+def _clean_string(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
