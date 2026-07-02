@@ -9,7 +9,15 @@ from core.ports.repositories import TimeSeriesRepository
 
 DEFAULT_FEED_LOOKBACK_DAYS = 7
 DEFAULT_FEED_LIMIT = 50
-DEFAULT_FEED_SOURCES = ("work_item", "vcs_pull_request", "vcs_commit", "issue", "checkin", "risk")
+DEFAULT_FEED_SOURCES = (
+    "work_item",
+    "vcs_pull_request",
+    "vcs_commit",
+    "issue",
+    "checkin",
+    "risk",
+    "cross_person_request",
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -74,12 +82,18 @@ def _kind_for_fact(fact: FactEvent) -> str:
         "issue": "issue_update",
         "checkin": "checkin_update",
         "risk": _risk_feed_kind(fact),
+        "cross_person_request": _cross_person_feed_kind(fact),
     }.get(fact.source, fact.source)
 
 
 def _risk_feed_kind(fact: FactEvent) -> str:
     transition = _payload_string(fact.payload, "transition")
     return "risk_cleared" if transition == "cleared" else "risk_opened"
+
+
+def _cross_person_feed_kind(fact: FactEvent) -> str:
+    transition = _payload_string(fact.payload, "transition") or "opened"
+    return f"cross_person_request_{transition}"
 
 
 def _summary_for_fact(fact: FactEvent) -> str:
@@ -118,6 +132,8 @@ def _summary_for_fact(fact: FactEvent) -> str:
         )
     if fact.source == "risk":
         return _risk_summary(fact)
+    if fact.source == "cross_person_request":
+        return _cross_person_summary(fact)
     return fact.source
 
 
@@ -127,6 +143,23 @@ def _risk_summary(fact: FactEvent) -> str:
     if transition == "cleared":
         return f"Risk cleared: {reason}"
     return f"Risk opened: {reason}"
+
+
+def _cross_person_summary(fact: FactEvent) -> str:
+    kind = _payload_string(fact.payload, "kind") or "request"
+    transition = _payload_string(fact.payload, "transition") or "opened"
+    requester = _payload_string(fact.payload, "requester_id") or "someone"
+    counterpart = _payload_string(fact.payload, "counterpart_id") or "unresolved counterpart"
+    note = _payload_string(fact.payload, "note") or "follow-up needed"
+    if transition == "opened":
+        return f"Cross-person {kind} opened: {requester} needs {counterpart} for {note}"
+    if transition == "resolved":
+        return f"Cross-person {kind} resolved: {counterpart} completed {note}"
+    if transition == "acknowledged":
+        return f"Cross-person {kind} acknowledged: {counterpart} is handling {note}"
+    if transition == "needs_resolution":
+        return f"Cross-person {kind} needs PM resolution: {requester} named {note}"
+    return f"Cross-person {kind} {transition}: {note}"
 
 
 def _details_for_fact(fact: FactEvent) -> Mapping[str, JsonScalar]:
@@ -168,6 +201,16 @@ def _details_for_fact(fact: FactEvent) -> Mapping[str, JsonScalar]:
             "transition": _payload_string(fact.payload, "transition"),
             "evidence_url": _payload_string(fact.payload, "evidence_url"),
             "age_days": _payload_int(fact.payload, "age_days"),
+        }
+    if fact.source == "cross_person_request":
+        return {
+            "request_id": _payload_string(fact.payload, "request_id"),
+            "requester_id": _payload_string(fact.payload, "requester_id"),
+            "counterpart_id": _payload_string(fact.payload, "counterpart_id"),
+            "kind": _payload_string(fact.payload, "kind"),
+            "status": _payload_string(fact.payload, "status"),
+            "transition": _payload_string(fact.payload, "transition"),
+            "needs_resolution": _payload_bool(fact.payload, "needs_resolution"),
         }
     return {}
 

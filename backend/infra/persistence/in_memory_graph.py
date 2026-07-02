@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from math import sqrt
 
 from core.domain.conversation import ConversationTurn
+from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
 from core.domain.directory import DirectoryUser
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
@@ -56,6 +57,7 @@ class InMemoryGraphStore:
     _sync_cursors: dict[tuple[str, str, str], SyncCursor] = field(default_factory=dict)
     _directory_users: dict[tuple[str, str], DirectoryUser] = field(default_factory=dict)
     _conversation_turns: list[ConversationTurn] = field(default_factory=list)
+    _cross_person_requests: dict[tuple[str, str], CrossPersonRequest] = field(default_factory=dict)
     _checkin_reply_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
@@ -200,6 +202,141 @@ class InMemoryGraphStore:
             key=lambda fact: (fact.observed_at, fact.ingested_at, fact.correlation_id),
             reverse=True,
         )[:limit]
+
+    async def create(self, request: CrossPersonRequest) -> CrossPersonRequest:
+        key = (request.tenant_id, request.id)
+        existing = self._cross_person_requests.get(key)
+        if existing is not None:
+            return existing
+        self._cross_person_requests[key] = request
+        return request
+
+    async def get(self, tenant_id: str, request_id: str) -> CrossPersonRequest | None:
+        return self._cross_person_requests.get((tenant_id, request_id))
+
+    async def update_status(
+        self,
+        tenant_id: str,
+        request_id: str,
+        status: CrossPersonRequestStatus,
+        updated_at: datetime,
+    ) -> CrossPersonRequest | None:
+        existing = await self.get(tenant_id, request_id)
+        if existing is None:
+            return None
+        updated = CrossPersonRequest(
+            tenant_id=existing.tenant_id,
+            id=existing.id,
+            requester_id=existing.requester_id,
+            requester_chat_ref=existing.requester_chat_ref,
+            counterpart_id=existing.counterpart_id,
+            kind=existing.kind,
+            note=existing.note,
+            source_correlation_id=existing.source_correlation_id,
+            status=status,
+            created_at=existing.created_at,
+            updated_at=updated_at,
+            task_ref=existing.task_ref,
+            raw_name=existing.raw_name,
+            email=existing.email,
+            counterpart_display_name=existing.counterpart_display_name,
+            counterpart_email=existing.counterpart_email,
+            notify_message_id=existing.notify_message_id,
+            notify_correlation_id=existing.notify_correlation_id,
+        )
+        self._cross_person_requests[(tenant_id, request_id)] = updated
+        return updated
+
+    async def record_notification(
+        self,
+        tenant_id: str,
+        request_id: str,
+        *,
+        notify_message_id: str,
+        notify_correlation_id: str,
+        updated_at: datetime,
+    ) -> CrossPersonRequest | None:
+        existing = await self.get(tenant_id, request_id)
+        if existing is None:
+            return None
+        updated = CrossPersonRequest(
+            tenant_id=existing.tenant_id,
+            id=existing.id,
+            requester_id=existing.requester_id,
+            requester_chat_ref=existing.requester_chat_ref,
+            counterpart_id=existing.counterpart_id,
+            kind=existing.kind,
+            note=existing.note,
+            source_correlation_id=existing.source_correlation_id,
+            status=existing.status,
+            created_at=existing.created_at,
+            updated_at=updated_at,
+            task_ref=existing.task_ref,
+            raw_name=existing.raw_name,
+            email=existing.email,
+            counterpart_display_name=existing.counterpart_display_name,
+            counterpart_email=existing.counterpart_email,
+            notify_message_id=notify_message_id,
+            notify_correlation_id=notify_correlation_id,
+        )
+        self._cross_person_requests[(tenant_id, request_id)] = updated
+        return updated
+
+    async def list_for_counterpart(
+        self,
+        tenant_id: str,
+        counterpart_id: str,
+        statuses: Sequence[CrossPersonRequestStatus] | None = None,
+    ) -> list[CrossPersonRequest]:
+        status_filter = set(statuses) if statuses is not None else None
+        return _sort_cross_person_requests(
+            request
+            for request in self._cross_person_requests.values()
+            if request.tenant_id == tenant_id
+            and request.counterpart_id == counterpart_id
+            and (status_filter is None or request.status in status_filter)
+        )
+
+    async def list_for_requester(
+        self,
+        tenant_id: str,
+        requester_id: str,
+        statuses: Sequence[CrossPersonRequestStatus] | None = None,
+    ) -> list[CrossPersonRequest]:
+        status_filter = set(statuses) if statuses is not None else None
+        return _sort_cross_person_requests(
+            request
+            for request in self._cross_person_requests.values()
+            if request.tenant_id == tenant_id
+            and request.requester_id == requester_id
+            and (status_filter is None or request.status in status_filter)
+        )
+
+    async def list_open(self, tenant_id: str) -> list[CrossPersonRequest]:
+        return _sort_cross_person_requests(
+            request
+            for request in self._cross_person_requests.values()
+            if request.tenant_id == tenant_id
+            and request.status
+            in {
+                CrossPersonRequestStatus.OPEN,
+                CrossPersonRequestStatus.ACKNOWLEDGED,
+                CrossPersonRequestStatus.NEEDS_RESOLUTION,
+            }
+        )
+
+    async def get_by_notify_correlation(
+        self,
+        tenant_id: str,
+        notify_correlation_id: str,
+    ) -> CrossPersonRequest | None:
+        for request in self._cross_person_requests.values():
+            if (
+                request.tenant_id == tenant_id
+                and request.notify_correlation_id == notify_correlation_id
+            ):
+                return request
+        return None
 
     async def record_checkin(self, checkin: CheckIn) -> None:
         self._checkins = [
@@ -707,6 +844,16 @@ def _fact_identity(fact: FactEvent) -> tuple[str, str, str, str, str, datetime]:
         fact.entity_ref.id,
         fact.correlation_id,
         fact.observed_at,
+    )
+
+
+def _sort_cross_person_requests(
+    requests: Iterable[CrossPersonRequest],
+) -> list[CrossPersonRequest]:
+    return sorted(
+        requests,
+        key=lambda request: (request.created_at, request.updated_at, request.id),
+        reverse=True,
     )
 
 

@@ -12,6 +12,8 @@ from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.status_collector import StatusCollector
 from core.application.status_parsing import StatusParser
 from core.domain.conversation import ConversationRole, ConversationTurn
+from core.domain.cross_person import CrossPersonRequestStatus
+from core.domain.directory import DirectoryUser
 from core.domain.graph import EntityRef, FactEvent, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
@@ -25,7 +27,7 @@ from core.domain.status import (
     DeveloperStatus,
     StatusSource,
 )
-from infra.persistence.in_memory_graph import InMemoryGraphStore
+from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
 from tests.contract.fakes import FakeChatProvider, FakeIssueTracker, FakeLlmProvider
 
 
@@ -81,6 +83,32 @@ class CapturingLogger:
 
     def info(self, event: str, **values: object) -> None:
         self.events.append({"event": event, **values})
+
+
+async def _record_open_checkin(store: InMemoryGraphStore) -> None:
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+
+
+def _reply_message(text: str) -> InboundMessage:
+    return InboundMessage(
+        tenant_id="demo",
+        user=ChatUserRef(tenant_id="demo", external_id="U-dev"),
+        text=text,
+        thread_id="thread-1",
+        message_id="msg-1",
+        correlation_id="corr-1",
+        received_at=datetime(2026, 1, 10, 9, 10, tzinfo=UTC),
+    )
 
 
 def test_status_collector_requires_conversation_repository() -> None:
@@ -584,6 +612,192 @@ async def test_status_collector_finalizes_when_clarification_cap_reached() -> No
     assert checkin is not None
     assert checkin.replied_at == datetime(2026, 1, 10, 9, 15, tzinfo=UTC)
     assert chat.sent == []
+
+
+async def test_status_collector_resolves_cross_person_request_by_single_match() -> None:
+    store = InMemoryGraphStore()
+    directory = InMemoryDirectoryUserRepository(store)
+    await directory.upsert_users(
+        [
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U-alice",
+                display_name="Alice Chen",
+                email="alice@example.com",
+            )
+        ]
+    )
+    await _record_open_checkin(store)
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(
+            texts=[
+                '{"is_status_update":true,"sufficient":true,"question":null,'
+                '"signals":{"progress_note":"Blocked on schema review",'
+                '"blockers":["schema review"],"eta_change_days":null,'
+                '"requests":[{"name":"Alice Chen","kind":"review",'
+                '"note":"API schema review","email":null}]}}'
+            ]
+        ),
+        status_repository=store,
+        conversation_repository=store,
+        directory_repository=directory,
+        model="test-model",
+    )
+
+    outcome = await collector.handle_reply(_reply_message("Waiting on Alice Chen for review."))
+
+    assert outcome.kind == "processed"
+    assert len(outcome.cross_person_requests) == 1
+    request = outcome.cross_person_requests[0]
+    assert request.status is CrossPersonRequestStatus.OPEN
+    assert request.counterpart_id == "U-alice"
+    assert request.counterpart_display_name == "Alice Chen"
+    assert request.counterpart_email == "alice@example.com"
+
+
+async def test_status_collector_clarifies_ambiguous_cross_person_name() -> None:
+    store = InMemoryGraphStore()
+    directory = InMemoryDirectoryUserRepository(store)
+    await directory.upsert_users(
+        [
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U-alex-chen",
+                display_name="Alex Chen",
+                email="alex.chen@example.com",
+            ),
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U-alexa-roy",
+                display_name="Alexa Roy",
+                email="alexa.roy@example.com",
+            ),
+        ]
+    )
+    await _record_open_checkin(store)
+    chat = FakeChatProvider()
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=SequenceLlmProvider(
+            texts=[
+                '{"is_status_update":true,"sufficient":true,"question":null,'
+                '"signals":{"progress_note":"Blocked on schema input",'
+                '"blockers":["schema input"],"eta_change_days":null,'
+                '"requests":[{"name":"Alex","kind":"input",'
+                '"note":"schema confirmation","email":null}]}}'
+            ]
+        ),
+        status_repository=store,
+        conversation_repository=store,
+        directory_repository=directory,
+        model="test-model",
+    )
+
+    outcome = await collector.handle_reply(_reply_message("Waiting on Alex for schema input."))
+
+    checkin = await store.checkin_by_correlation("demo", "corr-1")
+    assert outcome.kind == "clarifying"
+    assert outcome.cross_person_requests == ()
+    assert checkin is not None
+    assert checkin.replied_at is None
+    assert len(chat.sent) == 1
+    assert "Alex Chen (alex.chen@example.com)" in chat.sent[0].text
+    assert "Alexa Roy (alexa.roy@example.com)" in chat.sent[0].text
+    assert await store.checkin_clarification_count("demo", "corr-1") == 1
+
+
+async def test_status_collector_resolves_ambiguous_name_with_email_reply() -> None:
+    store = InMemoryGraphStore()
+    directory = InMemoryDirectoryUserRepository(store)
+    await directory.upsert_users(
+        [
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U-alex-chen",
+                display_name="Alex Chen",
+                email="alex.chen@example.com",
+            ),
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U-alexa-roy",
+                display_name="Alexa Roy",
+                email="alexa.roy@example.com",
+            ),
+        ]
+    )
+    await _record_open_checkin(store)
+    await store.record_checkin_clarification(
+        CheckInClarification(
+            tenant_id="demo",
+            correlation_id="corr-1",
+            clarification_number=1,
+            question="Did you mean Alex Chen or Alexa Roy?",
+            sent_at=datetime(2026, 1, 10, 9, 8, tzinfo=UTC),
+            outbound_message_id="msg-clarify",
+        )
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(
+            texts=[
+                '{"is_status_update":true,"sufficient":true,"question":null,'
+                '"signals":{"progress_note":"Blocked on schema input",'
+                '"blockers":["schema input"],"eta_change_days":null,'
+                '"requests":[{"name":"Alex","kind":"input",'
+                '"note":"schema confirmation","email":"alexa.roy@example.com"}]}}'
+            ]
+        ),
+        status_repository=store,
+        conversation_repository=store,
+        directory_repository=directory,
+        model="test-model",
+        checkin_max_clarifications=2,
+    )
+
+    outcome = await collector.handle_reply(
+        _reply_message("I meant alexa.roy@example.com for the schema confirmation.")
+    )
+
+    assert outcome.kind == "processed"
+    assert len(outcome.cross_person_requests) == 1
+    request = outcome.cross_person_requests[0]
+    assert request.status is CrossPersonRequestStatus.OPEN
+    assert request.counterpart_id == "U-alexa-roy"
+    assert request.counterpart_email == "alexa.roy@example.com"
+
+
+async def test_status_collector_marks_unresolved_request_when_cap_reached() -> None:
+    store = InMemoryGraphStore()
+    await _record_open_checkin(store)
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(
+            texts=[
+                '{"is_status_update":true,"sufficient":true,"question":null,'
+                '"signals":{"progress_note":"Blocked on data contract",'
+                '"blockers":["data contract"],"eta_change_days":null,'
+                '"requests":[{"name":"Unknown Alex","kind":"dependency",'
+                '"note":"data contract approval","email":null}]}}'
+            ]
+        ),
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+        checkin_max_clarifications=0,
+    )
+
+    outcome = await collector.handle_reply(_reply_message("Waiting on Unknown Alex."))
+
+    assert outcome.kind == "processed"
+    assert len(outcome.cross_person_requests) == 1
+    request = outcome.cross_person_requests[0]
+    assert request.status is CrossPersonRequestStatus.NEEDS_RESOLUTION
+    assert request.counterpart_id is None
 
 
 async def test_status_collector_tool_agent_fetches_history_and_finalizes_reply() -> None:

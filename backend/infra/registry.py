@@ -11,6 +11,7 @@ from redis.asyncio import Redis
 from config.settings import Settings
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.availability import AvailabilityService
+from core.application.cross_person_service import CrossPersonRequestService
 from core.application.directory_sync_service import DirectorySyncService
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import (
@@ -27,6 +28,7 @@ from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
 from core.ports.repositories import (
     ConversationRepository,
+    CrossPersonRequestRepository,
     GraphRepository,
     RollupRepository,
     StatusRepository,
@@ -47,6 +49,7 @@ from infra.adapters.secrets.encrypted import (
     PostgresEncryptedSecretRecordStore,
 )
 from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
+from infra.persistence.postgres_cross_person import PostgresCrossPersonRequestRepository
 from infra.persistence.postgres_directory import PostgresDirectoryUserRepository
 from infra.persistence.postgres_graph import (
     PostgresGraphRepository,
@@ -102,6 +105,10 @@ class ServiceRegistry:
         default=None,
         init=False,
     )
+    _postgres_cross_person_request_repository: PostgresCrossPersonRequestRepository | None = field(
+        default=None,
+        init=False,
+    )
 
     def graph_repository(self) -> GraphRepository:
         if self.settings.runtime_mode == "memory":
@@ -116,6 +123,15 @@ class ServiceRegistry:
         if self._postgres_time_series_repository is None:
             self._postgres_time_series_repository = PostgresTimeSeriesRepository(self._executor())
         return self._postgres_time_series_repository
+
+    def cross_person_request_repository(self) -> CrossPersonRequestRepository:
+        if self.settings.runtime_mode == "memory":
+            return self._memory_graph_store()
+        if self._postgres_cross_person_request_repository is None:
+            self._postgres_cross_person_request_repository = PostgresCrossPersonRequestRepository(
+                self._executor()
+            )
+        return self._postgres_cross_person_request_repository
 
     def vector_store(self) -> VectorStore:
         if self.settings.runtime_mode == "memory":
@@ -194,9 +210,31 @@ class ServiceRegistry:
             return ChatWebhookProcessResult(status="ignored", message_id="unsupported-provider")
         if received_at is not None:
             message = replace(message, received_at=received_at)
+        cross_person_service = self.cross_person_request_service()
+        notified_request = await self.cross_person_request_repository().get_by_notify_correlation(
+            message.tenant_id,
+            message.correlation_id,
+        )
+        if notified_request is not None:
+            updated = await cross_person_service.handle_counterpart_reply(
+                message,
+                notified_request,
+            )
+            return ChatWebhookProcessResult(
+                status=updated.status.value,
+                message_id=message.message_id,
+            )
+
         collector = self.status_collector()
         resolved_correlation_id = await collector.resolve_reply_correlation(message)
         if resolved_correlation_id is None:
+            open_request = await cross_person_service.open_request_for_counterpart_reply(message)
+            if open_request is not None:
+                updated = await cross_person_service.handle_counterpart_reply(message, open_request)
+                return ChatWebhookProcessResult(
+                    status=updated.status.value,
+                    message_id=message.message_id,
+                )
             return ChatWebhookProcessResult(status="ignored", message_id=message.message_id)
 
         checkin = await self.status_repository().checkin_by_correlation(
@@ -209,6 +247,19 @@ class ServiceRegistry:
         outcome = await collector.handle_reply(
             replace(message, correlation_id=resolved_correlation_id)
         )
+        if outcome.kind == "processed" and outcome.cross_person_requests:
+            correlation = await self.status_repository().checkin_correlation_by_id(
+                message.tenant_id,
+                resolved_correlation_id,
+            )
+            await cross_person_service.record_from_checkin(
+                tenant_id=message.tenant_id,
+                requester_id=checkin.developer_id,
+                requester_chat_ref=correlation.chat_user_ref if correlation is not None else None,
+                source_correlation_id=resolved_correlation_id,
+                resolutions=outcome.cross_person_requests,
+                observed_at=message.received_at,
+            )
         return ChatWebhookProcessResult(status=outcome.kind, message_id=message.message_id)
 
     def chat_simulator_available(self) -> bool:
@@ -326,6 +377,16 @@ class ServiceRegistry:
             repository=self.directory_user_repository(),
         )
 
+    def cross_person_request_service(self) -> CrossPersonRequestService:
+        return CrossPersonRequestService(
+            repository=self.cross_person_request_repository(),
+            chat_provider=self.chat_provider(),
+            directory_repository=self.directory_user_repository(),
+            time_series_repository=self.time_series_repository(),
+            llm_provider=self.llm_provider(),
+            model=self.settings.litellm_model,
+        )
+
     def availability_service(self) -> AvailabilityService:
         return AvailabilityService(self.calendar_provider())
 
@@ -342,6 +403,7 @@ class ServiceRegistry:
             status_repository=self.status_repository(),
             conversation_repository=self.conversation_repository(),
             time_series_repository=self.time_series_repository(),
+            directory_repository=self.directory_user_repository(),
             model=self.settings.litellm_model,
             tool_agent=tool_agent,
             conversation_retention_days=self.settings.conversation_retention_days,

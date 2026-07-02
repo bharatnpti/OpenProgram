@@ -5,6 +5,7 @@ import pytest
 from tests.bdd import (
     fixtures,
     steps_common,
+    steps_cross_person_requests,
     steps_redis_persistence,
     steps_reply_parsing,
     steps_schedule,
@@ -21,6 +22,7 @@ from tests.bdd import (
 for _module in (
     fixtures,
     steps_common,
+    steps_cross_person_requests,
     steps_reply_parsing,
     steps_redis_persistence,
     steps_schedule,

@@ -18,6 +18,7 @@ from core.domain.status import (
     CheckInPreference,
     CheckInScheduleRun,
     CheckInSignals,
+    CrossPersonMention,
     DeveloperStatus,
     StatusSource,
 )
@@ -917,6 +918,15 @@ def _signals_to_json(signals: CheckInSignals | None) -> dict[str, object] | None
         "progress_note": signals.progress_note,
         "blockers": list(signals.blockers),
         "eta_change_days": signals.eta_change_days,
+        "requests": [
+            {
+                "name": request.raw_name,
+                "kind": request.kind,
+                "note": request.note,
+                "email": request.email,
+            }
+            for request in signals.requests
+        ],
     }
 
 
@@ -933,6 +943,7 @@ def _signals_from_json(value: object) -> CheckInSignals | None:
         eta_change_days=eta_change_days
         if isinstance(eta_change_days, int) and not isinstance(eta_change_days, bool)
         else None,
+        requests=_cross_person_mentions_from_json(value.get("requests")),
     )
 
 
@@ -947,6 +958,29 @@ def _int_tuple_to_json(values: tuple[int, ...]) -> dict[str, object]:
 def _string_tuple_from_json(value: object) -> tuple[str, ...]:
     items = _items_from_json(value)
     return tuple(item for item in items if isinstance(item, str))
+
+
+def _cross_person_mentions_from_json(value: object) -> tuple[CrossPersonMention, ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    mentions: list[CrossPersonMention] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        raw_name = _optional_string(item.get("name") or item.get("raw_name"))
+        kind = _optional_string(item.get("kind"))
+        note = _optional_string(item.get("note"))
+        if raw_name is None or kind is None or note is None:
+            continue
+        mentions.append(
+            CrossPersonMention(
+                raw_name=raw_name,
+                kind=kind,
+                note=note,
+                email=_optional_string(item.get("email")),
+            )
+        )
+    return tuple(mentions)
 
 
 def _int_tuple_from_json(value: object) -> tuple[int, ...]:
@@ -1041,6 +1075,10 @@ def _datetime_field(value: object, field_name: str) -> datetime:
     if isinstance(value, datetime):
         return value
     raise TypeError(f"{field_name} must be a datetime instance")
+
+
+def _optional_string(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 def _optional_datetime_field(value: object, field_name: str) -> datetime | None:
