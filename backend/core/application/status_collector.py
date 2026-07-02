@@ -16,6 +16,8 @@ from core.application.conversation_history import llm_messages_from_turns
 from core.application.status_parsing import ClarificationEvaluator, StatusParser
 from core.application.tools.conversation_history import MAX_HISTORY_LIMIT, ConversationHistoryTool
 from core.domain.conversation import ConversationRole, ConversationTurn
+from core.domain.cross_person import CrossPersonRequestResolution, CrossPersonRequestStatus
+from core.domain.directory import DirectoryUser
 from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse
@@ -26,10 +28,12 @@ from core.domain.status import (
     CheckInCorrelation,
     CheckInNudge,
     CheckInSignals,
+    CrossPersonMention,
     DeveloperStatus,
     StatusSource,
 )
 from core.ports.chat import ChatProvider
+from core.ports.directory import DirectoryUserRepository
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
 from core.ports.repositories import ConversationRepository, StatusRepository, TimeSeriesRepository
@@ -73,6 +77,13 @@ class StatusCollectorGraph(Protocol):
 class ReplyOutcome:
     kind: Literal["processed", "clarifying", "ignored", "acknowledged"]
     status: DeveloperStatus | None = None
+    cross_person_requests: tuple[CrossPersonRequestResolution, ...] = ()
+
+
+@dataclass(frozen=True, kw_only=True)
+class _CrossPersonResolutionResult:
+    resolutions: tuple[CrossPersonRequestResolution, ...]
+    clarification_question: str | None = None
 
 
 class StatusCollector:
@@ -86,6 +97,7 @@ class StatusCollector:
         conversation_repository: ConversationRepository,
         model: str,
         time_series_repository: TimeSeriesRepository | None = None,
+        directory_repository: DirectoryUserRepository | None = None,
         parser: StatusParser | None = None,
         clarification_evaluator: ClarificationEvaluator | None = None,
         tool_agent: ToolCallingAgent | None = None,
@@ -98,6 +110,7 @@ class StatusCollector:
         self._llm_provider = llm_provider
         self._status_repository = status_repository
         self._time_series_repository = time_series_repository
+        self._directory_repository = directory_repository
         self._conversation_repository = conversation_repository
         self._model = model
         self._tool_agent = tool_agent
@@ -246,15 +259,31 @@ class StatusCollector:
                 signals,
                 "Clarification cap reached before all details were confirmed.",
             )
+        person_resolution = await self._resolve_cross_person_requests(
+            checkin=checkin,
+            message=message,
+            signals=signals,
+            clarification_count=clarification_count,
+        )
+        if person_resolution.clarification_question is not None:
+            await self._send_clarification(
+                checkin=checkin,
+                message=message,
+                question=person_resolution.clarification_question,
+                clarification_number=clarification_count + 1,
+            )
+            return ReplyOutcome(kind="clarifying")
+        status = await self._finalize_checkin_reply(
+            checkin=checkin,
+            replied_at=message.received_at,
+            raw_reply=message.text,
+            signals=signals,
+            prior_blockers=prior_blockers,
+        )
         return ReplyOutcome(
             kind="processed",
-            status=await self._finalize_checkin_reply(
-                checkin=checkin,
-                replied_at=message.received_at,
-                raw_reply=message.text,
-                signals=signals,
-                prior_blockers=prior_blockers,
-            ),
+            status=status,
+            cross_person_requests=person_resolution.resolutions,
         )
 
     async def resolve_reply_correlation(self, message: InboundMessage) -> str | None:
@@ -800,6 +829,67 @@ class StatusCollector:
         )
         return message_id
 
+    async def _resolve_cross_person_requests(
+        self,
+        *,
+        checkin: CheckIn,
+        message: InboundMessage,
+        signals: CheckInSignals,
+        clarification_count: int,
+    ) -> _CrossPersonResolutionResult:
+        if not signals.requests:
+            return _CrossPersonResolutionResult(resolutions=())
+        resolutions: list[CrossPersonRequestResolution] = []
+        for mention in signals.requests:
+            matches = await self._directory_matches_for_mention(checkin.tenant_id, mention)
+            if len(matches) == 1:
+                user = matches[0]
+                resolutions.append(
+                    CrossPersonRequestResolution(
+                        mention=mention,
+                        status=CrossPersonRequestStatus.OPEN,
+                        counterpart_id=user.external_id,
+                        counterpart_display_name=user.display_name,
+                        counterpart_email=user.email,
+                    )
+                )
+                continue
+            if clarification_count < self._checkin_max_clarifications:
+                return _CrossPersonResolutionResult(
+                    resolutions=(),
+                    clarification_question=_person_clarification_question(mention, matches),
+                )
+            resolutions.append(
+                CrossPersonRequestResolution(
+                    mention=mention,
+                    status=CrossPersonRequestStatus.NEEDS_RESOLUTION,
+                )
+            )
+        return _CrossPersonResolutionResult(resolutions=tuple(resolutions))
+
+    async def _directory_matches_for_mention(
+        self,
+        tenant_id: str,
+        mention: CrossPersonMention,
+    ) -> list[DirectoryUser]:
+        if self._directory_repository is None:
+            return []
+        query = (mention.email or mention.raw_name).strip()
+        if not query:
+            return []
+        matches = await self._directory_repository.search(tenant_id, query, limit=10)
+        exact_email = mention.email or (query if "@" in query else None)
+        if exact_email is not None:
+            normalized = exact_email.casefold()
+            exact_matches = [
+                user
+                for user in matches
+                if user.email is not None and user.email.casefold() == normalized
+            ]
+            if exact_matches:
+                return exact_matches
+        return matches
+
     async def _finalize_checkin_reply(
         self,
         *,
@@ -1158,6 +1248,7 @@ def _signals_with_note(signals: CheckInSignals, note: str) -> CheckInSignals:
         progress_note=f"{signals.progress_note} {note}",
         blockers=signals.blockers,
         eta_change_days=signals.eta_change_days,
+        requests=signals.requests,
     )
 
 
@@ -1176,7 +1267,28 @@ def _signals_with_carried_blockers(
         ),
         blockers=prior_blockers,
         eta_change_days=signals.eta_change_days,
+        requests=signals.requests,
     )
+
+
+def _person_clarification_question(
+    mention: CrossPersonMention,
+    matches: Iterable[DirectoryUser],
+) -> str:
+    candidates = tuple(matches)[:5]
+    if not candidates:
+        return (
+            f"I could not find {mention.raw_name} in the directory. "
+            "Reply with the person's name or email."
+        )
+    options = " or ".join(_person_option(user) for user in candidates)
+    return f"Did you mean {options}? Reply with the name or email."
+
+
+def _person_option(user: DirectoryUser) -> str:
+    if user.email:
+        return f"{user.display_name} ({user.email})"
+    return user.display_name
 
 
 def _explicitly_resolves_blockers(raw_reply: str) -> bool:

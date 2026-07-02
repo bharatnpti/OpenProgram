@@ -13,7 +13,7 @@ from core.application.status_parsing import (
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.graph import JsonScalar
 from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
-from core.domain.status import CheckInSignals
+from core.domain.status import CheckInSignals, CrossPersonMention
 from tests.contract.fakes import FakeLlmProvider
 
 
@@ -130,6 +130,43 @@ async def test_status_parser_converts_valid_json_to_signals() -> None:
         ("assistant", "Can you share progress and blockers?"),
         ("user", "I am finishing the API handoff."),
     ]
+
+
+async def test_status_parser_extracts_cross_person_requests() -> None:
+    provider = CapturingLlmProvider(
+        text=(
+            '{"progress_note":"Blocked on schema review",'
+            '"blockers":["schema review"],"eta_change_days":null,'
+            '"requests":['
+            '{"name":"Alice Chen","kind":"review","note":"API schema review",'
+            '"email":"alice@example.com"},'
+            '{"name":"Bob","kind":"FYI","note":"status awareness","email":null}'
+            "]}"
+        )
+    )
+    parser = StatusParser(provider, model="test-model")
+
+    signals = await parser.parse_reply(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="Blocked waiting on Alice Chen to review the API schema.",
+        correlation_id="corr-1",
+    )
+
+    assert signals == CheckInSignals(
+        progress_note="Blocked on schema review",
+        blockers=("schema review",),
+        requests=(
+            CrossPersonMention(
+                raw_name="Alice Chen",
+                kind="review",
+                note="API schema review",
+                email="alice@example.com",
+            ),
+        ),
+    )
+    assert "requests array" in provider.requests[0].prompt
+    assert "specific named person" in provider.requests[0].prompt
 
 
 async def test_status_parser_falls_back_to_raw_reply_when_output_is_malformed() -> None:

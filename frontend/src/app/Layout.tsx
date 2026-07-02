@@ -9,6 +9,7 @@ import {
   GitBranch,
   MessageSquare,
   Network,
+  Handshake,
   Settings2,
   ShieldAlert,
   UserRoundCog,
@@ -56,6 +57,12 @@ export function Layout() {
       to: "/risks",
       label: "Risks",
       icon: <ShieldAlert className="h-4 w-4" />,
+      visible: canAccessPortfolio,
+    },
+    {
+      to: "/cross-person-requests",
+      label: "Requests",
+      icon: <Handshake className="h-4 w-4" />,
       visible: canAccessPortfolio,
     },
     {
