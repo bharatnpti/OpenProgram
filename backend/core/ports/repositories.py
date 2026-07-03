@@ -123,6 +123,12 @@ class CrossPersonRequestRepository(Protocol):
         notify_correlation_id: str,
     ) -> CrossPersonRequest | None: ...
 
+    async def get_by_notify_message_id(
+        self,
+        tenant_id: str,
+        message_id: str,
+    ) -> CrossPersonRequest | None: ...
+
 
 class StatusRepository(Protocol):
     async def record_checkin(self, checkin: CheckIn) -> None: ...

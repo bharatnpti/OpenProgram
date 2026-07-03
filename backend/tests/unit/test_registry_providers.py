@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
+import pytest
+
 from config.settings import Settings
+from core.domain.errors import ProviderConfigurationError
+from infra.adapters import catalog
 from infra.adapters.calendar.google_adapter import GoogleCalendarAdapter
 from infra.adapters.chat.fake import FakeChatProvider, FakeChatWebhookMapper
 from infra.adapters.chat.mock_slack import InMemoryMockSlackStore, MockSlackChatAdapter
@@ -100,6 +104,82 @@ def test_registry_selects_real_configured_provider_adapters() -> None:
     assert isinstance(registry.workflow_worker(), TemporalWorkflowWorker)
 
 
+def test_container_slack_chat_provider_requires_bot_token() -> None:
+    settings = _settings(
+        secret_key=SECRET_KEY,
+        runtime_mode="container",
+        chat_provider="slack",
+        slack_bot_token=None,
+        slack_signing_secret="signing-secret",
+    )
+
+    with pytest.raises(ProviderConfigurationError) as exc_info:
+        catalog.build_chat_provider(settings)
+
+    assert "slack_bot_token" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("slack_bot_token", "slack_signing_secret", "expected_healthy"),
+    [
+        (None, None, False),
+        ("xoxb-test", None, False),
+        (None, "signing-secret", False),
+        ("xoxb-test", "signing-secret", True),
+    ],
+)
+async def test_container_slack_readiness_requires_bot_token_and_signing_secret(
+    slack_bot_token: str | None,
+    slack_signing_secret: str | None,
+    expected_healthy: bool,
+) -> None:
+    probes = catalog.build_readiness_probes(
+        _settings(
+            secret_key=SECRET_KEY,
+            runtime_mode="container",
+            chat_provider="slack",
+            directory_provider="fake",
+            llm_provider="fake",
+            workflow_provider="fake",
+            slack_bot_token=slack_bot_token,
+            slack_signing_secret=slack_signing_secret,
+        ),
+        _FakeReadinessExecutor,
+        _FakeRedis,
+    )
+
+    assert await probes["slack_provider"].check() is expected_healthy
+
+
+@pytest.mark.parametrize(
+    ("chat_provider", "directory_provider"),
+    [
+        ("fake", "fake"),
+        ("mock_slack", "mock_slack"),
+    ],
+)
+async def test_container_non_real_slack_readiness_does_not_require_real_credentials(
+    chat_provider: str,
+    directory_provider: str,
+) -> None:
+    probes = catalog.build_readiness_probes(
+        _settings(
+            secret_key=SECRET_KEY,
+            runtime_mode="container",
+            chat_provider=chat_provider,
+            directory_provider=directory_provider,
+            llm_provider="fake",
+            workflow_provider="fake",
+            slack_bot_token=None,
+            slack_signing_secret=None,
+        ),
+        _FakeReadinessExecutor,
+        _FakeRedis,
+    )
+
+    assert await probes["slack_provider"].check() is True
+
+
 async def test_registry_selects_mock_slack_provider_adapters() -> None:
     registry = ServiceRegistry(
         _settings(
@@ -179,3 +259,19 @@ def test_registry_returns_postgres_phase_1_repositories() -> None:
     assert isinstance(registry.sync_cursor_repository(), PostgresSyncCursorRepository)
     assert registry.status_repository() is registry.status_repository()
     assert registry.conversation_repository() is registry.conversation_repository()
+
+
+class _FakeReadinessExecutor:
+    async def fetch(
+        self,
+        query: str,
+        params: tuple[object, ...] = (),
+    ) -> list[dict[str, object]]:
+        if "pg_extension" in query:
+            return [{"extname": "age"}, {"extname": "timescaledb"}, {"extname": "vector"}]
+        return [{"ok": 1}]
+
+
+class _FakeRedis:
+    async def ping(self) -> bool:
+        return True

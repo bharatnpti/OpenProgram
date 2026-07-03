@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, cast
 
-from fastapi import Header, Request
+from fastapi import Header, HTTPException, Request, status
 
 from config.settings import Settings
 from core.application.ask_service import AskService
@@ -15,6 +15,7 @@ from core.application.persona_views import PersonaViewService
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.application.risk_service import RiskService
 from core.domain.auth import Principal
+from core.domain.errors import ProviderConfigurationError, ProviderUnavailable
 from core.domain.risk import RiskProviderConfig
 from infra.registry import ServiceRegistry
 
@@ -97,7 +98,7 @@ def get_ask_service(request: Request) -> AskService:
         time_series_repository=registry.time_series_repository(),
         flow_metrics_service=get_flow_metrics_service(request),
         persona_view_service=get_persona_view_service(request),
-        model=settings.litellm_model,
+        model=settings.default_llm_model,
     )
 
 
@@ -111,7 +112,14 @@ def get_directory_service(request: Request) -> DirectoryService:
 
 def get_directory_sync_service(request: Request) -> DirectorySyncService:
     registry = get_registry(request)
-    return registry.directory_sync_service()
+    try:
+        return registry.directory_sync_service()
+    except ProviderUnavailable as exc:
+        if isinstance(exc, ProviderConfigurationError):
+            status_code = status.HTTP_424_FAILED_DEPENDENCY
+        else:
+            status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 def get_persona_view_service(request: Request) -> PersonaViewService:
