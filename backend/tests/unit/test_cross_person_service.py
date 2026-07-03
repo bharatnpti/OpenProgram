@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from config.settings import Settings
 from core.application.cross_person_service import CrossPersonRequestService
 from core.domain.cross_person import CrossPersonRequestResolution, CrossPersonRequestStatus
 from core.domain.directory import DirectoryUser
@@ -9,6 +10,7 @@ from core.domain.graph import EntityRef, NodeKind
 from core.domain.messaging import ChatUserRef, InboundMessage
 from core.domain.status import CrossPersonMention
 from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
+from infra.registry import ServiceRegistry
 from tests.contract.fakes import FakeChatProvider
 
 
@@ -121,6 +123,64 @@ async def test_counterpart_reply_acknowledges_and_resolves_request() -> None:
     ]
 
 
+async def test_registry_routes_slack_thread_reply_by_notify_message_id_first() -> None:
+    store = InMemoryGraphStore()
+    registry = ServiceRegistry(_settings(), graph_store=store)
+    directory = registry.directory_user_repository()
+    await directory.upsert_users(
+        [
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U-alice",
+                display_name="Alice Chen",
+                email="alice@example.com",
+            )
+        ]
+    )
+    service = registry.cross_person_request_service()
+    first = (
+        await service.record_from_checkin(
+            tenant_id="demo",
+            requester_id="dev-1",
+            requester_chat_ref="U-dev",
+            source_correlation_id="corr-first",
+            resolutions=(_resolution(),),
+            observed_at=datetime(2026, 1, 10, 9, 10, tzinfo=UTC),
+        )
+    )[0]
+    second = (
+        await service.record_from_checkin(
+            tenant_id="demo",
+            requester_id="dev-2",
+            requester_chat_ref="U-dev-2",
+            source_correlation_id="corr-second",
+            resolutions=(_resolution(),),
+            observed_at=datetime(2026, 1, 10, 9, 11, tzinfo=UTC),
+        )
+    )[0]
+
+    result = await registry.process_chat_webhook(
+        "slack",
+        {
+            "event": {
+                "type": "message",
+                "user": "U-alice",
+                "text": "on it",
+                "ts": "1700000000.000123",
+                "channel": "C-alice",
+                "thread_ts": second.notify_message_id,
+            }
+        },
+        correlation_id="unmatched-reply-correlation",
+        received_at=datetime(2026, 1, 10, 9, 20, tzinfo=UTC),
+    )
+
+    assert result.status == CrossPersonRequestStatus.ACKNOWLEDGED.value
+    assert result.message_id == "1700000000.000123"
+    assert (await store.get("demo", first.id)).status is CrossPersonRequestStatus.OPEN
+    assert (await store.get("demo", second.id)).status is CrossPersonRequestStatus.ACKNOWLEDGED
+
+
 def _resolution() -> CrossPersonRequestResolution:
     return CrossPersonRequestResolution(
         mention=CrossPersonMention(
@@ -145,4 +205,19 @@ def _counterpart_reply(correlation_id: str, text: str) -> InboundMessage:
         message_id=f"reply-{text}",
         correlation_id=correlation_id,
         received_at=datetime(2026, 1, 10, 9, 20, tzinfo=UTC),
+    )
+
+
+def _settings() -> Settings:
+    return Settings(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        runtime_mode="memory",
+        chat_provider="fake",
+        directory_provider="fake",
+        issue_tracker_provider="fake",
+        vcs_provider="fake",
+        calendar_provider="fake",
+        llm_provider="fake",
+        workflow_provider="fake",
     )

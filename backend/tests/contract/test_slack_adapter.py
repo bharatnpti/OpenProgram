@@ -52,6 +52,104 @@ def test_slack_chat_webhook_mapper_satisfies_contract() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"event": "not-an-object"},
+        {"event": {"type": "reaction_added", "user": "U123"}},
+        {
+            "event": {
+                "type": "message",
+                "subtype": "bot_message",
+                "user": "U123",
+                "text": "bot reply",
+                "ts": "1700000000.000001",
+                "channel": "C123",
+            }
+        },
+        {
+            "event": {
+                "type": "message",
+                "bot_id": "B123",
+                "user": "U123",
+                "text": "bot reply",
+                "ts": "1700000000.000001",
+                "channel": "C123",
+            }
+        },
+        {
+            "event": {
+                "type": "message",
+                "app_id": "A123",
+                "user": "U123",
+                "text": "app reply",
+                "ts": "1700000000.000001",
+                "channel": "C123",
+            }
+        },
+        {
+            "event": {
+                "type": "message",
+                "text": "missing user",
+                "ts": "1700000000.000001",
+                "channel": "C123",
+            }
+        },
+        {
+            "event": {
+                "type": "message",
+                "user": "U123",
+                "ts": "1700000000.000001",
+                "channel": "C123",
+            }
+        },
+        {
+            "event": {
+                "type": "message",
+                "user": "U123",
+                "text": "missing timestamp",
+                "channel": "C123",
+            }
+        },
+        {
+            "event": {
+                "type": "message",
+                "user": "U123",
+                "text": "missing channel",
+                "ts": "1700000000.000001",
+            }
+        },
+    ],
+)
+def test_slack_chat_webhook_mapper_returns_none_for_unsupported_or_malformed_events(
+    payload: Mapping[str, object],
+) -> None:
+    mapped = SlackChatWebhookMapper(tenant_id="demo").map_webhook(payload, "corr-1")
+
+    assert mapped is None
+
+
+def test_slack_chat_webhook_mapper_rejects_empty_or_null_bot_marker_keys() -> None:
+    mapped = SlackChatWebhookMapper(tenant_id="demo").map_webhook(
+        {
+            "event": {
+                "type": "message",
+                "subtype": "",
+                "bot_id": None,
+                "app_id": "",
+                "user": "U123",
+                "text": "looks like a user message but marker keys are present",
+                "ts": "1700000000.000001",
+                "channel": "C123",
+            }
+        },
+        "corr-1",
+    )
+
+    assert mapped is None
+
+
 async def test_slack_adapter_maps_webhook_and_sends_dm() -> None:
     http = RecordingSlackHttpClient()
     adapter = SlackChatAdapter(

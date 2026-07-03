@@ -5,6 +5,7 @@ from collections.abc import Callable
 from redis.asyncio import Redis
 
 from config.settings import Settings
+from core.domain.errors import ProviderConfigurationError
 from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.directory import DirectoryProvider
@@ -245,10 +246,22 @@ def build_readiness_probes(
         "database": DatabaseReadinessProbe(executor_factory()),
         "database_extensions": DatabaseExtensionsReadinessProbe(executor_factory()),
         "redis": RedisReadinessProbe(redis_client_factory()),
+        "slack_provider": _slack_provider_readiness_probe(settings),
         "workflow_provider": build_workflow_readiness_probe(settings),
         "llm_provider": _llm_readiness_probe(settings),
         "llm_trace": _llm_trace_readiness_probe(settings),
     }
+
+
+def _slack_provider_readiness_probe(settings: Settings) -> ReadinessProbe:
+    slack_selected = settings.chat_provider == "slack" or settings.directory_provider == "slack"
+    slack_credentials_present = bool(
+        settings.slack_bot_token
+        and settings.slack_bot_token.strip()
+        and settings.slack_signing_secret
+        and settings.slack_signing_secret.strip()
+    )
+    return StaticReadinessProbe(healthy=not slack_selected or slack_credentials_present)
 
 
 def _llm_readiness_probe(settings: Settings) -> ReadinessProbe:
@@ -277,6 +290,8 @@ def _slack_http_client(settings: Settings) -> HttpSlackClient | DisabledSlackHtt
             retry_attempts=settings.slack_retry_attempts,
             retry_backoff_seconds=settings.slack_retry_backoff_seconds,
         )
+    if settings.runtime_mode == "container":
+        raise ProviderConfigurationError("slack_bot_token is required when runtime_mode=container")
     return DisabledSlackHttpClient()
 
 

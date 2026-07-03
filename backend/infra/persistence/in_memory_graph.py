@@ -338,6 +338,16 @@ class InMemoryGraphStore:
                 return request
         return None
 
+    async def get_by_notify_message_id(
+        self,
+        tenant_id: str,
+        message_id: str,
+    ) -> CrossPersonRequest | None:
+        for request in self._cross_person_requests.values():
+            if request.tenant_id == tenant_id and request.notify_message_id == message_id:
+                return request
+        return None
+
     async def record_checkin(self, checkin: CheckIn) -> None:
         self._checkins = [
             existing

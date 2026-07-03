@@ -159,6 +159,23 @@ class PostgresCrossPersonRequestRepository:
             )
         return _request_from_row(rows[0]) if rows else None
 
+    async def get_by_notify_message_id(
+        self,
+        tenant_id: str,
+        message_id: str,
+    ) -> CrossPersonRequest | None:
+        with _tracer.start_as_current_span("postgres.cross_person.get_by_notify_message_id"):
+            rows = await self._executor.fetch(
+                """
+                SELECT *
+                FROM cross_person_requests
+                WHERE tenant_id = %s AND notify_message_id = %s
+                LIMIT 1
+                """,
+                (tenant_id, message_id),
+            )
+        return _request_from_row(rows[0]) if rows else None
+
     async def _list(
         self,
         clauses: list[str],

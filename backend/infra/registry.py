@@ -42,6 +42,7 @@ from core.ports.workflows import WorkflowScheduler, WorkflowWorker
 from infra.adapters import catalog
 from infra.adapters.auth.dev import DevAuthProvider, DevCurrentPrincipal
 from infra.adapters.chat.mock_slack import MockSlackStore, slack_event_payload
+from infra.adapters.chat.slack_signing import verify_slack_signature
 from infra.adapters.redis_client import RedisClientProvider
 from infra.adapters.secrets.encrypted import (
     FernetSecretStore,
@@ -198,6 +199,22 @@ class ServiceRegistry:
         mapper = self.chat_webhook_mapper(provider)
         return mapper.map_webhook(payload, correlation_id) if mapper else None
 
+    def chat_webhook_signature_valid(
+        self,
+        provider: str,
+        headers: Mapping[str, str],
+        body: bytes,
+    ) -> bool:
+        if provider != "slack" or self.settings.runtime_mode != "container":
+            return True
+        return verify_slack_signature(
+            self.settings.slack_signing_secret,
+            headers.get("x-slack-request-timestamp"),
+            headers.get("x-slack-signature"),
+            body,
+            self.settings.slack_signature_tolerance_seconds,
+        )
+
     async def process_chat_webhook(
         self,
         provider: str,
@@ -211,7 +228,8 @@ class ServiceRegistry:
         if received_at is not None:
             message = replace(message, received_at=received_at)
         cross_person_service = self.cross_person_request_service()
-        notified_request = await self.cross_person_request_repository().get_by_notify_correlation(
+        cross_person_repository = self.cross_person_request_repository()
+        notified_request = await cross_person_repository.get_by_notify_correlation(
             message.tenant_id,
             message.correlation_id,
         )
@@ -224,6 +242,21 @@ class ServiceRegistry:
                 status=updated.status.value,
                 message_id=message.message_id,
             )
+
+        if message.thread_id:
+            threaded_request = await cross_person_repository.get_by_notify_message_id(
+                message.tenant_id,
+                message.thread_id,
+            )
+            if threaded_request is not None:
+                updated = await cross_person_service.handle_counterpart_reply(
+                    message,
+                    threaded_request,
+                )
+                return ChatWebhookProcessResult(
+                    status=updated.status.value,
+                    message_id=message.message_id,
+                )
 
         collector = self.status_collector()
         resolved_correlation_id = await collector.resolve_reply_correlation(message)

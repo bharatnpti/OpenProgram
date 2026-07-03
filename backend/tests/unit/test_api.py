@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
+import json
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
@@ -93,7 +97,7 @@ def test_admin_add_from_directory_missing_id_returns_404(settings: Settings) -> 
     assert "missing-user" in response.json()["detail"]
 
 
-def test_admin_directory_sync_provider_unavailable_returns_503(settings: Settings) -> None:
+def test_admin_directory_sync_missing_slack_token_returns_424(settings: Settings) -> None:
     app = create_app(
         settings=settings.model_copy(
             update={
@@ -105,7 +109,7 @@ def test_admin_directory_sync_provider_unavailable_returns_503(settings: Setting
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.post("/config/directory/sync")
 
-    assert response.status_code == 503
+    assert response.status_code == 424
     assert "slack_bot_token" in response.json()["detail"]
 
 
@@ -289,6 +293,134 @@ def test_chat_webhook_route_echoes_verification_challenge(settings: Settings) ->
 
     assert response.status_code == 200
     assert response.json() == {"challenge": "challenge-token"}
+
+
+def test_container_slack_webhook_route_accepts_valid_signature(settings: Settings) -> None:
+    configured = _container_slack_settings(settings)
+    app = create_app(settings=configured)
+    body = _slack_json_body({"type": "url_verification", "challenge": "signed-challenge"})
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/webhooks/chat/slack",
+            content=body,
+            headers=_signed_slack_headers(body),
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"challenge": "signed-challenge"}
+
+
+def test_container_slack_webhook_route_rejects_invalid_signature(settings: Settings) -> None:
+    configured = _container_slack_settings(settings)
+    app = create_app(settings=configured)
+    body = _slack_json_body({"type": "url_verification", "challenge": "signed-challenge"})
+    headers = _signed_slack_headers(body) | {"x-slack-signature": "v0=invalid"}
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post("/webhooks/chat/slack", content=body, headers=headers)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "invalid webhook signature"}
+
+
+def test_container_slack_webhook_route_rejects_missing_signature(settings: Settings) -> None:
+    configured = _container_slack_settings(settings)
+    app = create_app(settings=configured)
+    body = _slack_json_body({"type": "url_verification", "challenge": "signed-challenge"})
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/webhooks/chat/slack",
+            content=body,
+            headers={"content-type": "application/json"},
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "invalid webhook signature"}
+
+
+def test_container_slack_webhook_route_rejects_stale_signature(settings: Settings) -> None:
+    configured = _container_slack_settings(settings)
+    app = create_app(settings=configured)
+    body = _slack_json_body({"type": "url_verification", "challenge": "signed-challenge"})
+    stale_timestamp = str(int(time.time()) - configured.slack_signature_tolerance_seconds - 1)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/webhooks/chat/slack",
+            content=body,
+            headers=_signed_slack_headers(body, timestamp=stale_timestamp),
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "invalid webhook signature"}
+
+
+def test_container_slack_webhook_route_ignores_signed_non_json_payload(
+    settings: Settings,
+) -> None:
+    configured = _container_slack_settings(settings)
+    app = create_app(settings=configured)
+    body = b"not-json"
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/webhooks/chat/slack",
+            content=body,
+            headers=_signed_slack_headers(body),
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ignored", "message_id": "invalid-payload"}
+
+
+def test_container_slack_webhook_route_ignores_signed_non_message_event(
+    settings: Settings,
+) -> None:
+    configured = _container_slack_settings(settings)
+    app = create_app(settings=configured)
+    body = _slack_json_body({"event": {"type": "reaction_added", "user": "U123"}})
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/webhooks/chat/slack",
+            content=body,
+            headers=_signed_slack_headers(body),
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ignored", "message_id": "unsupported-provider"}
+
+
+def test_container_slack_webhook_route_ignores_signed_bot_message_event(
+    settings: Settings,
+) -> None:
+    configured = _container_slack_settings(settings)
+    app = create_app(settings=configured)
+    body = _slack_json_body(
+        {
+            "event": {
+                "type": "message",
+                "subtype": "bot_message",
+                "bot_id": "B123",
+                "user": "U123",
+                "text": "bot reply",
+                "ts": "1700000000.000001",
+                "channel": "C123",
+            }
+        }
+    )
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/webhooks/chat/slack",
+            content=body,
+            headers=_signed_slack_headers(body),
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ignored", "message_id": "unsupported-provider"}
 
 
 def test_metrics_endpoint_exposes_prometheus_metrics(settings: Settings) -> None:
@@ -872,6 +1004,41 @@ class _RecordingWorkflowRegistry(ServiceRegistry):
 
     def workflow_scheduler(self) -> _RecordingDispatchScheduler:
         return self.scheduler
+
+
+def _container_slack_settings(settings: Settings) -> Settings:
+    return settings.model_copy(
+        update={
+            "runtime_mode": "container",
+            "chat_provider": "slack",
+            "slack_bot_token": "xoxb-test",
+            "slack_signing_secret": "signing-secret",
+        }
+    )
+
+
+def _slack_json_body(payload: object) -> bytes:
+    return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+
+def _signed_slack_headers(
+    body: bytes,
+    *,
+    timestamp: str | None = None,
+    secret: str = "signing-secret",
+) -> dict[str, str]:
+    timestamp_value = timestamp or str(int(time.time()))
+    signature_base = b"v0:" + timestamp_value.encode("utf-8") + b":" + body
+    digest = hmac.new(
+        secret.encode("utf-8"),
+        signature_base,
+        hashlib.sha256,
+    ).hexdigest()
+    return {
+        "content-type": "application/json",
+        "x-slack-request-timestamp": timestamp_value,
+        "x-slack-signature": f"v0={digest}",
+    }
 
 
 def _populate_graph_fixture(app: FastAPI, settings: Settings) -> None:

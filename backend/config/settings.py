@@ -78,6 +78,8 @@ class Settings(BaseSettings):
     calendar_provider: str = "google"
     workflow_provider: str = "dbos"
     slack_bot_token: str | None = None
+    slack_signing_secret: str | None = None
+    slack_signature_tolerance_seconds: int = 300
     slack_api_base_url: str = "https://slack.com/api"
     slack_retry_attempts: int = 3
     slack_retry_backoff_seconds: float = 0.25
@@ -280,7 +282,11 @@ class Settings(BaseSettings):
             raise ValueError("value must be positive")
         return value
 
-    @field_validator("temporal_heartbeat_interval_seconds", "redis_rate_limit_window_seconds")
+    @field_validator(
+        "temporal_heartbeat_interval_seconds",
+        "redis_rate_limit_window_seconds",
+        "slack_signature_tolerance_seconds",
+    )
     @classmethod
     def validate_positive_seconds(cls, value: int) -> int:
         if value <= 0:
@@ -321,6 +327,10 @@ class Settings(BaseSettings):
     @property
     def resolved_heartbeat_schedule_id(self) -> str:
         return self.heartbeat_schedule_id or self.temporal_schedule_id
+
+    @property
+    def default_llm_model(self) -> str:
+        return self.litellm_model
 
 
 @lru_cache(maxsize=1)
