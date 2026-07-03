@@ -117,7 +117,9 @@ class SlackChatAdapter:
                 metadata={"source": "slack"},
             )
 
-    def map_webhook(self, payload: Mapping[str, object], correlation_id: str) -> InboundMessage:
+    def map_webhook(
+        self, payload: Mapping[str, object], correlation_id: str
+    ) -> InboundMessage | None:
         with _tracer.start_as_current_span("slack.map_webhook"):
             return SlackChatWebhookMapper(self.tenant_id).map_webhook(payload, correlation_id)
 
@@ -126,21 +128,38 @@ class SlackChatAdapter:
 class SlackChatWebhookMapper:
     tenant_id: str
 
-    def map_webhook(self, payload: Mapping[str, object], correlation_id: str) -> InboundMessage:
+    def map_webhook(
+        self, payload: Mapping[str, object], correlation_id: str
+    ) -> InboundMessage | None:
         with _tracer.start_as_current_span("slack.webhook.map"):
             event = payload.get("event")
             if not isinstance(event, Mapping):
-                raise ProviderUnavailable("chat webhook payload did not contain an event object")
-            thread_id = _string_field(event, "thread_ts", default=_string_field(event, "channel"))
+                return None
+            if "type" in event and event.get("type") != "message":
+                return None
+            if any(key in event for key in ("subtype", "bot_id", "app_id")):
+                return None
+            user_id = _optional_string(event, "user")
+            text = _optional_string(event, "text")
+            timestamp = _optional_string(event, "ts")
+            channel = _optional_string(event, "channel")
+            if (
+                user_id is None
+                or text is None
+                or timestamp is None
+                or channel is None
+            ):
+                return None
+            thread_id = _optional_string(event, "thread_ts") or channel
             return InboundMessage(
                 tenant_id=self.tenant_id,
                 user=ChatUserRef(
                     tenant_id=self.tenant_id,
-                    external_id=_string_field(event, "user"),
+                    external_id=user_id,
                 ),
-                text=_string_field(event, "text"),
+                text=text,
                 thread_id=thread_id,
-                message_id=_string_field(event, "ts"),
+                message_id=timestamp,
                 correlation_id=_string_field(event, "correlation_id", default=correlation_id),
                 received_at=datetime.now(tz=UTC),
                 metadata={"source": "slack"},
