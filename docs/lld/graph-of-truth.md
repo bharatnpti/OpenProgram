@@ -26,7 +26,7 @@ class VectorStore(Protocol):
 
 ## Persistence Schema
 
-- AGE graph `pulseops_graph`: typed node and edge mirror used by the Postgres adapter on writes.
+- AGE graph `openprogram_graph`: typed node and edge mirror used by the Postgres adapter on writes.
 - `graph_nodes`: tenant-scoped node records with immutable external IDs for API queries.
 - `graph_edges`: typed edges with optional validity windows for API queries.
 - `facts`: append-only Timescale-ready event log.

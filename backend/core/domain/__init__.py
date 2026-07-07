@@ -1,1 +1,1 @@
-"""Pure domain models for PulseOps."""
+"""Pure domain models for OpenProgram."""

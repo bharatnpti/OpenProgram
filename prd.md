@@ -1,6 +1,6 @@
 ---
-name: PulseOps Phase Plan
-overview: A phase-wise delivery plan for the PulseOps agentic program-management system, broken into epics and user stories across a foundation phase plus the four roadmap phases (Sense, Reconcile, Predict, Coach).
+name: OpenProgram Phase Plan
+overview: A phase-wise delivery plan for the OpenProgram agentic program-management system, broken into epics and user stories across a foundation phase plus the four roadmap phases (Sense, Reconcile, Predict, Coach).
 todos:
   - id: phase-0
     content: "Phase 0 Foundations: graph data model, RBAC/SSO, integration framework + secrets, service skeleton and CI/CD"
@@ -20,9 +20,9 @@ todos:
 isProject: false
 ---
 
-# PulseOps — Phase-wise Plan (Epics and Stories)
+# OpenProgram — Phase-wise Plan (Epics and Stories)
 
-This expands the roadmap in [PulseOpsConcept.md](PulseOpsConcept.md) into a delivery backlog. Structure: **Phase to Epic to Story**. Stories use `As a <persona>, I want <capability>, so that <value>` with brief acceptance hints. Personas: Dev, PO, SM (Scrum Master), Mgr (Manager), Exec, Admin.
+This expands the roadmap in [OpenProgramConcept.md](OpenProgramConcept.md) into a delivery backlog. Structure: **Phase to Epic to Story**. Stories use `As a <persona>, I want <capability>, so that <value>` with brief acceptance hints. Personas: Dev, PO, SM (Scrum Master), Mgr (Manager), Exec, Admin.
 
 Phase dependency flow:
 
@@ -266,5 +266,5 @@ Goal: people-health, optimization, and natural-language access across the whole 
 
 ## Notes
 - Each phase is independently shippable and demoable; Phase 1 alone proves the core agentic loop.
-- Suggested tech direction (graph store + time-series, durable workflow engine, LLM tool-calling agents, role-aware React frontend) is in [PulseOpsConcept.md](PulseOpsConcept.md) section 8.
+- Suggested tech direction (graph store + time-series, durable workflow engine, LLM tool-calling agents, role-aware React frontend) is in [OpenProgramConcept.md](OpenProgramConcept.md) section 8.
 - Open decision before build: confirm primary chat platform (Teams vs Slack), Jira Cloud vs Server, and whether to start single-tenant or multi-tenant.

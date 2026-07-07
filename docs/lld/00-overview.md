@@ -2,7 +2,7 @@
 
 ## Scope
 
-Phase 0 establishes the runnable PulseOps foundation: a hexagonal FastAPI backend, Graph of Truth persistence seam, integration ports and first chat adapter, durable workflow and LangGraph skeletons, React shell, observability, and CI/CD.
+Phase 0 establishes the runnable OpenProgram foundation: a hexagonal FastAPI backend, Graph of Truth persistence seam, integration ports and first chat adapter, durable workflow and LangGraph skeletons, React shell, observability, and CI/CD.
 
 ## Tech Versions
 

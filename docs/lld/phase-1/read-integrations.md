@@ -2,7 +2,7 @@
 
 ## Scope
 
-Read integrations populate PulseOps state from external systems without mutating those systems. Phase 1 syncs:
+Read integrations populate OpenProgram state from external systems without mutating those systems. Phase 1 syncs:
 
 - Issue tracker projects, sprints, issues, assignees, and update timestamps.
 - VCS repositories, commits, and pull requests.

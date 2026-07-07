@@ -211,7 +211,7 @@ def redis_container() -> Iterator[str]:
 # Playwright-backed UI stack (frontend-only scenarios under features/ui)
 # ---------------------------------------------------------------------------
 
-UI_BDD_ENV_VAR = "PULSEOPS_RUN_UI_BDD"
+UI_BDD_ENV_VAR = "OPENPROGRAM_RUN_UI_BDD"
 
 
 def _free_port() -> int:

@@ -26,14 +26,16 @@ export function FlowPage() {
     queryFn: () => apiClient.portfolioFlow(asOf),
   });
 
-  const rows = query.data?.workstreams ?? [];
   const columns = useMemo<ColumnDef<WorkstreamFlowSummaryResponse>[]>(
     () => [
       {
         accessorKey: "workstream_name",
         header: "Workstream",
         cell: ({ row }) => (
-          <Link className="font-medium text-foreground hover:underline" to={`/workstreams/${row.original.workstream_id}`}>
+          <Link
+            className="font-medium text-foreground hover:underline"
+            to={`/workstreams/${row.original.workstream_id}`}
+          >
             {row.original.workstream_name}
           </Link>
         ),
@@ -64,7 +66,11 @@ export function FlowPage() {
           eyebrow="Flow"
           title="Portfolio Flow"
           description="What is moving, what is stuck, and how much is in flight across the portfolio."
-          actions={<span className="text-sm text-muted-foreground">{query.data ? `As of ${query.data.as_of}` : ""}</span>}
+          actions={
+            <span className="text-sm text-muted-foreground">
+              {query.data ? `As of ${query.data.as_of}` : ""}
+            </span>
+          }
         />
 
         <Toolbar>
@@ -104,7 +110,10 @@ export function FlowPage() {
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <DataPanel title="Portfolio by Workstream" description="Sortable flow and throughput table.">
+          <DataPanel
+            title="Portfolio by Workstream"
+            description="Sortable flow and throughput table."
+          >
             <QueryState query={query} loadingRows={6}>
               {(data: PortfolioFlowResponse) => (
                 <DataTable
@@ -117,7 +126,10 @@ export function FlowPage() {
             </QueryState>
           </DataPanel>
 
-          <DataPanel title="Portfolio Totals" description="Cycle and PR aging across the selected snapshot.">
+          <DataPanel
+            title="Portfolio Totals"
+            description="Cycle and PR aging across the selected snapshot."
+          >
             <QueryState query={query}>
               {(data) => (
                 <div className="space-y-2 text-sm">

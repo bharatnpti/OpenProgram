@@ -243,9 +243,7 @@ class CrossPersonRequestService:
         if request.requester_chat_ref is None:
             return
         counterpart = (
-            request.counterpart_display_name
-            or request.counterpart_id
-            or "The counterpart"
+            request.counterpart_display_name or request.counterpart_id or "The counterpart"
         )
         await self.chat_provider.send_dm(
             ChatUserRef(tenant_id=request.tenant_id, external_id=request.requester_chat_ref),

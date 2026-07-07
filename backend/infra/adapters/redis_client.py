@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from opentelemetry import trace
 from redis.asyncio import ConnectionPool, Redis
 
-_tracer = trace.get_tracer("pulseops.adapters.redis")
+_tracer = trace.get_tracer("openprogram.adapters.redis")
 
 
 @dataclass

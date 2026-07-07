@@ -114,9 +114,7 @@ async def test_feed_renders_cross_person_request_fact_descriptively() -> None:
     assert len(feed.items) == 1
     item = feed.items[0]
     assert item.kind == "cross_person_request_opened"
-    assert item.summary == (
-        "Cross-person review opened: dev-1 needs U-alice for API schema review"
-    )
+    assert item.summary == ("Cross-person review opened: dev-1 needs U-alice for API schema review")
     assert item.details == {
         "request_id": "xreq-1",
         "requester_id": "dev-1",

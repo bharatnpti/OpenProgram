@@ -54,7 +54,7 @@ async def test_issue_read_sync_creates_task_edges_facts_and_cursor() -> None:
     updated_at = datetime(2026, 1, 10, 8, 30, tzinfo=UTC)
     tracker = FakeIssueTracker(
         projects=[
-            Project(tenant_id="demo", id="10000", key="PO", name="PulseOps"),
+            Project(tenant_id="demo", id="10000", key="PO", name="OpenProgram"),
         ],
         sprints=[
             Sprint(

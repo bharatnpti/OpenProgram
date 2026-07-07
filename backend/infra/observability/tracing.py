@@ -19,7 +19,7 @@ def configure_tracing(otlp_endpoint: str | None) -> None:
     global _tracing_configured
     if _tracing_configured or not otlp_endpoint:
         return
-    provider = TracerProvider(resource=Resource.create({"service.name": "pulseops-backend"}))
+    provider = TracerProvider(resource=Resource.create({"service.name": "openprogram-backend"}))
     provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint)))
     trace.set_tracer_provider(provider)
     _tracing_configured = True

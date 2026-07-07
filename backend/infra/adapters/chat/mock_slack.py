@@ -504,23 +504,23 @@ def _observed_at(value: datetime | None) -> datetime:
 
 
 def _channels_key(tenant_id: str) -> str:
-    return f"pulseops:mock-slack:{tenant_id}:channels"
+    return f"openprogram:mock-slack:{tenant_id}:channels"
 
 
 def _channel_users_key(tenant_id: str) -> str:
-    return f"pulseops:mock-slack:{tenant_id}:channel-users"
+    return f"openprogram:mock-slack:{tenant_id}:channel-users"
 
 
 def _messages_key(tenant_id: str) -> str:
-    return f"pulseops:mock-slack:{tenant_id}:messages"
+    return f"openprogram:mock-slack:{tenant_id}:messages"
 
 
 def _message_hash_key(tenant_id: str) -> str:
-    return f"pulseops:mock-slack:{tenant_id}:message"
+    return f"openprogram:mock-slack:{tenant_id}:message"
 
 
 def _counter_key(tenant_id: str) -> str:
-    return f"pulseops:mock-slack:{tenant_id}:counter"
+    return f"openprogram:mock-slack:{tenant_id}:counter"
 
 
 def _required_string(payload: Mapping[str, object], key: str) -> str:

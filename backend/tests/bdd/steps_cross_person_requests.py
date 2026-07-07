@@ -58,7 +58,7 @@ def _given_liam_review_stack(world: World) -> None:
                 '"blockers":["API schema review"],"eta_change_days":null,'
                 '"requests":[{"name":"Liam Chen","kind":"review",'
                 '"note":"API schema review","email":null}]}}'
-            )
+            ),
         ],
     )
 
@@ -117,9 +117,7 @@ def _given_ambiguous_alex_users(world: World) -> None:
     )
 
 
-@when(
-    parsers.parse('member "{member_id}" replies to the cross-person request with text "{text}"')
-)
+@when(parsers.parse('member "{member_id}" replies to the cross-person request with text "{text}"'))
 def _when_counterpart_replies(world: World, member_id: str, text: str) -> None:
     message = _latest_cross_person_bot_message(world, member_id)
     world.response = _submit_reply(world, str(message["message_id"]), text)
@@ -144,7 +142,9 @@ def _then_counterpart_notified(world: World, member_id: str, fragment: str) -> N
 @then(parsers.parse('the cross-person request for "{member_id}" should have status "{status}"'))
 def _then_cross_person_request_status(world: World, member_id: str, status: str) -> None:
     requests = asyncio.run(
-        world.registry().cross_person_request_repository().list_for_counterpart(
+        world.registry()
+        .cross_person_request_repository()
+        .list_for_counterpart(
             "demo",
             member_id,
         )

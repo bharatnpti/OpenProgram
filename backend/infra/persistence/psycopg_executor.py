@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
-_tracer = trace.get_tracer("pulseops.persistence.postgres")
+_tracer = trace.get_tracer("openprogram.persistence.postgres")
 
 
 class PsycopgSession:

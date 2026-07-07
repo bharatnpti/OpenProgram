@@ -9,15 +9,15 @@ from urllib.request import Request, urlopen
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Create or update PulseOps work items.")
+    parser = argparse.ArgumentParser(description="Create or update OpenProgram work items.")
     parser.add_argument(
         "--base-url",
-        default=os.environ.get("PULSEOPS_API_BASE_URL", "http://localhost:8000"),
-        help="Base URL for the PulseOps API.",
+        default=os.environ.get("OPENPROGRAM_API_BASE_URL", "http://localhost:8000"),
+        help="Base URL for the OpenProgram API.",
     )
     parser.add_argument(
         "--authorization",
-        default=os.environ.get("PULSEOPS_AUTHORIZATION"),
+        default=os.environ.get("OPENPROGRAM_AUTHORIZATION"),
         help="Authorization header value, if needed.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)

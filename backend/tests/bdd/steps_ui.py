@@ -4,7 +4,7 @@ These cover the ``MS-E2E`` rows that cannot be exercised through the backend
 API alone (client-side nav gating, route guards, disabled-button state,
 polling/auto-select UI behavior, and timeline grouping). They drive a real
 Vite dev server + backend through Playwright and only run when
-``PULSEOPS_RUN_UI_BDD=1`` is set (see ``tests.bdd.fixtures.ui_stack``); they
+``OPENPROGRAM_RUN_UI_BDD=1`` is set (see ``tests.bdd.fixtures.ui_stack``); they
 skip gracefully otherwise, matching the existing docker-skip convention used
 by ``backend/tests/integration``.
 """

@@ -14,7 +14,7 @@ from core.domain.graph import JsonScalar
 from core.domain.integrations import CalendarEvent, UserRef
 from core.ports.secrets import SecretRef, SecretStore
 
-_tracer = trace.get_tracer("pulseops.adapters.calendar.google")
+_tracer = trace.get_tracer("openprogram.adapters.calendar.google")
 
 
 @dataclass(frozen=True)

@@ -13,7 +13,7 @@ from core.domain.graph import JsonScalar
 from core.domain.integrations import Issue, IssueState, Project, Sprint, SyncCursor, UserRef
 from core.ports.secrets import SecretRef, SecretStore
 
-_tracer = trace.get_tracer("pulseops.adapters.issue_tracker.jira")
+_tracer = trace.get_tracer("openprogram.adapters.issue_tracker.jira")
 _ISSUE_FIELDS = "summary,status,assignee,updated,project,issuetype,parent"
 
 

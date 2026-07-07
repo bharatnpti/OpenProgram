@@ -26,7 +26,7 @@ async def test_jira_adapter_maps_read_payloads_and_rejects_writes() -> None:
                     {
                         "id": "10001",
                         "key": "PO",
-                        "name": "PulseOps",
+                        "name": "OpenProgram",
                         "projectTypeKey": "software",
                     }
                 ]

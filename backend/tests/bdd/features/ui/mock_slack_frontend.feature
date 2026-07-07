@@ -5,7 +5,7 @@ Feature: Mock Slack frontend behavior
   auto-select behavior, and timeline grouping.
 
   These scenarios drive a real Vite dev server and backend through
-  Playwright and only run with PULSEOPS_RUN_UI_BDD=1 (see `make ui-bdd`);
+  Playwright and only run with OPENPROGRAM_RUN_UI_BDD=1 (see `make ui-bdd`);
   they skip gracefully otherwise.
 
   @ms_e2e_012 @ui_bdd_scenario
