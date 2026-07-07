@@ -13,6 +13,7 @@ from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.availability import AvailabilityService
 from core.application.cross_person_service import CrossPersonRequestService
 from core.application.directory_sync_service import DirectorySyncService
+from core.application.self_status_service import SelfStatusService
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import (
     CalendarReadSyncService,
@@ -281,6 +282,7 @@ class ServiceRegistry:
             replace(message, correlation_id=resolved_correlation_id)
         )
         if outcome.kind == "processed" and outcome.cross_person_requests:
+            assert checkin is not None
             correlation = await self.status_repository().checkin_correlation_by_id(
                 message.tenant_id,
                 resolved_correlation_id,
@@ -422,6 +424,9 @@ class ServiceRegistry:
 
     def availability_service(self) -> AvailabilityService:
         return AvailabilityService(self.calendar_provider())
+
+    def self_status_service(self) -> SelfStatusService:
+        return SelfStatusService(self.status_repository())
 
     def status_collector(self) -> StatusCollector:
         llm_provider = self.llm_provider()

@@ -30,12 +30,16 @@ async def ensure_workflow_schedules(
 ) -> list[ScheduleBootstrapResult]:
     settings = settings or registry.settings
     scheduler = registry.workflow_scheduler()
-    return [
+    results = [
         await scheduler.ensure_heartbeat_schedule(),
         await scheduler.ensure_checkin_fanout_schedule(checkin_fanout_config(settings)),
-        await scheduler.ensure_conversation_purge_schedule(conversation_purge_config(settings)),
-        *(await scheduler.ensure_sync_schedules(sync_schedule_configs(settings))),
     ]
+    if settings.conversation_purge_enabled:
+        results.append(
+            await scheduler.ensure_conversation_purge_schedule(conversation_purge_config(settings))
+        )
+    results.extend(await scheduler.ensure_sync_schedules(sync_schedule_configs(settings)))
+    return results
 
 
 def checkin_fanout_config(settings: Settings) -> CheckinScheduleConfig:
@@ -58,7 +62,7 @@ def conversation_purge_config(settings: Settings) -> ConversationPurgeScheduleCo
 def sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
     return (
         SyncScheduleConfig(
-            schedule_id="pulseops-runtime-issue-sync",
+            schedule_id="openprogram-runtime-issue-sync",
             tenant_id=settings.tenant_id,
             connector="runtime",
             scope="issue",
@@ -66,7 +70,7 @@ def sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
             cron=settings.jira_sync_cron,
         ),
         SyncScheduleConfig(
-            schedule_id="pulseops-runtime-vcs-sync",
+            schedule_id="openprogram-runtime-vcs-sync",
             tenant_id=settings.tenant_id,
             connector="runtime",
             scope="vcs",
@@ -82,7 +86,7 @@ def sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
             cron=settings.directory_sync_cron,
         ),
         SyncScheduleConfig(
-            schedule_id="pulseops-runtime-risk-assessment",
+            schedule_id="openprogram-runtime-risk-assessment",
             tenant_id=settings.tenant_id,
             connector="risk",
             scope="assessment",
@@ -101,7 +105,7 @@ def legacy_sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig
         configs.append(
             SyncScheduleConfig(
                 schedule_id=safe_workflow_id(
-                    f"pulseops-sync-issue-{scope}-{container_id or ''}-{board_id or ''}"
+                    f"openprogram-sync-issue-{scope}-{container_id or ''}-{board_id or ''}"
                 ),
                 tenant_id=settings.tenant_id,
                 connector="issue",
@@ -112,7 +116,7 @@ def legacy_sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig
         )
     configs.extend(
         SyncScheduleConfig(
-            schedule_id=safe_workflow_id(f"pulseops-sync-vcs-repo:{repo_name}"),
+            schedule_id=safe_workflow_id(f"openprogram-sync-vcs-repo:{repo_name}"),
             tenant_id=settings.tenant_id,
             connector="vcs",
             scope=f"repo:{repo_name}",

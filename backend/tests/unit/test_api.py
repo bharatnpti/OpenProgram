@@ -430,8 +430,8 @@ def test_metrics_endpoint_exposes_prometheus_metrics(settings: Settings) -> None
         response = client.get("/metrics")
 
     assert response.status_code == 200
-    assert "pulseops_info" in response.text
-    assert "pulseops_http_requests_total" in response.text
+    assert "openprogram_info" in response.text
+    assert "openprogram_http_requests_total" in response.text
 
 
 def test_cors_origins_are_configurable(settings: Settings) -> None:
@@ -466,7 +466,56 @@ def test_dev_focus_is_own_scope(settings: Settings) -> None:
     body = focus_response.json()
     assert body["developer_id"] == "dev-asha"
     assert {task["id"] for task in body["tasks"]} == {"task-api"}
+    assert body["developer_confirmed"] is False
     assert blocked_response.status_code == 403
+
+
+def test_dev_can_view_confirm_and_correct_own_status(settings: Settings) -> None:
+    app = create_app(
+        settings=settings.model_copy(
+            update={"dev_principal_roles": "dev", "dev_principal_subject": "dev-asha"}
+        )
+    )
+    with TestClient(app) as client:
+        _populate_graph_fixture(app, settings)
+        status_response = client.get("/me/status?as_of=2026-06-15")
+        confirm_response = client.post("/me/status/confirm?as_of=2026-06-15")
+        correct_response = client.post(
+            "/me/status/correct?as_of=2026-06-15",
+            json={
+                "summary": "API shell is corrected and ready.",
+                "blockers": ["release review"],
+                "eta_change_days": 2,
+            },
+        )
+        focus_response = client.get("/me/focus?as_of=2026-06-15")
+
+    assert status_response.status_code == 200
+    assert status_response.json()["developer_confirmed"] is False
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["developer_confirmed"] is True
+    assert confirm_response.json()["source"] == "confirmed"
+    assert correct_response.status_code == 200
+    assert correct_response.json()["summary"] == "API shell is corrected and ready."
+    assert correct_response.json()["blockers"] == ["release review"]
+    assert correct_response.json()["eta_change_days"] == 2
+    assert correct_response.json()["developer_confirmed"] is True
+    assert focus_response.status_code == 200
+    assert focus_response.json()["developer_confirmed"] is True
+    assert focus_response.json()["summary"] == "API shell is corrected and ready."
+
+
+def test_self_status_requires_own_work_capability(settings: Settings) -> None:
+    app = create_app(
+        settings=settings.model_copy(
+            update={"dev_principal_roles": "sm", "dev_principal_subject": "scrum-master"}
+        )
+    )
+    with TestClient(app) as client:
+        _populate_graph_fixture(app, settings)
+        response = client.get("/me/status?as_of=2026-06-15")
+
+    assert response.status_code == 403
 
 
 def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
@@ -524,7 +573,7 @@ def test_admin_workflow_dispatch_routes_are_admin_only(settings: Settings) -> No
         )
         github = client.post(
             "/admin/workflows/sync/github",
-            json={"tenant_id": "demo", "repo_name": "oneai/program-manager"},
+            json={"tenant_id": "demo", "repo_name": "oneai/openprogram"},
         )
         calendar = client.post(
             "/admin/workflows/sync/calendar",
@@ -542,7 +591,7 @@ def test_admin_workflow_dispatch_routes_are_admin_only(settings: Settings) -> No
     assert jira.status_code == 200
     assert jira.json()["workflow_id"] == "fake-sync-issue-project-PO"
     assert github.status_code == 200
-    assert github.json()["workflow_id"] == "fake-sync-vcs-repo-oneai-program-manager"
+    assert github.json()["workflow_id"] == "fake-sync-vcs-repo-oneai-openprogram"
     assert calendar.status_code == 200
     assert calendar.json()["workflow_id"] == "fake-sync-calendar-user-dev-1"
 
@@ -729,9 +778,7 @@ def test_admin_config_crud_populates_directory_and_dashboards(settings: Settings
             json={"program_id": "program-alpha"},
         )
         pod_link = client.post("/config/pods/pod-alpha/projects/project-alpha")
-        workstream_link = client.post(
-            "/config/projects/project-alpha/workstreams/workstream-alpha"
-        )
+        workstream_link = client.post("/config/projects/project-alpha/workstreams/workstream-alpha")
         pod_workstream_link = client.post("/config/pods/pod-alpha/workstreams/workstream-alpha")
         workstream_task_link = client.post("/config/workstreams/workstream-alpha/tasks/task-alpha")
         member_link = client.post(
@@ -750,15 +797,11 @@ def test_admin_config_crud_populates_directory_and_dashboards(settings: Settings
         projects = client.get(f"/projects?as_of={as_of}")
         workstreams = client.get(f"/workstreams?as_of={as_of}")
         workstream_detail = client.get(f"/workstreams/workstream-alpha?as_of={as_of}")
-        project_workstreams = client.get(
-            f"/projects/project-alpha/workstreams?as_of={as_of}"
-        )
+        project_workstreams = client.get(f"/projects/project-alpha/workstreams?as_of={as_of}")
         pods = client.get(f"/pods?as_of={as_of}")
         checkins = client.get(f"/pods/pod-alpha/checkins?as_of={as_of}")
         progress = client.get(f"/projects/project-alpha/progress?as_of={as_of}")
-        workstream_progress = client.get(
-            f"/workstreams/workstream-alpha/progress?as_of={as_of}"
-        )
+        workstream_progress = client.get(f"/workstreams/workstream-alpha/progress?as_of={as_of}")
         heatmap = client.get(f"/portfolio/heatmap?as_of={as_of}")
         delete_member_link = client.delete("/config/pods/pod-alpha/members/dev-ada")
         delete_project = client.delete("/config/projects/project-alpha")
@@ -845,12 +888,12 @@ def test_config_crud_full_lifecycle(settings: Settings) -> None:
                 "code": "ALPHA",
                 "jira_project_key": "PO",
                 "jira_board_id": "board-1",
-                "github_repos": ["oneai/program-manager", "oneai/api", "oneai/api"],
+                "github_repos": ["oneai/openprogram", "oneai/api", "oneai/api"],
             },
         )
         updated_project = client.put(
             "/config/projects/project-alpha",
-            json={"jira_base_jql": 'labels = "alpha"', "github_repos": "oneai/program-manager"},
+            json={"jira_base_jql": 'labels = "alpha"', "github_repos": "oneai/openprogram"},
         )
         fetched_project = client.get("/config/projects/project-alpha")
         pod = client.post(
@@ -859,7 +902,7 @@ def test_config_crud_full_lifecycle(settings: Settings) -> None:
                 "id": "pod-alpha",
                 "name": "Alpha Pod",
                 "jira_filter_jql": "component = API",
-                "github_repos": ["oneai/program-manager"],
+                "github_repos": ["oneai/openprogram"],
             },
         )
         updated_pod = client.put("/config/pods/pod-alpha", json={"github_repos": []})
@@ -889,15 +932,15 @@ def test_config_crud_full_lifecycle(settings: Settings) -> None:
     assert project.status_code == 201
     assert project.json()["jira_project_key"] == "PO"
     assert project.json()["jira_board_id"] == "board-1"
-    assert project.json()["github_repos"] == ["oneai/program-manager", "oneai/api"]
+    assert project.json()["github_repos"] == ["oneai/openprogram", "oneai/api"]
     assert updated_project.status_code == 200
     assert updated_project.json()["jira_base_jql"] == 'labels = "alpha"'
-    assert updated_project.json()["github_repos"] == ["oneai/program-manager"]
+    assert updated_project.json()["github_repos"] == ["oneai/openprogram"]
     assert fetched_project.status_code == 200
-    assert fetched_project.json()["metadata"]["github_repos"] == "oneai/program-manager"
+    assert fetched_project.json()["metadata"]["github_repos"] == "oneai/openprogram"
     assert pod.status_code == 201
     assert pod.json()["jira_filter_jql"] == "component = API"
-    assert pod.json()["github_repos"] == ["oneai/program-manager"]
+    assert pod.json()["github_repos"] == ["oneai/openprogram"]
     assert updated_pod.status_code == 200
     assert updated_pod.json()["github_repos"] == []
     assert fetched_pod.status_code == 200

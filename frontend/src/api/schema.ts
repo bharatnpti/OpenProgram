@@ -26,6 +26,8 @@ export type Rag = components["schemas"]["Rag"];
 export type EntityRefDto = components["schemas"]["EntityRefDto"];
 export type RollupFactorDto = components["schemas"]["RollupFactorDto"];
 export type FocusResponse = components["schemas"]["FocusResponse"];
+export type MyStatusResponse = components["schemas"]["MyStatusResponse"];
+export type StatusCorrectionRequest = components["schemas"]["StatusCorrectionRequest"];
 export type CheckinPreferenceResponse = components["schemas"]["CheckinPreferenceResponse"];
 export type CheckinPreferenceUpdateRequest =
   components["schemas"]["CheckinPreferenceUpdateRequest"];

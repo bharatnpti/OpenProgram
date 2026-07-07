@@ -37,6 +37,7 @@ class CheckIn:
     replied_at: datetime | None
     raw_reply: str | None
     signals: CheckInSignals | None
+    last_accessed_at: datetime | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -101,3 +102,5 @@ class DeveloperStatus:
     blockers: tuple[str, ...]
     summary: str
     eta_change_days: int | None = None
+    developer_confirmed: bool = False
+    confirmed_at: datetime | None = None

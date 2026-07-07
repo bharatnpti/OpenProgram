@@ -22,3 +22,4 @@ class ConversationTurn:
     correlation_id: str | None
     chat_message_id: str | None
     observed_at: datetime
+    last_accessed_at: datetime | None = None

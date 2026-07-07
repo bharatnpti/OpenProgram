@@ -99,7 +99,7 @@ sequenceDiagram
 
 Parsing stores results in:
 
-- `checkins.raw_reply`: raw text, access controlled through authorization policy.
+- `checkins.raw_reply`: raw text retained temporarily for parser recovery/debug workflows, purged on a configurable last-access window, and not exposed through role/API authorization.
 - `checkins.signals`: JSON representation of `CheckInSignals`, nullable.
 - `developer_statuses`: derived summary, blockers, ETA delta, mood, source, and as-of date.
 - `facts`: append-only check-in fact with payload metadata and source reference.

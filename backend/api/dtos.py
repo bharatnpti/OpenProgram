@@ -36,7 +36,7 @@ from core.domain.directory import DirectoryUser
 from core.domain.graph import EdgeKind, GraphEdge, GraphNode, GraphTree, NodeKind
 from core.domain.risk import RiskFinding
 from core.domain.rollup import Rag, RollupFactor
-from core.domain.status import CheckInPreference, StatusSource
+from core.domain.status import CheckInPreference, DeveloperStatus, StatusSource
 
 
 def _metadata_string(
@@ -549,6 +549,7 @@ class FocusResponse(BaseModel):
     developer_name: str
     as_of: date
     status_source: StatusSource
+    developer_confirmed: bool
     status_as_of: date | None
     summary: str
     blockers: list[str]
@@ -562,6 +563,7 @@ class FocusResponse(BaseModel):
             developer_name=view.developer_name,
             as_of=view.as_of,
             status_source=view.status_source,
+            developer_confirmed=view.developer_confirmed,
             status_as_of=view.status_as_of,
             summary=view.summary,
             blockers=list(view.blockers),
@@ -1268,3 +1270,56 @@ class CheckinPreferenceUpdateRequest(BaseModel):
         if any(day < 0 or day > 6 for day in value):
             raise ValueError("weekdays must be in the range 0..6")
         return value
+
+
+class MyStatusResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    source: StatusSource
+    developer_confirmed: bool
+    summary: str
+    blockers: list[str]
+    eta_change_days: int | None
+    status_as_of: date
+    confirmed_at: datetime | None
+
+    @classmethod
+    def from_domain(cls, status: DeveloperStatus) -> MyStatusResponse:
+        return cls(
+            source=status.source,
+            developer_confirmed=status.developer_confirmed,
+            summary=status.summary,
+            blockers=list(status.blockers),
+            eta_change_days=status.eta_change_days,
+            status_as_of=status.as_of,
+            confirmed_at=status.confirmed_at,
+        )
+
+
+class StatusCorrectionRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    summary: str = Field(min_length=1)
+    blockers: list[str] = Field(default_factory=list)
+    eta_change_days: int | None = None
+
+    @field_validator("summary")
+    @classmethod
+    def normalize_summary(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("summary must not be blank")
+        return stripped
+
+    @field_validator("blockers")
+    @classmethod
+    def normalize_blockers(cls, value: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            stripped = item.strip()
+            if not stripped or stripped in seen:
+                continue
+            seen.add(stripped)
+            normalized.append(stripped)
+        return normalized

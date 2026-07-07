@@ -205,6 +205,10 @@ class StatusRepository(Protocol):
 
     async def developers_without_checkin(self, tenant_id: str, as_of: date) -> list[str]: ...
 
+    async def purge_checkin_raw_replies_older_than(
+        self, tenant_id: str, cutoff: datetime
+    ) -> int: ...
+
 
 class ConversationRepository(Protocol):
     async def append_turn(self, turn: ConversationTurn) -> None: ...

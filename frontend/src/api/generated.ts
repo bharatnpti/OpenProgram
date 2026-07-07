@@ -743,6 +743,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/me/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get My Status */
+    get: operations["get_my_status_me_status_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/status/confirm": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Confirm My Status */
+    post: operations["confirm_my_status_me_status_confirm_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/status/correct": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Correct My Status */
+    post: operations["correct_my_status_me_status_correct_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/me/checkin-preference": {
     parameters: {
       query?: never;
@@ -1545,6 +1596,8 @@ export interface components {
        */
       as_of: string;
       status_source: components["schemas"]["StatusSource"];
+      /** Developer Confirmed */
+      developer_confirmed: boolean;
       /** Status As Of */
       status_as_of: string | null;
       /** Summary */
@@ -1659,6 +1712,25 @@ export interface components {
     MemberTaskAssignmentRequest: {
       /** Task Id */
       task_id: string;
+    };
+    /** MyStatusResponse */
+    MyStatusResponse: {
+      source: components["schemas"]["StatusSource"];
+      /** Developer Confirmed */
+      developer_confirmed: boolean;
+      /** Summary */
+      summary: string;
+      /** Blockers */
+      blockers: string[];
+      /** Eta Change Days */
+      eta_change_days: number | null;
+      /**
+       * Status As Of
+       * Format: date
+       */
+      status_as_of: string;
+      /** Confirmed At */
+      confirmed_at: string | null;
     };
     /**
      * NodeKind
@@ -1941,6 +2013,15 @@ export interface components {
       description: string;
       contributes: components["schemas"]["Rag"];
       source_ref: components["schemas"]["EntityRefDto"];
+    };
+    /** StatusCorrectionRequest */
+    StatusCorrectionRequest: {
+      /** Summary */
+      summary: string;
+      /** Blockers */
+      blockers?: string[];
+      /** Eta Change Days */
+      eta_change_days?: number | null;
     };
     /**
      * StatusSource
@@ -4376,6 +4457,109 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["AskResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_my_status_me_status_get: {
+    parameters: {
+      query?: {
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MyStatusResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  confirm_my_status_me_status_confirm_post: {
+    parameters: {
+      query?: {
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MyStatusResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  correct_my_status_me_status_correct_post: {
+    parameters: {
+      query?: {
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["StatusCorrectionRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MyStatusResponse"];
         };
       };
       /** @description Validation Error */
