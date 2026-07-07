@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
-from datetime import date, datetime
+from dataclasses import dataclass, field, replace
+from datetime import UTC, date, datetime
 from math import sqrt
 
 from core.domain.conversation import ConversationTurn
@@ -349,15 +349,16 @@ class InMemoryGraphStore:
         return None
 
     async def record_checkin(self, checkin: CheckIn) -> None:
+        stored = _checkin_with_last_accessed_at(checkin)
         self._checkins = [
             existing
             for existing in self._checkins
             if not (
-                existing.tenant_id == checkin.tenant_id
-                and existing.correlation_id == checkin.correlation_id
+                existing.tenant_id == stored.tenant_id
+                and existing.correlation_id == stored.correlation_id
             )
         ]
-        self._checkins.append(checkin)
+        self._checkins.append(stored)
 
     async def record_checkin_reply_once(self, checkin: CheckIn) -> bool:
         async with self._checkin_reply_lock:
@@ -368,8 +369,12 @@ class InMemoryGraphStore:
             return True
 
     async def checkin_by_correlation(self, tenant_id: str, correlation_id: str) -> CheckIn | None:
-        for checkin in reversed(self._checkins):
+        for index in range(len(self._checkins) - 1, -1, -1):
+            checkin = self._checkins[index]
             if checkin.tenant_id == tenant_id and checkin.correlation_id == correlation_id:
+                if checkin.raw_reply is not None:
+                    checkin = replace(checkin, last_accessed_at=datetime.now(tz=UTC))
+                    self._checkins[index] = checkin
                 return checkin
         return None
 
@@ -591,6 +596,23 @@ class InMemoryGraphStore:
         }
         return sorted(known_developer_ids - replied_developer_ids)
 
+    async def purge_checkin_raw_replies_older_than(self, tenant_id: str, cutoff: datetime) -> int:
+        cleared = 0
+        retained: list[CheckIn] = []
+        for checkin in self._checkins:
+            last_accessed_at = _checkin_last_accessed_at(checkin)
+            if (
+                checkin.tenant_id == tenant_id
+                and checkin.raw_reply is not None
+                and last_accessed_at < cutoff
+            ):
+                retained.append(replace(checkin, raw_reply=None))
+                cleared += 1
+                continue
+            retained.append(checkin)
+        self._checkins = retained
+        return cleared
+
     async def record_node_status(self, status: NodeStatus) -> None:
         self._node_statuses[
             (
@@ -636,12 +658,16 @@ class InMemoryGraphStore:
         self._sync_cursors[(tenant_id, connector, scope)] = cursor
 
     async def append_turn(self, turn: ConversationTurn) -> None:
-        self._conversation_turns.append(turn)
+        self._conversation_turns.append(
+            turn
+            if turn.last_accessed_at is not None
+            else replace(turn, last_accessed_at=turn.observed_at)
+        )
 
     async def list_turns_for_day(
         self, tenant_id: str, developer_id: str, on: date
     ) -> list[ConversationTurn]:
-        return sorted(
+        matched = sorted(
             (
                 turn
                 for turn in self._conversation_turns
@@ -651,6 +677,8 @@ class InMemoryGraphStore:
             ),
             key=_conversation_sort_key,
         )
+        self._touch_conversation_turns(matched)
+        return matched
 
     async def list_recent_turns(
         self,
@@ -672,7 +700,9 @@ class InMemoryGraphStore:
             key=_conversation_sort_key,
             reverse=True,
         )
-        return sorted(matching[:limit], key=_conversation_sort_key)
+        matched = sorted(matching[:limit], key=_conversation_sort_key)
+        self._touch_conversation_turns(matched)
+        return matched
 
     async def user_turn_exists(
         self, tenant_id: str, developer_id: str, chat_message_id: str
@@ -689,11 +719,23 @@ class InMemoryGraphStore:
         retained = [
             turn
             for turn in self._conversation_turns
-            if turn.tenant_id != tenant_id or turn.observed_at >= cutoff
+            if turn.tenant_id != tenant_id or _turn_last_accessed_at(turn) >= cutoff
         ]
         deleted_count = len(self._conversation_turns) - len(retained)
         self._conversation_turns = retained
         return deleted_count
+
+    def _touch_conversation_turns(self, turns: Sequence[ConversationTurn]) -> None:
+        if not turns:
+            return
+        touched_at = datetime.now(tz=UTC)
+        turn_keys = {_conversation_identity(turn) for turn in turns}
+        self._conversation_turns = [
+            replace(turn, last_accessed_at=touched_at)
+            if _conversation_identity(turn) in turn_keys
+            else turn
+            for turn in self._conversation_turns
+        ]
 
     async def upsert_embedding(
         self, tenant_id: str, entity_ref: EntityRef, vector: Sequence[float]
@@ -878,3 +920,32 @@ def _conversation_sort_key(
         turn.role.value,
         turn.content,
     )
+
+
+def _conversation_identity(
+    turn: ConversationTurn,
+) -> tuple[str, str, str, date, str, str | None, str | None, datetime]:
+    return (
+        turn.tenant_id,
+        turn.developer_id,
+        turn.conversation_id,
+        turn.conversation_date,
+        turn.role.value,
+        turn.correlation_id,
+        turn.chat_message_id,
+        turn.observed_at,
+    )
+
+
+def _turn_last_accessed_at(turn: ConversationTurn) -> datetime:
+    return turn.last_accessed_at or turn.observed_at
+
+
+def _checkin_with_last_accessed_at(checkin: CheckIn) -> CheckIn:
+    if checkin.last_accessed_at is not None:
+        return checkin
+    return replace(checkin, last_accessed_at=_checkin_last_accessed_at(checkin))
+
+
+def _checkin_last_accessed_at(checkin: CheckIn) -> datetime:
+    return checkin.last_accessed_at or checkin.replied_at or checkin.asked_at

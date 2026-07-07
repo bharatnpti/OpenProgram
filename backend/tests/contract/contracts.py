@@ -123,6 +123,31 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
     assert checkin is not None
     assert checkin.developer_id == "dev-1"
     assert checkin.raw_reply == "blocked on dependency"
+    assert checkin.last_accessed_at is not None
+
+    await repository.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-idle",
+            asked_at=asked_at,
+            replied_at=replied_at,
+            raw_reply="idle raw reply",
+            signals=CheckInSignals(progress_note="idle"),
+            last_accessed_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+    )
+    assert (
+        await repository.purge_checkin_raw_replies_older_than(
+            "demo",
+            datetime(2026, 1, 2, tzinfo=UTC),
+        )
+        == 1
+    )
+    idle_checkin = await repository.checkin_by_correlation("demo", "corr-idle")
+    assert idle_checkin is not None
+    assert idle_checkin.raw_reply is None
+    assert idle_checkin.signals == CheckInSignals(progress_note="idle")
 
     await repository.record_checkin(
         CheckIn(
@@ -286,6 +311,8 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
         blockers=("dependency",),
         summary="Implementing graph sync; blocked on dependency.",
         eta_change_days=1,
+        developer_confirmed=True,
+        confirmed_at=replied_at,
     )
     await repository.record_developer_status(status)
     latest = await repository.latest_developer_status("demo", "dev-1", date(2026, 1, 10))
@@ -457,10 +484,12 @@ async def assert_conversation_repository_contract(repository: ConversationReposi
     await repository.append_turn(first)
 
     day_turns = await repository.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
-    assert day_turns == [first, second]
+    assert [turn.content for turn in day_turns] == [first.content, second.content]
+    assert all(turn.last_accessed_at is not None for turn in day_turns)
 
     recent = await repository.list_recent_turns("demo", "dev-1", limit=2)
-    assert recent == [first, second]
+    assert [turn.content for turn in recent] == [first.content, second.content]
+    assert all(turn.last_accessed_at is not None for turn in recent)
 
     recent_since = await repository.list_recent_turns(
         "demo",
@@ -468,7 +497,7 @@ async def assert_conversation_repository_contract(repository: ConversationReposi
         limit=10,
         since=datetime(2026, 1, 10, 9, 1, tzinfo=UTC),
     )
-    assert recent_since == [second]
+    assert [turn.content for turn in recent_since] == [second.content]
     assert await repository.list_recent_turns("demo", "dev-1", limit=0) == []
     assert await repository.user_turn_exists("demo", "dev-1", "msg-2") is True
     assert await repository.user_turn_exists("demo", "dev-1", "msg-1") is False
@@ -481,12 +510,14 @@ async def assert_conversation_repository_contract(repository: ConversationReposi
     )
     assert purged == 1
     assert await repository.list_turns_for_day("demo", "dev-1", date(2026, 1, 9)) == []
-    assert await repository.list_turns_for_day("other", "dev-1", date(2026, 1, 9)) == [
-        other_tenant_old
-    ]
-    assert await repository.list_turns_for_day("demo", "dev-2", date(2026, 1, 10)) == [
-        other_developer
-    ]
+    assert [
+        turn.content
+        for turn in await repository.list_turns_for_day("other", "dev-1", date(2026, 1, 9))
+    ] == [other_tenant_old.content]
+    assert [
+        turn.content
+        for turn in await repository.list_turns_for_day("demo", "dev-2", date(2026, 1, 10))
+    ] == [other_developer.content]
 
 
 async def assert_time_series_repository_contract(repository: TimeSeriesRepository) -> None:

@@ -1,5 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CalendarCheck, GitPullRequest, Network, UserRound } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  AlertTriangle,
+  CalendarCheck,
+  CheckCircle2,
+  GitPullRequest,
+  Network,
+  Pencil,
+  UserRound,
+} from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { apiClient } from "../../api/client";
@@ -17,6 +25,10 @@ import {
 import { SourceConfidence, StateBadge, StatusBadge } from "../../components/ops/status";
 import { sourceLine, toneForRag, type BadgeTone } from "../../components/ops/status-utils";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Dialog } from "../../components/ui/dialog";
+import { Input } from "../../components/ui/input";
+import { Textarea } from "../../components/ui/textarea";
 import { resolveSelection } from "../../lib/selection";
 import { HeatmapChart } from "./HeatmapChart";
 import { HierarchyFlow } from "./HierarchyFlow";
@@ -42,10 +54,15 @@ const roleDescriptions: Record<DashboardRole, string> = {
 };
 
 export function PersonaDashboard({ role }: { role: DashboardRole }) {
+  const queryClient = useQueryClient();
   const [asOf, setAsOf] = useState(todayIso);
   const [podId, setPodId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [programId, setProgramId] = useState("");
+  const [correctOpen, setCorrectOpen] = useState(false);
+  const [statusSummary, setStatusSummary] = useState("");
+  const [statusBlockers, setStatusBlockers] = useState("");
+  const [statusEtaChange, setStatusEtaChange] = useState("");
 
   const showFocus = role === "dev";
   const showTeam = role === "sm";
@@ -105,6 +122,37 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
     queryFn: () => apiClient.focus(asOf),
     enabled: showFocus,
   });
+  const myStatus = useQuery({
+    queryKey: ["persona", "my-status", asOf],
+    queryFn: () => apiClient.myStatus(asOf),
+    enabled: showFocus,
+  });
+  const confirmStatus = useMutation({
+    mutationFn: () => apiClient.confirmMyStatus(asOf),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["persona", "my-status"] });
+      await queryClient.invalidateQueries({ queryKey: ["persona", "focus"] });
+    },
+  });
+  const correctStatus = useMutation({
+    mutationFn: () =>
+      apiClient.correctMyStatus(
+        {
+          summary: statusSummary,
+          blockers: statusBlockers
+            .split("\n")
+            .map((item) => item.trim())
+            .filter(Boolean),
+          eta_change_days: statusEtaChange.trim() ? Number(statusEtaChange) : null,
+        },
+        asOf,
+      ),
+    onSuccess: async () => {
+      setCorrectOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["persona", "my-status"] });
+      await queryClient.invalidateQueries({ queryKey: ["persona", "focus"] });
+    },
+  });
   const blockers = useQuery({
     queryKey: ["persona", "blockers", selectedPodId, asOf],
     queryFn: () => apiClient.podBlockers(selectedPodId, asOf),
@@ -135,12 +183,23 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
 
   const queries = [
     health,
-    ...(showFocus ? [focus] : []),
+    ...(showFocus ? [focus, myStatus] : []),
     ...(showTeam ? [podsDirectory, blockers, checkins] : []),
     ...(showProgress ? [projectsDirectory, progress] : []),
     ...(showPortfolio ? [programsDirectory, tree, heatmap] : []),
   ];
   const isRefreshing = queries.some((query) => query.isFetching);
+
+  useEffect(() => {
+    if (!myStatus.data) return;
+    setStatusSummary(myStatus.data.summary);
+    setStatusBlockers(myStatus.data.blockers.join("\n"));
+    setStatusEtaChange(
+      myStatus.data.eta_change_days === null || myStatus.data.eta_change_days === undefined
+        ? ""
+        : String(myStatus.data.eta_change_days),
+    );
+  }, [myStatus.data]);
 
   return (
     <main className="min-h-screen px-4 py-4 sm:px-5 lg:px-6">
@@ -206,8 +265,12 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
               icon={<UserRound className="h-4 w-4" />}
               label="Focus items"
               value={focus.data?.focus.length ?? "-"}
-              detail={focus.data?.status_source ?? statusForQuery(focus)}
-              tone={focus.data?.status_source === "confirmed" ? "success" : "info"}
+              detail={
+                myStatus.data?.developer_confirmed
+                  ? "confirmed by you"
+                  : (focus.data?.status_source ?? statusForQuery(focus))
+              }
+              tone={myStatus.data?.developer_confirmed ? "success" : "info"}
             />
           )}
           {showFocus && (
@@ -283,14 +346,67 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
           <DataPanel
             title="Work Focus"
             description="Source-backed priorities and tasks. Silence is never counted as green."
-            action={<SourceConfidence source={focus.data?.status_source} />}
+            action={
+              <div className="flex flex-wrap items-center gap-2">
+                <SourceConfidence source={focus.data?.status_source} />
+                <Badge tone={myStatus.data?.developer_confirmed ? "success" : "warning"}>
+                  {myStatus.data?.developer_confirmed ? "confirmed by you" : "inferred/stale"}
+                </Badge>
+              </div>
+            }
           >
             <QueryState query={focus}>
               {(data) => (
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-                  <div>
-                    <h3 className="text-sm font-semibold">{data.developer_name}</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">{data.summary}</p>
+                  <div className="space-y-4">
+                    <div className="border-b border-border pb-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-semibold">{data.developer_name}</h3>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {myStatus.data?.summary ?? data.summary}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={
+                              confirmStatus.isPending ||
+                              correctStatus.isPending ||
+                              !myStatus.data ||
+                              myStatus.data.developer_confirmed
+                            }
+                            onClick={() => confirmStatus.mutate()}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Confirm
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!myStatus.data || correctStatus.isPending}
+                            onClick={() => setCorrectOpen(true)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Correct
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(myStatus.data?.blockers ?? data.blockers).map((blocker) => (
+                          <Badge key={blocker} tone="danger">
+                            {blocker}
+                          </Badge>
+                        ))}
+                        {myStatus.data?.eta_change_days !== null &&
+                          myStatus.data?.eta_change_days !== undefined && (
+                            <Badge tone="warning">{myStatus.data.eta_change_days}d ETA</Badge>
+                          )}
+                      </div>
+                    </div>
                     <div className="mt-4">
                       <ListBlock
                         empty="No active focus items"
@@ -458,6 +574,57 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
           </section>
         )}
       </div>
+      {showFocus && (
+        <Dialog
+          open={correctOpen}
+          onOpenChange={setCorrectOpen}
+          title="Correct Status"
+          description="Update the structured status used by focus and rollups."
+        >
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              correctStatus.mutate();
+            }}
+          >
+            <label className="block text-xs font-medium text-muted-foreground">
+              Summary
+              <Textarea
+                className="mt-1"
+                value={statusSummary}
+                onChange={(event) => setStatusSummary(event.target.value)}
+                required
+              />
+            </label>
+            <label className="block text-xs font-medium text-muted-foreground">
+              Blockers
+              <Textarea
+                className="mt-1"
+                value={statusBlockers}
+                onChange={(event) => setStatusBlockers(event.target.value)}
+              />
+            </label>
+            <label className="block text-xs font-medium text-muted-foreground">
+              ETA Change Days
+              <Input
+                className="mt-1"
+                type="number"
+                value={statusEtaChange}
+                onChange={(event) => setStatusEtaChange(event.target.value)}
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setCorrectOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={correctStatus.isPending}>
+                Save
+              </Button>
+            </div>
+          </form>
+        </Dialog>
+      )}
     </main>
   );
 }

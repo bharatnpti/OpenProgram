@@ -1,19 +1,78 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from api.dependencies import get_current_principal, get_registry, get_settings_from_request
-from api.dtos import CheckinPreferenceResponse, CheckinPreferenceUpdateRequest
+from api.dependencies import (
+    get_current_principal,
+    get_registry,
+    get_self_status_service,
+    get_settings_from_request,
+)
+from api.dtos import (
+    CheckinPreferenceResponse,
+    CheckinPreferenceUpdateRequest,
+    MyStatusResponse,
+    StatusCorrectionRequest,
+)
 from config.settings import Settings
 from core.application.authorization import AuthorizationPolicy, Capability
+from core.application.self_status_service import SelfStatusService
 from core.domain.auth import Principal
 from core.domain.errors import AuthorizationDenied
 from core.domain.status import CheckInPreference
 from infra.registry import ServiceRegistry
 
 router = APIRouter(tags=["checkins"])
+
+
+@router.get("/me/status", response_model=MyStatusResponse)
+async def get_my_status(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[SelfStatusService, Depends(get_self_status_service)],
+    as_of: date | None = None,
+) -> MyStatusResponse:
+    _ensure_own_work(principal)
+    status = await service.my_status(principal.tenant_id, principal.subject, as_of or date.today())
+    if status is None:
+        raise HTTPException(status_code=404, detail="status is not available")
+    return MyStatusResponse.from_domain(status)
+
+
+@router.post("/me/status/confirm", response_model=MyStatusResponse)
+async def confirm_my_status(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[SelfStatusService, Depends(get_self_status_service)],
+    as_of: date | None = None,
+) -> MyStatusResponse:
+    _ensure_own_work(principal)
+    status = await service.confirm(principal.tenant_id, principal.subject, as_of or date.today())
+    if status is None:
+        raise HTTPException(status_code=404, detail="status is not available")
+    return MyStatusResponse.from_domain(status)
+
+
+@router.post("/me/status/correct", response_model=MyStatusResponse)
+async def correct_my_status(
+    request: StatusCorrectionRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[SelfStatusService, Depends(get_self_status_service)],
+    as_of: date | None = None,
+) -> MyStatusResponse:
+    _ensure_own_work(principal)
+    status = await service.correct(
+        principal.tenant_id,
+        principal.subject,
+        as_of or date.today(),
+        summary=request.summary,
+        blockers=tuple(request.blockers),
+        eta_change_days=request.eta_change_days,
+    )
+    if status is None:
+        raise HTTPException(status_code=404, detail="status is not available")
+    return MyStatusResponse.from_domain(status)
 
 
 @router.get("/me/checkin-preference", response_model=CheckinPreferenceResponse)

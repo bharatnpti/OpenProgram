@@ -36,6 +36,8 @@ import type {
   ProjectProgressResponse,
   ProjectRisksResponse,
   ReadyResponse,
+  MyStatusResponse,
+  StatusCorrectionRequest,
   WorkstreamFlowResponse,
   WorkstreamProgressResponse,
   WorkflowDispatchResponse,
@@ -92,6 +94,16 @@ export const apiClient = {
   projectWorkstreams: (projectId: string, asOf?: string) =>
     requestJson<DirectoryItemResponse[]>(withAsOf(`/projects/${projectId}/workstreams`, asOf)),
   focus: (asOf?: string) => requestJson<FocusResponse>(withAsOf("/me/focus", asOf)),
+  myStatus: (asOf?: string) => requestJson<MyStatusResponse>(withAsOf("/me/status", asOf)),
+  confirmMyStatus: (asOf?: string) =>
+    requestJson<MyStatusResponse>(withAsOf("/me/status/confirm", asOf), {
+      method: "POST",
+    }),
+  correctMyStatus: (input: StatusCorrectionRequest, asOf?: string) =>
+    requestJson<MyStatusResponse>(withAsOf("/me/status/correct", asOf), {
+      method: "POST",
+      body: input,
+    }),
   podBlockers: (podId: string, asOf?: string) =>
     requestJson<PodBlockersResponse>(withAsOf(`/pods/${podId}/blockers`, asOf)),
   podCheckins: (podId: string, asOf?: string) =>

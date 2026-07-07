@@ -16,7 +16,6 @@ class Capability(StrEnum):
     READ_PROJECT_PROGRESS = "read_project_progress"
     READ_PROGRAM_ROLLUP = "read_program_rollup"
     READ_PORTFOLIO_HEATMAP = "read_portfolio_heatmap"
-    READ_RAW_DM = "read_raw_dm"
     WRITE_CONNECTOR_SECRET = "write_connector_secret"
     DISPATCH_WORKFLOWS = "dispatch_workflows"
     MANAGE_CONFIG = "manage_config"
@@ -24,7 +23,6 @@ class Capability(StrEnum):
 
 class SensitiveField(StrEnum):
     BUDGET = "budget"
-    RAW_DM_CONTENT = "raw_dm_content"
 
 
 class AuthorizationPolicy:
@@ -35,7 +33,6 @@ class AuthorizationPolicy:
                 {
                     Capability.READ_OWN_WORK,
                     Capability.READ_DIRECTORY,
-                    Capability.READ_RAW_DM,
                 }
             ),
             Role.PO: frozenset(
@@ -51,7 +48,6 @@ class AuthorizationPolicy:
                     Capability.READ_TEAM_AGGREGATE,
                     Capability.READ_POD_BLOCKERS,
                     Capability.READ_POD_CHECKINS,
-                    Capability.READ_RAW_DM,
                 }
             ),
             Role.MGR: frozenset(
@@ -83,8 +79,6 @@ class AuthorizationPolicy:
             raise AuthorizationDenied(message)
 
     def can_read_field(self, principal: Principal, field: SensitiveField) -> bool:
-        if field is SensitiveField.RAW_DM_CONTENT:
-            return self.can(principal, Capability.READ_RAW_DM)
         if field is SensitiveField.BUDGET:
             return principal.has_role(Role.ADMIN) or principal.has_role(Role.EXEC)
         return False

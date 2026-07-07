@@ -85,6 +85,14 @@ class CapturingLogger:
         self.events.append({"event": event, **values})
 
 
+@dataclass
+class CapturingSpan:
+    attributes: dict[str, object] = field(default_factory=dict)
+
+    def set_attribute(self, key: str, value: object) -> None:
+        self.attributes[key] = value
+
+
 async def _record_open_checkin(store: InMemoryGraphStore) -> None:
     await store.record_checkin(
         CheckIn(
@@ -226,6 +234,7 @@ async def test_status_collector_graph_sends_dm_and_records_checkin() -> None:
             correlation_id="corr-1",
             chat_message_id="msg-U123-1",
             observed_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            last_accessed_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
         )
     ]
 
@@ -275,7 +284,13 @@ async def test_status_collector_handles_reply_by_correlation(
         parser=StatusParser(parser_llm, model="test-model"),
     )
     logger = CapturingLogger()
+    span = CapturingSpan()
     monkeypatch.setattr(status_collector_module, "_logger", logger)
+    monkeypatch.setattr(
+        status_collector_module.trace,
+        "get_current_span",
+        lambda: span,
+    )
 
     outcome = await collector.handle_reply(
         InboundMessage(
@@ -296,7 +311,18 @@ async def test_status_collector_handles_reply_by_correlation(
     assert updated is not None
     assert updated.raw_reply == "Graph sync is in review, blocked on schema review."
     assert logger.events[0]["event"] == "status_reply_received"
-    assert logger.events[0]["raw_reply"] == "Graph sync is in review, blocked on schema review."
+    assert logger.events[0]["reply_length"] == len(
+        "Graph sync is in review, blocked on schema review."
+    )
+    assert "raw_reply" not in logger.events[0]
+    assert "Graph sync is in review, blocked on schema review." not in str(logger.events)
+    assert "openprogram.raw_reply" not in span.attributes
+    assert span.attributes["openprogram.reply_length"] == len(
+        "Graph sync is in review, blocked on schema review."
+    )
+    assert span.attributes["openprogram.reply_classification"] == "status_update"
+    assert span.attributes["openprogram.has_blocker"] is True
+    assert "Graph sync is in review, blocked on schema review." not in str(span.attributes)
     assert status.source is StatusSource.CONFIRMED
     assert status.blockers == ("schema review",)
     assert status.eta_change_days == 1
@@ -319,7 +345,6 @@ async def test_status_collector_handles_reply_by_correlation(
         "blocker_count": 1,
         "has_eta_change": True,
         "eta_change_days": 1,
-        "raw_reply": "Graph sync is in review, blocked on schema review.",
     }
     turns = await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
     assert turns[-1].role is ConversationRole.USER
@@ -345,7 +370,10 @@ async def test_status_collector_handles_reply_by_correlation(
     )
     assert duplicate.kind == "processed"
     assert duplicate.status == status
-    assert duplicate_checkin == updated
+    assert duplicate_checkin is not None
+    assert duplicate_checkin.raw_reply == updated.raw_reply
+    assert duplicate_checkin.signals == updated.signals
+    assert duplicate_checkin.replied_at == updated.replied_at
     assert len(parser_llm.requests) == 1
     assert duplicate_facts == facts
 
@@ -492,7 +520,7 @@ async def test_status_collector_records_only_first_rapid_final_reply() -> None:
     assert checkin.raw_reply == "First final reply."
     assert statuses == ["first", "first"]
     assert len(facts) == 1
-    assert facts[0].payload["raw_reply"] == "First final reply."
+    assert "raw_reply" not in facts[0].payload
 
 
 async def test_status_collector_sends_clarification_and_keeps_checkin_open() -> None:
@@ -977,10 +1005,7 @@ async def test_status_collector_timeout_finalizes_accumulated_clarification_repl
         )
     )
     parser_llm = SequenceLlmProvider(
-        texts=[
-            '{"progress_note":"Cache work is partly done",'
-            '"blockers":[],"eta_change_days":null}'
-        ]
+        texts=['{"progress_note":"Cache work is partly done","blockers":[],"eta_change_days":null}']
     )
     collector = StatusCollector(
         issue_tracker=FakeIssueTracker(),

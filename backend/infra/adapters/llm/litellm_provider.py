@@ -17,7 +17,7 @@ from core.domain.graph import JsonScalar
 from core.domain.llm import LlmRequest, LlmResponse, LlmTool, LlmToolCall, TokenUsage
 
 _logger = structlog.get_logger(__name__)
-_tracer = trace.get_tracer("pulseops.adapters.llm.litellm")
+_tracer = trace.get_tracer("openprogram.adapters.llm.litellm")
 
 
 class LlmTraceSink(Protocol):
@@ -60,7 +60,7 @@ class LangfuseTraceSink:
                         "timestamp": timestamp,
                         "body": {
                             "id": trace_id,
-                            "name": "pulseops.status_agent",
+                            "name": "openprogram.status_agent",
                             "userId": request.tenant_id,
                             "input": trace_input,
                             "metadata": trace_metadata,
@@ -121,7 +121,7 @@ class LiteLlmProvider:
     async def complete(self, request: LlmRequest) -> LlmResponse:
         with _tracer.start_as_current_span("litellm.complete") as span:
             span.set_attribute("llm.model", request.model)
-            span.set_attribute("pulseops.tenant_id", request.tenant_id)
+            span.set_attribute("openprogram.tenant_id", request.tenant_id)
             started = perf_counter()
             headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
             async with httpx.AsyncClient(base_url=self.base_url, timeout=30.0) as client:
@@ -236,6 +236,7 @@ def _chat_messages(request: LlmRequest) -> list[dict[str, object]]:
 
 
 def _trace_input(request: LlmRequest) -> list[dict[str, object]]:
+    # Langfuse is the intentional exception to app-log redaction: LLM prompts stay inspectable.
     return _chat_messages(request)
 
 

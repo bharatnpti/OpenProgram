@@ -179,8 +179,8 @@ async def test_fake_workflow_scheduler_returns_deterministic_result() -> None:
         SyncDispatchInput(
             tenant_id="demo",
             connector="vcs",
-            scope="repo:oneai/program-manager",
-            payload={"repo_name": "oneai/program-manager"},
+            scope="repo:oneai/openprogram",
+            payload={"repo_name": "oneai/openprogram"},
         )
     )
 
@@ -192,7 +192,7 @@ async def test_fake_workflow_scheduler_returns_deterministic_result() -> None:
     assert purge.status == "ready"
     assert [(item.schedule_id, item.status) for item in sync_results] == [("jira-sync", "ready")]
     assert checkin_workflow_id == "fake-checkin-demo-dev-1-2026-01-10"
-    assert sync_workflow_id == "fake-sync-vcs-repo-oneai-program-manager"
+    assert sync_workflow_id == "fake-sync-vcs-repo-oneai-openprogram"
 
 
 async def test_checkin_fanout_dispatches_developers_without_checkin(
@@ -255,7 +255,7 @@ def test_schedule_configs_ignore_calendar_read_sync_targets() -> None:
         _env_file=None,
         secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
         jira_sync_projects=("PO", "ENG:program-platform", "API:pod-runtime:board-1"),
-        github_sync_repos=("oneai/program-manager",),
+        github_sync_repos=("oneai/openprogram",),
         calendar_sync_user_ids=("dev-1",),
         calendar_sync_window_days=2,
     )
@@ -264,9 +264,9 @@ def test_schedule_configs_ignore_calendar_read_sync_targets() -> None:
     purge_config = schedule.conversation_purge_config(settings)
     sync_configs = schedule.sync_schedule_configs(settings)
 
-    assert checkin_config.schedule_id == "pulseops-checkin-fanout"
+    assert checkin_config.schedule_id == "openprogram-checkin-fanout"
     assert purge_config == ConversationPurgeScheduleConfig(
-        schedule_id="pulseops-conversation-purge",
+        schedule_id="openprogram-conversation-purge",
         tenant_id="demo",
         retention_days=30,
         cron="0 3 * * *",
@@ -291,7 +291,7 @@ def test_legacy_sync_schedule_configs_preserve_env_target_shapes() -> None:
         _env_file=None,
         secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
         jira_sync_projects=("PO", "ENG:program-platform", "API:pod-runtime:board-1"),
-        github_sync_repos=("oneai/program-manager",),
+        github_sync_repos=("oneai/openprogram",),
     )
 
     sync_configs = schedule.legacy_sync_schedule_configs(settings)
@@ -308,7 +308,7 @@ def test_legacy_sync_schedule_configs_preserve_env_target_shapes() -> None:
             "project:API",
             {"project_key": "API", "container_id": "pod-runtime", "board_id": "board-1"},
         ),
-        ("vcs", "repo:oneai/program-manager", {"repo_name": "oneai/program-manager"}),
+        ("vcs", "repo:oneai/openprogram", {"repo_name": "oneai/openprogram"}),
     ]
 
 
@@ -339,7 +339,7 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
         secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
         heartbeat_schedule_id="heartbeat-test",
         jira_sync_projects=("PO",),
-        github_sync_repos=("oneai/program-manager",),
+        github_sync_repos=("oneai/openprogram",),
         calendar_sync_user_ids=("dev-1",),
     )
     registry = _ScheduleBootstrapRegistry(settings)
@@ -361,6 +361,22 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
         settings.conversation_purge_schedule_id,
         *(config.schedule_id for config in registry.scheduler.sync_configs),
     ]
+
+
+async def test_ensure_workflow_schedules_skips_conversation_purge_when_disabled() -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        heartbeat_schedule_id="heartbeat-test",
+        conversation_purge_enabled=False,
+    )
+    registry = _ScheduleBootstrapRegistry(settings)
+
+    results = await schedule.ensure_workflow_schedules(registry)
+
+    assert registry.scheduler.purge_configs == []
+    assert settings.conversation_purge_schedule_id not in [result.schedule_id for result in results]
 
 
 async def test_worker_bootstraps_schedules_before_running_worker(
@@ -424,8 +440,8 @@ async def test_dbos_dispatch_keeps_runtime_alive_for_started_workflows(
     monkeypatch.setattr(dbos_workflows.DBOS, "start_workflow_async", staticmethod(start_workflow))
 
     scheduler = dbos_workflows.DbosWorkflowScheduler(
-        app_name="pulseops-test",
-        system_database_url="postgresql://pulseops:pulseops@localhost:5432/pulseops",
+        app_name="openprogram-test",
+        system_database_url="postgresql://openprogram:openprogram@localhost:5432/openprogram",
         schedule_id="heartbeat-test",
         tenant_id="demo",
         heartbeat_cron="0 * * * * *",
@@ -442,13 +458,13 @@ async def test_dbos_dispatch_keeps_runtime_alive_for_started_workflows(
         SyncDispatchInput(
             tenant_id="demo",
             connector="vcs",
-            scope="repo:oneai/program-manager",
-            payload={"repo_name": "oneai/program-manager"},
+            scope="repo:oneai/openprogram",
+            payload={"repo_name": "oneai/openprogram"},
         )
     )
 
     assert checkin_workflow_id.startswith("checkin-demo-dev-1-2026-01-10-")
-    assert sync_workflow_id.startswith("sync-git-demo-repo-oneai-program-manager-")
+    assert sync_workflow_id.startswith("sync-git-demo-repo-oneai-openprogram-")
     assert ("destroy", None) not in calls
     assert [call[0] for call in calls].count("ensure") == 2
     assert [call[0] for call in calls].count("start") == 2
@@ -589,21 +605,21 @@ async def test_dbos_readiness_launches_once_and_caches(
     monkeypatch.setattr(dbos_workflows, "destroy_dbos_runtime", destroy)
 
     probe = dbos_workflows.DbosWorkflowReadinessProbe(
-        app_name="pulseops-test",
-        system_database_url="postgresql://pulseops:pulseops@localhost:5432/pulseops",
+        app_name="openprogram-test",
+        system_database_url="postgresql://openprogram:openprogram@localhost:5432/openprogram",
     )
 
     assert await probe.check() is True
     assert await probe.check() is True
     assert calls == [
-        ("connect", "postgresql://pulseops:pulseops@localhost:5432/pulseops"),
+        ("connect", "postgresql://openprogram:openprogram@localhost:5432/openprogram"),
         ("execute", "SELECT 1"),
         ("close", None),
         (
             "configure",
             dbos_workflows.DbosRuntimeConfig(
-                app_name="pulseops-test",
-                system_database_url="postgresql://pulseops:pulseops@localhost:5432/pulseops",
+                app_name="openprogram-test",
+                system_database_url="postgresql://openprogram:openprogram@localhost:5432/openprogram",
             ),
         ),
         ("launch", None),
@@ -674,7 +690,7 @@ async def test_runtime_config_sync_activity_dispatches_configured_targets(
             id="project-alpha",
             kind=NodeKind.PROJECT,
             name="Alpha",
-            metadata={"jira_project_key": "PO", "github_repos": "oneai/program-manager"},
+            metadata={"jira_project_key": "PO", "github_repos": "oneai/openprogram"},
         )
     )
     registry = _RuntimeSyncRegistry(settings, store)
@@ -686,12 +702,12 @@ async def test_runtime_config_sync_activity_dispatches_configured_targets(
 
     assert result.dispatched == 2
     assert result.workflow_ids[0].startswith("dispatch-issue-query-project-project-alpha-")
-    assert result.workflow_ids[1] == "dispatch-vcs-repo-oneai-program-manager"
+    assert result.workflow_ids[1] == "dispatch-vcs-repo-oneai-openprogram"
     assert [
         (item.connector, item.payload["target_node_id"]) for item in registry.scheduler.inputs[:1]
     ] == [("issue", "project-alpha")]
     assert registry.scheduler.inputs[1].payload == {
-        "repo_name": "oneai/program-manager",
+        "repo_name": "oneai/openprogram",
         "container_ids": "project-alpha",
     }
     assert registry.closed is True
@@ -705,7 +721,7 @@ async def test_runtime_config_sync_activity_uses_legacy_fallback_when_runtime_ta
         _env_file=None,
         secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
         jira_sync_projects=("PO:pod-runtime:board-1",),
-        github_sync_repos=("oneai/program-manager",),
+        github_sync_repos=("oneai/openprogram",),
     )
     registry = _RuntimeSyncRegistry(settings, InMemoryGraphStore())
     monkeypatch.setattr(runtime_sync, "_service_registry", lambda: registry)
@@ -756,6 +772,7 @@ async def test_conversation_purge_activity_deletes_older_turns(
 
     assert result.cutoff == "2026-01-10T00:00:00+00:00"
     assert result.deleted_count == 1
+    assert result.checkin_raw_cleared == 0
     assert [turn.content for turn in await store.list_recent_turns("demo", "dev-1", limit=10)] == [
         "kept"
     ]
@@ -1236,6 +1253,9 @@ class _ConversationPurgeRegistry:
         self._store = store
 
     def conversation_repository(self) -> InMemoryGraphStore:
+        return self._store
+
+    def status_repository(self) -> InMemoryGraphStore:
         return self._store
 
     async def close(self) -> None:

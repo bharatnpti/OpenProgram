@@ -54,6 +54,7 @@ class FocusView:
     developer_name: str
     as_of: date
     status_source: StatusSource
+    developer_confirmed: bool
     status_as_of: date | None
     summary: str
     blockers: tuple[str, ...]
@@ -221,6 +222,7 @@ class PersonaViewService:
                 developer_name=developer_id,
                 as_of=as_of,
                 status_source=status_source,
+                developer_confirmed=status.developer_confirmed if status else False,
                 status_as_of=status.as_of if status else None,
                 summary=status.summary if status else "No developer status data is available.",
                 blockers=blockers,
@@ -272,6 +274,7 @@ class PersonaViewService:
             developer_name=developer.name,
             as_of=as_of,
             status_source=status_source,
+            developer_confirmed=status.developer_confirmed if status else False,
             status_as_of=status.as_of if status else None,
             summary=status.summary if status else "No developer status data is available.",
             blockers=blockers,

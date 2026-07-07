@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, time
 
-from core.domain.conversation import ConversationRole
+from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.graph import EntityRef, NodeKind
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
 from core.domain.status import (
+    CheckIn,
     CheckInClarification,
     CheckInCorrelation,
     CheckInNudge,
@@ -68,11 +69,94 @@ async def test_demo_graph_fixture_adds_memory_statuses_and_rollups() -> None:
     )
 
 
+async def test_in_memory_raw_retention_uses_last_accessed_at() -> None:
+    store = InMemoryGraphStore()
+    old_access = datetime(2026, 1, 1, tzinfo=UTC)
+    old_accessed_turn_observed = datetime(2026, 1, 1, 1, tzinfo=UTC)
+    cutoff = datetime(2026, 2, 1, tzinfo=UTC)
+    accessed_turn = ConversationTurn(
+        tenant_id="demo",
+        developer_id="dev-1",
+        conversation_id="conv-accessed",
+        conversation_date=date(2026, 1, 1),
+        role=ConversationRole.USER,
+        content="accessed old turn",
+        correlation_id="corr-accessed",
+        chat_message_id="msg-accessed",
+        observed_at=old_accessed_turn_observed,
+        last_accessed_at=old_access,
+    )
+    idle_turn = ConversationTurn(
+        tenant_id="demo",
+        developer_id="dev-1",
+        conversation_id="conv-idle",
+        conversation_date=date(2026, 1, 1),
+        role=ConversationRole.USER,
+        content="idle old turn",
+        correlation_id="corr-idle",
+        chat_message_id="msg-idle",
+        observed_at=old_access,
+        last_accessed_at=old_access,
+    )
+    await store.append_turn(accessed_turn)
+    await store.append_turn(idle_turn)
+
+    accessed = await store.list_recent_turns("demo", "dev-1", limit=1)
+    assert accessed[0].content == "accessed old turn"
+    assert accessed[0].last_accessed_at == old_access
+
+    purged_turns = await store.purge_turns_older_than("demo", cutoff)
+    remaining = await store.list_recent_turns("demo", "dev-1", limit=10)
+    assert purged_turns == 1
+    assert [turn.content for turn in remaining] == ["accessed old turn"]
+
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-accessed",
+            asked_at=old_access,
+            replied_at=old_access,
+            raw_reply="accessed raw reply",
+            signals=CheckInSignals(progress_note="accessed"),
+            last_accessed_at=old_access,
+        )
+    )
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-idle",
+            asked_at=old_access,
+            replied_at=old_access,
+            raw_reply="idle raw reply",
+            signals=CheckInSignals(progress_note="idle"),
+            last_accessed_at=old_access,
+        )
+    )
+    touched = await store.checkin_by_correlation("demo", "corr-accessed")
+    assert touched is not None
+    assert touched.raw_reply == "accessed raw reply"
+    assert touched.last_accessed_at is not None and touched.last_accessed_at > old_access
+
+    purged_replies = await store.purge_checkin_raw_replies_older_than("demo", cutoff)
+    retained_checkin = await store.checkin_by_correlation("demo", "corr-accessed")
+    purged_checkin = await store.checkin_by_correlation("demo", "corr-idle")
+
+    assert purged_replies == 1
+    assert retained_checkin is not None
+    assert retained_checkin.raw_reply == "accessed raw reply"
+    assert purged_checkin is not None
+    assert purged_checkin.raw_reply is None
+    assert purged_checkin.signals == CheckInSignals(progress_note="idle")
+
+
 def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
     asked_at = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
     replied_at = datetime(2026, 1, 10, 9, 5, tzinfo=UTC)
     cursor_updated_at = datetime(2026, 1, 10, 10, 0, tzinfo=UTC)
     conversation_observed_at = datetime(2026, 1, 10, 9, 1, tzinfo=UTC)
+    last_accessed_at = datetime(2026, 1, 11, 9, 1, tzinfo=UTC)
 
     checkin = _checkin_from_row(
         {
@@ -87,6 +171,7 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
                 "blockers": ["dependency"],
                 "eta_change_days": 1,
             },
+            "last_accessed_at": last_accessed_at,
         }
     )
     developer_status = _developer_status_from_row(
@@ -98,6 +183,8 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
             "blockers": {"items": ["dependency"]},
             "summary": "Graph sync is blocked.",
             "eta_change_days": 2,
+            "developer_confirmed": True,
+            "confirmed_at": replied_at,
         }
     )
     node_status = _node_status_from_row(
@@ -141,6 +228,7 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
             "correlation_id": "corr-1",
             "chat_message_id": "msg-1",
             "observed_at": conversation_observed_at,
+            "last_accessed_at": last_accessed_at,
         }
     )
     correlation = _checkin_correlation_from_row(
@@ -202,6 +290,7 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
         blockers=("dependency",),
         eta_change_days=1,
     )
+    assert checkin.last_accessed_at == last_accessed_at
     assert developer_status == DeveloperStatus(
         tenant_id="demo",
         developer_id="dev-1",
@@ -210,6 +299,8 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
         blockers=("dependency",),
         summary="Graph sync is blocked.",
         eta_change_days=2,
+        developer_confirmed=True,
+        confirmed_at=replied_at,
     )
     assert node_status == NodeStatus(
         entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.POD, id="pod-1"),
@@ -232,6 +323,7 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
     assert conversation_turn.role is ConversationRole.USER
     assert conversation_turn.content == "blocked on dependency"
     assert conversation_turn.observed_at == conversation_observed_at
+    assert conversation_turn.last_accessed_at == last_accessed_at
     assert correlation == CheckInCorrelation(
         tenant_id="demo",
         developer_id="dev-1",

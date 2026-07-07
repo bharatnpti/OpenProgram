@@ -24,9 +24,7 @@ def test_exec_cannot_read_raw_dm_but_can_read_budget_field() -> None:
     assert policy.can(principal, Capability.READ_PROGRAM_ROLLUP)
     assert policy.can(principal, Capability.READ_PORTFOLIO_HEATMAP)
     assert not policy.can(principal, Capability.READ_PROJECT_PROGRESS)
-    assert not policy.can(principal, Capability.READ_RAW_DM)
     assert policy.can_read_field(principal, SensitiveField.BUDGET)
-    assert not policy.can_read_field(principal, SensitiveField.RAW_DM_CONTENT)
 
 
 def test_persona_capabilities_follow_role_scope() -> None:
@@ -38,14 +36,10 @@ def test_persona_capabilities_follow_role_scope() -> None:
 
     assert policy.can(dev, Capability.READ_OWN_WORK)
     assert policy.can(dev, Capability.READ_DIRECTORY)
-    assert policy.can(dev, Capability.READ_RAW_DM)
-    assert policy.can_read_field(dev, SensitiveField.RAW_DM_CONTENT)
     assert not policy.can(dev, Capability.READ_POD_BLOCKERS)
     assert policy.can(sm, Capability.READ_DIRECTORY)
     assert policy.can(sm, Capability.READ_POD_BLOCKERS)
     assert policy.can(sm, Capability.READ_POD_CHECKINS)
-    assert policy.can(sm, Capability.READ_RAW_DM)
-    assert policy.can_read_field(sm, SensitiveField.RAW_DM_CONTENT)
     assert not policy.can(sm, Capability.READ_PROJECT_PROGRESS)
     assert policy.can(po, Capability.READ_PROJECT_PROGRESS)
     assert policy.can(po, Capability.READ_DIRECTORY)
@@ -54,9 +48,14 @@ def test_persona_capabilities_follow_role_scope() -> None:
     assert policy.can(mgr, Capability.READ_PORTFOLIO_HEATMAP)
 
 
-def test_admin_can_read_raw_dm() -> None:
-    principal = Principal(tenant_id="demo", subject="admin", roles=frozenset({Role.ADMIN}))
-    assert AuthorizationPolicy().can_read_field(principal, SensitiveField.RAW_DM_CONTENT)
+def test_raw_dm_content_has_no_capability_or_sensitive_field_for_any_role() -> None:
+    assert "READ_RAW_DM" not in Capability.__members__
+    assert "RAW_DM_CONTENT" not in SensitiveField.__members__
+    policy = AuthorizationPolicy()
+
+    for role in Role:
+        principal = Principal(tenant_id="demo", subject=role.value, roles=frozenset({role}))
+        assert not policy.can_read_field(principal, cast(SensitiveField, "raw_dm_content"))
 
 
 def test_dispatch_workflows_is_admin_only() -> None:

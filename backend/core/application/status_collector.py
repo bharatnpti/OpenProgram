@@ -169,9 +169,10 @@ class StatusCollector:
             developer_id=checkin.developer_id,
             correlation_id=message.correlation_id,
             message_id=message.message_id,
-            raw_reply=message.text,
+            reply_length=len(message.text),
         )
-        trace.get_current_span().set_attribute("pulseops.raw_reply", message.text)
+        span = trace.get_current_span()
+        span.set_attribute("openprogram.reply_length", len(message.text))
 
         if checkin.replied_at is not None:
             return ReplyOutcome(
@@ -226,6 +227,8 @@ class StatusCollector:
         )
         if not decision.is_status_update:
             await self._send_non_status_ack(checkin=checkin, message=message)
+            span.set_attribute("openprogram.reply_classification", "non_status")
+            span.set_attribute("openprogram.has_blocker", False)
             return ReplyOutcome(kind="acknowledged")
 
         clarification_count = await self._status_repository.checkin_clarification_count(
@@ -242,6 +245,11 @@ class StatusCollector:
                 message=message,
                 question=decision.question,
                 clarification_number=clarification_count + 1,
+            )
+            span.set_attribute("openprogram.reply_classification", "clarifying")
+            span.set_attribute(
+                "openprogram.has_blocker",
+                bool(decision.signals and decision.signals.blockers),
             )
             return ReplyOutcome(kind="clarifying")
 
@@ -272,6 +280,8 @@ class StatusCollector:
                 question=person_resolution.clarification_question,
                 clarification_number=clarification_count + 1,
             )
+            span.set_attribute("openprogram.reply_classification", "needs_person_resolution")
+            span.set_attribute("openprogram.has_blocker", bool(signals.blockers))
             return ReplyOutcome(kind="clarifying")
         status = await self._finalize_checkin_reply(
             checkin=checkin,
@@ -280,6 +290,8 @@ class StatusCollector:
             signals=signals,
             prior_blockers=prior_blockers,
         )
+        span.set_attribute("openprogram.reply_classification", "status_update")
+        span.set_attribute("openprogram.has_blocker", bool(status.blockers))
         return ReplyOutcome(
             kind="processed",
             status=status,
@@ -678,14 +690,16 @@ class StatusCollector:
         }
 
     async def _record_checkin_node(self, state: StatusCollectorState) -> StatusCollectorState:
+        asked_at = state.get("asked_at", datetime.now(tz=UTC))
         checkin = CheckIn(
             tenant_id=state["tenant_id"],
             developer_id=state["developer_id"],
             correlation_id=state["correlation_id"],
-            asked_at=state.get("asked_at", datetime.now(tz=UTC)),
+            asked_at=asked_at,
             replied_at=None,
             raw_reply=None,
             signals=None,
+            last_accessed_at=asked_at,
         )
         await self._status_repository.record_checkin(checkin)
         await self._status_repository.record_checkin_correlation(
@@ -1022,7 +1036,6 @@ class StatusCollector:
             "blocker_count": len(status.blockers),
             "has_eta_change": signals.eta_change_days is not None if signals else False,
             "eta_change_days": signals.eta_change_days if signals else None,
-            "raw_reply": checkin.raw_reply,
         }
         await self._time_series_repository.append_fact_once(
             FactEvent(

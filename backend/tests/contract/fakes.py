@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
-from datetime import date, datetime
+from dataclasses import dataclass, field, replace
+from datetime import UTC, date, datetime
 
 from core.domain.conversation import ConversationTurn
 from core.domain.directory import DirectoryUser
@@ -151,16 +151,17 @@ class FakeStatusRepository:
     developer_ids: set[str] = field(default_factory=set)
 
     async def record_checkin(self, checkin: CheckIn) -> None:
+        stored = _checkin_with_last_accessed_at(checkin)
         self.developer_ids.add(checkin.developer_id)
         self.checkins = [
             existing
             for existing in self.checkins
             if not (
-                existing.tenant_id == checkin.tenant_id
-                and existing.correlation_id == checkin.correlation_id
+                existing.tenant_id == stored.tenant_id
+                and existing.correlation_id == stored.correlation_id
             )
         ]
-        self.checkins.append(checkin)
+        self.checkins.append(stored)
 
     async def record_checkin_reply_once(self, checkin: CheckIn) -> bool:
         existing = await self.checkin_by_correlation(checkin.tenant_id, checkin.correlation_id)
@@ -170,8 +171,12 @@ class FakeStatusRepository:
         return True
 
     async def checkin_by_correlation(self, tenant_id: str, correlation_id: str) -> CheckIn | None:
-        for checkin in reversed(self.checkins):
+        for index in range(len(self.checkins) - 1, -1, -1):
+            checkin = self.checkins[index]
             if checkin.tenant_id == tenant_id and checkin.correlation_id == correlation_id:
+                if checkin.raw_reply is not None:
+                    checkin = replace(checkin, last_accessed_at=datetime.now(tz=UTC))
+                    self.checkins[index] = checkin
                 return checkin
         return None
 
@@ -390,6 +395,22 @@ class FakeStatusRepository:
         }
         return sorted(known_developer_ids - replied_developer_ids)
 
+    async def purge_checkin_raw_replies_older_than(self, tenant_id: str, cutoff: datetime) -> int:
+        cleared = 0
+        retained: list[CheckIn] = []
+        for checkin in self.checkins:
+            if (
+                checkin.tenant_id == tenant_id
+                and checkin.raw_reply is not None
+                and _checkin_last_accessed_at(checkin) < cutoff
+            ):
+                retained.append(replace(checkin, raw_reply=None))
+                cleared += 1
+                continue
+            retained.append(checkin)
+        self.checkins = retained
+        return cleared
+
 
 @dataclass
 class FakeDirectoryUserRepository(DirectoryUserRepository):
@@ -558,12 +579,16 @@ class FakeConversationRepository:
     turns: list[ConversationTurn] = field(default_factory=list)
 
     async def append_turn(self, turn: ConversationTurn) -> None:
-        self.turns.append(turn)
+        self.turns.append(
+            turn
+            if turn.last_accessed_at is not None
+            else replace(turn, last_accessed_at=turn.observed_at)
+        )
 
     async def list_turns_for_day(
         self, tenant_id: str, developer_id: str, on: date
     ) -> list[ConversationTurn]:
-        return sorted(
+        matched = sorted(
             (
                 turn
                 for turn in self.turns
@@ -573,6 +598,8 @@ class FakeConversationRepository:
             ),
             key=_conversation_sort_key,
         )
+        self._touch_turns(matched)
+        return matched
 
     async def list_recent_turns(
         self,
@@ -594,7 +621,9 @@ class FakeConversationRepository:
             key=_conversation_sort_key,
             reverse=True,
         )
-        return sorted(matching[:limit], key=_conversation_sort_key)
+        matched = sorted(matching[:limit], key=_conversation_sort_key)
+        self._touch_turns(matched)
+        return matched
 
     async def user_turn_exists(
         self, tenant_id: str, developer_id: str, chat_message_id: str
@@ -609,11 +638,25 @@ class FakeConversationRepository:
 
     async def purge_turns_older_than(self, tenant_id: str, cutoff: datetime) -> int:
         retained = [
-            turn for turn in self.turns if turn.tenant_id != tenant_id or turn.observed_at >= cutoff
+            turn
+            for turn in self.turns
+            if turn.tenant_id != tenant_id or _turn_last_accessed_at(turn) >= cutoff
         ]
         deleted_count = len(self.turns) - len(retained)
         self.turns = retained
         return deleted_count
+
+    def _touch_turns(self, turns: Sequence[ConversationTurn]) -> None:
+        if not turns:
+            return
+        touched_at = datetime.now(tz=UTC)
+        turn_keys = {_conversation_identity(turn) for turn in turns}
+        self.turns = [
+            replace(turn, last_accessed_at=touched_at)
+            if _conversation_identity(turn) in turn_keys
+            else turn
+            for turn in self.turns
+        ]
 
 
 @dataclass
@@ -686,6 +729,35 @@ def _conversation_sort_key(
         turn.role.value,
         turn.content,
     )
+
+
+def _conversation_identity(
+    turn: ConversationTurn,
+) -> tuple[str, str, str, date, str, str | None, str | None, datetime]:
+    return (
+        turn.tenant_id,
+        turn.developer_id,
+        turn.conversation_id,
+        turn.conversation_date,
+        turn.role.value,
+        turn.correlation_id,
+        turn.chat_message_id,
+        turn.observed_at,
+    )
+
+
+def _turn_last_accessed_at(turn: ConversationTurn) -> datetime:
+    return turn.last_accessed_at or turn.observed_at
+
+
+def _checkin_with_last_accessed_at(checkin: CheckIn) -> CheckIn:
+    if checkin.last_accessed_at is not None:
+        return checkin
+    return replace(checkin, last_accessed_at=_checkin_last_accessed_at(checkin))
+
+
+def _checkin_last_accessed_at(checkin: CheckIn) -> datetime:
+    return checkin.last_accessed_at or checkin.replied_at or checkin.asked_at
 
 
 def _fact_sort_key(fact: FactEvent) -> tuple[datetime, datetime, str]:

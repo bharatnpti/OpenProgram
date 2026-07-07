@@ -12,7 +12,7 @@ from core.domain.auth import Role
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="PULSEOPS_",
+        env_prefix="OPENPROGRAM_",
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
@@ -23,13 +23,13 @@ class Settings(BaseSettings):
     tenant_id: str = "demo"
     runtime_mode: Literal["container", "memory"] = "container"
     cors_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:5173")
-    database_url: str = "postgresql://pulseops:pulseops@localhost:5432/pulseops"
+    database_url: str = "postgresql://openprogram:openprogram@localhost:5432/openprogram"
     postgres_pool_min_size: int = 1
     postgres_pool_max_size: int = 5
     redis_url: str = "redis://localhost:6379/0"
     redis_max_connections: int = 10
     heartbeat_schedule_id: str | None = None
-    checkin_fanout_schedule_id: str = "pulseops-checkin-fanout"
+    checkin_fanout_schedule_id: str = "openprogram-checkin-fanout"
     checkin_fanout_cron: str = "30 9 * * 1-5"
     jira_sync_projects: tuple[str, ...] = ()
     github_sync_repos: tuple[str, ...] = ()
@@ -39,22 +39,23 @@ class Settings(BaseSettings):
     github_sync_cron: str = "*/15 * * * *"
     calendar_sync_cron: str = "0 8 * * *"
     conversation_retention_days: int = 30
+    conversation_purge_enabled: bool = True
     conversation_purge_cron: str = "0 3 * * *"
-    conversation_purge_schedule_id: str = "pulseops-conversation-purge"
+    conversation_purge_schedule_id: str = "openprogram-conversation-purge"
     directory_provider: str = "slack"
     chat_simulator_enabled: bool = False
     directory_sync_cron: str = "0 */6 * * *"
-    directory_sync_schedule_id: str = "pulseops-directory-sync"
+    directory_sync_schedule_id: str = "openprogram-directory-sync"
     risk_assessment_cron: str = "*/30 * * * *"
     risk_default_no_pr_days: int = 3
     risk_default_pr_age_days: int = 3
     risk_default_stale_days: int = 7
     risk_run_default_local_time: str = "18:00"
     temporal_target: str = "localhost:7233"
-    temporal_task_queue: str = "pulseops-foundation"
-    temporal_schedule_id: str = "pulseops-heartbeat"
+    temporal_task_queue: str = "openprogram-foundation"
+    temporal_schedule_id: str = "openprogram-heartbeat"
     temporal_heartbeat_interval_seconds: int = 60
-    dbos_app_name: str = "pulseops"
+    dbos_app_name: str = "openprogram"
     dbos_system_database_url: str | None = None
     dbos_heartbeat_cron: str = "0 * * * * *"
     tenant_default_timezone: str = "UTC"

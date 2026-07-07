@@ -14,13 +14,27 @@ from infra.observability.logging import inject_correlation_id, redact_sensitive
 from infra.observability.tracing import correlation_scope
 
 
-def test_redaction_processor_retains_dm_content_and_tokens() -> None:
+def test_redaction_processor_redacts_raw_reply_keys_only() -> None:
     event = redact_sensitive(
         None,
         "info",
-        {"message": "raw dm", "token": "secret-token", "safe": "kept"},
+        {
+            "raw_reply": "raw private reply",
+            "dm_text": "raw outbound dm",
+            "reply_text": "reply body",
+            "message": "kept",
+            "token": "secret-token",
+            "safe": "kept",
+        },
     )
-    assert event == {"message": "raw dm", "token": "secret-token", "safe": "kept"}
+    assert event == {
+        "raw_reply": "[redacted]",
+        "dm_text": "[redacted]",
+        "reply_text": "[redacted]",
+        "message": "kept",
+        "token": "secret-token",
+        "safe": "kept",
+    }
 
 
 async def test_logging_injects_correlation_id() -> None:

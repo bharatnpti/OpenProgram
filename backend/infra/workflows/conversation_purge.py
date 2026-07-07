@@ -20,10 +20,17 @@ async def purge_conversation_turns_activity(
             payload.tenant_id,
             cutoff,
         )
+        checkin_raw_cleared = (
+            await registry.status_repository().purge_checkin_raw_replies_older_than(
+                payload.tenant_id,
+                cutoff,
+            )
+        )
         return ConversationPurgeResult(
             tenant_id=payload.tenant_id,
             cutoff=cutoff.isoformat(),
             deleted_count=deleted_count,
+            checkin_raw_cleared=checkin_raw_cleared,
         )
     finally:
         await registry.close()

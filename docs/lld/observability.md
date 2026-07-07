@@ -2,7 +2,7 @@
 
 ## Logging
 
-`infra.observability.logging.configure_logging` configures structlog with correlation IDs. The legacy `redact_sensitive` processor remains in the processor chain as a compatibility no-op and does not remove message or token fields.
+`infra.observability.logging.configure_logging` configures structlog with correlation IDs. `redact_sensitive` strips focused raw-message event keys such as `raw_reply`, `dm_text`, and `reply_text` from application logs.
 
 ## Tracing
 
@@ -14,4 +14,4 @@ Prometheus scrapes the backend and infrastructure services. Grafana loads a star
 
 ## Conversation Payloads
 
-Raw inbound and outbound conversation turns are persisted in the durable conversation store with configurable retention. Logs and LLM traces retain submitted payload fields unless a caller explicitly omits them before logging.
+Raw inbound and outbound conversation turns are persisted in the durable conversation store with configurable last-access-based retention. Application logs and generic OTEL spans must use safe metadata rather than raw conversation text. LLM prompts remain visible in Langfuse traces by design.

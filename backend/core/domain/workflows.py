@@ -106,6 +106,7 @@ class ConversationPurgeResult:
     tenant_id: str
     cutoff: str
     deleted_count: int
+    checkin_raw_cleared: int = 0
 
 
 @dataclass(frozen=True, kw_only=True)

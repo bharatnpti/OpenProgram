@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from datetime import date, datetime, time
 from typing import Protocol
 
@@ -23,7 +24,7 @@ from core.domain.status import (
     StatusSource,
 )
 
-_tracer = trace.get_tracer("pulseops.persistence.status")
+_tracer = trace.get_tracer("openprogram.persistence.status")
 
 
 class AsyncSqlExecutor(Protocol):
@@ -44,16 +45,17 @@ class PostgresStatusRepository:
                 """
                 INSERT INTO checkins (
                     tenant_id, developer_id, correlation_id, asked_at,
-                    replied_at, raw_reply, signals
+                    replied_at, raw_reply, signals, last_accessed_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id, correlation_id)
                 DO UPDATE SET
                     developer_id = EXCLUDED.developer_id,
                     asked_at = EXCLUDED.asked_at,
                     replied_at = EXCLUDED.replied_at,
                     raw_reply = EXCLUDED.raw_reply,
-                    signals = EXCLUDED.signals
+                    signals = EXCLUDED.signals,
+                    last_accessed_at = EXCLUDED.last_accessed_at
                 """,
                 (
                     checkin.tenant_id,
@@ -63,6 +65,7 @@ class PostgresStatusRepository:
                     checkin.replied_at,
                     checkin.raw_reply,
                     _signals_to_json(checkin.signals),
+                    _checkin_last_accessed_at(checkin),
                 ),
             )
 
@@ -72,16 +75,17 @@ class PostgresStatusRepository:
                 """
                 INSERT INTO checkins (
                     tenant_id, developer_id, correlation_id, asked_at,
-                    replied_at, raw_reply, signals
+                    replied_at, raw_reply, signals, last_accessed_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id, correlation_id)
                 DO UPDATE SET
                     developer_id = EXCLUDED.developer_id,
                     asked_at = EXCLUDED.asked_at,
                     replied_at = EXCLUDED.replied_at,
                     raw_reply = EXCLUDED.raw_reply,
-                    signals = EXCLUDED.signals
+                    signals = EXCLUDED.signals,
+                    last_accessed_at = EXCLUDED.last_accessed_at
                 WHERE checkins.replied_at IS NULL
                 """,
                 (
@@ -92,6 +96,7 @@ class PostgresStatusRepository:
                     checkin.replied_at,
                     checkin.raw_reply,
                     _signals_to_json(checkin.signals),
+                    _checkin_last_accessed_at(checkin),
                 ),
             )
         return int(getattr(result, "rowcount", 0) or 0) > 0
@@ -101,13 +106,15 @@ class PostgresStatusRepository:
             rows = await self._executor.fetch(
                 """
                 SELECT tenant_id, developer_id, correlation_id, asked_at,
-                       replied_at, raw_reply, signals
+                       replied_at, raw_reply, signals, last_accessed_at
                 FROM checkins
                 WHERE tenant_id = %s AND correlation_id = %s
                 LIMIT 1
                 """,
                 (tenant_id, correlation_id),
             )
+            if rows:
+                await self._touch_checkin_raw_reply(tenant_id, correlation_id)
         return _checkin_from_row(rows[0]) if rows else None
 
     async def record_checkin_correlation(self, correlation: CheckInCorrelation) -> None:
@@ -467,15 +474,17 @@ class PostgresStatusRepository:
                 """
                 INSERT INTO developer_statuses (
                     tenant_id, developer_id, as_of, source, blockers, summary,
-                    eta_change_days
+                    eta_change_days, developer_confirmed, confirmed_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id, developer_id, as_of)
                 DO UPDATE SET
                     source = EXCLUDED.source,
                     blockers = EXCLUDED.blockers,
                     summary = EXCLUDED.summary,
                     eta_change_days = EXCLUDED.eta_change_days,
+                    developer_confirmed = EXCLUDED.developer_confirmed,
+                    confirmed_at = EXCLUDED.confirmed_at,
                     updated_at = now()
                 """,
                 (
@@ -486,6 +495,8 @@ class PostgresStatusRepository:
                     _string_tuple_to_json(status.blockers),
                     status.summary,
                     status.eta_change_days,
+                    status.developer_confirmed,
+                    status.confirmed_at,
                 ),
             )
 
@@ -496,7 +507,7 @@ class PostgresStatusRepository:
             rows = await self._executor.fetch(
                 """
                 SELECT tenant_id, developer_id, as_of, source, blockers, summary,
-                       eta_change_days
+                       eta_change_days, developer_confirmed, confirmed_at
                 FROM developer_statuses
                 WHERE tenant_id = %s AND developer_id = %s AND as_of <= %s
                 ORDER BY as_of DESC
@@ -538,6 +549,36 @@ class PostgresStatusRepository:
                 (tenant_id, tenant_id, tenant_id, tenant_id, as_of, as_of),
             )
         return [str(row["developer_id"]) for row in rows]
+
+    async def purge_checkin_raw_replies_older_than(self, tenant_id: str, cutoff: datetime) -> int:
+        with _tracer.start_as_current_span("postgres.status.purge_checkin_raw_replies_older_than"):
+            rows = await self._executor.fetch(
+                """
+                WITH updated AS (
+                    UPDATE checkins
+                    SET raw_reply = NULL
+                    WHERE tenant_id = %s
+                      AND COALESCE(last_accessed_at, replied_at, asked_at) < %s
+                      AND raw_reply IS NOT NULL
+                    RETURNING 1
+                )
+                SELECT count(*) AS cleared_count
+                FROM updated
+                """,
+                (tenant_id, cutoff),
+            )
+        return _int_field(rows[0]["cleared_count"], "cleared_count") if rows else 0
+
+    async def _touch_checkin_raw_reply(self, tenant_id: str, correlation_id: str) -> None:
+        with suppress(Exception):
+            await self._executor.execute(
+                """
+                UPDATE checkins
+                SET last_accessed_at = now()
+                WHERE tenant_id = %s AND correlation_id = %s AND raw_reply IS NOT NULL
+                """,
+                (tenant_id, correlation_id),
+            )
 
 
 class PostgresRollupRepository:
@@ -658,9 +699,10 @@ class PostgresConversationRepository:
                 """
                 INSERT INTO conversation_turns (
                     tenant_id, developer_id, conversation_id, conversation_date,
-                    role, content, correlation_id, chat_message_id, observed_at
+                    role, content, correlation_id, chat_message_id, observed_at,
+                    last_accessed_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     turn.tenant_id,
@@ -672,6 +714,7 @@ class PostgresConversationRepository:
                     turn.correlation_id,
                     turn.chat_message_id,
                     turn.observed_at,
+                    turn.last_accessed_at or turn.observed_at,
                 ),
             )
 
@@ -681,8 +724,9 @@ class PostgresConversationRepository:
         with _tracer.start_as_current_span("postgres.conversation.list_turns_for_day"):
             rows = await self._executor.fetch(
                 """
-                SELECT tenant_id, developer_id, conversation_id, conversation_date,
-                       role, content, correlation_id, chat_message_id, observed_at
+                SELECT id::text AS turn_id, tenant_id, developer_id, conversation_id,
+                       conversation_date, role, content, correlation_id, chat_message_id,
+                       observed_at, last_accessed_at
                 FROM conversation_turns
                 WHERE tenant_id = %s
                   AND developer_id = %s
@@ -696,6 +740,7 @@ class PostgresConversationRepository:
                 """,
                 (tenant_id, developer_id, on),
             )
+            await self._touch_conversation_turns(rows)
         return [_conversation_turn_from_row(row) for row in rows]
 
     async def list_recent_turns(
@@ -711,8 +756,9 @@ class PostgresConversationRepository:
             rows = await self._executor.fetch(
                 """
                 WITH latest AS (
-                    SELECT tenant_id, developer_id, conversation_id, conversation_date,
-                           role, content, correlation_id, chat_message_id, observed_at
+                    SELECT id::text AS turn_id, tenant_id, developer_id, conversation_id,
+                           conversation_date, role, content, correlation_id, chat_message_id,
+                           observed_at, last_accessed_at
                     FROM conversation_turns
                     WHERE tenant_id = %s
                       AND developer_id = %s
@@ -725,8 +771,9 @@ class PostgresConversationRepository:
                              content DESC
                     LIMIT %s
                 )
-                SELECT tenant_id, developer_id, conversation_id, conversation_date,
-                       role, content, correlation_id, chat_message_id, observed_at
+                SELECT turn_id, tenant_id, developer_id, conversation_id, conversation_date,
+                       role, content, correlation_id, chat_message_id, observed_at,
+                       last_accessed_at
                 FROM latest
                 ORDER BY observed_at ASC,
                          conversation_id ASC,
@@ -737,6 +784,7 @@ class PostgresConversationRepository:
                 """,
                 (tenant_id, developer_id, since, since, limit),
             )
+            await self._touch_conversation_turns(rows)
         return [_conversation_turn_from_row(row) for row in rows]
 
     async def user_turn_exists(
@@ -765,7 +813,7 @@ class PostgresConversationRepository:
                 """
                 WITH deleted AS (
                     DELETE FROM conversation_turns
-                    WHERE tenant_id = %s AND observed_at < %s
+                    WHERE tenant_id = %s AND COALESCE(last_accessed_at, observed_at) < %s
                     RETURNING 1
                 )
                 SELECT count(*) AS deleted_count
@@ -774,6 +822,20 @@ class PostgresConversationRepository:
                 (tenant_id, cutoff),
             )
         return _int_field(rows[0]["deleted_count"], "deleted_count") if rows else 0
+
+    async def _touch_conversation_turns(self, rows: Sequence[Mapping[str, object]]) -> None:
+        turn_ids = [str(row["turn_id"]) for row in rows if row.get("turn_id") is not None]
+        if not turn_ids:
+            return
+        with suppress(Exception):
+            await self._executor.execute(
+                """
+                UPDATE conversation_turns
+                SET last_accessed_at = now()
+                WHERE id::text = ANY(%s)
+                """,
+                (turn_ids,),
+            )
 
 
 def _checkin_from_row(row: Mapping[str, object]) -> CheckIn:
@@ -786,6 +848,7 @@ def _checkin_from_row(row: Mapping[str, object]) -> CheckIn:
         replied_at=_optional_datetime_field(row.get("replied_at"), "replied_at"),
         raw_reply=raw_reply if isinstance(raw_reply, str) else None,
         signals=_signals_from_json(row.get("signals")),
+        last_accessed_at=_optional_datetime_field(row.get("last_accessed_at"), "last_accessed_at"),
     )
 
 
@@ -869,6 +932,8 @@ def _developer_status_from_row(row: Mapping[str, object]) -> DeveloperStatus:
         eta_change_days=eta_change_days
         if isinstance(eta_change_days, int) and not isinstance(eta_change_days, bool)
         else None,
+        developer_confirmed=bool(row.get("developer_confirmed")),
+        confirmed_at=_optional_datetime_field(row.get("confirmed_at"), "confirmed_at"),
     )
 
 
@@ -908,7 +973,12 @@ def _conversation_turn_from_row(row: Mapping[str, object]) -> ConversationTurn:
         correlation_id=correlation_id if isinstance(correlation_id, str) else None,
         chat_message_id=chat_message_id if isinstance(chat_message_id, str) else None,
         observed_at=_datetime_field(row["observed_at"], "observed_at"),
+        last_accessed_at=_optional_datetime_field(row.get("last_accessed_at"), "last_accessed_at"),
     )
+
+
+def _checkin_last_accessed_at(checkin: CheckIn) -> datetime:
+    return checkin.last_accessed_at or checkin.replied_at or checkin.asked_at
 
 
 def _signals_to_json(signals: CheckInSignals | None) -> dict[str, object] | None:
@@ -1052,6 +1122,8 @@ def _items_from_json(value: object) -> tuple[object, ...]:
     if isinstance(raw_items, list | tuple):
         return tuple(raw_items)
     return ()
+
+
 def _rag_from_json(value: object) -> Rag | None:
     if not isinstance(value, str):
         return None

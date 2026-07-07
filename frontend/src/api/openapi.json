@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "PulseOps",
+    "title": "OpenProgram",
     "version": "0.1.0"
   },
   "paths": {
@@ -3789,6 +3789,208 @@
         }
       }
     },
+    "/me/status": {
+      "get": {
+        "tags": ["checkins"],
+        "summary": "Get My Status",
+        "operationId": "get_my_status_me_status_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/status/confirm": {
+      "post": {
+        "tags": ["checkins"],
+        "summary": "Confirm My Status",
+        "operationId": "confirm_my_status_me_status_confirm_post",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/status/correct": {
+      "post": {
+        "tags": ["checkins"],
+        "summary": "Correct My Status",
+        "operationId": "correct_my_status_me_status_correct_post",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatusCorrectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/me/checkin-preference": {
       "get": {
         "tags": ["checkins"],
@@ -6545,6 +6747,10 @@
           "status_source": {
             "$ref": "#/components/schemas/StatusSource"
           },
+          "developer_confirmed": {
+            "type": "boolean",
+            "title": "Developer Confirmed"
+          },
           "status_as_of": {
             "anyOf": [
               {
@@ -6589,6 +6795,7 @@
           "developer_name",
           "as_of",
           "status_source",
+          "developer_confirmed",
           "status_as_of",
           "summary",
           "blockers",
@@ -6906,6 +7113,67 @@
         "type": "object",
         "required": ["task_id"],
         "title": "MemberTaskAssignmentRequest"
+      },
+      "MyStatusResponse": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/StatusSource"
+          },
+          "developer_confirmed": {
+            "type": "boolean",
+            "title": "Developer Confirmed"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blockers"
+          },
+          "eta_change_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Change Days"
+          },
+          "status_as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "Status As Of"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "developer_confirmed",
+          "summary",
+          "blockers",
+          "eta_change_days",
+          "status_as_of",
+          "confirmed_at"
+        ],
+        "title": "MyStatusResponse"
       },
       "NodeKind": {
         "type": "string",
@@ -7607,6 +7875,36 @@
         "type": "object",
         "required": ["description", "contributes", "source_ref"],
         "title": "RollupFactorDto"
+      },
+      "StatusCorrectionRequest": {
+        "properties": {
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Summary"
+          },
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blockers"
+          },
+          "eta_change_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Change Days"
+          }
+        },
+        "type": "object",
+        "required": ["summary"],
+        "title": "StatusCorrectionRequest"
       },
       "StatusSource": {
         "type": "string",
