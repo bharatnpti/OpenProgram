@@ -9,10 +9,10 @@ reply through the same webhook correlation path used by chat webhooks.
 Add the local E2E settings to your backend environment:
 
 ```bash
-PULSEOPS_CHAT_PROVIDER=mock_slack
-PULSEOPS_DIRECTORY_PROVIDER=mock_slack
-PULSEOPS_CHAT_SIMULATOR_ENABLED=true
-PULSEOPS_DEV_PRINCIPAL_ROLES=admin
+OPENPROGRAM_CHAT_PROVIDER=mock_slack
+OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack
+OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true
+OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin
 ```
 
 For the frontend, the Mock Slack navigation item is shown to admins in
@@ -71,7 +71,7 @@ DELETE /test/chat-simulator/state
 
 These routes are only available when all of the following are true:
 
-- `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`
+- `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`
 - The backend environment is local.
 - The caller is authorized as an admin.
 
@@ -89,12 +89,12 @@ caller is not an admin, they return `403`.
 - `/test/chat-simulator/status` returns `403`: confirm the active user has the
   admin role.
 - Directory sync asks for real Slack configuration: confirm
-  `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`.
+  `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`.
 - No members appear in the dispatch form: sync the directory and add a member
   first.
 - A DM was dispatched but no mock message appears: refresh the console and check
   that the backend and worker processes are running with
-  `PULSEOPS_CHAT_PROVIDER=mock_slack`.
+  `OPENPROGRAM_CHAT_PROVIDER=mock_slack`.
 - A submitted reply does not update status: send a fresh check-in and reply to
   the newest outbound bot message so the correlation metadata matches an active
   workflow.

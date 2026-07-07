@@ -37,7 +37,7 @@ Inbound webhooks map to `InboundMessage`. Outbound text maps from `OutboundMessa
 
 Use the local chat simulator when a tester needs a Slack-shaped roundtrip without real Slack credentials.
 
-1. Set `PULSEOPS_CHAT_PROVIDER=mock_slack`, `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`, and `PULSEOPS_CHAT_SIMULATOR_ENABLED=true` in `.env`.
+1. Set `OPENPROGRAM_CHAT_PROVIDER=mock_slack`, `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`, and `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true` in `.env`.
 2. Start the stack and frontend, then sync the directory from Admin Config.
 3. Add one or more synced users as members.
 4. Open `/mock-slack`, dispatch a check-in, inspect the outbound bot DM, and submit a reply.

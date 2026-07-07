@@ -38,8 +38,8 @@ from tests.fixtures.demo_graph import populate_demo_graph
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(
-        os.getenv("PULSEOPS_RUN_INTEGRATION") != "1",
-        reason="set PULSEOPS_RUN_INTEGRATION=1 or run make integration",
+        os.getenv("OPENPROGRAM_RUN_INTEGRATION") != "1",
+        reason="set OPENPROGRAM_RUN_INTEGRATION=1 or run make integration",
     ),
 ]
 
@@ -61,10 +61,10 @@ def compose_stack() -> object:
         pytest.skip(f"docker daemon unavailable: {exc}")
 
     compose_env = {
-        "COMPOSE_PROJECT_NAME": f"pulseops-it-{uuid4().hex[:12]}",
-        "PULSEOPS_POSTGRES_PORT_BINDING": "5432",
-        "PULSEOPS_REDIS_PORT_BINDING": "6379",
-        "PULSEOPS_TEMPORAL_PORT_BINDING": "7233",
+        "COMPOSE_PROJECT_NAME": f"openprogram-it-{uuid4().hex[:12]}",
+        "OPENPROGRAM_POSTGRES_PORT_BINDING": "5432",
+        "OPENPROGRAM_REDIS_PORT_BINDING": "6379",
+        "OPENPROGRAM_TEMPORAL_PORT_BINDING": "7233",
     }
     previous_env = {key: os.environ.get(key) for key in compose_env}
     os.environ.update(compose_env)
@@ -88,10 +88,10 @@ def compose_stack() -> object:
 async def test_postgres_extensions_fixture_vector_and_secret(
     compose_stack: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    database_url = _service_url(compose_stack, "postgres", 5432, "pulseops")
-    monkeypatch.setenv("PULSEOPS_DATABASE_URL", database_url)
-    monkeypatch.setenv("PULSEOPS_SECRET_KEY", SECRET_KEY)
-    monkeypatch.setenv("PULSEOPS_RUNTIME_MODE", "container")
+    database_url = _service_url(compose_stack, "postgres", 5432, "openprogram")
+    monkeypatch.setenv("OPENPROGRAM_DATABASE_URL", database_url)
+    monkeypatch.setenv("OPENPROGRAM_SECRET_KEY", SECRET_KEY)
+    monkeypatch.setenv("OPENPROGRAM_RUNTIME_MODE", "container")
     get_settings.cache_clear()
     command.upgrade(Config(str(ROOT / "backend/infra/persistence/alembic.ini")), "head")
 
@@ -173,7 +173,7 @@ async def test_conversation_store_migration_and_repository_contract(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     admin_database_url = _service_url(compose_stack, "postgres", 5432, "postgres")
-    database_name = f"pulseops_it_0005_{uuid4().hex[:12]}"
+    database_name = f"openprogram_it_0005_{uuid4().hex[:12]}"
     database_url = _service_url(compose_stack, "postgres", 5432, database_name)
     await _create_database(admin_database_url, database_name)
     try:
@@ -216,7 +216,7 @@ async def test_developer_status_signals_migration_and_repository_round_trip(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     admin_database_url = _service_url(compose_stack, "postgres", 5432, "postgres")
-    database_name = f"pulseops_it_0008_{uuid4().hex[:12]}"
+    database_name = f"openprogram_it_0008_{uuid4().hex[:12]}"
     database_url = _service_url(compose_stack, "postgres", 5432, database_name)
     await _create_database(admin_database_url, database_name)
     try:
@@ -267,7 +267,7 @@ async def test_directory_user_search_indexes_migration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     admin_database_url = _service_url(compose_stack, "postgres", 5432, "postgres")
-    database_name = f"pulseops_it_0010_{uuid4().hex[:12]}"
+    database_name = f"openprogram_it_0010_{uuid4().hex[:12]}"
     database_url = _service_url(compose_stack, "postgres", 5432, database_name)
     await _create_database(admin_database_url, database_name)
     try:
@@ -313,10 +313,10 @@ async def test_dbos_worker_executes_heartbeat(compose_stack: object) -> None:
         destroy_dbos_runtime,
     )
 
-    database_url = _service_url(compose_stack, "postgres", 5432, "pulseops")
+    database_url = _service_url(compose_stack, "postgres", 5432, "openprogram")
     configure_dbos_runtime(
         DbosRuntimeConfig(
-            app_name="pulseops-it",
+            app_name="openprogram-it",
             system_database_url=database_url,
         )
     )
@@ -348,18 +348,18 @@ async def test_dbos_worker_executes_read_sync_workflow(
     )
     from infra.workflows.jira_sync import JiraSyncInput
 
-    database_url = _service_url(compose_stack, "postgres", 5432, "pulseops")
-    monkeypatch.setenv("PULSEOPS_SECRET_KEY", SECRET_KEY)
-    monkeypatch.setenv("PULSEOPS_RUNTIME_MODE", "memory")
-    monkeypatch.setenv("PULSEOPS_CHAT_PROVIDER", "fake")
-    monkeypatch.setenv("PULSEOPS_ISSUE_TRACKER_PROVIDER", "fake")
-    monkeypatch.setenv("PULSEOPS_VCS_PROVIDER", "fake")
-    monkeypatch.setenv("PULSEOPS_CALENDAR_PROVIDER", "fake")
-    monkeypatch.setenv("PULSEOPS_LLM_PROVIDER", "fake")
+    database_url = _service_url(compose_stack, "postgres", 5432, "openprogram")
+    monkeypatch.setenv("OPENPROGRAM_SECRET_KEY", SECRET_KEY)
+    monkeypatch.setenv("OPENPROGRAM_RUNTIME_MODE", "memory")
+    monkeypatch.setenv("OPENPROGRAM_CHAT_PROVIDER", "fake")
+    monkeypatch.setenv("OPENPROGRAM_ISSUE_TRACKER_PROVIDER", "fake")
+    monkeypatch.setenv("OPENPROGRAM_VCS_PROVIDER", "fake")
+    monkeypatch.setenv("OPENPROGRAM_CALENDAR_PROVIDER", "fake")
+    monkeypatch.setenv("OPENPROGRAM_LLM_PROVIDER", "fake")
     get_settings.cache_clear()
     configure_dbos_runtime(
         DbosRuntimeConfig(
-            app_name="pulseops-it",
+            app_name="openprogram-it",
             system_database_url=database_url,
         )
     )
@@ -395,10 +395,10 @@ async def test_dbos_scheduler_applies_heartbeat_schedule(compose_stack: object) 
         destroy_dbos_runtime,
     )
 
-    database_url = _service_url(compose_stack, "postgres", 5432, "pulseops")
+    database_url = _service_url(compose_stack, "postgres", 5432, "openprogram")
     schedule_id = f"dbos-heartbeat-schedule-it-{uuid4()}"
     scheduler = DbosWorkflowScheduler(
-        app_name="pulseops-it",
+        app_name="openprogram-it",
         system_database_url=database_url,
         schedule_id=schedule_id,
         tenant_id="demo",
@@ -408,7 +408,7 @@ async def test_dbos_scheduler_applies_heartbeat_schedule(compose_stack: object) 
         result = await scheduler.ensure_heartbeat_schedule()
         configure_dbos_runtime(
             DbosRuntimeConfig(
-                app_name="pulseops-it",
+                app_name="openprogram-it",
                 system_database_url=database_url,
             )
         )
@@ -438,14 +438,14 @@ async def test_dbos_scheduler_applies_checkin_fanout_schedule(
         destroy_dbos_runtime,
     )
 
-    database_url = _service_url(compose_stack, "postgres", 5432, "pulseops")
-    monkeypatch.setenv("PULSEOPS_SECRET_KEY", SECRET_KEY)
-    monkeypatch.setenv("PULSEOPS_RUNTIME_MODE", "memory")
-    monkeypatch.setenv("PULSEOPS_WORKFLOW_PROVIDER", "fake")
+    database_url = _service_url(compose_stack, "postgres", 5432, "openprogram")
+    monkeypatch.setenv("OPENPROGRAM_SECRET_KEY", SECRET_KEY)
+    monkeypatch.setenv("OPENPROGRAM_RUNTIME_MODE", "memory")
+    monkeypatch.setenv("OPENPROGRAM_WORKFLOW_PROVIDER", "fake")
     get_settings.cache_clear()
     schedule_id = f"dbos-checkin-fanout-schedule-it-{uuid4()}"
     scheduler = DbosWorkflowScheduler(
-        app_name="pulseops-it",
+        app_name="openprogram-it",
         system_database_url=database_url,
         schedule_id=f"unused-heartbeat-{uuid4()}",
         tenant_id="demo",
@@ -461,7 +461,7 @@ async def test_dbos_scheduler_applies_checkin_fanout_schedule(
         )
         configure_dbos_runtime(
             DbosRuntimeConfig(
-                app_name="pulseops-it",
+                app_name="openprogram-it",
                 system_database_url=database_url,
             )
         )
@@ -484,7 +484,7 @@ async def test_temporal_worker_executes_heartbeat(compose_stack: object) -> None
 
     temporal_target = _temporal_target(compose_stack)
     client = await _connect_temporal(temporal_target)
-    task_queue = f"pulseops-it-{uuid4()}"
+    task_queue = f"openprogram-it-{uuid4()}"
     worker = Worker(
         client,
         task_queue=task_queue,
@@ -504,7 +504,7 @@ async def test_temporal_worker_executes_heartbeat(compose_stack: object) -> None
 def _service_url(compose: object, service: str, port: int, database: str) -> str:
     host = compose.get_service_host(service, port)
     published_port = compose.get_service_port(service, port)
-    return f"postgresql://pulseops:pulseops@{host}:{published_port}/{database}"
+    return f"postgresql://openprogram:openprogram@{host}:{published_port}/{database}"
 
 
 def _run_alembic(
@@ -513,9 +513,9 @@ def _run_alembic(
     action: str,
     revision: str,
 ) -> None:
-    monkeypatch.setenv("PULSEOPS_DATABASE_URL", database_url)
-    monkeypatch.setenv("PULSEOPS_SECRET_KEY", SECRET_KEY)
-    monkeypatch.setenv("PULSEOPS_RUNTIME_MODE", "container")
+    monkeypatch.setenv("OPENPROGRAM_DATABASE_URL", database_url)
+    monkeypatch.setenv("OPENPROGRAM_SECRET_KEY", SECRET_KEY)
+    monkeypatch.setenv("OPENPROGRAM_RUNTIME_MODE", "container")
     get_settings.cache_clear()
     config = Config(str(ROOT / "backend/infra/persistence/alembic.ini"))
     if action == "upgrade":

@@ -35,7 +35,7 @@ def create_app(
         finally:
             await resolved_registry.close()
 
-    app = FastAPI(title="PulseOps", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="OpenProgram", version="0.1.0", lifespan=lifespan)
     app.state.settings = resolved_settings
     app.state.registry = resolved_registry
     app.state.metrics = resolved_metrics
@@ -54,13 +54,13 @@ def create_app(
     ) -> Response:
         correlation_id = request.headers.get("x-correlation-id", str(uuid4()))
         async with correlation_scope(correlation_id):
-            tracer = trace.get_tracer("pulseops.api")
+            tracer = trace.get_tracer("openprogram.api")
             started = perf_counter()
             status_code = 500
             with tracer.start_as_current_span(f"{request.method} {request.url.path}") as span:
                 span.set_attribute("http.method", request.method)
                 span.set_attribute("http.route", request.url.path)
-                span.set_attribute("pulseops.correlation_id", correlation_id)
+                span.set_attribute("openprogram.correlation_id", correlation_id)
                 try:
                     response = await call_next(request)
                 except Exception as exc:

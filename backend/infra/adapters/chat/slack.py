@@ -15,7 +15,7 @@ from core.domain.errors import ProviderConfigurationError, ProviderUnavailable
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from infra.adapters.chat.rate_limit import RateLimiter
 
-_tracer = trace.get_tracer("pulseops.adapters.chat.slack")
+_tracer = trace.get_tracer("openprogram.adapters.chat.slack")
 
 _SLACK_CONFIGURATION_ERRORS = frozenset(
     {"invalid_auth", "missing_scope", "not_authed", "token_revoked"}
@@ -69,7 +69,7 @@ class RedisConversationCache:
             await self.client.set(self._key(user_id), channel_id)
 
     def _key(self, user_id: str) -> str:
-        return f"pulseops:slack:conversation:{self.tenant_id}:{user_id}"
+        return f"openprogram:slack:conversation:{self.tenant_id}:{user_id}"
 
 
 @dataclass
@@ -143,12 +143,7 @@ class SlackChatWebhookMapper:
             text = _optional_string(event, "text")
             timestamp = _optional_string(event, "ts")
             channel = _optional_string(event, "channel")
-            if (
-                user_id is None
-                or text is None
-                or timestamp is None
-                or channel is None
-            ):
+            if user_id is None or text is None or timestamp is None or channel is None:
                 return None
             thread_id = _optional_string(event, "thread_ts") or channel
             return InboundMessage(

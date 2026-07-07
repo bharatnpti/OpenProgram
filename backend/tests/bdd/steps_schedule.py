@@ -138,6 +138,6 @@ def _given_compose_file_loaded(world: World) -> None:
 def _then_service_fanout_cron_overrideable(world: World, service: str, env_var: str) -> None:
     compose = world.stash["compose"]
     environment = compose["services"][service]["environment"]
-    value = environment.get("PULSEOPS_CHECKIN_FANOUT_CRON")
+    value = environment.get("OPENPROGRAM_CHECKIN_FANOUT_CRON")
     assert value is not None
     assert env_var in value, value

@@ -37,15 +37,15 @@ unit suite. All matrix rows through `MS-E2E-045` are covered.
 ID,Area,Priority,Scenario,Preconditions,Steps,Expected Result,Status,Evidence
 MS-E2E-001,Preflight,P0,"Simulator enabled local admin preflight","Local backend; admin role; mock_slack chat; simulator enabled","GET /health; GET /ready; GET /test/chat-simulator/status; GET /test/chat-simulator/messages","Health/readiness pass; simulator routes return 200; status shows enabled=true provider=mock_slack","Passed Attempt 11","/health 200; /ready 200; status/messages 200; provider=mock_slack"
 MS-E2E-002,Provider Config,P0,"Full local provider stack avoids real integrations","Backend and worker env use mock_slack chat/directory plus fake calendar/issue/VCS","Inspect backend and worker env; dispatch one check-in","Dispatch does not call real Slack/Jira/GitHub/Google; outbound DM appears","Passed Attempt 22","Backend/worker env used mock_slack chat/directory plus fake calendar/issue/VCS; U1003 dispatch created mock Slack bot 1782638093.000001 without real Slack/Jira/GitHub/Google"
-MS-E2E-003,Schedule Config,P0,"Daily check-in fanout can be configured to 15 minutes","Compose stack started with PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *","Inspect backend and worker env; inspect worker schedule bootstrap logs","Both containers expose the override; check-in fanout schedule is configured with */15 * * * *","Passed Attempt 13","Schedule table has */15 * * * *; deterministic trigger and natural 05:45 UTC cron both succeeded after DBOS fanout fix"
-MS-E2E-004,Directory,P0,"Mock directory sync exposes stable users","PULSEOPS_DIRECTORY_PROVIDER=mock_slack; admin role","POST /config/directory/sync; search users; add missing mock users","Mock users such as U1001/U1002/U1003 are available and can become configured members","Passed Attempt 11","Directory sync 200; total=3; U1002/Liam Chen added as mock_slack member"
+MS-E2E-003,Schedule Config,P0,"Daily check-in fanout can be configured to 15 minutes","Compose stack started with OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *","Inspect backend and worker env; inspect worker schedule bootstrap logs","Both containers expose the override; check-in fanout schedule is configured with */15 * * * *","Passed Attempt 13","Schedule table has */15 * * * *; deterministic trigger and natural 05:45 UTC cron both succeeded after DBOS fanout fix"
+MS-E2E-004,Directory,P0,"Mock directory sync exposes stable users","OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack; admin role","POST /config/directory/sync; search users; add missing mock users","Mock users such as U1001/U1002/U1003 are available and can become configured members","Passed Attempt 11","Directory sync 200; total=3; U1002/Liam Chen added as mock_slack member"
 MS-E2E-005,Happy Path,P0,"Dispatch and reply confirm member status","Eligible configured member; no blocking same-date stale schedule run; simulator empty","Open /mock-slack; select member; Send DM; select bot DM; Submit reply; check pod status","Bot DM recorded; reply status=processed; member check-in becomes confirmed with reply summary","Passed Attempt 30","Post-fix Chrome/API retest used U1001 with chat UQA30FIXHAPPY on 2026-09-22; bot 1782678347.000001 and reply 1782678390.000005 processed, raw_reply persisted, correlation consumed, and developer_status stayed on as_of=2026-09-22"
 MS-E2E-006,Simulator State,P1,"Refresh does not duplicate messages","At least one bot DM exists","Record message_count; click Refresh multiple times; GET messages","Messages reload and count remains unchanged","Passed Attempt 30","Attempt 30 Refresh twice kept UI/API Messages KPI at 9 with no duplicate simulator messages"
 MS-E2E-007,Simulator State,P0,"Reset clears simulator mailbox only","Messages exist; member/status data exists","Click Reset; confirm; GET messages; check members and pod check-ins","Messages empty and message_count=0; configured members and persisted check-ins remain","Passed Attempt 30","Attempt 30 UI Reset cleared the timeline to No messages and API status returned message_count=0 while app state remained available"
 MS-E2E-008,Simulator State,P1,"Reply after reset rejects stale message ID","Have bot message ID; simulator reset","POST reply to old message ID","API returns 404; no user message is created","Passed Attempt 11","Reply to old 1782622890.000001 returned 404; mailbox stayed empty"
-MS-E2E-009,Access Control,P0,"Non-admin cannot use simulator API","Simulator enabled local; caller lacks admin/MANAGE_CONFIG","GET status/messages; POST reply; DELETE state as non-admin","Simulator routes return 403","Passed Attempt 23","Backend restarted with PULSEOPS_DEV_PRINCIPAL_ROLES=dev; status/messages/reply/state all returned 403 with dev-user not authorized for manage_config"
-MS-E2E-010,Access Control,P0,"Simulator disabled returns not found","Backend started with PULSEOPS_CHAT_SIMULATOR_ENABLED=false","GET /test/chat-simulator/status","Route returns 404","Passed Attempt 24","Backend restarted with simulator_enabled=false; status and messages returned 404 not found"
-MS-E2E-011,Access Control,P0,"Non-local environment returns not found","Backend environment is not local; simulator flag true","GET /test/chat-simulator/status","Route returns 404","Passed Attempt 26","After compose env pass-through fix, backend/worker ran with PULSEOPS_ENVIRONMENT=staging; health reported staging; status/messages returned 404 not found"
+MS-E2E-009,Access Control,P0,"Non-admin cannot use simulator API","Simulator enabled local; caller lacks admin/MANAGE_CONFIG","GET status/messages; POST reply; DELETE state as non-admin","Simulator routes return 403","Passed Attempt 23","Backend restarted with OPENPROGRAM_DEV_PRINCIPAL_ROLES=dev; status/messages/reply/state all returned 403 with dev-user not authorized for manage_config"
+MS-E2E-010,Access Control,P0,"Simulator disabled returns not found","Backend started with OPENPROGRAM_CHAT_SIMULATOR_ENABLED=false","GET /test/chat-simulator/status","Route returns 404","Passed Attempt 24","Backend restarted with simulator_enabled=false; status and messages returned 404 not found"
+MS-E2E-011,Access Control,P0,"Non-local environment returns not found","Backend environment is not local; simulator flag true","GET /test/chat-simulator/status","Route returns 404","Passed Attempt 26","After compose env pass-through fix, backend/worker ran with OPENPROGRAM_ENVIRONMENT=staging; health reported staging; status/messages returned 404 not found"
 MS-E2E-012,Access Control,P1,"Mock Slack navigation is admin/local gated","Frontend local/dev; compare admin and non-admin role views","Open app shell as admin and non-admin","Admin can access Mock Slack; non-admin cannot use protected simulator APIs","Passed Attempt 30","Attempt 30 showed Admin nav includes Admin Config and Mock Slack; switching to Developer hid both links, then Admin was restored; preflight screenshot showed Viewing as Admin and local / demo with zero console errors"
 MS-E2E-013,Provider Config,P0,"Chat provider mismatch prevents DM capture","Backend/worker not both using mock_slack","Dispatch check-in; inspect simulator and logs","No simulator DM appears; mismatch is detectable in env/logs","Passed Attempt 27","Backend/worker ran with chat_provider=fake and simulator_enabled=true; registry.chat_simulator_available=false; status/messages returned 404 before and after U1003 2026-08-13 dispatch, so no mock simulator DM was capturable"
 MS-E2E-014,Provider Config,P1,"Invalid provider env fails fast","Unsupported provider value configured","Start backend or load settings","Settings validation rejects invalid provider","Passed Attempt 16","Settings rejected invalid chat/directory/calendar/issue/VCS provider values"
@@ -97,13 +97,13 @@ Action:
 - Investigated failed first-pass reply-processing rows, fixed the backend, then
   rebuilt and recreated only backend/worker with the local admin Mock Slack QA
   env:
-  `PULSEOPS_ENVIRONMENT=local`,
-  `PULSEOPS_CHAT_PROVIDER=mock_slack`,
-  `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`,
+  `OPENPROGRAM_ENVIRONMENT=local`,
+  `OPENPROGRAM_CHAT_PROVIDER=mock_slack`,
+  `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`,
   fake calendar/issue/VCS providers,
-  `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`,
-  `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`, and
-  `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+  `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`,
+  `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin`, and
+  `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`.
 
 Expected result:
 
@@ -198,18 +198,18 @@ Action:
 
 - Restored the live backend and worker from the provider-mismatch state to the
   local admin Mock Slack E2E stack:
-  `PULSEOPS_ENVIRONMENT=local`,
-  `PULSEOPS_CHAT_PROVIDER=mock_slack`,
-  `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`,
+  `OPENPROGRAM_ENVIRONMENT=local`,
+  `OPENPROGRAM_CHAT_PROVIDER=mock_slack`,
+  `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`,
   fake calendar/issue/VCS providers,
-  `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`,
-  `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`, and
-  `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+  `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`,
+  `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin`, and
+  `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`.
 - Recreated only backend and worker without rebuilding, preserving Docker
   volumes and leaving orphan containers untouched.
 - Executed `MS-E2E-012` through the app shell and simulator API gates.
 - Temporarily recreated only the backend with
-  `PULSEOPS_DEV_PRINCIPAL_ROLES=dev` to verify non-admin protected API
+  `OPENPROGRAM_DEV_PRINCIPAL_ROLES=dev` to verify non-admin protected API
   behavior, then restored it to admin.
 
 Expected result:
@@ -225,7 +225,7 @@ Observed result:
 - Admin/local preflight passed:
   - Backend and worker env matched the local admin Mock Slack stack, including
     fake calendar/issue/VCS providers and
-    `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+    `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`.
   - `/health` returned `200` with `environment=local`.
   - `/ready` returned `200` with all dependencies true.
   - `/test/chat-simulator/status` returned `200` with `enabled=true`,
@@ -246,7 +246,7 @@ Observed result:
     Developer does not unmount the direct route; the frontend currently gates
     navigation visibility rather than the route itself.
   - With backend temporarily running as non-admin
-    `PULSEOPS_DEV_PRINCIPAL_ROLES=dev`, simulator routes returned `403`:
+    `OPENPROGRAM_DEV_PRINCIPAL_ROLES=dev`, simulator routes returned `403`:
     status, messages, reply, and reset all returned
     `dev-user is not authorized for manage_config`.
 - Final restore passed:
@@ -310,14 +310,14 @@ Action:
   current unknown-developer dispatch fix.
 - Preserved Docker volumes and unrelated services.
 - Kept the Mock Slack quick-test runtime env:
-  `PULSEOPS_CHAT_PROVIDER=mock_slack`,
-  `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`,
-  `PULSEOPS_CALENDAR_PROVIDER=fake`,
-  `PULSEOPS_ISSUE_TRACKER_PROVIDER=fake`,
-  `PULSEOPS_VCS_PROVIDER=fake`,
-  `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`,
-  `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`, and
-  `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+  `OPENPROGRAM_CHAT_PROVIDER=mock_slack`,
+  `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`,
+  `OPENPROGRAM_CALENDAR_PROVIDER=fake`,
+  `OPENPROGRAM_ISSUE_TRACKER_PROVIDER=fake`,
+  `OPENPROGRAM_VCS_PROVIDER=fake`,
+  `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`,
+  `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin`, and
+  `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`.
 
 Expected result:
 
@@ -332,7 +332,7 @@ Observed result:
 - Rebuild/recreate completed for backend and worker with:
   `docker compose up -d --build --force-recreate --no-deps backend worker`.
 - Backend and worker env verification passed for the mock/fake providers and
-  `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+  `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`.
 - Live preflight passed:
   - `/health` returned `200`.
   - `/ready` returned `200`.
@@ -573,14 +573,14 @@ Action:
 
 - Re-ran live API checks after another backend/worker rebuild with the
   15-minute Mock Slack quick-test stack:
-  `PULSEOPS_CHAT_PROVIDER=mock_slack`,
-  `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`,
-  `PULSEOPS_CALENDAR_PROVIDER=fake`,
-  `PULSEOPS_ISSUE_TRACKER_PROVIDER=fake`,
-  `PULSEOPS_VCS_PROVIDER=fake`,
-  `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`,
-  `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`, and
-  `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+  `OPENPROGRAM_CHAT_PROVIDER=mock_slack`,
+  `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`,
+  `OPENPROGRAM_CALENDAR_PROVIDER=fake`,
+  `OPENPROGRAM_ISSUE_TRACKER_PROVIDER=fake`,
+  `OPENPROGRAM_VCS_PROVIDER=fake`,
+  `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`,
+  `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin`, and
+  `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`.
 - Verified the running backend image includes the unknown-developer guard.
 - Retested `MS-E2E-022`, `MS-E2E-023`, and `MS-E2E-019` with fresh future
   dates and direct DB/API evidence.
@@ -603,7 +603,7 @@ Observed result:
   - `uv run ruff check ...` and `uv run ruff format --check ...` both passed
     for the focused backend files.
 - Backend and worker rebuild/recreate succeeded with
-  `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+  `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`.
   - Existing orphan-container warning remained; orphan containers were left
     untouched.
 - Rebuilt backend code check passed:
@@ -611,14 +611,14 @@ Observed result:
   - `/app/backend/api/routers/admin.py` contains
     `_ensure_configured_developer`.
 - Runtime env check passed on both backend and worker for:
-  - `PULSEOPS_CHAT_PROVIDER=mock_slack`
-  - `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`
-  - `PULSEOPS_CALENDAR_PROVIDER=fake`
-  - `PULSEOPS_ISSUE_TRACKER_PROVIDER=fake`
-  - `PULSEOPS_VCS_PROVIDER=fake`
-  - `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`
-  - `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`
-  - `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`
+  - `OPENPROGRAM_CHAT_PROVIDER=mock_slack`
+  - `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`
+  - `OPENPROGRAM_CALENDAR_PROVIDER=fake`
+  - `OPENPROGRAM_ISSUE_TRACKER_PROVIDER=fake`
+  - `OPENPROGRAM_VCS_PROVIDER=fake`
+  - `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`
+  - `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin`
+  - `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`
 - Live preflight passed:
   - `/health` returned `200`.
   - `/ready` returned `200`.
@@ -685,14 +685,14 @@ Action:
   boundary.
 - Rebuilt and force-recreated only backend and worker with the Mock Slack E2E
   env:
-  `PULSEOPS_CHAT_PROVIDER=mock_slack`,
-  `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`,
-  `PULSEOPS_CALENDAR_PROVIDER=fake`,
-  `PULSEOPS_ISSUE_TRACKER_PROVIDER=fake`,
-  `PULSEOPS_VCS_PROVIDER=fake`,
-  `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`,
-  `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`, and
-  `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+  `OPENPROGRAM_CHAT_PROVIDER=mock_slack`,
+  `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`,
+  `OPENPROGRAM_CALENDAR_PROVIDER=fake`,
+  `OPENPROGRAM_ISSUE_TRACKER_PROVIDER=fake`,
+  `OPENPROGRAM_VCS_PROVIDER=fake`,
+  `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`,
+  `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin`, and
+  `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`.
 - Preserved Docker volumes and left existing orphan containers untouched.
 - Reran `MS-E2E-019` manually against the rebuilt live stack with a fresh U1003
   future-date check-in.
@@ -776,7 +776,7 @@ Action:
 
 - Recreated only the backend with simulator enabled, local environment, mock
   Slack chat/directory providers, fake read providers, and
-  `PULSEOPS_DEV_PRINCIPAL_ROLES=dev`.
+  `OPENPROGRAM_DEV_PRINCIPAL_ROLES=dev`.
 - Preserved Docker volumes and did not remove orphan containers.
 
 Expected result:
@@ -786,7 +786,7 @@ Expected result:
 
 Observed result:
 
-- Backend env confirmed `PULSEOPS_DEV_PRINCIPAL_ROLES=dev`.
+- Backend env confirmed `OPENPROGRAM_DEV_PRINCIPAL_ROLES=dev`.
 - `/health` returned `200 OK`.
 - `MS-E2E-009` passed:
   - `GET /test/chat-simulator/status` returned `403`.
@@ -807,7 +807,7 @@ Action:
 
 - Recreated only the backend with local environment, mock Slack chat/directory
   providers, fake read providers, admin dev roles, and
-  `PULSEOPS_CHAT_SIMULATOR_ENABLED=false`.
+  `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=false`.
 - Preserved Docker volumes and did not remove orphan containers.
 
 Expected result:
@@ -818,14 +818,14 @@ Expected result:
 Observed result:
 
 - Backend env confirmed:
-  - `PULSEOPS_CHAT_PROVIDER=mock_slack`
-  - `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`
-  - `PULSEOPS_CALENDAR_PROVIDER=fake`
-  - `PULSEOPS_ISSUE_TRACKER_PROVIDER=fake`
-  - `PULSEOPS_VCS_PROVIDER=fake`
-  - `PULSEOPS_CHAT_SIMULATOR_ENABLED=false`
-  - `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`
-  - `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`
+  - `OPENPROGRAM_CHAT_PROVIDER=mock_slack`
+  - `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`
+  - `OPENPROGRAM_CALENDAR_PROVIDER=fake`
+  - `OPENPROGRAM_ISSUE_TRACKER_PROVIDER=fake`
+  - `OPENPROGRAM_VCS_PROVIDER=fake`
+  - `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=false`
+  - `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin`
+  - `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`
 - `/health` returned `200` with `environment=local` and `tenant_id=demo`.
 - `MS-E2E-010` passed:
   - `GET /test/chat-simulator/status` returned `404` with
@@ -843,9 +843,9 @@ Next step:
 Action:
 
 - Recreated only the backend with the intended non-local env:
-  `PULSEOPS_ENVIRONMENT=staging`,
-  `PULSEOPS_CHAT_PROVIDER=mock_slack`,
-  `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`,
+  `OPENPROGRAM_ENVIRONMENT=staging`,
+  `OPENPROGRAM_CHAT_PROVIDER=mock_slack`,
+  `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`,
   fake read providers, simulator enabled, and admin dev roles.
 - Preserved Docker volumes and did not remove orphan containers.
 
@@ -858,15 +858,15 @@ Observed result:
 
 - `MS-E2E-011` failed the setup precondition:
   - `/health` returned `200`, but still reported `environment=local`.
-  - `docker compose exec -T backend printenv PULSEOPS_ENVIRONMENT` returned
+  - `docker compose exec -T backend printenv OPENPROGRAM_ENVIRONMENT` returned
     `local`.
   - `GET /test/chat-simulator/status` returned `200`.
   - `GET /test/chat-simulator/messages` returned `200`.
 - Root cause:
-  - `docker-compose.yml` did not pass through `PULSEOPS_ENVIRONMENT` for
+  - `docker-compose.yml` did not pass through `OPENPROGRAM_ENVIRONMENT` for
     backend/worker, so the `.env` local value remained active.
 - Fix applied:
-  - Added `PULSEOPS_ENVIRONMENT: ${PULSEOPS_ENVIRONMENT:-local}` to backend
+  - Added `OPENPROGRAM_ENVIRONMENT: ${OPENPROGRAM_ENVIRONMENT:-local}` to backend
     and worker compose env.
   - Added focused compose regression coverage for the runtime environment
     override.
@@ -886,24 +886,24 @@ Next step:
 Action:
 
 - Rebuilt and recreated only backend and worker after adding compose
-  `PULSEOPS_ENVIRONMENT` pass-through.
+  `OPENPROGRAM_ENVIRONMENT` pass-through.
 - Used:
-  `PULSEOPS_ENVIRONMENT=staging`,
-  `PULSEOPS_CHAT_PROVIDER=mock_slack`,
-  `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`,
+  `OPENPROGRAM_ENVIRONMENT=staging`,
+  `OPENPROGRAM_CHAT_PROVIDER=mock_slack`,
+  `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`,
   fake read providers, simulator enabled, admin dev roles, and
-  `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+  `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`.
 - Preserved Docker volumes and did not remove orphan containers.
 
 Expected result:
 
-- Backend and worker receive `PULSEOPS_ENVIRONMENT=staging`.
+- Backend and worker receive `OPENPROGRAM_ENVIRONMENT=staging`.
 - Health reports staging.
 - Simulator routes return `404` outside local environment.
 
 Observed result:
 
-- Backend and worker env both showed `PULSEOPS_ENVIRONMENT=staging`.
+- Backend and worker env both showed `OPENPROGRAM_ENVIRONMENT=staging`.
 - `/health` returned `200` and included `"environment":"staging"`.
 - `MS-E2E-011` passed:
   - `GET /test/chat-simulator/status` returned `404` with
@@ -920,7 +920,7 @@ Next step:
 Action:
 
 - Rebuilt and recreated only backend and worker with local environment,
-  `PULSEOPS_CHAT_PROVIDER=fake`, mock Slack directory, fake read providers,
+  `OPENPROGRAM_CHAT_PROVIDER=fake`, mock Slack directory, fake read providers,
   simulator flag enabled, admin dev roles, and the 15-minute fanout override.
 - Preserved Docker volumes and did not remove orphan containers.
 - Verified simulator availability before and after a fresh U1003 dispatch.
@@ -935,9 +935,9 @@ Expected result:
 Observed result:
 
 - Backend and worker env both showed:
-  - `PULSEOPS_CHAT_PROVIDER=fake`
-  - `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`
-  - `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`
+  - `OPENPROGRAM_CHAT_PROVIDER=fake`
+  - `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`
+  - `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`
   - fake calendar/issue/VCS providers
 - Runtime checks in both containers showed:
   - `settings.chat_provider=fake`
@@ -963,27 +963,27 @@ Historical pause / resume:
 - Testing paused by user request at the end of Attempt 27.
 - At that point, the stack was left in the provider-mismatch state from this
   attempt:
-  backend/worker `PULSEOPS_CHAT_PROVIDER=fake`,
-  `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`.
+  backend/worker `OPENPROGRAM_CHAT_PROVIDER=fake`,
+  `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`.
 - This pause was superseded by Attempt 28, which restored the local admin Mock
   Slack env and completed `MS-E2E-012`.
 - The restore target used in Attempt 28 was:
-  `PULSEOPS_ENVIRONMENT=local`,
-  `PULSEOPS_CHAT_PROVIDER=mock_slack`,
-  `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`,
-  `PULSEOPS_CALENDAR_PROVIDER=fake`,
-  `PULSEOPS_ISSUE_TRACKER_PROVIDER=fake`,
-  `PULSEOPS_VCS_PROVIDER=fake`,
-  `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`,
-  `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`, and
-  `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+  `OPENPROGRAM_ENVIRONMENT=local`,
+  `OPENPROGRAM_CHAT_PROVIDER=mock_slack`,
+  `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`,
+  `OPENPROGRAM_CALENDAR_PROVIDER=fake`,
+  `OPENPROGRAM_ISSUE_TRACKER_PROVIDER=fake`,
+  `OPENPROGRAM_VCS_PROVIDER=fake`,
+  `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`,
+  `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin`, and
+  `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`.
 
 ### Attempt 10 - 2026-06-28 10:39:25 IST
 
 Action:
 
 - Expanded the Mock Slack E2E coverage into the CSV-style matrix above.
-- Added local compose pass-through for `PULSEOPS_CHECKIN_FANOUT_CRON` while
+- Added local compose pass-through for `OPENPROGRAM_CHECKIN_FANOUT_CRON` while
   preserving the default `30 9 * * 1-5`.
 - Added focused compose regression coverage asserting backend and worker expose
   the check-in fanout cron override.
@@ -991,7 +991,7 @@ Action:
 Expected result:
 
 - The local stack can be launched with
-  `PULSEOPS_CHECKIN_FANOUT_CRON="*/15 * * * *"` for quick schedule testing.
+  `OPENPROGRAM_CHECKIN_FANOUT_CRON="*/15 * * * *"` for quick schedule testing.
 - Backend and worker keep mock/fake provider overrides opt-in through
   environment variables.
 - Manual QA can update each CSV row with concrete pass/fail evidence.
@@ -1002,19 +1002,19 @@ Observed result:
   `PYTHONPATH=backend uv run pytest backend/tests/unit/test_testcontainers_compose.py --no-cov -q`
   completed with `2 passed`.
 - Rebuild/recreate completed for backend and worker with:
-  `PULSEOPS_CHAT_PROVIDER=mock_slack`,
-  `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`,
-  `PULSEOPS_CALENDAR_PROVIDER=fake`,
-  `PULSEOPS_ISSUE_TRACKER_PROVIDER=fake`,
-  `PULSEOPS_VCS_PROVIDER=fake`,
-  `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`,
-  `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`, and
-  `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+  `OPENPROGRAM_CHAT_PROVIDER=mock_slack`,
+  `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`,
+  `OPENPROGRAM_CALENDAR_PROVIDER=fake`,
+  `OPENPROGRAM_ISSUE_TRACKER_PROVIDER=fake`,
+  `OPENPROGRAM_VCS_PROVIDER=fake`,
+  `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`,
+  `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin`, and
+  `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`.
 - No Docker volumes were reset. Compose still reported orphan containers
-  `programmanager-scheduler-1` and `pulseops-backend-slacktest`; they were
+  `openprogram-scheduler-1` and `openprogram-backend-slacktest`; they were
   left untouched.
 - Backend and worker both exposed the expected provider and
-  `PULSEOPS_CHECKIN_FANOUT_CRON` env values.
+  `OPENPROGRAM_CHECKIN_FANOUT_CRON` env values.
 - Live preflight passed:
   - `/health` returned `200`.
   - `/ready` returned `200`.
@@ -1070,7 +1070,7 @@ Observed result:
     simulator reset.
 - `MS-E2E-003` passed for env evidence with a log caveat:
   - Backend and worker both expose
-    `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+    `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`.
   - Recent backend/worker logs showed DBOS recovery/nudge activity, but no
     clean schedule bootstrap line in the inspected tail.
 - `MS-E2E-004` passed:
@@ -1097,13 +1097,13 @@ Observed result:
     `simulator outbound message was not found`.
   - Follow-up simulator messages remained empty.
 - Non-admin simulator API access could not be verified in this live stack:
-  - The running config has `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`.
+  - The running config has `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin`.
   - Adding an `Authorization` header did not change the dev principal roles;
     `/test/chat-simulator/status` still returned `200`.
   - A real non-admin rejection check requires restarting the service with
     non-admin dev roles.
 - Frontend dev server was restarted in a tmux session:
-  `programmanager-frontend-5173`.
+  `openprogram-frontend-5173`.
   - Command:
     `npm run dev -- --host 127.0.0.1 --port 5173`.
   - Listening process: `node` PID `4359`.
@@ -1131,7 +1131,7 @@ Action:
   - Reset the simulator through the UI and verify app status persists.
   - Redispatch same member/date after reset to check idempotency.
 - Investigate the scheduled fanout failure observed after enabling
-  `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+  `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`.
 
 Expected result:
 
@@ -1200,12 +1200,12 @@ Observed result:
   - DBOS scheduled fanout with `schedule=*/15 * * * *` failed at
     `2026-06-28T05:15:00Z` and again at `05:30:00Z`.
   - DBOS rows showed
-    `workflow_uuid=sched-pulseops-checkin-fanout-2026-06-28T05:15:00+00:00`,
-    `status=ERROR`, and `name=pulseops_scheduled_checkin_fanout`.
+    `workflow_uuid=sched-openprogram-checkin-fanout-2026-06-28T05:15:00+00:00`,
+    `status=ERROR`, and `name=openprogram_scheduled_checkin_fanout`.
   - Logs showed `AssertionError` from
     `DBOSContext.create_start_workflow_child(...): assert cur_ctx.is_workflow()`
     followed by `DBOSMaxStepRetriesExceeded`.
-  - Root cause: `pulseops_checkin_fanout` was a DBOS step and called
+  - Root cause: `openprogram_checkin_fanout` was a DBOS step and called
     `DbosWorkflowScheduler.dispatch_developer_checkin()`, which starts child
     DBOS workflows. DBOS requires child workflow starts from workflow context,
     not step context.
@@ -1214,7 +1214,7 @@ Observed result:
       `backend/infra/workflows/checkin_fanout.py` so the retryable step only
       prepares dispatch payloads.
     - Updated DBOS fanout to call
-      `pulseops_prepare_checkin_fanout` as the step, then start daily check-in
+      `openprogram_prepare_checkin_fanout` as the step, then start daily check-in
       child workflows from DBOS workflow context.
     - Reused the same daily check-in workflow starter for manual dispatch.
     - Added regression coverage for fanout starting children outside the
@@ -1226,7 +1226,7 @@ Observed result:
     completed with `24 passed`.
 - Rebuild/recreate completed for backend and worker with the fanout fix and
   the Mock Slack E2E env, including
-  `PULSEOPS_CHECKIN_FANOUT_CRON=*/15 * * * *`.
+  `OPENPROGRAM_CHECKIN_FANOUT_CRON=*/15 * * * *`.
   - No Docker volumes were reset.
   - Compose warned about orphan containers; they were left untouched.
   - Backend and worker both exposed the expected provider and schedule env.
@@ -1241,7 +1241,7 @@ Next step:
 
 Action:
 
-- Trigger the existing `pulseops-checkin-fanout` DBOS schedule
+- Trigger the existing `openprogram-checkin-fanout` DBOS schedule
   deterministically from the rebuilt backend container using the current
   application code and DBOS system database.
 - Do not reset Docker volumes.
@@ -1249,7 +1249,7 @@ Action:
 
 Expected result:
 
-- `pulseops-checkin-fanout` uses `*/15 * * * *`.
+- `openprogram-checkin-fanout` uses `*/15 * * * *`.
 - Triggered schedule execution completes without the previous DBOS step-context
   assertion.
 - One child daily check-in workflow is started per missing developer.
@@ -1259,7 +1259,7 @@ Expected result:
 Observed result:
 
 - DBOS schedule table confirmed:
-  - `schedule_name=pulseops-checkin-fanout`
+  - `schedule_name=openprogram-checkin-fanout`
   - `schedule=*/15 * * * *`
 - Deterministic schedule trigger succeeded and returned:
   - `tenant_id=demo`
@@ -1273,10 +1273,10 @@ Observed result:
     - `checkin-demo-U1002-2026-06-28-dee0d74b-0e63-459b-8291-17fed1c8c98c`
 - DBOS workflow status showed:
   - New trigger row:
-    `sched-pulseops-checkin-fanout-trigger-2026-06-28T05:37:14.256446+00:00`
+    `sched-openprogram-checkin-fanout-trigger-2026-06-28T05:37:14.256446+00:00`
     with `status=SUCCESS`.
   - Natural 15-minute cron row:
-    `sched-pulseops-checkin-fanout-2026-06-28T05:45:00+00:00`
+    `sched-openprogram-checkin-fanout-2026-06-28T05:45:00+00:00`
     with `status=SUCCESS`.
   - Old pre-fix natural cron rows at `05:15:00Z` and `05:30:00Z` remained
     `ERROR`, which is expected historical evidence from the old image.
@@ -1289,12 +1289,12 @@ Observed result:
   - `/test/chat-simulator/status` returned `message_count=0`.
   - `/test/chat-simulator/messages` returned `items=[]`.
 - Recent backend/worker logs had no matching
-  `pulseops_checkin_fanout` / `pulseops_prepare_checkin_fanout` errors, no
+  `openprogram_checkin_fanout` / `openprogram_prepare_checkin_fanout` errors, no
   `AssertionError`, and no `DBOSMaxStepRetriesExceeded` after the fixed
   trigger.
 - Waiting for the next natural cron tick confirmed worker-owned scheduling:
   - At `2026-06-28T05:45:20Z`, DBOS showed
-    `sched-pulseops-checkin-fanout-2026-06-28T05:45:00+00:00` as
+    `sched-openprogram-checkin-fanout-2026-06-28T05:45:00+00:00` as
     `SUCCESS`.
   - The old pre-fix `05:15` and `05:30` rows remained `ERROR` only as
     historical rows from the old image.
@@ -1423,9 +1423,9 @@ Next step:
 
 Action:
 
-- Add explicit `PULSEOPS_CHAT_PROVIDER`,
-  `PULSEOPS_DIRECTORY_PROVIDER`, `PULSEOPS_CHAT_SIMULATOR_ENABLED`, and
-  `PULSEOPS_DEV_PRINCIPAL_ROLES` compose environment overrides for backend and
+- Add explicit `OPENPROGRAM_CHAT_PROVIDER`,
+  `OPENPROGRAM_DIRECTORY_PROVIDER`, `OPENPROGRAM_CHAT_SIMULATOR_ENABLED`, and
+  `OPENPROGRAM_DEV_PRINCIPAL_ROLES` compose environment overrides for backend and
   worker.
 - Run targeted backend simulator tests.
 - Rebuild and recreate backend/worker with mock Slack simulator env.
@@ -1442,23 +1442,23 @@ Expected result:
 Observed result:
 
 - Compose config now resolves backend and worker to
-  `PULSEOPS_CHAT_PROVIDER=mock_slack`,
-  `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`,
-  `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`, and
-  `PULSEOPS_DEV_PRINCIPAL_ROLES=admin` when launched with the planned env.
+  `OPENPROGRAM_CHAT_PROVIDER=mock_slack`,
+  `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`,
+  `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`, and
+  `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin` when launched with the planned env.
 - Targeted backend simulator suite passed:
   `PYTHONPATH=backend uv run pytest backend/tests/unit/test_chat_simulator_api.py backend/tests/unit/test_registry_providers.py backend/tests/unit/test_mock_slack_adapter.py --no-cov -q`
   completed with `16 passed, 1 warning`.
 - Docker rebuild/recreate completed for backend and worker with mock Slack env.
   No Docker volumes were reset. Docker reported existing orphan containers
-  (`programmanager-scheduler-1`, `pulseops-backend-slacktest`), which were left
+  (`openprogram-scheduler-1`, `openprogram-backend-slacktest`), which were left
   untouched.
 - Live backend preflight passed:
   - `/health` returned `200` with `environment=local` and `tenant_id=demo`.
   - Backend and worker containers both expose
-    `PULSEOPS_CHAT_PROVIDER=mock_slack`,
-    `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`, and
-    `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`.
+    `OPENPROGRAM_CHAT_PROVIDER=mock_slack`,
+    `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`, and
+    `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`.
   - `/openapi.json` includes all simulator routes:
     `/test/chat-simulator/status`, `/test/chat-simulator/messages`,
     `/test/chat-simulator/messages/{message_id}/reply`, and
@@ -1525,17 +1525,17 @@ Observed result:
   completed with `17 passed, 1 warning`.
 - Docker rebuild/recreate completed for backend and worker with the DBOS
   dispatch completion fix. No Docker volumes were reset. Docker again reported
-  existing orphan containers (`programmanager-scheduler-1`,
-  `pulseops-backend-slacktest`), which were left untouched.
+  existing orphan containers (`openprogram-scheduler-1`,
+  `openprogram-backend-slacktest`), which were left untouched.
 - The frontend dev server was not listening on `127.0.0.1:5173` after the
   rebuild loop. Restarted it with
   `npm run dev -- --host 127.0.0.1 --port 5173` from `frontend/`.
 - Live backend preflight passed:
   - Backend and worker containers both expose
-    `PULSEOPS_CHAT_PROVIDER=mock_slack`,
-    `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`,
-    `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`, and
-    `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`.
+    `OPENPROGRAM_CHAT_PROVIDER=mock_slack`,
+    `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`,
+    `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`, and
+    `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin`.
   - `/health` returned `200` with `environment=local` and `tenant_id=demo`.
   - `/openapi.json` includes `/test/chat-simulator/status`.
   - `/test/chat-simulator/status` returned `200` with
@@ -1585,21 +1585,21 @@ Observed result:
 - `/mock-slack` reset simulator state through the UI and messages were empty.
 - Selected Dharam and clicked `Send DM`.
 - Dispatch did not complete within the UI wait window. Backend logs show the
-  workflow reached `pulseops_start_daily_checkin`, then failed availability
+  workflow reached `openprogram_start_daily_checkin`, then failed availability
   lookup because the container was still using the real Google calendar adapter:
   `ProviderUnavailable: calendar credentials are not configured`.
 - The failed DBOS step retried three times, then the dispatch returned
   `500 Internal Server Error`.
 - Added explicit backend/worker compose pass-through:
-  `PULSEOPS_CALENDAR_PROVIDER: ${PULSEOPS_CALENDAR_PROVIDER:-google}`.
+  `OPENPROGRAM_CALENDAR_PROVIDER: ${OPENPROGRAM_CALENDAR_PROVIDER:-google}`.
 - Rebuilt/recreated backend and worker with
-  `PULSEOPS_CALENDAR_PROVIDER=fake` in addition to mock Slack provider env.
+  `OPENPROGRAM_CALENDAR_PROVIDER=fake` in addition to mock Slack provider env.
 - Live preflight passed again:
-  - Backend and worker both expose `PULSEOPS_CALENDAR_PROVIDER=fake`,
-    `PULSEOPS_CHAT_PROVIDER=mock_slack`,
-    `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`,
-    `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`, and
-    `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`.
+  - Backend and worker both expose `OPENPROGRAM_CALENDAR_PROVIDER=fake`,
+    `OPENPROGRAM_CHAT_PROVIDER=mock_slack`,
+    `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`,
+    `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`, and
+    `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin`.
   - `/health` returned `200`.
   - `/test/chat-simulator/status` returned `200` with
     `provider=mock_slack`, `enabled=true`, and `message_count=0`.
@@ -1639,9 +1639,9 @@ Observed result:
   - Backend logs show Jira active-issues lookup returned `410 Gone`.
   - Root cause was `ProviderUnavailable: issue tracker request failed`.
   - DBOS raised `DBOSMaxStepRetriesExceeded` for
-    `pulseops_start_daily_checkin` after three retries.
+    `openprogram_start_daily_checkin` after three retries.
 - Running backend and worker env showed
-  `PULSEOPS_ISSUE_TRACKER_PROVIDER=jira`; chat/directory/calendar were already
+  `OPENPROGRAM_ISSUE_TRACKER_PROVIDER=jira`; chat/directory/calendar were already
   `mock_slack` / `mock_slack` / `fake`.
 - No outbound simulator message was created, so no reply could be submitted.
 - Final simulator messages remained empty.
@@ -1673,9 +1673,9 @@ Expected result:
 Observed result:
 
 - Updated `docker-compose.yml` for backend and worker with:
-  - `PULSEOPS_ISSUE_TRACKER_PROVIDER:
-    ${PULSEOPS_ISSUE_TRACKER_PROVIDER:-jira}`
-  - `PULSEOPS_VCS_PROVIDER: ${PULSEOPS_VCS_PROVIDER:-github}`
+  - `OPENPROGRAM_ISSUE_TRACKER_PROVIDER:
+    ${OPENPROGRAM_ISSUE_TRACKER_PROVIDER:-jira}`
+  - `OPENPROGRAM_VCS_PROVIDER: ${OPENPROGRAM_VCS_PROVIDER:-github}`
 - Added `backend/tests/unit/test_testcontainers_compose.py` coverage that
   parses `docker-compose.yml` and asserts backend and worker expose overrideable
   defaults for chat, directory, calendar, issue tracker, and VCS providers.
@@ -1686,8 +1686,8 @@ Observed result:
 Next step:
 
 - Rebuild/recreate backend and worker with
-  `PULSEOPS_ISSUE_TRACKER_PROVIDER=fake` and
-  `PULSEOPS_VCS_PROVIDER=fake` alongside the existing mock Slack and fake
+  `OPENPROGRAM_ISSUE_TRACKER_PROVIDER=fake` and
+  `OPENPROGRAM_VCS_PROVIDER=fake` alongside the existing mock Slack and fake
   calendar env, then rerun live dispatch/reply.
 
 ### Attempt 8 - 2026-06-28 10:29:17 IST
@@ -1708,17 +1708,17 @@ Expected result:
 Observed result:
 
 - Rebuild/recreate completed with:
-  `PULSEOPS_CHAT_PROVIDER=mock_slack PULSEOPS_DIRECTORY_PROVIDER=mock_slack PULSEOPS_CALENDAR_PROVIDER=fake PULSEOPS_ISSUE_TRACKER_PROVIDER=fake PULSEOPS_VCS_PROVIDER=fake PULSEOPS_CHAT_SIMULATOR_ENABLED=true PULSEOPS_DEV_PRINCIPAL_ROLES=admin docker compose up -d --build --force-recreate --no-deps backend worker`.
+  `OPENPROGRAM_CHAT_PROVIDER=mock_slack OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack OPENPROGRAM_CALENDAR_PROVIDER=fake OPENPROGRAM_ISSUE_TRACKER_PROVIDER=fake OPENPROGRAM_VCS_PROVIDER=fake OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin docker compose up -d --build --force-recreate --no-deps backend worker`.
 - No Docker volumes were reset.
 - Backend and worker containers recreated and started successfully.
 - Backend and worker both expose:
-  - `PULSEOPS_CALENDAR_PROVIDER=fake`
-  - `PULSEOPS_CHAT_PROVIDER=mock_slack`
-  - `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`
-  - `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`
-  - `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`
-  - `PULSEOPS_ISSUE_TRACKER_PROVIDER=fake`
-  - `PULSEOPS_VCS_PROVIDER=fake`
+  - `OPENPROGRAM_CALENDAR_PROVIDER=fake`
+  - `OPENPROGRAM_CHAT_PROVIDER=mock_slack`
+  - `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`
+  - `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin`
+  - `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`
+  - `OPENPROGRAM_ISSUE_TRACKER_PROVIDER=fake`
+  - `OPENPROGRAM_VCS_PROVIDER=fake`
 - Endpoint checks passed:
   - `/health` returned `200`.
   - `/test/chat-simulator/status` returned `200` with
@@ -1726,7 +1726,7 @@ Observed result:
     `message_count=0`.
   - `/test/chat-simulator/messages` returned `200` with an empty item list.
 - Docker still reported orphan containers
-  `programmanager-scheduler-1` and `pulseops-backend-slacktest`; they were
+  `openprogram-scheduler-1` and `openprogram-backend-slacktest`; they were
   left untouched.
 - Worker logs still show repeated DBOS duplicate-registration warnings for
   `_dbos_debouncer_workflow`; no endpoint errors were observed.
@@ -1820,7 +1820,7 @@ Final verification:
 Action:
 
 - Rerun the live Mock Slack E2E path after the Attempt 3 rebuild configured
-  backend and worker with `PULSEOPS_CALENDAR_PROVIDER=fake`.
+  backend and worker with `OPENPROGRAM_CALENDAR_PROVIDER=fake`.
 - Use the existing browser session, reset simulator state, dispatch a DM for a
   linked member, submit a reply, and verify developer status/check-in state.
 
@@ -1833,11 +1833,11 @@ Expected result:
 Observed result:
 
 - Live preflight passed:
-  - Backend and worker both expose `PULSEOPS_CALENDAR_PROVIDER=fake`,
-    `PULSEOPS_CHAT_PROVIDER=mock_slack`,
-    `PULSEOPS_DIRECTORY_PROVIDER=mock_slack`,
-    `PULSEOPS_CHAT_SIMULATOR_ENABLED=true`, and
-    `PULSEOPS_DEV_PRINCIPAL_ROLES=admin`.
+  - Backend and worker both expose `OPENPROGRAM_CALENDAR_PROVIDER=fake`,
+    `OPENPROGRAM_CHAT_PROVIDER=mock_slack`,
+    `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack`,
+    `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true`, and
+    `OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin`.
   - `/health` returned `200` with `environment=local` and
     `tenant_id=demo`.
   - `/test/chat-simulator/status` returned `200` with
@@ -1963,10 +1963,10 @@ Restart the backend process or container with the simulator-enabled local
 configuration:
 
 ```bash
-PULSEOPS_CHAT_PROVIDER=mock_slack
-PULSEOPS_DIRECTORY_PROVIDER=mock_slack
-PULSEOPS_CHAT_SIMULATOR_ENABLED=true
-PULSEOPS_DEV_PRINCIPAL_ROLES=admin
+OPENPROGRAM_CHAT_PROVIDER=mock_slack
+OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack
+OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true
+OPENPROGRAM_DEV_PRINCIPAL_ROLES=admin
 ```
 
 Before rerunning the UI test, confirm these checks pass:
@@ -2022,15 +2022,15 @@ environment is `local`.
 - Confirm `/mock-slack` is visible for an admin in local/dev mode.
 - Confirm `/mock-slack` is hidden or inaccessible for non-admin roles.
 - Confirm simulator API routes return `404` when
-  `PULSEOPS_CHAT_SIMULATOR_ENABLED=false`.
+  `OPENPROGRAM_CHAT_SIMULATOR_ENABLED=false`.
 - Confirm simulator API routes return `404` outside the local environment.
 - Confirm simulator API routes reject non-admin callers.
 
 ### Provider Configuration
 
-- Confirm `PULSEOPS_CHAT_PROVIDER=mock_slack` records outbound DMs in the
+- Confirm `OPENPROGRAM_CHAT_PROVIDER=mock_slack` records outbound DMs in the
   simulator.
-- Confirm `PULSEOPS_DIRECTORY_PROVIDER=mock_slack` syncs Slack-like mock users.
+- Confirm `OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack` syncs Slack-like mock users.
 - Confirm the mock directory provides stable IDs such as `U1001`, `U1002`, and
   `U1003`.
 - Confirm real Slack credentials are not required for the full local flow.

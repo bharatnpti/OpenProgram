@@ -7,7 +7,7 @@ from opentelemetry import trace
 from core.domain.graph import FactEvent, GraphTree
 from core.ports.repositories import GraphRepository, TimeSeriesRepository
 
-_tracer = trace.get_tracer("pulseops.application.graph_queries")
+_tracer = trace.get_tracer("openprogram.application.graph_queries")
 
 
 class GraphQueryService:

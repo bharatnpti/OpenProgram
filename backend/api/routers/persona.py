@@ -212,8 +212,7 @@ async def update_cross_person_request_status(
         raise HTTPException(
             status_code=403,
             detail=(
-                f"{principal.subject} is not authorized to update "
-                f"cross-person request {request_id}"
+                f"{principal.subject} is not authorized to update cross-person request {request_id}"
             ),
         )
     updated = await service.update_status(principal.tenant_id, request_id, request.status)

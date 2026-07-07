@@ -13,7 +13,7 @@ from core.domain.cross_person import (
 )
 from core.domain.graph import EntityRef, NodeKind
 
-_tracer = trace.get_tracer("pulseops.persistence.cross_person")
+_tracer = trace.get_tracer("openprogram.persistence.cross_person")
 
 
 class AsyncSqlExecutor(Protocol):

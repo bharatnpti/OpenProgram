@@ -22,9 +22,9 @@ def upgrade() -> None:
     op.execute('SET search_path = ag_catalog, "$user", public;')
     op.execute(
         """
-        SELECT create_graph('pulseops_graph')
+        SELECT create_graph('openprogram_graph')
         WHERE NOT EXISTS (
-            SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'pulseops_graph'
+            SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'openprogram_graph'
         );
         """
     )
@@ -120,9 +120,9 @@ def downgrade() -> None:
     op.execute('SET search_path = ag_catalog, "$user", public;')
     op.execute(
         """
-        SELECT drop_graph('pulseops_graph', true)
+        SELECT drop_graph('openprogram_graph', true)
         WHERE EXISTS (
-            SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'pulseops_graph'
+            SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'openprogram_graph'
         );
         """
     )
@@ -135,11 +135,11 @@ def downgrade() -> None:
 
 
 def _embedding_dimension() -> int:
-    raw_value = os.getenv("PULSEOPS_EMBEDDING_DIMENSION", "1536")
+    raw_value = os.getenv("OPENPROGRAM_EMBEDDING_DIMENSION", "1536")
     try:
         dimension = int(raw_value)
     except ValueError as exc:
-        raise ValueError("PULSEOPS_EMBEDDING_DIMENSION must be an integer") from exc
+        raise ValueError("OPENPROGRAM_EMBEDDING_DIMENSION must be an integer") from exc
     if dimension <= 0:
-        raise ValueError("PULSEOPS_EMBEDDING_DIMENSION must be positive")
+        raise ValueError("OPENPROGRAM_EMBEDDING_DIMENSION must be positive")
     return dimension

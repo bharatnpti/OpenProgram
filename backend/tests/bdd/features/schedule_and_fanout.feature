@@ -5,8 +5,8 @@ Feature: Check-in schedule configuration, fanout, and dispatch idempotency
   @ms_e2e_003
   Scenario: Daily check-in fanout can be configured to 15 minutes
     Given the compose file is loaded
-    Then the "backend" service check-in fanout cron is overrideable via "PULSEOPS_CHECKIN_FANOUT_CRON"
-    And the "worker" service check-in fanout cron is overrideable via "PULSEOPS_CHECKIN_FANOUT_CRON"
+    Then the "backend" service check-in fanout cron is overrideable via "OPENPROGRAM_CHECKIN_FANOUT_CRON"
+    And the "worker" service check-in fanout cron is overrideable via "OPENPROGRAM_CHECKIN_FANOUT_CRON"
 
   @ms_e2e_015
   Scenario: 15-minute fanout dispatches missing eligible members

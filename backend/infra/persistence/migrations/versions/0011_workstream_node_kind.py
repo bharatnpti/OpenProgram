@@ -9,9 +9,7 @@ down_revision = "0010_directory_user_search_indexes"
 branch_labels = None
 depends_on = None
 
-_ALL_NODE_KINDS = (
-    "'program', 'project', 'workstream', 'sprint', 'repo', 'pod', 'developer', 'task'"
-)
+_ALL_NODE_KINDS = "'program', 'project', 'workstream', 'sprint', 'repo', 'pod', 'developer', 'task'"
 _OLD_NODE_KINDS = "'program', 'project', 'sprint', 'repo', 'pod', 'developer', 'task'"
 
 

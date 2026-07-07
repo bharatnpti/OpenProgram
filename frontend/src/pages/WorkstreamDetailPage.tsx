@@ -165,17 +165,24 @@ export function WorkstreamDetailPage() {
             </QueryState>
           </DataPanel>
 
-          <DataPanel title="Portfolio context" description="How this stream contributes to the broader flow picture.">
+          <DataPanel
+            title="Portfolio context"
+            description="How this stream contributes to the broader flow picture."
+          >
             <QueryState query={flow}>
               {(data) => (
                 <div className="space-y-2 text-sm">
                   <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
                     <span className="text-muted-foreground">Avg cycle time</span>
-                    <span className="font-medium tabular-nums">{formatDays(data.avg_cycle_time_days)}</span>
+                    <span className="font-medium tabular-nums">
+                      {formatDays(data.avg_cycle_time_days)}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
                     <span className="text-muted-foreground">Avg PR age</span>
-                    <span className="font-medium tabular-nums">{formatDays(data.avg_pr_age_days)}</span>
+                    <span className="font-medium tabular-nums">
+                      {formatDays(data.avg_pr_age_days)}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
                     <span className="text-muted-foreground">Work items tracked</span>

@@ -30,9 +30,9 @@ class FakeIssueTracker:
             self.projects = [
                 Project(
                     tenant_id=self.tenant_id,
-                    id="project-pulseops",
+                    id="project-openprogram",
                     key="PO",
-                    name="PulseOps",
+                    name="OpenProgram",
                 )
             ]
         if not self.issues:
@@ -140,8 +140,8 @@ class FakeVcsProvider:
             self.repos = [
                 Repo(
                     tenant_id=self.tenant_id,
-                    id="repo-pulseops",
-                    name="pulseops",
+                    id="repo-openprogram",
+                    name="openprogram",
                     default_branch="main",
                 )
             ]
@@ -149,7 +149,7 @@ class FakeVcsProvider:
             self.commits = [
                 Commit(
                     tenant_id=self.tenant_id,
-                    repo="pulseops",
+                    repo="openprogram",
                     sha="abc123",
                     message="Add Phase 1 read sync",
                     author=author,
@@ -164,7 +164,7 @@ class FakeVcsProvider:
                     title="Phase 1 integrations",
                     author=author,
                     merged=False,
-                    metadata={"repo": "pulseops"},
+                    metadata={"repo": "openprogram"},
                     updated_at=datetime(2026, 1, 10, 9, 30, tzinfo=UTC),
                     opened_at=datetime(2026, 1, 10, 8, 45, tzinfo=UTC),
                 )

@@ -10,7 +10,7 @@ from core.domain.llm import LlmRequest, LlmResponse, LlmTool, LlmToolCall, LlmTo
 from core.ports.llm import LlmProvider
 from core.ports.tools import AgentTool
 
-_tracer = trace.get_tracer("pulseops.application.agents.tool_loop")
+_tracer = trace.get_tracer("openprogram.application.agents.tool_loop")
 _logger = structlog.get_logger(__name__)
 
 
