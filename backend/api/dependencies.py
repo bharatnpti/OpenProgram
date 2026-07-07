@@ -14,6 +14,7 @@ from core.application.graph_queries import GraphQueryService
 from core.application.persona_views import PersonaViewService
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.application.risk_service import RiskService
+from core.application.self_status_service import SelfStatusService
 from core.domain.auth import Principal
 from core.domain.errors import ProviderConfigurationError, ProviderUnavailable
 from core.domain.risk import RiskProviderConfig
@@ -130,3 +131,8 @@ def get_persona_view_service(request: Request) -> PersonaViewService:
         rollup_repository=registry.rollup_repository(),
         time_series_repository=registry.time_series_repository(),
     )
+
+
+def get_self_status_service(request: Request) -> SelfStatusService:
+    registry = get_registry(request)
+    return registry.self_status_service()

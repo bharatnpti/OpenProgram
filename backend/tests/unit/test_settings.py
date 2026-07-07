@@ -43,9 +43,9 @@ def test_settings_defaults_workflow_provider_to_dbos() -> None:
     settings = _settings(secret_key=SECRET_KEY)
 
     assert settings.workflow_provider == "dbos"
-    assert settings.dbos_app_name == "pulseops"
-    assert settings.heartbeat_schedule_id == "pulseops-heartbeat"
-    assert settings.resolved_heartbeat_schedule_id == "pulseops-heartbeat"
+    assert settings.dbos_app_name == "openprogram"
+    assert settings.heartbeat_schedule_id == "openprogram-heartbeat"
+    assert settings.resolved_heartbeat_schedule_id == "openprogram-heartbeat"
     assert settings.dbos_heartbeat_cron == "0 * * * * *"
     assert settings.resolved_dbos_system_database_url == settings.database_url
     assert settings.checkin_reply_wait_seconds == 14400
@@ -53,8 +53,9 @@ def test_settings_defaults_workflow_provider_to_dbos() -> None:
     assert settings.checkin_max_clarifications == 2
     assert settings.llm_max_tool_iterations == 3
     assert settings.conversation_retention_days == 30
+    assert settings.conversation_purge_enabled is True
     assert settings.conversation_purge_cron == "0 3 * * *"
-    assert settings.conversation_purge_schedule_id == "pulseops-conversation-purge"
+    assert settings.conversation_purge_schedule_id == "openprogram-conversation-purge"
 
 
 def test_settings_resolves_configured_heartbeat_schedule_id() -> None:
@@ -135,13 +136,13 @@ def test_settings_parse_explicit_sync_target_lists() -> None:
     settings = _settings(
         secret_key=SECRET_KEY,
         jira_sync_projects="PO, ENG:program-platform, API:pod-runtime:board-1",
-        github_sync_repos='["oneai/program-manager", "oneai/runtime"]',
+        github_sync_repos='["oneai/openprogram", "oneai/runtime"]',
         calendar_sync_user_ids="dev-1, dev-2",
         calendar_sync_window_days=3,
     )
 
     assert settings.jira_sync_projects == ("PO", "ENG:program-platform", "API:pod-runtime:board-1")
-    assert settings.github_sync_repos == ("oneai/program-manager", "oneai/runtime")
+    assert settings.github_sync_repos == ("oneai/openprogram", "oneai/runtime")
     assert settings.calendar_sync_user_ids == ("dev-1", "dev-2")
     assert settings.calendar_sync_window_days == 3
 
