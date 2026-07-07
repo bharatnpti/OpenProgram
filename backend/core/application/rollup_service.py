@@ -247,10 +247,7 @@ def _aggregate_workstream_node(
             ),
         )
     factors = tuple(
-        factor
-        for child in children
-        if child.rag is not Rag.GREEN
-        for factor in child.factors
+        factor for child in children if child.rag is not Rag.GREEN for factor in child.factors
     )
     target_date = _deadline(node)
     if _approaching_target_date(node, as_of):

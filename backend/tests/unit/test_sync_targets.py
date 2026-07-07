@@ -20,7 +20,7 @@ async def test_runtime_sync_target_resolver_combines_jira_and_dedupes_github_rep
             metadata={
                 "jira_project_key": "PO",
                 "jira_board_id": "board-1",
-                "github_repos": "oneai/program-manager, oneai/api",
+                "github_repos": "oneai/openprogram, oneai/api",
             },
         )
     )
@@ -32,7 +32,7 @@ async def test_runtime_sync_target_resolver_combines_jira_and_dedupes_github_rep
             name="Beta",
             metadata={
                 "jira_base_jql": 'labels = "platform"',
-                "github_repos": "oneai/program-manager",
+                "github_repos": "oneai/openprogram",
             },
         )
     )
@@ -78,8 +78,8 @@ async def test_runtime_sync_target_resolver_combines_jira_and_dedupes_github_rep
     vcs_payloads = {item.payload["repo_name"]: item.payload for item in targets.vcs_dispatches}
     assert vcs_payloads == {
         "oneai/api": {"repo_name": "oneai/api", "container_ids": "pod-runtime,project-alpha"},
-        "oneai/program-manager": {
-            "repo_name": "oneai/program-manager",
+        "oneai/openprogram": {
+            "repo_name": "oneai/openprogram",
             "container_ids": "project-alpha,project-beta",
         },
     }
@@ -149,7 +149,7 @@ async def test_runtime_sync_target_resolver_rejects_pod_repo_outside_project_all
             id="project-alpha",
             kind=NodeKind.PROJECT,
             name="Alpha",
-            metadata={"github_repos": "oneai/program-manager"},
+            metadata={"github_repos": "oneai/openprogram"},
         )
     )
     await store.upsert_node(

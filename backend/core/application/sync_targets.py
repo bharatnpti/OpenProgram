@@ -5,13 +5,13 @@ from dataclasses import dataclass
 from datetime import date
 from hashlib import sha256
 
-from core.domain.errors import PulseOpsError
+from core.domain.errors import OpenProgramError
 from core.domain.graph import EdgeKind, GraphEdge, GraphNode, NodeKind
 from core.domain.workflows import SyncDispatchInput
 from core.ports.repositories import GraphRepository
 
 
-class SyncTargetValidationError(PulseOpsError):
+class SyncTargetValidationError(OpenProgramError):
     """Raised when runtime integration scope configuration is invalid."""
 
 

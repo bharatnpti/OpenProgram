@@ -6,7 +6,7 @@
 
 - Custom Postgres 16 image with AGE, TimescaleDB, and pgvector installed.
 - Redis.
-- DBOS-backed worker using Postgres; the worker bootstraps schedules on startup. Temporal and Temporal UI remain available for `PULSEOPS_WORKFLOW_PROVIDER=temporal`.
+- DBOS-backed worker using Postgres; the worker bootstraps schedules on startup. Temporal and Temporal UI remain available for `OPENPROGRAM_WORKFLOW_PROVIDER=temporal`.
 - LiteLLM plus a local OpenAI-compatible mock LLM.
 - Langfuse v3 web/worker with ClickHouse, Redis, MinIO, and headless local project/API-key initialization.
 - OpenTelemetry collector.
@@ -15,7 +15,7 @@
 
 ## Settings
 
-`config.Settings` uses `pydantic-settings` with `PULSEOPS_` environment variables. Required secrets fail fast at boot.
+`config.Settings` uses `pydantic-settings` with `OPENPROGRAM_` environment variables. Required secrets fail fast at boot.
 
 ## Developer Commands
 

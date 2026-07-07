@@ -34,7 +34,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --all-extras --dev
-      - run: PULSEOPS_RUN_INTEGRATION=1 PYTHONPATH=backend uv run pytest backend/tests/integration -m integration --no-cov
+      - run: OPENPROGRAM_RUN_INTEGRATION=1 PYTHONPATH=backend uv run pytest backend/tests/integration -m integration --no-cov
 
   frontend:
     runs-on: ubuntu-latest
@@ -87,7 +87,7 @@ jobs:
       - id: meta
         shell: bash
         run: |
-          image="ghcr.io/${GITHUB_REPOSITORY,,}/pulseops-backend:${GITHUB_SHA}"
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/openprogram-backend:${GITHUB_SHA}"
           echo "image=${image}" >> "${GITHUB_OUTPUT}"
       - run: docker build -f backend/Dockerfile -t "${{ steps.meta.outputs.image }}" .
       - if: github.event_name != 'pull_request'

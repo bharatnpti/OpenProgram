@@ -406,7 +406,7 @@ async def _prove_sync_facts(registry: ServiceRegistry) -> None:
     )
     vcs_result = await registry.vcs_read_sync_service().sync_repo(
         tenant_id=registry.settings.tenant_id,
-        repo_name="pulseops",
+        repo_name="openprogram",
         observed_at=datetime(2026, 1, 13, 10, 0, tzinfo=UTC),
     )
     task_facts = await registry.time_series_repository().list_facts(

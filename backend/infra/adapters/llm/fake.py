@@ -16,10 +16,7 @@ class FakeLlmProvider:
             return self.responses.pop(0)
         purpose = request.metadata.get("purpose")
         if purpose == "parse_checkin_signals":
-            text = (
-                '{"progress_note":"Status update received",'
-                '"blockers":[],"eta_change_days":null}'
-            )
+            text = '{"progress_note":"Status update received","blockers":[],"eta_change_days":null}'
         elif purpose == "evaluate_checkin_clarification":
             text = (
                 '{"sufficient":true,"question":null,'

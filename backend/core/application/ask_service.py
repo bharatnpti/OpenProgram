@@ -67,9 +67,7 @@ class SearchGraphNodesTool:
                 "kinds": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": (
-                        "Optional NodeKind values to restrict the search."
-                    ),
+                    "description": ("Optional NodeKind values to restrict the search."),
                 },
                 "limit": {
                     "type": "integer",

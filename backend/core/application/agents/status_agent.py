@@ -11,7 +11,7 @@ from core.domain.llm import LlmMessage, LlmRequest, LlmResponse
 from core.ports.llm import LlmProvider
 from core.ports.tools import AgentTool
 
-_tracer = trace.get_tracer("pulseops.application.agents.status_agent")
+_tracer = trace.get_tracer("openprogram.application.agents.status_agent")
 STATUS_AGENT_SYSTEM_PROMPT = (
     "Summarize developer status for a program manager. Use only the supplied context and return "
     "concise progress, blocker, and risk bullets."

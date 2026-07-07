@@ -1,1 +1,1 @@
-"""PulseOps core package."""
+"""OpenProgram core package."""

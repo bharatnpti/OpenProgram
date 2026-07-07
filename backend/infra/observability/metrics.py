@@ -28,20 +28,20 @@ class HttpMetrics:
 def build_http_metrics(environment: str) -> HttpMetrics:
     registry = CollectorRegistry()
     requests_total = Counter(
-        "pulseops_http_requests_total",
-        "Total HTTP requests handled by the PulseOps API.",
+        "openprogram_http_requests_total",
+        "Total HTTP requests handled by the OpenProgram API.",
         ("method", "route", "status_code"),
         registry=registry,
     )
     request_latency_seconds = Histogram(
-        "pulseops_http_request_duration_seconds",
+        "openprogram_http_request_duration_seconds",
         "HTTP request duration in seconds.",
         ("method", "route"),
         registry=registry,
     )
     app_info = Gauge(
-        "pulseops_info",
-        "PulseOps application information.",
+        "openprogram_info",
+        "OpenProgram application information.",
         ("environment",),
         registry=registry,
     )

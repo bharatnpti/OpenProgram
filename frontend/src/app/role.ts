@@ -2,7 +2,7 @@ import { createContext, useContext } from "react";
 
 export type AppRole = "dev" | "sm" | "po" | "mgr" | "exec" | "admin";
 
-export const STORAGE_KEY = "pulseops.active-role";
+export const STORAGE_KEY = "openprogram.active-role";
 
 export const roleLabels: Record<AppRole, string> = {
   dev: "Developer",

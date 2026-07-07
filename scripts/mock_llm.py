@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI
 
-app = FastAPI(title="PulseOps Mock LLM")
+app = FastAPI(title="OpenProgram Mock LLM")
 
 
 @app.get("/health")

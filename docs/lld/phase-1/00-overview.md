@@ -75,7 +75,7 @@ This preserves the Phase 0 rule: `api -> application -> domain`, and `infra -> p
 - `node_statuses`: persisted `NodeStatus` rollups with RAG, source tag, factors JSON, and as-of date.
 - Existing `graph_nodes`, `graph_edges`, and `facts` remain the system of record for graph structure and append-only evidence.
 
-All external read-sync facts use `TimeSeriesRepository.append_fact`. Internal writes are allowed only to PulseOps persistence. The only Phase 1 external side effect is a chat DM or nudge through `ChatProvider`; there is no write-back to issue tracker, VCS, or calendar systems.
+All external read-sync facts use `TimeSeriesRepository.append_fact`. Internal writes are allowed only to OpenProgram persistence. The only Phase 1 external side effect is a chat DM or nudge through `ChatProvider`; there is no write-back to issue tracker, VCS, or calendar systems.
 
 ## End-to-End Sequence
 

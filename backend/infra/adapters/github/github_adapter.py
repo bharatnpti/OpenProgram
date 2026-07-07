@@ -14,7 +14,7 @@ from core.domain.graph import JsonScalar
 from core.domain.integrations import Commit, PullRequest, Repo, SyncCursor, UserRef
 from core.ports.secrets import SecretRef, SecretStore
 
-_tracer = trace.get_tracer("pulseops.adapters.vcs.github")
+_tracer = trace.get_tracer("openprogram.adapters.vcs.github")
 
 
 @dataclass(frozen=True)

@@ -1,8 +1,8 @@
-# PulseOps Features and Business Requirements
+# OpenProgram Features and Business Requirements
 
 ## 1. Product Summary
 
-PulseOps is an agentic program-management system for continuously collecting, reconciling, rolling up, and presenting delivery status across software organizations.
+OpenProgram is an agentic program-management system for continuously collecting, reconciling, rolling up, and presenting delivery status across software organizations.
 
 The application replaces manual status chasing and meeting-driven reporting with:
 

@@ -1,6 +1,6 @@
-# PulseOps — Architecture
+# OpenProgram — Architecture
 
-Architecture and engineering standards for the PulseOps agentic program-management system. For the product concept and phased roadmap, see [PulseOpsConcept.md](PulseOpsConcept.md).
+Architecture and engineering standards for the OpenProgram agentic program-management system. For the product concept and phased roadmap, see [OpenProgramConcept.md](OpenProgramConcept.md).
 
 ---
 
@@ -11,7 +11,7 @@ Architecture and engineering standards for the PulseOps agentic program-manageme
 3. **Loose coupling, high cohesion.** Small, focused interfaces; vendor specifics isolated at the edges behind an anti-corruption layer.
 4. **Explainable and auditable.** Every status traces to source facts; every agent action is logged, idempotent, and reversible.
 
-> SSO/identity is intentionally deferred for the initial build. Access control will be layered in later (see [PulseOpsConcept.md](PulseOpsConcept.md) Epic 0.2) without changing the core architecture.
+> SSO/identity is intentionally deferred for the initial build. Access control will be layered in later (see [OpenProgramConcept.md](OpenProgramConcept.md) Epic 0.2) without changing the core architecture.
 
 ---
 

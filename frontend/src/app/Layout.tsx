@@ -94,7 +94,7 @@ export function Layout() {
               P
             </div>
             <div>
-              <div className="text-sm font-semibold">PulseOps</div>
+              <div className="text-sm font-semibold">OpenProgram</div>
               <div className="text-xs text-muted-foreground">Operational delivery console</div>
             </div>
           </div>

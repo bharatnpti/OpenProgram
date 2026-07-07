@@ -1,5 +1,5 @@
 {
-  "title": "PulseOps Foundation",
+  "title": "OpenProgram Foundation",
   "schemaVersion": 39,
   "version": 1,
   "panels": [
@@ -9,7 +9,7 @@
       "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
       "targets": [
         {
-          "expr": "pulseops_info",
+          "expr": "openprogram_info",
           "legendFormat": "backend up"
         },
         {
@@ -24,7 +24,7 @@
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
       "targets": [
         {
-          "expr": "sum by (route, status_code) (rate(pulseops_http_requests_total[5m]))",
+          "expr": "sum by (route, status_code) (rate(openprogram_http_requests_total[5m]))",
           "legendFormat": "{{route}} {{status_code}}"
         }
       ]
@@ -35,7 +35,7 @@
       "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(pulseops_http_request_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, route) (rate(openprogram_http_request_duration_seconds_bucket[5m])))",
           "legendFormat": "{{route}}"
         }
       ]

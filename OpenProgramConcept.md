@@ -1,4 +1,4 @@
-# Agentic Program Management System — "PulseOps"
+# Agentic Program Management System — "OpenProgram"
 
 Here's a complete conceptualization. I've organized it as: the core idea, the agent architecture, the data model (your single source of truth), the daily flow, the persona-specific views, and a set of high-value extra capabilities. No files created — this is all in-chat for you to react to.
 

@@ -10,7 +10,7 @@ from opentelemetry import trace
 from core.domain.directory import DirectoryUser
 from core.ports.directory import DirectoryUserRepository
 
-_tracer = trace.get_tracer("pulseops.persistence.directory")
+_tracer = trace.get_tracer("openprogram.persistence.directory")
 _UPSERT_BATCH_SIZE = 1000
 
 

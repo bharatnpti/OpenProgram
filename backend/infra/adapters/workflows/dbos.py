@@ -73,17 +73,17 @@ class DbosRuntimeConfig:
 _configured_runtime: DbosRuntimeConfig | None = None
 
 
-@DBOS.step(name="pulseops_record_heartbeat", retries_allowed=True)
+@DBOS.step(name="openprogram_record_heartbeat", retries_allowed=True)
 async def dbos_record_heartbeat_step(payload: HeartbeatInput) -> HeartbeatResult:
     return record_heartbeat(payload)
 
 
-@DBOS.workflow(name="pulseops_heartbeat")
+@DBOS.workflow(name="openprogram_heartbeat")
 async def dbos_heartbeat_workflow(payload: HeartbeatInput) -> HeartbeatResult:
     return await dbos_record_heartbeat_step(payload)
 
 
-@DBOS.workflow(name="pulseops_scheduled_heartbeat")
+@DBOS.workflow(name="openprogram_scheduled_heartbeat")
 async def dbos_scheduled_heartbeat_workflow(
     scheduled_time: datetime,
     context: dict[str, str],
@@ -97,19 +97,19 @@ async def dbos_scheduled_heartbeat_workflow(
     )
 
 
-@DBOS.step(name="pulseops_prepare_checkin_fanout", retries_allowed=True)
+@DBOS.step(name="openprogram_prepare_checkin_fanout", retries_allowed=True)
 async def dbos_prepare_checkin_fanout_step(
     payload: CheckinFanoutInput,
 ) -> list[DeveloperCheckinDispatch]:
     return await checkin_fanout.developer_checkin_dispatches_for_tenant_activity(payload)
 
 
-@DBOS.workflow(name="pulseops_checkin_fanout")
+@DBOS.workflow(name="openprogram_checkin_fanout")
 async def dbos_checkin_fanout_workflow(payload: CheckinFanoutInput) -> CheckinFanoutResult:
     return await _run_dbos_checkin_fanout(payload)
 
 
-@DBOS.workflow(name="pulseops_scheduled_checkin_fanout")
+@DBOS.workflow(name="openprogram_scheduled_checkin_fanout")
 async def dbos_scheduled_checkin_fanout_workflow(
     scheduled_time: datetime,
     context: dict[str, str],
@@ -122,21 +122,21 @@ async def dbos_scheduled_checkin_fanout_workflow(
     )
 
 
-@DBOS.step(name="pulseops_purge_conversation_turns", retries_allowed=True)
+@DBOS.step(name="openprogram_purge_conversation_turns", retries_allowed=True)
 async def dbos_purge_conversation_turns_step(
     payload: ConversationPurgeInput,
 ) -> ConversationPurgeResult:
     return await conversation_purge.purge_conversation_turns_activity(payload)
 
 
-@DBOS.workflow(name="pulseops_conversation_purge")
+@DBOS.workflow(name="openprogram_conversation_purge")
 async def dbos_conversation_purge_workflow(
     payload: ConversationPurgeInput,
 ) -> ConversationPurgeResult:
     return await dbos_purge_conversation_turns_step(payload)
 
 
-@DBOS.workflow(name="pulseops_scheduled_conversation_purge")
+@DBOS.workflow(name="openprogram_scheduled_conversation_purge")
 async def dbos_scheduled_conversation_purge_workflow(
     scheduled_time: datetime,
     context: dict[str, str],
@@ -150,79 +150,79 @@ async def dbos_scheduled_conversation_purge_workflow(
     )
 
 
-@DBOS.step(name="pulseops_sync_jira_project", retries_allowed=True)
+@DBOS.step(name="openprogram_sync_jira_project", retries_allowed=True)
 async def dbos_sync_jira_project_step(payload: JiraSyncInput) -> ReadSyncWorkflowResult:
     return await jira_sync.sync_jira_project_activity(payload)
 
 
-@DBOS.workflow(name="pulseops_jira_sync")
+@DBOS.workflow(name="openprogram_jira_sync")
 async def dbos_jira_sync_workflow(payload: JiraSyncInput) -> ReadSyncWorkflowResult:
     return await dbos_sync_jira_project_step(payload)
 
 
-@DBOS.step(name="pulseops_sync_git_repo", retries_allowed=True)
+@DBOS.step(name="openprogram_sync_git_repo", retries_allowed=True)
 async def dbos_sync_git_repo_step(payload: GitSyncInput) -> GitSyncWorkflowResult:
     return await git_sync.sync_git_repo_activity(payload)
 
 
-@DBOS.workflow(name="pulseops_git_sync")
+@DBOS.workflow(name="openprogram_git_sync")
 async def dbos_git_sync_workflow(payload: GitSyncInput) -> GitSyncWorkflowResult:
     return await dbos_sync_git_repo_step(payload)
 
 
-@DBOS.step(name="pulseops_sync_calendar_user", retries_allowed=True)
+@DBOS.step(name="openprogram_sync_calendar_user", retries_allowed=True)
 async def dbos_sync_calendar_user_step(
     payload: CalendarSyncInput,
 ) -> CalendarSyncWorkflowResult:
     return await calendar_sync.sync_calendar_user_activity(payload)
 
 
-@DBOS.workflow(name="pulseops_calendar_sync")
+@DBOS.workflow(name="openprogram_calendar_sync")
 async def dbos_calendar_sync_workflow(
     payload: CalendarSyncInput,
 ) -> CalendarSyncWorkflowResult:
     return await dbos_sync_calendar_user_step(payload)
 
 
-@DBOS.step(name="pulseops_sync_directory", retries_allowed=True)
+@DBOS.step(name="openprogram_sync_directory", retries_allowed=True)
 async def dbos_sync_directory_step(payload: DirectorySyncInput) -> DirectorySyncResult:
     return await directory_sync.sync_directory_activity(payload)
 
 
-@DBOS.workflow(name="pulseops_directory_sync")
+@DBOS.workflow(name="openprogram_directory_sync")
 async def dbos_directory_sync_workflow(
     payload: DirectorySyncInput,
 ) -> DirectorySyncResult:
     return await dbos_sync_directory_step(payload)
 
 
-@DBOS.step(name="pulseops_runtime_config_sync", retries_allowed=True)
+@DBOS.step(name="openprogram_runtime_config_sync", retries_allowed=True)
 async def dbos_runtime_config_sync_step(payload: RuntimeSyncInput) -> RuntimeSyncWorkflowResult:
     return await runtime_sync.run_runtime_config_sync_activity(payload)
 
 
-@DBOS.workflow(name="pulseops_runtime_config_sync")
+@DBOS.workflow(name="openprogram_runtime_config_sync")
 async def dbos_runtime_config_sync_workflow(
     payload: RuntimeSyncInput,
 ) -> RuntimeSyncWorkflowResult:
     return await dbos_runtime_config_sync_step(payload)
 
 
-@DBOS.step(name="pulseops_run_risk_assessment", retries_allowed=True)
+@DBOS.step(name="openprogram_run_risk_assessment", retries_allowed=True)
 async def dbos_run_risk_assessment_step(
     payload: RiskAssessmentInput,
 ) -> RiskAssessmentWorkflowResult:
     return await risk_assessment.run_risk_assessment_activity(payload)
 
 
-@DBOS.workflow(name="pulseops_risk_assessment")
+@DBOS.workflow(name="openprogram_risk_assessment")
 async def dbos_risk_assessment_workflow(
     payload: RiskAssessmentInput,
 ) -> RiskAssessmentWorkflowResult:
     return await dbos_run_risk_assessment_step(payload)
 
 
-@DBOS.workflow(name="pulseops_scheduled_sync")
+@DBOS.workflow(name="openprogram_scheduled_sync")
 async def dbos_scheduled_sync_workflow(
     scheduled_time: datetime,
     context: dict[str, Any],
@@ -232,7 +232,7 @@ async def dbos_scheduled_sync_workflow(
     )
 
 
-@DBOS.step(name="pulseops_prepare_daily_checkin")
+@DBOS.step(name="openprogram_prepare_daily_checkin")
 async def dbos_prepare_daily_checkin_step(payload: DailyCheckinInput) -> DailyCheckinInput:
     workflow_id = DBOS.workflow_id or "dbos-daily-checkin"
     return daily_checkin.prepare_daily_checkin_payload(
@@ -242,12 +242,12 @@ async def dbos_prepare_daily_checkin_step(payload: DailyCheckinInput) -> DailyCh
     )
 
 
-@DBOS.step(name="pulseops_start_daily_checkin", retries_allowed=True)
+@DBOS.step(name="openprogram_start_daily_checkin", retries_allowed=True)
 async def dbos_start_daily_checkin_step(payload: DailyCheckinInput) -> DailyCheckinResult:
     return await daily_checkin.start_daily_checkin_activity(payload)
 
 
-@DBOS.workflow(name="pulseops_daily_checkin")
+@DBOS.workflow(name="openprogram_daily_checkin")
 async def dbos_daily_checkin_workflow(payload: DailyCheckinInput) -> DailyCheckinResult:
     scheduled = await dbos_prepare_daily_checkin_step(payload)
     result = await dbos_start_daily_checkin_step(scheduled)
@@ -296,17 +296,17 @@ async def _start_daily_checkin_workflow(input: DeveloperCheckinDispatch) -> str:
     return workflow_id
 
 
-@DBOS.step(name="pulseops_send_checkin_nudge", retries_allowed=True)
+@DBOS.step(name="openprogram_send_checkin_nudge", retries_allowed=True)
 async def dbos_send_checkin_nudge_step(payload: NudgeInput) -> NudgeResult:
     return await nudge.send_checkin_nudge_activity(payload)
 
 
-@DBOS.step(name="pulseops_close_checkin_non_response", retries_allowed=True)
+@DBOS.step(name="openprogram_close_checkin_non_response", retries_allowed=True)
 async def dbos_close_checkin_non_response_step(payload: NudgeInput) -> NudgeResult:
     return await nudge.close_checkin_non_response_activity(payload)
 
 
-@DBOS.workflow(name="pulseops_nudge")
+@DBOS.workflow(name="openprogram_nudge")
 async def dbos_nudge_workflow(payload: NudgeInput) -> NudgeResult:
     if payload.reply_wait_seconds > 0:
         await DBOS.sleep_async(payload.reply_wait_seconds)

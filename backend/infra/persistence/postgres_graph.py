@@ -21,7 +21,7 @@ from core.domain.graph import (
     normalize_vector,
 )
 
-_tracer = trace.get_tracer("pulseops.persistence.graph")
+_tracer = trace.get_tracer("openprogram.persistence.graph")
 
 
 class AsyncSqlSession(Protocol):
@@ -263,7 +263,7 @@ class PostgresGraphRepository:
             await session.execute(
                 f"""
                 SELECT *
-                FROM cypher('pulseops_graph', $$
+                FROM cypher('openprogram_graph', $$
                     MERGE (n:GraphNode {{
                         tenant_id: {_cypher_string(node.tenant_id)},
                         id: {_cypher_string(node.id)}
@@ -288,7 +288,7 @@ class PostgresGraphRepository:
             await session.execute(
                 f"""
                 SELECT *
-                FROM cypher('pulseops_graph', $$
+                FROM cypher('openprogram_graph', $$
                     MATCH (from_node:GraphNode {{
                         tenant_id: {_cypher_string(edge.tenant_id)},
                         id: {_cypher_string(edge.from_node_id)}
@@ -315,7 +315,7 @@ class PostgresGraphRepository:
             await session.execute(
                 f"""
                 SELECT *
-                FROM cypher('pulseops_graph', $$
+                FROM cypher('openprogram_graph', $$
                     MATCH (n:GraphNode {{
                         tenant_id: {_cypher_string(tenant_id)},
                         id: {_cypher_string(id)}
@@ -337,7 +337,7 @@ class PostgresGraphRepository:
             await session.execute(
                 f"""
                 SELECT *
-                FROM cypher('pulseops_graph', $$
+                FROM cypher('openprogram_graph', $$
                     MATCH (from_node:GraphNode {{
                         tenant_id: {_cypher_string(edge.tenant_id)},
                         id: {_cypher_string(edge.from_node_id)}

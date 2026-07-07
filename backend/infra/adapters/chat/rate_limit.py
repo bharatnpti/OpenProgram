@@ -8,7 +8,7 @@ from typing import Protocol
 from opentelemetry import trace
 from redis.asyncio import Redis
 
-_tracer = trace.get_tracer("pulseops.adapters.chat.rate_limit")
+_tracer = trace.get_tracer("openprogram.adapters.chat.rate_limit")
 
 
 class RateLimiter(Protocol):

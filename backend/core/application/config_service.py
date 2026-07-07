@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
 from core.domain.directory import DirectoryUser
-from core.domain.errors import GraphNotFound, PulseOpsError
+from core.domain.errors import GraphNotFound, OpenProgramError
 from core.domain.graph import (
     EdgeKind,
     FactEvent,
@@ -26,11 +26,11 @@ from core.ports.repositories import (
 )
 
 
-class ConfigValidationError(PulseOpsError):
+class ConfigValidationError(OpenProgramError):
     """Raised when a requested runtime config mutation is invalid."""
 
 
-class ConfigConflict(PulseOpsError):
+class ConfigConflict(OpenProgramError):
     """Raised when a requested runtime config mutation would duplicate state."""
 
 

@@ -8,7 +8,7 @@ import httpx
 from opentelemetry import trace
 from redis.asyncio import Redis
 
-_tracer = trace.get_tracer("pulseops.adapters.readiness")
+_tracer = trace.get_tracer("openprogram.adapters.readiness")
 
 
 @dataclass(frozen=True)

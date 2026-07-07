@@ -8,8 +8,8 @@ from pytest_bdd import scenarios
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(
-        os.getenv("PULSEOPS_RUN_INTEGRATION") != "1",
-        reason="set PULSEOPS_RUN_INTEGRATION=1 or run make integration",
+        os.getenv("OPENPROGRAM_RUN_INTEGRATION") != "1",
+        reason="set OPENPROGRAM_RUN_INTEGRATION=1 or run make integration",
     ),
 ]
 
