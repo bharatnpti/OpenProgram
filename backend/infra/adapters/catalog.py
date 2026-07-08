@@ -35,6 +35,7 @@ from infra.adapters.directory.fake import FakeDirectoryProvider
 from infra.adapters.directory.mock_slack import MockSlackDirectoryProvider
 from infra.adapters.directory.slack import SlackDirectoryProvider
 from infra.adapters.github.github_adapter import GitHubVcsAdapter
+from infra.adapters.gitlab.gitlab_adapter import GitLabVcsAdapter
 from infra.adapters.integrations.fake import (
     FakeCalendarProvider,
     FakeIssueTracker,
@@ -142,6 +143,13 @@ def build_issue_tracker(
 def build_vcs_provider(settings: Settings, secret_store: SecretStore | None = None) -> VcsProvider:
     if settings.vcs_provider == "fake":
         return FakeVcsProvider(tenant_id=settings.tenant_id)
+    if settings.vcs_provider == "gitlab":
+        return GitLabVcsAdapter(
+            base_url=settings.gitlab_base_url,
+            token=settings.gitlab_token,
+            namespace_id=settings.gitlab_namespace_id,
+            secret_store=secret_store,
+        )
     return GitHubVcsAdapter(
         base_url=settings.github_base_url,
         token=settings.github_token,

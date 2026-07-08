@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     github_base_url: str = "https://api.github.com"
     github_token: str | None = None
     github_owner: str | None = None
+    gitlab_base_url: str = "https://gitlab.com/api/v4"
+    gitlab_token: str | None = None
+    gitlab_namespace_id: str | None = None
     google_calendar_base_url: str = "https://www.googleapis.com/calendar/v3"
     google_calendar_token: str | None = None
     google_calendar_id: str | None = None
@@ -216,7 +219,7 @@ class Settings(BaseSettings):
     @field_validator("vcs_provider")
     @classmethod
     def validate_vcs_provider(cls, value: str) -> str:
-        allowed = {"github", "fake"}
+        allowed = {"github", "gitlab", "fake"}
         if value not in allowed:
             message = f"vcs_provider must be one of {sorted(allowed)}"
             raise ValueError(message)
