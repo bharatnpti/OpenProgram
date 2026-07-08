@@ -16,8 +16,13 @@ from core.application.portfolio_feed_service import PortfolioFeedService
 from core.application.risk_service import RiskService
 from core.application.self_status_service import SelfStatusService
 from core.domain.auth import Principal
-from core.domain.errors import ProviderConfigurationError, ProviderUnavailable
+from core.domain.errors import (
+    AuthenticationRequired,
+    ProviderConfigurationError,
+    ProviderUnavailable,
+)
 from core.domain.risk import RiskProviderConfig
+from core.ports.auth import AuthCredentials
 from infra.registry import ServiceRegistry
 
 
@@ -34,7 +39,26 @@ async def get_current_principal(
     authorization: Annotated[str | None, Header()] = None,
 ) -> Principal:
     registry = get_registry(request)
-    return await registry.current_principal(authorization).get()
+    settings = get_settings_from_request(request)
+    credentials = AuthCredentials(
+        authorization=authorization,
+        session_id=request.cookies.get(settings.auth_cookie_name),
+    )
+    try:
+        return await registry.current_principal(credentials).get()
+    except AuthenticationRequired as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "message": str(exc),
+                "login_url": auth_login_url_for_request(request, settings),
+            },
+        ) from exc
+
+
+def auth_login_url_for_request(request: Request, settings: Settings) -> str:
+    return_url = request.headers.get("referer") or "/"
+    return settings.auth_login_url(return_url)
 
 
 def get_graph_query_service(request: Request) -> GraphQueryService:

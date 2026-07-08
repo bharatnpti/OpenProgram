@@ -37,6 +37,7 @@ from core.domain.graph import EdgeKind, GraphEdge, GraphNode, GraphTree, NodeKin
 from core.domain.risk import RiskFinding
 from core.domain.rollup import Rag, RollupFactor
 from core.domain.status import CheckInPreference, DeveloperStatus, StatusSource
+from core.ports.auth import AuthenticatedUser
 
 
 def _metadata_string(
@@ -95,6 +96,46 @@ class ReadyResponse(BaseModel):
 
     status: str
     dependencies: dict[str, bool]
+
+
+class AuthUserResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    subject: str
+    username: str | None = None
+    email: str | None = None
+    name: str | None = None
+    roles: list[str]
+    scopes: list[str]
+
+    @classmethod
+    def from_user(cls, user: AuthenticatedUser) -> AuthUserResponse:
+        return cls(
+            subject=user.subject,
+            username=user.username,
+            email=user.email,
+            name=user.name,
+            roles=sorted(role.value for role in user.roles),
+            scopes=sorted(user.scopes),
+        )
+
+
+class AuthStatusResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    authenticated: bool
+    provider: Literal["dev", "oidc_bff"]
+    login_url: str | None = None
+    message: str | None = None
+    user: AuthUserResponse | None = None
+
+
+class LogoutResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    success: bool
+    message: str
+    redirect_url: str
 
 
 class GraphNodeDto(BaseModel):
