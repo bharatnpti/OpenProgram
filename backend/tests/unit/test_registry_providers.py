@@ -7,6 +7,7 @@ import pytest
 
 from config.settings import Settings
 from core.domain.errors import ProviderConfigurationError
+from core.ports.auth import AuthCredentials
 from infra.adapters import catalog
 from infra.adapters.calendar.google_adapter import GoogleCalendarAdapter
 from infra.adapters.chat.fake import FakeChatProvider, FakeChatWebhookMapper
@@ -232,7 +233,9 @@ async def test_registry_current_principal_uses_auth_provider() -> None:
         )
     )
 
-    principal = await registry.current_principal("token").get()
+    principal = await registry.current_principal(
+        AuthCredentials(authorization="token"),
+    ).get()
 
     assert principal.subject == "dev-1"
     assert principal.scopes == frozenset({"dev-mode", "token"})

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from typing import Literal, Self
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -98,6 +99,34 @@ class Settings(BaseSettings):
     secret_key: str = Field(default="", min_length=0)
     dev_principal_subject: str = "dev-user"
     dev_principal_roles: str = "admin"
+    auth_provider: Literal["dev", "oidc_bff"] = "dev"
+    oidc_issuer_url: str | None = None
+    oidc_client_id: str | None = None
+    oidc_client_secret: str | None = None
+    oidc_scopes: tuple[str, ...] = ("openid", "profile", "email")
+    auth_public_backend_url: str = "http://127.0.0.1:8000"
+    auth_frontend_url: str = "http://localhost:5173"
+    auth_session_ttl_seconds: int = 7200
+    auth_flow_state_ttl_seconds: int = 300
+    auth_cookie_name: str = "openprogram_session"
+    auth_csrf_cookie_name: str = "openprogram_csrf"
+    auth_csrf_header_name: str = "x-csrf-token"
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+    auth_allowed_return_paths: tuple[str, ...] = ("/",)
+    auth_allowed_return_origins: tuple[str, ...] = ()
+    oidc_role_claim_paths: tuple[str, ...] = (
+        "realm_access.roles",
+        "resource_access.<client_id>.roles",
+        "groups",
+        "roles",
+    )
+    oidc_role_map_json: str = (
+        '{"admin":"admin","dev":"dev","developer":"dev","engineer":"dev",'
+        '"po":"po","product_owner":"po","product-owner":"po",'
+        '"sm":"sm","scrum_master":"sm","scrum-master":"sm",'
+        '"mgr":"mgr","manager":"mgr","exec":"exec","executive":"exec"}'
+    )
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -117,6 +146,10 @@ class Settings(BaseSettings):
         "jira_sync_projects",
         "github_sync_repos",
         "calendar_sync_user_ids",
+        "oidc_scopes",
+        "auth_allowed_return_paths",
+        "auth_allowed_return_origins",
+        "oidc_role_claim_paths",
         mode="before",
     )
     @classmethod
@@ -231,6 +264,18 @@ class Settings(BaseSettings):
         return value
 
     @field_validator(
+        "oidc_issuer_url",
+        "oidc_client_id",
+        "oidc_client_secret",
+        mode="before",
+    )
+    @classmethod
+    def empty_oidc_string_is_unset(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator(
         "dbos_app_name",
         "dbos_heartbeat_cron",
         "checkin_fanout_schedule_id",
@@ -244,11 +289,61 @@ class Settings(BaseSettings):
         "directory_sync_schedule_id",
         "risk_assessment_cron",
         "risk_run_default_local_time",
+        "auth_public_backend_url",
+        "auth_frontend_url",
+        "auth_cookie_name",
+        "auth_csrf_cookie_name",
+        "auth_csrf_header_name",
+        "oidc_role_map_json",
     )
     @classmethod
     def validate_non_empty_string(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("value must not be empty")
+        return value
+
+    @field_validator("auth_public_backend_url", "auth_frontend_url")
+    @classmethod
+    def validate_absolute_http_url(cls, value: str) -> str:
+        stripped = value.strip().rstrip("/")
+        parts = urlsplit(stripped)
+        if parts.scheme not in {"http", "https"} or not parts.netloc:
+            raise ValueError("value must be an absolute http(s) URL")
+        return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
+
+    @field_validator("auth_allowed_return_paths")
+    @classmethod
+    def validate_return_paths(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value:
+            raise ValueError("auth_allowed_return_paths must not be empty")
+        for item in value:
+            if not item.startswith("/") or item.startswith("//"):
+                raise ValueError("auth_allowed_return_paths entries must be absolute paths")
+        return value
+
+    @field_validator("auth_allowed_return_origins")
+    @classmethod
+    def validate_return_origins(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized: list[str] = []
+        for item in value:
+            parts = urlsplit(item.strip())
+            if parts.scheme not in {"http", "https"} or not parts.netloc:
+                raise ValueError("auth_allowed_return_origins entries must be http(s) origins")
+            normalized.append(urlunsplit((parts.scheme, parts.netloc, "", "", "")))
+        return tuple(normalized)
+
+    @field_validator("oidc_scopes")
+    @classmethod
+    def validate_oidc_scopes(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if "openid" not in {item.lower() for item in value}:
+            raise ValueError("oidc_scopes must include openid")
+        return value
+
+    @field_validator("oidc_role_claim_paths")
+    @classmethod
+    def validate_role_claim_paths(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value:
+            raise ValueError("oidc_role_claim_paths must not be empty")
         return value
 
     @field_validator("secret_key")
@@ -276,6 +371,8 @@ class Settings(BaseSettings):
         "risk_default_no_pr_days",
         "risk_default_pr_age_days",
         "risk_default_stale_days",
+        "auth_session_ttl_seconds",
+        "auth_flow_state_ttl_seconds",
     )
     @classmethod
     def validate_positive_int(cls, value: int) -> int:
@@ -309,17 +406,99 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
-    def validate_pool_bounds(self) -> Self:
+    def validate_cross_field_settings(self) -> Self:
         if self.postgres_pool_max_size < self.postgres_pool_min_size:
             raise ValueError("postgres_pool_max_size must be >= postgres_pool_min_size")
         if self.heartbeat_schedule_id is None:
             object.__setattr__(self, "heartbeat_schedule_id", self.temporal_schedule_id)
+        if self.auth_cookie_samesite == "none" and not self.auth_cookie_secure:
+            raise ValueError("auth_cookie_secure must be true when auth_cookie_samesite is none")
+        if self.auth_provider == "oidc_bff":
+            missing = [
+                name
+                for name, value in (
+                    ("oidc_issuer_url", self.oidc_issuer_url),
+                    ("oidc_client_id", self.oidc_client_id),
+                    ("oidc_client_secret", self.oidc_client_secret),
+                )
+                if value is None
+            ]
+            if missing:
+                raise ValueError(f"OIDC BFF auth requires {', '.join(missing)}")
+            issuer_parts = urlsplit(self.oidc_issuer_url or "")
+            if issuer_parts.scheme not in {"http", "https"} or not issuer_parts.netloc:
+                raise ValueError("oidc_issuer_url must be an absolute http(s) URL")
+            if self.runtime_mode == "container" and not self.redis_url.strip():
+                raise ValueError("redis_url is required for OIDC BFF container mode")
+        _ = self.oidc_role_map
         return self
 
     @property
     def dev_roles(self) -> frozenset[Role]:
         values = [item.strip().lower() for item in self.dev_principal_roles.split(",")]
         return frozenset(Role(value) for value in values if value)
+
+    @property
+    def oidc_role_map(self) -> dict[str, Role]:
+        parsed = json.loads(self.oidc_role_map_json)
+        if not isinstance(parsed, dict):
+            raise ValueError("oidc_role_map_json must be a JSON object")
+        role_map: dict[str, Role] = {}
+        for raw_key, raw_value in parsed.items():
+            key = str(raw_key).strip().lower()
+            if not key:
+                raise ValueError("oidc_role_map_json keys must not be empty")
+            try:
+                role = Role(str(raw_value).strip().lower())
+            except ValueError as exc:
+                raise ValueError(f"oidc_role_map_json maps {key!r} to an unknown role") from exc
+            role_map[key] = role
+        return role_map
+
+    def auth_callback_url(self) -> str:
+        return f"{self.auth_public_backend_url}/api/v1/auth/callback"
+
+    def frontend_logged_out_url(self) -> str:
+        return f"{self.auth_frontend_url}/logged-out"
+
+    def auth_login_url(self, return_url: str | None = None) -> str:
+        from urllib.parse import urlencode
+
+        query = urlencode({"return_url": return_url or "/"})
+        return f"{self.auth_public_backend_url}/api/v1/auth/login?{query}"
+
+    def safe_auth_return_url(self, value: str | None) -> str:
+        fallback = self.auth_frontend_url
+        if not value:
+            return fallback
+        raw = value.strip()
+        if not raw:
+            return fallback
+        frontend_origin = _origin(self.auth_frontend_url)
+        allowed_origins = {frontend_origin, *self.auth_allowed_return_origins}
+        parsed = urlsplit(raw)
+        if parsed.scheme or parsed.netloc:
+            if parsed.scheme not in {"http", "https"}:
+                return fallback
+            origin = urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+            if origin not in allowed_origins:
+                return fallback
+            path = parsed.path or "/"
+            if not self._return_path_allowed(path):
+                return fallback
+            return urlunsplit((parsed.scheme, parsed.netloc, path, parsed.query, ""))
+        if not raw.startswith("/") or raw.startswith("//"):
+            return fallback
+        path = urlsplit(raw).path or "/"
+        if not self._return_path_allowed(path):
+            return fallback
+        return f"{frontend_origin}{raw}"
+
+    def _return_path_allowed(self, path: str) -> bool:
+        return any(
+            path == allowed or path.startswith(allowed.rstrip("/") + "/")
+            for allowed in self.auth_allowed_return_paths
+        )
 
     @property
     def resolved_dbos_system_database_url(self) -> str:
@@ -332,6 +511,11 @@ class Settings(BaseSettings):
     @property
     def default_llm_model(self) -> str:
         return self.litellm_model
+
+
+def _origin(value: str) -> str:
+    parts = urlsplit(value)
+    return urlunsplit((parts.scheme, parts.netloc, "", "", ""))
 
 
 @lru_cache(maxsize=1)

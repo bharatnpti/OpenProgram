@@ -3,7 +3,8 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { Layout } from "./app/Layout";
 import { RoleProvider } from "./app/RoleProvider";
-import { useRole } from "./app/role";
+import { useRole, type AppRole } from "./app/role";
+import { Button } from "./components/ui/button";
 import { Skeleton } from "./components/ui/skeleton";
 
 const PersonaDashboard = lazy(() =>
@@ -63,13 +64,55 @@ export function App() {
       <BrowserRouter>
         <Suspense fallback={<RouteFallback />}>
           <Routes>
-            <Route element={<Layout />}>
-              <Route path="/" element={<Navigate to="/me" replace />} />
-              <Route path="/me" element={<PersonaDashboard role="dev" />} />
-              <Route path="/sm" element={<PersonaDashboard role="sm" />} />
-              <Route path="/po" element={<PersonaDashboard role="po" />} />
-              <Route path="/mgr" element={<PersonaDashboard role="mgr" />} />
-              <Route path="/exec" element={<PersonaDashboard role="exec" />} />
+            <Route path="/logged-out" element={<LoggedOutPage />} />
+            <Route
+              element={
+                <RequireAuthenticated>
+                  <Layout />
+                </RequireAuthenticated>
+              }
+            >
+              <Route path="/" element={<RootRedirect />} />
+              <Route
+                path="/me"
+                element={
+                  <RequireRoleAccess role="dev">
+                    <PersonaDashboard role="dev" />
+                  </RequireRoleAccess>
+                }
+              />
+              <Route
+                path="/sm"
+                element={
+                  <RequireRoleAccess role="sm">
+                    <PersonaDashboard role="sm" />
+                  </RequireRoleAccess>
+                }
+              />
+              <Route
+                path="/po"
+                element={
+                  <RequireRoleAccess role="po">
+                    <PersonaDashboard role="po" />
+                  </RequireRoleAccess>
+                }
+              />
+              <Route
+                path="/mgr"
+                element={
+                  <RequireRoleAccess role="mgr">
+                    <PersonaDashboard role="mgr" />
+                  </RequireRoleAccess>
+                }
+              />
+              <Route
+                path="/exec"
+                element={
+                  <RequireRoleAccess role="exec">
+                    <PersonaDashboard role="exec" />
+                  </RequireRoleAccess>
+                }
+              />
               <Route path="/pods" element={<PodsPage />} />
               <Route path="/pods/:podId" element={<PodDetailPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
@@ -124,12 +167,46 @@ export function App() {
                   </RequireChatSimulatorAccess>
                 }
               />
+              <Route path="*" element={<RootRedirect />} />
             </Route>
           </Routes>
         </Suspense>
       </BrowserRouter>
     </RoleProvider>
   );
+}
+
+function RequireAuthenticated({ children }: { children: ReactNode }) {
+  const { authenticated, authLoading, isDevMode, signIn } = useRole();
+  if (authLoading) {
+    return <RouteFallback />;
+  }
+  if (!isDevMode && !authenticated) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-background px-5">
+        <div className="flex w-full max-w-sm flex-col gap-4 rounded-md border border-border bg-surface p-5 shadow-panel">
+          <div>
+            <h1 className="text-lg font-semibold">OpenProgram</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Sign in to continue.</p>
+          </div>
+          <Button type="button" onClick={signIn}>
+            Sign in
+          </Button>
+        </div>
+      </main>
+    );
+  }
+  return children;
+}
+
+function RootRedirect() {
+  const { defaultRoute } = useRole();
+  return <Navigate to={defaultRoute} replace />;
+}
+
+function RequireRoleAccess({ role, children }: { role: AppRole; children: ReactNode }) {
+  const { canAccessRole, defaultRoute } = useRole();
+  return canAccessRole(role) ? children : <Navigate to={defaultRoute} replace />;
 }
 
 function RequireAdminAccess({ children }: { children: ReactNode }) {
@@ -145,6 +222,23 @@ function RequirePortfolioAccess({ children }: { children: ReactNode }) {
 function RequireChatSimulatorAccess({ children }: { children: ReactNode }) {
   const { canAccessAdmin } = useRole();
   return canAccessAdmin && chatSimulatorFrontendEnabled ? children : <Navigate to="/me" replace />;
+}
+
+function LoggedOutPage() {
+  const { signIn } = useRole();
+  return (
+    <main className="grid min-h-screen place-items-center bg-background px-5">
+      <div className="flex w-full max-w-sm flex-col gap-4 rounded-md border border-border bg-surface p-5 shadow-panel">
+        <div>
+          <h1 className="text-lg font-semibold">Signed out</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Your OpenProgram session has ended.</p>
+        </div>
+        <Button type="button" onClick={signIn}>
+          Sign in
+        </Button>
+      </div>
+    </main>
+  );
 }
 
 function RouteFallback() {

@@ -16,6 +16,7 @@ import type {
   CrossPersonRequestStatusUpdateRequest,
   AskRequest,
   AskResponse,
+  AuthStatusResponse,
   DirectoryItemResponse,
   DirectorySearchResponse,
   DirectorySyncResponse,
@@ -36,6 +37,7 @@ import type {
   ProjectProgressResponse,
   ProjectRisksResponse,
   ReadyResponse,
+  LogoutResponse,
   MyStatusResponse,
   StatusCorrectionRequest,
   WorkstreamFlowResponse,
@@ -44,6 +46,8 @@ import type {
 } from "./schema";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+const CSRF_COOKIE_NAME = import.meta.env.VITE_AUTH_CSRF_COOKIE_NAME ?? "openprogram_csrf";
+const CSRF_HEADER_NAME = import.meta.env.VITE_AUTH_CSRF_HEADER_NAME ?? "x-csrf-token";
 
 export class ApiError extends Error {
   status: number;
@@ -63,8 +67,10 @@ async function requestJson<T>(
 ): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: options.method,
+    credentials: "include",
     headers: {
       ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
+      ...csrfHeader(options.method),
       "x-correlation-id": crypto.randomUUID(),
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -80,6 +86,8 @@ async function requestJson<T>(
 }
 
 export const apiClient = {
+  authStatus: () => requestJson<AuthStatusResponse>("/api/v1/auth/status"),
+  logout: () => requestJson<LogoutResponse>("/api/v1/auth/logout", { method: "POST" }),
   health: () => requestJson<HealthResponse>("/health"),
   ready: () => requestJson<ReadyResponse>("/ready"),
   programTree: (programId: string) =>
@@ -314,6 +322,26 @@ function withQuery(path: string, params: Record<string, string | undefined>): st
   });
   const query = search.toString();
   return query ? `${path}?${query}` : path;
+}
+
+function csrfHeader(method?: string): Record<string, string> {
+  const requestMethod = method ?? "GET";
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(requestMethod.toUpperCase())) {
+    return {};
+  }
+  const token = readCookie(CSRF_COOKIE_NAME);
+  return token ? { [CSRF_HEADER_NAME]: token } : {};
+}
+
+function readCookie(name: string): string | null {
+  const prefix = `${encodeURIComponent(name)}=`;
+  return (
+    document.cookie
+      .split(";")
+      .map((item) => item.trim())
+      .find((item) => item.startsWith(prefix))
+      ?.slice(prefix.length) ?? null
+  );
 }
 
 async function parseErrorBody(response: Response): Promise<unknown> {

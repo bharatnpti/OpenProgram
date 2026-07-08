@@ -9,6 +9,10 @@ class AuthorizationDenied(OpenProgramError):
     """Raised when a principal is not authorized for a capability."""
 
 
+class AuthenticationRequired(OpenProgramError):
+    """Raised when request credentials cannot be authenticated."""
+
+
 class ProviderUnavailable(OpenProgramError):
     """Raised when an external provider cannot satisfy a request."""
 
