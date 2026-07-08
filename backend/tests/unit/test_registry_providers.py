@@ -15,6 +15,7 @@ from infra.adapters.chat.mock_slack import InMemoryMockSlackStore, MockSlackChat
 from infra.adapters.chat.slack import SlackChatAdapter, SlackChatWebhookMapper
 from infra.adapters.directory.mock_slack import MockSlackDirectoryProvider
 from infra.adapters.github.github_adapter import GitHubVcsAdapter
+from infra.adapters.gitlab.gitlab_adapter import GitLabVcsAdapter
 from infra.adapters.integrations.fake import (
     FakeCalendarProvider,
     FakeIssueTracker,
@@ -103,6 +104,26 @@ def test_registry_selects_real_configured_provider_adapters() -> None:
     assert isinstance(workflow_scheduler, TemporalWorkflowScheduler)
     assert workflow_scheduler.schedule_id == "temporal-heartbeat"
     assert isinstance(registry.workflow_worker(), TemporalWorkflowWorker)
+
+
+def test_registry_selects_gitlab_vcs_adapter() -> None:
+    registry = ServiceRegistry(
+        _settings(
+            secret_key=SECRET_KEY,
+            runtime_mode="memory",
+            chat_provider="fake",
+            issue_tracker_provider="fake",
+            vcs_provider="gitlab",
+            gitlab_base_url="https://gitlab.test/api/v4",
+            gitlab_token="token",
+            gitlab_namespace_id="136978033",
+            calendar_provider="fake",
+            llm_provider="fake",
+            workflow_provider="fake",
+        )
+    )
+
+    assert isinstance(registry.vcs_provider(), GitLabVcsAdapter)
 
 
 def test_container_slack_chat_provider_requires_bot_token() -> None:
