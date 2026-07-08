@@ -104,7 +104,7 @@ def _connector_filter(value: str | None) -> str | None:
     normalized = value.strip().lower()
     if normalized in {"issue", "jira"}:
         return "issue"
-    if normalized in {"vcs", "git", "github"}:
+    if normalized in {"vcs", "git", "github", "gitlab"}:
         return "vcs"
     return None
 

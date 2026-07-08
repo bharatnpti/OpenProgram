@@ -163,10 +163,16 @@ def test_settings_validate_provider_selectors() -> None:
         secret_key=SECRET_KEY,
         chat_provider="mock_slack",
         directory_provider="mock_slack",
+        vcs_provider="gitlab",
+        gitlab_base_url="https://gitlab.test/api/v4",
+        gitlab_namespace_id="136978033",
         chat_simulator_enabled=True,
     )
     assert settings.chat_provider == "mock_slack"
     assert settings.directory_provider == "mock_slack"
+    assert settings.vcs_provider == "gitlab"
+    assert settings.gitlab_base_url == "https://gitlab.test/api/v4"
+    assert settings.gitlab_namespace_id == "136978033"
     assert settings.chat_simulator_enabled is True
 
     with pytest.raises(ValidationError):
@@ -176,7 +182,7 @@ def test_settings_validate_provider_selectors() -> None:
     with pytest.raises(ValidationError):
         _settings(secret_key=SECRET_KEY, issue_tracker_provider="linear")
     with pytest.raises(ValidationError):
-        _settings(secret_key=SECRET_KEY, vcs_provider="gitlab")
+        _settings(secret_key=SECRET_KEY, vcs_provider="bitbucket")
     with pytest.raises(ValidationError):
         _settings(secret_key=SECRET_KEY, calendar_provider="exchange")
     with pytest.raises(ValidationError):
