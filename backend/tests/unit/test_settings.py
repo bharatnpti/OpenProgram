@@ -25,6 +25,59 @@ def test_settings_parses_dev_roles() -> None:
     assert settings.dev_roles == frozenset({Role.DEV, Role.SM})
 
 
+def test_settings_default_to_dev_auth_provider() -> None:
+    settings = _settings(secret_key=SECRET_KEY)
+
+    assert settings.auth_provider == "dev"
+    assert settings.auth_session_ttl_seconds == 7200
+    assert settings.auth_cookie_name == "openprogram_session"
+    assert settings.auth_csrf_cookie_name == "openprogram_csrf"
+    assert settings.auth_cookie_samesite == "lax"
+
+
+def test_settings_require_oidc_fields_for_bff_mode() -> None:
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, auth_provider="oidc_bff", runtime_mode="memory")
+
+    settings = _settings(
+        secret_key=SECRET_KEY,
+        runtime_mode="memory",
+        auth_provider="oidc_bff",
+        oidc_issuer_url="https://issuer.example.com",
+        oidc_client_id="openprogram",
+        oidc_client_secret="secret",
+    )
+
+    assert settings.auth_provider == "oidc_bff"
+    assert settings.auth_callback_url() == "http://127.0.0.1:8000/api/v1/auth/callback"
+
+
+def test_settings_reject_invalid_auth_cookie_and_role_map_config() -> None:
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, auth_cookie_samesite="none", auth_cookie_secure=False)
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, oidc_scopes="profile,email")
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, oidc_role_map_json='{"group":"unknown"}')
+
+
+def test_settings_validate_safe_auth_return_url() -> None:
+    settings = _settings(
+        secret_key=SECRET_KEY,
+        auth_frontend_url="http://localhost:5173",
+        auth_allowed_return_paths="/me,/portfolio",
+        auth_allowed_return_origins="https://admin.example.com",
+    )
+
+    assert settings.safe_auth_return_url("/me") == "http://localhost:5173/me"
+    assert (
+        settings.safe_auth_return_url("https://admin.example.com/portfolio?tab=risks")
+        == "https://admin.example.com/portfolio?tab=risks"
+    )
+    assert settings.safe_auth_return_url("https://evil.example.com/me") == "http://localhost:5173"
+    assert settings.safe_auth_return_url("/admin") == "http://localhost:5173"
+
+
 def test_settings_parse_cors_origins_and_pool_sizes() -> None:
     settings = _settings(
         secret_key=SECRET_KEY,

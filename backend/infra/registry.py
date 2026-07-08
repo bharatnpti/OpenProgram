@@ -21,7 +21,14 @@ from core.application.sync_services import (
     VcsReadSyncService,
 )
 from core.domain.messaging import InboundMessage
-from core.ports.auth import AuthProvider, CurrentPrincipal
+from core.ports.auth import (
+    AuthCallbackResult,
+    AuthCredentials,
+    AuthLogoutResult,
+    AuthProvider,
+    AuthSession,
+    CurrentPrincipal,
+)
 from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.directory import DirectoryProvider, DirectoryUserRepository
@@ -41,7 +48,13 @@ from core.ports.secrets import SecretStore
 from core.ports.vcs import VcsProvider
 from core.ports.workflows import WorkflowScheduler, WorkflowWorker
 from infra.adapters import catalog
-from infra.adapters.auth.dev import DevAuthProvider, DevCurrentPrincipal
+from infra.adapters.auth.dev import AuthProviderCurrentPrincipal, DevAuthProvider
+from infra.adapters.auth.oidc import OidcBffAuthProvider, OidcBffService
+from infra.adapters.auth.session import (
+    AuthSessionStore,
+    InMemoryAuthSessionStore,
+    RedisAuthSessionStore,
+)
 from infra.adapters.chat.mock_slack import MockSlackStore, slack_event_payload
 from infra.adapters.chat.slack_signing import verify_slack_signature
 from infra.adapters.redis_client import RedisClientProvider
@@ -111,6 +124,9 @@ class ServiceRegistry:
         default=None,
         init=False,
     )
+    _auth_provider: AuthProvider | None = field(default=None, init=False)
+    _auth_session_store: AuthSessionStore | None = field(default=None, init=False)
+    _oidc_bff_service: OidcBffService | None = field(default=None, init=False)
 
     def graph_repository(self) -> GraphRepository:
         if self.settings.runtime_mode == "memory":
@@ -173,14 +189,62 @@ class ServiceRegistry:
         return self._postgres_sync_cursor_repository
 
     def auth_provider(self) -> AuthProvider:
-        return DevAuthProvider(
-            tenant_id=self.settings.tenant_id,
-            subject=self.settings.dev_principal_subject,
-            roles=self.settings.dev_roles,
+        if self._auth_provider is None:
+            if self.settings.auth_provider == "dev":
+                self._auth_provider = DevAuthProvider(
+                    tenant_id=self.settings.tenant_id,
+                    subject=self.settings.dev_principal_subject,
+                    roles=self.settings.dev_roles,
+                )
+            else:
+                self._auth_provider = OidcBffAuthProvider(self.auth_session_store())
+        return self._auth_provider
+
+    def current_principal(self, credentials: AuthCredentials) -> CurrentPrincipal:
+        return AuthProviderCurrentPrincipal(self.auth_provider(), credentials)
+
+    def auth_session_store(self) -> AuthSessionStore:
+        if self._auth_session_store is None:
+            if self.settings.runtime_mode == "memory":
+                self._auth_session_store = InMemoryAuthSessionStore()
+            else:
+                self._auth_session_store = RedisAuthSessionStore(
+                    self._redis_client(),
+                    Fernet(_fernet_key(self.settings.secret_key)),
+                )
+        return self._auth_session_store
+
+    def oidc_bff_service(self) -> OidcBffService:
+        if self._oidc_bff_service is None:
+            self._oidc_bff_service = OidcBffService(
+                settings=self.settings,
+                store=self.auth_session_store(),
+            )
+        return self._oidc_bff_service
+
+    async def auth_session(self, session_id: str | None) -> AuthSession | None:
+        if session_id is None:
+            return None
+        record = await self.auth_session_store().get_session(session_id)
+        return record.session if record is not None else None
+
+    async def begin_auth_login(self, return_url: str | None, prompt: str | None) -> str:
+        return await self.oidc_bff_service().authorization_redirect_url(
+            return_url=return_url,
+            prompt=prompt,
         )
 
-    def current_principal(self, token: str | None) -> CurrentPrincipal:
-        return DevCurrentPrincipal(self.auth_provider(), token)
+    async def complete_auth_callback(self, params: Mapping[str, str]) -> AuthCallbackResult:
+        return await self.oidc_bff_service().handle_callback(params)
+
+    async def logout_auth_session(self, session_id: str | None) -> AuthLogoutResult:
+        if self.settings.auth_provider == "dev":
+            return AuthLogoutResult(
+                success=True,
+                message="signed out",
+                redirect_url=self.settings.frontend_logged_out_url(),
+            )
+        return await self.oidc_bff_service().logout(session_id)
 
     def chat_provider(self) -> ChatProvider:
         redis_client = None if self.settings.runtime_mode == "memory" else self._redis_client()

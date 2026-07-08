@@ -2,15 +2,28 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from secrets import compare_digest
 from time import perf_counter
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from opentelemetry import trace
 from starlette.responses import Response
 
-from api.routers import admin, ask, checkin, config, graph, health, persona, test_support, webhooks
+from api.routers import (
+    admin,
+    ask,
+    auth,
+    checkin,
+    config,
+    graph,
+    health,
+    persona,
+    test_support,
+    webhooks,
+)
 from config.settings import Settings, get_settings
 from infra.observability.logging import configure_logging
 from infra.observability.metrics import build_http_metrics
@@ -48,6 +61,45 @@ def create_app(
     )
 
     @app.middleware("http")
+    async def csrf_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        if (
+            resolved_settings.auth_provider == "oidc_bff"
+            and request.method in _UNSAFE_METHODS
+            and not _csrf_exempt(request.url.path)
+        ):
+            session_id = request.cookies.get(resolved_settings.auth_cookie_name)
+            if session_id is not None:
+                session = await resolved_registry.auth_session(session_id)
+                if session is None:
+                    return JSONResponse(
+                        status_code=401,
+                        content={
+                            "detail": {
+                                "message": "authentication session is invalid or expired",
+                                "login_url": resolved_settings.auth_login_url(
+                                    request.headers.get("referer") or "/"
+                                ),
+                            }
+                        },
+                    )
+                csrf_cookie = request.cookies.get(resolved_settings.auth_csrf_cookie_name)
+                csrf_header = request.headers.get(resolved_settings.auth_csrf_header_name)
+                if (
+                    csrf_cookie is None
+                    or csrf_header is None
+                    or not compare_digest(csrf_cookie, session.csrf_token)
+                    or not compare_digest(csrf_header, session.csrf_token)
+                ):
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "CSRF token is missing or invalid"},
+                    )
+        return await call_next(request)
+
+    @app.middleware("http")
     async def correlation_middleware(
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
@@ -73,6 +125,7 @@ def create_app(
             _observe_request(request, status_code, perf_counter() - started)
             return response
 
+    app.include_router(auth.router)
     app.include_router(health.router)
     app.include_router(graph.router)
     app.include_router(admin.router)
@@ -96,3 +149,20 @@ def _observe_request(request: Request, status_code: int, duration: float) -> Non
         status_code,
         duration,
     )
+
+
+_UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+_CSRF_EXEMPT_PATHS = frozenset(
+    {
+        "/api/v1/auth/status",
+        "/api/v1/auth/login",
+        "/api/v1/auth/callback",
+        "/health",
+        "/ready",
+        "/metrics",
+    }
+)
+
+
+def _csrf_exempt(path: str) -> bool:
+    return path in _CSRF_EXEMPT_PATHS or path.startswith("/webhooks/")

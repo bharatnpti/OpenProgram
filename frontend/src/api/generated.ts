@@ -4,6 +4,74 @@
  */
 
 export interface paths {
+  "/api/v1/auth/status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Auth Status */
+    get: operations["auth_status_api_v1_auth_status_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/login": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Auth Login */
+    get: operations["auth_login_api_v1_auth_login_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/callback": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Auth Callback */
+    get: operations["auth_callback_api_v1_auth_callback_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/auth/logout": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Auth Logout */
+    post: operations["auth_logout_api_v1_auth_logout_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/health": {
     parameters: {
       query?: never;
@@ -1174,6 +1242,36 @@ export interface components {
       /** Trace Id */
       trace_id: string;
     };
+    /** AuthStatusResponse */
+    AuthStatusResponse: {
+      /** Authenticated */
+      authenticated: boolean;
+      /**
+       * Provider
+       * @enum {string}
+       */
+      provider: "dev" | "oidc_bff";
+      /** Login Url */
+      login_url?: string | null;
+      /** Message */
+      message?: string | null;
+      user?: components["schemas"]["AuthUserResponse"] | null;
+    };
+    /** AuthUserResponse */
+    AuthUserResponse: {
+      /** Subject */
+      subject: string;
+      /** Username */
+      username?: string | null;
+      /** Email */
+      email?: string | null;
+      /** Name */
+      name?: string | null;
+      /** Roles */
+      roles: string[];
+      /** Scopes */
+      scopes: string[];
+    };
     /** BlockerDto */
     BlockerDto: {
       /** Id */
@@ -1702,6 +1800,15 @@ export interface components {
       container_id?: string | null;
       /** Observed At */
       observed_at?: string | null;
+    };
+    /** LogoutResponse */
+    LogoutResponse: {
+      /** Success */
+      success: boolean;
+      /** Message */
+      message: string;
+      /** Redirect Url */
+      redirect_url: string;
     };
     /** MemberFromDirectoryRequest */
     MemberFromDirectoryRequest: {
@@ -2248,6 +2355,109 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  auth_status_api_v1_auth_status_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AuthStatusResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  auth_login_api_v1_auth_login_get: {
+    parameters: {
+      query?: {
+        return_url?: string | null;
+        prompt?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  auth_callback_api_v1_auth_callback_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  auth_logout_api_v1_auth_logout_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LogoutResponse"];
+        };
+      };
+    };
+  };
   health_health_get: {
     parameters: {
       query?: never;
