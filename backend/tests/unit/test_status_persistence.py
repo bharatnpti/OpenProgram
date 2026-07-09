@@ -170,6 +170,8 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
                 "progress_note": "Graph sync",
                 "blockers": ["dependency"],
                 "eta_change_days": 1,
+                "blockers_answered": True,
+                "eta_answered": True,
             },
             "last_accessed_at": last_accessed_at,
         }
@@ -289,6 +291,8 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
         progress_note="Graph sync",
         blockers=("dependency",),
         eta_change_days=1,
+        blockers_answered=True,
+        eta_answered=True,
     )
     assert checkin.last_accessed_at == last_accessed_at
     assert developer_status == DeveloperStatus(

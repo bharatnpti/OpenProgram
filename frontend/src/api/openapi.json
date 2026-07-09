@@ -5889,7 +5889,7 @@
           },
           "state": {
             "type": "string",
-            "enum": ["confirmed", "stale", "missing"],
+            "enum": ["confirmed", "partial", "stale", "missing"],
             "title": "State"
           },
           "source": {
@@ -7579,6 +7579,10 @@
             "type": "integer",
             "title": "Confirmed"
           },
+          "partial": {
+            "type": "integer",
+            "title": "Partial"
+          },
           "stale": {
             "type": "integer",
             "title": "Stale"
@@ -7596,7 +7600,16 @@
           }
         },
         "type": "object",
-        "required": ["pod_id", "pod_name", "as_of", "confirmed", "stale", "missing", "developers"],
+        "required": [
+          "pod_id",
+          "pod_name",
+          "as_of",
+          "confirmed",
+          "partial",
+          "stale",
+          "missing",
+          "developers"
+        ],
         "title": "PodCheckinsResponse"
       },
       "PodMemberLinkRequest": {
@@ -8177,7 +8190,7 @@
       },
       "StatusSource": {
         "type": "string",
-        "enum": ["confirmed", "inferred", "stale", "unknown"],
+        "enum": ["confirmed", "partial", "inferred", "stale", "unknown"],
         "title": "StatusSource"
       },
       "TaskProgressDto": {

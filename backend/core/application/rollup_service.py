@@ -161,6 +161,18 @@ def _developer_factors(
         )
         return contributes, factors
 
+    if status.source is StatusSource.PARTIAL:
+        return (
+            Rag.AMBER,
+            (
+                RollupFactor(
+                    description="Status is partial and needs blocker or ETA confirmation.",
+                    contributes=Rag.AMBER,
+                    source_ref=node.ref,
+                ),
+            ),
+        )
+
     if status.source is StatusSource.INFERRED:
         return (
             Rag.AMBER,
@@ -338,6 +350,8 @@ def _aggregate_source(children: tuple[NodeStatus, ...]) -> StatusSource:
         return StatusSource.UNKNOWN
     if StatusSource.STALE in child_sources:
         return StatusSource.STALE
+    if StatusSource.PARTIAL in child_sources:
+        return StatusSource.PARTIAL
     if StatusSource.INFERRED in child_sources:
         return StatusSource.INFERRED
     return StatusSource.CONFIRMED

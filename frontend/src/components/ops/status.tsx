@@ -6,9 +6,19 @@ export function StatusBadge({ rag }: { rag: Rag | null | undefined }) {
   return <Badge tone={toneForRag(rag)}>{rag ?? "unknown"}</Badge>;
 }
 
-export function StateBadge({ state }: { state: "confirmed" | "stale" | "missing" | string }) {
+export function StateBadge({
+  state,
+}: {
+  state: "confirmed" | "partial" | "stale" | "missing" | string;
+}) {
   const tone: BadgeTone =
-    state === "confirmed" ? "success" : state === "stale" ? "warning" : "danger";
+    state === "confirmed"
+      ? "success"
+      : state === "partial"
+        ? "info"
+        : state === "stale"
+          ? "warning"
+          : "danger";
   return <Badge tone={tone}>{state}</Badge>;
 }
 

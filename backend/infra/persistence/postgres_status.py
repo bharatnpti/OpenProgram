@@ -988,6 +988,8 @@ def _signals_to_json(signals: CheckInSignals | None) -> dict[str, object] | None
         "progress_note": signals.progress_note,
         "blockers": list(signals.blockers),
         "eta_change_days": signals.eta_change_days,
+        "blockers_answered": signals.blockers_answered,
+        "eta_answered": signals.eta_answered,
         "requests": [
             {
                 "name": request.raw_name,
@@ -1007,18 +1009,28 @@ def _signals_from_json(value: object) -> CheckInSignals | None:
     if not isinstance(progress_note, str):
         return None
     eta_change_days = value.get("eta_change_days")
+    blockers = _string_tuple_from_json(value.get("blockers"))
+    parsed_eta = (
+        eta_change_days
+        if isinstance(eta_change_days, int) and not isinstance(eta_change_days, bool)
+        else None
+    )
     return CheckInSignals(
         progress_note=progress_note,
-        blockers=_string_tuple_from_json(value.get("blockers")),
-        eta_change_days=eta_change_days
-        if isinstance(eta_change_days, int) and not isinstance(eta_change_days, bool)
-        else None,
+        blockers=blockers,
+        eta_change_days=parsed_eta,
+        blockers_answered=bool(blockers) or _bool_from_json(value.get("blockers_answered")),
+        eta_answered=parsed_eta is not None or _bool_from_json(value.get("eta_answered")),
         requests=_cross_person_mentions_from_json(value.get("requests")),
     )
 
 
 def _string_tuple_to_json(values: tuple[str, ...]) -> dict[str, object]:
     return {"items": list(values)}
+
+
+def _bool_from_json(value: object) -> bool:
+    return value if isinstance(value, bool) else False
 
 
 def _int_tuple_to_json(values: tuple[int, ...]) -> dict[str, object]:

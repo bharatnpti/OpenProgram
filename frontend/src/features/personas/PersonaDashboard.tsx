@@ -300,8 +300,12 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
                   ? `${checkins.data.confirmed}/${checkins.data.developers.length}`
                   : "-"
               }
-              detail={checkins.data ? `${checkins.data.missing} missing` : statusForQuery(checkins)}
-              tone={checkins.data?.missing ? "danger" : "success"}
+              detail={
+                checkins.data
+                  ? `${checkins.data.partial} partial / ${checkins.data.missing} missing`
+                  : statusForQuery(checkins)
+              }
+              tone={checkins.data?.missing ? "danger" : checkins.data?.partial ? "info" : "success"}
             />
           )}
           {showProgress && (
@@ -440,14 +444,15 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
           <section className="grid gap-4 xl:grid-cols-[420px_minmax(0,1fr)]">
             <DataPanel
               title="Check-in Completeness"
-              description="Confirmed, stale, and missing developer status."
+              description="Confirmed, partial, stale, and missing developer status."
               action={selectedPod ? <Badge tone="info">{selectedPod.name}</Badge> : undefined}
             >
               <QueryState query={checkins}>
                 {(data) => (
                   <div className="space-y-3">
-                    <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="grid grid-cols-4 gap-2 text-center">
                       <Count label="Confirmed" value={data.confirmed} tone="success" />
+                      <Count label="Partial" value={data.partial} tone="info" />
                       <Count label="Stale" value={data.stale} tone="warning" />
                       <Count label="Missing" value={data.missing} tone="danger" />
                     </div>

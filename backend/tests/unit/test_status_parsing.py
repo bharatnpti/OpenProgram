@@ -66,7 +66,8 @@ async def test_status_parser_converts_valid_json_to_signals() -> None:
     provider = CapturingLlmProvider(
         text=(
             '{"progress_note":"API handoff is ready",'
-            '"blockers":["schema review"],"eta_change_days":2}'
+            '"blockers":["schema review"],"eta_change_days":2,'
+            '"blockers_answered":true,"eta_answered":true}'
         )
     )
     parser = StatusParser(provider, model="test-model")
@@ -117,6 +118,8 @@ async def test_status_parser_converts_valid_json_to_signals() -> None:
         progress_note="API handoff is ready",
         blockers=("schema review",),
         eta_change_days=2,
+        blockers_answered=True,
+        eta_answered=True,
     )
     assert provider.requests[0].metadata == {
         "service": "status_parser",
@@ -137,6 +140,7 @@ async def test_status_parser_extracts_cross_person_requests() -> None:
         text=(
             '{"progress_note":"Blocked on schema review",'
             '"blockers":["schema review"],"eta_change_days":null,'
+            '"blockers_answered":true,"eta_answered":false,'
             '"requests":['
             '{"name":"Alice Chen","kind":"review","note":"API schema review",'
             '"email":"alice@example.com"},'
@@ -156,6 +160,7 @@ async def test_status_parser_extracts_cross_person_requests() -> None:
     assert signals == CheckInSignals(
         progress_note="Blocked on schema review",
         blockers=("schema review",),
+        blockers_answered=True,
         requests=(
             CrossPersonMention(
                 raw_name="Alice Chen",
@@ -261,7 +266,8 @@ async def test_clarification_evaluator_parses_sufficient_signals() -> None:
         text=(
             '{"sufficient":true,"question":null,'
             '"signals":{"progress_note":"API handoff is ready",'
-            '"blockers":[],"eta_change_days":0}}'
+            '"blockers":[],"eta_change_days":0,'
+            '"blockers_answered":true,"eta_answered":true}}'
         )
     )
     evaluator = ClarificationEvaluator(provider, model="test-model")
@@ -278,6 +284,8 @@ async def test_clarification_evaluator_parses_sufficient_signals() -> None:
         signals=CheckInSignals(
             progress_note="API handoff is ready",
             eta_change_days=0,
+            blockers_answered=True,
+            eta_answered=True,
         ),
     )
 
@@ -343,7 +351,8 @@ async def test_clarification_evaluator_parses_final_json_after_tool_cap() -> Non
                 text=(
                     '{"sufficient":true,"question":null,'
                     '"signals":{"progress_note":"History confirms handoff is ready",'
-                    '"blockers":[],"eta_change_days":0}}'
+                    '"blockers":[],"eta_change_days":0,'
+                    '"blockers_answered":true,"eta_answered":true}}'
                 ),
                 finish_reason="stop",
             ),
@@ -369,6 +378,8 @@ async def test_clarification_evaluator_parses_final_json_after_tool_cap() -> Non
         signals=CheckInSignals(
             progress_note="History confirms handoff is ready",
             eta_change_days=0,
+            blockers_answered=True,
+            eta_answered=True,
         ),
     )
     assert len(provider.requests) == 3

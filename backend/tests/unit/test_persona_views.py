@@ -320,6 +320,76 @@ async def test_portfolio_heatmap_uses_first_configured_program_when_root_is_omit
     }
 
 
+async def test_pod_checkins_counts_partial_statuses() -> None:
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    pod = Pod(tenant_id="demo", id="pod-runtime", name="Runtime")
+    developers = (
+        Developer(tenant_id="demo", id="dev-confirmed", name="Confirmed"),
+        Developer(tenant_id="demo", id="dev-partial", name="Partial"),
+        Developer(tenant_id="demo", id="dev-stale", name="Stale"),
+        Developer(tenant_id="demo", id="dev-missing", name="Missing"),
+    )
+    await store.upsert_node(pod)
+    for developer in developers:
+        await store.upsert_node(developer)
+        await store.add_edge(
+            GraphEdge(
+                tenant_id="demo",
+                from_node_id=pod.id,
+                to_node_id=developer.id,
+                kind=EdgeKind.CONTAINS,
+            )
+        )
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-confirmed",
+            as_of=as_of,
+            source=StatusSource.CONFIRMED,
+            blockers=(),
+            summary="Done.",
+        )
+    )
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-partial",
+            as_of=as_of,
+            source=StatusSource.PARTIAL,
+            blockers=(),
+            summary="Progress shared. ETA was not provided.",
+        )
+    )
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-stale",
+            as_of=date(2026, 1, 9),
+            source=StatusSource.CONFIRMED,
+            blockers=(),
+            summary="Yesterday.",
+        )
+    )
+    service = PersonaViewService(
+        graph_repository=store,
+        status_repository=store,
+        rollup_repository=store,
+        time_series_repository=store,
+    )
+
+    view = await service.pod_checkins("demo", pod.id, as_of)
+
+    assert (view.confirmed, view.partial, view.stale, view.missing) == (1, 1, 1, 1)
+    states = {developer.developer_id: developer.state for developer in view.developers}
+    assert states == {
+        "dev-confirmed": "confirmed",
+        "dev-partial": "partial",
+        "dev-stale": "stale",
+        "dev-missing": "missing",
+    }
+
+
 async def _populate_developer_task_tree(store: InMemoryGraphStore) -> Program:
     program = Program(tenant_id="demo", id="dev-1", name="Asha")
     project = Project(tenant_id="demo", id="project-api", name="API")

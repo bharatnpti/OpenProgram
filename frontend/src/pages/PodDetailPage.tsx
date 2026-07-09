@@ -181,8 +181,9 @@ export function PodDetailPage() {
             <QueryState query={checkins}>
               {(data) => (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="grid grid-cols-4 gap-2 text-center">
                     <MiniStat label="Confirmed" value={data.confirmed} />
+                    <MiniStat label="Partial" value={data.partial} />
                     <MiniStat label="Stale" value={data.stale} />
                     <MiniStat label="Missing" value={data.missing} />
                   </div>

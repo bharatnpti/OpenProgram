@@ -12,6 +12,7 @@ export function toneForRag(rag: Rag | null | undefined): BadgeTone {
 
 export function toneForSource(source: StatusSource | undefined): BadgeTone {
   if (source === "confirmed") return "success";
+  if (source === "partial") return "info";
   if (source === "stale") return "warning";
   if (source === "inferred") return "info";
   if (source === "unknown" || !source) return "neutral";

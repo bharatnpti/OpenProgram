@@ -86,7 +86,7 @@ class PodBlockersView:
 class CheckinDeveloperView:
     developer_id: str
     developer_name: str
-    state: Literal["confirmed", "stale", "missing"]
+    state: Literal["confirmed", "partial", "stale", "missing"]
     source: StatusSource
     status_as_of: date | None
     summary: str
@@ -98,6 +98,7 @@ class PodCheckinsView:
     pod_name: str
     as_of: date
     confirmed: int
+    partial: int
     stale: int
     missing: int
     developers: tuple[CheckinDeveloperView, ...]
@@ -323,6 +324,7 @@ class PersonaViewService:
             pod_name=tree.root.name,
             as_of=as_of,
             confirmed=sum(1 for item in developers if item.state == "confirmed"),
+            partial=sum(1 for item in developers if item.state == "partial"),
             stale=sum(1 for item in developers if item.state == "stale"),
             missing=sum(1 for item in developers if item.state == "missing"),
             developers=tuple(sorted(developers, key=lambda item: item.developer_name)),
@@ -581,11 +583,13 @@ def _blockers_for_status(
 def _checkin_state(
     status: DeveloperStatus | None,
     as_of: date,
-) -> Literal["confirmed", "stale", "missing"]:
+) -> Literal["confirmed", "partial", "stale", "missing"]:
     if status is None or status.source is StatusSource.UNKNOWN:
         return "missing"
     if status.source is StatusSource.CONFIRMED and status.as_of == as_of:
         return "confirmed"
+    if status.source is StatusSource.PARTIAL and status.as_of == as_of:
+        return "partial"
     return "stale"
 
 
@@ -614,6 +618,8 @@ def _aggregate_task_source(tasks: tuple[TaskProgressView, ...]) -> StatusSource:
         return StatusSource.UNKNOWN
     if StatusSource.STALE in sources:
         return StatusSource.STALE
+    if StatusSource.PARTIAL in sources:
+        return StatusSource.PARTIAL
     if StatusSource.INFERRED in sources:
         return StatusSource.INFERRED
     return StatusSource.CONFIRMED

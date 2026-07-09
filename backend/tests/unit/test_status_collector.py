@@ -270,7 +270,8 @@ async def test_status_collector_handles_reply_by_correlation(
     parser_llm = SequenceLlmProvider(
         texts=[
             '{"progress_note":"Graph sync is in review",'
-            '"blockers":["schema review"],"eta_change_days":1}'
+            '"blockers":["schema review"],"eta_change_days":1,'
+            '"blockers_answered":true,"eta_answered":true}'
         ]
     )
     collector = StatusCollector(
@@ -409,7 +410,7 @@ async def test_status_collector_records_scheduled_checkin_status_on_schedule_dat
             texts=[
                 '{"is_status_update":true,"sufficient":true,"question":null,'
                 '"signals":{"progress_note":"Future-date reply","blockers":[],'
-                '"eta_change_days":null}}',
+                '"eta_change_days":null,"blockers_answered":true,"eta_answered":true}}',
             ]
         ),
         status_repository=store,
@@ -469,10 +470,10 @@ async def test_status_collector_records_only_first_rapid_final_reply() -> None:
             texts=[
                 '{"is_status_update":true,"sufficient":true,"question":null,'
                 '"signals":{"progress_note":"second","blockers":[],"eta_change_days":null,'
-                '"eta_change_days":null}}',
+                '"blockers_answered":true,"eta_answered":true}}',
                 '{"is_status_update":true,"sufficient":true,"question":null,'
                 '"signals":{"progress_note":"first","blockers":[],"eta_change_days":null,'
-                '"eta_change_days":null}}',
+                '"blockers_answered":true,"eta_answered":true}}',
             ]
         ),
         status_repository=store,
@@ -635,11 +636,91 @@ async def test_status_collector_finalizes_when_clarification_cap_reached() -> No
     assert outcome.kind == "processed"
     status = outcome.status
     assert status is not None
-    assert status.source is StatusSource.CONFIRMED
+    assert status.source is StatusSource.PARTIAL
     assert "Clarification cap reached" in status.summary
+    assert "Blocker status and ETA were not provided" in status.summary
     assert checkin is not None
     assert checkin.replied_at == datetime(2026, 1, 10, 9, 15, tzinfo=UTC)
     assert chat.sent == []
+
+
+async def test_status_collector_clarifies_when_required_answers_are_missing() -> None:
+    store = InMemoryGraphStore()
+    await _record_open_checkin(store)
+    chat = FakeChatProvider()
+    llm = SequenceLlmProvider(
+        texts=[
+            '{"sufficient":true,"question":null,'
+            '"signals":{"progress_note":"Worked on fixing the auth issue in BFF",'
+            '"blockers":[],"eta_change_days":null,'
+            '"blockers_answered":false,"eta_answered":false}}'
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    outcome = await collector.handle_reply(
+        _reply_message("hi i have worked on fixing the auth issue in bff, nothing else assigned")
+    )
+
+    checkin = await store.checkin_by_correlation("demo", "corr-1")
+    status = await store.latest_developer_status("demo", "dev-1", date(2026, 1, 10))
+    assert outcome.kind == "clarifying"
+    assert outcome.status is not None
+    assert outcome.status.source is StatusSource.PARTIAL
+    assert outcome.status == status
+    assert status is not None
+    assert status.summary == (
+        "Worked on fixing the auth issue in BFF "
+        "Blocker status and ETA were not provided."
+    )
+    assert checkin is not None
+    assert checkin.replied_at is None
+    assert chat.sent[0].text == (
+        "Thanks. Any blockers on this work, and what is your ETA to finish it?"
+    )
+
+
+async def test_status_collector_records_partial_when_required_answers_still_missing() -> None:
+    store = InMemoryGraphStore()
+    await _record_open_checkin(store)
+    llm = SequenceLlmProvider(
+        texts=[
+            '{"sufficient":true,"question":null,'
+            '"signals":{"progress_note":"Worked on fixing the auth issue in BFF",'
+            '"blockers":[],"eta_change_days":null,'
+            '"blockers_answered":false,"eta_answered":false}}'
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+        checkin_max_clarifications=0,
+    )
+
+    outcome = await collector.handle_reply(
+        _reply_message("hi i have worked on fixing the auth issue in bff, nothing else assigned")
+    )
+
+    status = outcome.status
+    assert outcome.kind == "processed"
+    assert status is not None
+    assert status.source is StatusSource.PARTIAL
+    assert status.summary == (
+        "Worked on fixing the auth issue in BFF "
+        "Blocker status and ETA were not provided."
+    )
+    assert "end of day" not in status.summary.lower()
 
 
 async def test_status_collector_resolves_cross_person_request_by_single_match() -> None:
@@ -664,6 +745,7 @@ async def test_status_collector_resolves_cross_person_request_by_single_match() 
                 '{"is_status_update":true,"sufficient":true,"question":null,'
                 '"signals":{"progress_note":"Blocked on schema review",'
                 '"blockers":["schema review"],"eta_change_days":null,'
+                '"blockers_answered":true,"eta_answered":true,'
                 '"requests":[{"name":"Alice Chen","kind":"review",'
                 '"note":"API schema review","email":null}]}}'
             ]
@@ -714,6 +796,7 @@ async def test_status_collector_clarifies_ambiguous_cross_person_name() -> None:
                 '{"is_status_update":true,"sufficient":true,"question":null,'
                 '"signals":{"progress_note":"Blocked on schema input",'
                 '"blockers":["schema input"],"eta_change_days":null,'
+                '"blockers_answered":true,"eta_answered":true,'
                 '"requests":[{"name":"Alex","kind":"input",'
                 '"note":"schema confirmation","email":null}]}}'
             ]
@@ -775,6 +858,7 @@ async def test_status_collector_resolves_ambiguous_name_with_email_reply() -> No
                 '{"is_status_update":true,"sufficient":true,"question":null,'
                 '"signals":{"progress_note":"Blocked on schema input",'
                 '"blockers":["schema input"],"eta_change_days":null,'
+                '"blockers_answered":true,"eta_answered":true,'
                 '"requests":[{"name":"Alex","kind":"input",'
                 '"note":"schema confirmation","email":"alexa.roy@example.com"}]}}'
             ]
@@ -809,6 +893,7 @@ async def test_status_collector_marks_unresolved_request_when_cap_reached() -> N
                 '{"is_status_update":true,"sufficient":true,"question":null,'
                 '"signals":{"progress_note":"Blocked on data contract",'
                 '"blockers":["data contract"],"eta_change_days":null,'
+                '"blockers_answered":true,"eta_answered":true,'
                 '"requests":[{"name":"Unknown Alex","kind":"dependency",'
                 '"note":"data contract approval","email":null}]}}'
             ]
@@ -870,7 +955,8 @@ async def test_status_collector_tool_agent_fetches_history_and_finalizes_reply()
                 text=(
                     '{"sufficient":true,"question":null,'
                     '"signals":{"progress_note":"Current work is ready",'
-                    '"blockers":[],"eta_change_days":0}}'
+                    '"blockers":[],"eta_change_days":0,'
+                    '"blockers_answered":true,"eta_answered":true}}'
                 ),
                 finish_reason="stop",
             ),
@@ -1005,13 +1091,21 @@ async def test_status_collector_timeout_finalizes_accumulated_clarification_repl
         )
     )
     parser_llm = SequenceLlmProvider(
-        texts=['{"progress_note":"Cache work is partly done","blockers":[],"eta_change_days":null}']
+        texts=[
+            '{"progress_note":"Cache work is partly done","blockers":[],"eta_change_days":null,'
+            '"blockers_answered":true,"eta_answered":true}'
+        ]
     )
     collector = StatusCollector(
         issue_tracker=FakeIssueTracker(),
         chat_provider=FakeChatProvider(),
         llm_provider=SequenceLlmProvider(
-            texts=['{"is_status_update":true,"sufficient":true,"question":null,"signals":null}']
+            texts=[
+                '{"is_status_update":true,"sufficient":true,"question":null,'
+                '"signals":{"progress_note":"Cache work is partly done",'
+                '"blockers":[],"eta_change_days":null,'
+                '"blockers_answered":true,"eta_answered":true}}'
+            ]
         ),
         status_repository=store,
         conversation_repository=store,
@@ -1183,7 +1277,8 @@ async def test_status_collector_resolves_user_fallback_by_developer_local_date()
         texts=[
             '{"sufficient":true,"question":null,'
             '"signals":{"progress_note":"Finished the rollout",'
-            '"blockers":[],"eta_change_days":0}}'
+            '"blockers":[],"eta_change_days":0,'
+            '"blockers_answered":true,"eta_answered":true}}'
         ]
     )
     collector = StatusCollector(
@@ -1398,7 +1493,8 @@ async def test_status_collector_carries_forward_unresolved_prior_blockers() -> N
         texts=[
             '{"sufficient":true,"question":null,'
             '"signals":{"progress_note":"Same as yesterday",'
-            '"blockers":[],"eta_change_days":null}}'
+            '"blockers":[],"eta_change_days":null,'
+            '"blockers_answered":true,"eta_answered":true}}'
         ]
     )
     collector = StatusCollector(
@@ -1456,7 +1552,8 @@ async def test_status_collector_does_not_clear_prior_blocker_on_negated_resoluti
         texts=[
             '{"sufficient":true,"question":null,'
             '"signals":{"progress_note":"Release gate is not resolved",'
-            '"blockers":[],"eta_change_days":null}}'
+            '"blockers":[],"eta_change_days":null,'
+            '"blockers_answered":true,"eta_answered":true}}'
         ]
     )
     collector = StatusCollector(
