@@ -177,7 +177,7 @@ class StatusCollector:
         if checkin.replied_at is not None:
             return ReplyOutcome(
                 kind="processed",
-                status=await self._confirmed_status_for_duplicate(checkin),
+                status=await self._status_for_duplicate_reply(checkin),
             )
         if await self._user_turn_exists(
             tenant_id=checkin.tenant_id,
@@ -262,6 +262,27 @@ class StatusCollector:
             tools=(history_tool,),
             prior_blockers=prior_blockers,
         )
+        required_check_signals = _signals_with_carried_blockers(
+            signals,
+            raw_reply=message.text,
+            prior_blockers=prior_blockers,
+        )
+        missing_required = _missing_required_status_details(required_check_signals)
+        if missing_required and clarification_count < self._checkin_max_clarifications:
+            partial_status = await self._record_partial_checkin_status(
+                checkin=checkin,
+                as_of_at=message.received_at,
+                signals=required_check_signals,
+            )
+            await self._send_clarification(
+                checkin=checkin,
+                message=message,
+                question=_missing_required_status_question(missing_required),
+                clarification_number=clarification_count + 1,
+            )
+            span.set_attribute("openprogram.reply_classification", "clarifying")
+            span.set_attribute("openprogram.has_blocker", bool(partial_status.blockers))
+            return ReplyOutcome(kind="clarifying", status=partial_status)
         if not decision.sufficient:
             signals = _signals_with_note(
                 signals,
@@ -715,7 +736,7 @@ class StatusCollector:
         )
         return {"checkin": checkin}
 
-    async def _confirmed_status_for_duplicate(self, checkin: CheckIn) -> DeveloperStatus:
+    async def _status_for_duplicate_reply(self, checkin: CheckIn) -> DeveloperStatus:
         status_as_of = await self._status_as_of_for_checkin(
             checkin,
             checkin.replied_at or checkin.asked_at,
@@ -725,16 +746,17 @@ class StatusCollector:
             checkin.developer_id,
             status_as_of,
         )
-        if latest is not None and latest.source is StatusSource.CONFIRMED:
+        if latest is not None and latest.source in {StatusSource.CONFIRMED, StatusSource.PARTIAL}:
             return latest
         signals = checkin.signals or CheckInSignals(progress_note="Duplicate confirmed reply.")
+        missing_required = _missing_required_status_details(signals)
         return DeveloperStatus(
             tenant_id=checkin.tenant_id,
             developer_id=checkin.developer_id,
             as_of=status_as_of,
-            source=StatusSource.CONFIRMED,
+            source=_status_source_for_signals(signals),
             blockers=signals.blockers,
-            summary=signals.progress_note,
+            summary=_summary_with_missing_required_details(signals.progress_note, missing_required),
             eta_change_days=signals.eta_change_days,
         )
 
@@ -933,15 +955,19 @@ class StatusCollector:
                 checkin.tenant_id,
                 checkin.correlation_id,
             )
-            return await self._confirmed_status_for_duplicate(duplicate or checkin)
+            return await self._status_for_duplicate_reply(duplicate or checkin)
 
+        missing_required = _missing_required_status_details(final_signals)
         status = DeveloperStatus(
             tenant_id=checkin.tenant_id,
             developer_id=checkin.developer_id,
             as_of=await self._status_as_of_for_checkin(checkin, replied_at),
-            source=StatusSource.CONFIRMED,
+            source=_status_source_for_signals(final_signals),
             blockers=final_signals.blockers,
-            summary=final_signals.progress_note,
+            summary=_summary_with_missing_required_details(
+                final_signals.progress_note,
+                missing_required,
+            ),
             eta_change_days=final_signals.eta_change_days,
         )
         await self._status_repository.record_developer_status(status)
@@ -951,6 +977,29 @@ class StatusCollector:
             replied_at,
         )
         await self._append_checkin_fact(updated, status)
+        return status
+
+    async def _record_partial_checkin_status(
+        self,
+        *,
+        checkin: CheckIn,
+        as_of_at: datetime,
+        signals: CheckInSignals,
+    ) -> DeveloperStatus:
+        missing_required = _missing_required_status_details(signals)
+        status = DeveloperStatus(
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            as_of=await self._status_as_of_for_checkin(checkin, as_of_at),
+            source=StatusSource.PARTIAL,
+            blockers=signals.blockers,
+            summary=_summary_with_missing_required_details(
+                signals.progress_note,
+                missing_required,
+            ),
+            eta_change_days=signals.eta_change_days,
+        )
+        await self._status_repository.record_developer_status(status)
         return status
 
     async def _finalize_accumulated_reply_on_timeout(
@@ -1261,6 +1310,8 @@ def _signals_with_note(signals: CheckInSignals, note: str) -> CheckInSignals:
         progress_note=f"{signals.progress_note} {note}",
         blockers=signals.blockers,
         eta_change_days=signals.eta_change_days,
+        blockers_answered=signals.blockers_answered,
+        eta_answered=signals.eta_answered,
         requests=signals.requests,
     )
 
@@ -1280,8 +1331,67 @@ def _signals_with_carried_blockers(
         ),
         blockers=prior_blockers,
         eta_change_days=signals.eta_change_days,
+        blockers_answered=signals.blockers_answered,
+        eta_answered=signals.eta_answered,
         requests=signals.requests,
     )
+
+
+def _missing_required_status_details(
+    signals: CheckInSignals,
+) -> tuple[Literal["blockers", "eta"], ...]:
+    missing: list[Literal["blockers", "eta"]] = []
+    if not _blockers_answered(signals):
+        missing.append("blockers")
+    if not _eta_answered(signals):
+        missing.append("eta")
+    return tuple(missing)
+
+
+def _blockers_answered(signals: CheckInSignals) -> bool:
+    return signals.blockers_answered or bool(signals.blockers)
+
+
+def _eta_answered(signals: CheckInSignals) -> bool:
+    return signals.eta_answered or signals.eta_change_days is not None
+
+
+def _missing_required_status_question(
+    missing: tuple[Literal["blockers", "eta"], ...],
+) -> str:
+    if missing == ("blockers", "eta"):
+        return "Thanks. Any blockers on this work, and what is your ETA to finish it?"
+    if missing == ("blockers",):
+        return "Thanks. Any blockers on this work?"
+    return "Thanks. What is your ETA to finish it?"
+
+
+def _status_source_for_signals(signals: CheckInSignals) -> StatusSource:
+    if _missing_required_status_details(signals):
+        return StatusSource.PARTIAL
+    return StatusSource.CONFIRMED
+
+
+def _summary_with_missing_required_details(
+    summary: str,
+    missing: tuple[Literal["blockers", "eta"], ...],
+) -> str:
+    note = _missing_required_status_note(missing)
+    if note is None or note in summary:
+        return summary
+    return f"{summary} {note}"
+
+
+def _missing_required_status_note(
+    missing: tuple[Literal["blockers", "eta"], ...],
+) -> str | None:
+    if missing == ("blockers", "eta"):
+        return "Blocker status and ETA were not provided."
+    if missing == ("blockers",):
+        return "Blocker status was not provided."
+    if missing == ("eta",):
+        return "ETA was not provided."
+    return None
 
 
 def _person_clarification_question(

@@ -81,6 +81,32 @@ async def test_rollup_keeps_stale_and_missing_statuses_out_of_green() -> None:
     assert by_id["program-1"].rag is not Rag.GREEN
 
 
+async def test_rollup_treats_partial_status_as_amber() -> None:
+    as_of = date(2026, 1, 10)
+    tree = _program_tree()
+    status_repository = FakeStatusRepository()
+    await status_repository.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-1",
+            as_of=as_of,
+            source=StatusSource.PARTIAL,
+            blockers=(),
+            summary="Progress shared. ETA was not provided.",
+        )
+    )
+
+    statuses = await RollupService(status_repository).compute(tree, as_of)
+    by_id = {status.entity_ref.id: status for status in statuses}
+
+    assert by_id["dev-1"].rag is Rag.AMBER
+    assert by_id["dev-1"].source is StatusSource.PARTIAL
+    assert by_id["dev-1"].factors[0].description == (
+        "Status is partial and needs blocker or ETA confirmation."
+    )
+    assert by_id["program-1"].source is StatusSource.PARTIAL
+
+
 async def test_persona_heatmap_fallback_rollup_persists_computed_statuses() -> None:
     as_of = date(2026, 1, 10)
     tree = _program_tree(critical_task=True)

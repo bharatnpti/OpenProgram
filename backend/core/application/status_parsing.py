@@ -18,12 +18,14 @@ from core.ports.tools import AgentTool
 PARSE_REPLY_SYSTEM_PROMPT = (
     "Extract structured status signals from the current reply. Use prior conversation turns only "
     "as context. Do not invent blockers; use an empty blocker list when no blocker is stated. "
+    "Track whether the reply explicitly answered blocker and ETA questions. "
     "Return only valid JSON."
 )
 CLARIFICATION_EVALUATOR_SYSTEM_PROMPT = (
     "Decide whether a status check-in reply has enough concrete progress, blocker, and ETA "
     "information to finalize the check-in. Use prior conversation turns as context. "
     "Classify whether the reply is a status update. Do not invent blockers. "
+    "Track whether the reply explicitly answered blocker and ETA questions. "
     "If more information is needed, draft one concise follow-up question. Return only valid JSON."
 )
 _logger = structlog.get_logger(__name__)
@@ -161,10 +163,14 @@ def _parser_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ()) -> str
     return (
         "Extract structured check-in signals from the reply below. "
         "Return only a JSON object with keys: progress_note string, "
-        "blockers array of strings, eta_change_days integer or null, and requests array. "
+        "blockers array of strings, eta_change_days integer or null, blockers_answered boolean, "
+        "eta_answered boolean, and requests array. "
         "Each requests item uses keys: name string, kind dependency/review/input, "
         "note string, email string or null. "
         "Do not invent blockers; use an empty blockers array when no blocker is stated. "
+        "Set blockers_answered true only when the reply explicitly says there are no blockers "
+        "or names one or more blockers. Set eta_answered true only when the reply explicitly "
+        "gives an ETA, ETA change, or says there is no ETA change. "
         "Only include a request when the reply explicitly needs a deliverable, review, "
         "or input from a specific named person. Use an empty requests array otherwise. "
         "Previously open blockers are context only; mark them resolved only if the reply says "
@@ -180,11 +186,15 @@ def _clarification_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ())
         "signals object or null. Set is_status_update false for acknowledgements, thanks, "
         "reactions, or questions that do not provide status progress, blockers, or ETA. "
         "The signals object uses keys: progress_note string, blockers array of strings, "
-        "eta_change_days integer or null, and requests array. Each requests item uses keys: "
-        "name string, kind dependency/review/input, note string, email string or null. "
+        "eta_change_days integer or null, blockers_answered boolean, eta_answered boolean, "
+        "and requests array. Each requests item uses keys: name string, "
+        "kind dependency/review/input, note string, email string or null. "
         "Do not invent blockers. Previously open blockers are context only; mark them resolved "
         "only if the reply says they are resolved. Only include a request when the reply "
         "explicitly needs a deliverable, review, or input from a specific named person. "
+        "Set blockers_answered true only when the reply explicitly says there are no blockers "
+        "or names one or more blockers. Set eta_answered true only when the reply explicitly "
+        "gives an ETA, ETA change, or says there is no ETA change. "
         "When sufficient is false, question must ask only for the missing status detail."
         f"{_prior_blocker_prompt(prior_blockers)}\n\n"
         f"Latest reply:\n{raw_reply}"
@@ -252,12 +262,16 @@ def _signals_from_json(value: object, *, fallback_progress_note: str) -> CheckIn
         return CheckInSignals(progress_note=fallback_progress_note)
 
     progress_note = value.get("progress_note")
+    blockers = _string_tuple(value.get("blockers"))
+    eta_change_days = _optional_int(value.get("eta_change_days"))
     return CheckInSignals(
         progress_note=progress_note.strip()
         if isinstance(progress_note, str) and progress_note.strip()
         else fallback_progress_note,
-        blockers=_string_tuple(value.get("blockers")),
-        eta_change_days=_optional_int(value.get("eta_change_days")),
+        blockers=blockers,
+        eta_change_days=eta_change_days,
+        blockers_answered=bool(blockers) or _optional_bool(value.get("blockers_answered")),
+        eta_answered=eta_change_days is not None or _optional_bool(value.get("eta_answered")),
         requests=_request_tuple(value.get("requests")),
     )
 
@@ -272,6 +286,10 @@ def _optional_int(value: object) -> int | None:
     if isinstance(value, int) and not isinstance(value, bool):
         return value
     return None
+
+
+def _optional_bool(value: object) -> bool:
+    return value if isinstance(value, bool) else False
 
 
 def _request_tuple(value: object) -> tuple[CrossPersonMention, ...]:
