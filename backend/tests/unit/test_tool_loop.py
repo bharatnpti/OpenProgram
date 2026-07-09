@@ -9,10 +9,18 @@ import pytest
 from core.application.agents import tool_loop as tool_loop_module
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.tools.conversation_history import ConversationHistoryTool
+from core.application.tools.git_activity import GitActivityTool
+from core.application.tools.issue_tracker import IssueTrackerTool
 from core.domain.conversation import ConversationRole, ConversationTurn
-from core.domain.graph import JsonScalar
+from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
+from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
-from tests.contract.fakes import FakeConversationRepository, FakeLlmProvider
+from tests.contract.fakes import (
+    FakeConversationRepository,
+    FakeIssueTracker,
+    FakeLlmProvider,
+    FakeTimeSeriesRepository,
+)
 
 
 def _response(
@@ -81,6 +89,71 @@ async def test_conversation_history_tool_fetches_recent_and_day_turns() -> None:
 
     assert "Older retained context." in recent
     assert "Can you share status?" in day
+
+
+async def test_issue_tracker_tool_fetches_active_and_exact_issue() -> None:
+    assignee = UserRef(tenant_id="demo", external_id="dev-1")
+    tracker = FakeIssueTracker(
+        issues={
+            "PO-1": Issue(
+                tenant_id="demo",
+                key="PO-1",
+                title="Build graph sync",
+                state=IssueState.BLOCKED,
+                assignee=assignee,
+                updated_at=datetime(2026, 1, 10, 8, 0, tzinfo=UTC),
+            ),
+            "PO-2": Issue(
+                tenant_id="demo",
+                key="PO-2",
+                title="Unassigned work",
+                state=IssueState.TODO,
+            ),
+        }
+    )
+    tool = IssueTrackerTool(tenant_id="demo", developer_id="dev-1", issue_tracker=tracker)
+
+    active = await tool.run({})
+    exact = await tool.run({"issue_key": "PO-2"})
+
+    assert "PO-1: Build graph sync | state=blocked" in active
+    assert "PO-2: Unassigned work | state=todo" in exact
+
+
+async def test_git_activity_tool_filters_recent_developer_facts_by_issue_key() -> None:
+    repository = FakeTimeSeriesRepository()
+    reference_at = datetime(2026, 1, 10, 12, 0, tzinfo=UTC)
+    await repository.append_fact(
+        FactEvent(
+            tenant_id="demo",
+            source="vcs_commit",
+            entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
+            payload={"repo": "repo-1", "sha": "abc123", "message": "PO-1 wire status parser"},
+            observed_at=reference_at - timedelta(hours=1),
+            correlation_id="vcs:commit:demo:repo-1:abc123",
+        )
+    )
+    await repository.append_fact(
+        FactEvent(
+            tenant_id="demo",
+            source="vcs_pull_request",
+            entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
+            payload={"repo": "repo-1", "id": "7", "title": "PO-2 unrelated", "merged": False},
+            observed_at=reference_at - timedelta(hours=2),
+            correlation_id="vcs:pull_request:demo:repo-1:7",
+        )
+    )
+    tool = GitActivityTool(
+        tenant_id="demo",
+        developer_id="dev-1",
+        repository=repository,
+        reference_at=reference_at,
+    )
+
+    output = await tool.run({"issue_key": "PO-1", "since_days": 3})
+
+    assert "commit: repo=repo-1, sha=abc123, message=PO-1 wire status parser" in output
+    assert "PO-2 unrelated" not in output
 
 
 async def test_tool_calling_agent_executes_tool_call_then_returns_final_response() -> None:

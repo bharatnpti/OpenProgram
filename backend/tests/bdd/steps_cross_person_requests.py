@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from pytest_bdd import given, parsers, then, when
 
@@ -61,6 +61,28 @@ def _given_liam_review_stack(world: World) -> None:
                 '"note":"API schema review","email":null}]}}'
             ),
         ],
+        auto_notify=True,
+    )
+
+
+@given(
+    "the cross-person request stack is running with Liam review extraction and auto notify disabled"
+)
+def _given_liam_review_stack_without_auto_notify(world: World) -> None:
+    _start_scripted_stack(
+        world,
+        [
+            "Can you share progress, blockers, and ETA changes?",
+            (
+                '{"is_status_update":true,"sufficient":true,"question":null,'
+                '"signals":{"progress_note":"Blocked on API schema review",'
+                '"blockers":["API schema review"],"eta_change_days":null,'
+                '"blockers_answered":true,"eta_answered":true,'
+                '"requests":[{"name":"Liam Chen","kind":"review",'
+                '"note":"API schema review","email":null}]}}'
+            ),
+        ],
+        auto_notify=False,
     )
 
 
@@ -87,6 +109,7 @@ def _given_ambiguous_alex_stack(world: World) -> None:
                 '"note":"schema confirmation","email":"alexa.roy@example.com"}]}}'
             ),
         ],
+        auto_notify=True,
     )
 
 
@@ -123,13 +146,13 @@ def _given_ambiguous_alex_users(world: World) -> None:
 @when(parsers.parse('member "{member_id}" replies to the cross-person request with text "{text}"'))
 def _when_counterpart_replies(world: World, member_id: str, text: str) -> None:
     message = _latest_cross_person_bot_message(world, member_id)
-    world.response = _submit_reply(world, str(message["message_id"]), text)
+    world.response = cast(Any, _submit_reply(world, str(message["message_id"]), text))
 
 
 @when(parsers.parse('I reply to the latest bot message for "{member_id}" with text "{text}"'))
 def _when_reply_to_latest_bot_message(world: World, member_id: str, text: str) -> None:
     message = _latest_bot_message_uncached(world, member_id)
-    world.response = _submit_reply(world, str(message["message_id"]), text)
+    world.response = cast(Any, _submit_reply(world, str(message["message_id"]), text))
 
 
 @then(
@@ -140,6 +163,18 @@ def _when_reply_to_latest_bot_message(world: World, member_id: str, text: str) -
 def _then_counterpart_notified(world: World, member_id: str, fragment: str) -> None:
     message = _latest_cross_person_bot_message(world, member_id)
     assert fragment in message["text"]
+
+
+@then(parsers.parse('no cross-person request should notify "{member_id}"'))
+def _then_counterpart_not_notified(world: World, member_id: str) -> None:
+    messages = [
+        item
+        for item in _messages(world)
+        if item["direction"] == "bot"
+        and item["user_id"] == member_id
+        and item["purpose"] == "cross_person_request"
+    ]
+    assert messages == []
 
 
 @then(parsers.parse('the cross-person request for "{member_id}" should have status "{status}"'))
@@ -168,8 +203,8 @@ def _then_no_cross_person_requests(world: World) -> None:
     assert requests == []
 
 
-def _start_scripted_stack(world: World, texts: list[str]) -> None:
-    settings = mock_slack_settings()
+def _start_scripted_stack(world: World, texts: list[str], *, auto_notify: bool) -> None:
+    settings = mock_slack_settings(cross_person_auto_notify=auto_notify)
     world.start_app(settings=settings, registry=_ScriptedLlmRegistry(settings, texts))
 
 
@@ -199,4 +234,4 @@ def _messages(world: World) -> list[dict[str, Any]]:
     assert world.client is not None
     response = world.client.get("/test/chat-simulator/messages")
     assert response.status_code == 200, response.text
-    return response.json()["items"]
+    return cast(list[dict[str, Any]], response.json()["items"])

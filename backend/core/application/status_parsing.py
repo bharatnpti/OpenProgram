@@ -11,7 +11,7 @@ from core.application.conversation_history import llm_messages_from_turns
 from core.domain.conversation import ConversationTurn
 from core.domain.cross_person import CrossPersonRequestKind
 from core.domain.llm import LlmRequest, LlmResponse
-from core.domain.status import CheckInSignals, CrossPersonMention
+from core.domain.status import CheckInSignals, CrossPersonMention, IssueClaim
 from core.ports.llm import LlmProvider
 from core.ports.tools import AgentTool
 
@@ -19,6 +19,8 @@ PARSE_REPLY_SYSTEM_PROMPT = (
     "Extract structured status signals from the current reply. Use prior conversation turns only "
     "as context. Do not invent blockers; use an empty blocker list when no blocker is stated. "
     "Track whether the reply explicitly answered blocker and ETA questions. "
+    "Use available Jira and Git tools to verify issue-specific claims when needed, but keep tools "
+    "read-only. "
     "Return only valid JSON."
 )
 CLARIFICATION_EVALUATOR_SYSTEM_PROMPT = (
@@ -26,6 +28,9 @@ CLARIFICATION_EVALUATOR_SYSTEM_PROMPT = (
     "information to finalize the check-in. Use prior conversation turns as context. "
     "Classify whether the reply is a status update. Do not invent blockers. "
     "Track whether the reply explicitly answered blocker and ETA questions. "
+    "Use available Jira and Git tools to verify issue-specific claims. If the reply contradicts "
+    "the source of truth, for example says an issue is done while Jira is not done, set sufficient "
+    "false and ask one targeted clarification. "
     "If more information is needed, draft one concise follow-up question. Return only valid JSON."
 )
 _logger = structlog.get_logger(__name__)
@@ -164,15 +169,19 @@ def _parser_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ()) -> str
         "Extract structured check-in signals from the reply below. "
         "Return only a JSON object with keys: progress_note string, "
         "blockers array of strings, eta_change_days integer or null, blockers_answered boolean, "
-        "eta_answered boolean, and requests array. "
+        "eta_answered boolean, requests array, and issue_updates array. "
         "Each requests item uses keys: name string, kind dependency/review/input, "
         "note string, email string or null. "
+        "Each issue_updates item uses keys: issue_key string, claimed_done boolean, "
+        "claimed_state string or null, and note string. "
         "Do not invent blockers; use an empty blockers array when no blocker is stated. "
         "Set blockers_answered true only when the reply explicitly says there are no blockers "
         "or names one or more blockers. Set eta_answered true only when the reply explicitly "
         "gives an ETA, ETA change, or says there is no ETA change. "
         "Only include a request when the reply explicitly needs a deliverable, review, "
         "or input from a specific named person. Use an empty requests array otherwise. "
+        "Only include an issue_updates item when the reply explicitly names an issue key or "
+        "unambiguously refers to an active issue in context. "
         "Previously open blockers are context only; mark them resolved only if the reply says "
         f"they are resolved.{_prior_blocker_prompt(prior_blockers)}\n\n"
         f"Reply:\n{raw_reply}"
@@ -187,11 +196,17 @@ def _clarification_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ())
         "reactions, or questions that do not provide status progress, blockers, or ETA. "
         "The signals object uses keys: progress_note string, blockers array of strings, "
         "eta_change_days integer or null, blockers_answered boolean, eta_answered boolean, "
-        "and requests array. Each requests item uses keys: name string, "
-        "kind dependency/review/input, note string, email string or null. "
+        "requests array, and issue_updates array. Each requests item uses keys: name string, "
+        "kind dependency/review/input, note string, email string or null. Each issue_updates "
+        "item uses keys: issue_key string, claimed_done boolean, claimed_state string or null, "
+        "and note string. "
         "Do not invent blockers. Previously open blockers are context only; mark them resolved "
         "only if the reply says they are resolved. Only include a request when the reply "
         "explicitly needs a deliverable, review, or input from a specific named person. "
+        "Use Jira/Git tools when available to cross-check issue and progress claims. If a reply "
+        "says an issue is done but Jira is not done, or claims substantial progress while recent "
+        "Git activity for that issue is absent or contradictory, set sufficient false and ask "
+        "one targeted clarification about that contradiction. "
         "Set blockers_answered true only when the reply explicitly says there are no blockers "
         "or names one or more blockers. Set eta_answered true only when the reply explicitly "
         "gives an ETA, ETA change, or says there is no ETA change. "
@@ -273,6 +288,7 @@ def _signals_from_json(value: object, *, fallback_progress_note: str) -> CheckIn
         blockers_answered=bool(blockers) or _optional_bool(value.get("blockers_answered")),
         eta_answered=eta_change_days is not None or _optional_bool(value.get("eta_answered")),
         requests=_request_tuple(value.get("requests")),
+        issue_updates=_issue_claim_tuple(value.get("issue_updates")),
     )
 
 
@@ -313,6 +329,29 @@ def _request_tuple(value: object) -> tuple[CrossPersonMention, ...]:
             )
         )
     return tuple(requests)
+
+
+def _issue_claim_tuple(value: object) -> tuple[IssueClaim, ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    claims: list[IssueClaim] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        issue_key = _clean_string(item.get("issue_key") or item.get("key"))
+        if issue_key is None:
+            continue
+        claimed_state = _clean_string(item.get("claimed_state"))
+        note = _clean_string(item.get("note")) or ""
+        claims.append(
+            IssueClaim(
+                issue_key=issue_key,
+                claimed_done=_optional_bool(item.get("claimed_done")),
+                claimed_state=claimed_state,
+                note=note,
+            )
+        )
+    return tuple(claims)
 
 
 def _clean_kind(value: object) -> CrossPersonRequestKind | None:

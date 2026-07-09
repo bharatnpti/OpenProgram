@@ -13,7 +13,7 @@ from core.application.status_parsing import (
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.graph import JsonScalar
 from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
-from core.domain.status import CheckInSignals, CrossPersonMention
+from core.domain.status import CheckInSignals, CrossPersonMention, IssueClaim
 from tests.contract.fakes import FakeLlmProvider
 
 
@@ -67,7 +67,9 @@ async def test_status_parser_converts_valid_json_to_signals() -> None:
         text=(
             '{"progress_note":"API handoff is ready",'
             '"blockers":["schema review"],"eta_change_days":2,'
-            '"blockers_answered":true,"eta_answered":true}'
+            '"blockers_answered":true,"eta_answered":true,'
+            '"issue_updates":[{"issue_key":"PO-1","claimed_done":true,'
+            '"claimed_state":"done","note":"API handoff ready"}]}'
         )
     )
     parser = StatusParser(provider, model="test-model")
@@ -120,6 +122,14 @@ async def test_status_parser_converts_valid_json_to_signals() -> None:
         eta_change_days=2,
         blockers_answered=True,
         eta_answered=True,
+        issue_updates=(
+            IssueClaim(
+                issue_key="PO-1",
+                claimed_done=True,
+                claimed_state="done",
+                note="API handoff ready",
+            ),
+        ),
     )
     assert provider.requests[0].metadata == {
         "service": "status_parser",
@@ -172,6 +182,36 @@ async def test_status_parser_extracts_cross_person_requests() -> None:
     )
     assert "requests array" in provider.requests[0].prompt
     assert "specific named person" in provider.requests[0].prompt
+
+
+async def test_status_parser_extracts_issue_updates() -> None:
+    provider = CapturingLlmProvider(
+        text=(
+            '{"progress_note":"Finished PO-7 and opened PR",'
+            '"blockers":[],"eta_change_days":0,'
+            '"blockers_answered":true,"eta_answered":true,'
+            '"issue_updates":[{"issue_key":"PO-7","claimed_done":true,'
+            '"claimed_state":"done","note":"PR is ready"}]}'
+        )
+    )
+    parser = StatusParser(provider, model="test-model")
+
+    signals = await parser.parse_reply(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="PO-7 is done; PR is ready.",
+        correlation_id="corr-1",
+    )
+
+    assert signals.issue_updates == (
+        IssueClaim(
+            issue_key="PO-7",
+            claimed_done=True,
+            claimed_state="done",
+            note="PR is ready",
+        ),
+    )
+    assert "issue_updates array" in provider.requests[0].prompt
 
 
 async def test_status_parser_falls_back_to_raw_reply_when_output_is_malformed() -> None:
@@ -267,7 +307,9 @@ async def test_clarification_evaluator_parses_sufficient_signals() -> None:
             '{"sufficient":true,"question":null,'
             '"signals":{"progress_note":"API handoff is ready",'
             '"blockers":[],"eta_change_days":0,'
-            '"blockers_answered":true,"eta_answered":true}}'
+            '"blockers_answered":true,"eta_answered":true,'
+            '"issue_updates":[{"issue_key":"PO-1","claimed_done":true,'
+            '"claimed_state":"done","note":"Jira should be done"}]}}'
         )
     )
     evaluator = ClarificationEvaluator(provider, model="test-model")
@@ -286,6 +328,14 @@ async def test_clarification_evaluator_parses_sufficient_signals() -> None:
             eta_change_days=0,
             blockers_answered=True,
             eta_answered=True,
+            issue_updates=(
+                IssueClaim(
+                    issue_key="PO-1",
+                    claimed_done=True,
+                    claimed_state="done",
+                    note="Jira should be done",
+                ),
+            ),
         ),
     )
 
