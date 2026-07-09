@@ -15,6 +15,7 @@ from core.domain.status import (
     CheckInScheduleRun,
     CheckInSignals,
     DeveloperStatus,
+    IssueClaim,
     StatusSource,
 )
 from infra.persistence.in_memory_graph import InMemoryGraphStore
@@ -172,6 +173,14 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
                 "eta_change_days": 1,
                 "blockers_answered": True,
                 "eta_answered": True,
+                "issue_updates": [
+                    {
+                        "issue_key": "PO-1",
+                        "claimed_done": True,
+                        "claimed_state": "done",
+                        "note": "Graph sync is done",
+                    }
+                ],
             },
             "last_accessed_at": last_accessed_at,
         }
@@ -293,6 +302,14 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
         eta_change_days=1,
         blockers_answered=True,
         eta_answered=True,
+        issue_updates=(
+            IssueClaim(
+                issue_key="PO-1",
+                claimed_done=True,
+                claimed_state="done",
+                note="Graph sync is done",
+            ),
+        ),
     )
     assert checkin.last_accessed_at == last_accessed_at
     assert developer_status == DeveloperStatus(

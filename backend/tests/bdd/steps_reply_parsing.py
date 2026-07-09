@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from typing import Any, cast
 
 from pytest_bdd import given, parsers, then, when
 
@@ -51,10 +52,64 @@ class _MalformedJsonRegistry(WorldRegistry):
         return self._scripted_llm
 
 
+@dataclass
+class _ScriptedLlmProvider:
+    texts: list[str]
+    requests: list[LlmRequest] = field(default_factory=list)
+
+    async def complete(self, request: LlmRequest) -> LlmResponse:
+        self.requests.append(request)
+        return LlmResponse(
+            tenant_id=request.tenant_id,
+            text=self.texts.pop(0),
+            model=request.model,
+            usage=TokenUsage(
+                prompt_tokens=1,
+                completion_tokens=1,
+                total_tokens=2,
+                cost_usd=0.0,
+                latency_ms=1.0,
+            ),
+            trace_id=f"trace-scripted-{len(self.requests)}",
+        )
+
+
+class _ScriptedLlmRegistry(WorldRegistry):
+    def __init__(self, settings: object, texts: list[str]) -> None:
+        super().__init__(settings)  # type: ignore[arg-type]
+        self._scripted_llm = _ScriptedLlmProvider(texts)
+
+    def llm_provider(self) -> LlmProvider:
+        return self._scripted_llm
+
+
 @given("the LLM provider returns malformed JSON for every call")
 def _given_malformed_json_llm(world: World) -> None:
     settings = mock_slack_settings()
     world.start_app(settings=settings, registry=_MalformedJsonRegistry(settings))
+
+
+@given("the LLM provider returns a Jira contradiction clarification")
+def _given_jira_contradiction_clarification(world: World) -> None:
+    settings = mock_slack_settings()
+    world.start_app(
+        settings=settings,
+        registry=_ScriptedLlmRegistry(
+            settings,
+            [
+                "Can you share progress, blockers, and ETA changes?",
+                (
+                    '{"is_status_update":true,"sufficient":false,'
+                    '"question":"PO-1 is still in progress in Jira. Can you confirm whether '
+                    'it is done or what remains?","signals":{"progress_note":"PO-1 claimed done",'
+                    '"blockers":[],"eta_change_days":0,"blockers_answered":true,'
+                    '"eta_answered":true,"issue_updates":[{"issue_key":"PO-1",'
+                    '"claimed_done":true,"claimed_state":"done",'
+                    '"note":"Developer says PO-1 is done"}]}}'
+                ),
+            ],
+        ),
+    )
 
 
 _MULTILINE_REPLY = (
@@ -69,7 +124,7 @@ def _when_submit_multiline_reply(world: World, member_id: str) -> None:
     from tests.bdd.steps_common import _latest_bot_message, _submit_reply
 
     message = _latest_bot_message(world, member_id)
-    world.response = _submit_reply(world, message["message_id"], _MULTILINE_REPLY)
+    world.response = cast(Any, _submit_reply(world, str(message["message_id"]), _MULTILINE_REPLY))
 
 
 @then(parsers.parse('the check-in raw reply for "{member_id}" should equal "{expected_text}"'))

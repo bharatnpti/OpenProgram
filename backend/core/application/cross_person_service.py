@@ -33,6 +33,7 @@ class CrossPersonRequestService:
     time_series_repository: TimeSeriesRepository | None = None
     llm_provider: LlmProvider | None = None
     model: str = "test-model"
+    auto_notify: bool = False
 
     async def record_from_checkin(
         self,
@@ -62,7 +63,7 @@ class CrossPersonRequestService:
                 else "opened"
             )
             await self._append_fact(stored, transition=transition)
-            if stored.status is CrossPersonRequestStatus.OPEN:
+            if self.auto_notify and stored.status is CrossPersonRequestStatus.OPEN:
                 stored = await self.notify(stored)
             created.append(stored)
         return created
@@ -272,12 +273,22 @@ class CrossPersonRequestService:
         )
         payload: dict[str, JsonScalar] = {
             "request_id": request.id,
+            "source_checkin_id": request.source_correlation_id,
+            "reporter_id": request.requester_id,
             "requester_id": request.requester_id,
+            "referenced_person_id": request.counterpart_id,
+            "referenced_person_name": request.counterpart_display_name,
             "counterpart_id": request.counterpart_id,
+            "counterpart_name": request.counterpart_display_name,
             "kind": request.kind.value,
+            "dependency_kind": _fact_kind(request),
             "status": request.status.value,
+            "dependency_status": _fact_status(request.status),
             "transition": transition,
+            "summary": request.note,
             "note": request.note,
+            "first_seen_at": request.created_at.isoformat(),
+            "last_seen_at": request.updated_at.isoformat(),
             "needs_resolution": request.status is CrossPersonRequestStatus.NEEDS_RESOLUTION,
         }
         observed_at = (
@@ -323,6 +334,24 @@ def _counterpart_message(request: CrossPersonRequest) -> str:
         f"{requester} needs your {request.kind.value}: {request.note}\n"
         "Reply here with an acknowledgement, or say when it is done."
     )
+
+
+def _fact_kind(request: CrossPersonRequest) -> str:
+    if request.kind.value == "review":
+        return "needs_review"
+    if request.kind.value == "input":
+        return "needs_input"
+    if any(word in request.note.casefold() for word in ("block", "blocked", "blocking")):
+        return "blocked_by"
+    return "waiting_on"
+
+
+def _fact_status(status: CrossPersonRequestStatus) -> str:
+    if status is CrossPersonRequestStatus.RESOLVED:
+        return "resolved"
+    if status is CrossPersonRequestStatus.NEEDS_RESOLUTION:
+        return "stale"
+    return "open"
 
 
 def _reply_acknowledges(text: str) -> bool:

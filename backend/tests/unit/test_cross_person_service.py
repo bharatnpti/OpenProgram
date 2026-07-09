@@ -14,7 +14,7 @@ from infra.registry import ServiceRegistry
 from tests.contract.fakes import FakeChatProvider
 
 
-async def test_record_from_checkin_notifies_counterpart_idempotently() -> None:
+async def test_record_from_checkin_records_fact_without_auto_notify_by_default() -> None:
     store = InMemoryGraphStore()
     directory = InMemoryDirectoryUserRepository(store)
     await directory.upsert_users(
@@ -33,6 +33,56 @@ async def test_record_from_checkin_notifies_counterpart_idempotently() -> None:
         chat_provider=chat,
         directory_repository=directory,
         time_series_repository=store,
+    )
+    resolution = _resolution()
+
+    created = await service.record_from_checkin(
+        tenant_id="demo",
+        requester_id="dev-1",
+        requester_chat_ref="U-dev",
+        source_correlation_id="corr-1",
+        resolutions=(resolution,),
+        observed_at=datetime(2026, 1, 10, 9, 10, tzinfo=UTC),
+    )
+
+    assert len(chat.sent) == 0
+    stored = created[0]
+    assert stored.notify_message_id is None
+    assert stored.notify_correlation_id is None
+    facts = await store.list_facts(
+        "demo",
+        EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="U-alice"),
+    )
+    assert len(facts) == 1
+    assert facts[0].source == "cross_person_request"
+    assert facts[0].payload["transition"] == "opened"
+    assert facts[0].payload["reporter_id"] == "dev-1"
+    assert facts[0].payload["referenced_person_id"] == "U-alice"
+    assert facts[0].payload["referenced_person_name"] == "Alice Chen"
+    assert facts[0].payload["dependency_kind"] == "needs_review"
+    assert facts[0].payload["dependency_status"] == "open"
+
+
+async def test_record_from_checkin_auto_notify_opt_in_is_idempotent() -> None:
+    store = InMemoryGraphStore()
+    directory = InMemoryDirectoryUserRepository(store)
+    await directory.upsert_users(
+        [
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U-alice",
+                display_name="Alice Chen",
+                email="alice@example.com",
+            )
+        ]
+    )
+    chat = FakeChatProvider()
+    service = CrossPersonRequestService(
+        repository=store,
+        chat_provider=chat,
+        directory_repository=directory,
+        time_series_repository=store,
+        auto_notify=True,
     )
     resolution = _resolution()
 
@@ -87,6 +137,7 @@ async def test_counterpart_reply_acknowledges_and_resolves_request() -> None:
         chat_provider=chat,
         directory_repository=directory,
         time_series_repository=store,
+        auto_notify=True,
     )
     created = await service.record_from_checkin(
         tenant_id="demo",
@@ -125,7 +176,7 @@ async def test_counterpart_reply_acknowledges_and_resolves_request() -> None:
 
 async def test_registry_routes_slack_thread_reply_by_notify_message_id_first() -> None:
     store = InMemoryGraphStore()
-    registry = ServiceRegistry(_settings(), graph_store=store)
+    registry = ServiceRegistry(_settings(cross_person_auto_notify=True), graph_store=store)
     directory = registry.directory_user_repository()
     await directory.upsert_users(
         [
@@ -208,7 +259,7 @@ def _counterpart_reply(correlation_id: str, text: str) -> InboundMessage:
     )
 
 
-def _settings() -> Settings:
+def _settings(**overrides: object) -> Settings:
     return Settings(
         _env_file=None,
         secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
@@ -220,4 +271,5 @@ def _settings() -> Settings:
         calendar_provider="fake",
         llm_provider="fake",
         workflow_provider="fake",
+        **overrides,
     )

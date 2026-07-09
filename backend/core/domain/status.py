@@ -22,6 +22,14 @@ class CrossPersonMention:
 
 
 @dataclass(frozen=True, kw_only=True)
+class IssueClaim:
+    issue_key: str
+    claimed_done: bool = False
+    claimed_state: str | None = None
+    note: str = ""
+
+
+@dataclass(frozen=True, kw_only=True)
 class CheckInSignals:
     progress_note: str
     blockers: tuple[str, ...] = ()
@@ -29,6 +37,7 @@ class CheckInSignals:
     blockers_answered: bool = False
     eta_answered: bool = False
     requests: tuple[CrossPersonMention, ...] = ()
+    issue_updates: tuple[IssueClaim, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
