@@ -49,10 +49,10 @@ x-langfuse-env: &langfuse-env
   LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: "true"
   LANGFUSE_INIT_ORG_ID: local-org
   LANGFUSE_INIT_ORG_NAME: Local OpenProgram
-  LANGFUSE_INIT_PROJECT_ID: local-project
+  LANGFUSE_INIT_PROJECT_ID: ${OPENPROGRAM_LANGFUSE_PROJECT_ID:-local-project}
   LANGFUSE_INIT_PROJECT_NAME: OpenProgram Local
-  LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-local
-  LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-local
+  LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-${OPENPROGRAM_LANGFUSE_PUBLIC_KEY:-pk-lf-local}}
+  LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-${OPENPROGRAM_LANGFUSE_SECRET_KEY:-sk-lf-local}}
   LANGFUSE_INIT_USER_EMAIL: local@example.com
   LANGFUSE_INIT_USER_NAME: Local Admin
   LANGFUSE_INIT_USER_PASSWORD: local-password
@@ -89,6 +89,7 @@ services:
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
+    restart: unless-stopped
     environment:
       CLICKHOUSE_DB: default
       CLICKHOUSE_USER: default
@@ -186,7 +187,11 @@ services:
     ports:
       - "3001:3000"
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://langfuse-web:3000/api/public/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"Promise.all([fetch('http://langfuse-web:3000/api/public/health'), fetch('http://clickhouse:8123/ping')]).then((responses)=>process.exit(responses.every((r)=>r.ok)?0:1)).catch(()=>process.exit(1))\"",
+        ]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -210,7 +215,9 @@ services:
     image: ghcr.io/berriai/litellm:main-latest
     command: ["--config", "/app/config.yaml", "--host", "0.0.0.0", "--port", "4000"]
     environment:
-      LITELLM_MASTER_KEY: local-litellm-key
+      LITELLM_MASTER_KEY: ${OPENPROGRAM_LITELLM_API_KEY:-local-litellm-key}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://eu.api.openai.com/v1}
     volumes:
       - ./infra/litellm/config.yaml:/app/config.yaml:ro
     depends_on:
@@ -283,16 +290,17 @@ services:
       OPENPROGRAM_CHECKIN_FANOUT_CRON: "${OPENPROGRAM_CHECKIN_FANOUT_CRON:-30 9 * * 1-5}"
       OPENPROGRAM_HEARTBEAT_SCHEDULE_ID: ${OPENPROGRAM_HEARTBEAT_SCHEDULE_ID:-${OPENPROGRAM_TEMPORAL_SCHEDULE_ID:-openprogram-heartbeat}}
       OPENPROGRAM_TEMPORAL_TARGET: temporal:7233
-      OPENPROGRAM_LITELLM_BASE_URL: http://litellm:4000
-      OPENPROGRAM_LITELLM_API_KEY: local-litellm-key
-      OPENPROGRAM_LITELLM_MODEL: local-gpt
-      OPENPROGRAM_LANGFUSE_HOST: http://langfuse-web:3000
-      OPENPROGRAM_LANGFUSE_PUBLIC_KEY: pk-lf-local
-      OPENPROGRAM_LANGFUSE_SECRET_KEY: sk-lf-local
-      OPENPROGRAM_LANGFUSE_PROJECT_ID: local-project
+      OPENPROGRAM_LLM_PROVIDER: ${OPENPROGRAM_LLM_PROVIDER:-litellm}
+      OPENPROGRAM_LITELLM_BASE_URL: ${OPENPROGRAM_LITELLM_BASE_URL_INTERNAL:-http://litellm:4000}
+      OPENPROGRAM_LITELLM_API_KEY: ${OPENPROGRAM_LITELLM_API_KEY:-local-litellm-key}
+      OPENPROGRAM_LITELLM_MODEL: ${OPENPROGRAM_LITELLM_MODEL:-gpt-5.5}
+      OPENPROGRAM_LANGFUSE_HOST: ${OPENPROGRAM_LANGFUSE_HOST_INTERNAL:-http://langfuse-web:3000}
+      OPENPROGRAM_LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-${OPENPROGRAM_LANGFUSE_PUBLIC_KEY:-pk-lf-local}}
+      OPENPROGRAM_LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-${OPENPROGRAM_LANGFUSE_SECRET_KEY:-sk-lf-local}}
+      OPENPROGRAM_LANGFUSE_PROJECT_ID: ${OPENPROGRAM_LANGFUSE_PROJECT_ID:-local-project}
       OPENPROGRAM_OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
     ports:
-      - "8000:8000"
+      - "${OPENPROGRAM_BACKEND_PORT_BINDING:-8000:8000}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -335,13 +343,14 @@ services:
       OPENPROGRAM_CHECKIN_FANOUT_CRON: "${OPENPROGRAM_CHECKIN_FANOUT_CRON:-30 9 * * 1-5}"
       OPENPROGRAM_HEARTBEAT_SCHEDULE_ID: ${OPENPROGRAM_HEARTBEAT_SCHEDULE_ID:-${OPENPROGRAM_TEMPORAL_SCHEDULE_ID:-openprogram-heartbeat}}
       OPENPROGRAM_TEMPORAL_TARGET: temporal:7233
-      OPENPROGRAM_LITELLM_BASE_URL: http://litellm:4000
-      OPENPROGRAM_LITELLM_API_KEY: local-litellm-key
-      OPENPROGRAM_LITELLM_MODEL: local-gpt
-      OPENPROGRAM_LANGFUSE_HOST: http://langfuse-web:3000
-      OPENPROGRAM_LANGFUSE_PUBLIC_KEY: pk-lf-local
-      OPENPROGRAM_LANGFUSE_SECRET_KEY: sk-lf-local
-      OPENPROGRAM_LANGFUSE_PROJECT_ID: local-project
+      OPENPROGRAM_LLM_PROVIDER: ${OPENPROGRAM_LLM_PROVIDER:-litellm}
+      OPENPROGRAM_LITELLM_BASE_URL: ${OPENPROGRAM_LITELLM_BASE_URL_INTERNAL:-http://litellm:4000}
+      OPENPROGRAM_LITELLM_API_KEY: ${OPENPROGRAM_LITELLM_API_KEY:-local-litellm-key}
+      OPENPROGRAM_LITELLM_MODEL: ${OPENPROGRAM_LITELLM_MODEL:-gpt-5.5}
+      OPENPROGRAM_LANGFUSE_HOST: ${OPENPROGRAM_LANGFUSE_HOST_INTERNAL:-http://langfuse-web:3000}
+      OPENPROGRAM_LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-${OPENPROGRAM_LANGFUSE_PUBLIC_KEY:-pk-lf-local}}
+      OPENPROGRAM_LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-${OPENPROGRAM_LANGFUSE_SECRET_KEY:-sk-lf-local}}
+      OPENPROGRAM_LANGFUSE_PROJECT_ID: ${OPENPROGRAM_LANGFUSE_PROJECT_ID:-local-project}
       OPENPROGRAM_OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/traces
     depends_on:
       postgres:

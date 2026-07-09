@@ -1,4 +1,14 @@
 model_list:
+  - model_name: gpt-5.5
+    litellm_params:
+      model: openai/gpt-5.5
+      api_base: os.environ/OPENAI_BASE_URL
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: openprogram-real
+    litellm_params:
+      model: openai/gpt-5.5
+      api_base: os.environ/OPENAI_BASE_URL
+      api_key: os.environ/OPENAI_API_KEY
   - model_name: local-gpt
     litellm_params:
       model: openai/local-gpt
@@ -6,5 +16,5 @@ model_list:
       api_key: local-mock-key
 
 general_settings:
-  master_key: local-litellm-key
+  master_key: os.environ/LITELLM_MASTER_KEY
   disable_spend_logs: true
