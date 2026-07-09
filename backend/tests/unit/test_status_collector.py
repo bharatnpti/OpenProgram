@@ -239,6 +239,119 @@ async def test_status_collector_graph_sends_dm_and_records_checkin() -> None:
     ]
 
 
+async def test_status_collector_context_highlights_blocked_stale_git_and_prior_blockers() -> None:
+    assignee = UserRef(tenant_id="demo", external_id="dev-1")
+    reference_date = datetime.now(tz=UTC).date()
+    tracker = FakeIssueTracker(
+        issues={
+            "PO-1": Issue(
+                tenant_id="demo",
+                key="PO-1",
+                title="Unblock schema rollout",
+                state=IssueState.BLOCKED,
+                assignee=assignee,
+                updated_at=datetime.now(tz=UTC) - timedelta(days=9),
+            )
+        }
+    )
+    store = InMemoryGraphStore()
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-1",
+            as_of=reference_date - timedelta(days=1),
+            source=StatusSource.CONFIRMED,
+            blockers=("schema approval",),
+            summary="Waiting on schema approval.",
+        )
+    )
+    await store.append_fact(
+        FactEvent(
+            tenant_id="demo",
+            source="vcs_commit",
+            entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
+            payload={"repo": "repo-1", "sha": "abc123", "message": "PO-1 add rollout guard"},
+            observed_at=datetime.now(tz=UTC) - timedelta(hours=2),
+            correlation_id="vcs:commit:demo:repo-1:abc123",
+        )
+    )
+    collector = StatusCollector(
+        issue_tracker=tracker,
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(texts=[]),
+        status_repository=store,
+        conversation_repository=store,
+        time_series_repository=store,
+        model="test-model",
+    )
+
+    context = await collector.build_context(
+        tenant_id="demo",
+        developer_id="dev-1",
+        developer_name="Asha",
+    )
+
+    assert "Yesterday unresolved blockers" in context
+    assert "schema approval" in context
+    assert "Active issue PO-1: Unblock schema rollout" in context
+    assert "blocked=true" in context
+    assert "stale=true" in context
+    assert "recent_git_activity=true" in context
+    assert "Recent Git activity" in context
+
+
+async def test_status_collector_replaces_prompt_echo_checkin_dm() -> None:
+    assignee = UserRef(tenant_id="demo", external_id="dev-1")
+    tracker = FakeIssueTracker(
+        issues={
+            "PO-1": Issue(
+                tenant_id="demo",
+                key="PO-1",
+                title="Build graph sync",
+                state=IssueState.IN_PROGRESS,
+                assignee=assignee,
+            )
+        }
+    )
+    store = InMemoryGraphStore()
+    chat = FakeChatProvider()
+    llm = SequenceLlmProvider(
+        texts=[
+            (
+                "Mock status summary: Write a concise, conversational direct message asking "
+                "for today's work status. Ask for progress, blockers, and ETA changes. "
+                "Return only the message text.\n\nDeveloper: Asha"
+            )
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=tracker,
+        chat_provider=chat,
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    await collector.start_checkin(
+        tenant_id="demo",
+        developer_id="dev-1",
+        developer_name="Asha",
+        chat_external_id="U123",
+        correlation_id="corr-1",
+        asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+    )
+
+    expected = (
+        "Hi Asha, quick status on PO-1: Build graph sync: what moved today, any blockers, "
+        "and any ETA changes?"
+    )
+    assert chat.sent[0].text == expected
+    turns = await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
+    assert turns[0].content == expected
+    assert "Mock status summary" not in turns[0].content
+
+
 async def test_status_collector_handles_reply_by_correlation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -677,8 +790,7 @@ async def test_status_collector_clarifies_when_required_answers_are_missing() ->
     assert outcome.status == status
     assert status is not None
     assert status.summary == (
-        "Worked on fixing the auth issue in BFF "
-        "Blocker status and ETA were not provided."
+        "Worked on fixing the auth issue in BFF Blocker status and ETA were not provided."
     )
     assert checkin is not None
     assert checkin.replied_at is None
@@ -717,8 +829,7 @@ async def test_status_collector_records_partial_when_required_answers_still_miss
     assert status is not None
     assert status.source is StatusSource.PARTIAL
     assert status.summary == (
-        "Worked on fixing the auth issue in BFF "
-        "Blocker status and ETA were not provided."
+        "Worked on fixing the auth issue in BFF Blocker status and ETA were not provided."
     )
     assert "end of day" not in status.summary.lower()
 
@@ -968,6 +1079,7 @@ async def test_status_collector_tool_agent_fetches_history_and_finalizes_reply()
         llm_provider=llm,
         status_repository=store,
         conversation_repository=store,
+        time_series_repository=store,
         model="test-model",
         tool_agent=ToolCallingAgent(llm, max_tool_iterations=1),
     )
@@ -994,6 +1106,11 @@ async def test_status_collector_tool_agent_fetches_history_and_finalizes_reply()
     checkin = await store.checkin_by_correlation("demo", "corr-1")
     assert checkin is not None
     assert checkin.raw_reply == "Ready now."
+    assert [tool.name for tool in llm.requests[0].tools] == [
+        "fetch_conversation_history",
+        "fetch_issue_tracker_context",
+        "fetch_git_activity",
+    ]
 
 
 async def test_status_collector_ignores_duplicate_message_id_while_open() -> None:
@@ -1463,7 +1580,8 @@ async def test_status_collector_prioritizes_blocked_and_critical_issues() -> Non
     context = await collector.build_context(tenant_id="demo", developer_id="dev-1")
 
     assert "PO-BLOCKED" in context
-    assert "PO-1" not in context
+    assert "PO-1" in context
+    assert context.index("PO-BLOCKED") < context.index("PO-1")
 
 
 async def test_status_collector_carries_forward_unresolved_prior_blockers() -> None:
@@ -1694,6 +1812,66 @@ async def test_status_collector_nudges_once_and_records_stale_non_response() -> 
     assert terminal_status.source is StatusSource.STALE
     assert terminal_status.blockers == ("no confirmed reply",)
     assert "Yesterday was on track" in terminal_status.summary
+
+
+async def test_status_collector_replaces_prompt_echo_nudge_dm() -> None:
+    assignee = UserRef(tenant_id="demo", external_id="dev-1")
+    tracker = FakeIssueTracker(
+        issues={
+            "PO-1": Issue(
+                tenant_id="demo",
+                key="PO-1",
+                title="Build graph sync",
+                state=IssueState.IN_PROGRESS,
+                assignee=assignee,
+            )
+        }
+    )
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    chat = FakeChatProvider()
+    llm = SequenceLlmProvider(
+        texts=[
+            (
+                "Mock status summary: Write one short, friendly follow-up asking for the "
+                "pending status update. Developer: Asha. Context: Active issue PO-1"
+            )
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=tracker,
+        chat_provider=chat,
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    await collector.send_nudge(
+        tenant_id="demo",
+        correlation_id="corr-1",
+        developer_name="Asha",
+        chat_external_id="U123",
+    )
+
+    expected = (
+        "Hi Asha, quick follow-up on PO-1: Build graph sync: please share progress, "
+        "blockers, and any ETA changes when you can."
+    )
+    assert chat.sent[0].text == expected
+    turns = await store.list_recent_turns("demo", "dev-1", limit=1)
+    assert turns[0].content == expected
+    assert "Mock status summary" not in turns[0].content
 
 
 async def test_status_collector_records_inferred_and_unknown_non_response() -> None:

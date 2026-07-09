@@ -46,9 +46,20 @@ Feature: Mock Slack reply parsing
     And member "U1001" has a bot check-in message
     When I submit a reply to the bot message for "U1001" with text "Finished API shell; no blockers."
     Then the response status code should be 200
-    And the response status should be "processed"
-    And the check-in raw reply for "U1001" should equal "Finished API shell; no blockers."
-    And developer "U1001" should have a confirmed status
+    And the response status should be "clarifying"
+    And the check-in raw reply for "U1001" should be null
+    And developer "U1001" should not have a confirmed status
+
+  Scenario: Jira contradiction triggers targeted clarification
+    Given the LLM provider returns a Jira contradiction clarification
+    And a configured member "U1001" named "Asha Rao" with chat id "U1001"
+    And member "U1001" has a bot check-in message
+    When I submit a reply to the bot message for "U1001" with text "PO-1 is done; no blockers; ETA today."
+    Then the response status code should be 200
+    And the response status should be "clarifying"
+    And the latest bot message for "U1001" should contain "PO-1 is still in progress"
+    And the check-in raw reply for "U1001" should be null
+    And developer "U1001" should not have a confirmed status
 
   @ms_e2e_042
   Scenario: Long multiline status reply preserves raw formatting

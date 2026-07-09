@@ -109,6 +109,7 @@ def test_settings_defaults_workflow_provider_to_dbos() -> None:
     assert settings.conversation_purge_enabled is True
     assert settings.conversation_purge_cron == "0 3 * * *"
     assert settings.conversation_purge_schedule_id == "openprogram-conversation-purge"
+    assert settings.cross_person_auto_notify is False
 
 
 def test_settings_resolves_configured_heartbeat_schedule_id() -> None:

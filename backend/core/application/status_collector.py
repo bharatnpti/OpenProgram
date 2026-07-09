@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -15,6 +16,8 @@ from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.conversation_history import llm_messages_from_turns
 from core.application.status_parsing import ClarificationEvaluator, StatusParser
 from core.application.tools.conversation_history import MAX_HISTORY_LIMIT, ConversationHistoryTool
+from core.application.tools.git_activity import GitActivityTool
+from core.application.tools.issue_tracker import IssueTrackerTool
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.cross_person import CrossPersonRequestResolution, CrossPersonRequestStatus
 from core.domain.directory import DirectoryUser
@@ -45,11 +48,22 @@ RECENT_CONVERSATION_TURN_LIMIT = 20
 _logger = structlog.get_logger(__name__)
 COMPOSE_CHECKIN_SYSTEM_PROMPT = (
     "Compose a concise daily check-in DM. Use prior conversation turns as context, but do not "
-    "quote private history unless it directly helps the ask."
+    "quote private history unless it directly helps the ask. Return one plain Slack DM with no "
+    "labels, preamble, quoted prompt text, or markdown table."
 )
 COMPOSE_NUDGE_SYSTEM_PROMPT = (
     "Compose a concise follow-up DM for a pending status check-in. Use prior conversation turns "
-    "as context and avoid assuming status is healthy without a reply."
+    "as context and avoid assuming status is healthy without a reply. Return one plain Slack DM "
+    "with no labels, preamble, quoted prompt text, or markdown table."
+)
+OUTBOUND_DM_MAX_CHARS = 320
+_PROMPT_ECHO_MARKERS = (
+    "mock status summary:",
+    "return only the message text",
+    "write a concise",
+    "write one short",
+    "asking for today's work status",
+    "ask for progress, blockers, and eta changes",
 )
 
 
@@ -210,7 +224,7 @@ class StatusCollector:
             exclude_chat_message_id=message.message_id,
             reference_at=message.received_at,
         )
-        history_tool = self._conversation_history_tool(
+        tools = self._agent_tools(
             tenant_id=checkin.tenant_id,
             developer_id=checkin.developer_id,
             reference_at=message.received_at,
@@ -222,7 +236,7 @@ class StatusCollector:
             raw_reply=message.text,
             correlation_id=message.correlation_id,
             conversation_turns=conversation_turns,
-            tools=(history_tool,),
+            tools=tools,
             prior_blockers=prior_blockers,
         )
         if not decision.is_status_update:
@@ -259,7 +273,7 @@ class StatusCollector:
             raw_reply=message.text,
             correlation_id=message.correlation_id,
             conversation_turns=conversation_turns,
-            tools=(history_tool,),
+            tools=tools,
             prior_blockers=prior_blockers,
         )
         required_check_signals = _signals_with_carried_blockers(
@@ -442,6 +456,8 @@ class StatusCollector:
         prompt = (
             "Write one short, friendly follow-up asking for the pending status update. "
             "Do not imply the work is healthy just because there was no reply. "
+            "Reference a specific pending, blocked, or stale issue and any carried-forward "
+            "blocker from context when useful, while staying concise. "
             f"Developer: {developer_name or checkin.developer_id}. Context: {context}"
         )
         conversation_turns = await self._recent_conversation_turns(
@@ -449,7 +465,7 @@ class StatusCollector:
             developer_id=checkin.developer_id,
             reference_at=checkin.asked_at,
         )
-        history_tool = self._conversation_history_tool(
+        tools = self._agent_tools(
             tenant_id=tenant_id,
             developer_id=checkin.developer_id,
             reference_at=checkin.asked_at,
@@ -469,9 +485,15 @@ class StatusCollector:
                     "nudge_number": 1,
                 },
             ),
-            tools=(history_tool,),
+            tools=tools,
         )
-        text = response.text.strip() or "Could you share a quick status update when you can?"
+        text = _safe_outbound_checkin_text(
+            response.text,
+            developer_id=checkin.developer_id,
+            developer_name=developer_name,
+            context=context,
+            purpose="nudge",
+        )
         message_id = await self._chat_provider.send_dm(
             ChatUserRef(
                 tenant_id=tenant_id,
@@ -590,6 +612,7 @@ class StatusCollector:
             tenant_id=tenant_id,
             developer_id=developer_id,
             developer_name=developer_name,
+            include_status=False,
         )
         if context == _NO_CONTEXT:
             return None
@@ -608,16 +631,29 @@ class StatusCollector:
         tenant_id: str,
         developer_id: str,
         developer_name: str | None = None,
+        include_status: bool = True,
     ) -> str:
+        reference_at = datetime.now(tz=UTC)
         issues = await self._issue_tracker.list_active_for(
             UserRef(tenant_id=tenant_id, external_id=developer_id)
         )
         prioritized_issues = _prioritize_issues(issues)
-        lines = _issue_context_lines(prioritized_issues)
-
+        facts: list[FactEvent] = []
         if self._time_series_repository is not None:
             facts = await self._recent_facts(tenant_id, developer_id, prioritized_issues)
-            lines.extend(_fact_context_lines(facts))
+
+        lines: list[str] = []
+        if include_status:
+            latest_status = await self._status_repository.latest_developer_status(
+                tenant_id,
+                developer_id,
+                _local_date(reference_at, None, self._tenant_default_timezone),
+            )
+            lines.extend(_status_context_lines(latest_status))
+        lines.extend(
+            _issue_context_lines(prioritized_issues, facts=facts, reference_at=reference_at)
+        )
+        lines.extend(_fact_context_lines(facts))
 
         if not lines:
             return _NO_CONTEXT
@@ -635,12 +671,14 @@ class StatusCollector:
 
     async def _compose_dm_node(self, state: StatusCollectorState) -> StatusCollectorState:
         prompt = (
-            "Write a concise, conversational direct message asking for today's work status. "
-            "Ask for progress, blockers, and ETA changes. Return only the message text.\n\n"
+            "Write one concise, conversational Slack direct message asking for today's work "
+            "status. Ask for progress, blockers, and ETA changes. Reference the specific "
+            "pending, blocked, or stale issue(s) and any carried-forward blocker from context "
+            "when useful, while staying within the character cap. Return only the message text.\n\n"
             f"Developer: {state.get('developer_name', state['developer_id'])}\n"
             f"Context:\n{state['context']}"
         )
-        history_tool = self._conversation_history_tool(
+        tools = self._agent_tools(
             tenant_id=state["tenant_id"],
             developer_id=state["developer_id"],
             reference_at=state.get("asked_at"),
@@ -665,9 +703,15 @@ class StatusCollector:
                     "developer_id": state["developer_id"],
                 },
             ),
-            tools=(history_tool,),
+            tools=tools,
         )
-        text = response.text.strip() or "Could you share progress, blockers, and any ETA changes?"
+        text = _safe_outbound_checkin_text(
+            response.text,
+            developer_id=state["developer_id"],
+            developer_name=state.get("developer_name"),
+            context=state["context"],
+            purpose="checkin",
+        )
         return {"dm_text": text, "trace_id": response.trace_id}
 
     async def _send_dm_node(self, state: StatusCollectorState) -> StatusCollectorState:
@@ -1025,7 +1069,7 @@ class StatusCollector:
 
         raw_reply = "\n".join(turn.content for turn in user_turns)
         prior_blockers = await self._prior_open_blockers(checkin, user_turns[-1].observed_at)
-        history_tool = self._conversation_history_tool(
+        tools = self._agent_tools(
             tenant_id=tenant_id,
             developer_id=checkin.developer_id,
             reference_at=user_turns[-1].observed_at,
@@ -1036,7 +1080,7 @@ class StatusCollector:
             raw_reply=raw_reply,
             correlation_id=correlation_id,
             conversation_turns=turns,
-            tools=(history_tool,),
+            tools=tools,
             prior_blockers=prior_blockers,
         )
         if not decision.is_status_update:
@@ -1048,7 +1092,7 @@ class StatusCollector:
             raw_reply=raw_reply,
             correlation_id=correlation_id,
             conversation_turns=turns,
-            tools=(history_tool,),
+            tools=tools,
             prior_blockers=prior_blockers,
         )
         return await self._finalize_checkin_reply(
@@ -1131,6 +1175,58 @@ class StatusCollector:
             retention_days=self._conversation_retention_days,
             reference_at=reference_at,
         )
+
+    def _issue_tracker_tool(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+    ) -> IssueTrackerTool:
+        return IssueTrackerTool(
+            tenant_id=tenant_id,
+            developer_id=developer_id,
+            issue_tracker=self._issue_tracker,
+        )
+
+    def _git_activity_tool(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        reference_at: datetime | None,
+    ) -> GitActivityTool | None:
+        if self._time_series_repository is None:
+            return None
+        return GitActivityTool(
+            tenant_id=tenant_id,
+            developer_id=developer_id,
+            repository=self._time_series_repository,
+            reference_at=reference_at,
+        )
+
+    def _agent_tools(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        reference_at: datetime | None,
+    ) -> tuple[AgentTool, ...]:
+        tools: list[AgentTool] = [
+            self._conversation_history_tool(
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                reference_at=reference_at,
+            ),
+            self._issue_tracker_tool(tenant_id=tenant_id, developer_id=developer_id),
+        ]
+        git_tool = self._git_activity_tool(
+            tenant_id=tenant_id,
+            developer_id=developer_id,
+            reference_at=reference_at,
+        )
+        if git_tool is not None:
+            tools.append(git_tool)
+        return tuple(tools)
 
     async def _local_date_for_developer(
         self,
@@ -1257,7 +1353,7 @@ class StatusCollector:
         since = datetime.now(tz=UTC) - timedelta(days=RECENT_FACT_LOOKBACK_DAYS)
         for ref in refs:
             facts.extend(await self._time_series_repository.list_facts(tenant_id, ref, since))
-        return sorted(facts, key=lambda fact: fact.observed_at, reverse=True)[:5]
+        return sorted(facts, key=lambda fact: fact.observed_at, reverse=True)[:10]
 
     def _compile_graph(self) -> StatusCollectorGraph:
         graph = StateGraph(StatusCollectorState)
@@ -1282,6 +1378,95 @@ def _new_correlation_id() -> str:
 
 def _pending_nudge_message_id(correlation_id: str) -> str:
     return f"pending-nudge-{correlation_id}-1"
+
+
+def _safe_outbound_checkin_text(
+    generated_text: str,
+    *,
+    developer_id: str,
+    developer_name: str | None,
+    context: str,
+    purpose: Literal["checkin", "nudge"],
+) -> str:
+    text = _normalize_outbound_dm_text(generated_text)
+    if not text or len(text) > OUTBOUND_DM_MAX_CHARS or _looks_like_prompt_echo(text):
+        return _fallback_outbound_checkin_text(
+            developer_id=developer_id,
+            developer_name=developer_name,
+            context=context,
+            purpose=purpose,
+        )
+    return text
+
+
+def _normalize_outbound_dm_text(text: str) -> str:
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    normalized = " ".join(lines).strip()
+    if len(normalized) >= 2 and normalized[0] == normalized[-1] and normalized[0] in {"'", '"'}:
+        normalized = normalized[1:-1].strip()
+    return normalized
+
+
+def _looks_like_prompt_echo(text: str) -> bool:
+    normalized = " ".join(text.lower().split())
+    if any(marker in normalized for marker in _PROMPT_ECHO_MARKERS):
+        return True
+    label_hits = sum(1 for label in ("developer:", "context:", "prompt:") if label in normalized)
+    return label_hits >= 2
+
+
+def _fallback_outbound_checkin_text(
+    *,
+    developer_id: str,
+    developer_name: str | None,
+    context: str,
+    purpose: Literal["checkin", "nudge"],
+) -> str:
+    greeting = f"Hi {_display_name_for_dm(developer_name, developer_id)}, "
+    subject = _primary_context_subject(context)
+    if purpose == "nudge":
+        if subject:
+            return (
+                f"{greeting}quick follow-up on {subject}: please share progress, blockers, "
+                "and any ETA changes when you can."
+            )
+        return (
+            f"{greeting}quick follow-up on today's status check: please share progress, blockers, "
+            "and any ETA changes when you can."
+        )
+    if subject:
+        return (
+            f"{greeting}quick status on {subject}: what moved today, any blockers, "
+            "and any ETA changes?"
+        )
+    return f"{greeting}quick status check: what moved today, any blockers, and any ETA changes?"
+
+
+def _display_name_for_dm(developer_name: str | None, developer_id: str) -> str:
+    display_name = (developer_name or "").strip()
+    if display_name:
+        return display_name
+    if developer_id.strip():
+        return developer_id.strip()
+    return "there"
+
+
+def _primary_context_subject(context: str) -> str | None:
+    if not context or context == _NO_CONTEXT:
+        return None
+    for line in context.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("Active issue "):
+            continue
+        subject = stripped.removeprefix("Active issue ").rsplit(" (", 1)[0].strip()
+        return _truncate_subject(subject) if subject else None
+    return None
+
+
+def _truncate_subject(subject: str) -> str:
+    if len(subject) <= 96:
+        return subject
+    return f"{subject[:93].rstrip()}..."
 
 
 def _single_correlation_or_log_ambiguous(
@@ -1313,6 +1498,7 @@ def _signals_with_note(signals: CheckInSignals, note: str) -> CheckInSignals:
         blockers_answered=signals.blockers_answered,
         eta_answered=signals.eta_answered,
         requests=signals.requests,
+        issue_updates=signals.issue_updates,
     )
 
 
@@ -1334,6 +1520,7 @@ def _signals_with_carried_blockers(
         blockers_answered=signals.blockers_answered,
         eta_answered=signals.eta_answered,
         requests=signals.requests,
+        issue_updates=signals.issue_updates,
     )
 
 
@@ -1548,19 +1735,87 @@ def _local_date(at: datetime, timezone: str | None, tenant_default_timezone: str
         return at.astimezone(UTC).date()
 
 
-def _issue_context_lines(issues: Iterable[Issue]) -> list[str]:
-    return [
-        f"Active issue {issue.key}: {issue.title} ({issue.state.value})"
-        for issue in list(issues)[:5]
-    ]
+def _status_context_lines(status: DeveloperStatus | None) -> list[str]:
+    if status is None or status.source is StatusSource.UNKNOWN:
+        return []
+    lines: list[str] = []
+    blockers = _open_blockers_from_status(status)
+    if blockers:
+        lines.append(
+            f"Yesterday unresolved blockers from {status.as_of.isoformat()}: {'; '.join(blockers)}"
+        )
+    if status.source in {StatusSource.CONFIRMED, StatusSource.PARTIAL, StatusSource.STALE}:
+        lines.append(
+            f"Last {status.source.value} status from {status.as_of.isoformat()}: "
+            f"{_truncate_subject(status.summary)}"
+        )
+    return lines
+
+
+def _issue_context_lines(
+    issues: Iterable[Issue],
+    *,
+    facts: Iterable[FactEvent] = (),
+    reference_at: datetime | None = None,
+) -> list[str]:
+    reference_time = reference_at or datetime.now(tz=UTC)
+    fact_tuple = tuple(facts)
+    return [_issue_context_line(issue, fact_tuple, reference_time) for issue in list(issues)[:8]]
+
+
+def _issue_context_line(
+    issue: Issue,
+    facts: tuple[FactEvent, ...],
+    reference_at: datetime,
+) -> str:
+    details = [issue.state.value]
+    days_since_update = _days_since(issue.updated_at, reference_at)
+    if days_since_update is not None:
+        details.append(f"days_since_update={days_since_update}")
+    if issue.state is IssueState.BLOCKED:
+        details.append("blocked=true")
+    if _has_recent_git_activity(issue.key, facts):
+        details.append("recent_git_activity=true")
+    if days_since_update is not None and days_since_update >= 7:
+        details.append("stale=true")
+    return f"Active issue {issue.key}: {issue.title} ({', '.join(details)})"
 
 
 def _fact_context_lines(facts: Iterable[FactEvent]) -> list[str]:
-    return [
-        f"Recent fact for {fact.entity_ref.kind.value}/{fact.entity_ref.id}: "
-        f"{_format_payload(fact.payload)}"
-        for fact in facts
-    ]
+    lines: list[str] = []
+    for fact in facts:
+        prefix = (
+            "Recent Git activity"
+            if fact.source in {"vcs_commit", "vcs_pull_request"}
+            else "Recent fact"
+        )
+        lines.append(
+            f"{prefix} for {fact.entity_ref.kind.value}/{fact.entity_ref.id}: "
+            f"source={fact.source}, {_format_payload(fact.payload)}"
+        )
+    return lines
+
+
+def _days_since(value: datetime | None, reference_at: datetime) -> int | None:
+    if value is None:
+        return None
+    return max(0, (reference_at - value).days)
+
+
+def _has_recent_git_activity(issue_key: str, facts: Iterable[FactEvent]) -> bool:
+    pattern = _issue_key_pattern(issue_key)
+    for fact in facts:
+        if fact.source not in {"vcs_commit", "vcs_pull_request"}:
+            continue
+        if fact.entity_ref.id.casefold() == issue_key.casefold():
+            return True
+        if any(isinstance(value, str) and pattern.search(value) for value in fact.payload.values()):
+            return True
+    return False
+
+
+def _issue_key_pattern(issue_key: str) -> re.Pattern[str]:
+    return re.compile(rf"(?<![A-Za-z0-9]){re.escape(issue_key)}(?![A-Za-z0-9])", re.IGNORECASE)
 
 
 def _format_payload(payload: Mapping[str, JsonScalar]) -> str:

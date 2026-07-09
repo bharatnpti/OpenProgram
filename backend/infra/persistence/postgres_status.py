@@ -21,6 +21,7 @@ from core.domain.status import (
     CheckInSignals,
     CrossPersonMention,
     DeveloperStatus,
+    IssueClaim,
     StatusSource,
 )
 
@@ -999,6 +1000,15 @@ def _signals_to_json(signals: CheckInSignals | None) -> dict[str, object] | None
             }
             for request in signals.requests
         ],
+        "issue_updates": [
+            {
+                "issue_key": update.issue_key,
+                "claimed_done": update.claimed_done,
+                "claimed_state": update.claimed_state,
+                "note": update.note,
+            }
+            for update in signals.issue_updates
+        ],
     }
 
 
@@ -1022,6 +1032,7 @@ def _signals_from_json(value: object) -> CheckInSignals | None:
         blockers_answered=bool(blockers) or _bool_from_json(value.get("blockers_answered")),
         eta_answered=parsed_eta is not None or _bool_from_json(value.get("eta_answered")),
         requests=_cross_person_mentions_from_json(value.get("requests")),
+        issue_updates=_issue_claims_from_json(value.get("issue_updates")),
     )
 
 
@@ -1063,6 +1074,27 @@ def _cross_person_mentions_from_json(value: object) -> tuple[CrossPersonMention,
             )
         )
     return tuple(mentions)
+
+
+def _issue_claims_from_json(value: object) -> tuple[IssueClaim, ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    claims: list[IssueClaim] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        issue_key = _optional_string(item.get("issue_key") or item.get("key"))
+        if issue_key is None:
+            continue
+        claims.append(
+            IssueClaim(
+                issue_key=issue_key,
+                claimed_done=_bool_from_json(item.get("claimed_done")),
+                claimed_state=_optional_string(item.get("claimed_state")),
+                note=_optional_string(item.get("note")) or "",
+            )
+        )
+    return tuple(claims)
 
 
 def _int_tuple_from_json(value: object) -> tuple[int, ...]:

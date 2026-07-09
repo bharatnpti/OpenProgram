@@ -484,6 +484,7 @@ class ServiceRegistry:
             time_series_repository=self.time_series_repository(),
             llm_provider=self.llm_provider(),
             model=self.settings.litellm_model,
+            auto_notify=self.settings.cross_person_auto_notify,
         )
 
     def availability_service(self) -> AvailabilityService:

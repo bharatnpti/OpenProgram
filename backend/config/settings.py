@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     conversation_purge_enabled: bool = True
     conversation_purge_cron: str = "0 3 * * *"
     conversation_purge_schedule_id: str = "openprogram-conversation-purge"
+    cross_person_auto_notify: bool = False
     directory_provider: str = "slack"
     chat_simulator_enabled: bool = False
     directory_sync_cron: str = "0 */6 * * *"
