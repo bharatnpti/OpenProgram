@@ -1392,7 +1392,7 @@ export interface components {
        * State
        * @enum {string}
        */
-      state: "confirmed" | "stale" | "missing";
+      state: "confirmed" | "partial" | "stale" | "missing";
       source: components["schemas"]["StatusSource"];
       /** Status As Of */
       status_as_of: string | null;
@@ -1902,6 +1902,8 @@ export interface components {
       as_of: string;
       /** Confirmed */
       confirmed: number;
+      /** Partial */
+      partial: number;
       /** Stale */
       stale: number;
       /** Missing */
@@ -2134,7 +2136,7 @@ export interface components {
      * StatusSource
      * @enum {string}
      */
-    StatusSource: "confirmed" | "inferred" | "stale" | "unknown";
+    StatusSource: "confirmed" | "partial" | "inferred" | "stale" | "unknown";
     /** TaskProgressDto */
     TaskProgressDto: {
       /** Id */

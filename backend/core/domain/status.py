@@ -7,6 +7,7 @@ from enum import StrEnum
 
 class StatusSource(StrEnum):
     CONFIRMED = "confirmed"
+    PARTIAL = "partial"
     INFERRED = "inferred"
     STALE = "stale"
     UNKNOWN = "unknown"
@@ -25,6 +26,8 @@ class CheckInSignals:
     progress_note: str
     blockers: tuple[str, ...] = ()
     eta_change_days: int | None = None
+    blockers_answered: bool = False
+    eta_answered: bool = False
     requests: tuple[CrossPersonMention, ...] = ()
 
 

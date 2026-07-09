@@ -666,7 +666,7 @@ class CheckinDeveloperDto(BaseModel):
 
     developer_id: str
     developer_name: str
-    state: Literal["confirmed", "stale", "missing"]
+    state: Literal["confirmed", "partial", "stale", "missing"]
     source: StatusSource
     status_as_of: date | None
     summary: str
@@ -690,6 +690,7 @@ class PodCheckinsResponse(BaseModel):
     pod_name: str
     as_of: date
     confirmed: int
+    partial: int
     stale: int
     missing: int
     developers: list[CheckinDeveloperDto]
@@ -701,6 +702,7 @@ class PodCheckinsResponse(BaseModel):
             pod_name=view.pod_name,
             as_of=view.as_of,
             confirmed=view.confirmed,
+            partial=view.partial,
             stale=view.stale,
             missing=view.missing,
             developers=[CheckinDeveloperDto.from_view(item) for item in view.developers],

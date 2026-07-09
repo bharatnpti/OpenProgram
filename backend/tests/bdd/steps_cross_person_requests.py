@@ -56,6 +56,7 @@ def _given_liam_review_stack(world: World) -> None:
                 '{"is_status_update":true,"sufficient":true,"question":null,'
                 '"signals":{"progress_note":"Blocked on API schema review",'
                 '"blockers":["API schema review"],"eta_change_days":null,'
+                '"blockers_answered":true,"eta_answered":true,'
                 '"requests":[{"name":"Liam Chen","kind":"review",'
                 '"note":"API schema review","email":null}]}}'
             ),
@@ -73,6 +74,7 @@ def _given_ambiguous_alex_stack(world: World) -> None:
                 '{"is_status_update":true,"sufficient":true,"question":null,'
                 '"signals":{"progress_note":"Blocked on schema confirmation",'
                 '"blockers":["schema confirmation"],"eta_change_days":null,'
+                '"blockers_answered":true,"eta_answered":true,'
                 '"requests":[{"name":"Alex","kind":"input",'
                 '"note":"schema confirmation","email":null}]}}'
             ),
@@ -80,6 +82,7 @@ def _given_ambiguous_alex_stack(world: World) -> None:
                 '{"is_status_update":true,"sufficient":true,"question":null,'
                 '"signals":{"progress_note":"Blocked on schema confirmation",'
                 '"blockers":["schema confirmation"],"eta_change_days":null,'
+                '"blockers_answered":true,"eta_answered":true,'
                 '"requests":[{"name":"Alex","kind":"input",'
                 '"note":"schema confirmation","email":"alexa.roy@example.com"}]}}'
             ),
