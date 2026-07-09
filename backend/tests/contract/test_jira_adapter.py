@@ -33,7 +33,7 @@ async def test_jira_adapter_maps_read_payloads_and_rejects_writes() -> None:
             },
         )
     )
-    respx.get("https://jira.test/rest/api/3/search").mock(
+    respx.get("https://jira.test/rest/api/3/search/jql").mock(
         side_effect=[
             httpx.Response(200, json={"issues": [_issue_payload("PO-1")]}),
             httpx.Response(200, json={"issues": [_issue_payload("PO-3")]}),
@@ -94,7 +94,7 @@ async def test_jira_adapter_maps_read_payloads_and_rejects_writes() -> None:
     search_jqls = [
         str(call.request.url.params["jql"])
         for call in respx.calls
-        if call.request.url.path == "/rest/api/3/search"
+        if call.request.url.path == "/rest/api/3/search/jql"
     ]
     assert (
         '(project = "PO" AND component = API) AND updated > "2026-01-02T00:00:00+00:00" '

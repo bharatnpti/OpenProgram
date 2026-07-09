@@ -70,19 +70,13 @@ class JiraIssueTrackerAdapter:
 
     async def list_active_for(self, assignee: UserRef) -> list[Issue]:
         with _tracer.start_as_current_span("jira.list_active_for"):
-            payload = await self._get(
+            return await self._search_issues_for_jql(
                 assignee.tenant_id,
-                "/rest/api/3/search",
-                params={
-                    "jql": (
-                        f"assignee = {_jql_string(assignee.external_id)} "
-                        "AND statusCategory != Done ORDER BY updated DESC"
-                    ),
-                    "fields": _ISSUE_FIELDS,
-                    "maxResults": "100",
-                },
+                (
+                    f"assignee = {_jql_string(assignee.external_id)} "
+                    "AND statusCategory != Done ORDER BY updated DESC"
+                ),
             )
-            return [_map_issue(assignee.tenant_id, item) for item in _items(payload, "issues")]
 
     async def transition(self, tenant_id: str, key: str, to_state: str) -> None:
         raise ProviderUnavailable("issue tracker adapter is read-only")
@@ -131,16 +125,31 @@ class JiraIssueTrackerAdapter:
             effective_jql = (
                 f"({effective_jql}) AND updated > {_jql_string(cursor.updated_at.isoformat())}"
             )
-        payload = await self._get(
+        return await self._search_issues_for_jql(
             tenant_id,
-            "/rest/api/3/search",
-            params={
-                "jql": f"{effective_jql} ORDER BY updated ASC",
+            f"{effective_jql} ORDER BY updated ASC",
+        )
+
+    async def _search_issues_for_jql(self, tenant_id: str, jql: str) -> list[Issue]:
+        issues: list[Issue] = []
+        next_page_token: str | None = None
+        while True:
+            params = {
+                "jql": jql,
                 "fields": _ISSUE_FIELDS,
                 "maxResults": "100",
-            },
-        )
-        return [_map_issue(tenant_id, item) for item in _items(payload, "issues")]
+            }
+            if next_page_token is not None:
+                params["nextPageToken"] = next_page_token
+            payload = await self._get(
+                tenant_id,
+                "/rest/api/3/search/jql",
+                params=params,
+            )
+            issues.extend(_map_issue(tenant_id, item) for item in _items(payload, "issues"))
+            next_page_token = _optional_string(payload, "nextPageToken")
+            if next_page_token is None:
+                return issues
 
     async def _credentials(self, tenant_id: str) -> JiraCredentials:
         base_url = self.base_url or await self._secret(tenant_id, "base_url")
