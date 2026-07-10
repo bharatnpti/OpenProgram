@@ -48,12 +48,12 @@ RECENT_CONVERSATION_TURN_LIMIT = 20
 _logger = structlog.get_logger(__name__)
 COMPOSE_CHECKIN_SYSTEM_PROMPT = (
     "Compose a concise daily check-in DM. Use prior conversation turns as context, but do not "
-    "quote private history unless it directly helps the ask. Return one plain Slack DM with no "
+    "quote private history unless it directly helps the ask. Return one plain chat DM with no "
     "labels, preamble, quoted prompt text, or markdown table."
 )
 COMPOSE_NUDGE_SYSTEM_PROMPT = (
     "Compose a concise follow-up DM for a pending status check-in. Use prior conversation turns "
-    "as context and avoid assuming status is healthy without a reply. Return one plain Slack DM "
+    "as context and avoid assuming status is healthy without a reply. Return one plain chat DM "
     "with no labels, preamble, quoted prompt text, or markdown table."
 )
 OUTBOUND_DM_MAX_CHARS = 320
@@ -671,7 +671,7 @@ class StatusCollector:
 
     async def _compose_dm_node(self, state: StatusCollectorState) -> StatusCollectorState:
         prompt = (
-            "Write one concise, conversational Slack direct message asking for today's work "
+            "Write one concise, conversational chat direct message asking for today's work "
             "status. Ask for progress, blockers, and ETA changes. Reference the specific "
             "pending, blocked, or stale issue(s) and any carried-forward blocker from context "
             "when useful, while staying within the character cap. Return only the message text.\n\n"

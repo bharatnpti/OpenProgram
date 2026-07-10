@@ -146,20 +146,23 @@ def _risk_summary(fact: FactEvent) -> str:
 
 
 def _cross_person_summary(fact: FactEvent) -> str:
-    kind = _payload_string(fact.payload, "kind") or "request"
+    kind = _cross_person_kind_label(fact.payload)
     transition = _payload_string(fact.payload, "transition") or "opened"
-    requester = _payload_string(fact.payload, "requester_id") or "someone"
-    counterpart = _payload_string(fact.payload, "counterpart_id") or "unresolved counterpart"
-    note = _payload_string(fact.payload, "note") or "follow-up needed"
+    requester = _payload_string_any(fact.payload, ("reporter_id", "requester_id")) or "someone"
+    counterpart = (
+        _payload_string_any(fact.payload, ("referenced_person_id", "counterpart_id"))
+        or "unresolved counterpart"
+    )
+    summary = _payload_string_any(fact.payload, ("summary", "note")) or "follow-up needed"
     if transition == "opened":
-        return f"Cross-person {kind} opened: {requester} needs {counterpart} for {note}"
+        return f"Cross-person {kind} opened: {requester} needs {counterpart} for {summary}"
     if transition == "resolved":
-        return f"Cross-person {kind} resolved: {counterpart} completed {note}"
+        return f"Cross-person {kind} resolved: {counterpart} completed {summary}"
     if transition == "acknowledged":
-        return f"Cross-person {kind} acknowledged: {counterpart} is handling {note}"
+        return f"Cross-person {kind} acknowledged: {counterpart} is handling {summary}"
     if transition == "needs_resolution":
-        return f"Cross-person {kind} needs PM resolution: {requester} named {note}"
-    return f"Cross-person {kind} {transition}: {note}"
+        return f"Cross-person {kind} needs PM resolution: {requester} named {summary}"
+    return f"Cross-person {kind} {transition}: {summary}"
 
 
 def _details_for_fact(fact: FactEvent) -> Mapping[str, JsonScalar]:
@@ -205,14 +208,39 @@ def _details_for_fact(fact: FactEvent) -> Mapping[str, JsonScalar]:
     if fact.source == "cross_person_request":
         return {
             "request_id": _payload_string(fact.payload, "request_id"),
-            "requester_id": _payload_string(fact.payload, "requester_id"),
-            "counterpart_id": _payload_string(fact.payload, "counterpart_id"),
-            "kind": _payload_string(fact.payload, "kind"),
-            "status": _payload_string(fact.payload, "status"),
+            "reporter_id": _payload_string_any(fact.payload, ("reporter_id", "requester_id")),
+            "referenced_person_id": _payload_string_any(
+                fact.payload,
+                ("referenced_person_id", "counterpart_id"),
+            ),
+            "dependency_kind": _payload_string_any(fact.payload, ("dependency_kind", "kind")),
+            "dependency_status": _payload_string_any(
+                fact.payload,
+                ("dependency_status", "status"),
+            ),
             "transition": _payload_string(fact.payload, "transition"),
+            "summary": _payload_string_any(fact.payload, ("summary", "note")),
             "needs_resolution": _payload_bool(fact.payload, "needs_resolution"),
         }
     return {}
+
+
+def _cross_person_kind_label(payload: Mapping[str, JsonScalar]) -> str:
+    kind = _payload_string_any(payload, ("dependency_kind", "kind")) or "request"
+    return {
+        "needs_review": "review",
+        "needs_input": "input",
+        "blocked_by": "blocker",
+        "waiting_on": "dependency",
+    }.get(kind, kind)
+
+
+def _payload_string_any(payload: Mapping[str, JsonScalar], keys: tuple[str, ...]) -> str | None:
+    for key in keys:
+        value = _payload_string(payload, key)
+        if value is not None:
+            return value
+    return None
 
 
 def _payload_string(payload: Mapping[str, JsonScalar], key: str) -> str | None:

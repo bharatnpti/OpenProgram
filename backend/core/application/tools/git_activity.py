@@ -8,7 +8,8 @@ from datetime import UTC, datetime, timedelta
 from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.ports.repositories import TimeSeriesRepository
 
-DEFAULT_GIT_LOOKBACK_DAYS = 7
+DEFAULT_GIT_LOOKBACK_DAYS = 30
+MAX_GIT_LOOKBACK_DAYS = 30
 DEFAULT_GIT_ACTIVITY_LIMIT = 8
 MAX_GIT_ACTIVITY_LIMIT = 20
 GIT_FACT_SOURCES = ("vcs_commit", "vcs_pull_request")
@@ -25,7 +26,8 @@ def _parameters_schema() -> Mapping[str, object]:
             "since_days": {
                 "type": "integer",
                 "minimum": 1,
-                "description": "Number of recent days to inspect.",
+                "maximum": MAX_GIT_LOOKBACK_DAYS,
+                "description": "Number of recent days to inspect, up to the fact-retention window.",
             },
             "limit": {
                 "type": "integer",
@@ -48,7 +50,8 @@ class GitActivityTool:
     name: str = "fetch_git_activity"
     description: str = (
         "Fetch recent read-only Git commit and pull request facts for this developer, optionally "
-        "filtered by issue key."
+        "filtered by issue key. When checking older claims, widen since_days up to the "
+        f"{MAX_GIT_LOOKBACK_DAYS}-day fact-retention window."
     )
     parameters: Mapping[str, object] = field(default_factory=_parameters_schema)
 
@@ -56,6 +59,7 @@ class GitActivityTool:
         since_days = _bounded_positive_int(
             arguments.get("since_days"),
             default=DEFAULT_GIT_LOOKBACK_DAYS,
+            upper_bound=MAX_GIT_LOOKBACK_DAYS,
         )
         limit = _bounded_positive_int(arguments.get("limit"), default=DEFAULT_GIT_ACTIVITY_LIMIT)
         issue_key = _clean_string(arguments.get("issue_key"))
