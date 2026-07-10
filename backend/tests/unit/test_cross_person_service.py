@@ -61,6 +61,10 @@ async def test_record_from_checkin_records_fact_without_auto_notify_by_default()
     assert facts[0].payload["referenced_person_name"] == "Alice Chen"
     assert facts[0].payload["dependency_kind"] == "needs_review"
     assert facts[0].payload["dependency_status"] == "open"
+    assert facts[0].payload["summary"] == "API schema review"
+    assert set(facts[0].payload).isdisjoint(
+        {"requester_id", "counterpart_id", "counterpart_name", "kind", "status", "note"}
+    )
 
 
 async def test_record_from_checkin_auto_notify_opt_in_is_idempotent() -> None:
@@ -228,8 +232,12 @@ async def test_registry_routes_slack_thread_reply_by_notify_message_id_first() -
 
     assert result.status == CrossPersonRequestStatus.ACKNOWLEDGED.value
     assert result.message_id == "1700000000.000123"
-    assert (await store.get("demo", first.id)).status is CrossPersonRequestStatus.OPEN
-    assert (await store.get("demo", second.id)).status is CrossPersonRequestStatus.ACKNOWLEDGED
+    stored_first = await store.get("demo", first.id)
+    stored_second = await store.get("demo", second.id)
+    assert stored_first is not None
+    assert stored_second is not None
+    assert stored_first.status is CrossPersonRequestStatus.OPEN
+    assert stored_second.status is CrossPersonRequestStatus.ACKNOWLEDGED
 
 
 def _resolution() -> CrossPersonRequestResolution:
@@ -260,16 +268,16 @@ def _counterpart_reply(correlation_id: str, text: str) -> InboundMessage:
 
 
 def _settings(**overrides: object) -> Settings:
-    return Settings(
-        _env_file=None,
-        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
-        runtime_mode="memory",
-        chat_provider="fake",
-        directory_provider="fake",
-        issue_tracker_provider="fake",
-        vcs_provider="fake",
-        calendar_provider="fake",
-        llm_provider="fake",
-        workflow_provider="fake",
+    values = {
+        "secret_key": "q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        "runtime_mode": "memory",
+        "chat_provider": "fake",
+        "directory_provider": "fake",
+        "issue_tracker_provider": "fake",
+        "vcs_provider": "fake",
+        "calendar_provider": "fake",
+        "llm_provider": "fake",
+        "workflow_provider": "fake",
         **overrides,
-    )
+    }
+    return Settings.model_validate(values)

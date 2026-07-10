@@ -95,12 +95,12 @@ async def test_feed_renders_cross_person_request_fact_descriptively() -> None:
             entity_ref=EntityRef(tenant_id=TENANT, kind=NodeKind.DEVELOPER, id="U-alice"),
             payload={
                 "request_id": "xreq-1",
-                "requester_id": "dev-1",
-                "counterpart_id": "U-alice",
-                "kind": "review",
-                "status": "open",
+                "reporter_id": "dev-1",
+                "referenced_person_id": "U-alice",
+                "dependency_kind": "needs_review",
+                "dependency_status": "open",
                 "transition": "opened",
-                "note": "API schema review",
+                "summary": "API schema review",
                 "needs_resolution": False,
             },
             observed_at=datetime.now(tz=UTC),
@@ -117,10 +117,11 @@ async def test_feed_renders_cross_person_request_fact_descriptively() -> None:
     assert item.summary == ("Cross-person review opened: dev-1 needs U-alice for API schema review")
     assert item.details == {
         "request_id": "xreq-1",
-        "requester_id": "dev-1",
-        "counterpart_id": "U-alice",
-        "kind": "review",
-        "status": "open",
+        "reporter_id": "dev-1",
+        "referenced_person_id": "U-alice",
+        "dependency_kind": "needs_review",
+        "dependency_status": "open",
         "transition": "opened",
+        "summary": "API schema review",
         "needs_resolution": False,
     }

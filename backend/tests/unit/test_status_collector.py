@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from inspect import Parameter, signature
+from typing import Any, cast
 
 import pytest
 
@@ -91,6 +92,15 @@ class CapturingSpan:
 
     def set_attribute(self, key: str, value: object) -> None:
         self.attributes[key] = value
+
+
+@dataclass
+class CountingIssueTracker(FakeIssueTracker):
+    fetched_issue_keys: list[tuple[str, str]] = field(default_factory=list)
+
+    async def get_issue(self, tenant_id: str, key: str) -> Issue:
+        self.fetched_issue_keys.append((tenant_id, key))
+        return await super().get_issue(tenant_id, key)
 
 
 async def _record_open_checkin(store: InMemoryGraphStore) -> None:
@@ -401,7 +411,7 @@ async def test_status_collector_handles_reply_by_correlation(
     span = CapturingSpan()
     monkeypatch.setattr(status_collector_module, "_logger", logger)
     monkeypatch.setattr(
-        status_collector_module.trace,
+        cast(Any, status_collector_module).trace,
         "get_current_span",
         lambda: span,
     )
@@ -552,7 +562,9 @@ async def test_status_collector_records_scheduled_checkin_status_on_schedule_dat
     )
 
 
-async def test_status_collector_records_only_first_rapid_final_reply() -> None:
+async def test_status_collector_records_only_first_rapid_final_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     store = InMemoryGraphStore()
     await store.record_checkin(
         CheckIn(
@@ -575,7 +587,7 @@ async def test_status_collector_records_only_first_rapid_final_reply() -> None:
             await second_may_persist.wait()
         return await original_record_once(checkin)
 
-    store.record_checkin_reply_once = delayed_record_once
+    monkeypatch.setattr(store, "record_checkin_reply_once", delayed_record_once)
     collector = StatusCollector(
         issue_tracker=FakeIssueTracker(),
         chat_provider=FakeChatProvider(),
@@ -1111,6 +1123,99 @@ async def test_status_collector_tool_agent_fetches_history_and_finalizes_reply()
         "fetch_issue_tracker_context",
         "fetch_git_activity",
     ]
+
+
+async def test_status_collector_tool_agent_cross_checks_jira_contradiction() -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    tracker = CountingIssueTracker(
+        issues={
+            "PO-1": Issue(
+                tenant_id="demo",
+                key="PO-1",
+                title="Build graph sync",
+                state=IssueState.IN_PROGRESS,
+                assignee=UserRef(tenant_id="demo", external_id="dev-1"),
+                updated_at=datetime(2026, 1, 10, 8, 0, tzinfo=UTC),
+            )
+        }
+    )
+    chat = FakeChatProvider()
+    llm = FakeLlmProvider(
+        responses=[
+            _llm_response(
+                tool_calls=(
+                    LlmToolCall(
+                        id="call-issue",
+                        name="fetch_issue_tracker_context",
+                        arguments={"issue_key": "PO-1"},
+                    ),
+                ),
+                finish_reason="tool_calls",
+            ),
+            _llm_response(
+                text=(
+                    '{"is_status_update":true,"sufficient":false,'
+                    '"question":"PO-1 is still in progress. What changed on your side?",'
+                    '"signals":null}'
+                ),
+                finish_reason="stop",
+            ),
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=tracker,
+        chat_provider=chat,
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        time_series_repository=store,
+        model="test-model",
+        tool_agent=ToolCallingAgent(llm, max_tool_iterations=1),
+    )
+
+    outcome = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="PO-1 is done now.",
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
+        )
+    )
+
+    checkin = await store.checkin_by_correlation("demo", "corr-1")
+    assert outcome.kind == "clarifying"
+    assert outcome.status is None
+    assert checkin is not None
+    assert checkin.replied_at is None
+    assert checkin.raw_reply is None
+    assert tracker.fetched_issue_keys == [("demo", "PO-1")]
+    assert len(chat.sent) == 1
+    assert chat.sent[0].text == "PO-1 is still in progress. What changed on your side?"
+    assert chat.sent[0].correlation_id == "corr-1"
+    assert chat.sent[0].metadata == {
+        "purpose": "status_clarification",
+        "clarification_number": 1,
+        "idempotency_key": "clarification:corr-1:1",
+    }
+    assert len(llm.requests) == 2
+    assert "fetch_issue_tracker_context" in [tool.name for tool in llm.requests[0].tools]
+    assert llm.requests[1].tool_calls[0].id == "call-issue"
+    assert "PO-1: Build graph sync | state=in_progress" in llm.requests[1].tool_results[0].content
+    assert await store.checkin_clarification_count("demo", "corr-1") == 1
 
 
 async def test_status_collector_ignores_duplicate_message_id_while_open() -> None:
