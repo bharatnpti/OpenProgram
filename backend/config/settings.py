@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+from datetime import time
 from functools import lru_cache
 from typing import Literal, Self
 from urllib.parse import urlsplit, urlunsplit
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -32,6 +34,11 @@ class Settings(BaseSettings):
     heartbeat_schedule_id: str | None = None
     checkin_fanout_schedule_id: str = "openprogram-checkin-fanout"
     checkin_fanout_cron: str = "30 9 * * 1-5"
+    checkin_reconcile_enabled: bool = True
+    checkin_reconcile_schedule_id: str = "openprogram-checkin-reconcile"
+    checkin_reconcile_cron: str = "*/15 * * * 1-5"
+    checkin_reconcile_after_local_time: str = "09:45"
+    checkin_reconcile_timezone: str | None = None
     jira_sync_projects: tuple[str, ...] = ()
     github_sync_repos: tuple[str, ...] = ()
     calendar_sync_user_ids: tuple[str, ...] = ()
@@ -267,6 +274,13 @@ class Settings(BaseSettings):
             return None
         return value
 
+    @field_validator("checkin_reconcile_timezone", mode="before")
+    @classmethod
+    def empty_checkin_reconcile_timezone_is_unset(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator(
         "oidc_issuer_url",
         "oidc_client_id",
@@ -284,6 +298,9 @@ class Settings(BaseSettings):
         "dbos_heartbeat_cron",
         "checkin_fanout_schedule_id",
         "checkin_fanout_cron",
+        "checkin_reconcile_schedule_id",
+        "checkin_reconcile_cron",
+        "checkin_reconcile_after_local_time",
         "jira_sync_cron",
         "github_sync_cron",
         "calendar_sync_cron",
@@ -304,6 +321,30 @@ class Settings(BaseSettings):
     def validate_non_empty_string(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("value must not be empty")
+        return value
+
+    @field_validator("checkin_reconcile_after_local_time")
+    @classmethod
+    def validate_checkin_reconcile_after_local_time(cls, value: str) -> str:
+        try:
+            parsed = time.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError(
+                "checkin_reconcile_after_local_time must be HH:MM or HH:MM:SS"
+            ) from exc
+        if parsed.tzinfo is not None:
+            raise ValueError("checkin_reconcile_after_local_time must be a local time")
+        return value
+
+    @field_validator("tenant_default_timezone", "checkin_reconcile_timezone")
+    @classmethod
+    def validate_timezone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("value must be an IANA timezone") from exc
         return value
 
     @field_validator("auth_public_backend_url", "auth_frontend_url")
@@ -511,6 +552,10 @@ class Settings(BaseSettings):
     @property
     def resolved_heartbeat_schedule_id(self) -> str:
         return self.heartbeat_schedule_id or self.temporal_schedule_id
+
+    @property
+    def resolved_checkin_reconcile_timezone(self) -> str:
+        return self.checkin_reconcile_timezone or self.tenant_default_timezone
 
     @property
     def default_llm_model(self) -> str:

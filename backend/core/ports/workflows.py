@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from core.domain.workflows import (
+    CheckinReconcileScheduleConfig,
     CheckinScheduleConfig,
     ConversationPurgeScheduleConfig,
     DeveloperCheckinDispatch,
@@ -18,6 +19,10 @@ class WorkflowScheduler(Protocol):
 
     async def ensure_checkin_fanout_schedule(
         self, config: CheckinScheduleConfig
+    ) -> ScheduleBootstrapResult: ...
+
+    async def ensure_checkin_reconcile_schedule(
+        self, config: CheckinReconcileScheduleConfig
     ) -> ScheduleBootstrapResult: ...
 
     async def ensure_conversation_purge_schedule(
