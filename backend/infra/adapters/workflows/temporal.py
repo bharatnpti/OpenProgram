@@ -12,6 +12,9 @@ from temporalio import activity, workflow
 from core.domain.workflows import (
     CheckinFanoutInput,
     CheckinFanoutResult,
+    CheckinReconcileInput,
+    CheckinReconcileResult,
+    CheckinReconcileScheduleConfig,
     CheckinScheduleConfig,
     ConversationPurgeInput,
     ConversationPurgeResult,
@@ -110,6 +113,29 @@ class ScheduledCheckinFanoutWorkflow:
             CheckinFanoutInput(
                 tenant_id=config.tenant_id,
                 checkin_date=workflow.now().date().isoformat(),
+            ),
+            start_to_close_timeout=timedelta(minutes=10),
+        )
+
+
+@activity.defn
+async def reconcile_checkins_for_tenant_activity(
+    payload: CheckinReconcileInput,
+) -> CheckinReconcileResult:
+    return await checkin_fanout.reconcile_checkins_for_tenant_activity(payload)
+
+
+@workflow.defn
+class ScheduledCheckinReconcileWorkflow:
+    @workflow.run
+    async def run(self, config: CheckinReconcileScheduleConfig) -> CheckinReconcileResult:
+        return await workflow.execute_activity(
+            reconcile_checkins_for_tenant_activity,
+            CheckinReconcileInput(
+                tenant_id=config.tenant_id,
+                observed_at=workflow.now().isoformat(),
+                after_local_time=config.after_local_time,
+                timezone=config.timezone,
             ),
             start_to_close_timeout=timedelta(minutes=10),
         )
@@ -446,6 +472,31 @@ class TemporalWorkflowScheduler:
         status = await _ensure_temporal_schedule(client, config.schedule_id, schedule)
         return ScheduleBootstrapResult(schedule_id=config.schedule_id, status=status)
 
+    async def ensure_checkin_reconcile_schedule(
+        self, config: CheckinReconcileScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        from temporalio.client import (
+            Schedule,
+            ScheduleActionStartWorkflow,
+            ScheduleOverlapPolicy,
+            SchedulePolicy,
+            ScheduleSpec,
+        )
+
+        client = await _connect_temporal(self.target)
+        schedule = Schedule(
+            action=ScheduleActionStartWorkflow(
+                ScheduledCheckinReconcileWorkflow.run,
+                config,
+                id=f"{config.schedule_id}-workflow",
+                task_queue=self.task_queue,
+            ),
+            spec=ScheduleSpec(cron_expressions=[config.cron]),
+            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
+        )
+        status = await _ensure_temporal_schedule(client, config.schedule_id, schedule)
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status=status)
+
     async def ensure_conversation_purge_schedule(
         self, config: ConversationPurgeScheduleConfig
     ) -> ScheduleBootstrapResult:
@@ -584,6 +635,7 @@ class TemporalWorkflowWorker:
                 HeartbeatWorkflow,
                 CheckinFanoutWorkflow,
                 ScheduledCheckinFanoutWorkflow,
+                ScheduledCheckinReconcileWorkflow,
                 ConversationPurgeWorkflow,
                 ScheduledConversationPurgeWorkflow,
                 JiraSyncWorkflow,
@@ -599,6 +651,7 @@ class TemporalWorkflowWorker:
             activities=[
                 record_heartbeat_activity,
                 dispatch_checkins_for_tenant_activity,
+                reconcile_checkins_for_tenant_activity,
                 purge_conversation_turns_activity,
                 sync_jira_project_activity,
                 sync_git_repo_activity,

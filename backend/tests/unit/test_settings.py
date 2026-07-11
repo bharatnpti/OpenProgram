@@ -101,6 +101,12 @@ def test_settings_defaults_workflow_provider_to_dbos() -> None:
     assert settings.resolved_heartbeat_schedule_id == "openprogram-heartbeat"
     assert settings.dbos_heartbeat_cron == "0 * * * * *"
     assert settings.resolved_dbos_system_database_url == settings.database_url
+    assert settings.checkin_reconcile_enabled is True
+    assert settings.checkin_reconcile_schedule_id == "openprogram-checkin-reconcile"
+    assert settings.checkin_reconcile_cron == "*/15 * * * 1-5"
+    assert settings.checkin_reconcile_after_local_time == "09:45"
+    assert settings.checkin_reconcile_timezone is None
+    assert settings.resolved_checkin_reconcile_timezone == "UTC"
     assert settings.checkin_reply_wait_seconds == 14400
     assert settings.checkin_final_reply_wait_seconds == 28800
     assert settings.checkin_max_clarifications == 2
@@ -143,6 +149,23 @@ def test_settings_resolves_configured_dbos_system_database_url() -> None:
     assert (
         settings.resolved_dbos_system_database_url == "postgresql://dbos:dbos@localhost:5432/dbos"
     )
+
+
+def test_settings_resolves_checkin_reconcile_timezone() -> None:
+    settings = _settings(
+        secret_key=SECRET_KEY,
+        tenant_default_timezone="Asia/Kolkata",
+        checkin_reconcile_timezone="",
+    )
+    configured = _settings(
+        secret_key=SECRET_KEY,
+        tenant_default_timezone="Asia/Kolkata",
+        checkin_reconcile_timezone="UTC",
+    )
+
+    assert settings.checkin_reconcile_timezone is None
+    assert settings.resolved_checkin_reconcile_timezone == "Asia/Kolkata"
+    assert configured.resolved_checkin_reconcile_timezone == "UTC"
 
 
 def test_settings_rejects_invalid_pool_bounds() -> None:
@@ -222,6 +245,14 @@ def test_settings_rejects_invalid_sync_targets() -> None:
         _settings(secret_key=SECRET_KEY, conversation_purge_cron="")
     with pytest.raises(ValidationError):
         _settings(secret_key=SECRET_KEY, conversation_purge_schedule_id="")
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, checkin_reconcile_after_local_time="not-a-time")
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, checkin_reconcile_after_local_time="09:45+01:00")
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, checkin_reconcile_cron="")
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, checkin_reconcile_timezone="Mars/Base")
     with pytest.raises(ValidationError):
         _settings(secret_key=SECRET_KEY, checkin_max_clarifications=-1)
     with pytest.raises(ValidationError):

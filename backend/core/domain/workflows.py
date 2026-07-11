@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Literal
 
 type WorkflowPayloadValue = str | int | float | bool | None
+type CheckinReconcileStatus = Literal["skipped_early", "no_missing", "dispatched"]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -31,6 +33,15 @@ class CheckinScheduleConfig:
     schedule_id: str
     tenant_id: str
     cron: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckinReconcileScheduleConfig:
+    schedule_id: str
+    tenant_id: str
+    cron: str
+    after_local_time: str
+    timezone: str
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -62,6 +73,30 @@ class CheckinFanoutResult:
     checkin_date: str
     dispatched: int
     workflow_ids: list[str]
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckinReconcileInput:
+    tenant_id: str
+    observed_at: str | None = None
+    after_local_time: str = "09:45"
+    timezone: str = "UTC"
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckinReconcileResult:
+    tenant_id: str
+    checkin_date: str
+    status: CheckinReconcileStatus
+    dispatched: int
+    workflow_ids: list[str]
+    skipped_reason: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckinReconcileDispatchPlan:
+    result: CheckinReconcileResult
+    dispatches: list[DeveloperCheckinDispatch]
 
 
 @dataclass(frozen=True, kw_only=True)

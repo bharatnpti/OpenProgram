@@ -4,6 +4,7 @@ import asyncio
 
 from config.settings import Settings, get_settings
 from core.domain.workflows import (
+    CheckinReconcileScheduleConfig,
     CheckinScheduleConfig,
     ConversationPurgeScheduleConfig,
     ScheduleBootstrapResult,
@@ -34,6 +35,10 @@ async def ensure_workflow_schedules(
         await scheduler.ensure_heartbeat_schedule(),
         await scheduler.ensure_checkin_fanout_schedule(checkin_fanout_config(settings)),
     ]
+    if settings.checkin_reconcile_enabled:
+        results.append(
+            await scheduler.ensure_checkin_reconcile_schedule(checkin_reconcile_config(settings))
+        )
     if settings.conversation_purge_enabled:
         results.append(
             await scheduler.ensure_conversation_purge_schedule(conversation_purge_config(settings))
@@ -47,6 +52,16 @@ def checkin_fanout_config(settings: Settings) -> CheckinScheduleConfig:
         schedule_id=settings.checkin_fanout_schedule_id,
         tenant_id=settings.tenant_id,
         cron=settings.checkin_fanout_cron,
+    )
+
+
+def checkin_reconcile_config(settings: Settings) -> CheckinReconcileScheduleConfig:
+    return CheckinReconcileScheduleConfig(
+        schedule_id=settings.checkin_reconcile_schedule_id,
+        tenant_id=settings.tenant_id,
+        cron=settings.checkin_reconcile_cron,
+        after_local_time=settings.checkin_reconcile_after_local_time,
+        timezone=settings.resolved_checkin_reconcile_timezone,
     )
 
 
