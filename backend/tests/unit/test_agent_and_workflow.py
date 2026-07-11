@@ -17,6 +17,10 @@ from core.domain.integrations import SyncCursor
 from core.domain.status import CheckIn, CheckInScheduleRun, DeveloperStatus, StatusSource
 from core.domain.workflows import (
     CheckinFanoutInput,
+    CheckinReconcileDispatchPlan,
+    CheckinReconcileInput,
+    CheckinReconcileResult,
+    CheckinReconcileScheduleConfig,
     CheckinScheduleConfig,
     ConversationPurgeInput,
     ConversationPurgeScheduleConfig,
@@ -148,6 +152,15 @@ async def test_fake_workflow_scheduler_returns_deterministic_result() -> None:
     fanout = await scheduler.ensure_checkin_fanout_schedule(
         CheckinScheduleConfig(schedule_id="checkin-fanout", tenant_id="demo", cron="0 9 * * *")
     )
+    reconcile = await scheduler.ensure_checkin_reconcile_schedule(
+        CheckinReconcileScheduleConfig(
+            schedule_id="checkin-reconcile",
+            tenant_id="demo",
+            cron="*/15 * * * 1-5",
+            after_local_time="09:45",
+            timezone="UTC",
+        )
+    )
     purge = await scheduler.ensure_conversation_purge_schedule(
         ConversationPurgeScheduleConfig(
             schedule_id="conversation-purge",
@@ -188,6 +201,8 @@ async def test_fake_workflow_scheduler_returns_deterministic_result() -> None:
     assert result.status == "ready"
     assert fanout.schedule_id == "checkin-fanout"
     assert fanout.status == "ready"
+    assert reconcile.schedule_id == "checkin-reconcile"
+    assert reconcile.status == "ready"
     assert purge.schedule_id == "conversation-purge"
     assert purge.status == "ready"
     assert [(item.schedule_id, item.status) for item in sync_results] == [("jira-sync", "ready")]
@@ -249,6 +264,146 @@ async def test_checkin_fanout_dispatches_developers_without_checkin(
     assert registry.closed is True
 
 
+async def test_checkin_reconcile_skips_before_cutoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = InMemoryGraphStore()
+    await _record_known_developer(store, developer_id="dev-1")
+    registry = _FanoutRegistry(store)
+    monkeypatch.setattr(checkin_fanout, "_service_registry", lambda: registry)
+
+    result = await checkin_fanout.reconcile_checkins_for_tenant_activity(
+        CheckinReconcileInput(
+            tenant_id="demo",
+            observed_at="2026-01-12T09:44:00+00:00",
+            after_local_time="09:45",
+            timezone="UTC",
+        )
+    )
+
+    assert result.status == "skipped_early"
+    assert result.checkin_date == "2026-01-12"
+    assert result.dispatched == 0
+    assert result.workflow_ids == []
+    assert registry.scheduler.inputs == []
+    assert registry.closed is True
+
+
+async def test_checkin_reconcile_dispatches_only_missing_schedule_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = InMemoryGraphStore()
+    await _record_known_developer(store, developer_id="dev-1")
+    await _record_known_developer(store, developer_id="dev-2")
+    await store.record_checkin_schedule_run(
+        CheckInScheduleRun(
+            tenant_id="demo",
+            developer_id="dev-2",
+            checkin_date=date(2026, 1, 12),
+            correlation_id="corr-dev-2",
+            status="sent",
+            scheduled_at=datetime(2026, 1, 12, 9, 0, tzinfo=UTC),
+        )
+    )
+    registry = _FanoutRegistry(store)
+    monkeypatch.setattr(checkin_fanout, "_service_registry", lambda: registry)
+
+    result = await checkin_fanout.reconcile_checkins_for_tenant_activity(
+        CheckinReconcileInput(
+            tenant_id="demo",
+            observed_at="2026-01-12T09:45:00+00:00",
+            after_local_time="09:45",
+            timezone="UTC",
+        )
+    )
+
+    assert result.status == "dispatched"
+    assert result.dispatched == 1
+    assert result.workflow_ids == ["dispatch-dev-1-2026-01-12"]
+    assert registry.scheduler.inputs == [
+        DeveloperCheckinDispatch(
+            tenant_id="demo",
+            developer_id="dev-1",
+            checkin_date="2026-01-12",
+        )
+    ]
+
+
+async def test_checkin_reconcile_second_run_waits_for_schedule_run_idempotence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = InMemoryGraphStore()
+    await _record_known_developer(store, developer_id="dev-1")
+    registry = _FanoutRegistry(store)
+    monkeypatch.setattr(checkin_fanout, "_service_registry", lambda: registry)
+    payload = CheckinReconcileInput(
+        tenant_id="demo",
+        observed_at="2026-01-12T09:45:00+00:00",
+        after_local_time="09:45",
+        timezone="UTC",
+    )
+
+    first = await checkin_fanout.reconcile_checkins_for_tenant_activity(payload)
+    await store.record_checkin_schedule_run(
+        CheckInScheduleRun(
+            tenant_id="demo",
+            developer_id="dev-1",
+            checkin_date=date(2026, 1, 12),
+            correlation_id="corr-dev-1",
+            status="sent",
+            scheduled_at=datetime(2026, 1, 12, 9, 0, tzinfo=UTC),
+        )
+    )
+    second = await checkin_fanout.reconcile_checkins_for_tenant_activity(payload)
+
+    assert first.status == "dispatched"
+    assert first.workflow_ids == ["dispatch-dev-1-2026-01-12"]
+    assert second.status == "no_missing"
+    assert second.dispatched == 0
+    assert second.workflow_ids == []
+    assert registry.scheduler.inputs == [
+        DeveloperCheckinDispatch(
+            tenant_id="demo",
+            developer_id="dev-1",
+            checkin_date="2026-01-12",
+        )
+    ]
+
+
+async def test_checkin_reconcile_existing_skipped_schedule_run_prevents_duplicate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = InMemoryGraphStore()
+    await _record_known_developer(store, developer_id="dev-1")
+    await store.record_checkin_schedule_run(
+        CheckInScheduleRun(
+            tenant_id="demo",
+            developer_id="dev-1",
+            checkin_date=date(2026, 1, 10),
+            correlation_id="corr-dev-1",
+            status="skipped_weekend",
+            scheduled_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            reason="check-in preference excludes this weekday",
+        )
+    )
+    registry = _FanoutRegistry(store)
+    monkeypatch.setattr(checkin_fanout, "_service_registry", lambda: registry)
+
+    result = await checkin_fanout.reconcile_checkins_for_tenant_activity(
+        CheckinReconcileInput(
+            tenant_id="demo",
+            observed_at="2026-01-10T09:45:00+00:00",
+            after_local_time="09:45",
+            timezone="UTC",
+        )
+    )
+
+    assert result.status == "no_missing"
+    assert result.dispatched == 0
+    assert result.workflow_ids == []
+    assert registry.scheduler.inputs == []
+
+
 def test_schedule_configs_ignore_calendar_read_sync_targets() -> None:
     settings_factory = cast(Callable[..., Settings], Settings)
     settings = settings_factory(
@@ -261,10 +416,18 @@ def test_schedule_configs_ignore_calendar_read_sync_targets() -> None:
     )
 
     checkin_config = schedule.checkin_fanout_config(settings)
+    reconcile_config = schedule.checkin_reconcile_config(settings)
     purge_config = schedule.conversation_purge_config(settings)
     sync_configs = schedule.sync_schedule_configs(settings)
 
     assert checkin_config.schedule_id == "openprogram-checkin-fanout"
+    assert reconcile_config == CheckinReconcileScheduleConfig(
+        schedule_id="openprogram-checkin-reconcile",
+        tenant_id="demo",
+        cron="*/15 * * * 1-5",
+        after_local_time="09:45",
+        timezone="UTC",
+    )
     assert purge_config == ConversationPurgeScheduleConfig(
         schedule_id="openprogram-conversation-purge",
         tenant_id="demo",
@@ -348,6 +511,9 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
 
     assert registry.scheduler.heartbeat_calls == 1
     assert registry.scheduler.checkin_configs == [schedule.checkin_fanout_config(settings)]
+    assert registry.scheduler.checkin_reconcile_configs == [
+        schedule.checkin_reconcile_config(settings)
+    ]
     assert registry.scheduler.purge_configs == [schedule.conversation_purge_config(settings)]
     assert [(config.connector, config.scope) for config in registry.scheduler.sync_configs] == [
         ("runtime", "issue"),
@@ -358,6 +524,7 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
     assert [result.schedule_id for result in results] == [
         "heartbeat-test",
         settings.checkin_fanout_schedule_id,
+        settings.checkin_reconcile_schedule_id,
         settings.conversation_purge_schedule_id,
         *(config.schedule_id for config in registry.scheduler.sync_configs),
     ]
@@ -377,6 +544,22 @@ async def test_ensure_workflow_schedules_skips_conversation_purge_when_disabled(
 
     assert registry.scheduler.purge_configs == []
     assert settings.conversation_purge_schedule_id not in [result.schedule_id for result in results]
+
+
+async def test_ensure_workflow_schedules_skips_checkin_reconcile_when_disabled() -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        heartbeat_schedule_id="heartbeat-test",
+        checkin_reconcile_enabled=False,
+    )
+    registry = _ScheduleBootstrapRegistry(settings)
+
+    results = await schedule.ensure_workflow_schedules(registry)
+
+    assert registry.scheduler.checkin_reconcile_configs == []
+    assert settings.checkin_reconcile_schedule_id not in [result.schedule_id for result in results]
 
 
 async def test_worker_bootstraps_schedules_before_running_worker(
@@ -513,6 +696,92 @@ async def test_dbos_checkin_fanout_starts_children_from_workflow_context(
     ]
 
 
+def test_dbos_checkin_schedule_inputs_enable_backfill() -> None:
+    fanout = dbos_workflows._checkin_fanout_schedule_input(
+        CheckinScheduleConfig(
+            schedule_id="checkin-fanout",
+            tenant_id="demo",
+            cron="30 9 * * 1-5",
+        )
+    )
+    reconcile = dbos_workflows._checkin_reconcile_schedule_input(
+        CheckinReconcileScheduleConfig(
+            schedule_id="checkin-reconcile",
+            tenant_id="demo",
+            cron="*/15 * * * 1-5",
+            after_local_time="09:45",
+            timezone="UTC",
+        )
+    )
+
+    assert fanout["automatic_backfill"] is True
+    assert reconcile["automatic_backfill"] is True
+    assert reconcile["context"] == {
+        "schedule_id": "checkin-reconcile",
+        "tenant_id": "demo",
+        "after_local_time": "09:45",
+        "timezone": "UTC",
+    }
+
+
+async def test_dbos_checkin_reconcile_starts_children_from_workflow_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = CheckinReconcileInput(
+        tenant_id="demo",
+        observed_at="2026-01-12T09:45:00+00:00",
+        after_local_time="09:45",
+        timezone="UTC",
+    )
+    dispatches = [
+        DeveloperCheckinDispatch(
+            tenant_id="demo",
+            developer_id="dev-1",
+            checkin_date="2026-01-12",
+        ),
+        DeveloperCheckinDispatch(
+            tenant_id="demo",
+            developer_id="dev-2",
+            checkin_date="2026-01-12",
+        ),
+    ]
+    plan = CheckinReconcileDispatchPlan(
+        result=CheckinReconcileResult(
+            tenant_id="demo",
+            checkin_date="2026-01-12",
+            status="dispatched",
+            dispatched=2,
+            workflow_ids=[],
+        ),
+        dispatches=dispatches,
+    )
+    calls: list[tuple[str, object]] = []
+
+    async def prepare(input: CheckinReconcileInput) -> CheckinReconcileDispatchPlan:
+        calls.append(("prepare", input))
+        return plan
+
+    async def start(input: DeveloperCheckinDispatch) -> str:
+        calls.append(("start", input))
+        return f"child-{input.developer_id}"
+
+    monkeypatch.setattr(dbos_workflows, "dbos_prepare_checkin_reconcile_step", prepare)
+    monkeypatch.setattr(dbos_workflows, "_start_daily_checkin_workflow", start)
+
+    result = await dbos_workflows._run_dbos_checkin_reconcile(payload)
+
+    assert result.tenant_id == "demo"
+    assert result.checkin_date == "2026-01-12"
+    assert result.status == "dispatched"
+    assert result.dispatched == 2
+    assert result.workflow_ids == ["child-dev-1", "child-dev-2"]
+    assert calls == [
+        ("prepare", payload),
+        ("start", dispatches[0]),
+        ("start", dispatches[1]),
+    ]
+
+
 def test_temporal_nudge_child_uses_abandon_parent_close_policy() -> None:
     source = temporal_workflows.DailyCheckinWorkflow.run.__code__.co_names
     assert "ParentClosePolicy" in source
@@ -525,6 +794,18 @@ def test_temporal_runtime_sync_workflow_is_registered() -> None:
     assert "RuntimeSyncWorkflow" in worker_source
     assert "run_runtime_config_sync_activity" in worker_source
     assert "RuntimeSyncWorkflow" in dispatch_source
+
+
+def test_temporal_checkin_reconcile_workflow_is_registered() -> None:
+    worker_source = temporal_workflows.TemporalWorkflowWorker.run.__code__.co_names
+    ensure_reconcile = (
+        temporal_workflows.TemporalWorkflowScheduler.ensure_checkin_reconcile_schedule
+    )
+    scheduler_source = ensure_reconcile.__code__.co_names
+
+    assert "ScheduledCheckinReconcileWorkflow" in worker_source
+    assert "reconcile_checkins_for_tenant_activity" in worker_source
+    assert "ScheduledCheckinReconcileWorkflow" in scheduler_source
 
 
 async def test_temporal_connect_retries_until_ready(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -974,6 +1255,7 @@ class _RecordingWorkflowScheduler:
         self.heartbeat_schedule_id = heartbeat_schedule_id
         self.heartbeat_calls = 0
         self.checkin_configs: list[CheckinScheduleConfig] = []
+        self.checkin_reconcile_configs: list[CheckinReconcileScheduleConfig] = []
         self.purge_configs: list[ConversationPurgeScheduleConfig] = []
         self.sync_configs: list[SyncScheduleConfig] = []
 
@@ -985,6 +1267,12 @@ class _RecordingWorkflowScheduler:
         self, config: CheckinScheduleConfig
     ) -> ScheduleBootstrapResult:
         self.checkin_configs.append(config)
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
+
+    async def ensure_checkin_reconcile_schedule(
+        self, config: CheckinReconcileScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        self.checkin_reconcile_configs.append(config)
         return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
 
     async def ensure_conversation_purge_schedule(
@@ -1226,6 +1514,24 @@ class _NudgeRegistry:
 
     async def close(self) -> None:
         self.closed = True
+
+
+async def _record_known_developer(
+    store: InMemoryGraphStore,
+    *,
+    developer_id: str,
+    tenant_id: str = "demo",
+) -> None:
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id=tenant_id,
+            developer_id=developer_id,
+            as_of=date(2026, 1, 9),
+            source=StatusSource.CONFIRMED,
+            blockers=(),
+            summary="previous check-in",
+        )
+    )
 
 
 def _conversation_turn(

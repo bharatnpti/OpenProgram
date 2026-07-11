@@ -13,6 +13,10 @@ from dbos import DBOS, DBOSConfig, ScheduleInput, SetWorkflowID
 from core.domain.workflows import (
     CheckinFanoutInput,
     CheckinFanoutResult,
+    CheckinReconcileDispatchPlan,
+    CheckinReconcileInput,
+    CheckinReconcileResult,
+    CheckinReconcileScheduleConfig,
     CheckinScheduleConfig,
     ConversationPurgeInput,
     ConversationPurgeResult,
@@ -118,6 +122,35 @@ async def dbos_scheduled_checkin_fanout_workflow(
         CheckinFanoutInput(
             tenant_id=context["tenant_id"],
             checkin_date=scheduled_time.date().isoformat(),
+        )
+    )
+
+
+@DBOS.step(name="openprogram_prepare_checkin_reconcile", retries_allowed=True)
+async def dbos_prepare_checkin_reconcile_step(
+    payload: CheckinReconcileInput,
+) -> CheckinReconcileDispatchPlan:
+    return await checkin_fanout.prepare_checkin_reconcile_dispatches_for_tenant_activity(payload)
+
+
+@DBOS.workflow(name="openprogram_checkin_reconcile")
+async def dbos_checkin_reconcile_workflow(
+    payload: CheckinReconcileInput,
+) -> CheckinReconcileResult:
+    return await _run_dbos_checkin_reconcile(payload)
+
+
+@DBOS.workflow(name="openprogram_scheduled_checkin_reconcile")
+async def dbos_scheduled_checkin_reconcile_workflow(
+    scheduled_time: datetime,
+    context: dict[str, str],
+) -> CheckinReconcileResult:
+    return await _run_dbos_checkin_reconcile(
+        CheckinReconcileInput(
+            tenant_id=context["tenant_id"],
+            observed_at=scheduled_time.isoformat(),
+            after_local_time=context["after_local_time"],
+            timezone=context["timezone"],
         )
     )
 
@@ -279,6 +312,20 @@ async def _run_dbos_checkin_fanout(payload: CheckinFanoutInput) -> CheckinFanout
     )
 
 
+async def _run_dbos_checkin_reconcile(
+    payload: CheckinReconcileInput,
+) -> CheckinReconcileResult:
+    plan = await dbos_prepare_checkin_reconcile_step(payload)
+    if plan.result.status != "dispatched":
+        return plan.result
+    workflow_ids: list[str] = []
+    for dispatch in plan.dispatches:
+        workflow_ids.append(await _start_daily_checkin_workflow(dispatch))
+    if not workflow_ids:
+        return replace(plan.result, status="no_missing", dispatched=0, workflow_ids=[])
+    return replace(plan.result, dispatched=len(workflow_ids), workflow_ids=workflow_ids)
+
+
 async def _start_daily_checkin_workflow(input: DeveloperCheckinDispatch) -> str:
     workflow_id = safe_workflow_id(
         "checkin-"
@@ -388,6 +435,22 @@ class DbosWorkflowScheduler:
         )
         try:
             DBOS.apply_schedules([_checkin_fanout_schedule_input(config)])
+        finally:
+            if started_runtime:
+                destroy_dbos_runtime()
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="configured")
+
+    async def ensure_checkin_reconcile_schedule(
+        self, config: CheckinReconcileScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        started_runtime = _ensure_dbos_runtime(
+            DbosRuntimeConfig(
+                app_name=self.app_name,
+                system_database_url=self.system_database_url,
+            )
+        )
+        try:
+            DBOS.apply_schedules([_checkin_reconcile_schedule_input(config)])
         finally:
             if started_runtime:
                 destroy_dbos_runtime()
@@ -566,7 +629,22 @@ def _checkin_fanout_schedule_input(config: CheckinScheduleConfig) -> ScheduleInp
             "schedule_id": config.schedule_id,
             "tenant_id": config.tenant_id,
         },
-        "automatic_backfill": False,
+        "automatic_backfill": True,
+    }
+
+
+def _checkin_reconcile_schedule_input(config: CheckinReconcileScheduleConfig) -> ScheduleInput:
+    return {
+        "schedule_name": config.schedule_id,
+        "workflow_fn": cast(Any, dbos_scheduled_checkin_reconcile_workflow),
+        "schedule": config.cron,
+        "context": {
+            "schedule_id": config.schedule_id,
+            "tenant_id": config.tenant_id,
+            "after_local_time": config.after_local_time,
+            "timezone": config.timezone,
+        },
+        "automatic_backfill": True,
     }
 
 
