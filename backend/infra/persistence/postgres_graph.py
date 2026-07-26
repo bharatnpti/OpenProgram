@@ -17,8 +17,6 @@ from core.domain.graph import (
     GraphTree,
     JsonScalar,
     NodeKind,
-    VectorMatch,
-    normalize_vector,
 )
 from core.domain.identity import IdentityLink
 from core.domain.writeback import WriteBackAudit, WriteBackStatus
@@ -94,7 +92,6 @@ class PostgresGraphRepository:
                     """,
                     (node.tenant_id, node.id, node.kind.value, node.name, dict(node.metadata)),
                 )
-                await self._sync_age_node(transaction, node)
 
     async def delete_node(self, tenant_id: str, id: str) -> None:
         with _tracer.start_as_current_span("postgres.graph.delete_node"):
@@ -114,7 +111,6 @@ class PostgresGraphRepository:
                     """,
                     (tenant_id, id),
                 )
-                await self._sync_age_delete_node(transaction, tenant_id, id)
 
     async def add_edge(self, edge: GraphEdge) -> None:
         with _tracer.start_as_current_span("postgres.graph.add_edge"):
@@ -136,7 +132,6 @@ class PostgresGraphRepository:
                         dict(edge.metadata),
                     ),
                 )
-                await self._sync_age_edge(transaction, edge)
 
     async def list_edges(
         self,
@@ -190,7 +185,6 @@ class PostgresGraphRepository:
                         dict(edge.metadata),
                     ),
                 )
-                await self._sync_age_remove_edge(transaction, edge)
 
     async def get_program_tree(self, tenant_id: str, program_id: str, as_of: date) -> GraphTree:
         with _tracer.start_as_current_span("postgres.graph.get_program_tree"):
@@ -408,100 +402,6 @@ class PostgresGraphRepository:
             )
         return _writeback_audit_from_row(rows[0]) if rows else None
 
-    async def _sync_age_node(self, session: AsyncSqlSession, node: GraphNode) -> None:
-        with _tracer.start_as_current_span("postgres.age.sync_node"):
-            await _prepare_age_session(session)
-            await session.execute(
-                f"""
-                SELECT *
-                FROM cypher('openprogram_graph', $$
-                    MERGE (n:GraphNode {{
-                        tenant_id: {_cypher_string(node.tenant_id)},
-                        id: {_cypher_string(node.id)}
-                    }})
-                    SET n.kind = {_cypher_string(node.kind.value)},
-                        n.name = {_cypher_string(node.name)}
-                    RETURN n
-                $$) AS (n agtype)
-                """
-            )
-
-    async def _sync_age_edge(self, session: AsyncSqlSession, edge: GraphEdge) -> None:
-        relation = {
-            EdgeKind.CONTAINS: "CONTAINS",
-            EdgeKind.ASSIGNED_TO: "ASSIGNED_TO",
-            EdgeKind.DEPENDS_ON: "DEPENDS_ON",
-        }[edge.kind]
-        valid_from = _cypher_string(edge.valid_from.isoformat()) if edge.valid_from else "null"
-        valid_to = _cypher_string(edge.valid_to.isoformat()) if edge.valid_to else "null"
-        with _tracer.start_as_current_span("postgres.age.sync_edge"):
-            await _prepare_age_session(session)
-            await session.execute(
-                f"""
-                SELECT *
-                FROM cypher('openprogram_graph', $$
-                    MATCH (from_node:GraphNode {{
-                        tenant_id: {_cypher_string(edge.tenant_id)},
-                        id: {_cypher_string(edge.from_node_id)}
-                    }})
-                    MATCH (to_node:GraphNode {{
-                        tenant_id: {_cypher_string(edge.tenant_id)},
-                        id: {_cypher_string(edge.to_node_id)}
-                    }})
-                    CREATE (from_node)-[edge:{relation} {{
-                        kind: {_cypher_string(edge.kind.value)},
-                        valid_from: {valid_from},
-                        valid_to: {valid_to}
-                    }}]->(to_node)
-                    RETURN edge
-                $$) AS (edge agtype)
-                """
-            )
-
-    async def _sync_age_delete_node(
-        self, session: AsyncSqlSession, tenant_id: str, id: str
-    ) -> None:
-        with _tracer.start_as_current_span("postgres.age.delete_node"):
-            await _prepare_age_session(session)
-            await session.execute(
-                f"""
-                SELECT *
-                FROM cypher('openprogram_graph', $$
-                    MATCH (n:GraphNode {{
-                        tenant_id: {_cypher_string(tenant_id)},
-                        id: {_cypher_string(id)}
-                    }})
-                    DETACH DELETE n
-                    RETURN 1
-                $$) AS (n agtype)
-                """
-            )
-
-    async def _sync_age_remove_edge(self, session: AsyncSqlSession, edge: GraphEdge) -> None:
-        relation = {
-            EdgeKind.CONTAINS: "CONTAINS",
-            EdgeKind.ASSIGNED_TO: "ASSIGNED_TO",
-            EdgeKind.DEPENDS_ON: "DEPENDS_ON",
-        }[edge.kind]
-        with _tracer.start_as_current_span("postgres.age.remove_edge"):
-            await _prepare_age_session(session)
-            await session.execute(
-                f"""
-                SELECT *
-                FROM cypher('openprogram_graph', $$
-                    MATCH (from_node:GraphNode {{
-                        tenant_id: {_cypher_string(edge.tenant_id)},
-                        id: {_cypher_string(edge.from_node_id)}
-                    }})-[edge:{relation}]->(to_node:GraphNode {{
-                        tenant_id: {_cypher_string(edge.tenant_id)},
-                        id: {_cypher_string(edge.to_node_id)}
-                    }})
-                    DELETE edge
-                    RETURN 1
-                $$) AS (edge agtype)
-                """
-            )
-
 
 class PostgresTimeSeriesRepository:
     def __init__(self, executor: AsyncSqlExecutor) -> None:
@@ -601,66 +501,6 @@ class PostgresTimeSeriesRepository:
         return [_fact_from_row(row) for row in rows]
 
 
-class PostgresVectorStore:
-    def __init__(self, executor: AsyncSqlExecutor) -> None:
-        self._executor = executor
-
-    async def upsert_embedding(
-        self, tenant_id: str, entity_ref: EntityRef, vector: Sequence[float]
-    ) -> None:
-        with _tracer.start_as_current_span("postgres.vector.upsert_embedding"):
-            await self._executor.execute(
-                """
-                INSERT INTO vector_items (tenant_id, entity_kind, entity_id, embedding)
-                VALUES (%s, %s, %s, %s::vector)
-                ON CONFLICT (tenant_id, entity_kind, entity_id)
-                DO UPDATE SET embedding = EXCLUDED.embedding
-                """,
-                (
-                    tenant_id,
-                    entity_ref.kind.value,
-                    entity_ref.id,
-                    _vector_literal(normalize_vector(vector)),
-                ),
-            )
-
-    async def search(
-        self, tenant_id: str, vector: Sequence[float], limit: int
-    ) -> list[VectorMatch]:
-        with _tracer.start_as_current_span("postgres.vector.search"):
-            rows = await self._executor.fetch(
-                """
-                SELECT entity_kind, entity_id, 1 - (embedding <=> %s::vector) AS score
-                FROM vector_items
-                WHERE tenant_id = %s
-                ORDER BY embedding <=> %s::vector
-                LIMIT %s
-                """,
-                (
-                    _vector_literal(normalize_vector(vector)),
-                    tenant_id,
-                    _vector_literal(normalize_vector(vector)),
-                    limit,
-                ),
-            )
-            return [
-                VectorMatch(
-                    entity_ref=EntityRef(
-                        tenant_id=tenant_id,
-                        kind=NodeKind(str(row["entity_kind"])),
-                        id=str(row["entity_id"]),
-                    ),
-                    score=_float_field(row.get("score")),
-                )
-                for row in rows
-            ]
-
-
-async def _prepare_age_session(session: AsyncSqlSession) -> None:
-    await session.execute("LOAD 'age'")
-    await session.execute('SET LOCAL search_path = ag_catalog, "$user", public')
-
-
 def _node_from_row(row: Mapping[str, object]) -> GraphNode:
     metadata = row.get("metadata")
     return GraphNode(
@@ -754,17 +594,3 @@ def _json_mapping(value: object) -> dict[str, JsonScalar]:
         if isinstance(key, str) and (item is None or isinstance(item, str | int | float | bool)):
             result[key] = item
     return result
-
-
-def _float_field(value: object) -> float:
-    if isinstance(value, str | int | float):
-        return float(value)
-    return 0.0
-
-
-def _vector_literal(vector: Sequence[float]) -> str:
-    return "[" + ",".join(str(float(value)) for value in vector) + "]"
-
-
-def _cypher_string(value: str) -> str:
-    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"

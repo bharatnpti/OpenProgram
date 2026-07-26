@@ -9,7 +9,6 @@ from core.domain.graph import EntityRef, FactEvent, NodeKind
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import (
-    BuildResult,
     CalendarEvent,
     Commit,
     Issue,
@@ -37,7 +36,6 @@ from core.domain.status import (
 from core.domain.writeback import WriteBackAudit, WriteBackStatus
 from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
-from core.ports.ci import CiProvider
 from core.ports.directory import DirectoryUserRepository
 from core.ports.issue_tracker import IssueTracker
 from core.ports.repositories import (
@@ -772,12 +770,6 @@ async def assert_time_series_repository_contract(repository: TimeSeriesRepositor
     ]
     assert await repository.list_recent_facts("demo", limit=0) == []
     assert await repository.list_recent_facts("demo", sources=(), limit=10) == []
-
-
-async def assert_ci_contract(provider: CiProvider) -> None:
-    build = await provider.latest_build("demo", "build-1")
-    assert isinstance(build, BuildResult)
-    assert await provider.list_recent_failures("demo", "repo")
 
 
 async def assert_calendar_contract(provider: CalendarProvider) -> None:
