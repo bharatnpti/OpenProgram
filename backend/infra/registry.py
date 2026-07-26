@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from cryptography.fernet import Fernet
 from redis.asyncio import Redis
@@ -13,6 +14,7 @@ from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.availability import AvailabilityService
 from core.application.cross_person_service import CrossPersonRequestService
 from core.application.directory_sync_service import DirectorySyncService
+from core.application.reply_ingestion import ReplyDrainResult, ReplyIngestionService
 from core.application.self_status_service import SelfStatusService
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import (
@@ -20,7 +22,10 @@ from core.application.sync_services import (
     IssueReadSyncService,
     VcsReadSyncService,
 )
+from core.application.writeback_service import WriteBackService
+from core.domain.inbound import InboundChatEvent, conversation_key
 from core.domain.messaging import InboundMessage
+from core.domain.workflows import InboundSweeperResult
 from core.ports.auth import (
     AuthCallbackResult,
     AuthCredentials,
@@ -34,15 +39,20 @@ from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.directory import DirectoryProvider, DirectoryUserRepository
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
+from core.ports.reply_processing import ReplyProcessingOutcome
 from core.ports.repositories import (
     ConversationRepository,
     CrossPersonRequestRepository,
     GraphRepository,
+    IdentityLinkRepository,
+    InboundChatEventRepository,
     RollupRepository,
     StatusRepository,
     SyncCursorRepository,
     TimeSeriesRepository,
     VectorStore,
+    WriteBackAuditRepository,
+    WriteBackConfigRepository,
 )
 from core.ports.secrets import SecretStore
 from core.ports.vcs import VcsProvider
@@ -71,6 +81,7 @@ from infra.persistence.postgres_graph import (
     PostgresTimeSeriesRepository,
     PostgresVectorStore,
 )
+from infra.persistence.postgres_inbound import PostgresInboundChatEventRepository
 from infra.persistence.postgres_status import (
     PostgresConversationRepository,
     PostgresRollupRepository,
@@ -124,11 +135,36 @@ class ServiceRegistry:
         default=None,
         init=False,
     )
+    _postgres_inbound_chat_event_repository: PostgresInboundChatEventRepository | None = field(
+        default=None,
+        init=False,
+    )
     _auth_provider: AuthProvider | None = field(default=None, init=False)
     _auth_session_store: AuthSessionStore | None = field(default=None, init=False)
     _oidc_bff_service: OidcBffService | None = field(default=None, init=False)
 
     def graph_repository(self) -> GraphRepository:
+        if self.settings.runtime_mode == "memory":
+            return self._memory_graph_store()
+        if self._postgres_graph_repository is None:
+            self._postgres_graph_repository = PostgresGraphRepository(self._executor())
+        return self._postgres_graph_repository
+
+    def identity_link_repository(self) -> IdentityLinkRepository:
+        if self.settings.runtime_mode == "memory":
+            return self._memory_graph_store()
+        if self._postgres_graph_repository is None:
+            self._postgres_graph_repository = PostgresGraphRepository(self._executor())
+        return self._postgres_graph_repository
+
+    def writeback_config_repository(self) -> WriteBackConfigRepository:
+        if self.settings.runtime_mode == "memory":
+            return self._memory_graph_store()
+        if self._postgres_graph_repository is None:
+            self._postgres_graph_repository = PostgresGraphRepository(self._executor())
+        return self._postgres_graph_repository
+
+    def writeback_audit_repository(self) -> WriteBackAuditRepository:
         if self.settings.runtime_mode == "memory":
             return self._memory_graph_store()
         if self._postgres_graph_repository is None:
@@ -173,6 +209,15 @@ class ServiceRegistry:
                 self._executor()
             )
         return self._postgres_conversation_repository
+
+    def inbound_chat_event_repository(self) -> InboundChatEventRepository:
+        if self.settings.runtime_mode == "memory":
+            return self._memory_graph_store()
+        if self._postgres_inbound_chat_event_repository is None:
+            self._postgres_inbound_chat_event_repository = PostgresInboundChatEventRepository(
+                self._executor()
+            )
+        return self._postgres_inbound_chat_event_repository
 
     def rollup_repository(self) -> RollupRepository:
         if self.settings.runtime_mode == "memory":
@@ -270,7 +315,13 @@ class ServiceRegistry:
         headers: Mapping[str, str],
         body: bytes,
     ) -> bool:
-        if provider != "slack" or self.settings.runtime_mode != "container":
+        # Verify based on the *configured* chat provider, not the URL segment:
+        # the mapper treats mock_slack as Slack, and unknown URL paths must not
+        # bypass verification. Memory/fake/mock_slack flows stay credential-free.
+        del provider
+        if self.settings.runtime_mode != "container":
+            return True
+        if self.settings.chat_provider != "slack":
             return True
         return verify_slack_signature(
             self.settings.slack_signing_secret,
@@ -279,6 +330,97 @@ class ServiceRegistry:
             body,
             self.settings.slack_signature_tolerance_seconds,
         )
+
+    def fast_ack_enabled(self) -> bool:
+        return self.settings.slack_fast_ack_enabled
+
+    async def enqueue_inbound_chat_event(
+        self,
+        provider: str,
+        payload: Mapping[str, object],
+        correlation_id: str,
+        received_at: datetime | None = None,
+    ) -> ChatWebhookProcessResult:
+        """Fast-ack intake: verify-mapped, dedup by event_id, then arm/drain.
+
+        No LLM work happens here. In durable runtimes the coalesce workflow is
+        armed and we return ``accepted``; in memory/fake runtimes there is no
+        worker so we drain inline and return the concrete outcome.
+        """
+        message = self.map_chat_webhook(provider, payload, correlation_id)
+        if message is None:
+            return ChatWebhookProcessResult(status="ignored", message_id="unsupported-provider")
+        if received_at is not None:
+            message = replace(message, received_at=received_at)
+        event = self._build_inbound_chat_event(provider, payload, message)
+        inserted = await self.inbound_chat_event_repository().append(event)
+        if not inserted:
+            return ChatWebhookProcessResult(status="duplicate", message_id=message.message_id)
+        if self._inbound_processing_inline():
+            drained = await self.drain_inbound_conversation(
+                message.tenant_id, event.conversation_key
+            )
+            return ChatWebhookProcessResult(
+                status=drained.status,
+                message_id=drained.message_id or message.message_id,
+            )
+        await self.workflow_scheduler().arm_reply_coalesce(
+            event.conversation_key, message.tenant_id
+        )
+        return ChatWebhookProcessResult(status="accepted", message_id=message.message_id)
+
+    def _build_inbound_chat_event(
+        self,
+        provider: str,
+        payload: Mapping[str, object],
+        message: InboundMessage,
+    ) -> InboundChatEvent:
+        return InboundChatEvent(
+            tenant_id=message.tenant_id,
+            provider=provider,
+            event_id=_extract_event_id(payload, message),
+            conversation_key=conversation_key(message.tenant_id, message.thread_id),
+            chat_user_ref=message.user.external_id,
+            chat_thread_ref=message.thread_id,
+            message_ref=message.message_id,
+            correlation_id=message.correlation_id,
+            text=message.text,
+            raw_payload=json.dumps(dict(payload), default=str),
+            received_at=message.received_at,
+        )
+
+    def _inbound_processing_inline(self) -> bool:
+        return self.settings.runtime_mode == "memory" or self.settings.workflow_provider == "fake"
+
+    def reply_ingestion_service(self) -> ReplyIngestionService:
+        return ReplyIngestionService(
+            repository=self.inbound_chat_event_repository(),
+            processor=_RegistryReplyProcessor(self),
+        )
+
+    async def drain_inbound_conversation(
+        self, tenant_id: str, conversation_key: str
+    ) -> ReplyDrainResult:
+        return await self.reply_ingestion_service().drain_conversation(
+            tenant_id=tenant_id,
+            conversation_key=conversation_key,
+        )
+
+    async def sweep_inbound_events(
+        self,
+        tenant_id: str,
+        grace_seconds: int,
+        now: datetime | None = None,
+    ) -> InboundSweeperResult:
+        reference = now or datetime.now(tz=UTC)
+        cutoff = reference - timedelta(seconds=grace_seconds)
+        stuck = await self.inbound_chat_event_repository().list_stuck(tenant_id, cutoff)
+        keys = sorted({event.conversation_key for event in stuck})
+        for key in keys:
+            # Drain directly for guaranteed progress rather than only re-arming a
+            # possibly-completed coalesce workflow (the durable R3 backstop).
+            await self.drain_inbound_conversation(tenant_id, key)
+        return InboundSweeperResult(tenant_id=tenant_id, rearmed=len(keys), conversation_keys=keys)
 
     async def process_chat_webhook(
         self,
@@ -292,6 +434,14 @@ class ServiceRegistry:
             return ChatWebhookProcessResult(status="ignored", message_id="unsupported-provider")
         if received_at is not None:
             message = replace(message, received_at=received_at)
+        return await self.process_inbound_message(message, allow_reprocess=False)
+
+    async def process_inbound_message(
+        self,
+        message: InboundMessage,
+        *,
+        allow_reprocess: bool,
+    ) -> ChatWebhookProcessResult:
         cross_person_service = self.cross_person_request_service()
         cross_person_repository = self.cross_person_request_repository()
         notified_request = await cross_person_repository.get_by_notify_correlation(
@@ -343,7 +493,8 @@ class ServiceRegistry:
             return ChatWebhookProcessResult(status="duplicate", message_id=message.message_id)
 
         outcome = await collector.handle_reply(
-            replace(message, correlation_id=resolved_correlation_id)
+            replace(message, correlation_id=resolved_correlation_id),
+            allow_reprocess=allow_reprocess,
         )
         if outcome.kind == "processed" and outcome.cross_person_requests:
             assert checkin is not None
@@ -493,6 +644,15 @@ class ServiceRegistry:
     def self_status_service(self) -> SelfStatusService:
         return SelfStatusService(self.status_repository())
 
+    def write_back_service(self) -> WriteBackService:
+        return WriteBackService(
+            issue_tracker=self.issue_tracker(),
+            audit_repository=self.writeback_audit_repository(),
+            config_repository=self.writeback_config_repository(),
+            status_repository=self.status_repository(),
+            writeback_enabled_default=self.settings.jira_writeback_enabled,
+        )
+
     def status_collector(self) -> StatusCollector:
         llm_provider = self.llm_provider()
         tool_agent = ToolCallingAgent(
@@ -507,11 +667,15 @@ class ServiceRegistry:
             conversation_repository=self.conversation_repository(),
             time_series_repository=self.time_series_repository(),
             directory_repository=self.directory_user_repository(),
+            identity_link_repository=self.identity_link_repository(),
+            write_back_service=self.write_back_service(),
             model=self.settings.litellm_model,
             tool_agent=tool_agent,
             conversation_retention_days=self.settings.conversation_retention_days,
             checkin_max_clarifications=self.settings.checkin_max_clarifications,
             tenant_default_timezone=self.settings.tenant_default_timezone,
+            outbound_dm_max_chars=self.settings.outbound_dm_max_chars,
+            recent_fact_lookback_days=self.settings.recent_fact_lookback_days,
         )
 
     def workflow_scheduler(self) -> WorkflowScheduler:
@@ -594,3 +758,26 @@ class ServiceRegistry:
 
 def _fernet_key(value: str) -> bytes:
     return value.encode("utf-8")
+
+
+def _extract_event_id(payload: Mapping[str, object], message: InboundMessage) -> str:
+    """Prefer Slack's envelope-level event_id (stable across retries).
+
+    Providers without one (fake/mock_slack) fall back to the message ts, which is
+    stable per message and keeps redelivery dedup working credential-free.
+    """
+    top_level = payload.get("event_id")
+    if isinstance(top_level, str) and top_level:
+        return top_level
+    return message.message_id
+
+
+@dataclass(frozen=True)
+class _RegistryReplyProcessor:
+    """Adapts the registry's reply routing to the ReplyProcessor port."""
+
+    registry: ServiceRegistry
+
+    async def process_reply(self, message: InboundMessage) -> ReplyProcessingOutcome:
+        result = await self.registry.process_inbound_message(message, allow_reprocess=True)
+        return ReplyProcessingOutcome(status=result.status, message_id=result.message_id)

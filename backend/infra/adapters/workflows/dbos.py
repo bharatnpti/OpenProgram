@@ -10,6 +10,7 @@ from uuid import uuid4
 import psycopg
 from dbos import DBOS, DBOSConfig, ScheduleInput, SetWorkflowID
 
+from core.application.reply_ingestion import run_reply_debounce
 from core.domain.workflows import (
     CheckinFanoutInput,
     CheckinFanoutResult,
@@ -26,6 +27,11 @@ from core.domain.workflows import (
     DirectorySyncResult,
     HeartbeatInput,
     HeartbeatResult,
+    InboundSweeperInput,
+    InboundSweeperResult,
+    InboundSweeperScheduleConfig,
+    ReplyCoalesceInput,
+    ReplyCoalesceResult,
     ScheduleBootstrapResult,
     SyncDispatchInput,
     SyncScheduleConfig,
@@ -37,7 +43,9 @@ from infra.workflows import (
     conversation_purge,
     daily_checkin,
     directory_sync,
+    drift_scan,
     git_sync,
+    inbound_events,
     jira_sync,
     nudge,
     risk_assessment,
@@ -52,6 +60,7 @@ from infra.workflows.dispatch import (
     sync_workflow_input,
     sync_workflow_name,
 )
+from infra.workflows.drift_scan import DriftScanInput, DriftScanWorkflowResult
 from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import NudgeInput, NudgeResult
@@ -65,6 +74,7 @@ SyncWorkflowResult = (
     | DirectorySyncResult
     | RuntimeSyncWorkflowResult
     | RiskAssessmentWorkflowResult
+    | DriftScanWorkflowResult
 )
 
 
@@ -255,6 +265,16 @@ async def dbos_risk_assessment_workflow(
     return await dbos_run_risk_assessment_step(payload)
 
 
+@DBOS.step(name="openprogram_run_drift_scan", retries_allowed=True)
+async def dbos_run_drift_scan_step(payload: DriftScanInput) -> DriftScanWorkflowResult:
+    return await drift_scan.run_drift_scan_activity(payload)
+
+
+@DBOS.workflow(name="openprogram_drift_scan")
+async def dbos_drift_scan_workflow(payload: DriftScanInput) -> DriftScanWorkflowResult:
+    return await dbos_run_drift_scan_step(payload)
+
+
 @DBOS.workflow(name="openprogram_scheduled_sync")
 async def dbos_scheduled_sync_workflow(
     scheduled_time: datetime,
@@ -301,9 +321,7 @@ async def dbos_daily_checkin_workflow(payload: DailyCheckinInput) -> DailyChecki
 
 async def _run_dbos_checkin_fanout(payload: CheckinFanoutInput) -> CheckinFanoutResult:
     dispatches = await dbos_prepare_checkin_fanout_step(payload)
-    workflow_ids: list[str] = []
-    for dispatch in dispatches:
-        workflow_ids.append(await _start_daily_checkin_workflow(dispatch))
+    workflow_ids = await _start_daily_checkins_concurrently(dispatches)
     return CheckinFanoutResult(
         tenant_id=payload.tenant_id,
         checkin_date=payload.checkin_date,
@@ -318,12 +336,27 @@ async def _run_dbos_checkin_reconcile(
     plan = await dbos_prepare_checkin_reconcile_step(payload)
     if plan.result.status != "dispatched":
         return plan.result
-    workflow_ids: list[str] = []
-    for dispatch in plan.dispatches:
-        workflow_ids.append(await _start_daily_checkin_workflow(dispatch))
+    workflow_ids = await _start_daily_checkins_concurrently(plan.dispatches)
     if not workflow_ids:
         return replace(plan.result, status="no_missing", dispatched=0, workflow_ids=[])
     return replace(plan.result, dispatched=len(workflow_ids), workflow_ids=workflow_ids)
+
+
+async def _start_daily_checkins_concurrently(
+    dispatches: Sequence[DeveloperCheckinDispatch],
+) -> list[str]:
+    """Fan out child check-in workflows concurrently, bounded to avoid Slack
+    rate-limit spikes. Child workflows start from workflow context (never a
+    retryable step). asyncio.gather preserves dispatch order in the result."""
+    if not dispatches:
+        return []
+    semaphore = asyncio.Semaphore(max(1, _checkin_fanout_concurrency()))
+
+    async def start_and_wait(dispatch: DeveloperCheckinDispatch) -> str:
+        async with semaphore:
+            return await _start_daily_checkin_workflow(dispatch)
+
+    return list(await asyncio.gather(*(start_and_wait(dispatch) for dispatch in dispatches)))
 
 
 async def _start_daily_checkin_workflow(input: DeveloperCheckinDispatch) -> str:
@@ -333,7 +366,7 @@ async def _start_daily_checkin_workflow(input: DeveloperCheckinDispatch) -> str:
         f"{input.checkin_date or datetime.now(tz=UTC).date().isoformat()}-{uuid4()}"
     )
     # Drive check-ins to completion so outbound chat messages exist before the
-    # caller observes the workflow ID.
+    # caller observes the workflow ID (also required by admin single-dispatch).
     with SetWorkflowID(workflow_id):
         handle = await DBOS.start_workflow_async(
             dbos_daily_checkin_workflow,
@@ -341,6 +374,12 @@ async def _start_daily_checkin_workflow(input: DeveloperCheckinDispatch) -> str:
         )
     await handle.get_result()
     return workflow_id
+
+
+def _checkin_fanout_concurrency() -> int:
+    from config.settings import get_settings
+
+    return get_settings().checkin_fanout_concurrency
 
 
 @DBOS.step(name="openprogram_send_checkin_nudge", retries_allowed=True)
@@ -375,6 +414,69 @@ async def dbos_nudge_workflow(payload: NudgeInput) -> NudgeResult:
     return close_result
 
 
+DBOS_REPLY_TOPIC = "reply"
+_MAX_COALESCE_PASSES = 5
+
+
+@DBOS.step(name="openprogram_drain_inbound_conversation", retries_allowed=True)
+async def dbos_drain_inbound_conversation_step(
+    payload: ReplyCoalesceInput,
+) -> ReplyCoalesceResult:
+    return await inbound_events.drain_conversation_activity(payload)
+
+
+@DBOS.workflow(name="openprogram_reply_coalesce")
+async def dbos_reply_coalesce_workflow(payload: ReplyCoalesceInput) -> ReplyCoalesceResult:
+    async def received_before_timeout() -> bool:
+        message = await DBOS.recv_async(DBOS_REPLY_TOPIC, timeout_seconds=payload.debounce_seconds)
+        return message is not None
+
+    # Reset-on-message quiet window: each signal restarts the debounce timer.
+    await run_reply_debounce(received_before_timeout)
+    processed = 0
+    passes = 0
+    # Drain, then re-check for events that arrived during the drain. The sweeper
+    # is the durable backstop for anything a dropped signal or crash leaves behind.
+    while passes < _MAX_COALESCE_PASSES:
+        result = await dbos_drain_inbound_conversation_step(payload)
+        processed += result.processed
+        passes += 1
+        if result.processed == 0:
+            break
+    return ReplyCoalesceResult(
+        tenant_id=payload.tenant_id,
+        conversation_key=payload.conversation_key,
+        processed=processed,
+        passes=passes,
+    )
+
+
+@DBOS.step(name="openprogram_sweep_inbound_events", retries_allowed=True)
+async def dbos_sweep_inbound_events_step(payload: InboundSweeperInput) -> InboundSweeperResult:
+    return await inbound_events.sweep_inbound_events_activity(payload)
+
+
+@DBOS.workflow(name="openprogram_inbound_events_sweeper")
+async def dbos_inbound_events_sweeper_workflow(
+    payload: InboundSweeperInput,
+) -> InboundSweeperResult:
+    return await dbos_sweep_inbound_events_step(payload)
+
+
+@DBOS.workflow(name="openprogram_scheduled_inbound_events_sweeper")
+async def dbos_scheduled_inbound_events_sweeper_workflow(
+    scheduled_time: datetime,
+    context: dict[str, str],
+) -> InboundSweeperResult:
+    return await dbos_sweep_inbound_events_step(
+        InboundSweeperInput(
+            tenant_id=context["tenant_id"],
+            grace_seconds=int(context["grace_seconds"]),
+            now=scheduled_time.isoformat(),
+        )
+    )
+
+
 async def _run_sync_dispatch(
     input: SyncDispatchInput,
 ) -> SyncWorkflowResult:
@@ -391,6 +493,8 @@ async def _run_sync_dispatch(
         return await dbos_runtime_config_sync_step(workflow_input)
     if isinstance(workflow_input, RiskAssessmentInput):
         return await dbos_run_risk_assessment_step(workflow_input)
+    if isinstance(workflow_input, DriftScanInput):
+        return await dbos_run_drift_scan_step(workflow_input)
     raise ValueError(f"unsupported sync connector: {input.connector}")
 
 
@@ -401,6 +505,7 @@ class DbosWorkflowScheduler:
     schedule_id: str
     tenant_id: str
     heartbeat_cron: str
+    reply_debounce_seconds: int = 30
 
     async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
         started_runtime = _ensure_dbos_runtime(
@@ -472,6 +577,22 @@ class DbosWorkflowScheduler:
                 destroy_dbos_runtime()
         return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="configured")
 
+    async def ensure_inbound_sweeper_schedule(
+        self, config: InboundSweeperScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        started_runtime = _ensure_dbos_runtime(
+            DbosRuntimeConfig(
+                app_name=self.app_name,
+                system_database_url=self.system_database_url,
+            )
+        )
+        try:
+            DBOS.apply_schedules([_inbound_events_sweeper_schedule_input(config)])
+        finally:
+            if started_runtime:
+                destroy_dbos_runtime()
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="configured")
+
     async def ensure_sync_schedules(
         self, configs: Sequence[SyncScheduleConfig]
     ) -> list[ScheduleBootstrapResult]:
@@ -492,6 +613,27 @@ class DbosWorkflowScheduler:
             ScheduleBootstrapResult(schedule_id=config.schedule_id, status="configured")
             for config in configs
         ]
+
+    async def arm_reply_coalesce(self, conversation_key: str, tenant_id: str) -> None:
+        _ensure_dbos_runtime(
+            DbosRuntimeConfig(
+                app_name=self.app_name,
+                system_database_url=self.system_database_url,
+            )
+        )
+        coalesce_id = safe_workflow_id(f"reply-coalesce-{tenant_id}-{conversation_key}")
+        # Idempotent start (no-op if the window is already running) then signal,
+        # which resets the debounce timer on the running coalesce workflow.
+        with SetWorkflowID(coalesce_id):
+            await DBOS.start_workflow_async(
+                dbos_reply_coalesce_workflow,
+                ReplyCoalesceInput(
+                    tenant_id=tenant_id,
+                    conversation_key=conversation_key,
+                    debounce_seconds=self.reply_debounce_seconds,
+                ),
+            )
+        await DBOS.send_async(coalesce_id, "ping", DBOS_REPLY_TOPIC)
 
     async def dispatch_developer_checkin(self, input: DeveloperCheckinDispatch) -> str:
         _ensure_dbos_runtime(
@@ -525,6 +667,8 @@ class DbosWorkflowScheduler:
                 await DBOS.start_workflow_async(dbos_runtime_config_sync_workflow, workflow_input)
             elif isinstance(workflow_input, RiskAssessmentInput):
                 await DBOS.start_workflow_async(dbos_risk_assessment_workflow, workflow_input)
+            elif isinstance(workflow_input, DriftScanInput):
+                await DBOS.start_workflow_async(dbos_drift_scan_workflow, workflow_input)
             else:
                 raise ValueError(f"unsupported sync connector: {input.connector}")
         return workflow_id
@@ -657,6 +801,22 @@ def _conversation_purge_schedule_input(config: ConversationPurgeScheduleConfig) 
             "schedule_id": config.schedule_id,
             "tenant_id": config.tenant_id,
             "retention_days": str(config.retention_days),
+        },
+        "automatic_backfill": False,
+    }
+
+
+def _inbound_events_sweeper_schedule_input(
+    config: InboundSweeperScheduleConfig,
+) -> ScheduleInput:
+    return {
+        "schedule_name": config.schedule_id,
+        "workflow_fn": cast(Any, dbos_scheduled_inbound_events_sweeper_workflow),
+        "schedule": config.cron,
+        "context": {
+            "schedule_id": config.schedule_id,
+            "tenant_id": config.tenant_id,
+            "grace_seconds": str(config.grace_seconds),
         },
         "automatic_backfill": False,
     }

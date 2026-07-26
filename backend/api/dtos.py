@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -34,7 +35,8 @@ from core.application.portfolio_feed_service import PortfolioFeedItemView, Portf
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
 from core.domain.directory import DirectoryUser
 from core.domain.graph import EdgeKind, GraphEdge, GraphNode, GraphTree, NodeKind
-from core.domain.risk import RiskFinding
+from core.domain.identity import IdentityLink
+from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import Rag, RollupFactor
 from core.domain.status import CheckInPreference, DeveloperStatus, StatusSource
 from core.ports.auth import AuthenticatedUser
@@ -1138,6 +1140,62 @@ class RiskFindingResponse(BaseModel):
         )
 
 
+class DriftFindingResponse(BaseModel):
+    """A continuous drift ("watermelon") finding for persona risk views.
+
+    Carries only derived, sanitised fields -- never raw DM/reply content -- so
+    the stated-vs-actual divergence is explicit alongside signal-only risks.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: str
+    severity: Rag
+    entity_ref: EntityRefDto
+    workstream_id: str | None
+    reason: str
+    detected_at: datetime
+    owner_id: str | None
+    stated_source: StatusSource | None
+    evidence: RiskEvidenceDto | None
+    child_entity_ref: EntityRefDto | None
+
+    @classmethod
+    def from_domain(cls, finding: DriftFinding) -> DriftFindingResponse:
+        return cls(
+            kind=finding.kind.value,
+            severity=finding.severity,
+            entity_ref=EntityRefDto(
+                tenant_id=finding.entity_ref.tenant_id,
+                kind=finding.entity_ref.kind,
+                id=finding.entity_ref.id,
+            ),
+            workstream_id=finding.workstream_id,
+            reason=finding.reason,
+            detected_at=finding.detected_at,
+            owner_id=finding.owner_id,
+            stated_source=finding.stated_source,
+            evidence=(
+                RiskEvidenceDto(
+                    identifier=finding.evidence.identifier,
+                    url=finding.evidence.url,
+                    url_is_user_supplied=finding.evidence.url_is_user_supplied,
+                )
+                if finding.evidence is not None
+                else None
+            ),
+            child_entity_ref=(
+                EntityRefDto(
+                    tenant_id=finding.child_entity_ref.tenant_id,
+                    kind=finding.child_entity_ref.kind,
+                    id=finding.child_entity_ref.id,
+                )
+                if finding.child_entity_ref is not None
+                else None
+            ),
+        )
+
+
 class CrossPersonRequestResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -1190,6 +1248,7 @@ class ProjectRisksResponse(BaseModel):
     project_id: str
     as_of: date
     risks: list[RiskFindingResponse]
+    drift: list[DriftFindingResponse] = []
 
 
 class PortfolioRisksResponse(BaseModel):
@@ -1197,6 +1256,7 @@ class PortfolioRisksResponse(BaseModel):
 
     as_of: date
     risks: list[RiskFindingResponse]
+    drift: list[DriftFindingResponse] = []
 
 
 class AskResponse(BaseModel):
@@ -1313,6 +1373,58 @@ class CheckinPreferenceUpdateRequest(BaseModel):
         if any(day < 0 or day > 6 for day in value):
             raise ValueError("weekdays must be in the range 0..6")
         return value
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("timezone must be a valid IANA timezone") from exc
+        return value
+
+
+class IdentityLinkResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    developer_id: str
+    chat_user_id: str | None
+    jira_account_id: str | None
+    jira_email: str | None
+    vcs_username: str | None
+
+    @classmethod
+    def from_domain(cls, link: IdentityLink) -> IdentityLinkResponse:
+        return cls(
+            developer_id=link.developer_id,
+            chat_user_id=link.chat_user_id,
+            jira_account_id=link.jira_account_id,
+            jira_email=link.jira_email,
+            vcs_username=link.vcs_username,
+        )
+
+
+class IdentityLinkUpdateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    chat_user_id: str | None = None
+    jira_account_id: str | None = None
+    jira_email: str | None = None
+    vcs_username: str | None = None
+
+
+class TenantWritebackResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool
+
+
+class TenantWritebackUpdateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool
 
 
 class MyStatusResponse(BaseModel):

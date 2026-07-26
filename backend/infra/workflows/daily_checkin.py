@@ -3,9 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from core.domain.status import CheckIn, CheckInPreference, CheckInScheduleRun
+from core.domain.status import (
+    CheckIn,
+    CheckInPreference,
+    CheckInScheduleRun,
+    resolve_timezone,
+)
 from core.ports.repositories import StatusRepository
 from infra.workflows.nudge import NudgeInput
 
@@ -139,6 +143,7 @@ async def start_daily_checkin_activity(payload: DailyCheckinInput) -> DailyCheck
             chat_external_id=payload.chat_external_id,
             correlation_id=correlation_id,
             asked_at=_optional_datetime(payload.asked_at) or scheduled_at,
+            checkin_date=checkin_date,
         )
         await _record_schedule_run(
             repository,
@@ -269,11 +274,15 @@ def _checkin_date(payload: DailyCheckinInput, fallback: datetime) -> date:
 
 
 def _scheduled_at(checkin_date: date, preference: CheckInPreference, timezone: str) -> datetime:
-    try:
-        zone = ZoneInfo(timezone)
-    except ZoneInfoNotFoundError:
-        zone = ZoneInfo("UTC")
-    return datetime.combine(checkin_date, preference.local_time, tzinfo=zone).astimezone(UTC)
+    zone = resolve_timezone(timezone, "UTC")
+    local_dt = datetime.combine(checkin_date, preference.local_time, tzinfo=zone)
+    # Spring-forward gap: the wall-clock time does not exist that day, so a
+    # round-trip through UTC yields a different wall time. Advance to the first
+    # valid instant after the transition instead of silently keeping fold=0.
+    normalized = local_dt.astimezone(UTC).astimezone(zone)
+    if normalized.time() != preference.local_time:
+        local_dt = normalized
+    return local_dt.astimezone(UTC)
 
 
 def _optional_datetime(value: str | None) -> datetime | None:

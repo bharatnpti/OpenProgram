@@ -17,6 +17,7 @@ from api.dtos import (
     CrossPersonRequestResponse,
     CrossPersonRequestsResponse,
     CrossPersonRequestStatusUpdateRequest,
+    DriftFindingResponse,
     FocusResponse,
     PodBlockersResponse,
     PodCheckinsResponse,
@@ -231,12 +232,14 @@ async def project_risks(
     _ensure_aggregate(principal)
     try:
         findings = await service.project_risks(principal.tenant_id, project_id, as_of)
+        drift = await service.project_drift(principal.tenant_id, project_id, as_of)
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return ProjectRisksResponse(
         project_id=project_id,
         as_of=as_of,
         risks=[RiskFindingResponse.from_domain(finding) for finding in findings],
+        drift=[DriftFindingResponse.from_domain(finding) for finding in drift],
     )
 
 
@@ -248,9 +251,11 @@ async def portfolio_risks(
 ) -> PortfolioRisksResponse:
     _ensure_aggregate(principal)
     findings = await service.portfolio_risks(principal.tenant_id, as_of)
+    drift = await service.portfolio_drift(principal.tenant_id, as_of)
     return PortfolioRisksResponse(
         as_of=as_of,
         risks=[RiskFindingResponse.from_domain(finding) for finding in findings],
+        drift=[DriftFindingResponse.from_domain(finding) for finding in drift],
     )
 
 

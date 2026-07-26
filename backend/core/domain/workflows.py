@@ -142,6 +142,44 @@ class ConversationPurgeResult:
     cutoff: str
     deleted_count: int
     checkin_raw_cleared: int = 0
+    inbound_events_cleared: int = 0
+
+
+@dataclass(frozen=True, kw_only=True)
+class ReplyCoalesceInput:
+    tenant_id: str
+    conversation_key: str
+    debounce_seconds: int = 30
+
+
+@dataclass(frozen=True, kw_only=True)
+class ReplyCoalesceResult:
+    tenant_id: str
+    conversation_key: str
+    processed: int
+    passes: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class InboundSweeperInput:
+    tenant_id: str
+    grace_seconds: int
+    now: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class InboundSweeperResult:
+    tenant_id: str
+    rearmed: int
+    conversation_keys: list[str]
+
+
+@dataclass(frozen=True, kw_only=True)
+class InboundSweeperScheduleConfig:
+    schedule_id: str
+    tenant_id: str
+    cron: str
+    grace_seconds: int
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -23,6 +23,7 @@ from core.domain.status import (
     DeveloperStatus,
     IssueClaim,
     StatusSource,
+    WriteBackConsent,
 )
 
 _tracer = trace.get_tracer("openprogram.persistence.status")
@@ -46,9 +47,9 @@ class PostgresStatusRepository:
                 """
                 INSERT INTO checkins (
                     tenant_id, developer_id, correlation_id, asked_at,
-                    replied_at, raw_reply, signals, last_accessed_at
+                    replied_at, raw_reply, signals, last_accessed_at, checkin_date
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id, correlation_id)
                 DO UPDATE SET
                     developer_id = EXCLUDED.developer_id,
@@ -56,7 +57,8 @@ class PostgresStatusRepository:
                     replied_at = EXCLUDED.replied_at,
                     raw_reply = EXCLUDED.raw_reply,
                     signals = EXCLUDED.signals,
-                    last_accessed_at = EXCLUDED.last_accessed_at
+                    last_accessed_at = EXCLUDED.last_accessed_at,
+                    checkin_date = COALESCE(checkins.checkin_date, EXCLUDED.checkin_date)
                 """,
                 (
                     checkin.tenant_id,
@@ -67,6 +69,7 @@ class PostgresStatusRepository:
                     checkin.raw_reply,
                     _signals_to_json(checkin.signals),
                     _checkin_last_accessed_at(checkin),
+                    checkin.checkin_date,
                 ),
             )
 
@@ -76,9 +79,9 @@ class PostgresStatusRepository:
                 """
                 INSERT INTO checkins (
                     tenant_id, developer_id, correlation_id, asked_at,
-                    replied_at, raw_reply, signals, last_accessed_at
+                    replied_at, raw_reply, signals, last_accessed_at, checkin_date
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id, correlation_id)
                 DO UPDATE SET
                     developer_id = EXCLUDED.developer_id,
@@ -86,7 +89,8 @@ class PostgresStatusRepository:
                     replied_at = EXCLUDED.replied_at,
                     raw_reply = EXCLUDED.raw_reply,
                     signals = EXCLUDED.signals,
-                    last_accessed_at = EXCLUDED.last_accessed_at
+                    last_accessed_at = EXCLUDED.last_accessed_at,
+                    checkin_date = COALESCE(checkins.checkin_date, EXCLUDED.checkin_date)
                 WHERE checkins.replied_at IS NULL
                 """,
                 (
@@ -98,6 +102,7 @@ class PostgresStatusRepository:
                     checkin.raw_reply,
                     _signals_to_json(checkin.signals),
                     _checkin_last_accessed_at(checkin),
+                    checkin.checkin_date,
                 ),
             )
         return int(getattr(result, "rowcount", 0) or 0) > 0
@@ -107,7 +112,7 @@ class PostgresStatusRepository:
             rows = await self._executor.fetch(
                 """
                 SELECT tenant_id, developer_id, correlation_id, asked_at,
-                       replied_at, raw_reply, signals, last_accessed_at
+                       replied_at, raw_reply, signals, last_accessed_at, checkin_date
                 FROM checkins
                 WHERE tenant_id = %s AND correlation_id = %s
                 LIMIT 1
@@ -260,9 +265,9 @@ class PostgresStatusRepository:
                 """
                 INSERT INTO checkin_preferences (
                     tenant_id, developer_id, local_time, timezone, weekdays,
-                    reply_wait_seconds, final_reply_wait_seconds
+                    reply_wait_seconds, final_reply_wait_seconds, write_back_consent
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id, developer_id)
                 DO UPDATE SET
                     local_time = EXCLUDED.local_time,
@@ -270,6 +275,7 @@ class PostgresStatusRepository:
                     weekdays = EXCLUDED.weekdays,
                     reply_wait_seconds = EXCLUDED.reply_wait_seconds,
                     final_reply_wait_seconds = EXCLUDED.final_reply_wait_seconds,
+                    write_back_consent = EXCLUDED.write_back_consent,
                     updated_at = now()
                 """,
                 (
@@ -280,6 +286,7 @@ class PostgresStatusRepository:
                     _int_tuple_to_json(preference.weekdays),
                     preference.reply_wait_seconds,
                     preference.final_reply_wait_seconds,
+                    preference.write_back_consent.value,
                 ),
             )
 
@@ -290,7 +297,7 @@ class PostgresStatusRepository:
             rows = await self._executor.fetch(
                 """
                 SELECT tenant_id, developer_id, local_time, timezone, weekdays,
-                       reply_wait_seconds, final_reply_wait_seconds
+                       reply_wait_seconds, final_reply_wait_seconds, write_back_consent
                 FROM checkin_preferences
                 WHERE tenant_id = %s AND developer_id = %s
                 LIMIT 1
@@ -304,7 +311,7 @@ class PostgresStatusRepository:
             rows = await self._executor.fetch(
                 """
                 SELECT tenant_id, developer_id, local_time, timezone, weekdays,
-                       reply_wait_seconds, final_reply_wait_seconds
+                       reply_wait_seconds, final_reply_wait_seconds, write_back_consent
                 FROM checkin_preferences
                 WHERE tenant_id = %s
                 ORDER BY developer_id
@@ -542,12 +549,19 @@ class PostgresStatusRepository:
                     FROM checkins replied
                     WHERE replied.tenant_id = %s
                       AND replied.developer_id = known.developer_id
-                      AND replied.replied_at >= %s::date
-                      AND replied.replied_at < (%s::date + INTERVAL '1 day')
+                      AND replied.replied_at IS NOT NULL
+                      AND (
+                        replied.checkin_date = %s
+                        OR (
+                          replied.checkin_date IS NULL
+                          AND replied.replied_at >= %s::date
+                          AND replied.replied_at < (%s::date + INTERVAL '1 day')
+                        )
+                      )
                 )
                 ORDER BY known.developer_id
                 """,
-                (tenant_id, tenant_id, tenant_id, tenant_id, as_of, as_of),
+                (tenant_id, tenant_id, tenant_id, tenant_id, as_of, as_of, as_of),
             )
         return [str(row["developer_id"]) for row in rows]
 
@@ -839,6 +853,18 @@ class PostgresConversationRepository:
             )
 
 
+def _optional_date_field(value: object) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        return date.fromisoformat(value)
+    raise TypeError(f"expected date-like value, got {type(value)!r}")
+
+
 def _checkin_from_row(row: Mapping[str, object]) -> CheckIn:
     raw_reply = row.get("raw_reply")
     return CheckIn(
@@ -850,6 +876,7 @@ def _checkin_from_row(row: Mapping[str, object]) -> CheckIn:
         raw_reply=raw_reply if isinstance(raw_reply, str) else None,
         signals=_signals_from_json(row.get("signals")),
         last_accessed_at=_optional_datetime_field(row.get("last_accessed_at"), "last_accessed_at"),
+        checkin_date=_optional_date_field(row.get("checkin_date")),
     )
 
 
@@ -879,7 +906,17 @@ def _checkin_preference_from_row(row: Mapping[str, object]) -> CheckInPreference
             row["final_reply_wait_seconds"],
             "final_reply_wait_seconds",
         ),
+        write_back_consent=_write_back_consent_from_row(row.get("write_back_consent")),
     )
+
+
+def _write_back_consent_from_row(value: object) -> WriteBackConsent:
+    if isinstance(value, str):
+        try:
+            return WriteBackConsent(value)
+        except ValueError:
+            return WriteBackConsent.ALWAYS_ASK
+    return WriteBackConsent.ALWAYS_ASK
 
 
 def _checkin_schedule_run_from_row(row: Mapping[str, object]) -> CheckInScheduleRun:
@@ -991,6 +1028,7 @@ def _signals_to_json(signals: CheckInSignals | None) -> dict[str, object] | None
         "eta_change_days": signals.eta_change_days,
         "blockers_answered": signals.blockers_answered,
         "eta_answered": signals.eta_answered,
+        "parser_confident": signals.parser_confident,
         "requests": [
             {
                 "name": request.raw_name,
@@ -1025,12 +1063,15 @@ def _signals_from_json(value: object) -> CheckInSignals | None:
         if isinstance(eta_change_days, int) and not isinstance(eta_change_days, bool)
         else None
     )
+    raw_parser_confident = value.get("parser_confident")
     return CheckInSignals(
         progress_note=progress_note,
         blockers=blockers,
         eta_change_days=parsed_eta,
         blockers_answered=bool(blockers) or _bool_from_json(value.get("blockers_answered")),
         eta_answered=parsed_eta is not None or _bool_from_json(value.get("eta_answered")),
+        # Absent on legacy rows: default confident so existing check-ins are unaffected.
+        parser_confident=(raw_parser_confident if isinstance(raw_parser_confident, bool) else True),
         requests=_cross_person_mentions_from_json(value.get("requests")),
         issue_updates=_issue_claims_from_json(value.get("issue_updates")),
     )

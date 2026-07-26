@@ -79,10 +79,24 @@ class JiraIssueTrackerAdapter:
             )
 
     async def transition(self, tenant_id: str, key: str, to_state: str) -> None:
-        raise ProviderUnavailable("issue tracker adapter is read-only")
+        with _tracer.start_as_current_span("jira.transition"):
+            payload = await self._get(tenant_id, f"/rest/api/3/issue/{key}/transitions")
+            transition_id = _resolve_transition_id(payload, to_state)
+            if transition_id is None:
+                raise ProviderUnavailable(f"issue tracker has no transition to state {to_state!r}")
+            await self._post(
+                tenant_id,
+                f"/rest/api/3/issue/{key}/transitions",
+                json={"transition": {"id": transition_id}},
+            )
 
     async def add_comment(self, tenant_id: str, key: str, body: str) -> None:
-        raise ProviderUnavailable("issue tracker adapter is read-only")
+        with _tracer.start_as_current_span("jira.add_comment"):
+            await self._post(
+                tenant_id,
+                f"/rest/api/3/issue/{key}/comment",
+                json={"body": _adf_document(body)},
+            )
 
     async def _get(
         self,
@@ -113,6 +127,34 @@ class JiraIssueTrackerAdapter:
         if not isinstance(payload, Mapping):
             raise ProviderUnavailable("issue tracker response was not an object")
         return cast(Mapping[str, object], payload)
+
+    async def _post(
+        self,
+        tenant_id: str,
+        path: str,
+        *,
+        json: Mapping[str, object],
+    ) -> None:
+        credentials = await self._credentials(tenant_id)
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        auth: httpx.Auth | None = None
+        if credentials.email:
+            auth = httpx.BasicAuth(credentials.email, credentials.api_token)
+        else:
+            headers["Authorization"] = f"Bearer {credentials.api_token}"
+
+        try:
+            async with httpx.AsyncClient(
+                base_url=credentials.base_url,
+                timeout=self.timeout_seconds,
+            ) as client:
+                if auth is None:
+                    response = await client.post(path, headers=headers, json=json)
+                else:
+                    response = await client.post(path, headers=headers, auth=auth, json=json)
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise ProviderUnavailable("issue tracker write failed") from exc
 
     async def _search_issues(
         self,
@@ -333,3 +375,38 @@ def _metadata(values: Mapping[str, object]) -> Mapping[str, JsonScalar]:
 def _jql_string(value: str) -> str:
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
+
+
+def _resolve_transition_id(payload: Mapping[str, object], to_state: str) -> str | None:
+    """Resolve the transition id whose destination matches ``to_state``.
+
+    Matches (case-insensitively) against the transition name, the destination
+    status name, and the destination status category key, so a caller can pass
+    either a capability-neutral state ("done") or a concrete workflow label.
+    """
+    wanted = to_state.strip().lower()
+    if not wanted:
+        return None
+    for transition in _items(payload, "transitions"):
+        candidates = [_optional_string(transition, "name")]
+        destination = _optional_mapping(transition, "to")
+        if destination is not None:
+            candidates.append(_optional_string(destination, "name"))
+            candidates.append(_status_category(destination))
+        if any(candidate and candidate.strip().lower() == wanted for candidate in candidates):
+            return _optional_string(transition, "id")
+    return None
+
+
+def _adf_document(body: str) -> Mapping[str, object]:
+    """Wrap plain text in a minimal Atlassian Document Format doc for the v3 API."""
+    return {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": body}],
+            }
+        ],
+    }

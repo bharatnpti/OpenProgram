@@ -6,6 +6,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from math import sqrt
+from uuid import uuid4
 
 from core.domain.conversation import ConversationTurn
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
@@ -22,6 +23,8 @@ from core.domain.graph import (
     VectorMatch,
     normalize_vector,
 )
+from core.domain.identity import IdentityLink
+from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus
 from core.domain.status import (
@@ -33,6 +36,7 @@ from core.domain.status import (
     CheckInScheduleRun,
     DeveloperStatus,
 )
+from core.domain.writeback import WriteBackAudit
 from core.ports.directory import DirectoryUserRepository
 
 
@@ -56,8 +60,12 @@ class InMemoryGraphStore:
     _node_statuses: dict[tuple[str, str, str, date], NodeStatus] = field(default_factory=dict)
     _sync_cursors: dict[tuple[str, str, str], SyncCursor] = field(default_factory=dict)
     _directory_users: dict[tuple[str, str], DirectoryUser] = field(default_factory=dict)
+    _identity_links: dict[tuple[str, str], IdentityLink] = field(default_factory=dict)
+    _writeback_config: dict[str, bool] = field(default_factory=dict)
+    _writeback_audit: dict[str, WriteBackAudit] = field(default_factory=dict)
     _conversation_turns: list[ConversationTurn] = field(default_factory=list)
     _cross_person_requests: dict[tuple[str, str], CrossPersonRequest] = field(default_factory=dict)
+    _inbound_chat_events: list[InboundChatEvent] = field(default_factory=list)
     _checkin_reply_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
@@ -485,6 +493,60 @@ class InMemoryGraphStore:
     async def delete_checkin_preference(self, tenant_id: str, developer_id: str) -> None:
         self._checkin_preferences.pop((tenant_id, developer_id), None)
 
+    async def get_identity_link(self, tenant_id: str, developer_id: str) -> IdentityLink | None:
+        return self._identity_links.get((tenant_id, developer_id))
+
+    async def upsert_identity_link(self, link: IdentityLink) -> None:
+        self._identity_links[(link.tenant_id, link.developer_id)] = link
+
+    async def list_identity_links(self, tenant_id: str) -> list[IdentityLink]:
+        return sorted(
+            (
+                link
+                for (link_tenant_id, _), link in self._identity_links.items()
+                if link_tenant_id == tenant_id
+            ),
+            key=lambda link: link.developer_id,
+        )
+
+    async def get_writeback_enabled(self, tenant_id: str) -> bool | None:
+        return self._writeback_config.get(tenant_id)
+
+    async def set_writeback_enabled(self, tenant_id: str, enabled: bool) -> None:
+        self._writeback_config[tenant_id] = enabled
+
+    async def record(self, audit: WriteBackAudit) -> None:
+        self._writeback_audit.setdefault(audit.id, audit)
+
+    async def list_for_issue(self, tenant_id: str, issue_key: str) -> list[WriteBackAudit]:
+        return sorted(
+            (
+                audit
+                for audit in self._writeback_audit.values()
+                if audit.tenant_id == tenant_id and audit.issue_key == issue_key
+            ),
+            key=lambda audit: audit.created_at,
+        )
+
+    async def find_existing(
+        self,
+        tenant_id: str,
+        issue_key: str,
+        target_state: str,
+        correlation_id: str,
+    ) -> WriteBackAudit | None:
+        matches = [
+            audit
+            for audit in self._writeback_audit.values()
+            if audit.tenant_id == tenant_id
+            and audit.issue_key == issue_key
+            and audit.target_state == target_state
+            and audit.correlation_id == correlation_id
+        ]
+        if not matches:
+            return None
+        return min(matches, key=lambda audit: audit.created_at)
+
     async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None:
         self._checkin_schedule_runs[(run.tenant_id, run.developer_id, run.checkin_date)] = run
 
@@ -592,7 +654,11 @@ class InMemoryGraphStore:
             for checkin in self._checkins
             if checkin.tenant_id == tenant_id
             and checkin.replied_at is not None
-            and checkin.replied_at.date() == as_of
+            and (
+                checkin.checkin_date == as_of
+                if checkin.checkin_date is not None
+                else checkin.replied_at.date() == as_of
+            )
         }
         return sorted(known_developer_ids - replied_developer_ids)
 
@@ -736,6 +802,68 @@ class InMemoryGraphStore:
             else turn
             for turn in self._conversation_turns
         ]
+
+    async def append(self, event: InboundChatEvent) -> bool:
+        for existing in self._inbound_chat_events:
+            if (
+                existing.tenant_id == event.tenant_id
+                and existing.provider == event.provider
+                and existing.event_id == event.event_id
+            ):
+                return False
+        self._inbound_chat_events.append(
+            event if event.id is not None else replace(event, id=uuid4().hex)
+        )
+        return True
+
+    async def list_unprocessed_for_conversation(
+        self, tenant_id: str, conversation_key: str
+    ) -> list[InboundChatEvent]:
+        return sorted(
+            (
+                event
+                for event in self._inbound_chat_events
+                if event.tenant_id == tenant_id
+                and event.conversation_key == conversation_key
+                and event.processed_at is None
+            ),
+            key=lambda event: (event.received_at, event.message_ref),
+        )
+
+    async def mark_processed(
+        self, tenant_id: str, event_ids: Sequence[str], processed_at: datetime
+    ) -> None:
+        ids = set(event_ids)
+        self._inbound_chat_events = [
+            replace(event, processed_at=processed_at)
+            if event.tenant_id == tenant_id and event.id in ids and event.processed_at is None
+            else event
+            for event in self._inbound_chat_events
+        ]
+
+    async def list_stuck(self, tenant_id: str, older_than: datetime) -> list[InboundChatEvent]:
+        return sorted(
+            (
+                event
+                for event in self._inbound_chat_events
+                if event.tenant_id == tenant_id
+                and event.processed_at is None
+                and event.received_at < older_than
+            ),
+            key=lambda event: (event.received_at, event.message_ref),
+        )
+
+    async def purge_processed_older_than(self, tenant_id: str, cutoff: datetime) -> int:
+        retained = [
+            event
+            for event in self._inbound_chat_events
+            if event.tenant_id != tenant_id
+            or event.processed_at is None
+            or event.processed_at >= cutoff
+        ]
+        deleted_count = len(self._inbound_chat_events) - len(retained)
+        self._inbound_chat_events = retained
+        return deleted_count
 
     async def upsert_embedding(
         self, tenant_id: str, entity_ref: EntityRef, vector: Sequence[float]

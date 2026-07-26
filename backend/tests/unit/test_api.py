@@ -423,6 +423,68 @@ def test_container_slack_webhook_route_ignores_signed_bot_message_event(
     assert response.json() == {"status": "ignored", "message_id": "unsupported-provider"}
 
 
+def test_chat_signature_required_keys_off_configured_provider_not_url(
+    settings: Settings,
+) -> None:
+    # Configured chat provider is Slack in container mode: verification is
+    # required regardless of the URL segment (mock_slack must not bypass it).
+    configured = _container_slack_settings(settings)
+    registry = ServiceRegistry(configured)
+    body = _slack_json_body({"event": {"type": "message"}})
+
+    assert not registry.chat_webhook_signature_valid("mock_slack", {}, body)
+    assert registry.chat_webhook_signature_valid("slack", _signed_slack_headers(body), body)
+
+
+def test_chat_signature_skipped_when_configured_provider_is_not_slack(
+    settings: Settings,
+) -> None:
+    # Configured chat provider is the credential-free simulator: no signature.
+    configured = settings.model_copy(
+        update={"runtime_mode": "container", "chat_provider": "mock_slack"}
+    )
+    registry = ServiceRegistry(configured)
+
+    assert registry.chat_webhook_signature_valid("slack", {}, b"{}")
+    assert registry.chat_webhook_signature_valid("mock_slack", {}, b"{}")
+
+
+def test_chat_webhook_dedupes_redelivered_event_id(settings: Settings) -> None:
+    app = create_app(
+        settings=settings.model_copy(
+            update={
+                "chat_provider": "fake",
+                "issue_tracker_provider": "fake",
+                "llm_provider": "fake",
+            }
+        )
+    )
+    with TestClient(app) as client:
+        asyncio.run(
+            app.state.registry.status_collector().start_checkin(
+                tenant_id=settings.tenant_id,
+                developer_id="dev-1",
+                chat_external_id="U123",
+                correlation_id="corr-route",
+                asked_at=datetime.now(tz=UTC),
+            )
+        )
+        first = client.post(
+            "/webhooks/chat/fake",
+            json={"user_id": "U123", "text": "blocked on API", "message_id": "msg-dup"},
+        )
+        # Same message id => same derived event_id => absorbed as a redelivery.
+        redelivery = client.post(
+            "/webhooks/chat/fake",
+            json={"user_id": "U123", "text": "blocked on API", "message_id": "msg-dup"},
+        )
+
+    assert first.status_code == 200
+    assert first.json()["status"] == "processed"
+    assert redelivery.status_code == 200
+    assert redelivery.json() == {"status": "duplicate", "message_id": "msg-dup"}
+
+
 def test_metrics_endpoint_exposes_prometheus_metrics(settings: Settings) -> None:
     app = create_app(settings=settings)
     with TestClient(app) as client:

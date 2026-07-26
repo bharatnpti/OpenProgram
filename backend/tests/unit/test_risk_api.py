@@ -92,6 +92,63 @@ def test_portfolio_risks_visible_to_exec(settings: Settings) -> None:
     assert len(body["risks"]) == 1
 
 
+def _seed_drift_watermelon(store: InMemoryGraphStore) -> None:
+    from core.domain.graph import EdgeKind, GraphEdge, Project, WorkItem, Workstream
+    from core.domain.status import DeveloperStatus, StatusSource
+
+    async def _seed() -> None:
+        await store.upsert_node(Project(tenant_id="demo", id="proj-1", name="Project One"))
+        await store.upsert_node(Workstream(tenant_id="demo", id="ws-1", name="Workstream One"))
+        await store.add_edge(
+            GraphEdge(
+                tenant_id="demo", from_node_id="proj-1", to_node_id="ws-1", kind=EdgeKind.CONTAINS
+            )
+        )
+        await store.upsert_node(
+            WorkItem(
+                tenant_id="demo",
+                id="wi-1",
+                name="Feature slice",
+                metadata={"state": "done", "owner_id": "dev-1"},
+            )
+        )
+        await store.add_edge(
+            GraphEdge(
+                tenant_id="demo", from_node_id="ws-1", to_node_id="wi-1", kind=EdgeKind.CONTAINS
+            )
+        )
+        await store.record_developer_status(
+            DeveloperStatus(
+                tenant_id="demo",
+                developer_id="dev-1",
+                as_of=date.fromisoformat(AS_OF),
+                source=StatusSource.CONFIRMED,
+                blockers=(),
+                summary="wrapped up",
+            )
+        )
+
+    asyncio.run(_seed())
+
+
+def test_project_risks_exposes_drift_watermelon_to_sm(settings: Settings) -> None:
+    store = InMemoryGraphStore()
+    _seed_drift_watermelon(store)
+
+    sm_app = _app_for_role(settings, "sm", store)
+    with TestClient(sm_app) as client:
+        response = client.get(f"/projects/proj-1/risks?as_of={AS_OF}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["drift"]) == 1
+    finding = body["drift"][0]
+    assert finding["kind"] == "said_done_no_pr"
+    assert finding["severity"] == "red"
+    assert finding["entity_ref"]["id"] == "wi-1"
+    assert finding["stated_source"] == "confirmed"
+
+
 def test_project_risks_returns_404_for_unknown_project(settings: Settings) -> None:
     app = create_app(settings=settings)
     with TestClient(app) as client:

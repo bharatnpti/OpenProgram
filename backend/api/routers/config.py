@@ -23,10 +23,14 @@ from api.dtos import (
     DirectorySearchResponse,
     DirectorySyncResponse,
     DirectoryUserResponse,
+    IdentityLinkResponse,
+    IdentityLinkUpdateRequest,
     MemberFromDirectoryRequest,
     MemberTaskAssignmentRequest,
     PodMemberLinkRequest,
     ProgramProjectLinkRequest,
+    TenantWritebackResponse,
+    TenantWritebackUpdateRequest,
     WorkItemCreateRequest,
     WorkItemFromBranchRequest,
     WorkItemFromPrRequest,
@@ -49,6 +53,7 @@ from core.domain.errors import (
     ProviderUnavailable,
 )
 from core.domain.graph import GraphNode, JsonScalar, NodeKind
+from core.domain.identity import IdentityLink
 from core.domain.status import CheckInPreference
 
 router = APIRouter(tags=["config"])
@@ -920,6 +925,78 @@ async def list_config_checkin_preferences(
     ]
 
 
+@router.get(
+    "/config/members/{member_id}/identity-link",
+    response_model=IdentityLinkResponse,
+)
+async def get_config_member_identity_link(
+    member_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> IdentityLinkResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        link = await service.get_identity_link(principal.tenant_id, member_id)
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return IdentityLinkResponse.from_domain(
+        link or IdentityLink(tenant_id=principal.tenant_id, developer_id=member_id)
+    )
+
+
+@router.put(
+    "/config/members/{member_id}/identity-link",
+    response_model=IdentityLinkResponse,
+)
+async def update_config_member_identity_link(
+    member_id: str,
+    request: IdentityLinkUpdateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> IdentityLinkResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        existing = await service.get_identity_link(principal.tenant_id, member_id)
+        link = _merge_identity_link(
+            request,
+            existing or IdentityLink(tenant_id=principal.tenant_id, developer_id=member_id),
+        )
+        updated = await service.set_identity_link(link)
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return IdentityLinkResponse.from_domain(updated)
+
+
+@router.get("/config/tenant/writeback", response_model=TenantWritebackResponse)
+async def get_config_tenant_writeback(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+    settings: Annotated[Settings, Depends(get_settings_from_request)],
+) -> TenantWritebackResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        enabled = await service.get_tenant_writeback_enabled(
+            principal.tenant_id, settings.jira_writeback_enabled
+        )
+    except ConfigValidationError as exc:
+        raise _http_error(exc) from exc
+    return TenantWritebackResponse(enabled=enabled)
+
+
+@router.put("/config/tenant/writeback", response_model=TenantWritebackResponse)
+async def update_config_tenant_writeback(
+    request: TenantWritebackUpdateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> TenantWritebackResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        await service.set_tenant_writeback_enabled(principal.tenant_id, request.enabled)
+    except ConfigValidationError as exc:
+        raise _http_error(exc) from exc
+    return TenantWritebackResponse(enabled=request.enabled)
+
+
 @router.get("/programs", response_model=list[DirectoryItemResponse])
 async def list_programs(
     as_of: Annotated[date, Query(default_factory=date.today)],
@@ -1215,6 +1292,24 @@ def _merge_preference(
             if "final_reply_wait_seconds" in fields and request.final_reply_wait_seconds is not None
             else existing.final_reply_wait_seconds
         ),
+        write_back_consent=existing.write_back_consent,
+    )
+
+
+def _merge_identity_link(
+    request: IdentityLinkUpdateRequest,
+    existing: IdentityLink,
+) -> IdentityLink:
+    fields = request.model_fields_set
+    return IdentityLink(
+        tenant_id=existing.tenant_id,
+        developer_id=existing.developer_id,
+        chat_user_id=(request.chat_user_id if "chat_user_id" in fields else existing.chat_user_id),
+        jira_account_id=(
+            request.jira_account_id if "jira_account_id" in fields else existing.jira_account_id
+        ),
+        jira_email=request.jira_email if "jira_email" in fields else existing.jira_email,
+        vcs_username=(request.vcs_username if "vcs_username" in fields else existing.vcs_username),
     )
 
 

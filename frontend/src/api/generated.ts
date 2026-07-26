@@ -692,6 +692,42 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/config/members/{member_id}/identity-link": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Config Member Identity Link */
+    get: operations["get_config_member_identity_link_config_members__member_id__identity_link_get"];
+    /** Update Config Member Identity Link */
+    put: operations["update_config_member_identity_link_config_members__member_id__identity_link_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/tenant/writeback": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Config Tenant Writeback */
+    get: operations["get_config_tenant_writeback_config_tenant_writeback_get"];
+    /** Update Config Tenant Writeback */
+    put: operations["update_config_tenant_writeback_config_tenant_writeback_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/programs": {
     parameters: {
       query?: never;
@@ -1654,6 +1690,33 @@ export interface components {
       };
     };
     /**
+     * DriftFindingResponse
+     * @description A continuous drift ("watermelon") finding for persona risk views.
+     *
+     *     Carries only derived, sanitised fields -- never raw DM/reply content -- so
+     *     the stated-vs-actual divergence is explicit alongside signal-only risks.
+     */
+    DriftFindingResponse: {
+      /** Kind */
+      kind: string;
+      severity: components["schemas"]["Rag"];
+      entity_ref: components["schemas"]["EntityRefDto"];
+      /** Workstream Id */
+      workstream_id: string | null;
+      /** Reason */
+      reason: string;
+      /**
+       * Detected At
+       * Format: date-time
+       */
+      detected_at: string;
+      /** Owner Id */
+      owner_id: string | null;
+      stated_source: components["schemas"]["StatusSource"] | null;
+      evidence: components["schemas"]["RiskEvidenceDto"] | null;
+      child_entity_ref: components["schemas"]["EntityRefDto"] | null;
+    };
+    /**
      * EdgeKind
      * @enum {string}
      */
@@ -1789,6 +1852,30 @@ export interface components {
       /** Why */
       why: string;
       source_ref: components["schemas"]["EntityRefDto"];
+    };
+    /** IdentityLinkResponse */
+    IdentityLinkResponse: {
+      /** Developer Id */
+      developer_id: string;
+      /** Chat User Id */
+      chat_user_id: string | null;
+      /** Jira Account Id */
+      jira_account_id: string | null;
+      /** Jira Email */
+      jira_email: string | null;
+      /** Vcs Username */
+      vcs_username: string | null;
+    };
+    /** IdentityLinkUpdateRequest */
+    IdentityLinkUpdateRequest: {
+      /** Chat User Id */
+      chat_user_id?: string | null;
+      /** Jira Account Id */
+      jira_account_id?: string | null;
+      /** Jira Email */
+      jira_email?: string | null;
+      /** Vcs Username */
+      vcs_username?: string | null;
     };
     /** JiraSyncDispatchRequest */
     JiraSyncDispatchRequest: {
@@ -1997,6 +2084,11 @@ export interface components {
       as_of: string;
       /** Risks */
       risks: components["schemas"]["RiskFindingResponse"][];
+      /**
+       * Drift
+       * @default []
+       */
+      drift: components["schemas"]["DriftFindingResponse"][];
     };
     /** ProgramProjectLinkRequest */
     ProgramProjectLinkRequest: {
@@ -2060,6 +2152,11 @@ export interface components {
       as_of: string;
       /** Risks */
       risks: components["schemas"]["RiskFindingResponse"][];
+      /**
+       * Drift
+       * @default []
+       */
+      drift: components["schemas"]["DriftFindingResponse"][];
     };
     /**
      * Rag
@@ -2149,6 +2246,16 @@ export interface components {
       confidence: number | null;
       /** Deadline */
       deadline: string | null;
+    };
+    /** TenantWritebackResponse */
+    TenantWritebackResponse: {
+      /** Enabled */
+      enabled: boolean;
+    };
+    /** TenantWritebackUpdateRequest */
+    TenantWritebackUpdateRequest: {
+      /** Enabled */
+      enabled: boolean;
     };
     /** ValidationError */
     ValidationError: {
@@ -4432,6 +4539,142 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["CheckinPreferenceResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_config_member_identity_link_config_members__member_id__identity_link_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IdentityLinkResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_config_member_identity_link_config_members__member_id__identity_link_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["IdentityLinkUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IdentityLinkResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_config_tenant_writeback_config_tenant_writeback_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TenantWritebackResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_config_tenant_writeback_config_tenant_writeback_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TenantWritebackUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TenantWritebackResponse"];
         };
       };
       /** @description Validation Error */

@@ -16,6 +16,8 @@ from core.domain.graph import (
     NodeKind,
     VectorMatch,
 )
+from core.domain.identity import IdentityLink
+from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus
 from core.domain.status import (
@@ -27,6 +29,7 @@ from core.domain.status import (
     CheckInScheduleRun,
     DeveloperStatus,
 )
+from core.domain.writeback import WriteBackAudit
 
 
 class GraphRepository(Protocol):
@@ -232,6 +235,28 @@ class ConversationRepository(Protocol):
     async def purge_turns_older_than(self, tenant_id: str, cutoff: datetime) -> int: ...
 
 
+class InboundChatEventRepository(Protocol):
+    """Durable buffer for inbound chat events (fast-ack + coalesced processing).
+
+    Raw DM content lives in these rows; keep it out of logs, traces, persona
+    views, and public APIs, and purge it on the conversation retention path.
+    """
+
+    async def append(self, event: InboundChatEvent) -> bool: ...
+
+    async def list_unprocessed_for_conversation(
+        self, tenant_id: str, conversation_key: str
+    ) -> list[InboundChatEvent]: ...
+
+    async def mark_processed(
+        self, tenant_id: str, event_ids: Sequence[str], processed_at: datetime
+    ) -> None: ...
+
+    async def list_stuck(self, tenant_id: str, older_than: datetime) -> list[InboundChatEvent]: ...
+
+    async def purge_processed_older_than(self, tenant_id: str, cutoff: datetime) -> int: ...
+
+
 class RollupRepository(Protocol):
     async def record_node_status(self, status: NodeStatus) -> None: ...
 
@@ -248,6 +273,44 @@ class SyncCursorRepository(Protocol):
     async def record_cursor(
         self, tenant_id: str, connector: str, scope: str, cursor: SyncCursor
     ) -> None: ...
+
+
+class IdentityLinkRepository(Protocol):
+    """Persist provider-neutral identity links keyed by tenant and developer."""
+
+    async def get_identity_link(self, tenant_id: str, developer_id: str) -> IdentityLink | None: ...
+
+    async def upsert_identity_link(self, link: IdentityLink) -> None: ...
+
+    async def list_identity_links(self, tenant_id: str) -> list[IdentityLink]: ...
+
+
+class WriteBackConfigRepository(Protocol):
+    """Persist the tenant-level system gate override for issue-tracker write-back.
+
+    Returns ``None`` when no override is stored so callers can fall back to the
+    static settings default. This is the admin-controlled system gate.
+    """
+
+    async def get_writeback_enabled(self, tenant_id: str) -> bool | None: ...
+
+    async def set_writeback_enabled(self, tenant_id: str, enabled: bool) -> None: ...
+
+
+class WriteBackAuditRepository(Protocol):
+    """Append-only audit log of gated issue-tracker writes."""
+
+    async def record(self, audit: WriteBackAudit) -> None: ...
+
+    async def list_for_issue(self, tenant_id: str, issue_key: str) -> list[WriteBackAudit]: ...
+
+    async def find_existing(
+        self,
+        tenant_id: str,
+        issue_key: str,
+        target_state: str,
+        correlation_id: str,
+    ) -> WriteBackAudit | None: ...
 
 
 class VectorStore(Protocol):

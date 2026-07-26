@@ -14,6 +14,7 @@ from redis.asyncio import Redis
 from core.domain.errors import ProviderConfigurationError, ProviderUnavailable
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from infra.adapters.chat.rate_limit import RateLimiter
+from infra.adapters.chat.send_once import InMemorySendOnceStore, SendOnceStore
 
 _tracer = trace.get_tracer("openprogram.adapters.chat.slack")
 
@@ -78,14 +79,26 @@ class SlackChatAdapter:
     http_client: SlackHttpClient
     rate_limiter: RateLimiter
     conversation_cache: ConversationCache = field(default_factory=InMemoryConversationCache)
+    send_once_store: SendOnceStore = field(default_factory=InMemorySendOnceStore)
 
     async def send_dm(self, user: ChatUserRef, message: OutboundMessage) -> str:
         with _tracer.start_as_current_span("slack.send_dm"):
+            # Honor idempotency_key so a workflow-step retry after a successful post
+            # (but before the send was recorded) returns the first ts instead of
+            # posting a duplicate DM. chat.postMessage has no native dedup.
+            idempotency_key = _idempotency_key(message)
+            if idempotency_key is not None:
+                existing = await self.send_once_store.get(self.tenant_id, idempotency_key)
+                if existing is not None:
+                    return existing
             await self.rate_limiter.acquire(f"chat:{self.tenant_id}:{user.external_id}")
             channel_id = await self.conversation_cache.get(user.external_id)
             if channel_id is None:
                 channel_id = await self.open_thread(user)
-            return await self.http_client.post_message(channel_id, message.text)
+            message_id = await self.http_client.post_message(channel_id, message.text)
+            if idempotency_key is not None:
+                await self.send_once_store.put(self.tenant_id, idempotency_key, message_id)
+            return message_id
 
     async def open_thread(self, user: ChatUserRef) -> str:
         with _tracer.start_as_current_span("slack.open_thread"):
@@ -304,4 +317,9 @@ def _slack_configuration_error(path: str, error: str, payload: Mapping[str, obje
 
 def _optional_string(payload: Mapping[str, object], key: str) -> str | None:
     value = payload.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+def _idempotency_key(message: OutboundMessage) -> str | None:
+    value = message.metadata.get("idempotency_key")
     return value if isinstance(value, str) and value else None

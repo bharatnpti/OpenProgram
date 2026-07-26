@@ -224,7 +224,10 @@ async def test_status_collector_graph_sends_dm_and_records_checkin() -> None:
     assert correlation.chat_thread_ref == "thread-U123"
     assert correlation.outbound_message_id == "msg-U123-1"
     assert chat.sent[0].correlation_id == "corr-1"
-    assert chat.sent[0].metadata == {"purpose": "status_checkin"}
+    assert chat.sent[0].metadata == {
+        "purpose": "status_checkin",
+        "idempotency_key": "checkin:corr-1",
+    }
     assert "Build graph sync" in llm.requests[0].prompt
     assert "schema review" in llm.requests[0].prompt
     assert "ancient dependency" not in llm.requests[0].prompt
@@ -390,22 +393,22 @@ async def test_status_collector_handles_reply_by_correlation(
             signals=None,
         )
     )
-    parser_llm = SequenceLlmProvider(
+    evaluator_llm = SequenceLlmProvider(
         texts=[
-            '{"progress_note":"Graph sync is in review",'
+            '{"is_status_update":true,"sufficient":true,"question":null,'
+            '"signals":{"progress_note":"Graph sync is in review",'
             '"blockers":["schema review"],"eta_change_days":1,'
-            '"blockers_answered":true,"eta_answered":true}'
+            '"blockers_answered":true,"eta_answered":true}}'
         ]
     )
     collector = StatusCollector(
         issue_tracker=FakeIssueTracker(),
         chat_provider=FakeChatProvider(),
-        llm_provider=SequenceLlmProvider(texts=["unused"]),
+        llm_provider=evaluator_llm,
         status_repository=store,
         time_series_repository=store,
         conversation_repository=store,
         model="test-model",
-        parser=StatusParser(parser_llm, model="test-model"),
     )
     logger = CapturingLogger()
     span = CapturingSpan()
@@ -451,13 +454,13 @@ async def test_status_collector_handles_reply_by_correlation(
     assert status.blockers == ("schema review",)
     assert status.eta_change_days == 1
     assert await store.latest_developer_status("demo", "dev-1", date(2026, 1, 10)) == status
-    assert "Graph sync is in review" not in parser_llm.requests[0].metadata.values()
-    assert [message.content for message in parser_llm.requests[0].messages] == [
+    assert "Graph sync is in review" not in evaluator_llm.requests[0].metadata.values()
+    assert [message.content for message in evaluator_llm.requests[0].messages] == [
         "Can you share progress, blockers, and ETA changes?"
     ]
     assert all(
         message.content != "Graph sync is in review, blocked on schema review."
-        for message in parser_llm.requests[0].messages
+        for message in evaluator_llm.requests[0].messages
     )
     facts = await store.list_facts(
         "demo",
@@ -498,8 +501,57 @@ async def test_status_collector_handles_reply_by_correlation(
     assert duplicate_checkin.raw_reply == updated.raw_reply
     assert duplicate_checkin.signals == updated.signals
     assert duplicate_checkin.replied_at == updated.replied_at
-    assert len(parser_llm.requests) == 1
+    assert len(evaluator_llm.requests) == 1
     assert duplicate_facts == facts
+
+
+async def test_handle_reply_corrupt_evaluation_routes_to_clarification_not_green() -> None:
+    # C2 safety-critical: a garbled model response must never finalize a check-in as
+    # confirmed/green; it routes to a clarification with the check-in still open.
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    chat = FakeChatProvider()
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        # Corrupt on both the initial call and the one retry.
+        llm_provider=SequenceLlmProvider(texts=["not json", "still not json"]),
+        status_repository=store,
+        time_series_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    outcome = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="asdkjh gibberish that is not a real status update",
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
+        )
+    )
+
+    assert outcome.kind == "clarifying"
+    finalized = await store.checkin_by_correlation("demo", "corr-1")
+    assert finalized is not None
+    assert finalized.replied_at is None
+    latest = await store.latest_developer_status("demo", "dev-1", date(2026, 1, 10))
+    assert latest is None or latest.source is not StatusSource.CONFIRMED
+    # A clarification DM went out; the check-in was not silently finalized.
+    assert len(chat.sent) == 1
 
 
 async def test_status_collector_records_scheduled_checkin_status_on_schedule_date() -> None:
@@ -1284,6 +1336,75 @@ async def test_status_collector_ignores_duplicate_message_id_while_open() -> Non
     assert outcome.status is None
     assert len(turns) == 1
     assert chat.sent == []
+
+
+async def test_handle_reply_reprocesses_existing_turn_when_allowed() -> None:
+    # R3: on a durable retry the user turn already exists, but allow_reprocess
+    # must let classify/finalize run to completion instead of returning "ignored".
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    message = InboundMessage(
+        tenant_id="demo",
+        user=ChatUserRef(tenant_id="demo", external_id="U123"),
+        text="Graph sync is in review, blocked on schema review.",
+        thread_id="thread-1",
+        message_id="msg-1",
+        correlation_id="corr-1",
+        received_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
+    )
+    # Simulate the first (failed) drain attempt having recorded the user turn.
+    await store.append_turn(
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            conversation_id="corr-1",
+            conversation_date=date(2026, 1, 10),
+            role=ConversationRole.USER,
+            content=message.text,
+            correlation_id="corr-1",
+            chat_message_id="msg-1",
+            observed_at=message.received_at,
+        )
+    )
+    evaluator_llm = SequenceLlmProvider(
+        texts=[
+            '{"is_status_update":true,"sufficient":true,"question":null,'
+            '"signals":{"progress_note":"Graph sync is in review",'
+            '"blockers":["schema review"],"eta_change_days":1,'
+            '"blockers_answered":true,"eta_answered":true}}'
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=evaluator_llm,
+        status_repository=store,
+        time_series_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    ignored = await collector.handle_reply(message)
+    assert ignored.kind == "ignored"
+
+    processed = await collector.handle_reply(message, allow_reprocess=True)
+    assert processed.kind == "processed"
+    finalized = await store.checkin_by_correlation("demo", "corr-1")
+    assert finalized is not None
+    assert finalized.replied_at is not None
+    # The pre-existing turn is not duplicated on reprocess.
+    turns = await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
+    assert [turn.chat_message_id for turn in turns].count("msg-1") == 1
 
 
 async def test_status_collector_timeout_finalizes_accumulated_clarification_reply() -> None:

@@ -50,7 +50,19 @@ class Settings(BaseSettings):
     conversation_purge_enabled: bool = True
     conversation_purge_cron: str = "0 3 * * *"
     conversation_purge_schedule_id: str = "openprogram-conversation-purge"
+    slack_fast_ack_enabled: bool = True
+    reply_debounce_seconds: int = 30
+    reply_processing_max_retries: int = 5
+    reply_processing_retry_backoff_seconds: float = 2.0
+    inbound_events_sweeper_enabled: bool = True
+    inbound_events_sweeper_schedule_id: str = "openprogram-inbound-events-sweeper"
+    inbound_events_sweeper_cron: str = "*/5 * * * *"
+    inbound_events_grace_seconds: int = 120
+    checkin_fanout_concurrency: int = 10
     cross_person_auto_notify: bool = False
+    # System gate fallback default for issue-tracker write-back (OFF by default).
+    # A persisted per-tenant override (admin-controlled) wins when present.
+    jira_writeback_enabled: bool = False
     directory_provider: str = "slack"
     chat_simulator_enabled: bool = False
     directory_sync_cron: str = "0 */6 * * *"
@@ -60,6 +72,8 @@ class Settings(BaseSettings):
     risk_default_pr_age_days: int = 3
     risk_default_stale_days: int = 7
     risk_run_default_local_time: str = "18:00"
+    drift_scan_cron: str = "*/30 * * * *"
+    drift_no_activity_days: int = 3
     temporal_target: str = "localhost:7233"
     temporal_task_queue: str = "openprogram-foundation"
     temporal_schedule_id: str = "openprogram-heartbeat"
@@ -71,6 +85,9 @@ class Settings(BaseSettings):
     checkin_reply_wait_seconds: int = 14400
     checkin_final_reply_wait_seconds: int = 28800
     checkin_max_clarifications: int = 2
+    outbound_dm_max_chars: int = 320
+    recent_fact_lookback_days: int = 30
+    chat_send_once_ttl_seconds: int = 86400
     litellm_base_url: str = "http://localhost:4000"
     litellm_api_key: str | None = None
     litellm_model: str = "gpt-4o-mini"
@@ -306,10 +323,13 @@ class Settings(BaseSettings):
         "calendar_sync_cron",
         "conversation_purge_cron",
         "conversation_purge_schedule_id",
+        "inbound_events_sweeper_cron",
+        "inbound_events_sweeper_schedule_id",
         "directory_sync_cron",
         "directory_sync_schedule_id",
         "risk_assessment_cron",
         "risk_run_default_local_time",
+        "drift_scan_cron",
         "auth_public_backend_url",
         "auth_frontend_url",
         "auth_cookie_name",
@@ -418,6 +438,10 @@ class Settings(BaseSettings):
         "risk_default_stale_days",
         "auth_session_ttl_seconds",
         "auth_flow_state_ttl_seconds",
+        "reply_processing_max_retries",
+        "checkin_fanout_concurrency",
+        "outbound_dm_max_chars",
+        "recent_fact_lookback_days",
     )
     @classmethod
     def validate_positive_int(cls, value: int) -> int:
@@ -429,9 +453,19 @@ class Settings(BaseSettings):
         "temporal_heartbeat_interval_seconds",
         "redis_rate_limit_window_seconds",
         "slack_signature_tolerance_seconds",
+        "reply_debounce_seconds",
+        "inbound_events_grace_seconds",
+        "chat_send_once_ttl_seconds",
     )
     @classmethod
     def validate_positive_seconds(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("seconds value must be positive")
+        return value
+
+    @field_validator("reply_processing_retry_backoff_seconds")
+    @classmethod
+    def validate_positive_backoff(cls, value: float) -> float:
         if value <= 0:
             raise ValueError("seconds value must be positive")
         return value

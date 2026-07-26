@@ -16,6 +16,8 @@ from core.domain.graph import (
     NodeKind,
 )
 from core.domain.risk import (
+    DriftFinding,
+    DriftFindingKind,
     RiskEvidence,
     RiskFinding,
     RiskFindingStatus,
@@ -23,13 +25,23 @@ from core.domain.risk import (
     RiskRuleId,
     RiskThresholds,
 )
-from core.domain.rollup import Rag
-from core.domain.status import DeveloperStatus
-from core.ports.repositories import GraphRepository, StatusRepository, TimeSeriesRepository
+from core.domain.rollup import NodeStatus, Rag
+from core.domain.status import DeveloperStatus, StatusSource
+from core.ports.repositories import (
+    GraphRepository,
+    RollupRepository,
+    StatusRepository,
+    TimeSeriesRepository,
+)
 
 ACTIVE_WORK_ITEM_STATES = {"proposed", "in_progress", "in_review", "blocked"}
 RISK_FACT_SOURCE = "risk"
+DRIFT_FACT_SOURCE = "drift"
 _RISK_FACT_SCAN_LIMIT = 5000
+# Stated-status confidences presented as "green"/positive; a hard-signal
+# contradiction against one of these is a watermelon worth downgrading.
+_GREEN_STATUS_SOURCES = {StatusSource.CONFIRMED, StatusSource.INFERRED}
+_VCS_FACT_SOURCES = ("vcs_pull_request", "vcs_commit")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -39,6 +51,15 @@ class RiskAssessmentDelta:
     open_findings: tuple[RiskFinding, ...]
     newly_opened: tuple[RiskFinding, ...]
     newly_cleared: tuple[RiskFinding, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class DriftScanResult:
+    project_id: str
+    as_of: date
+    findings: tuple[DriftFinding, ...]
+    findings_recorded: int
+    statuses_downgraded: int
 
 
 class RiskService:
@@ -57,11 +78,15 @@ class RiskService:
         time_series_repository: TimeSeriesRepository,
         status_repository: StatusRepository,
         provider_config: RiskProviderConfig | None = None,
+        rollup_repository: RollupRepository | None = None,
     ) -> None:
         self._graph_repository = graph_repository
         self._time_series_repository = time_series_repository
         self._status_repository = status_repository
         self._provider_config = provider_config or RiskProviderConfig()
+        # Optional: only needed for the ``green_over_red`` drift check, which
+        # reads rollup RAG. Absent in signal-only risk-assessment callers.
+        self._rollup_repository = rollup_repository
 
     # ---- read APIs (risk board) -----------------------------------------
 
@@ -73,6 +98,39 @@ class RiskService:
 
     async def portfolio_risks(self, tenant_id: str, as_of: date) -> list[RiskFinding]:
         return await self._load_open_findings(tenant_id, project_id=None, as_of=as_of)
+
+    # ---- drift / watermelon read APIs -----------------------------------
+
+    async def project_drift(
+        self, tenant_id: str, project_id: str, as_of: date
+    ) -> list[DriftFinding]:
+        await self._ensure_project(tenant_id, project_id)
+        return await self._detect_project_drift(tenant_id, project_id, as_of)
+
+    async def portfolio_drift(self, tenant_id: str, as_of: date) -> list[DriftFinding]:
+        projects = await self._graph_repository.list_nodes(tenant_id, NodeKind.PROJECT)
+        findings: list[DriftFinding] = []
+        for project in projects:
+            findings.extend(await self._detect_project_drift(tenant_id, project.id, as_of))
+        return findings
+
+    # ---- drift scan + persistence (scheduled openprogram_drift_scan) ----
+
+    async def scan_and_record_drift(
+        self, tenant_id: str, project_id: str, as_of: date
+    ) -> DriftScanResult:
+        await self._ensure_project(tenant_id, project_id)
+        findings = await self._detect_project_drift(tenant_id, project_id, as_of)
+        for finding in findings:
+            await self._append_drift_fact(finding, project_id, as_of)
+        downgraded = await self._enrich_contradicted_confidence(tenant_id, findings, as_of)
+        return DriftScanResult(
+            project_id=project_id,
+            as_of=as_of,
+            findings=tuple(findings),
+            findings_recorded=len(findings),
+            statuses_downgraded=downgraded,
+        )
 
     # ---- assessment + persistence (per-project EOD workflow) -----------
 
@@ -365,6 +423,272 @@ class RiskService:
                 repos.update(_parse_repo_list(pod.metadata.get("github_repos")))
         return repos
 
+    # ---- drift detection (stated status vs hard signals) ----------------
+
+    async def _detect_project_drift(
+        self,
+        tenant_id: str,
+        project_id: str,
+        as_of: date,
+    ) -> list[DriftFinding]:
+        nodes = await self._graph_repository.list_nodes(tenant_id)
+        nodes_by_id = {node.id: node for node in nodes}
+        edges = await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+        workstream_ids = [
+            edge.to_node_id
+            for edge in edges
+            if edge.from_node_id == project_id
+            and nodes_by_id.get(edge.to_node_id) is not None
+            and nodes_by_id[edge.to_node_id].kind is NodeKind.WORKSTREAM
+        ]
+        repo_scope = self._project_repo_scope(project_id, nodes_by_id, edges)
+        activity_by_repo = await self._repo_activity(tenant_id, repo_scope)
+        rag_by_entity = await self._node_status_rag(tenant_id, as_of)
+        owner_cache: dict[str, DeveloperStatus | None] = {}
+        findings: list[DriftFinding] = []
+        for workstream_id in workstream_ids:
+            workstream = nodes_by_id.get(workstream_id)
+            work_items = [
+                nodes_by_id[edge.to_node_id]
+                for edge in edges
+                if edge.from_node_id == workstream_id
+                and nodes_by_id.get(edge.to_node_id) is not None
+                and nodes_by_id[edge.to_node_id].kind is NodeKind.WORK_ITEM
+            ]
+            red_child: GraphNode | None = None
+            for item in work_items:
+                item_findings, item_is_red = await self._work_item_drift(
+                    tenant_id,
+                    workstream_id,
+                    item,
+                    activity_by_repo,
+                    rag_by_entity,
+                    as_of,
+                    owner_cache,
+                )
+                findings.extend(item_findings)
+                if item_is_red and red_child is None:
+                    red_child = item
+            if (
+                workstream is not None
+                and rag_by_entity.get(workstream.id) is Rag.GREEN
+                and red_child is not None
+            ):
+                findings.append(
+                    self._drift_finding(
+                        tenant_id=tenant_id,
+                        kind=DriftFindingKind.GREEN_OVER_RED,
+                        severity=Rag.RED,
+                        entity_ref=workstream.ref,
+                        workstream_id=workstream.id,
+                        reason=(
+                            f"{workstream.name} rolls up green while critical-path child "
+                            f"'{red_child.name}' is red."
+                        ),
+                        owner_id=_string_metadata(red_child, "owner_id"),
+                        stated_source=None,
+                        evidence=RiskEvidence(identifier=red_child.id),
+                        child_entity_ref=red_child.ref,
+                    )
+                )
+        return findings
+
+    async def _work_item_drift(
+        self,
+        tenant_id: str,
+        workstream_id: str,
+        item: GraphNode,
+        activity_by_repo: Mapping[str, datetime],
+        rag_by_entity: Mapping[str, Rag],
+        as_of: date,
+        owner_cache: dict[str, DeveloperStatus | None],
+    ) -> tuple[list[DriftFinding], bool]:
+        findings: list[DriftFinding] = []
+        state = (_string_metadata(item, "state") or "proposed").lower()
+        pr_id = _string_metadata(item, "pr_id")
+        owner_id = _string_metadata(item, "owner_id")
+        repo = _string_metadata(item, "repo")
+        owner_status = await self._owner_status(tenant_id, owner_id, as_of, owner_cache)
+        reference_at = _datetime_metadata(item, "last_transition_at") or _datetime_metadata(
+            item, "created_at"
+        )
+        age_days = _age_days(reference_at, as_of) or 0
+        no_activity_days = self._provider_config.default_no_activity_days
+
+        if state in self._provider_config.done_states and not pr_id:
+            findings.append(
+                self._drift_finding(
+                    tenant_id=tenant_id,
+                    kind=DriftFindingKind.SAID_DONE_NO_PR,
+                    severity=Rag.RED,
+                    entity_ref=item.ref,
+                    workstream_id=workstream_id,
+                    reason=f"{item.name} is marked '{state}' but has no linked pull request.",
+                    owner_id=owner_id,
+                    stated_source=owner_status.source if owner_status is not None else None,
+                    evidence=RiskEvidence(identifier=item.id),
+                )
+            )
+
+        if (
+            state == "in_progress"
+            and not pr_id
+            and owner_status is not None
+            and owner_status.source in _GREEN_STATUS_SOURCES
+            and not owner_status.blockers
+            and not self._has_recent_activity(repo, activity_by_repo, as_of)
+            and age_days >= no_activity_days
+        ):
+            findings.append(
+                self._drift_finding(
+                    tenant_id=tenant_id,
+                    kind=DriftFindingKind.CLAIMED_PROGRESS_NO_ACTIVITY,
+                    severity=Rag.AMBER,
+                    entity_ref=item.ref,
+                    workstream_id=workstream_id,
+                    reason=(
+                        f"{item.name} owner reported progress but there has been no Git/PR "
+                        f"activity in {age_days} day(s)."
+                    ),
+                    owner_id=owner_id,
+                    stated_source=owner_status.source,
+                    evidence=RiskEvidence(identifier=item.id),
+                )
+            )
+
+        item_is_red = state == "blocked" or rag_by_entity.get(item.id) is Rag.RED
+        return findings, item_is_red
+
+    def _has_recent_activity(
+        self,
+        repo: str | None,
+        activity_by_repo: Mapping[str, datetime],
+        as_of: date,
+    ) -> bool:
+        if repo is None:
+            return False
+        latest = activity_by_repo.get(repo)
+        if latest is None:
+            return False
+        return (as_of - latest.date()).days < self._provider_config.default_no_activity_days
+
+    async def _repo_activity(self, tenant_id: str, repo_scope: set[str]) -> dict[str, datetime]:
+        if not repo_scope:
+            return {}
+        facts = await self._time_series_repository.list_recent_facts(
+            tenant_id, sources=_VCS_FACT_SOURCES, limit=_RISK_FACT_SCAN_LIMIT
+        )
+        latest: dict[str, datetime] = {}
+        for fact in facts:
+            repo = _payload_str(fact.payload, "repo")
+            if repo is None or repo not in repo_scope:
+                continue
+            observed = _payload_datetime(fact.payload, "opened_at") or fact.observed_at
+            current = latest.get(repo)
+            if current is None or observed > current:
+                latest[repo] = observed
+        return latest
+
+    async def _node_status_rag(self, tenant_id: str, as_of: date) -> dict[str, Rag]:
+        if self._rollup_repository is None:
+            return {}
+        statuses: list[NodeStatus] = await self._rollup_repository.list_node_statuses(
+            tenant_id, as_of
+        )
+        return {status.entity_ref.id: status.rag for status in statuses}
+
+    def _drift_finding(
+        self,
+        *,
+        tenant_id: str,
+        kind: DriftFindingKind,
+        severity: Rag,
+        entity_ref: EntityRef,
+        workstream_id: str | None,
+        reason: str,
+        owner_id: str | None,
+        stated_source: StatusSource | None,
+        evidence: RiskEvidence | None,
+        child_entity_ref: EntityRef | None = None,
+    ) -> DriftFinding:
+        return DriftFinding(
+            tenant_id=tenant_id,
+            kind=kind,
+            severity=severity,
+            entity_ref=entity_ref,
+            workstream_id=workstream_id,
+            reason=reason,
+            detected_at=datetime.now(tz=UTC),
+            owner_id=owner_id,
+            stated_source=stated_source,
+            evidence=evidence,
+            child_entity_ref=child_entity_ref,
+        )
+
+    async def _append_drift_fact(self, finding: DriftFinding, project_id: str, as_of: date) -> None:
+        payload: dict[str, JsonScalar] = {
+            "project_id": project_id,
+            "as_of": as_of.isoformat(),
+            "kind": finding.kind.value,
+            "severity": finding.severity.value,
+            "reason": finding.reason,
+            "owner_id": finding.owner_id,
+            "workstream_id": finding.workstream_id,
+            "entity_kind": finding.entity_ref.kind.value,
+            "entity_id": finding.entity_ref.id,
+            "stated_source": finding.stated_source.value if finding.stated_source else None,
+            "child_entity_id": (
+                finding.child_entity_ref.id if finding.child_entity_ref is not None else None
+            ),
+            "detected_at": finding.detected_at.isoformat(),
+        }
+        await self._time_series_repository.append_fact_once(
+            FactEvent(
+                tenant_id=finding.tenant_id,
+                source=DRIFT_FACT_SOURCE,
+                entity_ref=finding.entity_ref,
+                payload=payload,
+                observed_at=finding.detected_at,
+                correlation_id=_drift_key(finding, project_id, as_of),
+            )
+        )
+
+    async def _enrich_contradicted_confidence(
+        self,
+        tenant_id: str,
+        findings: Sequence[DriftFinding],
+        as_of: date,
+    ) -> int:
+        """Downgrade a stated status that hard signals contradict.
+
+        A ``said_done_no_pr`` / ``claimed_progress_no_activity`` finding means
+        the developer's own status is contradicted by hard signals, so a status
+        presented as green (confirmed/inferred) must not stay green: it is
+        recorded as ``partial`` (unconfirmed). ``green_over_red`` is structural,
+        not a personal-claim contradiction, so it never downgrades a person.
+        """
+        contradiction_kinds = {
+            DriftFindingKind.SAID_DONE_NO_PR,
+            DriftFindingKind.CLAIMED_PROGRESS_NO_ACTIVITY,
+        }
+        owner_ids = {
+            finding.owner_id
+            for finding in findings
+            if finding.owner_id is not None and finding.kind in contradiction_kinds
+        }
+        downgraded = 0
+        for owner_id in sorted(owner_ids):
+            status = await self._status_repository.latest_developer_status(
+                tenant_id, owner_id, as_of
+            )
+            if status is None or status.source not in _GREEN_STATUS_SOURCES:
+                continue
+            await self._status_repository.record_developer_status(
+                replace(status, source=StatusSource.PARTIAL, developer_confirmed=False)
+            )
+            downgraded += 1
+        return downgraded
+
     # ---- persisted risk facts (open/cleared deltas) ----------------------
 
     async def _persist_delta(
@@ -550,6 +874,14 @@ _SEVERITY_RANK: dict[Rag, int] = {Rag.RED: 0, Rag.AMBER: 1, Rag.UNKNOWN: 2, Rag.
 
 def _risk_key(finding: RiskFinding) -> str:
     return f"{finding.rule_id.value}:{finding.entity_ref.kind.value}:{finding.entity_ref.id}"
+
+
+def _drift_key(finding: DriftFinding, project_id: str, as_of: date) -> str:
+    child = finding.child_entity_ref.id if finding.child_entity_ref is not None else ""
+    return (
+        f"drift:{finding.kind.value}:{project_id}:{finding.entity_ref.id}:"
+        f"{child}:{as_of.isoformat()}"
+    )
 
 
 def _severity_for_age(age_days: int, threshold_days: int) -> Rag:

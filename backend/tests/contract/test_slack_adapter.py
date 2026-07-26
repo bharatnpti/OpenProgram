@@ -178,6 +178,58 @@ async def test_slack_adapter_maps_webhook_and_sends_dm() -> None:
     assert http.messages == [("C-U123", "thanks")]
 
 
+async def test_slack_adapter_send_dm_is_idempotent_under_retry() -> None:
+    # C3: a durable-step retry (same idempotency_key) must return the first ts
+    # without posting a second DM. chat.postMessage has no native dedup.
+    http = RecordingSlackHttpClient()
+    adapter = SlackChatAdapter(
+        tenant_id="demo",
+        http_client=http,
+        rate_limiter=InMemoryRateLimiter(),
+    )
+    user = ChatUserRef(tenant_id="demo", external_id="U123")
+    message = OutboundMessage(
+        tenant_id="demo",
+        text="daily check-in",
+        correlation_id="corr-1",
+        metadata={"purpose": "status_checkin", "idempotency_key": "checkin:corr-1"},
+    )
+
+    first = await adapter.send_dm(user, message)
+    second = await adapter.send_dm(user, message)
+
+    assert first == second
+    assert len(http.messages) == 1
+
+
+async def test_slack_adapter_send_dm_posts_for_distinct_and_unkeyed_messages() -> None:
+    http = RecordingSlackHttpClient()
+    adapter = SlackChatAdapter(
+        tenant_id="demo",
+        http_client=http,
+        rate_limiter=InMemoryRateLimiter(),
+    )
+    user = ChatUserRef(tenant_id="demo", external_id="U123")
+
+    await adapter.send_dm(
+        user,
+        OutboundMessage(
+            tenant_id="demo", text="a", correlation_id="c", metadata={"idempotency_key": "k1"}
+        ),
+    )
+    await adapter.send_dm(
+        user,
+        OutboundMessage(
+            tenant_id="demo", text="b", correlation_id="c", metadata={"idempotency_key": "k2"}
+        ),
+    )
+    # Unkeyed sends are never suppressed.
+    await adapter.send_dm(user, OutboundMessage(tenant_id="demo", text="c", correlation_id="c"))
+    await adapter.send_dm(user, OutboundMessage(tenant_id="demo", text="d", correlation_id="c"))
+
+    assert len(http.messages) == 4
+
+
 @respx.mock
 async def test_http_slack_client_maps_recorded_dm_roundtrip() -> None:
     client = HttpSlackClient(bot_token="xoxb-test", base_url="https://slack.test/api")

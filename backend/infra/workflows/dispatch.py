@@ -12,6 +12,7 @@ from core.domain.workflows import (
 )
 from infra.workflows.calendar_sync import CalendarSyncInput
 from infra.workflows.daily_checkin import DailyCheckinInput
+from infra.workflows.drift_scan import DriftScanInput
 from infra.workflows.git_sync import GitSyncInput
 from infra.workflows.jira_sync import JiraSyncInput
 from infra.workflows.risk_assessment import RiskAssessmentInput
@@ -24,6 +25,7 @@ type SyncWorkflowInput = (
     | DirectorySyncInput
     | RuntimeSyncInput
     | RiskAssessmentInput
+    | DriftScanInput
 )
 
 
@@ -104,6 +106,12 @@ def sync_workflow_input(input: SyncDispatchInput) -> SyncWorkflowInput:
             project_id=_optional_str(input.payload, "project_id"),
             observed_at=_optional_str(input.payload, "observed_at"),
         )
+    if connector == "drift":
+        return DriftScanInput(
+            tenant_id=input.tenant_id,
+            project_id=_optional_str(input.payload, "project_id"),
+            observed_at=_optional_str(input.payload, "observed_at"),
+        )
     raise ValueError(f"unsupported sync connector: {input.connector}")
 
 
@@ -121,6 +129,8 @@ def sync_workflow_name(input: SyncDispatchInput) -> str:
         return "runtime"
     if connector == "risk":
         return "risk"
+    if connector == "drift":
+        return "drift"
     raise ValueError(f"unsupported sync connector: {input.connector}")
 
 
@@ -143,6 +153,8 @@ def _connector(value: str) -> str:
         return "runtime"
     if normalized in {"risk", "risk_assessment"}:
         return "risk"
+    if normalized in {"drift", "drift_scan"}:
+        return "drift"
     return normalized
 
 

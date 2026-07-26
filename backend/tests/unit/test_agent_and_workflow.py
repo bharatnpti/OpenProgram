@@ -26,6 +26,7 @@ from core.domain.workflows import (
     ConversationPurgeScheduleConfig,
     DeveloperCheckinDispatch,
     HeartbeatInput,
+    InboundSweeperScheduleConfig,
     ScheduleBootstrapResult,
     SyncDispatchInput,
     SyncScheduleConfig,
@@ -439,12 +440,14 @@ def test_schedule_configs_ignore_calendar_read_sync_targets() -> None:
         ("runtime", "vcs", {"connector": "vcs"}),
         ("directory", "directory", {}),
         ("risk", "assessment", {}),
+        ("drift", "scan", {}),
     ]
     assert [config.cron for config in sync_configs] == [
         settings.jira_sync_cron,
         settings.github_sync_cron,
         settings.directory_sync_cron,
         settings.risk_assessment_cron,
+        settings.drift_scan_cron,
     ]
 
 
@@ -492,6 +495,7 @@ def test_schedule_configs_include_runtime_fanout_and_directory_when_targets_are_
         ("runtime", "vcs", {"connector": "vcs"}),
         ("directory", "directory", {}),
         ("risk", "assessment", {}),
+        ("drift", "scan", {}),
     ]
 
 
@@ -515,17 +519,20 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
         schedule.checkin_reconcile_config(settings)
     ]
     assert registry.scheduler.purge_configs == [schedule.conversation_purge_config(settings)]
+    assert registry.scheduler.sweeper_configs == [schedule.inbound_sweeper_config(settings)]
     assert [(config.connector, config.scope) for config in registry.scheduler.sync_configs] == [
         ("runtime", "issue"),
         ("runtime", "vcs"),
         ("directory", "directory"),
         ("risk", "assessment"),
+        ("drift", "scan"),
     ]
     assert [result.schedule_id for result in results] == [
         "heartbeat-test",
         settings.checkin_fanout_schedule_id,
         settings.checkin_reconcile_schedule_id,
         settings.conversation_purge_schedule_id,
+        settings.inbound_events_sweeper_schedule_id,
         *(config.schedule_id for config in registry.scheduler.sync_configs),
     ]
 
@@ -1257,6 +1264,7 @@ class _RecordingWorkflowScheduler:
         self.checkin_configs: list[CheckinScheduleConfig] = []
         self.checkin_reconcile_configs: list[CheckinReconcileScheduleConfig] = []
         self.purge_configs: list[ConversationPurgeScheduleConfig] = []
+        self.sweeper_configs: list[InboundSweeperScheduleConfig] = []
         self.sync_configs: list[SyncScheduleConfig] = []
 
     async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
@@ -1279,6 +1287,12 @@ class _RecordingWorkflowScheduler:
         self, config: ConversationPurgeScheduleConfig
     ) -> ScheduleBootstrapResult:
         self.purge_configs.append(config)
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
+
+    async def ensure_inbound_sweeper_schedule(
+        self, config: InboundSweeperScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        self.sweeper_configs.append(config)
         return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
 
     async def ensure_sync_schedules(
@@ -1369,10 +1383,15 @@ class _FanoutScheduler:
         return f"dispatch-{input.developer_id}-{input.checkin_date}"
 
 
+class _FanoutSettings:
+    checkin_fanout_concurrency = 10
+
+
 class _FanoutRegistry:
     def __init__(self, store: InMemoryGraphStore) -> None:
         self.closed = False
         self.scheduler = _FanoutScheduler()
+        self.settings = _FanoutSettings()
         self._store = store
 
     def status_repository(self) -> InMemoryGraphStore:
@@ -1562,6 +1581,9 @@ class _ConversationPurgeRegistry:
         return self._store
 
     def status_repository(self) -> InMemoryGraphStore:
+        return self._store
+
+    def inbound_chat_event_repository(self) -> InMemoryGraphStore:
         return self._store
 
     async def close(self) -> None:

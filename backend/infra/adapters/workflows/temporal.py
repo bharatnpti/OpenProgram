@@ -24,6 +24,11 @@ from core.domain.workflows import (
     DirectorySyncResult,
     HeartbeatInput,
     HeartbeatResult,
+    InboundSweeperInput,
+    InboundSweeperResult,
+    InboundSweeperScheduleConfig,
+    ReplyCoalesceInput,
+    ReplyCoalesceResult,
     ScheduleBootstrapResult,
     SyncDispatchInput,
     SyncScheduleConfig,
@@ -35,7 +40,9 @@ from infra.workflows import (
     conversation_purge,
     daily_checkin,
     directory_sync,
+    drift_scan,
     git_sync,
+    inbound_events,
     jira_sync,
     nudge,
     risk_assessment,
@@ -50,6 +57,7 @@ from infra.workflows.dispatch import (
     sync_workflow_input,
     sync_workflow_name,
 )
+from infra.workflows.drift_scan import DriftScanInput, DriftScanWorkflowResult
 from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import NudgeInput, NudgeResult
@@ -63,6 +71,7 @@ SyncWorkflowResult = (
     | DirectorySyncResult
     | RuntimeSyncWorkflowResult
     | RiskAssessmentWorkflowResult
+    | DriftScanWorkflowResult
 )
 
 if TYPE_CHECKING:
@@ -274,6 +283,22 @@ class RiskAssessmentWorkflow:
         )
 
 
+@activity.defn
+async def run_drift_scan_activity(payload: DriftScanInput) -> DriftScanWorkflowResult:
+    return await drift_scan.run_drift_scan_activity(payload)
+
+
+@workflow.defn
+class DriftScanWorkflow:
+    @workflow.run
+    async def run(self, payload: DriftScanInput) -> DriftScanWorkflowResult:
+        return await workflow.execute_activity(
+            run_drift_scan_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+
+
 @workflow.defn
 class ScheduledSyncWorkflow:
     @workflow.run
@@ -363,13 +388,71 @@ class NudgeWorkflow:
         return close_result
 
 
+@activity.defn
+async def drain_inbound_conversation_activity(
+    payload: ReplyCoalesceInput,
+) -> ReplyCoalesceResult:
+    return await inbound_events.drain_conversation_activity(payload)
+
+
+@activity.defn
+async def sweep_inbound_events_activity(payload: InboundSweeperInput) -> InboundSweeperResult:
+    return await inbound_events.sweep_inbound_events_activity(payload)
+
+
+@workflow.defn
+class ReplyCoalesceWorkflow:
+    """Per-conversation debounce/coalesce workflow (signal_with_start driven)."""
+
+    def __init__(self) -> None:
+        self._pending: bool = False
+
+    @workflow.signal
+    def new_event(self) -> None:
+        self._pending = True
+
+    @workflow.run
+    async def run(self, payload: ReplyCoalesceInput) -> ReplyCoalesceResult:
+        debounce = timedelta(seconds=payload.debounce_seconds)
+        # Reset-on-message quiet window: consume the pending signal, then wait up
+        # to `debounce` for another. A new signal returns early (timer resets); a
+        # quiet window raises TimeoutError, which ends the loop and drains.
+        while True:
+            self._pending = False
+            try:
+                await workflow.wait_condition(lambda: self._pending, timeout=debounce)
+            except TimeoutError:
+                break
+        return await workflow.execute_activity(
+            drain_inbound_conversation_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+
+
+@workflow.defn
+class ScheduledInboundSweeperWorkflow:
+    @workflow.run
+    async def run(self, config: InboundSweeperScheduleConfig) -> InboundSweeperResult:
+        return await workflow.execute_activity(
+            sweep_inbound_events_activity,
+            InboundSweeperInput(
+                tenant_id=config.tenant_id,
+                grace_seconds=config.grace_seconds,
+                now=workflow.now().isoformat(),
+            ),
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+
+
 async def _execute_sync_activity(
     payload: JiraSyncInput
     | GitSyncInput
     | CalendarSyncInput
     | DirectorySyncInput
     | RuntimeSyncInput
-    | RiskAssessmentInput,
+    | RiskAssessmentInput
+    | DriftScanInput,
 ) -> SyncWorkflowResult:
     if isinstance(payload, JiraSyncInput):
         return await workflow.execute_activity(
@@ -407,6 +490,12 @@ async def _execute_sync_activity(
             payload,
             start_to_close_timeout=timedelta(minutes=5),
         )
+    if isinstance(payload, DriftScanInput):
+        return await workflow.execute_activity(
+            run_drift_scan_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=5),
+        )
     raise ValueError("unsupported sync payload")
 
 
@@ -417,6 +506,7 @@ class TemporalWorkflowScheduler:
     schedule_id: str
     tenant_id: str
     interval_seconds: int
+    reply_debounce_seconds: int = 30
 
     async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
         from temporalio.client import (
@@ -522,6 +612,31 @@ class TemporalWorkflowScheduler:
         status = await _ensure_temporal_schedule(client, config.schedule_id, schedule)
         return ScheduleBootstrapResult(schedule_id=config.schedule_id, status=status)
 
+    async def ensure_inbound_sweeper_schedule(
+        self, config: InboundSweeperScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        from temporalio.client import (
+            Schedule,
+            ScheduleActionStartWorkflow,
+            ScheduleOverlapPolicy,
+            SchedulePolicy,
+            ScheduleSpec,
+        )
+
+        client = await _connect_temporal(self.target)
+        schedule = Schedule(
+            action=ScheduleActionStartWorkflow(
+                ScheduledInboundSweeperWorkflow.run,
+                config,
+                id=f"{config.schedule_id}-workflow",
+                task_queue=self.task_queue,
+            ),
+            spec=ScheduleSpec(cron_expressions=[config.cron]),
+            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
+        )
+        status = await _ensure_temporal_schedule(client, config.schedule_id, schedule)
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status=status)
+
     async def ensure_sync_schedules(
         self, configs: Sequence[SyncScheduleConfig]
     ) -> list[ScheduleBootstrapResult]:
@@ -564,6 +679,23 @@ class TemporalWorkflowScheduler:
             task_queue=self.task_queue,
         )
         return workflow_id
+
+    async def arm_reply_coalesce(self, conversation_key: str, tenant_id: str) -> None:
+        client = await _connect_temporal(self.target)
+        coalesce_id = safe_workflow_id(f"reply-coalesce-{tenant_id}-{conversation_key}")
+        # signal_with_start: start the debounce workflow if idle, and in all cases
+        # deliver the signal that resets its quiet-window timer.
+        await client.start_workflow(
+            ReplyCoalesceWorkflow.run,
+            ReplyCoalesceInput(
+                tenant_id=tenant_id,
+                conversation_key=conversation_key,
+                debounce_seconds=self.reply_debounce_seconds,
+            ),
+            id=coalesce_id,
+            task_queue=self.task_queue,
+            start_signal="new_event",
+        )
 
     async def dispatch_sync(self, input: SyncDispatchInput) -> str:
         client = await _connect_temporal(self.target)
@@ -614,6 +746,13 @@ class TemporalWorkflowScheduler:
                 id=workflow_id,
                 task_queue=self.task_queue,
             )
+        elif isinstance(workflow_input, DriftScanInput):
+            await client.start_workflow(
+                DriftScanWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
         else:
             raise ValueError(f"unsupported sync connector: {input.connector}")
         return workflow_id
@@ -644,9 +783,12 @@ class TemporalWorkflowWorker:
                 DirectorySyncWorkflow,
                 RuntimeSyncWorkflow,
                 RiskAssessmentWorkflow,
+                DriftScanWorkflow,
                 ScheduledSyncWorkflow,
                 DailyCheckinWorkflow,
                 NudgeWorkflow,
+                ReplyCoalesceWorkflow,
+                ScheduledInboundSweeperWorkflow,
             ],
             activities=[
                 record_heartbeat_activity,
@@ -659,9 +801,12 @@ class TemporalWorkflowWorker:
                 sync_directory_activity,
                 run_runtime_config_sync_activity,
                 run_risk_assessment_activity,
+                run_drift_scan_activity,
                 start_daily_checkin_activity,
                 send_checkin_nudge_activity,
                 close_checkin_non_response_activity,
+                drain_inbound_conversation_activity,
+                sweep_inbound_events_activity,
             ],
         )
         await worker.run()

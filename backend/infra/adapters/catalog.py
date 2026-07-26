@@ -24,6 +24,11 @@ from infra.adapters.chat.mock_slack import (
     RedisMockSlackStore,
 )
 from infra.adapters.chat.rate_limit import InMemoryRateLimiter, RedisRateLimiter
+from infra.adapters.chat.send_once import (
+    InMemorySendOnceStore,
+    RedisSendOnceStore,
+    SendOnceStore,
+)
 from infra.adapters.chat.slack import (
     DisabledSlackHttpClient,
     HttpSlackClient,
@@ -91,11 +96,20 @@ def build_chat_provider(
             client=_required_redis(redis_client),
         )
     )
+    send_once_store: SendOnceStore = (
+        InMemorySendOnceStore()
+        if settings.runtime_mode == "memory"
+        else RedisSendOnceStore(
+            client=_required_redis(redis_client),
+            ttl_seconds=settings.chat_send_once_ttl_seconds,
+        )
+    )
     return SlackChatAdapter(
         tenant_id=settings.tenant_id,
         http_client=http_client,
         rate_limiter=_chat_rate_limiter(settings, redis_client),
         conversation_cache=conversation_cache,
+        send_once_store=send_once_store,
     )
 
 
@@ -201,6 +215,7 @@ def build_workflow_scheduler(settings: Settings) -> WorkflowScheduler:
             schedule_id=settings.resolved_heartbeat_schedule_id,
             tenant_id=settings.tenant_id,
             heartbeat_cron=settings.dbos_heartbeat_cron,
+            reply_debounce_seconds=settings.reply_debounce_seconds,
         )
     return TemporalWorkflowScheduler(
         target=settings.temporal_target,
@@ -208,6 +223,7 @@ def build_workflow_scheduler(settings: Settings) -> WorkflowScheduler:
         schedule_id=settings.resolved_heartbeat_schedule_id,
         tenant_id=settings.tenant_id,
         interval_seconds=settings.temporal_heartbeat_interval_seconds,
+        reply_debounce_seconds=settings.reply_debounce_seconds,
     )
 
 
