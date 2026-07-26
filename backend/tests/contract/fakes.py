@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationTurn
+from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.directory import DirectoryUser
 from core.domain.graph import EntityRef, FactEvent
 from core.domain.identity import IdentityLink
@@ -630,6 +631,45 @@ class FakeNarrativeBriefRepository:
         ]
         matching.sort(key=lambda brief: brief.generated_at, reverse=True)
         return matching[:limit]
+
+
+@dataclass
+class FakeDeadLetterRepository:
+    dead_letters: dict[tuple[str, str], DeadLetter] = field(default_factory=dict)
+
+    async def record_dead_letter(self, dl: DeadLetter) -> None:
+        self.dead_letters[(dl.tenant_id, dl.id)] = dl
+
+    async def list_open_dead_letters(self, tenant_id: str, limit: int = 100) -> list[DeadLetter]:
+        if limit <= 0:
+            return []
+        matching = [
+            dl
+            for dl in self.dead_letters.values()
+            if dl.tenant_id == tenant_id and dl.status == DeadLetterStatus.OPEN
+        ]
+        matching.sort(key=lambda dl: dl.dead_lettered_at, reverse=True)
+        return matching[:limit]
+
+    async def get_dead_letter(self, tenant_id: str, id: str) -> DeadLetter | None:
+        return self.dead_letters.get((tenant_id, id))
+
+    async def mark_dead_letter_rearmed(
+        self, tenant_id: str, id: str, rearmed_at: datetime
+    ) -> DeadLetter | None:
+        existing = self.dead_letters.get((tenant_id, id))
+        if existing is None:
+            return None
+        updated = replace(existing, status=DeadLetterStatus.REARMED, rearmed_at=rearmed_at)
+        self.dead_letters[(tenant_id, id)] = updated
+        return updated
+
+    async def count_open_dead_letters(self, tenant_id: str) -> int:
+        return sum(
+            1
+            for dl in self.dead_letters.values()
+            if dl.tenant_id == tenant_id and dl.status == DeadLetterStatus.OPEN
+        )
 
 
 @dataclass

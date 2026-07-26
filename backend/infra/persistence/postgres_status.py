@@ -10,6 +10,7 @@ from opentelemetry import trace
 
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationRole, ConversationTurn
+from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.graph import EntityRef, JsonScalar, NodeKind
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
@@ -745,6 +746,103 @@ class PostgresNarrativeBriefRepository:
         return [_narrative_brief_from_row(row) for row in rows]
 
 
+class PostgresDeadLetterRepository:
+    def __init__(self, executor: AsyncSqlExecutor) -> None:
+        self._executor = executor
+
+    async def record_dead_letter(self, dl: DeadLetter) -> None:
+        with _tracer.start_as_current_span("postgres.dead_letter.record"):
+            await self._executor.execute(
+                """
+                INSERT INTO dead_letters (
+                    tenant_id, id, kind, conversation_key, event_ids, reason,
+                    attempts, first_seen_at, dead_lettered_at, status, rearmed_at
+                )
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, id)
+                DO UPDATE SET
+                    kind = EXCLUDED.kind,
+                    conversation_key = EXCLUDED.conversation_key,
+                    event_ids = EXCLUDED.event_ids,
+                    reason = EXCLUDED.reason,
+                    attempts = EXCLUDED.attempts,
+                    dead_lettered_at = EXCLUDED.dead_lettered_at
+                """,
+                (
+                    dl.tenant_id,
+                    dl.id,
+                    dl.kind,
+                    dl.conversation_key,
+                    json.dumps(list(dl.event_ids)),
+                    dl.reason,
+                    dl.attempts,
+                    dl.first_seen_at,
+                    dl.dead_lettered_at,
+                    dl.status.value,
+                    dl.rearmed_at,
+                ),
+            )
+
+    async def list_open_dead_letters(self, tenant_id: str, limit: int = 100) -> list[DeadLetter]:
+        bounded = max(0, limit)
+        if bounded == 0:
+            return []
+        with _tracer.start_as_current_span("postgres.dead_letter.list_open"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, id, kind, conversation_key, event_ids, reason,
+                       attempts, first_seen_at, dead_lettered_at, status, rearmed_at
+                FROM dead_letters
+                WHERE tenant_id = %s AND status = 'open'
+                ORDER BY dead_lettered_at DESC
+                LIMIT %s
+                """,
+                (tenant_id, bounded),
+            )
+        return [_dead_letter_from_row(row) for row in rows]
+
+    async def get_dead_letter(self, tenant_id: str, id: str) -> DeadLetter | None:
+        with _tracer.start_as_current_span("postgres.dead_letter.get"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, id, kind, conversation_key, event_ids, reason,
+                       attempts, first_seen_at, dead_lettered_at, status, rearmed_at
+                FROM dead_letters
+                WHERE tenant_id = %s AND id = %s
+                """,
+                (tenant_id, id),
+            )
+        return _dead_letter_from_row(rows[0]) if rows else None
+
+    async def mark_dead_letter_rearmed(
+        self, tenant_id: str, id: str, rearmed_at: datetime
+    ) -> DeadLetter | None:
+        with _tracer.start_as_current_span("postgres.dead_letter.mark_rearmed"):
+            rows = await self._executor.fetch(
+                """
+                UPDATE dead_letters
+                SET status = 'rearmed', rearmed_at = %s
+                WHERE tenant_id = %s AND id = %s
+                RETURNING tenant_id, id, kind, conversation_key, event_ids, reason,
+                          attempts, first_seen_at, dead_lettered_at, status, rearmed_at
+                """,
+                (rearmed_at, tenant_id, id),
+            )
+        return _dead_letter_from_row(rows[0]) if rows else None
+
+    async def count_open_dead_letters(self, tenant_id: str) -> int:
+        with _tracer.start_as_current_span("postgres.dead_letter.count_open"):
+            rows = await self._executor.fetch(
+                """
+                SELECT COUNT(*) AS open_count
+                FROM dead_letters
+                WHERE tenant_id = %s AND status = 'open'
+                """,
+                (tenant_id,),
+            )
+        return _int_field(rows[0]["open_count"], "open_count") if rows else 0
+
+
 class PostgresSyncCursorRepository:
     def __init__(self, executor: AsyncSqlExecutor) -> None:
         self._executor = executor
@@ -1085,6 +1183,26 @@ def _narrative_brief_from_row(row: Mapping[str, object]) -> NarrativeBrief:
         body=str(row["body"]),
         generated_at=_datetime_field(row["generated_at"], "generated_at"),
         sources=sources,
+    )
+
+
+def _dead_letter_from_row(row: Mapping[str, object]) -> DeadLetter:
+    raw_event_ids = row.get("event_ids")
+    event_ids = (
+        tuple(str(item) for item in raw_event_ids) if isinstance(raw_event_ids, list) else ()
+    )
+    return DeadLetter(
+        id=str(row["id"]),
+        tenant_id=str(row["tenant_id"]),
+        kind=str(row["kind"]),
+        conversation_key=str(row["conversation_key"]),
+        event_ids=event_ids,
+        reason=str(row["reason"]),
+        attempts=_int_field(row["attempts"], "attempts"),
+        first_seen_at=_datetime_field(row["first_seen_at"], "first_seen_at"),
+        dead_lettered_at=_datetime_field(row["dead_lettered_at"], "dead_lettered_at"),
+        status=DeadLetterStatus(str(row["status"])),
+        rearmed_at=_optional_datetime_field(row.get("rearmed_at"), "rearmed_at"),
     )
 
 

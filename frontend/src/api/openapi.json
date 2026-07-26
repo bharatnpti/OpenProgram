@@ -498,6 +498,109 @@
         }
       }
     },
+    "/admin/ops/dead-letters": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "List Dead Letters",
+        "operationId": "list_dead_letters_admin_ops_dead_letters_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeadLettersResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/ops/dead-letters/{dead_letter_id}/rearm": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Rearm Dead Letter",
+        "operationId": "rearm_dead_letter_admin_ops_dead_letters__dead_letter_id__rearm_post",
+        "parameters": [
+          {
+            "name": "dead_letter_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dead Letter Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDispatchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/programs": {
       "get": {
         "tags": ["config"],
@@ -7142,6 +7245,100 @@
         "type": "object",
         "required": ["requests"],
         "title": "CrossPersonRequestsResponse"
+      },
+      "DeadLetterResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "conversation_key": {
+            "type": "string",
+            "title": "Conversation Key"
+          },
+          "event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Event Ids"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts"
+          },
+          "first_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "First Seen At"
+          },
+          "dead_lettered_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Dead Lettered At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeadLetterStatus"
+          },
+          "rearmed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rearmed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "kind",
+          "conversation_key",
+          "event_ids",
+          "reason",
+          "attempts",
+          "first_seen_at",
+          "dead_lettered_at",
+          "status"
+        ],
+        "title": "DeadLetterResponse"
+      },
+      "DeadLetterStatus": {
+        "type": "string",
+        "enum": ["open", "rearmed"],
+        "title": "DeadLetterStatus",
+        "description": "Lifecycle of a dead-lettered workflow event.\n\n``OPEN`` means the event exhausted its durable retries and awaits operator\naction; ``REARMED`` means an operator re-triggered processing for it."
+      },
+      "DeadLettersResponse": {
+        "properties": {
+          "dead_letters": {
+            "items": {
+              "$ref": "#/components/schemas/DeadLetterResponse"
+            },
+            "type": "array",
+            "title": "Dead Letters"
+          }
+        },
+        "type": "object",
+        "required": ["dead_letters"],
+        "title": "DeadLettersResponse"
       },
       "DirectoryItemResponse": {
         "properties": {
