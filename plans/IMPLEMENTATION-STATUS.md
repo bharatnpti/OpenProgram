@@ -37,7 +37,7 @@ Being implemented feature-by-feature via sub-agents; each committed + this doc u
 - **UX Theme 3 — write-back adoption metric:** track "Jira updates applied via check-in" on the admin/exec surface.
 - **Plan 03 A undo + adoption — DONE** (commit `c27a500`): `POST /admin/ops/writeback/{audit_id}/revert` (through `WriteBackService`, idempotent, 404/409/502); adoption count via `GET /persona/writeback-adoption` + `openprogram_writeback_applied` gauge + Manager/Exec "Jira updates via check-in" KPI.
 - **Plan 03 A consent loop — REMAINING:** interactive DM consent (propose diff → await yes/no; today records a `proposed` row) + consent-setting API + Admin UI.
-- **Plan 02 C4 follow-ons:** identity-link Admin UI; directory **email auto-match** to pre-populate links.
+- **Plan 02 C4 follow-ons — DONE** (commit `f535e48`): identity-link Admin dialog on AdminConfigPage; `POST /config/members/identity-links/auto-match` (fills only missing fields from directory: external_id→chat_user_id, email→jira_email); `GET /config/members/unmapped` + unmapped-count KPI.
 - **Plan 01 follow-ons:** Temporal `continue_as_new` for very long coalesce conversations; dedicated burst/retry BDD scenarios.
 
 ## DEFERRED — not in this batch (per user)
