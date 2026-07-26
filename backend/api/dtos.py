@@ -7,7 +7,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from core.application.ask_service import AskResponseView
-from core.application.config_service import DirectoryItemView
+from core.application.config_service import (
+    DirectoryItemView,
+    IdentityAutoMatchResult,
+    UnmappedMember,
+)
 from core.application.flow_metrics_service import (
     PortfolioFlowView,
     WorkItemFlowView,
@@ -1580,6 +1584,45 @@ class IdentityLinkUpdateRequest(BaseModel):
     jira_account_id: str | None = None
     jira_email: str | None = None
     vcs_username: str | None = None
+
+
+class IdentityAutoMatchMemberDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    name: str
+    filled: list[str]
+
+
+class IdentityAutoMatchResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    updated_count: int
+    members: list[IdentityAutoMatchMemberDto]
+
+    @classmethod
+    def from_domain(cls, result: IdentityAutoMatchResult) -> IdentityAutoMatchResponse:
+        return cls(
+            updated_count=result.updated_count,
+            members=[
+                IdentityAutoMatchMemberDto(
+                    id=member.id, name=member.name, filled=list(member.filled)
+                )
+                for member in result.members
+            ],
+        )
+
+
+class UnmappedMemberResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    name: str
+    missing: list[str]
+
+    @classmethod
+    def from_domain(cls, member: UnmappedMember) -> UnmappedMemberResponse:
+        return cls(id=member.id, name=member.name, missing=list(member.missing))
 
 
 class EscalationContactDto(BaseModel):

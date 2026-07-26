@@ -9,6 +9,7 @@ from core.domain.directory import DirectoryUser
 from core.domain.errors import GraphNotFound
 from core.domain.escalation import EscalationContact, EscalationTarget, PodEscalationContacts
 from core.domain.graph import EdgeKind, EntityRef, NodeKind
+from core.domain.identity import IdentityLink
 from core.domain.rollup import NodeStatus, Rag
 from core.domain.status import CheckInPreference, StatusSource
 from infra.persistence.in_memory_graph import InMemoryGraphStore
@@ -344,3 +345,92 @@ async def test_pod_escalation_contacts_requires_pod_node() -> None:
 
     with pytest.raises(GraphNotFound):
         await service.get_pod_escalation_contacts("demo", "missing-pod")
+
+
+async def test_auto_match_identity_links_fills_missing_from_directory() -> None:
+    store = InMemoryGraphStore()
+    directory = FakeDirectoryUserRepository()
+    service = ConfigService(store, store, directory, identity_link_repository=store)
+    await directory.upsert_users(
+        [
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U1001",
+                display_name="Asha Rao",
+                email="asha@example.com",
+                handle="asha",
+            ),
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U1002",
+                display_name="Mina Patel",
+                email="mina@example.com",
+                handle="mina",
+            ),
+        ]
+    )
+    await service.add_member_from_directory("demo", "U1001")
+    await service.add_member_from_directory("demo", "U1002")
+    # U1002 already has an admin-set chat id and jira email that must survive.
+    await service.set_identity_link(
+        IdentityLink(
+            tenant_id="demo",
+            developer_id="U1002",
+            chat_user_id="ADMIN-CHAT",
+            jira_email="admin@corp.example",
+        )
+    )
+
+    result = await service.auto_match_identity_links("demo")
+
+    assert result.updated_count == 1
+    assert [member.id for member in result.members] == ["U1001"]
+    assert set(result.members[0].filled) == {"chat_user_id", "jira_email"}
+
+    asha = await service.get_identity_link("demo", "U1001")
+    assert asha is not None
+    assert asha.chat_user_id == "U1001"
+    assert asha.jira_email == "asha@example.com"
+
+    # Admin-set values are never overwritten by auto-match.
+    mina = await service.get_identity_link("demo", "U1002")
+    assert mina is not None
+    assert mina.chat_user_id == "ADMIN-CHAT"
+    assert mina.jira_email == "admin@corp.example"
+
+
+async def test_list_unmapped_members_flags_members_without_chat_id() -> None:
+    store = InMemoryGraphStore()
+    directory = FakeDirectoryUserRepository()
+    service = ConfigService(store, store, directory, identity_link_repository=store)
+    await directory.upsert_users(
+        [
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U1001",
+                display_name="Asha Rao",
+                email="asha@example.com",
+            ),
+            DirectoryUser(
+                tenant_id="demo",
+                external_id="U1002",
+                display_name="Mina Patel",
+                email="mina@example.com",
+            ),
+        ]
+    )
+    await service.add_member_from_directory("demo", "U1001")
+    await service.add_member_from_directory("demo", "U1002")
+    # U1001 is fully mapped for delivery; U1002 keeps a partial link with no chat id.
+    await service.set_identity_link(
+        IdentityLink(tenant_id="demo", developer_id="U1001", chat_user_id="U1001")
+    )
+    await service.set_identity_link(
+        IdentityLink(tenant_id="demo", developer_id="U1002", jira_email="mina@example.com")
+    )
+
+    unmapped = await service.list_unmapped_members("demo")
+
+    assert [member.id for member in unmapped] == ["U1002"]
+    assert "chat_user_id" in unmapped[0].missing
+    assert "jira_email" not in unmapped[0].missing
