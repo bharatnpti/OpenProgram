@@ -15,7 +15,6 @@ from core.domain.graph import (
     GraphNode,
     GraphTree,
     NodeKind,
-    VectorMatch,
 )
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
@@ -332,13 +331,3 @@ class WriteBackAuditRepository(Protocol):
         target_state: str,
         correlation_id: str,
     ) -> WriteBackAudit | None: ...
-
-
-class VectorStore(Protocol):
-    async def upsert_embedding(
-        self, tenant_id: str, entity_ref: EntityRef, vector: Sequence[float]
-    ) -> None: ...
-
-    async def search(
-        self, tenant_id: str, vector: Sequence[float], limit: int
-    ) -> list[VectorMatch]: ...

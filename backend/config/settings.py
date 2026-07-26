@@ -113,7 +113,6 @@ class Settings(BaseSettings):
     litellm_model: str = "gpt-4o-mini"
     llm_provider: str = "litellm"
     llm_max_tool_iterations: int = 3
-    embedding_dimension: int = 1536
     langfuse_host: str = "http://localhost:3001"
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
@@ -442,13 +441,6 @@ class Settings(BaseSettings):
     def validate_secret_key(cls, value: str) -> str:
         if len(value) != 44:
             raise ValueError("secret_key must be a 44-character Fernet key")
-        return value
-
-    @field_validator("embedding_dimension")
-    @classmethod
-    def validate_embedding_dimension(cls, value: int) -> int:
-        if value <= 0:
-            raise ValueError("embedding_dimension must be positive")
         return value
 
     @field_validator(

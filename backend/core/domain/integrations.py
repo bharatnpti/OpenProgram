@@ -94,15 +94,6 @@ class Commit:
 
 
 @dataclass(frozen=True, kw_only=True)
-class BuildResult:
-    tenant_id: str
-    id: str
-    status: str
-    completed_at: datetime | None = None
-    metadata: Mapping[str, JsonScalar] = field(default_factory=dict)
-
-
-@dataclass(frozen=True, kw_only=True)
 class CalendarEvent:
     tenant_id: str
     user: UserRef

@@ -24,7 +24,6 @@ from infra.adapters.workflows.temporal import HeartbeatWorkflow, record_heartbea
 from infra.persistence.postgres_graph import (
     PostgresGraphRepository,
     PostgresTimeSeriesRepository,
-    PostgresVectorStore,
 )
 from infra.persistence.postgres_inbound import PostgresInboundChatEventRepository
 from infra.persistence.postgres_status import (
@@ -101,15 +100,14 @@ async def test_postgres_extensions_fixture_vector_and_secret(
 
     executor = PsycopgAsyncExecutor(database_url)
     extension_rows = await executor.fetch(
-        "SELECT extname FROM pg_extension WHERE extname IN ('age', 'timescaledb', 'vector')"
+        "SELECT extname FROM pg_extension WHERE extname IN ('timescaledb')"
     )
-    assert {str(row["extname"]) for row in extension_rows} == {"age", "timescaledb", "vector"}
+    assert {str(row["extname"]) for row in extension_rows} == {"timescaledb"}
 
     graph_repository = PostgresGraphRepository(executor)
     time_series_repository = PostgresTimeSeriesRepository(executor)
     status_repository = PostgresStatusRepository(executor)
     rollup_repository = PostgresRollupRepository(executor)
-    vector_store = PostgresVectorStore(executor)
     try:
         await populate_demo_graph(
             graph_repository,
@@ -153,13 +151,6 @@ async def test_postgres_extensions_fixture_vector_and_secret(
         assert confirmed is not None
         assert confirmed.source.value == "confirmed"
         assert rollups
-
-        vector = [0.0] * 1536
-        vector[0] = 1.0
-        await vector_store.upsert_embedding("demo", ref, vector)
-        matches = await vector_store.search("demo", vector, limit=1)
-        assert matches[0].entity_ref == ref
-        assert matches[0].score == pytest.approx(1.0)
 
         secret_store = FernetSecretStore(
             Fernet(SECRET_KEY.encode("utf-8")),

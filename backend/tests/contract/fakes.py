@@ -11,7 +11,6 @@ from core.domain.graph import EntityRef, FactEvent
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import (
-    BuildResult,
     CalendarEvent,
     Commit,
     Issue,
@@ -798,26 +797,6 @@ class FakeInboundChatEventRepository(InboundChatEventRepository):
         deleted_count = len(self.events) - len(retained)
         self.events = retained
         return deleted_count
-
-
-@dataclass
-class FakeCiProvider:
-    builds: list[BuildResult] = field(default_factory=list)
-
-    async def latest_build(self, tenant_id: str, pipeline_id: str) -> BuildResult | None:
-        matching = [
-            build
-            for build in self.builds
-            if build.tenant_id == tenant_id and build.id == pipeline_id
-        ]
-        return matching[-1] if matching else None
-
-    async def list_recent_failures(self, tenant_id: str, repo: str) -> list[BuildResult]:
-        return [
-            build
-            for build in self.builds
-            if build.tenant_id == tenant_id and build.status == "failed"
-        ]
 
 
 @dataclass
