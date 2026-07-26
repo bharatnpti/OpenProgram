@@ -7,9 +7,9 @@ from datetime import UTC, date, datetime
 from core.domain.directory import DirectoryUser
 from core.domain.errors import GraphNotFound, OpenProgramError
 from core.domain.escalation import (
-    EscalationContact,
-    EscalationTarget,
     PodEscalationContacts,
+    apply_escalation_contacts_to_metadata,
+    escalation_contacts_from_metadata,
 )
 from core.domain.graph import (
     EdgeKind,
@@ -492,14 +492,14 @@ class ConfigService:
         self, tenant_id: str, pod_id: str
     ) -> PodEscalationContacts:
         node = await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
-        return _escalation_contacts_from_metadata(node.metadata)
+        return escalation_contacts_from_metadata(node.metadata)
 
     async def set_pod_escalation_contacts(
         self, tenant_id: str, pod_id: str, contacts: PodEscalationContacts
     ) -> PodEscalationContacts:
         node = await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
         metadata = dict(node.metadata)
-        _apply_escalation_contacts_to_metadata(metadata, contacts)
+        apply_escalation_contacts_to_metadata(metadata, contacts)
         await self._graph_repository.upsert_node(replace(node, metadata=metadata))
         return contacts
 
@@ -864,59 +864,6 @@ def _clean_required(value: str, field: str) -> str:
     if not cleaned:
         raise ConfigValidationError(f"{field} must not be empty")
     return cleaned
-
-
-# Pod escalation contacts live in scalar node metadata (no dedicated table).
-_ESCALATION_METADATA_KEYS: dict[EscalationTarget, tuple[str, str]] = {
-    EscalationTarget.SCRUM_MASTER: (
-        "escalation_sm_chat_external_id",
-        "escalation_sm_display_name",
-    ),
-    EscalationTarget.MANAGER: (
-        "escalation_manager_chat_external_id",
-        "escalation_manager_display_name",
-    ),
-}
-
-
-def _escalation_contact_from_metadata(
-    metadata: Mapping[str, JsonScalar], target: EscalationTarget
-) -> EscalationContact | None:
-    chat_key, name_key = _ESCALATION_METADATA_KEYS[target]
-    chat_external_id = metadata.get(chat_key)
-    if not isinstance(chat_external_id, str) or not chat_external_id.strip():
-        return None
-    display_name = metadata.get(name_key)
-    return EscalationContact(
-        target=target,
-        chat_external_id=chat_external_id.strip(),
-        display_name=display_name.strip()
-        if isinstance(display_name, str) and display_name.strip()
-        else None,
-    )
-
-
-def _escalation_contacts_from_metadata(
-    metadata: Mapping[str, JsonScalar],
-) -> PodEscalationContacts:
-    return PodEscalationContacts(
-        scrum_master=_escalation_contact_from_metadata(metadata, EscalationTarget.SCRUM_MASTER),
-        manager=_escalation_contact_from_metadata(metadata, EscalationTarget.MANAGER),
-    )
-
-
-def _apply_escalation_contacts_to_metadata(
-    metadata: dict[str, JsonScalar], contacts: PodEscalationContacts
-) -> None:
-    for target in (EscalationTarget.SCRUM_MASTER, EscalationTarget.MANAGER):
-        chat_key, name_key = _ESCALATION_METADATA_KEYS[target]
-        contact = contacts.contact_for(target)
-        if contact is None:
-            metadata[chat_key] = None
-            metadata[name_key] = None
-        else:
-            metadata[chat_key] = contact.chat_external_id
-            metadata[name_key] = contact.display_name
 
 
 def _slugify_identifier(value: str) -> str:
