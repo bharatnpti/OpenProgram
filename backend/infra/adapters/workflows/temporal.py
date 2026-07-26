@@ -430,6 +430,12 @@ async def sweep_inbound_events_activity(payload: InboundSweeperInput) -> Inbound
     return await inbound_events.sweep_inbound_events_activity(payload)
 
 
+# Max consecutive debounce resets before continue_as_new truncates history. Each
+# reset appends timer events to the Temporal history; capping the run keeps it
+# bounded on chatty conversations. Mirrors the intent of DBOS `_MAX_COALESCE_PASSES`.
+_MAX_COALESCE_RESETS = 500
+
+
 @workflow.defn
 class ReplyCoalesceWorkflow:
     """Per-conversation debounce/coalesce workflow (signal_with_start driven)."""
@@ -447,12 +453,23 @@ class ReplyCoalesceWorkflow:
         # Reset-on-message quiet window: consume the pending signal, then wait up
         # to `debounce` for another. A new signal returns early (timer resets); a
         # quiet window raises TimeoutError, which ends the loop and drains.
+        resets = 0
         while True:
             self._pending = False
             try:
                 await workflow.wait_condition(lambda: self._pending, timeout=debounce)
             except TimeoutError:
                 break
+            resets += 1
+            # Bound Temporal event history on a pathologically chatty conversation:
+            # each reset appends timer events, so after enough consecutive resets
+            # continue-as-new into a fresh run with a truncated history. The buffered
+            # events stay durably in inbound_chat_events and the fresh run's quiet
+            # window still drains them, so no reply is dropped -- only the same
+            # (conversation_key, tenant, debounce) input is carried forward. Mirrors
+            # the intent of the DBOS coalesce bound.
+            if resets >= _MAX_COALESCE_RESETS:
+                workflow.continue_as_new(payload)
         return await workflow.execute_activity(
             drain_inbound_conversation_activity,
             payload,

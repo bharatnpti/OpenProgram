@@ -7,6 +7,7 @@ from tests.bdd import (
     steps_common,
     steps_cross_person_requests,
     steps_redis_persistence,
+    steps_reliability,
     steps_reply_parsing,
     steps_schedule,
     steps_ui,
@@ -23,6 +24,7 @@ for _module in (
     fixtures,
     steps_common,
     steps_cross_person_requests,
+    steps_reliability,
     steps_reply_parsing,
     steps_redis_persistence,
     steps_schedule,
@@ -43,3 +45,9 @@ def pytest_configure(config: pytest.Config) -> None:
             "markers", f"ms_e2e_{index:03d}: Mock Slack E2E matrix row {index:03d}"
         )
     config.addinivalue_line("markers", "ui_bdd_scenario: playwright-backed frontend BDD scenario")
+    config.addinivalue_line(
+        "markers", "plan01_burst_coalesce: Plan 01 burst-coalesces-into-one-reply scenario"
+    )
+    config.addinivalue_line(
+        "markers", "plan01_retry_finalizes: Plan 01 failed-reply-retried-without-loss scenario"
+    )
