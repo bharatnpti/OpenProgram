@@ -12,6 +12,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.domain.auth import Role
 
+# The Fernet key committed to `.env.example`/`docker-compose.yml` for local bring-up.
+# It is public, so it must never protect a shared (non-local) deployment.
+DEFAULT_SECRET_KEY = "q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ="
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -492,6 +496,7 @@ class Settings(BaseSettings):
             object.__setattr__(self, "heartbeat_schedule_id", self.temporal_schedule_id)
         if self.auth_cookie_samesite == "none" and not self.auth_cookie_secure:
             raise ValueError("auth_cookie_secure must be true when auth_cookie_samesite is none")
+        self._guard_shared_deployment()
         if self.auth_provider == "oidc_bff":
             missing = [
                 name
@@ -511,6 +516,21 @@ class Settings(BaseSettings):
                 raise ValueError("redis_url is required for OIDC BFF container mode")
         _ = self.oidc_role_map
         return self
+
+    def _guard_shared_deployment(self) -> None:
+        """Fail startup when a non-local environment uses local-only credentials."""
+        if self.environment == "local":
+            return
+        if self.auth_provider == "dev":
+            raise ValueError(
+                "auth_provider='dev' grants unauthenticated admin access and is refused "
+                "when environment is not 'local' -- set auth_provider='oidc_bff'"
+            )
+        if self.secret_key == DEFAULT_SECRET_KEY:
+            raise ValueError(
+                "secret_key is the public default committed for local bring-up and is "
+                "refused when environment is not 'local' -- provide a unique Fernet key"
+            )
 
     @property
     def dev_roles(self) -> frozenset[Role]:

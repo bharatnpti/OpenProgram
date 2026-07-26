@@ -182,6 +182,45 @@ def test_settings_fail_fast_on_invalid_secret_key() -> None:
         _settings(secret_key="too-short")
 
 
+def test_settings_reject_dev_auth_outside_local() -> None:
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, environment="production", auth_provider="dev")
+
+
+def test_settings_reject_default_secret_key_outside_local() -> None:
+    with pytest.raises(ValidationError):
+        _settings(
+            environment="staging",
+            secret_key=SECRET_KEY,
+            auth_provider="oidc_bff",
+            oidc_issuer_url="https://issuer.example.com",
+            oidc_client_id="openprogram",
+            oidc_client_secret="secret",
+            runtime_mode="memory",
+        )
+
+
+def test_settings_allow_hardened_non_local_config() -> None:
+    unique_key = "A" * 43 + "="
+    settings = _settings(
+        environment="production",
+        secret_key=unique_key,
+        auth_provider="oidc_bff",
+        oidc_issuer_url="https://issuer.example.com",
+        oidc_client_id="openprogram",
+        oidc_client_secret="secret",
+        runtime_mode="memory",
+    )
+    assert settings.environment == "production"
+    assert settings.auth_provider == "oidc_bff"
+
+
+def test_settings_allow_dev_auth_and_default_key_in_local() -> None:
+    settings = _settings(secret_key=SECRET_KEY, environment="local", auth_provider="dev")
+    assert settings.auth_provider == "dev"
+    assert settings.secret_key == SECRET_KEY
+
+
 def test_settings_validate_provider_selectors() -> None:
     settings = _settings(
         secret_key=SECRET_KEY,
