@@ -35,6 +35,7 @@ from core.domain.workflows import (
     record_heartbeat,
 )
 from infra.workflows import (
+    brief_generation,
     calendar_sync,
     checkin_fanout,
     conversation_purge,
@@ -48,6 +49,7 @@ from infra.workflows import (
     risk_assessment,
     runtime_sync,
 )
+from infra.workflows.brief_generation import BriefGenerationInput, BriefGenerationResult
 from infra.workflows.calendar_sync import CalendarSyncInput, CalendarSyncWorkflowResult
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
 from infra.workflows.dispatch import (
@@ -72,6 +74,7 @@ SyncWorkflowResult = (
     | RuntimeSyncWorkflowResult
     | RiskAssessmentWorkflowResult
     | DriftScanWorkflowResult
+    | BriefGenerationResult
 )
 
 if TYPE_CHECKING:
@@ -299,6 +302,24 @@ class DriftScanWorkflow:
         )
 
 
+@activity.defn
+async def run_brief_generation_activity(
+    payload: BriefGenerationInput,
+) -> BriefGenerationResult:
+    return await brief_generation.run_brief_generation_activity(payload)
+
+
+@workflow.defn
+class BriefGenerationWorkflow:
+    @workflow.run
+    async def run(self, payload: BriefGenerationInput) -> BriefGenerationResult:
+        return await workflow.execute_activity(
+            run_brief_generation_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=10),
+        )
+
+
 @workflow.defn
 class ScheduledSyncWorkflow:
     @workflow.run
@@ -461,7 +482,8 @@ async def _execute_sync_activity(
     | DirectorySyncInput
     | RuntimeSyncInput
     | RiskAssessmentInput
-    | DriftScanInput,
+    | DriftScanInput
+    | BriefGenerationInput,
 ) -> SyncWorkflowResult:
     if isinstance(payload, JiraSyncInput):
         return await workflow.execute_activity(
@@ -504,6 +526,12 @@ async def _execute_sync_activity(
             run_drift_scan_activity,
             payload,
             start_to_close_timeout=timedelta(minutes=5),
+        )
+    if isinstance(payload, BriefGenerationInput):
+        return await workflow.execute_activity(
+            run_brief_generation_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=10),
         )
     raise ValueError("unsupported sync payload")
 
@@ -762,6 +790,13 @@ class TemporalWorkflowScheduler:
                 id=workflow_id,
                 task_queue=self.task_queue,
             )
+        elif isinstance(workflow_input, BriefGenerationInput):
+            await client.start_workflow(
+                BriefGenerationWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
         else:
             raise ValueError(f"unsupported sync connector: {input.connector}")
         return workflow_id
@@ -793,6 +828,7 @@ class TemporalWorkflowWorker:
                 RuntimeSyncWorkflow,
                 RiskAssessmentWorkflow,
                 DriftScanWorkflow,
+                BriefGenerationWorkflow,
                 ScheduledSyncWorkflow,
                 DailyCheckinWorkflow,
                 NudgeWorkflow,
@@ -811,6 +847,7 @@ class TemporalWorkflowWorker:
                 run_runtime_config_sync_activity,
                 run_risk_assessment_activity,
                 run_drift_scan_activity,
+                run_brief_generation_activity,
                 start_daily_checkin_activity,
                 send_checkin_nudge_activity,
                 send_escalation_step_activity,

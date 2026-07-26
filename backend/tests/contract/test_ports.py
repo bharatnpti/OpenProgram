@@ -22,6 +22,7 @@ from tests.contract.contracts import (
     assert_identity_link_repository_contract,
     assert_inbound_chat_event_repository_contract,
     assert_issue_tracker_contract,
+    assert_narrative_brief_repository_contract,
     assert_rollup_repository_contract,
     assert_status_repository_contract,
     assert_sync_cursor_repository_contract,
@@ -39,6 +40,7 @@ from tests.contract.fakes import (
     FakeIdentityLinkRepository,
     FakeInboundChatEventRepository,
     FakeIssueTracker,
+    FakeNarrativeBriefRepository,
     FakeRollupRepository,
     FakeStatusRepository,
     FakeSyncCursorRepository,
@@ -106,6 +108,14 @@ async def test_fake_rollup_repository_satisfies_contract() -> None:
 
 async def test_fake_sync_cursor_repository_satisfies_contract() -> None:
     await assert_sync_cursor_repository_contract(FakeSyncCursorRepository())
+
+
+async def test_fake_narrative_brief_repository_satisfies_contract() -> None:
+    await assert_narrative_brief_repository_contract(FakeNarrativeBriefRepository())
+
+
+async def test_in_memory_graph_store_satisfies_narrative_brief_contract() -> None:
+    await assert_narrative_brief_repository_contract(InMemoryGraphStore())
 
 
 async def test_fake_conversation_repository_satisfies_contract() -> None:

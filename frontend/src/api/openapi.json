@@ -5312,6 +5312,81 @@
         }
       }
     },
+    "/persona/briefs": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Narrative Briefs",
+        "operationId": "narrative_briefs_persona_briefs_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/BriefKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NarrativeBriefsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/portfolio/cross-person-requests": {
       "get": {
         "tags": ["personas"],
@@ -6060,6 +6135,12 @@
           "source_ref"
         ],
         "title": "BlockerDto"
+      },
+      "BriefKind": {
+        "type": "string",
+        "enum": ["daily_pod", "weekly_project", "exec"],
+        "title": "BriefKind",
+        "description": "The scheduled narrative brief flavors.\n\nEach kind targets a different scope: pod-level daily summaries, project-level\nweekly updates, and a single portfolio-wide executive brief."
       },
       "CalendarSyncDispatchRequest": {
         "properties": {
@@ -8095,6 +8176,54 @@
           "confirmed_at"
         ],
         "title": "MyStatusResponse"
+      },
+      "NarrativeBriefResponse": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/BriefKind"
+          },
+          "scope_id": {
+            "type": "string",
+            "title": "Scope Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sources"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "scope_id", "title", "body", "generated_at", "sources"],
+        "title": "NarrativeBriefResponse"
+      },
+      "NarrativeBriefsResponse": {
+        "properties": {
+          "briefs": {
+            "items": {
+              "$ref": "#/components/schemas/NarrativeBriefResponse"
+            },
+            "type": "array",
+            "title": "Briefs"
+          }
+        },
+        "type": "object",
+        "required": ["briefs"],
+        "title": "NarrativeBriefsResponse"
       },
       "NodeKind": {
         "type": "string",

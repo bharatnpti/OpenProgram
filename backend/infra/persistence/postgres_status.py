@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from datetime import date, datetime, time
@@ -7,6 +8,7 @@ from typing import Protocol
 
 from opentelemetry import trace
 
+from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.graph import EntityRef, JsonScalar, NodeKind
 from core.domain.integrations import SyncCursor
@@ -679,6 +681,70 @@ class PostgresRollupRepository:
         return [_node_status_from_row(row) for row in rows]
 
 
+class PostgresNarrativeBriefRepository:
+    def __init__(self, executor: AsyncSqlExecutor) -> None:
+        self._executor = executor
+
+    async def record_brief(self, brief: NarrativeBrief) -> None:
+        with _tracer.start_as_current_span("postgres.brief.record_brief"):
+            await self._executor.execute(
+                """
+                INSERT INTO narrative_briefs (
+                    tenant_id, kind, scope_id, title, body, generated_at, sources
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
+                ON CONFLICT (tenant_id, kind, scope_id, generated_at)
+                DO UPDATE SET
+                    title = EXCLUDED.title,
+                    body = EXCLUDED.body,
+                    sources = EXCLUDED.sources
+                """,
+                (
+                    brief.tenant_id,
+                    brief.kind.value,
+                    brief.scope_id,
+                    brief.title,
+                    brief.body,
+                    brief.generated_at,
+                    json.dumps(list(brief.sources)),
+                ),
+            )
+
+    async def latest_briefs(
+        self,
+        tenant_id: str,
+        kind: BriefKind | None = None,
+        limit: int = 20,
+    ) -> list[NarrativeBrief]:
+        bounded = max(0, limit)
+        if bounded == 0:
+            return []
+        with _tracer.start_as_current_span("postgres.brief.latest_briefs"):
+            if kind is None:
+                rows = await self._executor.fetch(
+                    """
+                    SELECT tenant_id, kind, scope_id, title, body, generated_at, sources
+                    FROM narrative_briefs
+                    WHERE tenant_id = %s
+                    ORDER BY generated_at DESC
+                    LIMIT %s
+                    """,
+                    (tenant_id, bounded),
+                )
+            else:
+                rows = await self._executor.fetch(
+                    """
+                    SELECT tenant_id, kind, scope_id, title, body, generated_at, sources
+                    FROM narrative_briefs
+                    WHERE tenant_id = %s AND kind = %s
+                    ORDER BY generated_at DESC
+                    LIMIT %s
+                    """,
+                    (tenant_id, kind.value, bounded),
+                )
+        return [_narrative_brief_from_row(row) for row in rows]
+
+
 class PostgresSyncCursorRepository:
     def __init__(self, executor: AsyncSqlExecutor) -> None:
         self._executor = executor
@@ -1005,6 +1071,20 @@ def _node_status_from_row(row: Mapping[str, object]) -> NodeStatus:
         source=StatusSource(str(row["source"])),
         factors=_factors_from_json(row.get("factors")),
         as_of=_date_field(row["as_of"], "as_of"),
+    )
+
+
+def _narrative_brief_from_row(row: Mapping[str, object]) -> NarrativeBrief:
+    raw_sources = row.get("sources")
+    sources = tuple(str(item) for item in raw_sources) if isinstance(raw_sources, list) else ()
+    return NarrativeBrief(
+        tenant_id=str(row["tenant_id"]),
+        kind=BriefKind(str(row["kind"])),
+        scope_id=str(row["scope_id"]),
+        title=str(row["title"]),
+        body=str(row["body"]),
+        generated_at=_datetime_field(row["generated_at"], "generated_at"),
+        sources=sources,
     )
 
 

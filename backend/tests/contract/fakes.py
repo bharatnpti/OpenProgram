@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 
+from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationTurn
 from core.domain.directory import DirectoryUser
 from core.domain.graph import EntityRef, FactEvent
@@ -596,6 +597,40 @@ class FakeRollupRepository:
             and start <= status.as_of <= end
         ]
         return sorted(matching, key=lambda status: status.as_of)
+
+
+@dataclass
+class FakeNarrativeBriefRepository:
+    briefs: list[NarrativeBrief] = field(default_factory=list)
+
+    async def record_brief(self, brief: NarrativeBrief) -> None:
+        self.briefs = [
+            existing
+            for existing in self.briefs
+            if not (
+                existing.tenant_id == brief.tenant_id
+                and existing.kind == brief.kind
+                and existing.scope_id == brief.scope_id
+                and existing.generated_at == brief.generated_at
+            )
+        ]
+        self.briefs.append(brief)
+
+    async def latest_briefs(
+        self,
+        tenant_id: str,
+        kind: BriefKind | None = None,
+        limit: int = 20,
+    ) -> list[NarrativeBrief]:
+        if limit <= 0:
+            return []
+        matching = [
+            brief
+            for brief in self.briefs
+            if brief.tenant_id == tenant_id and (kind is None or brief.kind == kind)
+        ]
+        matching.sort(key=lambda brief: brief.generated_at, reverse=True)
+        return matching[:limit]
 
 
 @dataclass
