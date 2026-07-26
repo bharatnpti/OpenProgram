@@ -12,6 +12,7 @@ from core.application.conversation_history import llm_messages_from_turns
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import SyncRunResult
 from core.domain.conversation import ConversationRole, ConversationTurn
+from core.domain.escalation import EscalationPolicy
 from core.domain.graph import GraphNode, NodeKind
 from core.domain.integrations import SyncCursor
 from core.domain.status import CheckIn, CheckInScheduleRun, DeveloperStatus, StatusSource
@@ -1594,3 +1595,6 @@ class _WorkflowSettings:
     tenant_default_timezone = "UTC"
     checkin_reply_wait_seconds = 14400
     checkin_final_reply_wait_seconds = 28800
+
+    def escalation_policy(self) -> EscalationPolicy:
+        return EscalationPolicy(steps=())

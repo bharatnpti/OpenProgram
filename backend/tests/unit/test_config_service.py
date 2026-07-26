@@ -331,9 +331,7 @@ async def test_pod_escalation_contacts_round_trip_and_clear() -> None:
     assert reloaded.manager.chat_external_id == "U-MGR"
     assert reloaded.manager.display_name is None
 
-    cleared = await service.set_pod_escalation_contacts(
-        "demo", "pod-1", PodEscalationContacts()
-    )
+    cleared = await service.set_pod_escalation_contacts("demo", "pod-1", PodEscalationContacts())
     assert cleared.scrum_master is None
     reloaded_after_clear = await service.get_pod_escalation_contacts("demo", "pod-1")
     assert reloaded_after_clear.scrum_master is None

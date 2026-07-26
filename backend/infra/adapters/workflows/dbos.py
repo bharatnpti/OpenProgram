@@ -63,7 +63,7 @@ from infra.workflows.dispatch import (
 from infra.workflows.drift_scan import DriftScanInput, DriftScanWorkflowResult
 from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
-from infra.workflows.nudge import NudgeInput, NudgeResult
+from infra.workflows.nudge import EscalationStepInput, NudgeInput, NudgeResult
 from infra.workflows.risk_assessment import RiskAssessmentInput, RiskAssessmentWorkflowResult
 from infra.workflows.runtime_sync import RuntimeSyncInput, RuntimeSyncWorkflowResult
 
@@ -387,6 +387,11 @@ async def dbos_send_checkin_nudge_step(payload: NudgeInput) -> NudgeResult:
     return await nudge.send_checkin_nudge_activity(payload)
 
 
+@DBOS.step(name="openprogram_send_escalation_step", retries_allowed=True)
+async def dbos_send_escalation_step(payload: EscalationStepInput) -> NudgeResult:
+    return await nudge.send_escalation_step_activity(payload)
+
+
 @DBOS.step(name="openprogram_close_checkin_non_response", retries_allowed=True)
 async def dbos_close_checkin_non_response_step(payload: NudgeInput) -> NudgeResult:
     return await nudge.close_checkin_non_response_activity(payload)
@@ -394,11 +399,15 @@ async def dbos_close_checkin_non_response_step(payload: NudgeInput) -> NudgeResu
 
 @DBOS.workflow(name="openprogram_nudge")
 async def dbos_nudge_workflow(payload: NudgeInput) -> NudgeResult:
-    if payload.reply_wait_seconds > 0:
-        await DBOS.sleep_async(payload.reply_wait_seconds)
-    nudge_result = await dbos_send_checkin_nudge_step(payload)
-    if nudge_result.status == "already_replied":
-        return nudge_result
+    last_nudge: NudgeResult | None = None
+    for number, step in enumerate(payload.resolved_steps(), start=1):
+        if step.wait_seconds > 0:
+            await DBOS.sleep_async(step.wait_seconds)
+        step_result = await dbos_send_escalation_step(payload.step_input(number, step.target))
+        if step_result.status == "already_replied":
+            return step_result
+        if step_result.nudge_message_id is not None:
+            last_nudge = step_result
     if payload.final_reply_wait_seconds > 0:
         await DBOS.sleep_async(payload.final_reply_wait_seconds)
     close_result = await dbos_close_checkin_non_response_step(payload)
@@ -408,7 +417,7 @@ async def dbos_nudge_workflow(payload: NudgeInput) -> NudgeResult:
             developer_id=close_result.developer_id,
             correlation_id=close_result.correlation_id,
             status=close_result.status,
-            nudge_message_id=nudge_result.nudge_message_id,
+            nudge_message_id=last_nudge.nudge_message_id if last_nudge else None,
             terminal_source=close_result.terminal_source,
         )
     return close_result

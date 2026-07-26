@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
+from core.domain.escalation import EscalationTarget
 from core.domain.status import (
     CheckIn,
     CheckInPreference,
@@ -11,9 +12,10 @@ from core.domain.status import (
     resolve_timezone,
 )
 from core.ports.repositories import StatusRepository
-from infra.workflows.nudge import NudgeInput
+from infra.workflows.nudge import EscalationStepPayload, NudgeInput
 
 if TYPE_CHECKING:
+    from config.settings import Settings
     from infra.registry import ServiceRegistry
 
 
@@ -40,6 +42,7 @@ class DailyCheckinResult:
     nudge_workflow_id: str | None = None
     reply_wait_seconds: int = 14400
     final_reply_wait_seconds: int = 28800
+    escalation_steps: tuple[EscalationStepPayload, ...] = ()
 
 
 async def start_daily_checkin_activity(payload: DailyCheckinInput) -> DailyCheckinResult:
@@ -161,6 +164,7 @@ async def start_daily_checkin_activity(payload: DailyCheckinInput) -> DailyCheck
             status="sent",
             reply_wait_seconds=preference.reply_wait_seconds,
             final_reply_wait_seconds=preference.final_reply_wait_seconds,
+            escalation_steps=_escalation_steps(settings, preference.reply_wait_seconds),
         )
     finally:
         await registry.close()
@@ -199,6 +203,7 @@ def nudge_input_for_daily_checkin_result(
         chat_external_id=scheduled.chat_external_id,
         reply_wait_seconds=result.reply_wait_seconds,
         final_reply_wait_seconds=result.final_reply_wait_seconds,
+        escalation_steps=result.escalation_steps,
     )
 
 
@@ -209,6 +214,7 @@ def _checkin_result(
     status: str,
     reply_wait_seconds: int,
     final_reply_wait_seconds: int,
+    escalation_steps: tuple[EscalationStepPayload, ...] = (),
 ) -> DailyCheckinResult:
     return DailyCheckinResult(
         tenant_id=checkin.tenant_id,
@@ -219,7 +225,22 @@ def _checkin_result(
         status=status,
         reply_wait_seconds=reply_wait_seconds,
         final_reply_wait_seconds=final_reply_wait_seconds,
+        escalation_steps=escalation_steps,
     )
+
+
+def _escalation_steps(
+    settings: Settings, reply_wait_seconds: int
+) -> tuple[EscalationStepPayload, ...]:
+    """Serialize the tenant escalation ladder, honoring the developer's reply wait."""
+    policy = settings.escalation_policy()
+    steps: list[EscalationStepPayload] = []
+    for step in policy.steps:
+        wait_seconds = (
+            reply_wait_seconds if step.target is EscalationTarget.DEVELOPER else step.wait_seconds
+        )
+        steps.append(EscalationStepPayload(target=step.target.value, wait_seconds=wait_seconds))
+    return tuple(steps)
 
 
 def _run_result(

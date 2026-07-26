@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -82,3 +83,62 @@ def default_escalation_policy(
             EscalationStep(target=EscalationTarget.MANAGER, wait_seconds=manager_wait_seconds)
         )
     return EscalationPolicy(steps=tuple(steps))
+
+
+# Scalar pod-node metadata keys for each human escalation target (chat id, name).
+ESCALATION_METADATA_KEYS: dict[EscalationTarget, tuple[str, str]] = {
+    EscalationTarget.SCRUM_MASTER: (
+        "escalation_sm_chat_external_id",
+        "escalation_sm_display_name",
+    ),
+    EscalationTarget.MANAGER: (
+        "escalation_manager_chat_external_id",
+        "escalation_manager_display_name",
+    ),
+}
+
+# Metadata values are JSON scalars; only strings are meaningful here.
+type _MetaValue = str | int | float | bool | None
+
+
+def escalation_contact_from_metadata(
+    metadata: Mapping[str, _MetaValue], target: EscalationTarget
+) -> EscalationContact | None:
+    keys = ESCALATION_METADATA_KEYS.get(target)
+    if keys is None:
+        return None
+    chat_key, name_key = keys
+    chat_external_id = metadata.get(chat_key)
+    if not isinstance(chat_external_id, str) or not chat_external_id.strip():
+        return None
+    display_name = metadata.get(name_key)
+    return EscalationContact(
+        target=target,
+        chat_external_id=chat_external_id.strip(),
+        display_name=display_name.strip()
+        if isinstance(display_name, str) and display_name.strip()
+        else None,
+    )
+
+
+def escalation_contacts_from_metadata(
+    metadata: Mapping[str, _MetaValue],
+) -> PodEscalationContacts:
+    return PodEscalationContacts(
+        scrum_master=escalation_contact_from_metadata(metadata, EscalationTarget.SCRUM_MASTER),
+        manager=escalation_contact_from_metadata(metadata, EscalationTarget.MANAGER),
+    )
+
+
+def apply_escalation_contacts_to_metadata(
+    metadata: MutableMapping[str, _MetaValue], contacts: PodEscalationContacts
+) -> None:
+    for target in (EscalationTarget.SCRUM_MASTER, EscalationTarget.MANAGER):
+        chat_key, name_key = ESCALATION_METADATA_KEYS[target]
+        contact = contacts.contact_for(target)
+        if contact is None:
+            metadata[chat_key] = None
+            metadata[name_key] = None
+        else:
+            metadata[chat_key] = contact.chat_external_id
+            metadata[name_key] = contact.display_name

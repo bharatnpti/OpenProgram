@@ -60,7 +60,7 @@ from infra.workflows.dispatch import (
 from infra.workflows.drift_scan import DriftScanInput, DriftScanWorkflowResult
 from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
-from infra.workflows.nudge import NudgeInput, NudgeResult
+from infra.workflows.nudge import EscalationStepInput, NudgeInput, NudgeResult
 from infra.workflows.risk_assessment import RiskAssessmentInput, RiskAssessmentWorkflowResult
 from infra.workflows.runtime_sync import RuntimeSyncInput, RuntimeSyncWorkflowResult
 
@@ -352,6 +352,11 @@ async def send_checkin_nudge_activity(payload: NudgeInput) -> NudgeResult:
 
 
 @activity.defn
+async def send_escalation_step_activity(payload: EscalationStepInput) -> NudgeResult:
+    return await nudge.send_escalation_step_activity(payload)
+
+
+@activity.defn
 async def close_checkin_non_response_activity(payload: NudgeInput) -> NudgeResult:
     return await nudge.close_checkin_non_response_activity(payload)
 
@@ -360,15 +365,19 @@ async def close_checkin_non_response_activity(payload: NudgeInput) -> NudgeResul
 class NudgeWorkflow:
     @workflow.run
     async def run(self, payload: NudgeInput) -> NudgeResult:
-        if payload.reply_wait_seconds > 0:
-            await workflow.sleep(timedelta(seconds=payload.reply_wait_seconds))
-        nudge_result = await workflow.execute_activity(
-            send_checkin_nudge_activity,
-            payload,
-            start_to_close_timeout=timedelta(minutes=5),
-        )
-        if nudge_result.status == "already_replied":
-            return nudge_result
+        last_nudge: NudgeResult | None = None
+        for number, step in enumerate(payload.resolved_steps(), start=1):
+            if step.wait_seconds > 0:
+                await workflow.sleep(timedelta(seconds=step.wait_seconds))
+            step_result = await workflow.execute_activity(
+                send_escalation_step_activity,
+                payload.step_input(number, step.target),
+                start_to_close_timeout=timedelta(minutes=5),
+            )
+            if step_result.status == "already_replied":
+                return step_result
+            if step_result.nudge_message_id is not None:
+                last_nudge = step_result
         if payload.final_reply_wait_seconds > 0:
             await workflow.sleep(timedelta(seconds=payload.final_reply_wait_seconds))
         close_result = await workflow.execute_activity(
@@ -382,7 +391,7 @@ class NudgeWorkflow:
                 developer_id=close_result.developer_id,
                 correlation_id=close_result.correlation_id,
                 status=close_result.status,
-                nudge_message_id=nudge_result.nudge_message_id,
+                nudge_message_id=last_nudge.nudge_message_id if last_nudge else None,
                 terminal_source=close_result.terminal_source,
             )
         return close_result
@@ -804,6 +813,7 @@ class TemporalWorkflowWorker:
                 run_drift_scan_activity,
                 start_daily_checkin_activity,
                 send_checkin_nudge_activity,
+                send_escalation_step_activity,
                 close_checkin_non_response_activity,
                 drain_inbound_conversation_activity,
                 sweep_inbound_events_activity,
