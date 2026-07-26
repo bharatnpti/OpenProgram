@@ -208,6 +208,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/ops/dead-letters": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Dead Letters */
+    get: operations["list_dead_letters_admin_ops_dead_letters_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/ops/dead-letters/{dead_letter_id}/rearm": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Rearm Dead Letter */
+    post: operations["rearm_dead_letter_admin_ops_dead_letters__dead_letter_id__rearm_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/programs": {
     parameters: {
       query?: never;
@@ -1681,6 +1715,50 @@ export interface components {
       /** Requests */
       requests: components["schemas"]["CrossPersonRequestResponse"][];
     };
+    /** DeadLetterResponse */
+    DeadLetterResponse: {
+      /** Id */
+      id: string;
+      /** Tenant Id */
+      tenant_id: string;
+      /** Kind */
+      kind: string;
+      /** Conversation Key */
+      conversation_key: string;
+      /** Event Ids */
+      event_ids: string[];
+      /** Reason */
+      reason: string;
+      /** Attempts */
+      attempts: number;
+      /**
+       * First Seen At
+       * Format: date-time
+       */
+      first_seen_at: string;
+      /**
+       * Dead Lettered At
+       * Format: date-time
+       */
+      dead_lettered_at: string;
+      status: components["schemas"]["DeadLetterStatus"];
+      /** Rearmed At */
+      rearmed_at?: string | null;
+    };
+    /**
+     * DeadLetterStatus
+     * @description Lifecycle of a dead-lettered workflow event.
+     *
+     *     ``OPEN`` means the event exhausted its durable retries and awaits operator
+     *     action; ``REARMED`` means an operator re-triggered processing for it.
+     * @enum {string}
+     */
+    DeadLetterStatus: "open" | "rearmed";
+    /** DeadLettersResponse */
+    DeadLettersResponse: {
+      /** Dead Letters */
+      dead_letters: components["schemas"]["DeadLetterResponse"][];
+    };
     /** DirectoryItemResponse */
     DirectoryItemResponse: {
       /** Id */
@@ -2913,6 +2991,70 @@ export interface operations {
         "application/json": components["schemas"]["CalendarSyncDispatchRequest"];
       };
     };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkflowDispatchResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_dead_letters_admin_ops_dead_letters_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeadLettersResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  rearm_dead_letter_admin_ops_dead_letters__dead_letter_id__rearm_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        dead_letter_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
     responses: {
       /** @description Successful Response */
       200: {

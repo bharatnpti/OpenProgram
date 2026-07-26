@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
@@ -38,7 +39,22 @@ async def ready(registry: Annotated[ServiceRegistry, Depends(get_registry)]) -> 
 
 @router.get("/metrics")
 async def metrics(request: Request) -> Response:
+    registry = get_registry(request)
+    settings = get_settings_from_request(request)
+    metrics = request.app.state.metrics
+    try:
+        cutoff = datetime.now(tz=UTC) - timedelta(seconds=settings.inbound_events_grace_seconds)
+        stuck = await registry.inbound_chat_event_repository().list_stuck(
+            settings.tenant_id, cutoff
+        )
+        open_dead_letters = await registry.dead_letter_repository().count_open_dead_letters(
+            settings.tenant_id
+        )
+        metrics.set_workflow_backlog(open_dead_letters, len(stuck))
+    except Exception:
+        # Metrics scraping must never fail the endpoint; leave prior gauge values.
+        pass
     return Response(
-        content=request.app.state.metrics.render(),
+        content=metrics.render(),
         media_type=CONTENT_TYPE_LATEST,
     )

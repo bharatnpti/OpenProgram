@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from redis.asyncio import Redis
 
@@ -56,6 +56,7 @@ from infra.adapters.readiness import (
     HttpReadinessProbe,
     RedisReadinessProbe,
     StaticReadinessProbe,
+    WorkflowBacklogReadinessProbe,
 )
 from infra.adapters.workflows.dbos import (
     DbosWorkflowReadinessProbe,
@@ -256,7 +257,16 @@ def build_readiness_probes(
     settings: Settings,
     executor_factory: Callable[[], AsyncReadinessExecutor],
     redis_client_factory: Callable[[], Redis],
+    workflow_backlog_count: Callable[[], Awaitable[int]] | None = None,
 ) -> dict[str, ReadinessProbe]:
+    backlog_probe: ReadinessProbe = (
+        WorkflowBacklogReadinessProbe(
+            workflow_backlog_count,
+            threshold=settings.workflow_backlog_ready_threshold,
+        )
+        if workflow_backlog_count is not None
+        else StaticReadinessProbe()
+    )
     if settings.runtime_mode == "memory":
         return {
             "settings": StaticReadinessProbe(),
@@ -265,6 +275,7 @@ def build_readiness_probes(
             "chat_provider": StaticReadinessProbe(),
             "llm_provider": StaticReadinessProbe(),
             "workflow_provider": StaticReadinessProbe(),
+            "workflow_backlog": backlog_probe,
         }
     return {
         "database": DatabaseReadinessProbe(executor_factory()),
@@ -272,6 +283,7 @@ def build_readiness_probes(
         "redis": RedisReadinessProbe(redis_client_factory()),
         "slack_provider": _slack_provider_readiness_probe(settings),
         "workflow_provider": build_workflow_readiness_probe(settings),
+        "workflow_backlog": backlog_probe,
         "llm_provider": _llm_readiness_probe(settings),
         "llm_trace": _llm_trace_readiness_probe(settings),
     }

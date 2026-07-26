@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationRole, ConversationTurn
+from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.directory import DirectoryUser
 from core.domain.graph import EntityRef, FactEvent, NodeKind
 from core.domain.identity import IdentityLink
@@ -40,6 +41,7 @@ from core.ports.directory import DirectoryUserRepository
 from core.ports.issue_tracker import IssueTracker
 from core.ports.repositories import (
     ConversationRepository,
+    DeadLetterRepository,
     IdentityLinkRepository,
     InboundChatEventRepository,
     NarrativeBriefRepository,
@@ -515,6 +517,73 @@ async def assert_narrative_brief_repository_contract(
     assert await repository.latest_briefs("demo", BriefKind.DAILY_POD) == [daily]
     assert await repository.latest_briefs("demo", limit=1) == [later]
     assert await repository.latest_briefs("other") == []
+
+
+async def assert_dead_letter_repository_contract(
+    repository: DeadLetterRepository,
+) -> None:
+    assert await repository.list_open_dead_letters("demo") == []
+    assert await repository.count_open_dead_letters("demo") == 0
+    assert await repository.get_dead_letter("demo", "missing") is None
+
+    first = DeadLetter(
+        id="demo:conv-1:1",
+        tenant_id="demo",
+        kind="inbound_reply",
+        conversation_key="demo:conv-1",
+        event_ids=("evt-1", "evt-2"),
+        reason="grace exceeded",
+        attempts=3,
+        first_seen_at=datetime(2026, 1, 10, 12, 0, tzinfo=UTC),
+        dead_lettered_at=datetime(2026, 1, 10, 13, 0, tzinfo=UTC),
+    )
+    later = DeadLetter(
+        id="demo:conv-2:1",
+        tenant_id="demo",
+        kind="inbound_reply",
+        conversation_key="demo:conv-2",
+        event_ids=("evt-3",),
+        reason="grace exceeded",
+        attempts=1,
+        first_seen_at=datetime(2026, 1, 11, 9, 0, tzinfo=UTC),
+        dead_lettered_at=datetime(2026, 1, 11, 10, 0, tzinfo=UTC),
+    )
+    other_tenant = DeadLetter(
+        id="other:conv-9:1",
+        tenant_id="other",
+        kind="inbound_reply",
+        conversation_key="other:conv-9",
+        event_ids=("evt-9",),
+        reason="grace exceeded",
+        attempts=1,
+        first_seen_at=datetime(2026, 1, 11, 9, 0, tzinfo=UTC),
+        dead_lettered_at=datetime(2026, 1, 11, 10, 0, tzinfo=UTC),
+    )
+    await repository.record_dead_letter(first)
+    await repository.record_dead_letter(later)
+    await repository.record_dead_letter(other_tenant)
+
+    # record is idempotent by (tenant_id, id): re-recording upserts in place.
+    await repository.record_dead_letter(first)
+
+    newest_first = await repository.list_open_dead_letters("demo")
+    assert [dl.id for dl in newest_first] == [later.id, first.id]
+    assert await repository.count_open_dead_letters("demo") == 2
+    assert await repository.list_open_dead_letters("demo", limit=1) == [later]
+    assert await repository.list_open_dead_letters("other") == [other_tenant]
+
+    fetched = await repository.get_dead_letter("demo", first.id)
+    assert fetched is not None
+    assert fetched.event_ids == ("evt-1", "evt-2")
+
+    rearm_time = datetime(2026, 1, 12, 8, 0, tzinfo=UTC)
+    rearmed = await repository.mark_dead_letter_rearmed("demo", first.id, rearm_time)
+    assert rearmed is not None
+    assert rearmed.status == DeadLetterStatus.REARMED
+    assert rearmed.rearmed_at == rearm_time
+    assert await repository.count_open_dead_letters("demo") == 1
+    assert [dl.id for dl in await repository.list_open_dead_letters("demo")] == [later.id]
+    assert await repository.mark_dead_letter_rearmed("demo", "missing", rearm_time) is None
 
 
 async def assert_sync_cursor_repository_contract(repository: SyncCursorRepository) -> None:

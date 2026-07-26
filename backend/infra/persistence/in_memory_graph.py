@@ -10,6 +10,7 @@ from uuid import uuid4
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationTurn
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
+from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.directory import DirectoryUser
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
@@ -64,6 +65,7 @@ class InMemoryGraphStore:
     _cross_person_requests: dict[tuple[str, str], CrossPersonRequest] = field(default_factory=dict)
     _inbound_chat_events: list[InboundChatEvent] = field(default_factory=list)
     _narrative_briefs: list[NarrativeBrief] = field(default_factory=list)
+    _dead_letters: dict[tuple[str, str], DeadLetter] = field(default_factory=dict)
     _checkin_reply_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
@@ -753,6 +755,40 @@ class InMemoryGraphStore:
         ]
         matching.sort(key=lambda brief: brief.generated_at, reverse=True)
         return matching[:limit]
+
+    async def record_dead_letter(self, dl: DeadLetter) -> None:
+        self._dead_letters[(dl.tenant_id, dl.id)] = dl
+
+    async def list_open_dead_letters(self, tenant_id: str, limit: int = 100) -> list[DeadLetter]:
+        if limit <= 0:
+            return []
+        matching = [
+            dl
+            for dl in self._dead_letters.values()
+            if dl.tenant_id == tenant_id and dl.status == DeadLetterStatus.OPEN
+        ]
+        matching.sort(key=lambda dl: dl.dead_lettered_at, reverse=True)
+        return matching[:limit]
+
+    async def get_dead_letter(self, tenant_id: str, id: str) -> DeadLetter | None:
+        return self._dead_letters.get((tenant_id, id))
+
+    async def mark_dead_letter_rearmed(
+        self, tenant_id: str, id: str, rearmed_at: datetime
+    ) -> DeadLetter | None:
+        existing = self._dead_letters.get((tenant_id, id))
+        if existing is None:
+            return None
+        updated = replace(existing, status=DeadLetterStatus.REARMED, rearmed_at=rearmed_at)
+        self._dead_letters[(tenant_id, id)] = updated
+        return updated
+
+    async def count_open_dead_letters(self, tenant_id: str) -> int:
+        return sum(
+            1
+            for dl in self._dead_letters.values()
+            if dl.tenant_id == tenant_id and dl.status == DeadLetterStatus.OPEN
+        )
 
     async def get_cursor(self, tenant_id: str, connector: str, scope: str) -> SyncCursor:
         return self._sync_cursors.get((tenant_id, connector, scope), SyncCursor())

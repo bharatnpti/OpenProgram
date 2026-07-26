@@ -13,6 +13,7 @@ from config.settings import Settings
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.availability import AvailabilityService
 from core.application.cross_person_service import CrossPersonRequestService
+from core.application.dead_letter_service import DeadLetterService
 from core.application.directory_sync_service import DirectorySyncService
 from core.application.reply_ingestion import ReplyDrainResult, ReplyIngestionService
 from core.application.self_status_service import SelfStatusService
@@ -43,6 +44,7 @@ from core.ports.reply_processing import ReplyProcessingOutcome
 from core.ports.repositories import (
     ConversationRepository,
     CrossPersonRequestRepository,
+    DeadLetterRepository,
     GraphRepository,
     IdentityLinkRepository,
     InboundChatEventRepository,
@@ -83,6 +85,7 @@ from infra.persistence.postgres_graph import (
 from infra.persistence.postgres_inbound import PostgresInboundChatEventRepository
 from infra.persistence.postgres_status import (
     PostgresConversationRepository,
+    PostgresDeadLetterRepository,
     PostgresNarrativeBriefRepository,
     PostgresRollupRepository,
     PostgresStatusRepository,
@@ -121,6 +124,10 @@ class ServiceRegistry:
         init=False,
     )
     _postgres_narrative_brief_repository: PostgresNarrativeBriefRepository | None = field(
+        default=None,
+        init=False,
+    )
+    _postgres_dead_letter_repository: PostgresDeadLetterRepository | None = field(
         default=None,
         init=False,
     )
@@ -237,6 +244,16 @@ class ServiceRegistry:
                 self._executor()
             )
         return self._postgres_narrative_brief_repository
+
+    def dead_letter_repository(self) -> DeadLetterRepository:
+        if self.settings.runtime_mode == "memory":
+            return self._memory_graph_store()
+        if self._postgres_dead_letter_repository is None:
+            self._postgres_dead_letter_repository = PostgresDeadLetterRepository(self._executor())
+        return self._postgres_dead_letter_repository
+
+    def dead_letter_service(self) -> DeadLetterService:
+        return DeadLetterService(self.dead_letter_repository())
 
     def auth_provider(self) -> AuthProvider:
         if self._auth_provider is None:
@@ -421,11 +438,57 @@ class ServiceRegistry:
         cutoff = reference - timedelta(seconds=grace_seconds)
         stuck = await self.inbound_chat_event_repository().list_stuck(tenant_id, cutoff)
         keys = sorted({event.conversation_key for event in stuck})
+        # Record dead-letters for bursts whose durable retries are exhausted --
+        # either they exceeded the hard time threshold or the max reply-processing
+        # attempt count -- BEFORE draining, so operators still see them even if a
+        # later drain wins. Re-sweeps upsert the same deterministic row.
+        dead_lettered = await self._record_inbound_dead_letters(tenant_id, stuck, reference)
         for key in keys:
             # Drain directly for guaranteed progress rather than only re-arming a
             # possibly-completed coalesce workflow (the durable R3 backstop).
             await self.drain_inbound_conversation(tenant_id, key)
-        return InboundSweeperResult(tenant_id=tenant_id, rearmed=len(keys), conversation_keys=keys)
+        return InboundSweeperResult(
+            tenant_id=tenant_id,
+            rearmed=len(keys),
+            conversation_keys=keys,
+            dead_lettered=dead_lettered,
+        )
+
+    async def _record_inbound_dead_letters(
+        self,
+        tenant_id: str,
+        stuck: list[InboundChatEvent],
+        reference: datetime,
+    ) -> int:
+        dead_letter_cutoff = reference - timedelta(
+            seconds=self.settings.inbound_events_dead_letter_seconds
+        )
+        max_retries = self.settings.reply_processing_max_retries
+        exhausted = [
+            event
+            for event in stuck
+            if event.received_at < dead_letter_cutoff or event.attempts >= max_retries
+        ]
+        if not exhausted:
+            return 0
+        service = self.dead_letter_service()
+        by_conversation: dict[str, list[InboundChatEvent]] = {}
+        for event in exhausted:
+            by_conversation.setdefault(event.conversation_key, []).append(event)
+        for conversation, events in by_conversation.items():
+            event_ids = tuple(event.id for event in events if event.id is not None)
+            first_seen_at = min(event.received_at for event in events)
+            attempts = max(event.attempts for event in events)
+            await service.record_inbound(
+                tenant_id=tenant_id,
+                conversation_key=conversation,
+                event_ids=event_ids,
+                reason="inbound reply retries exhausted",
+                attempts=attempts,
+                first_seen_at=first_seen_at,
+                now=reference,
+            )
+        return len(by_conversation)
 
     async def process_chat_webhook(
         self,
@@ -705,6 +768,7 @@ class ServiceRegistry:
             self.settings,
             self._executor,
             self._redis_client,
+            workflow_backlog_count=self._open_dead_letter_count,
         )
         checks: dict[str, Callable[[], Awaitable[bool]]] = {
             name: probe.check for name, probe in probes.items()
@@ -753,6 +817,9 @@ class ServiceRegistry:
         if self.secret_records is None:
             self.secret_records = InMemoryEncryptedSecretRecordStore()
         return self.secret_records
+
+    async def _open_dead_letter_count(self) -> int:
+        return await self.dead_letter_repository().count_open_dead_letters(self.settings.tenant_id)
 
     async def _bounded_check(self, check: Callable[[], Awaitable[bool]]) -> bool:
         try:

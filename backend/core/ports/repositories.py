@@ -7,6 +7,7 @@ from typing import Protocol
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationTurn
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
+from core.domain.dead_letter import DeadLetter
 from core.domain.graph import (
     EdgeKind,
     EntityRef,
@@ -285,6 +286,27 @@ class NarrativeBriefRepository(Protocol):
         kind: BriefKind | None = None,
         limit: int = 20,
     ) -> list[NarrativeBrief]: ...
+
+
+class DeadLetterRepository(Protocol):
+    """Durable record of workflow events whose retries were exhausted.
+
+    Rows carry only identifiers and diagnostics -- never raw DM/reply content.
+    """
+
+    async def record_dead_letter(self, dl: DeadLetter) -> None: ...
+
+    async def list_open_dead_letters(
+        self, tenant_id: str, limit: int = 100
+    ) -> list[DeadLetter]: ...
+
+    async def get_dead_letter(self, tenant_id: str, id: str) -> DeadLetter | None: ...
+
+    async def mark_dead_letter_rearmed(
+        self, tenant_id: str, id: str, rearmed_at: datetime
+    ) -> DeadLetter | None: ...
+
+    async def count_open_dead_letters(self, tenant_id: str) -> int: ...
 
 
 class SyncCursorRepository(Protocol):
