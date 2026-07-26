@@ -35,7 +35,8 @@ Being implemented feature-by-feature via sub-agents; each committed + this doc u
 - **UX Theme 2 — reply-path trust — DONE** (commit `998a097`): "Got it 👍" ack DM on reply finalization (single chokepoint, idempotent, not in conversation history); low-confidence acks (`CheckInSignals.parser_confident` False) add a recorded-summary + "reply 'fix'" hint. `checkin_ack_enabled` setting.
 - **UX Theme 1 — contextual check-in prefill:** DM prefilled with the developer's active issues + carried-forward blockers as tappable confirm/correct items; **"unmapped members"** visibility for admins.
 - **UX Theme 3 — write-back adoption metric:** track "Jira updates applied via check-in" on the admin/exec surface.
-- **Plan 03 A follow-ons:** interactive DM consent loop (propose diff → await yes/no; today records a `proposed` row); consent-setting API + Admin UI; **undo HTTP route** (`WriteBackService.revert()` exists + tested, no endpoint).
+- **Plan 03 A undo + adoption — DONE** (commit `c27a500`): `POST /admin/ops/writeback/{audit_id}/revert` (through `WriteBackService`, idempotent, 404/409/502); adoption count via `GET /persona/writeback-adoption` + `openprogram_writeback_applied` gauge + Manager/Exec "Jira updates via check-in" KPI.
+- **Plan 03 A consent loop — REMAINING:** interactive DM consent (propose diff → await yes/no; today records a `proposed` row) + consent-setting API + Admin UI.
 - **Plan 02 C4 follow-ons:** identity-link Admin UI; directory **email auto-match** to pre-populate links.
 - **Plan 01 follow-ons:** Temporal `continue_as_new` for very long coalesce conversations; dedicated burst/retry BDD scenarios.
 
