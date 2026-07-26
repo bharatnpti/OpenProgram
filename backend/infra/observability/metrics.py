@@ -13,10 +13,14 @@ class HttpMetrics:
     app_info: Gauge
     dead_letters_open: Gauge
     inbound_events_stuck: Gauge
+    writeback_applied: Gauge
 
     def set_workflow_backlog(self, dead_letters_open: int, inbound_events_stuck: int) -> None:
         self.dead_letters_open.set(dead_letters_open)
         self.inbound_events_stuck.set(inbound_events_stuck)
+
+    def set_writeback_applied(self, applied_count: int) -> None:
+        self.writeback_applied.set(applied_count)
 
     def observe_request(self, method: str, route: str, status_code: int, duration: float) -> None:
         labels = {
@@ -62,6 +66,11 @@ def build_http_metrics(environment: str) -> HttpMetrics:
         "Inbound chat events past the sweeper grace window awaiting finalization.",
         registry=registry,
     )
+    writeback_applied = Gauge(
+        "openprogram_writeback_applied",
+        "Issue-tracker updates applied via check-in write-back (adoption signal).",
+        registry=registry,
+    )
     return HttpMetrics(
         registry=registry,
         requests_total=requests_total,
@@ -69,4 +78,5 @@ def build_http_metrics(environment: str) -> HttpMetrics:
         app_info=app_info,
         dead_letters_open=dead_letters_open,
         inbound_events_stuck=inbound_events_stuck,
+        writeback_applied=writeback_applied,
     )

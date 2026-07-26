@@ -63,6 +63,7 @@ export type PodEscalationContactsUpdateRequest =
 export type BriefKind = components["schemas"]["BriefKind"];
 export type NarrativeBriefResponse = components["schemas"]["NarrativeBriefResponse"];
 export type NarrativeBriefsResponse = components["schemas"]["NarrativeBriefsResponse"];
+export type WriteBackAdoptionResponse = components["schemas"]["WriteBackAdoptionResponse"];
 
 export interface WorkItemFlowResponse {
   id: string;

@@ -398,6 +398,51 @@ async def assert_writeback_audit_repository_contract(
     assert await repository.find_existing("demo", "PO-1", "todo", "corr-1") is None
     assert await repository.find_existing("demo", "PO-1", "done", "corr-2") is None
 
+    # Lookup by id is tenant-scoped.
+    assert await repository.get_writeback_audit("demo", "wb-1") == audit
+    assert await repository.get_writeback_audit("demo", "missing") is None
+    assert await repository.get_writeback_audit("other", "wb-1") is None
+
+    # Applied writes are counted and listed newest-first; other statuses excluded.
+    proposed = WriteBackAudit(
+        id="wb-2",
+        tenant_id="demo",
+        developer_id="dev-1",
+        issue_key="PO-2",
+        correlation_id="corr-2",
+        status=WriteBackStatus.PROPOSED,
+        target_state="done",
+        before_state="in_progress",
+        after_state="done",
+        comment=None,
+        source="checkin",
+        created_at=datetime(2026, 1, 11, 9, 0, tzinfo=UTC),
+    )
+    applied_later = WriteBackAudit(
+        id="wb-3",
+        tenant_id="demo",
+        developer_id="dev-1",
+        issue_key="PO-3",
+        correlation_id="corr-3",
+        status=WriteBackStatus.APPLIED,
+        target_state="done",
+        before_state="in_progress",
+        after_state="done",
+        comment=None,
+        source="checkin",
+        created_at=datetime(2026, 1, 12, 9, 0, tzinfo=UTC),
+    )
+    await repository.record(proposed)
+    await repository.record(applied_later)
+    assert await repository.count_applied_writebacks("demo") == 2
+    assert await repository.count_applied_writebacks("other") == 0
+    assert await repository.count_applied_writebacks(
+        "demo", datetime(2026, 1, 12, 0, 0, tzinfo=UTC)
+    ) == 1
+    recent = await repository.list_applied_writebacks("demo", 5)
+    assert [entry.id for entry in recent] == ["wb-3", "wb-1"]
+    assert await repository.list_applied_writebacks("demo", 1) == [applied_later]
+
 
 async def assert_directory_user_repository_contract(repository: DirectoryUserRepository) -> None:
     users = [
