@@ -28,6 +28,8 @@ import type {
   PodMemberLinkRequest,
   PodBlockersResponse,
   PodCheckinsResponse,
+  NodeKind,
+  NodeTrendResponse,
   PortfolioHeatmapResponse,
   PortfolioFeedResponse,
   PortfolioFlowResponse,
@@ -127,6 +129,17 @@ export const apiClient = {
   portfolioHeatmap: (asOf?: string, programRootId?: string) =>
     requestJson<PortfolioHeatmapResponse>(
       withQuery("/portfolio/heatmap", { as_of: asOf, program_root_id: programRootId }),
+    ),
+  nodeTrend: (
+    level: NodeKind,
+    entityId: string,
+    options?: { asOf?: string; windowDays?: number },
+  ) =>
+    requestJson<NodeTrendResponse>(
+      withQuery(`/persona/${level}/${entityId}/trend`, {
+        as_of: options?.asOf,
+        window_days: options?.windowDays ? String(options.windowDays) : undefined,
+      }),
     ),
   workstreamFlow: (workstreamId: string, asOf?: string) =>
     requestJson<WorkstreamFlowResponse>(
