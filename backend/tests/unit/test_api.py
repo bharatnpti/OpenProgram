@@ -241,6 +241,40 @@ def test_identity_unmapped_requires_manage_config(settings: Settings) -> None:
     assert auto_match.status_code == 403
 
 
+def test_writeback_consent_put_then_get_round_trips(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        client.post("/config/directory/sync")
+        client.post("/config/members/from-directory", json={"external_ids": ["U1001"]})
+
+        default = client.get("/config/members/U1001/writeback-consent")
+        for value in ("auto_apply", "never", "always_ask"):
+            updated = client.put(
+                "/config/members/U1001/writeback-consent",
+                json={"consent": value},
+            )
+            assert updated.status_code == 200, value
+            assert updated.json() == {"developer_id": "U1001", "consent": value}
+            after = client.get("/config/members/U1001/writeback-consent")
+            assert after.json()["consent"] == value
+
+    assert default.status_code == 200
+    # Default when unset is always_ask.
+    assert default.json() == {"developer_id": "U1001", "consent": "always_ask"}
+
+
+def test_writeback_consent_requires_manage_config(settings: Settings) -> None:
+    app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "dev"}))
+    with TestClient(app, raise_server_exceptions=False) as client:
+        get_resp = client.get("/config/members/U1001/writeback-consent")
+        put_resp = client.put(
+            "/config/members/U1001/writeback-consent",
+            json={"consent": "never"},
+        )
+    assert get_resp.status_code == 403
+    assert put_resp.status_code == 403
+
+
 def test_admin_directory_search_and_member_add_flow(settings: Settings) -> None:
     app = create_app(settings=settings)
     with TestClient(app) as client:

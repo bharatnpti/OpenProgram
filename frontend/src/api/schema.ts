@@ -69,6 +69,9 @@ export type BriefKind = components["schemas"]["BriefKind"];
 export type NarrativeBriefResponse = components["schemas"]["NarrativeBriefResponse"];
 export type NarrativeBriefsResponse = components["schemas"]["NarrativeBriefsResponse"];
 export type WriteBackAdoptionResponse = components["schemas"]["WriteBackAdoptionResponse"];
+export type WriteBackConsent = components["schemas"]["WriteBackConsent"];
+export type WritebackConsentResponse = components["schemas"]["WritebackConsentResponse"];
+export type WritebackConsentUpdateRequest = components["schemas"]["WritebackConsentUpdateRequest"];
 
 export interface WorkItemFlowResponse {
   id: string;
