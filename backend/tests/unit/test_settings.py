@@ -221,6 +221,23 @@ def test_settings_allow_dev_auth_and_default_key_in_local() -> None:
     assert settings.secret_key == SECRET_KEY
 
 
+def test_settings_escalation_policy_default_ladder() -> None:
+    settings = _settings(
+        secret_key=SECRET_KEY,
+        checkin_reply_wait_seconds=100,
+        escalation_scrum_master_wait_seconds=200,
+        escalation_manager_wait_seconds=300,
+    )
+    policy = settings.escalation_policy()
+    assert [step.target.value for step in policy.steps] == ["developer", "scrum_master", "manager"]
+    assert [step.wait_seconds for step in policy.steps] == [100, 200, 300]
+
+
+def test_settings_escalation_policy_disabled_is_empty() -> None:
+    settings = _settings(secret_key=SECRET_KEY, escalation_enabled=False)
+    assert settings.escalation_policy().steps == ()
+
+
 def test_settings_validate_provider_selectors() -> None:
     settings = _settings(
         secret_key=SECRET_KEY,
