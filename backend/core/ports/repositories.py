@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Protocol
 
+from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationTurn
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
 from core.domain.graph import (
@@ -269,6 +270,22 @@ class RollupRepository(Protocol):
     async def node_status_history(
         self, tenant_id: str, entity_ref: EntityRef, start: date, end: date
     ) -> list[NodeStatus]: ...
+
+
+class NarrativeBriefRepository(Protocol):
+    """Persist scheduled narrative briefs for later dashboard retrieval.
+
+    Briefs are descriptive rollups only -- never raw check-in/DM/reply content.
+    """
+
+    async def record_brief(self, brief: NarrativeBrief) -> None: ...
+
+    async def latest_briefs(
+        self,
+        tenant_id: str,
+        kind: BriefKind | None = None,
+        limit: int = 20,
+    ) -> list[NarrativeBrief]: ...
 
 
 class SyncCursorRepository(Protocol):

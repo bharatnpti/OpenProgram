@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from api.dependencies import get_directory_sync_service
 from api.main import create_app
 from config.settings import Settings
+from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.errors import ProviderConfigurationError
 from core.domain.graph import EntityRef, NodeKind, Task
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
@@ -98,6 +99,49 @@ def test_node_trend_endpoint_returns_daily_rag_history(settings: Settings) -> No
         "2026-01-10",
     ]
     assert [point["score"] for point in body["points"]] == [1, 2, 3]
+
+
+def test_narrative_briefs_endpoint_returns_newest_first(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        repository = app.state.registry.narrative_brief_repository()
+        for kind, scope_id, generated_at, title in (
+            (BriefKind.DAILY_POD, "pod-1", "2026-01-10T17:00:00+00:00", "Pod 1 daily"),
+            (BriefKind.EXEC, "", "2026-01-11T16:00:00+00:00", "Exec brief"),
+        ):
+            asyncio.run(
+                repository.record_brief(
+                    NarrativeBrief(
+                        tenant_id="demo",
+                        kind=kind,
+                        scope_id=scope_id,
+                        title=title,
+                        body="Descriptive rollup only.",
+                        generated_at=datetime.fromisoformat(generated_at),
+                        sources=("pod:pod-1",),
+                    )
+                )
+            )
+        all_response = client.get("/persona/briefs")
+        exec_response = client.get("/persona/briefs", params={"kind": "exec"})
+
+    assert all_response.status_code == 200
+    briefs = all_response.json()["briefs"]
+    assert [brief["title"] for brief in briefs] == ["Exec brief", "Pod 1 daily"]
+    assert briefs[0]["kind"] == "exec"
+    assert briefs[1]["sources"] == ["pod:pod-1"]
+
+    assert exec_response.status_code == 200
+    exec_briefs = exec_response.json()["briefs"]
+    assert [brief["title"] for brief in exec_briefs] == ["Exec brief"]
+
+
+def test_narrative_briefs_endpoint_rejects_out_of_range_limit(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/persona/briefs", params={"limit": 0})
+
+    assert response.status_code == 422
 
 
 def test_node_trend_endpoint_rejects_unsupported_kind(settings: Settings) -> None:

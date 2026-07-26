@@ -46,6 +46,7 @@ from core.ports.repositories import (
     GraphRepository,
     IdentityLinkRepository,
     InboundChatEventRepository,
+    NarrativeBriefRepository,
     RollupRepository,
     StatusRepository,
     SyncCursorRepository,
@@ -84,6 +85,7 @@ from infra.persistence.postgres_graph import (
 from infra.persistence.postgres_inbound import PostgresInboundChatEventRepository
 from infra.persistence.postgres_status import (
     PostgresConversationRepository,
+    PostgresNarrativeBriefRepository,
     PostgresRollupRepository,
     PostgresStatusRepository,
     PostgresSyncCursorRepository,
@@ -118,6 +120,10 @@ class ServiceRegistry:
     )
     _postgres_rollup_repository: PostgresRollupRepository | None = field(default=None, init=False)
     _postgres_sync_cursor_repository: PostgresSyncCursorRepository | None = field(
+        default=None,
+        init=False,
+    )
+    _postgres_narrative_brief_repository: PostgresNarrativeBriefRepository | None = field(
         default=None,
         init=False,
     )
@@ -232,6 +238,15 @@ class ServiceRegistry:
         if self._postgres_sync_cursor_repository is None:
             self._postgres_sync_cursor_repository = PostgresSyncCursorRepository(self._executor())
         return self._postgres_sync_cursor_repository
+
+    def narrative_brief_repository(self) -> NarrativeBriefRepository:
+        if self.settings.runtime_mode == "memory":
+            return self._memory_graph_store()
+        if self._postgres_narrative_brief_repository is None:
+            self._postgres_narrative_brief_repository = PostgresNarrativeBriefRepository(
+                self._executor()
+            )
+        return self._postgres_narrative_brief_repository
 
     def auth_provider(self) -> AuthProvider:
         if self._auth_provider is None:

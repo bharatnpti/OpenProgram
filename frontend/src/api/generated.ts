@@ -1121,6 +1121,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/persona/briefs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Narrative Briefs */
+    get: operations["narrative_briefs_persona_briefs_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/portfolio/cross-person-requests": {
     parameters: {
       query?: never;
@@ -1363,6 +1380,15 @@ export interface components {
       status_as_of: string;
       source_ref: components["schemas"]["EntityRefDto"];
     };
+    /**
+     * BriefKind
+     * @description The scheduled narrative brief flavors.
+     *
+     *     Each kind targets a different scope: pod-level daily summaries, project-level
+     *     weekly updates, and a single portfolio-wide executive brief.
+     * @enum {string}
+     */
+    BriefKind: "daily_pod" | "weekly_project" | "exec";
     /** CalendarSyncDispatchRequest */
     CalendarSyncDispatchRequest: {
       /** Tenant Id */
@@ -1967,6 +1993,28 @@ export interface components {
       status_as_of: string;
       /** Confirmed At */
       confirmed_at: string | null;
+    };
+    /** NarrativeBriefResponse */
+    NarrativeBriefResponse: {
+      kind: components["schemas"]["BriefKind"];
+      /** Scope Id */
+      scope_id: string;
+      /** Title */
+      title: string;
+      /** Body */
+      body: string;
+      /**
+       * Generated At
+       * Format: date-time
+       */
+      generated_at: string;
+      /** Sources */
+      sources: string[];
+    };
+    /** NarrativeBriefsResponse */
+    NarrativeBriefsResponse: {
+      /** Briefs */
+      briefs: components["schemas"]["NarrativeBriefResponse"][];
     };
     /**
      * NodeKind
@@ -5615,6 +5663,40 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PortfolioFeedResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  narrative_briefs_persona_briefs_get: {
+    parameters: {
+      query?: {
+        kind?: components["schemas"]["BriefKind"] | null;
+        limit?: number;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["NarrativeBriefsResponse"];
         };
       };
       /** @description Validation Error */
