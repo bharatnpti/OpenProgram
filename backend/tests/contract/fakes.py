@@ -963,6 +963,18 @@ class FakeWriteBackAuditRepository:
             key=lambda audit: audit.created_at,
         )
 
+    async def list_writeback_by_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> list[WriteBackAudit]:
+        return sorted(
+            (
+                audit
+                for audit in self.audits.values()
+                if audit.tenant_id == tenant_id and audit.correlation_id == correlation_id
+            ),
+            key=lambda audit: audit.created_at,
+        )
+
     async def find_existing(
         self,
         tenant_id: str,

@@ -777,6 +777,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/config/members/{member_id}/writeback-consent": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Config Member Writeback Consent */
+    get: operations["get_config_member_writeback_consent_config_members__member_id__writeback_consent_get"];
+    /** Update Config Member Writeback Consent */
+    put: operations["update_config_member_writeback_consent_config_members__member_id__writeback_consent_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/members/{member_id}/identity-link": {
     parameters: {
       query?: never;
@@ -2779,6 +2797,15 @@ export interface components {
       /** Recent */
       recent: components["schemas"]["WriteBackAdoptionEntry"][];
     };
+    /**
+     * WriteBackConsent
+     * @description Per-developer standing consent for automated issue-tracker write-back.
+     *
+     *     ``always_ask`` (the safe default) never writes automatically; ``auto_apply``
+     *     grants standing consent; ``never`` opts out entirely.
+     * @enum {string}
+     */
+    WriteBackConsent: "always_ask" | "auto_apply" | "never";
     /** WriteBackRevertResponse */
     WriteBackRevertResponse: {
       /** Audit Id */
@@ -2796,7 +2823,17 @@ export interface components {
      * @description Lifecycle of a single audited issue-tracker write.
      * @enum {string}
      */
-    WriteBackStatus: "proposed" | "applied" | "failed" | "reverted";
+    WriteBackStatus: "proposed" | "applied" | "failed" | "reverted" | "declined" | "expired";
+    /** WritebackConsentResponse */
+    WritebackConsentResponse: {
+      /** Developer Id */
+      developer_id: string;
+      consent: components["schemas"]["WriteBackConsent"];
+    };
+    /** WritebackConsentUpdateRequest */
+    WritebackConsentUpdateRequest: {
+      consent: components["schemas"]["WriteBackConsent"];
+    };
   };
   responses: never;
   parameters: never;
@@ -5040,6 +5077,76 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["CheckinPreferenceResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_config_member_writeback_consent_config_members__member_id__writeback_consent_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WritebackConsentResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_config_member_writeback_consent_config_members__member_id__writeback_consent_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WritebackConsentUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WritebackConsentResponse"];
         };
       };
       /** @description Validation Error */

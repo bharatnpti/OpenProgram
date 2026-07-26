@@ -26,6 +26,8 @@ import type {
   IdentityLinkUpdateRequest,
   IdentityAutoMatchResponse,
   UnmappedMemberResponse,
+  WritebackConsentResponse,
+  WritebackConsentUpdateRequest,
   DirectoryItemResponse,
   DirectorySearchResponse,
   DirectorySyncResponse,
@@ -330,6 +332,13 @@ export const apiClient = {
     requestJson<PodEscalationContactsResponse>(`/config/pods/${podId}/escalation-contacts`),
   updatePodEscalationContacts: (podId: string, body: PodEscalationContactsUpdateRequest) =>
     requestJson<PodEscalationContactsResponse>(`/config/pods/${podId}/escalation-contacts`, {
+      method: "PUT",
+      body,
+    }),
+  configMemberWritebackConsent: (memberId: string) =>
+    requestJson<WritebackConsentResponse>(`/config/members/${memberId}/writeback-consent`),
+  updateConfigMemberWritebackConsent: (memberId: string, body: WritebackConsentUpdateRequest) =>
+    requestJson<WritebackConsentResponse>(`/config/members/${memberId}/writeback-consent`, {
       method: "PUT",
       body,
     }),

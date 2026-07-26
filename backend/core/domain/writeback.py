@@ -12,6 +12,8 @@ class WriteBackStatus(StrEnum):
     APPLIED = "applied"
     FAILED = "failed"
     REVERTED = "reverted"
+    DECLINED = "declined"
+    EXPIRED = "expired"
 
 
 @dataclass(frozen=True, kw_only=True)

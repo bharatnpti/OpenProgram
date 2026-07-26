@@ -47,7 +47,12 @@ from core.domain.graph import EdgeKind, GraphEdge, GraphNode, GraphTree, NodeKin
 from core.domain.identity import IdentityLink
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import Rag, RollupFactor
-from core.domain.status import CheckInPreference, DeveloperStatus, StatusSource
+from core.domain.status import (
+    CheckInPreference,
+    DeveloperStatus,
+    StatusSource,
+    WriteBackConsent,
+)
 from core.domain.writeback import WriteBackAdoption, WriteBackAudit, WriteBackStatus
 from core.ports.auth import AuthenticatedUser
 
@@ -1696,6 +1701,26 @@ class TenantWritebackUpdateRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     enabled: bool
+
+
+class WritebackConsentResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    developer_id: str
+    consent: WriteBackConsent
+
+    @classmethod
+    def from_domain(cls, preference: CheckInPreference) -> WritebackConsentResponse:
+        return cls(
+            developer_id=preference.developer_id,
+            consent=preference.write_back_consent,
+        )
+
+
+class WritebackConsentUpdateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    consent: WriteBackConsent
 
 
 class MyStatusResponse(BaseModel):

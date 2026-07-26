@@ -346,6 +346,10 @@ class WriteBackAuditRepository(Protocol):
 
     async def list_for_issue(self, tenant_id: str, issue_key: str) -> list[WriteBackAudit]: ...
 
+    async def list_writeback_by_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> list[WriteBackAudit]: ...
+
     async def find_existing(
         self,
         tenant_id: str,

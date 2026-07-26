@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from typing import Annotated
 
@@ -39,6 +40,8 @@ from api.dtos import (
     WorkItemFromBranchRequest,
     WorkItemFromPrRequest,
     WorkItemTransitionRequest,
+    WritebackConsentResponse,
+    WritebackConsentUpdateRequest,
 )
 from config.settings import Settings
 from core.application.authorization import AuthorizationPolicy, Capability
@@ -956,6 +959,48 @@ async def list_config_checkin_preferences(
         )
         for member in members
     ]
+
+
+@router.get(
+    "/config/members/{member_id}/writeback-consent",
+    response_model=WritebackConsentResponse,
+)
+async def get_config_member_writeback_consent(
+    member_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+    settings: Annotated[Settings, Depends(get_settings_from_request)],
+) -> WritebackConsentResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        preference = await service.get_checkin_preference(principal.tenant_id, member_id)
+    except GraphNotFound as exc:
+        raise _http_error(exc) from exc
+    return WritebackConsentResponse.from_domain(
+        preference or _default_preference(principal.tenant_id, member_id, settings)
+    )
+
+
+@router.put(
+    "/config/members/{member_id}/writeback-consent",
+    response_model=WritebackConsentResponse,
+)
+async def update_config_member_writeback_consent(
+    member_id: str,
+    request: WritebackConsentUpdateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+    settings: Annotated[Settings, Depends(get_settings_from_request)],
+) -> WritebackConsentResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        existing = await service.get_checkin_preference(principal.tenant_id, member_id)
+        base = existing or _default_preference(principal.tenant_id, member_id, settings)
+        preference = replace(base, write_back_consent=request.consent)
+        updated = await service.record_checkin_preference(preference)
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return WritebackConsentResponse.from_domain(updated)
 
 
 @router.get(

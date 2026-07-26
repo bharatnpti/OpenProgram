@@ -3,7 +3,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from core.application.authorization import AuthorizationPolicy, Capability
-from core.application.writeback_service import WriteBackService
+from core.application.writeback_service import (
+    WriteBackService,
+    interpret_consent_reply,
+)
 from core.domain.auth import Principal
 from core.domain.errors import ProviderUnavailable
 from core.domain.integrations import Issue, IssueState
@@ -237,3 +240,144 @@ async def test_claim_without_actionable_change_is_skipped() -> None:
     assert results == []
     assert tracker.transitions == []
     assert audit.audits == {}
+
+
+async def test_auto_apply_records_standing_consent_provenance() -> None:
+    service, _, _ = _build(default_enabled=True, consent=WriteBackConsent.AUTO_APPLY)
+    results = await service.apply_from_checkin(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        claims=_claims(),
+    )
+    assert results[0].status is WriteBackStatus.APPLIED
+    assert results[0].source == "standing_consent"
+
+
+def test_interpret_consent_reply_affirm() -> None:
+    for text in ("yes", "Yes please", "yep", "apply it", "do it", "go ahead", "OK"):
+        assert interpret_consent_reply(text) == "affirm", text
+
+
+def test_interpret_consent_reply_decline() -> None:
+    for text in ("no", "No thanks", "nope", "please don't", "do not", "stop", "cancel"):
+        assert interpret_consent_reply(text) == "decline", text
+
+
+def test_interpret_consent_reply_unclear() -> None:
+    for text in ("", "maybe later", "what do you mean?", "yes but no", "hmm"):
+        assert interpret_consent_reply(text) == "unclear", text
+
+
+async def _propose_pending(
+    service: WriteBackService,
+) -> None:
+    proposed = await service.apply_from_checkin(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        claims=_claims(),
+    )
+    assert len(proposed) == 1
+    assert proposed[0].status is WriteBackStatus.PROPOSED
+
+
+async def test_resolve_affirmative_applies_pending_proposal() -> None:
+    service, tracker, audit = _build(default_enabled=True, consent=WriteBackConsent.ALWAYS_ASK)
+    await _propose_pending(service)
+    assert tracker.transitions == []
+
+    results = await service.resolve_consent_reply(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        reply_text="yes, do it",
+    )
+    assert len(results) == 1
+    assert results[0].status is WriteBackStatus.APPLIED
+    assert results[0].source == "consent_reply"
+    assert tracker.transitions == [(_TENANT, "PO-1", IssueState.DONE.value)]
+    assert tracker.comments == [(_TENANT, "PO-1", "shipped it")]
+    assert await service.list_pending_proposals(_TENANT, _CORRELATION) == []
+
+
+async def test_resolve_negative_records_declined_without_writing() -> None:
+    service, tracker, _ = _build(default_enabled=True, consent=WriteBackConsent.ALWAYS_ASK)
+    await _propose_pending(service)
+
+    results = await service.resolve_consent_reply(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        reply_text="no thanks",
+    )
+    assert len(results) == 1
+    assert results[0].status is WriteBackStatus.DECLINED
+    assert tracker.transitions == []
+    assert tracker.comments == []
+    assert await service.list_pending_proposals(_TENANT, _CORRELATION) == []
+
+
+async def test_resolve_unclear_leaves_proposal_pending() -> None:
+    service, tracker, _ = _build(default_enabled=True, consent=WriteBackConsent.ALWAYS_ASK)
+    await _propose_pending(service)
+
+    results = await service.resolve_consent_reply(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        reply_text="maybe later",
+    )
+    assert results == []
+    assert tracker.transitions == []
+    pending = await service.list_pending_proposals(_TENANT, _CORRELATION)
+    assert len(pending) == 1
+
+
+async def test_resolve_affirmative_is_idempotent() -> None:
+    service, tracker, _ = _build(default_enabled=True, consent=WriteBackConsent.ALWAYS_ASK)
+    await _propose_pending(service)
+
+    first = await service.resolve_consent_reply(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        reply_text="yes",
+    )
+    second = await service.resolve_consent_reply(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        reply_text="yes",
+    )
+    assert len(first) == 1
+    assert second == []
+    assert tracker.transitions == [(_TENANT, "PO-1", IssueState.DONE.value)]
+
+
+async def test_resolve_without_pending_proposal_is_a_noop() -> None:
+    service, tracker, _ = _build(default_enabled=True, consent=WriteBackConsent.ALWAYS_ASK)
+    results = await service.resolve_consent_reply(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        reply_text="yes",
+    )
+    assert results == []
+    assert tracker.transitions == []
+
+
+async def test_resolve_respects_closed_system_gate() -> None:
+    service, tracker, _ = _build(default_enabled=True, consent=WriteBackConsent.ALWAYS_ASK)
+    await _propose_pending(service)
+    # System gate flipped off after the proposal was recorded.
+    await service._config.set_writeback_enabled(_TENANT, False)  # type: ignore[attr-defined]
+
+    results = await service.resolve_consent_reply(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        reply_text="yes",
+    )
+    assert results == []
+    assert tracker.transitions == []

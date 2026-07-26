@@ -38,6 +38,7 @@ from core.domain.status import (
     local_date,
     resolve_timezone,
 )
+from core.domain.writeback import WriteBackAudit, WriteBackStatus
 from core.ports.chat import ChatProvider
 from core.ports.directory import DirectoryUserRepository
 from core.ports.issue_tracker import IssueTracker
@@ -219,10 +220,7 @@ class StatusCollector:
         span.set_attribute("openprogram.reply_length", len(message.text))
 
         if checkin.replied_at is not None:
-            return ReplyOutcome(
-                kind="processed",
-                status=await self._status_for_duplicate_reply(checkin),
-            )
+            return await self._handle_already_replied(checkin=checkin, message=message)
         turn_already_recorded = await self._user_turn_exists(
             tenant_id=checkin.tenant_id,
             developer_id=checkin.developer_id,
@@ -1231,6 +1229,119 @@ class StatusCollector:
                     for audit in results
                 ],
             )
+        proposed = [audit for audit in results if audit.status is WriteBackStatus.PROPOSED]
+        if proposed:
+            await self._send_consent_prompt(checkin=checkin, proposals=proposed)
+
+    async def _send_consent_prompt(
+        self,
+        *,
+        checkin: CheckIn,
+        proposals: list[WriteBackAudit],
+    ) -> None:
+        """Ask the developer to confirm a proposed write-back in the DM (yes/no).
+
+        Privacy-safe by construction: the prompt names only the issue key and the
+        target state, never the developer's note or any raw reply content. Sent to
+        the persisted correlation's chat_user_ref. Best-effort -- a send failure
+        must never lose the recorded ``proposed`` audit rows, which remain pending
+        until answered.
+        """
+        correlation = await self._status_repository.checkin_correlation_by_id(
+            checkin.tenant_id,
+            checkin.correlation_id,
+        )
+        if correlation is None:
+            return
+        recipient = ChatUserRef(
+            tenant_id=checkin.tenant_id,
+            external_id=correlation.chat_user_ref,
+        )
+        text = _compose_consent_prompt_text(proposals, max_chars=self._outbound_dm_max_chars)
+        try:
+            await self._chat_provider.send_dm(
+                recipient,
+                OutboundMessage(
+                    tenant_id=checkin.tenant_id,
+                    text=text,
+                    correlation_id=checkin.correlation_id,
+                    metadata={
+                        "purpose": "writeback_consent_prompt",
+                        "idempotency_key": f"writeback-consent:{checkin.correlation_id}",
+                    },
+                ),
+            )
+        except Exception:  # pragma: no cover - defensive; prompt is best-effort
+            _logger.warning(
+                "writeback_consent_prompt_failed",
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+            )
+
+    async def _handle_already_replied(
+        self,
+        *,
+        checkin: CheckIn,
+        message: InboundMessage,
+    ) -> ReplyOutcome:
+        """Route a reply on a finalized check-in: a consent yes/no, else duplicate.
+
+        A pending write-back proposal turns a later yes/no into a consent
+        resolution; anything else is the existing duplicate-reply behaviour.
+        """
+        consent_outcome = await self._maybe_resolve_consent(checkin=checkin, message=message)
+        if consent_outcome is not None:
+            return consent_outcome
+        return ReplyOutcome(
+            kind="processed",
+            status=await self._status_for_duplicate_reply(checkin),
+        )
+
+    async def _maybe_resolve_consent(
+        self,
+        *,
+        checkin: CheckIn,
+        message: InboundMessage,
+    ) -> ReplyOutcome | None:
+        """Treat a reply on an already-finalized check-in as a yes/no consent answer.
+
+        Returns an ``acknowledged`` outcome only when a pending write-back proposal
+        exists and the reply resolves it (apply/decline) via ``WriteBackService``;
+        otherwise ``None`` so the caller falls through to the normal duplicate-reply
+        path. The three gates and audit live in ``WriteBackService``; a resolution
+        failure must never disturb the recorded check-in, so errors are swallowed.
+        """
+        service = self._write_back_service
+        if service is None:
+            return None
+        try:
+            results = await service.resolve_consent_reply(
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+                reply_text=message.text,
+            )
+        except Exception:  # pragma: no cover - defensive; resolution is best-effort
+            _logger.warning(
+                "writeback_consent_resolution_failed",
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+            )
+            return None
+        if not results:
+            return None
+        _logger.info(
+            "writeback_consent_resolved",
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            correlation_id=checkin.correlation_id,
+            outcomes=[
+                {"issue_key": audit.issue_key, "status": audit.status.value} for audit in results
+            ],
+        )
+        return ReplyOutcome(kind="acknowledged")
 
     async def _record_partial_checkin_status(
         self,
@@ -1610,6 +1721,32 @@ def _compose_escalation_notice(
     if len(notice) > max_chars:
         return notice[: max(0, max_chars - 1)].rstrip() + "…"
     return notice
+
+
+def _compose_consent_prompt_text(
+    proposals: list[WriteBackAudit],
+    *,
+    max_chars: int = OUTBOUND_DM_MAX_CHARS,
+) -> str:
+    """A privacy-safe write-back consent prompt (issue key + target state only).
+
+    Never echoes the developer's note or any raw reply content -- it references
+    the concrete diff (which issue, to which state) and asks for a yes/no.
+    """
+    if len(proposals) == 1:
+        proposal = proposals[0]
+        prompt = (
+            f"Want me to update {proposal.issue_key} to “{proposal.target_state}” "
+            f"in the issue tracker? Reply yes or no."
+        )
+    else:
+        diffs = ", ".join(f"{p.issue_key} → {p.target_state}" for p in proposals)
+        prompt = (
+            f"Want me to apply these issue-tracker updates: {diffs}? Reply yes or no."
+        )
+    if len(prompt) > max_chars:
+        return prompt[: max(0, max_chars - 1)].rstrip() + "…"
+    return prompt
 
 
 _CHECKIN_ACK_PLAIN = "Got it \U0001f44d Thanks — your update is recorded."
