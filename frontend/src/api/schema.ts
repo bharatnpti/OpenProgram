@@ -56,6 +56,13 @@ export type CrossPersonRequestsResponse = components["schemas"]["CrossPersonRequ
 export type CrossPersonRequestStatus = components["schemas"]["CrossPersonRequestStatus"];
 export type CrossPersonRequestStatusUpdateRequest =
   components["schemas"]["CrossPersonRequestStatusUpdateRequest"];
+export type EscalationContactDto = components["schemas"]["EscalationContactDto"];
+export type PodEscalationContactsResponse = components["schemas"]["PodEscalationContactsResponse"];
+export type PodEscalationContactsUpdateRequest =
+  components["schemas"]["PodEscalationContactsUpdateRequest"];
+export type BriefKind = components["schemas"]["BriefKind"];
+export type NarrativeBriefResponse = components["schemas"]["NarrativeBriefResponse"];
+export type NarrativeBriefsResponse = components["schemas"]["NarrativeBriefsResponse"];
 
 export interface WorkItemFlowResponse {
   id: string;
