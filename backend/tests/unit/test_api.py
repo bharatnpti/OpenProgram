@@ -189,6 +189,58 @@ def test_pod_escalation_contacts_endpoint_missing_pod_returns_404(settings: Sett
     assert response.status_code == 404
 
 
+def test_identity_link_auto_match_and_unmapped_flow(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        client.post("/config/directory/sync")
+        client.post("/config/members/from-directory", json={"external_ids": ["U1001", "U1002"]})
+        # U1002 gets an admin-set chat id that auto-match must not overwrite.
+        client.put(
+            "/config/members/U1002/identity-link",
+            json={"chat_user_id": "ADMIN-CHAT"},
+        )
+
+        unmapped_before = client.get("/config/members/unmapped")
+        auto_match = client.post("/config/members/identity-links/auto-match")
+        u1001_link = client.get("/config/members/U1001/identity-link")
+        u1002_link = client.get("/config/members/U1002/identity-link")
+        unmapped_after = client.get("/config/members/unmapped")
+
+    assert unmapped_before.status_code == 200
+    # U1002 already has an admin chat id, so only U1001 is unmapped for delivery.
+    assert {item["id"] for item in unmapped_before.json()} == {"U1001"}
+    u1001_before = next(item for item in unmapped_before.json() if item["id"] == "U1001")
+    assert "chat_user_id" in u1001_before["missing"]
+
+    assert auto_match.status_code == 200
+    summary = auto_match.json()
+    # U1001 gets both fields; U1002 keeps its admin chat id and only gains jira_email.
+    assert summary["updated_count"] == 2
+    matched = {member["id"]: member for member in summary["members"]}
+    assert set(matched) == {"U1001", "U1002"}
+    assert set(matched["U1001"]["filled"]) == {"chat_user_id", "jira_email"}
+    assert set(matched["U1002"]["filled"]) == {"jira_email"}
+
+    assert u1001_link.json()["chat_user_id"] == "U1001"
+    assert u1001_link.json()["jira_email"] == "asha@example.com"
+    # Admin-set value survives; only the missing jira_email is filled.
+    assert u1002_link.json()["chat_user_id"] == "ADMIN-CHAT"
+    assert u1002_link.json()["jira_email"] == "liam@example.com"
+
+    assert unmapped_after.status_code == 200
+    assert unmapped_after.json() == []
+
+
+def test_identity_unmapped_requires_manage_config(settings: Settings) -> None:
+    app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "dev"}))
+    with TestClient(app, raise_server_exceptions=False) as client:
+        unmapped = client.get("/config/members/unmapped")
+        auto_match = client.post("/config/members/identity-links/auto-match")
+
+    assert unmapped.status_code == 403
+    assert auto_match.status_code == 403
+
+
 def test_admin_directory_search_and_member_add_flow(settings: Settings) -> None:
     app = create_app(settings=settings)
     with TestClient(app) as client:

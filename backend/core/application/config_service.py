@@ -60,6 +60,26 @@ class DirectoryItemView:
     task_ids: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, kw_only=True)
+class IdentityAutoMatchMember:
+    id: str
+    name: str
+    filled: tuple[str, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class IdentityAutoMatchResult:
+    updated_count: int
+    members: tuple[IdentityAutoMatchMember, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class UnmappedMember:
+    id: str
+    name: str
+    missing: tuple[str, ...]
+
+
 class ConfigService:
     def __init__(
         self,
@@ -478,6 +498,69 @@ class ConfigService:
         await repository.upsert_identity_link(link)
         return link
 
+    async def auto_match_identity_links(self, tenant_id: str) -> IdentityAutoMatchResult:
+        """Pre-populate missing identity-link fields from directory data.
+
+        For every configured developer node, resolve the matching directory user
+        (the member id is the directory ``external_id``) and fill any field that
+        is currently unset: ``external_id`` -> ``chat_user_id`` and ``email`` ->
+        ``jira_email``. Admin-set values are never overwritten.
+        """
+        directory = self._directory_repository_or_raise()
+        repository = self._identity_link_repository_or_raise()
+        members = await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER)
+        matched: list[IdentityAutoMatchMember] = []
+        for member in members:
+            directory_user = await directory.get(tenant_id, member.id)
+            if directory_user is None:
+                continue
+            existing = await repository.get_identity_link(tenant_id, member.id)
+            link = existing or IdentityLink(tenant_id=tenant_id, developer_id=member.id)
+            filled: list[str] = []
+            chat_user_id = link.chat_user_id
+            jira_email = link.jira_email
+            if chat_user_id is None and directory_user.external_id:
+                chat_user_id = directory_user.external_id
+                filled.append("chat_user_id")
+            if jira_email is None and directory_user.email:
+                jira_email = directory_user.email
+                filled.append("jira_email")
+            if not filled:
+                continue
+            await repository.upsert_identity_link(
+                replace(link, chat_user_id=chat_user_id, jira_email=jira_email)
+            )
+            matched.append(
+                IdentityAutoMatchMember(id=member.id, name=member.name, filled=tuple(filled))
+            )
+        return IdentityAutoMatchResult(updated_count=len(matched), members=tuple(matched))
+
+    async def list_unmapped_members(self, tenant_id: str) -> list[UnmappedMember]:
+        """List developer nodes whose identity link is missing or lacks a chat id.
+
+        A member with no resolved ``chat_user_id`` cannot receive check-in DMs, so
+        it is surfaced to admins together with the identity fields still unset.
+        """
+        repository = self._identity_link_repository_or_raise()
+        members = await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER)
+        links = {
+            link.developer_id: link
+            for link in await repository.list_identity_links(tenant_id)
+        }
+        unmapped: list[UnmappedMember] = []
+        for member in members:
+            link = links.get(member.id)
+            if link is not None and link.chat_user_id is not None:
+                continue
+            unmapped.append(
+                UnmappedMember(
+                    id=member.id,
+                    name=member.name,
+                    missing=_missing_identity_fields(link),
+                )
+            )
+        return unmapped
+
     async def get_tenant_writeback_enabled(self, tenant_id: str, default: bool) -> bool:
         """Resolve the system gate: persisted tenant override, else the fallback."""
         repository = self._writeback_config_repository_or_raise()
@@ -839,6 +922,13 @@ def _target_ids(
         if node is not None and node.kind is kind and node.id not in ids:
             ids.append(node.id)
     return tuple(sorted(ids))
+
+
+def _missing_identity_fields(link: IdentityLink | None) -> tuple[str, ...]:
+    if link is None:
+        return ("chat_user_id", "jira_account_id", "jira_email", "vcs_username")
+    fields = ("chat_user_id", "jira_account_id", "jira_email", "vcs_username")
+    return tuple(field for field in fields if getattr(link, field) is None)
 
 
 def _metadata(metadata: Mapping[str, JsonScalar] | None) -> dict[str, JsonScalar]:
