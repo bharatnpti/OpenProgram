@@ -9,7 +9,7 @@ from core.domain.auth import Principal, Role
 from core.domain.errors import ProviderUnavailable
 from core.domain.integrations import IssueState
 from core.domain.status import IssueClaim, WriteBackConsent
-from core.domain.writeback import WriteBackAudit, WriteBackStatus
+from core.domain.writeback import WriteBackAdoption, WriteBackAudit, WriteBackStatus
 from core.ports.issue_tracker import IssueTracker
 from core.ports.repositories import (
     StatusRepository,
@@ -107,8 +107,15 @@ class WriteBackService:
         return results
 
     async def revert(self, audit: WriteBackAudit) -> WriteBackAudit | None:
-        """Reverse a previously applied write back to its captured prior state."""
+        """Reverse a previously applied write back to its captured prior state.
+
+        Returns ``None`` when the audit is not an applied write with a captured
+        prior state, or when this exact applied write has already been reverted
+        (idempotent -- reverting twice never double-applies the reverse write).
+        """
         if audit.status is not WriteBackStatus.APPLIED or audit.before_state is None:
+            return None
+        if await self._already_reverted(audit):
             return None
         try:
             await self._issue_tracker.transition(
@@ -138,6 +145,37 @@ class WriteBackService:
             after_state=audit.before_state,
             comment=None,
             source="revert",
+        )
+
+    async def get_audit(self, tenant_id: str, audit_id: str) -> WriteBackAudit | None:
+        """Look up a single audit row scoped to the tenant, or ``None``."""
+        return await self._audit.get_writeback_audit(tenant_id, audit_id)
+
+    async def adoption(
+        self,
+        tenant_id: str,
+        *,
+        limit: int = 5,
+        since: datetime | None = None,
+    ) -> WriteBackAdoption:
+        """Count applied write-backs (Jira updates landed via check-in).
+
+        ``recent`` carries identifier-only summaries; the caller must never
+        surface the developer note or any raw DM/reply content.
+        """
+        count = await self._audit.count_applied_writebacks(tenant_id, since)
+        recent = await self._audit.list_applied_writebacks(tenant_id, limit, since)
+        return WriteBackAdoption(applied_count=count, recent=tuple(recent))
+
+    async def _already_reverted(self, audit: WriteBackAudit) -> bool:
+        # The applied row stays APPLIED forever (append-only log); a revert adds a
+        # new REVERTED row keyed on the same correlation with target = prior state.
+        prior = await self._audit.list_for_issue(audit.tenant_id, audit.issue_key)
+        return any(
+            row.status is WriteBackStatus.REVERTED
+            and row.correlation_id == audit.correlation_id
+            and row.target_state == audit.before_state
+            for row in prior
         )
 
     async def _consent(self, tenant_id: str, developer_id: str) -> WriteBackConsent:

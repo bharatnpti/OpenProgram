@@ -402,6 +402,57 @@ class PostgresGraphRepository:
             )
         return _writeback_audit_from_row(rows[0]) if rows else None
 
+    async def get_writeback_audit(
+        self, tenant_id: str, audit_id: str
+    ) -> WriteBackAudit | None:
+        with _tracer.start_as_current_span("postgres.graph.get_writeback_audit"):
+            rows = await self._executor.fetch(
+                """
+                SELECT id, tenant_id, developer_id, issue_key, correlation_id,
+                       status, target_state, before_state, after_state, comment,
+                       source, created_at
+                FROM writeback_audit
+                WHERE tenant_id = %s AND id = %s
+                LIMIT 1
+                """,
+                (tenant_id, audit_id),
+            )
+        return _writeback_audit_from_row(rows[0]) if rows else None
+
+    async def count_applied_writebacks(
+        self, tenant_id: str, since: datetime | None = None
+    ) -> int:
+        with _tracer.start_as_current_span("postgres.graph.count_applied_writebacks"):
+            rows = await self._executor.fetch(
+                """
+                SELECT COUNT(*)::int AS applied_count
+                FROM writeback_audit
+                WHERE tenant_id = %s AND status = %s
+                      AND (%s IS NULL OR created_at >= %s)
+                """,
+                (tenant_id, WriteBackStatus.APPLIED.value, since, since),
+            )
+        return _int_value(rows[0].get("applied_count")) if rows else 0
+
+    async def list_applied_writebacks(
+        self, tenant_id: str, limit: int, since: datetime | None = None
+    ) -> list[WriteBackAudit]:
+        with _tracer.start_as_current_span("postgres.graph.list_applied_writebacks"):
+            rows = await self._executor.fetch(
+                """
+                SELECT id, tenant_id, developer_id, issue_key, correlation_id,
+                       status, target_state, before_state, after_state, comment,
+                       source, created_at
+                FROM writeback_audit
+                WHERE tenant_id = %s AND status = %s
+                      AND (%s IS NULL OR created_at >= %s)
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                (tenant_id, WriteBackStatus.APPLIED.value, since, since, limit),
+            )
+        return [_writeback_audit_from_row(row) for row in rows]
+
 
 class PostgresTimeSeriesRepository:
     def __init__(self, executor: AsyncSqlExecutor) -> None:
@@ -514,6 +565,12 @@ def _node_from_row(row: Mapping[str, object]) -> GraphNode:
 
 def _optional_str(value: object) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _int_value(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise GraphNotFound("expected an integer aggregate value")
+    return value
 
 
 def _identity_link_from_row(row: Mapping[str, object]) -> IdentityLink:

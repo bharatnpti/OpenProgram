@@ -18,6 +18,7 @@ from config.settings import Settings
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.errors import ProviderConfigurationError
 from core.domain.graph import EntityRef, NodeKind, Task
+from core.domain.integrations import Issue, IssueState
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 from core.domain.rollup import NodeStatus, Rag
 from core.domain.status import StatusSource
@@ -29,8 +30,10 @@ from core.domain.workflows import (
     SyncDispatchInput,
     SyncScheduleConfig,
 )
+from core.domain.writeback import WriteBackAudit, WriteBackStatus
 from core.ports.llm import LlmProvider
 from infra.registry import ServiceRegistry
+from tests.contract.fakes import FakeIssueTracker
 from tests.fixtures.demo_graph import populate_demo_graph
 
 
@@ -1271,6 +1274,123 @@ def _signed_slack_headers(
         "x-slack-request-timestamp": timestamp_value,
         "x-slack-signature": f"v0={digest}",
     }
+
+
+def _seed_applied_writeback(
+    app: FastAPI,
+    *,
+    audit_id: str,
+    issue_key: str,
+    correlation_id: str,
+    before_state: str,
+    after_state: str,
+    created_at: datetime,
+) -> None:
+    asyncio.run(
+        app.state.registry.writeback_audit_repository().record(
+            WriteBackAudit(
+                id=audit_id,
+                tenant_id="demo",
+                developer_id="dev-1",
+                issue_key=issue_key,
+                correlation_id=correlation_id,
+                status=WriteBackStatus.APPLIED,
+                target_state=after_state,
+                before_state=before_state,
+                after_state=after_state,
+                comment="done via check-in",
+                source="checkin",
+                created_at=created_at,
+            )
+        )
+    )
+
+
+def test_revert_writeback_route_reverts_then_is_idempotent(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        registry = app.state.registry
+        # Inject a writable tracker so the sanctioned revert transition succeeds.
+        registry._issue_tracker = FakeIssueTracker(
+            issues={
+                "PO-1": Issue(
+                    tenant_id="demo",
+                    key="PO-1",
+                    title="Wire write-back",
+                    state=IssueState.DONE,
+                )
+            }
+        )
+        _seed_applied_writeback(
+            app,
+            audit_id="wb-1",
+            issue_key="PO-1",
+            correlation_id="corr-1",
+            before_state="in_progress",
+            after_state="done",
+            created_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+        )
+
+        first = client.post("/admin/ops/writeback/wb-1/revert")
+        second = client.post("/admin/ops/writeback/wb-1/revert")
+        missing = client.post("/admin/ops/writeback/does-not-exist/revert")
+
+    assert first.status_code == 200
+    body = first.json()
+    assert body["issue_key"] == "PO-1"
+    assert body["from_state"] == "done"
+    assert body["to_state"] == "in_progress"
+    assert body["status"] == "reverted"
+
+    # A second revert of the same applied write must not double-apply.
+    assert second.status_code == 409
+    assert missing.status_code == 404
+
+
+def test_writeback_adoption_endpoint_counts_applied_writes(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        _seed_applied_writeback(
+            app,
+            audit_id="wb-1",
+            issue_key="PO-1",
+            correlation_id="corr-1",
+            before_state="in_progress",
+            after_state="done",
+            created_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+        )
+        _seed_applied_writeback(
+            app,
+            audit_id="wb-2",
+            issue_key="PO-2",
+            correlation_id="corr-2",
+            before_state="todo",
+            after_state="in_progress",
+            created_at=datetime(2026, 1, 11, 9, 0, tzinfo=UTC),
+        )
+        response = client.get("/persona/writeback-adoption")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["applied_count"] == 2
+    # Newest-first, identifier-only (no developer note / DM content leaked).
+    assert [entry["issue_key"] for entry in body["recent"]] == ["PO-2", "PO-1"]
+    assert body["recent"][0]["to_state"] == "in_progress"
+    assert "comment" not in body["recent"][0]
+    assert "note" not in body["recent"][0]
+
+
+def test_writeback_adoption_endpoint_requires_aggregate_scope() -> None:
+    non_admin = Settings(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        runtime_mode="memory",
+        dev_principal_roles="dev",
+    )
+    app = create_app(settings=non_admin)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/persona/writeback-adoption")
+    assert response.status_code == 403
 
 
 def _populate_graph_fixture(app: FastAPI, settings: Settings) -> None:

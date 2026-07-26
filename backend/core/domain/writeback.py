@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 
@@ -36,3 +36,16 @@ class WriteBackAudit:
     comment: str | None = None
     source: str = "checkin"
     created_at: datetime
+
+
+@dataclass(frozen=True, kw_only=True)
+class WriteBackAdoption:
+    """Aggregate view of how many issue-tracker writes were applied via check-in.
+
+    ``applied_count`` is the tenant total of ``applied`` audit rows (optionally
+    within a window). ``recent`` carries identifier-only summaries of the latest
+    applied writes -- never the developer's raw note or any DM/reply content.
+    """
+
+    applied_count: int
+    recent: tuple[WriteBackAudit, ...] = field(default_factory=tuple)
