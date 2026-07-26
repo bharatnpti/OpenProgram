@@ -1035,6 +1035,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/persona/{level}/{entity_id}/trend": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Node Trend */
+    get: operations["node_trend_persona__level___entity_id__trend_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/workstreams/{workstream_id}/flow": {
     parameters: {
       query?: never;
@@ -1940,6 +1957,24 @@ export interface components {
       | "developer"
       | "task"
       | "work_item";
+    /** NodeTrendResponse */
+    NodeTrendResponse: {
+      entity_ref: components["schemas"]["EntityRefDto"];
+      /** Window Days */
+      window_days: number;
+      /**
+       * Start
+       * Format: date
+       */
+      start: string;
+      /**
+       * End
+       * Format: date
+       */
+      end: string;
+      /** Points */
+      points: components["schemas"]["TrendPointDto"][];
+    };
     /** PersonaTreeEdgeDto */
     PersonaTreeEdgeDto: {
       /** From Node Id */
@@ -2256,6 +2291,18 @@ export interface components {
     TenantWritebackUpdateRequest: {
       /** Enabled */
       enabled: boolean;
+    };
+    /** TrendPointDto */
+    TrendPointDto: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      rag: components["schemas"]["Rag"];
+      source: components["schemas"]["StatusSource"];
+      /** Score */
+      score: number;
     };
     /** ValidationError */
     ValidationError: {
@@ -5323,6 +5370,43 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PortfolioHeatmapResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  node_trend_persona__level___entity_id__trend_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        window_days?: number;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        level: components["schemas"]["NodeKind"];
+        entity_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["NodeTrendResponse"];
         };
       };
       /** @description Validation Error */

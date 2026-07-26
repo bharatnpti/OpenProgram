@@ -715,6 +715,18 @@ class InMemoryGraphStore:
             key=lambda status: (status.entity_ref.kind.value, status.entity_ref.id),
         )
 
+    async def node_status_history(
+        self, tenant_id: str, entity_ref: EntityRef, start: date, end: date
+    ) -> list[NodeStatus]:
+        matching = [
+            status
+            for status in self._node_statuses.values()
+            if status.entity_ref.tenant_id == tenant_id
+            and status.entity_ref == entity_ref
+            and start <= status.as_of <= end
+        ]
+        return sorted(matching, key=lambda status: status.as_of)
+
     async def get_cursor(self, tenant_id: str, connector: str, scope: str) -> SyncCursor:
         return self._sync_cursors.get((tenant_id, connector, scope), SyncCursor())
 

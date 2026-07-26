@@ -7,9 +7,7 @@
   "paths": {
     "/api/v1/auth/status": {
       "get": {
-        "tags": [
-          "auth"
-        ],
+        "tags": ["auth"],
         "summary": "Auth Status",
         "operationId": "auth_status_api_v1_auth_status_get",
         "parameters": [
@@ -56,9 +54,7 @@
     },
     "/api/v1/auth/login": {
       "get": {
-        "tags": [
-          "auth"
-        ],
+        "tags": ["auth"],
         "summary": "Auth Login",
         "operationId": "auth_login_api_v1_auth_login_get",
         "parameters": [
@@ -119,9 +115,7 @@
     },
     "/api/v1/auth/callback": {
       "get": {
-        "tags": [
-          "auth"
-        ],
+        "tags": ["auth"],
         "summary": "Auth Callback",
         "operationId": "auth_callback_api_v1_auth_callback_get",
         "responses": {
@@ -138,9 +132,7 @@
     },
     "/api/v1/auth/logout": {
       "post": {
-        "tags": [
-          "auth"
-        ],
+        "tags": ["auth"],
         "summary": "Auth Logout",
         "operationId": "auth_logout_api_v1_auth_logout_post",
         "responses": {
@@ -159,9 +151,7 @@
     },
     "/health": {
       "get": {
-        "tags": [
-          "health"
-        ],
+        "tags": ["health"],
         "summary": "Health",
         "operationId": "health_health_get",
         "responses": {
@@ -180,9 +170,7 @@
     },
     "/ready": {
       "get": {
-        "tags": [
-          "health"
-        ],
+        "tags": ["health"],
         "summary": "Ready",
         "operationId": "ready_ready_get",
         "responses": {
@@ -201,9 +189,7 @@
     },
     "/metrics": {
       "get": {
-        "tags": [
-          "health"
-        ],
+        "tags": ["health"],
         "summary": "Metrics",
         "operationId": "metrics_metrics_get",
         "responses": {
@@ -220,9 +206,7 @@
     },
     "/graph/programs/{program_id}/tree": {
       "get": {
-        "tags": [
-          "graph"
-        ],
+        "tags": ["graph"],
         "summary": "Program Tree",
         "operationId": "program_tree_graph_programs__program_id__tree_get",
         "parameters": [
@@ -288,9 +272,7 @@
     },
     "/admin/workflows/checkin/dispatch": {
       "post": {
-        "tags": [
-          "admin"
-        ],
+        "tags": ["admin"],
         "summary": "Dispatch Checkin",
         "operationId": "dispatch_checkin_admin_workflows_checkin_dispatch_post",
         "parameters": [
@@ -347,9 +329,7 @@
     },
     "/admin/workflows/sync/jira": {
       "post": {
-        "tags": [
-          "admin"
-        ],
+        "tags": ["admin"],
         "summary": "Dispatch Jira Sync",
         "operationId": "dispatch_jira_sync_admin_workflows_sync_jira_post",
         "parameters": [
@@ -406,9 +386,7 @@
     },
     "/admin/workflows/sync/github": {
       "post": {
-        "tags": [
-          "admin"
-        ],
+        "tags": ["admin"],
         "summary": "Dispatch Github Sync",
         "operationId": "dispatch_github_sync_admin_workflows_sync_github_post",
         "parameters": [
@@ -465,9 +443,7 @@
     },
     "/admin/workflows/sync/calendar": {
       "post": {
-        "tags": [
-          "admin"
-        ],
+        "tags": ["admin"],
         "summary": "Dispatch Calendar Sync",
         "operationId": "dispatch_calendar_sync_admin_workflows_sync_calendar_post",
         "parameters": [
@@ -524,9 +500,7 @@
     },
     "/config/programs": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Config Programs",
         "operationId": "list_config_programs_config_programs_get",
         "parameters": [
@@ -575,9 +549,7 @@
         }
       },
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Create Config Program",
         "operationId": "create_config_program_config_programs_post",
         "parameters": [
@@ -634,9 +606,7 @@
     },
     "/config/programs/{program_id}": {
       "put": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Update Config Program",
         "operationId": "update_config_program_config_programs__program_id__put",
         "parameters": [
@@ -700,9 +670,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Delete Config Program",
         "operationId": "delete_config_program_config_programs__program_id__delete",
         "parameters": [
@@ -749,9 +717,7 @@
         }
       },
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Get Config Program",
         "operationId": "get_config_program_config_programs__program_id__get",
         "parameters": [
@@ -807,9 +773,7 @@
     },
     "/config/projects": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Config Projects",
         "operationId": "list_config_projects_config_projects_get",
         "parameters": [
@@ -858,9 +822,7 @@
         }
       },
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Create Config Project",
         "operationId": "create_config_project_config_projects_post",
         "parameters": [
@@ -917,9 +879,7 @@
     },
     "/config/projects/{project_id}": {
       "put": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Update Config Project",
         "operationId": "update_config_project_config_projects__project_id__put",
         "parameters": [
@@ -983,9 +943,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Delete Config Project",
         "operationId": "delete_config_project_config_projects__project_id__delete",
         "parameters": [
@@ -1032,9 +990,7 @@
         }
       },
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Get Config Project",
         "operationId": "get_config_project_config_projects__project_id__get",
         "parameters": [
@@ -1090,9 +1046,7 @@
     },
     "/config/pods": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Config Pods",
         "operationId": "list_config_pods_config_pods_get",
         "parameters": [
@@ -1141,9 +1095,7 @@
         }
       },
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Create Config Pod",
         "operationId": "create_config_pod_config_pods_post",
         "parameters": [
@@ -1200,9 +1152,7 @@
     },
     "/config/pods/{pod_id}": {
       "put": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Update Config Pod",
         "operationId": "update_config_pod_config_pods__pod_id__put",
         "parameters": [
@@ -1266,9 +1216,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Delete Config Pod",
         "operationId": "delete_config_pod_config_pods__pod_id__delete",
         "parameters": [
@@ -1315,9 +1263,7 @@
         }
       },
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Get Config Pod",
         "operationId": "get_config_pod_config_pods__pod_id__get",
         "parameters": [
@@ -1373,9 +1319,7 @@
     },
     "/config/workstreams": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Config Workstreams",
         "operationId": "list_config_workstreams_config_workstreams_get",
         "parameters": [
@@ -1424,9 +1368,7 @@
         }
       },
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Create Config Workstream",
         "operationId": "create_config_workstream_config_workstreams_post",
         "parameters": [
@@ -1483,9 +1425,7 @@
     },
     "/config/workstreams/{workstream_id}": {
       "put": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Update Config Workstream",
         "operationId": "update_config_workstream_config_workstreams__workstream_id__put",
         "parameters": [
@@ -1549,9 +1489,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Delete Config Workstream",
         "operationId": "delete_config_workstream_config_workstreams__workstream_id__delete",
         "parameters": [
@@ -1598,9 +1536,7 @@
         }
       },
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Get Config Workstream",
         "operationId": "get_config_workstream_config_workstreams__workstream_id__get",
         "parameters": [
@@ -1656,9 +1592,7 @@
     },
     "/config/work-items": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Config Work Items",
         "operationId": "list_config_work_items_config_work_items_get",
         "parameters": [
@@ -1707,9 +1641,7 @@
         }
       },
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Create Config Work Item",
         "operationId": "create_config_work_item_config_work_items_post",
         "parameters": [
@@ -1766,9 +1698,7 @@
     },
     "/config/work-items/from-branch": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Create Config Work Item From Branch",
         "operationId": "create_config_work_item_from_branch_config_work_items_from_branch_post",
         "parameters": [
@@ -1825,9 +1755,7 @@
     },
     "/config/work-items/from-pr": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Create Config Work Item From Pr",
         "operationId": "create_config_work_item_from_pr_config_work_items_from_pr_post",
         "parameters": [
@@ -1884,9 +1812,7 @@
     },
     "/config/work-items/{work_item_id}/transition": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Transition Config Work Item",
         "operationId": "transition_config_work_item_config_work_items__work_item_id__transition_post",
         "parameters": [
@@ -1952,9 +1878,7 @@
     },
     "/config/workstreams/{workstream_id}/work-items/{work_item_id}": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Link Config Workstream Work Item",
         "operationId": "link_config_workstream_work_item_config_workstreams__workstream_id__work_items__work_item_id__post",
         "parameters": [
@@ -2017,9 +1941,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Unlink Config Workstream Work Item",
         "operationId": "unlink_config_workstream_work_item_config_workstreams__workstream_id__work_items__work_item_id__delete",
         "parameters": [
@@ -2077,9 +1999,7 @@
     },
     "/config/members": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Config Members",
         "operationId": "list_config_members_config_members_get",
         "parameters": [
@@ -2128,9 +2048,7 @@
         }
       },
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Create Config Member",
         "operationId": "create_config_member_config_members_post",
         "parameters": [
@@ -2187,9 +2105,7 @@
     },
     "/config/directory/users": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Search Config Directory Users",
         "operationId": "search_config_directory_users_config_directory_users_get",
         "parameters": [
@@ -2269,9 +2185,7 @@
     },
     "/config/directory/sync": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Sync Config Directory",
         "operationId": "sync_config_directory_config_directory_sync_post",
         "parameters": [
@@ -2318,9 +2232,7 @@
     },
     "/config/members/from-directory": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Create Config Members From Directory",
         "operationId": "create_config_members_from_directory_config_members_from_directory_post",
         "parameters": [
@@ -2381,9 +2293,7 @@
     },
     "/config/members/{member_id}": {
       "put": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Update Config Member",
         "operationId": "update_config_member_config_members__member_id__put",
         "parameters": [
@@ -2447,9 +2357,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Delete Config Member",
         "operationId": "delete_config_member_config_members__member_id__delete",
         "parameters": [
@@ -2496,9 +2404,7 @@
         }
       },
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Get Config Member",
         "operationId": "get_config_member_config_members__member_id__get",
         "parameters": [
@@ -2554,9 +2460,7 @@
     },
     "/config/projects/{project_id}/program": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Link Config Project Program",
         "operationId": "link_config_project_program_config_projects__project_id__program_post",
         "parameters": [
@@ -2620,9 +2524,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Unlink Config Project Program",
         "operationId": "unlink_config_project_program_config_projects__project_id__program_delete",
         "parameters": [
@@ -2687,9 +2589,7 @@
     },
     "/config/pods/{pod_id}/projects/{project_id}": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Link Config Pod Project",
         "operationId": "link_config_pod_project_config_pods__pod_id__projects__project_id__post",
         "parameters": [
@@ -2752,9 +2652,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Unlink Config Pod Project",
         "operationId": "unlink_config_pod_project_config_pods__pod_id__projects__project_id__delete",
         "parameters": [
@@ -2812,9 +2710,7 @@
     },
     "/config/projects/{project_id}/workstreams/{workstream_id}": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Link Config Project Workstream",
         "operationId": "link_config_project_workstream_config_projects__project_id__workstreams__workstream_id__post",
         "parameters": [
@@ -2877,9 +2773,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Unlink Config Project Workstream",
         "operationId": "unlink_config_project_workstream_config_projects__project_id__workstreams__workstream_id__delete",
         "parameters": [
@@ -2937,9 +2831,7 @@
     },
     "/config/pods/{pod_id}/workstreams/{workstream_id}": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Link Config Pod Workstream",
         "operationId": "link_config_pod_workstream_config_pods__pod_id__workstreams__workstream_id__post",
         "parameters": [
@@ -3002,9 +2894,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Unlink Config Pod Workstream",
         "operationId": "unlink_config_pod_workstream_config_pods__pod_id__workstreams__workstream_id__delete",
         "parameters": [
@@ -3062,9 +2952,7 @@
     },
     "/config/workstreams/{workstream_id}/tasks/{task_id}": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Link Config Workstream Task",
         "operationId": "link_config_workstream_task_config_workstreams__workstream_id__tasks__task_id__post",
         "parameters": [
@@ -3127,9 +3015,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Unlink Config Workstream Task",
         "operationId": "unlink_config_workstream_task_config_workstreams__workstream_id__tasks__task_id__delete",
         "parameters": [
@@ -3187,9 +3073,7 @@
     },
     "/config/pods/{pod_id}/members/{member_id}": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Link Config Pod Member",
         "operationId": "link_config_pod_member_config_pods__pod_id__members__member_id__post",
         "parameters": [
@@ -3262,9 +3146,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Unlink Config Pod Member",
         "operationId": "unlink_config_pod_member_config_pods__pod_id__members__member_id__delete",
         "parameters": [
@@ -3322,9 +3204,7 @@
     },
     "/config/members/{member_id}/tasks": {
       "post": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Assign Config Member Task",
         "operationId": "assign_config_member_task_config_members__member_id__tasks_post",
         "parameters": [
@@ -3388,9 +3268,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Unassign Config Member Task",
         "operationId": "unassign_config_member_task_config_members__member_id__tasks_delete",
         "parameters": [
@@ -3449,9 +3327,7 @@
     },
     "/config/members/{member_id}/checkin-preference": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Get Config Member Checkin Preference",
         "operationId": "get_config_member_checkin_preference_config_members__member_id__checkin_preference_get",
         "parameters": [
@@ -3505,9 +3381,7 @@
         }
       },
       "put": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Update Config Member Checkin Preference",
         "operationId": "update_config_member_checkin_preference_config_members__member_id__checkin_preference_put",
         "parameters": [
@@ -3573,9 +3447,7 @@
     },
     "/config/checkin-preferences": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Config Checkin Preferences",
         "operationId": "list_config_checkin_preferences_config_checkin_preferences_get",
         "parameters": [
@@ -3626,9 +3498,7 @@
     },
     "/config/members/{member_id}/identity-link": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Get Config Member Identity Link",
         "operationId": "get_config_member_identity_link_config_members__member_id__identity_link_get",
         "parameters": [
@@ -3682,9 +3552,7 @@
         }
       },
       "put": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Update Config Member Identity Link",
         "operationId": "update_config_member_identity_link_config_members__member_id__identity_link_put",
         "parameters": [
@@ -3750,9 +3618,7 @@
     },
     "/config/tenant/writeback": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Get Config Tenant Writeback",
         "operationId": "get_config_tenant_writeback_config_tenant_writeback_get",
         "parameters": [
@@ -3797,9 +3663,7 @@
         }
       },
       "put": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Update Config Tenant Writeback",
         "operationId": "update_config_tenant_writeback_config_tenant_writeback_put",
         "parameters": [
@@ -3856,9 +3720,7 @@
     },
     "/programs": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Programs",
         "operationId": "list_programs_programs_get",
         "parameters": [
@@ -3919,9 +3781,7 @@
     },
     "/projects": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Projects",
         "operationId": "list_projects_projects_get",
         "parameters": [
@@ -3982,9 +3842,7 @@
     },
     "/workstreams": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Workstreams",
         "operationId": "list_workstreams_workstreams_get",
         "parameters": [
@@ -4045,9 +3903,7 @@
     },
     "/workstreams/{workstream_id}": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "Get Workstream",
         "operationId": "get_workstream_workstreams__workstream_id__get",
         "parameters": [
@@ -4113,9 +3969,7 @@
     },
     "/projects/{project_id}/workstreams": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Project Workstreams",
         "operationId": "list_project_workstreams_projects__project_id__workstreams_get",
         "parameters": [
@@ -4185,9 +4039,7 @@
     },
     "/pods": {
       "get": {
-        "tags": [
-          "config"
-        ],
+        "tags": ["config"],
         "summary": "List Pods",
         "operationId": "list_pods_pods_get",
         "parameters": [
@@ -4248,9 +4100,7 @@
     },
     "/ask": {
       "post": {
-        "tags": [
-          "ask"
-        ],
+        "tags": ["ask"],
         "summary": "Ask",
         "operationId": "ask_ask_post",
         "parameters": [
@@ -4307,9 +4157,7 @@
     },
     "/me/status": {
       "get": {
-        "tags": [
-          "checkins"
-        ],
+        "tags": ["checkins"],
         "summary": "Get My Status",
         "operationId": "get_my_status_me_status_get",
         "parameters": [
@@ -4373,9 +4221,7 @@
     },
     "/me/status/confirm": {
       "post": {
-        "tags": [
-          "checkins"
-        ],
+        "tags": ["checkins"],
         "summary": "Confirm My Status",
         "operationId": "confirm_my_status_me_status_confirm_post",
         "parameters": [
@@ -4439,9 +4285,7 @@
     },
     "/me/status/correct": {
       "post": {
-        "tags": [
-          "checkins"
-        ],
+        "tags": ["checkins"],
         "summary": "Correct My Status",
         "operationId": "correct_my_status_me_status_correct_post",
         "parameters": [
@@ -4515,9 +4359,7 @@
     },
     "/me/checkin-preference": {
       "get": {
-        "tags": [
-          "checkins"
-        ],
+        "tags": ["checkins"],
         "summary": "Get Checkin Preference",
         "operationId": "get_checkin_preference_me_checkin_preference_get",
         "parameters": [
@@ -4562,9 +4404,7 @@
         }
       },
       "put": {
-        "tags": [
-          "checkins"
-        ],
+        "tags": ["checkins"],
         "summary": "Update Checkin Preference",
         "operationId": "update_checkin_preference_me_checkin_preference_put",
         "parameters": [
@@ -4621,9 +4461,7 @@
     },
     "/me/focus": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "My Focus",
         "operationId": "my_focus_me_focus_get",
         "parameters": [
@@ -4680,9 +4518,7 @@
     },
     "/pods/{pod_id}/blockers": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Pod Blockers",
         "operationId": "pod_blockers_pods__pod_id__blockers_get",
         "parameters": [
@@ -4748,9 +4584,7 @@
     },
     "/pods/{pod_id}/checkins": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Pod Checkins",
         "operationId": "pod_checkins_pods__pod_id__checkins_get",
         "parameters": [
@@ -4816,9 +4650,7 @@
     },
     "/projects/{project_id}/progress": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Project Progress",
         "operationId": "project_progress_projects__project_id__progress_get",
         "parameters": [
@@ -4884,9 +4716,7 @@
     },
     "/workstreams/{workstream_id}/progress": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Workstream Progress",
         "operationId": "workstream_progress_workstreams__workstream_id__progress_get",
         "parameters": [
@@ -4952,9 +4782,7 @@
     },
     "/programs/{program_id}/tree": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Program Tree",
         "operationId": "program_tree_programs__program_id__tree_get",
         "parameters": [
@@ -5020,9 +4848,7 @@
     },
     "/portfolio/heatmap": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Portfolio Heatmap",
         "operationId": "portfolio_heatmap_portfolio_heatmap_get",
         "parameters": [
@@ -5093,11 +4919,95 @@
         }
       }
     },
+    "/persona/{level}/{entity_id}/trend": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Node Trend",
+        "operationId": "node_trend_persona__level___entity_id__trend_get",
+        "parameters": [
+          {
+            "name": "level",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/NodeKind"
+            }
+          },
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Entity Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "window_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 1,
+              "default": 30,
+              "title": "Window Days"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeTrendResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/workstreams/{workstream_id}/flow": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Workstream Flow",
         "operationId": "workstream_flow_workstreams__workstream_id__flow_get",
         "parameters": [
@@ -5163,9 +5073,7 @@
     },
     "/portfolio/flow": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Portfolio Flow",
         "operationId": "portfolio_flow_portfolio_flow_get",
         "parameters": [
@@ -5222,9 +5130,7 @@
     },
     "/portfolio/feed": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Portfolio Feed",
         "operationId": "portfolio_feed_portfolio_feed_get",
         "parameters": [
@@ -5288,9 +5194,7 @@
     },
     "/portfolio/cross-person-requests": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Portfolio Cross Person Requests",
         "operationId": "portfolio_cross_person_requests_portfolio_cross_person_requests_get",
         "parameters": [
@@ -5354,9 +5258,7 @@
     },
     "/me/cross-person-requests": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "My Cross Person Requests",
         "operationId": "my_cross_person_requests_me_cross_person_requests_get",
         "parameters": [
@@ -5403,9 +5305,7 @@
     },
     "/cross-person-requests/{request_id}/status": {
       "post": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Update Cross Person Request Status",
         "operationId": "update_cross_person_request_status_cross_person_requests__request_id__status_post",
         "parameters": [
@@ -5471,9 +5371,7 @@
     },
     "/projects/{project_id}/risks": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Project Risks",
         "operationId": "project_risks_projects__project_id__risks_get",
         "parameters": [
@@ -5539,9 +5437,7 @@
     },
     "/portfolio/risks": {
       "get": {
-        "tags": [
-          "personas"
-        ],
+        "tags": ["personas"],
         "summary": "Portfolio Risks",
         "operationId": "portfolio_risks_portfolio_risks_get",
         "parameters": [
@@ -5598,9 +5494,7 @@
     },
     "/test/chat-simulator/status": {
       "get": {
-        "tags": [
-          "test-support"
-        ],
+        "tags": ["test-support"],
         "summary": "Chat Simulator Status",
         "operationId": "chat_simulator_status_test_chat_simulator_status_get",
         "parameters": [
@@ -5647,9 +5541,7 @@
     },
     "/test/chat-simulator/messages": {
       "get": {
-        "tags": [
-          "test-support"
-        ],
+        "tags": ["test-support"],
         "summary": "Chat Simulator Messages",
         "operationId": "chat_simulator_messages_test_chat_simulator_messages_get",
         "parameters": [
@@ -5696,9 +5588,7 @@
     },
     "/test/chat-simulator/messages/{message_id}/reply": {
       "post": {
-        "tags": [
-          "test-support"
-        ],
+        "tags": ["test-support"],
         "summary": "Chat Simulator Reply",
         "operationId": "chat_simulator_reply_test_chat_simulator_messages__message_id__reply_post",
         "parameters": [
@@ -5764,9 +5654,7 @@
     },
     "/test/chat-simulator/state": {
       "delete": {
-        "tags": [
-          "test-support"
-        ],
+        "tags": ["test-support"],
         "summary": "Reset Chat Simulator",
         "operationId": "reset_chat_simulator_test_chat_simulator_state_delete",
         "parameters": [
@@ -5806,9 +5694,7 @@
     },
     "/webhooks/chat/{provider}": {
       "post": {
-        "tags": [
-          "webhooks"
-        ],
+        "tags": ["webhooks"],
         "summary": "Chat Webhook",
         "operationId": "chat_webhook_webhooks_chat__provider__post",
         "parameters": [
@@ -5870,9 +5756,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "question"
-        ],
+        "required": ["question"],
         "title": "AskRequest"
       },
       "AskResponse": {
@@ -5901,12 +5785,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "answer",
-          "references",
-          "tools_used",
-          "trace_id"
-        ],
+        "required": ["answer", "references", "tools_used", "trace_id"],
         "title": "AskResponse"
       },
       "AuthStatusResponse": {
@@ -5917,10 +5796,7 @@
           },
           "provider": {
             "type": "string",
-            "enum": [
-              "dev",
-              "oidc_bff"
-            ],
+            "enum": ["dev", "oidc_bff"],
             "title": "Provider"
           },
           "login_url": {
@@ -5957,10 +5833,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "authenticated",
-          "provider"
-        ],
+        "required": ["authenticated", "provider"],
         "title": "AuthStatusResponse"
       },
       "AuthUserResponse": {
@@ -6018,11 +5891,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "subject",
-          "roles",
-          "scopes"
-        ],
+        "required": ["subject", "roles", "scopes"],
         "title": "AuthUserResponse"
       },
       "BlockerDto": {
@@ -6117,12 +5986,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "tenant_id",
-          "user_id",
-          "start",
-          "end"
-        ],
+        "required": ["tenant_id", "user_id", "start", "end"],
         "title": "CalendarSyncDispatchRequest"
       },
       "ChatSimulatorMessageResponse": {
@@ -6237,9 +6101,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "ChatSimulatorMessagesResponse"
       },
       "ChatSimulatorReplyRequest": {
@@ -6263,9 +6125,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "text"
-        ],
+        "required": ["text"],
         "title": "ChatSimulatorReplyRequest"
       },
       "ChatSimulatorReplyResponse": {
@@ -6284,11 +6144,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message_id",
-          "status",
-          "processed_message_id"
-        ],
+        "required": ["message_id", "status", "processed_message_id"],
         "title": "ChatSimulatorReplyResponse"
       },
       "ChatSimulatorStatusResponse": {
@@ -6311,12 +6167,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "enabled",
-          "tenant_id",
-          "provider",
-          "message_count"
-        ],
+        "required": ["enabled", "tenant_id", "provider", "message_count"],
         "title": "ChatSimulatorStatusResponse"
       },
       "ChatWebhookResponse": {
@@ -6331,10 +6182,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "status",
-          "message_id"
-        ],
+        "required": ["status", "message_id"],
         "title": "ChatWebhookResponse"
       },
       "CheckinDeveloperDto": {
@@ -6349,12 +6197,7 @@
           },
           "state": {
             "type": "string",
-            "enum": [
-              "confirmed",
-              "partial",
-              "stale",
-              "missing"
-            ],
+            "enum": ["confirmed", "partial", "stale", "missing"],
             "title": "State"
           },
           "source": {
@@ -6434,10 +6277,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "tenant_id",
-          "developer_id"
-        ],
+        "required": ["tenant_id", "developer_id"],
         "title": "CheckinDispatchRequest"
       },
       "CheckinPreferenceResponse": {
@@ -6618,14 +6458,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "from_node_id",
-          "to_node_id",
-          "kind",
-          "valid_from",
-          "valid_to",
-          "metadata"
-        ],
+        "required": ["from_node_id", "to_node_id", "kind", "valid_from", "valid_to", "metadata"],
         "title": "ConfigEdgeResponse"
       },
       "ConfigNodeCreateRequest": {
@@ -6738,10 +6571,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name"
-        ],
+        "required": ["id", "name"],
         "title": "ConfigNodeCreateRequest"
       },
       "ConfigNodeResponse": {
@@ -6855,12 +6685,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "kind",
-          "name",
-          "metadata"
-        ],
+        "required": ["id", "kind", "name", "metadata"],
         "title": "ConfigNodeResponse"
       },
       "ConfigNodeUpdateRequest": {
@@ -7090,13 +6915,7 @@
       },
       "CrossPersonRequestStatus": {
         "type": "string",
-        "enum": [
-          "open",
-          "acknowledged",
-          "resolved",
-          "dismissed",
-          "needs_resolution"
-        ],
+        "enum": ["open", "acknowledged", "resolved", "dismissed", "needs_resolution"],
         "title": "CrossPersonRequestStatus"
       },
       "CrossPersonRequestStatusUpdateRequest": {
@@ -7106,9 +6925,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "title": "CrossPersonRequestStatusUpdateRequest"
       },
       "CrossPersonRequestsResponse": {
@@ -7122,9 +6939,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "requests"
-        ],
+        "required": ["requests"],
         "title": "CrossPersonRequestsResponse"
       },
       "DirectoryItemResponse": {
@@ -7282,10 +7097,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "items",
-          "total"
-        ],
+        "required": ["items", "total"],
         "title": "DirectorySearchResponse"
       },
       "DirectorySyncResponse": {
@@ -7304,11 +7116,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "tenant_id",
-          "synced_count",
-          "deactivated_count"
-        ],
+        "required": ["tenant_id", "synced_count", "deactivated_count"],
         "title": "DirectorySyncResponse"
       },
       "DirectoryUserResponse": {
@@ -7503,11 +7311,7 @@
       },
       "EdgeKind": {
         "type": "string",
-        "enum": [
-          "contains",
-          "assigned_to",
-          "depends_on"
-        ],
+        "enum": ["contains", "assigned_to", "depends_on"],
         "title": "EdgeKind"
       },
       "EntityRefDto": {
@@ -7525,21 +7329,14 @@
           }
         },
         "type": "object",
-        "required": [
-          "tenant_id",
-          "kind",
-          "id"
-        ],
+        "required": ["tenant_id", "kind", "id"],
         "title": "EntityRefDto"
       },
       "FocusItemDto": {
         "properties": {
           "kind": {
             "type": "string",
-            "enum": [
-              "task",
-              "blocker"
-            ],
+            "enum": ["task", "blocker"],
             "title": "Kind"
           },
           "label": {
@@ -7577,14 +7374,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "kind",
-          "label",
-          "source",
-          "source_ref",
-          "confidence",
-          "deadline"
-        ],
+        "required": ["kind", "label", "source", "source_ref", "confidence", "deadline"],
         "title": "FocusItemDto"
       },
       "FocusResponse": {
@@ -7703,14 +7493,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "rag",
-          "source",
-          "confidence",
-          "deadline"
-        ],
+        "required": ["id", "name", "rag", "source", "confidence", "deadline"],
         "title": "FocusTaskDto"
       },
       "GithubSyncDispatchRequest": {
@@ -7737,10 +7520,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "tenant_id",
-          "repo_name"
-        ],
+        "required": ["tenant_id", "repo_name"],
         "title": "GithubSyncDispatchRequest"
       },
       "GraphEdgeDto": {
@@ -7782,13 +7562,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "from_node_id",
-          "to_node_id",
-          "kind",
-          "valid_from",
-          "valid_to"
-        ],
+        "required": ["from_node_id", "to_node_id", "kind", "valid_from", "valid_to"],
         "title": "GraphEdgeDto"
       },
       "GraphNodeDto": {
@@ -7829,12 +7603,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "kind",
-          "name",
-          "metadata"
-        ],
+        "required": ["id", "kind", "name", "metadata"],
         "title": "GraphNodeDto"
       },
       "GraphTreeDto": {
@@ -7858,11 +7627,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "root",
-          "nodes",
-          "edges"
-        ],
+        "required": ["root", "nodes", "edges"],
         "title": "GraphTreeDto"
       },
       "HTTPValidationError": {
@@ -7898,12 +7663,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "status",
-          "environment",
-          "tenant_id",
-          "correlation_id"
-        ],
+        "required": ["status", "environment", "tenant_id", "correlation_id"],
         "title": "HealthResponse"
       },
       "HeatmapCellDto": {
@@ -7934,15 +7694,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "row",
-          "column",
-          "entity_ref",
-          "rag",
-          "source",
-          "why",
-          "source_ref"
-        ],
+        "required": ["row", "column", "entity_ref", "rag", "source", "why", "source_ref"],
         "title": "HeatmapCellDto"
       },
       "IdentityLinkResponse": {
@@ -8091,10 +7843,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "tenant_id",
-          "project_key"
-        ],
+        "required": ["tenant_id", "project_key"],
         "title": "JiraSyncDispatchRequest"
       },
       "LogoutResponse": {
@@ -8113,11 +7862,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "success",
-          "message",
-          "redirect_url"
-        ],
+        "required": ["success", "message", "redirect_url"],
         "title": "LogoutResponse"
       },
       "MemberFromDirectoryRequest": {
@@ -8132,9 +7877,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "external_ids"
-        ],
+        "required": ["external_ids"],
         "title": "MemberFromDirectoryRequest"
       },
       "MemberTaskAssignmentRequest": {
@@ -8146,9 +7889,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "task_id"
-        ],
+        "required": ["task_id"],
         "title": "MemberTaskAssignmentRequest"
       },
       "MyStatusResponse": {
@@ -8227,6 +7968,37 @@
         ],
         "title": "NodeKind"
       },
+      "NodeTrendResponse": {
+        "properties": {
+          "entity_ref": {
+            "$ref": "#/components/schemas/EntityRefDto"
+          },
+          "window_days": {
+            "type": "integer",
+            "title": "Window Days"
+          },
+          "start": {
+            "type": "string",
+            "format": "date",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date",
+            "title": "End"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/TrendPointDto"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "type": "object",
+        "required": ["entity_ref", "window_days", "start", "end", "points"],
+        "title": "NodeTrendResponse"
+      },
       "PersonaTreeEdgeDto": {
         "properties": {
           "from_node_id": {
@@ -8242,11 +8014,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "from_node_id",
-          "to_node_id",
-          "kind"
-        ],
+        "required": ["from_node_id", "to_node_id", "kind"],
         "title": "PersonaTreeEdgeDto"
       },
       "PersonaTreeNodeDto": {
@@ -8302,15 +8070,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "kind",
-          "name",
-          "rag",
-          "source",
-          "confidence",
-          "factors"
-        ],
+        "required": ["id", "kind", "name", "rag", "source", "confidence", "factors"],
         "title": "PersonaTreeNodeDto"
       },
       "PodBlockersResponse": {
@@ -8337,12 +8097,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "pod_id",
-          "pod_name",
-          "as_of",
-          "blockers"
-        ],
+        "required": ["pod_id", "pod_name", "as_of", "blockers"],
         "title": "PodBlockersResponse"
       },
       "PodCheckinsResponse": {
@@ -8406,9 +8161,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "role"
-        ],
+        "required": ["role"],
         "title": "PodMemberLinkRequest"
       },
       "PortfolioFeedItemResponse": {
@@ -8458,14 +8211,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "source",
-          "kind",
-          "summary",
-          "entity_ref",
-          "observed_at",
-          "details"
-        ],
+        "required": ["source", "kind", "summary", "entity_ref", "observed_at", "details"],
         "title": "PortfolioFeedItemResponse"
       },
       "PortfolioFeedResponse": {
@@ -8489,11 +8235,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "as_of",
-          "since",
-          "items"
-        ],
+        "required": ["as_of", "since", "items"],
         "title": "PortfolioFeedResponse"
       },
       "PortfolioFlowResponse": {
@@ -8597,12 +8339,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "as_of",
-          "rows",
-          "columns",
-          "cells"
-        ],
+        "required": ["as_of", "rows", "columns", "cells"],
         "title": "PortfolioHeatmapResponse"
       },
       "PortfolioRisksResponse": {
@@ -8629,10 +8366,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "as_of",
-          "risks"
-        ],
+        "required": ["as_of", "risks"],
         "title": "PortfolioRisksResponse"
       },
       "ProgramProjectLinkRequest": {
@@ -8644,9 +8378,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "program_id"
-        ],
+        "required": ["program_id"],
         "title": "ProgramProjectLinkRequest"
       },
       "ProgramTreeResponse": {
@@ -8676,12 +8408,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "root_id",
-          "as_of",
-          "nodes",
-          "edges"
-        ],
+        "required": ["root_id", "as_of", "nodes", "edges"],
         "title": "ProgramTreeResponse"
       },
       "ProjectProgressResponse": {
@@ -8802,21 +8529,12 @@
           }
         },
         "type": "object",
-        "required": [
-          "project_id",
-          "as_of",
-          "risks"
-        ],
+        "required": ["project_id", "as_of", "risks"],
         "title": "ProjectRisksResponse"
       },
       "Rag": {
         "type": "string",
-        "enum": [
-          "green",
-          "amber",
-          "red",
-          "unknown"
-        ],
+        "enum": ["green", "amber", "red", "unknown"],
         "title": "Rag"
       },
       "ReadyResponse": {
@@ -8834,10 +8552,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "status",
-          "dependencies"
-        ],
+        "required": ["status", "dependencies"],
         "title": "ReadyResponse"
       },
       "RiskEvidenceDto": {
@@ -8863,11 +8578,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "identifier",
-          "url",
-          "url_is_user_supplied"
-        ],
+        "required": ["identifier", "url", "url_is_user_supplied"],
         "title": "RiskEvidenceDto"
       },
       "RiskFindingResponse": {
@@ -9000,11 +8711,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "description",
-          "contributes",
-          "source_ref"
-        ],
+        "required": ["description", "contributes", "source_ref"],
         "title": "RollupFactorDto"
       },
       "StatusCorrectionRequest": {
@@ -9034,20 +8741,12 @@
           }
         },
         "type": "object",
-        "required": [
-          "summary"
-        ],
+        "required": ["summary"],
         "title": "StatusCorrectionRequest"
       },
       "StatusSource": {
         "type": "string",
-        "enum": [
-          "confirmed",
-          "partial",
-          "inferred",
-          "stale",
-          "unknown"
-        ],
+        "enum": ["confirmed", "partial", "inferred", "stale", "unknown"],
         "title": "StatusSource"
       },
       "TaskProgressDto": {
@@ -9091,14 +8790,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "rag",
-          "source",
-          "confidence",
-          "deadline"
-        ],
+        "required": ["id", "name", "rag", "source", "confidence", "deadline"],
         "title": "TaskProgressDto"
       },
       "TenantWritebackResponse": {
@@ -9109,9 +8801,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "enabled"
-        ],
+        "required": ["enabled"],
         "title": "TenantWritebackResponse"
       },
       "TenantWritebackUpdateRequest": {
@@ -9122,10 +8812,30 @@
           }
         },
         "type": "object",
-        "required": [
-          "enabled"
-        ],
+        "required": ["enabled"],
         "title": "TenantWritebackUpdateRequest"
+      },
+      "TrendPointDto": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "rag": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "source": {
+            "$ref": "#/components/schemas/StatusSource"
+          },
+          "score": {
+            "type": "integer",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": ["as_of", "rag", "source", "score"],
+        "title": "TrendPointDto"
       },
       "ValidationError": {
         "properties": {
@@ -9160,11 +8870,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
+        "required": ["loc", "msg", "type"],
         "title": "ValidationError"
       },
       "WorkItemCreateRequest": {
@@ -9260,10 +8966,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name"
-        ],
+        "required": ["id", "name"],
         "title": "WorkItemCreateRequest"
       },
       "WorkItemFlowDto": {
@@ -9440,10 +9143,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "repo",
-          "branch"
-        ],
+        "required": ["repo", "branch"],
         "title": "WorkItemFromBranchRequest"
       },
       "WorkItemFromPrRequest": {
@@ -9505,11 +9205,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "repo",
-          "pr_id",
-          "title"
-        ],
+        "required": ["repo", "pr_id", "title"],
         "title": "WorkItemFromPrRequest"
       },
       "WorkItemTransitionRequest": {
@@ -9521,9 +9217,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "new_state"
-        ],
+        "required": ["new_state"],
         "title": "WorkItemTransitionRequest"
       },
       "WorkflowDispatchResponse": {
@@ -9534,9 +9228,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "workflow_id"
-        ],
+        "required": ["workflow_id"],
         "title": "WorkflowDispatchResponse"
       },
       "WorkstreamFlowResponse": {
