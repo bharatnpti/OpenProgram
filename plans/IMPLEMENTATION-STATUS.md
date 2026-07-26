@@ -8,7 +8,7 @@ Run from repo root; all GREEN:
 - `uv run ruff format --check backend` → clean **except** the pre-existing, out-of-scope `backend/tests/contract/test_gitlab_adapter.py` (unformatted at HEAD; leave it)
 - `uv run lint-imports` → Contracts: 5 kept, 0 broken
 - `PYTHONPATH=backend uv run mypy` → no issues (157 files)
-- `PYTHONPATH=backend uv run pytest backend/tests/unit backend/tests/contract --no-cov` → **432 passed**
+- `PYTHONPATH=backend uv run pytest backend/tests/unit backend/tests/contract --no-cov` → **455 passed**
 - Frontend: `npm run typecheck` / `lint` / `format:check` / `build` → clean. `openapi.json` + `generated.ts` regenerated and in sync (regenerate with the LOCAL prettier: `./node_modules/.bin/prettier`, NOT a global `npx prettier` — versions differ and cause spurious drift).
 - `backend/tests/bdd` remains the PRE-EXISTING environmental baseline (needs the running simulator/LLM; not a regression).
 
@@ -30,15 +30,15 @@ Alembic migrations through `0025_dead_letters`. **Next free number: `0026`.**
 - **Plan 04 §4c — remove dead infra** (`e45c4d9`): removed AGE graph sync + Cypher-injection surface, pgvector/VectorStore, CiProvider/BuildResult, StatusAgentNode; readiness needs only `timescaledb`; migration `0024`. heartbeat KEPT (justified liveness beacon).
 - **Plan 04 §4d — dead-letter + alerting** (`57c0c29`): `DeadLetter` domain + repository (migration `0025`, identifiers only); sweeper dead-letters exhausted bursts; admin ops `GET/POST /admin/ops/dead-letters[/{id}/rearm]`; workflow-backlog gauge + `/ready` `workflow_backlog` dependency.
 
-## REMAINING — to do now (this batch)
-Being implemented feature-by-feature via sub-agents; each committed + this doc updated on completion.
+## DONE — this batch (all committed; each via a sub-agent unless noted)
+All items below are complete. Baseline held green at each step (now **455 unit+contract passing**).
 - **UX Theme 2 — reply-path trust — DONE** (commit `998a097`): "Got it 👍" ack DM on reply finalization (single chokepoint, idempotent, not in conversation history); low-confidence acks (`CheckInSignals.parser_confident` False) add a recorded-summary + "reply 'fix'" hint. `checkin_ack_enabled` setting.
 - **UX Theme 1 — contextual check-in prefill — DONE (satisfied by existing code + §C4 + Task #15):** `build_context` already surfaces active prioritized issues + latest-status/carried-forward blockers, and the compose-DM prompt references a specific pending/blocked/stale issue + carried-forward blocker; carried-forward blockers are threaded in the reply path (`_signals_with_carried_blockers`); confirm/correct affordances exist (`/me/status/confirm|correct` + dashboard buttons); "unmapped members" admin visibility shipped in `f535e48`. The literal "tappable" block-kit affordance is Slack-specific and out of scope for the provider-neutral text bot.
 - **UX Theme 3 — write-back adoption metric:** track "Jira updates applied via check-in" on the admin/exec surface.
 - **Plan 03 A undo + adoption — DONE** (commit `c27a500`): `POST /admin/ops/writeback/{audit_id}/revert` (through `WriteBackService`, idempotent, 404/409/502); adoption count via `GET /persona/writeback-adoption` + `openprogram_writeback_applied` gauge + Manager/Exec "Jira updates via check-in" KPI.
 - **Plan 03 A consent loop — DONE** (commit `a51e2c3`): `GET/PUT /config/members/{id}/writeback-consent` + Admin UI select; interactive resolution wired into the reply pipeline (`always_ask` DMs a yes/no proposal; a follow-up reply → `interpret_consent_reply` → apply via `WriteBackService`/record `DECLINED`; `unclear` stays pending). No expiry timer yet.
 - **Plan 02 C4 follow-ons — DONE** (commit `f535e48`): identity-link Admin dialog on AdminConfigPage; `POST /config/members/identity-links/auto-match` (fills only missing fields from directory: external_id→chat_user_id, email→jira_email); `GET /config/members/unmapped` + unmapped-count KPI.
-- **Plan 01 follow-ons:** Temporal `continue_as_new` for very long coalesce conversations; dedicated burst/retry BDD scenarios.
+- **Plan 01 follow-ons — DONE** (commit `ca333d8`): `ReplyCoalesceWorkflow` calls `continue_as_new` after `_MAX_COALESCE_RESETS` (500) to bound Temporal history (buffered events preserved in `inbound_chat_events`); two reliability BDD scenarios (burst coalesces to one processed reply; failed attempt retried then finalizes) with full in-memory step defs that pass. **Unverified:** continue_as_new runtime behavior needs a live Temporal worker.
 
 ## DEFERRED — not in this batch (per user)
 - **Plan 04 ops bucket:** §4a engine consolidation (keep both engines by decision); §4e coverage-gate extension to `infra`/`api`; §4e doc reconciliation (`uat.md`/`slack.md`/`checin.md` scratch files, "PulseOps" string, GitLab-provider doc contradiction).
