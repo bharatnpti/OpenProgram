@@ -21,6 +21,7 @@ from core.application.writeback_service import WriteBackService
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.cross_person import CrossPersonRequestResolution, CrossPersonRequestStatus
 from core.domain.directory import DirectoryUser
+from core.domain.escalation import EscalationTarget
 from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse
@@ -457,6 +458,10 @@ class StatusCollector:
         correlation_id: str,
         developer_name: str | None = None,
         chat_external_id: str | None = None,
+        nudge_number: int = 1,
+        target: EscalationTarget = EscalationTarget.DEVELOPER,
+        recipient_chat_external_id: str | None = None,
+        recipient_display_name: str | None = None,
     ) -> str:
         checkin = await self._status_repository.checkin_by_correlation(
             tenant_id,
@@ -468,19 +473,111 @@ class StatusCollector:
         if checkin.replied_at is not None:
             error = "cannot nudge a check-in that already has a reply"
             raise ValueError(error)
+        if target is not EscalationTarget.DEVELOPER and not recipient_chat_external_id:
+            error = "escalation to a human target requires a recipient chat id"
+            raise ValueError(error)
 
         existing_nudge = await self._status_repository.checkin_nudge_for(
             tenant_id,
             correlation_id,
-            1,
+            nudge_number,
         )
         if existing_nudge is not None:
-            return existing_nudge.outbound_message_id or _pending_nudge_message_id(correlation_id)
+            return existing_nudge.outbound_message_id or _pending_nudge_message_id(
+                correlation_id, nudge_number
+            )
 
         await self._status_repository.record_checkin_nudge(
-            CheckInNudge(tenant_id=tenant_id, correlation_id=correlation_id, nudge_number=1)
+            CheckInNudge(
+                tenant_id=tenant_id,
+                correlation_id=correlation_id,
+                nudge_number=nudge_number,
+            )
         )
 
+        if target is EscalationTarget.DEVELOPER:
+            text = await self._compose_developer_nudge_text(
+                tenant_id=tenant_id,
+                checkin=checkin,
+                developer_name=developer_name,
+                nudge_number=nudge_number,
+                correlation_id=correlation_id,
+            )
+            recipient = ChatUserRef(
+                tenant_id=tenant_id,
+                external_id=chat_external_id or checkin.developer_id,
+                display_name=developer_name,
+            )
+            purpose = "status_nudge"
+        else:
+            # Escalation notices to a human are non-response facts only -- they must
+            # never carry the developer's raw check-in/reply content.
+            text = _compose_escalation_notice(
+                target=target,
+                developer_name=developer_name or checkin.developer_id,
+                max_chars=self._outbound_dm_max_chars,
+            )
+            recipient = ChatUserRef(
+                tenant_id=tenant_id,
+                external_id=recipient_chat_external_id or "",
+                display_name=recipient_display_name,
+            )
+            purpose = "status_escalation"
+
+        message_id = await self._chat_provider.send_dm(
+            recipient,
+            OutboundMessage(
+                tenant_id=tenant_id,
+                text=text,
+                correlation_id=correlation_id,
+                metadata={
+                    "purpose": purpose,
+                    "nudge_number": nudge_number,
+                    "escalation_target": target.value,
+                    "idempotency_key": f"nudge:{correlation_id}:{nudge_number}",
+                },
+            ),
+        )
+        sent_at = datetime.now(tz=UTC)
+        if target is EscalationTarget.DEVELOPER:
+            # Only the developer's own DM belongs in their conversation history.
+            await self._record_conversation_turn(
+                ConversationTurn(
+                    tenant_id=tenant_id,
+                    developer_id=checkin.developer_id,
+                    conversation_id=correlation_id,
+                    conversation_date=await self._local_date_for_developer(
+                        tenant_id,
+                        checkin.developer_id,
+                        sent_at,
+                    ),
+                    role=ConversationRole.AGENT,
+                    content=text,
+                    correlation_id=correlation_id,
+                    chat_message_id=message_id,
+                    observed_at=sent_at,
+                )
+            )
+        stored = await self._status_repository.record_checkin_nudge(
+            CheckInNudge(
+                tenant_id=tenant_id,
+                correlation_id=correlation_id,
+                nudge_number=nudge_number,
+                sent_at=sent_at,
+                outbound_message_id=message_id,
+            )
+        )
+        return stored.outbound_message_id or message_id
+
+    async def _compose_developer_nudge_text(
+        self,
+        *,
+        tenant_id: str,
+        checkin: CheckIn,
+        developer_name: str | None,
+        nudge_number: int,
+        correlation_id: str,
+    ) -> str:
         context = await self.build_context(
             tenant_id=tenant_id,
             developer_id=checkin.developer_id,
@@ -515,12 +612,12 @@ class StatusCollector:
                     "service": "status_collector",
                     "purpose": "compose_nudge",
                     "developer_id": checkin.developer_id,
-                    "nudge_number": 1,
+                    "nudge_number": nudge_number,
                 },
             ),
             tools=tools,
         )
-        text = _safe_outbound_checkin_text(
+        return _safe_outbound_checkin_text(
             response.text,
             developer_id=checkin.developer_id,
             developer_name=developer_name,
@@ -528,51 +625,6 @@ class StatusCollector:
             purpose="nudge",
             max_chars=self._outbound_dm_max_chars,
         )
-        message_id = await self._chat_provider.send_dm(
-            ChatUserRef(
-                tenant_id=tenant_id,
-                external_id=chat_external_id or checkin.developer_id,
-                display_name=developer_name,
-            ),
-            OutboundMessage(
-                tenant_id=tenant_id,
-                text=text,
-                correlation_id=correlation_id,
-                metadata={
-                    "purpose": "status_nudge",
-                    "nudge_number": 1,
-                    "idempotency_key": f"nudge:{correlation_id}:1",
-                },
-            ),
-        )
-        sent_at = datetime.now(tz=UTC)
-        await self._record_conversation_turn(
-            ConversationTurn(
-                tenant_id=tenant_id,
-                developer_id=checkin.developer_id,
-                conversation_id=correlation_id,
-                conversation_date=await self._local_date_for_developer(
-                    tenant_id,
-                    checkin.developer_id,
-                    sent_at,
-                ),
-                role=ConversationRole.AGENT,
-                content=text,
-                correlation_id=correlation_id,
-                chat_message_id=message_id,
-                observed_at=sent_at,
-            )
-        )
-        stored = await self._status_repository.record_checkin_nudge(
-            CheckInNudge(
-                tenant_id=tenant_id,
-                correlation_id=correlation_id,
-                nudge_number=1,
-                sent_at=sent_at,
-                outbound_message_id=message_id,
-            )
-        )
-        return stored.outbound_message_id or message_id
 
     async def record_non_response(
         self,
@@ -1474,8 +1526,31 @@ def _new_correlation_id() -> str:
     return f"checkin-{uuid4().hex}"
 
 
-def _pending_nudge_message_id(correlation_id: str) -> str:
-    return f"pending-nudge-{correlation_id}-1"
+def _pending_nudge_message_id(correlation_id: str, nudge_number: int = 1) -> str:
+    return f"pending-nudge-{correlation_id}-{nudge_number}"
+
+
+_ESCALATION_ROLE_LABELS: dict[EscalationTarget, str] = {
+    EscalationTarget.SCRUM_MASTER: "scrum master",
+    EscalationTarget.MANAGER: "manager",
+}
+
+
+def _compose_escalation_notice(
+    *,
+    target: EscalationTarget,
+    developer_name: str,
+    max_chars: int = OUTBOUND_DM_MAX_CHARS,
+) -> str:
+    """A privacy-safe non-response escalation notice (no raw reply content)."""
+    role_label = _ESCALATION_ROLE_LABELS.get(target, "escalation contact")
+    notice = (
+        f"Heads up: {developer_name} hasn't completed today's check-in yet. "
+        f"You're notified as the {role_label} so you can follow up if needed."
+    )
+    if len(notice) > max_chars:
+        return notice[: max(0, max_chars - 1)].rstrip() + "…"
+    return notice
 
 
 def _safe_outbound_checkin_text(

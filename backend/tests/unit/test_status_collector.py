@@ -15,6 +15,7 @@ from core.application.status_parsing import StatusParser
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.cross_person import CrossPersonRequestStatus
 from core.domain.directory import DirectoryUser
+from core.domain.escalation import EscalationTarget
 from core.domain.graph import EntityRef, FactEvent, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
@@ -2025,6 +2026,7 @@ async def test_status_collector_nudges_once_and_records_stale_non_response() -> 
     assert chat.sent[0].metadata == {
         "purpose": "status_nudge",
         "nudge_number": 1,
+        "escalation_target": "developer",
         "idempotency_key": "nudge:corr-1:1",
     }
     turns = await store.list_recent_turns("demo", "dev-1", limit=1)
@@ -2038,6 +2040,92 @@ async def test_status_collector_nudges_once_and_records_stale_non_response() -> 
     assert terminal_status.source is StatusSource.STALE
     assert terminal_status.blockers == ("no confirmed reply",)
     assert "Yesterday was on track" in terminal_status.summary
+
+
+async def test_status_collector_escalation_nudge_notifies_contact_without_reply_content() -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    chat = FakeChatProvider()
+    llm = SequenceLlmProvider(texts=["unused"])
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    message_id = await collector.send_nudge(
+        tenant_id="demo",
+        correlation_id="corr-1",
+        developer_name="Asha",
+        nudge_number=2,
+        target=EscalationTarget.SCRUM_MASTER,
+        recipient_chat_external_id="U-SM",
+        recipient_display_name="Sam SM",
+    )
+
+    assert message_id == "msg-U-SM-1"
+    assert len(chat.sent) == 1
+    sent = chat.sent[0]
+    assert sent.metadata == {
+        "purpose": "status_escalation",
+        "nudge_number": 2,
+        "escalation_target": "scrum_master",
+        "idempotency_key": "nudge:corr-1:2",
+    }
+    assert "Asha" in sent.text
+    assert "scrum master" in sent.text
+    # No LLM composition and no reply content leaked to the escalation contact.
+    assert llm.requests == []
+    # The escalation DM must not land in the developer's conversation history.
+    turns = await store.list_recent_turns("demo", "dev-1", limit=5)
+    assert turns == []
+    nudge = await store.checkin_nudge_for("demo", "corr-1", 2)
+    assert nudge is not None
+    assert nudge.outbound_message_id == "msg-U-SM-1"
+
+
+async def test_status_collector_escalation_requires_recipient() -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(texts=[]),
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    with pytest.raises(ValueError, match="recipient chat id"):
+        await collector.send_nudge(
+            tenant_id="demo",
+            correlation_id="corr-1",
+            nudge_number=2,
+            target=EscalationTarget.MANAGER,
+        )
 
 
 async def test_status_collector_replaces_prompt_echo_nudge_dm() -> None:
