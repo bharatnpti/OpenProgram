@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import uuid4
 
 from core.application.authorization import AuthorizationPolicy, Capability
@@ -27,11 +29,11 @@ class WriteBackService:
     2. Capability gate -- the acting principal holds ``WRITE_ISSUE_TRACKER``.
     3. Consent gate -- the developer's standing consent is ``auto_apply``.
 
-    ``always_ask`` records a ``proposed`` audit row and writes nothing (the
-    interactive DM confirmation loop is a documented follow-up); ``never`` and a
-    closed system gate do nothing. Every applied write captures the prior state
-    for reversibility and is idempotent on (issue_key, target_state,
-    correlation_id).
+    ``always_ask`` records a ``proposed`` audit row and writes nothing until the
+    developer answers yes/no -- ``resolve_consent_reply`` then applies (yes) or
+    records ``declined`` (no); ``never`` and a closed system gate do nothing.
+    Every applied write captures the prior state for reversibility and is
+    idempotent on (issue_key, target_state, correlation_id).
 
     This is the single sanctioned application-layer caller of the issue tracker
     write methods; the architecture-boundary guard is scoped to allow it.
@@ -93,15 +95,126 @@ class WriteBackService:
             if existing is not None:
                 continue
             if consent is WriteBackConsent.AUTO_APPLY:
+                # Standing consent -- apply immediately, tagging the provenance so
+                # the audit distinguishes it from an interactively-confirmed write.
                 results.append(
                     await self._apply(
-                        tenant_id, developer_id, correlation_id, claim, target_state, source
+                        tenant_id,
+                        developer_id,
+                        correlation_id,
+                        claim,
+                        target_state,
+                        "standing_consent",
                     )
                 )
             else:  # WriteBackConsent.ALWAYS_ASK
                 results.append(
                     await self._propose(
                         tenant_id, developer_id, correlation_id, claim, target_state, source
+                    )
+                )
+        return results
+
+    async def list_pending_proposals(
+        self, tenant_id: str, correlation_id: str
+    ) -> list[WriteBackAudit]:
+        """Proposals for this check-in still awaiting a developer yes/no.
+
+        A proposal is pending when a ``proposed`` row exists for an
+        ``(issue_key, target_state)`` pair and no later ``applied``/``declined``/
+        ``reverted``/``expired`` row has resolved that same pair. Resolving a
+        proposal appends a terminal row, so this naturally becomes empty once
+        answered -- the basis for idempotent resolution.
+        """
+        rows = await self._audit.list_writeback_by_correlation(tenant_id, correlation_id)
+        resolved = {
+            (row.issue_key, row.target_state)
+            for row in rows
+            if row.status
+            in (
+                WriteBackStatus.APPLIED,
+                WriteBackStatus.DECLINED,
+                WriteBackStatus.REVERTED,
+                WriteBackStatus.EXPIRED,
+            )
+        }
+        pending: list[WriteBackAudit] = []
+        seen: set[tuple[str, str]] = set()
+        for row in rows:
+            if row.status is not WriteBackStatus.PROPOSED:
+                continue
+            key = (row.issue_key, row.target_state)
+            if key in resolved or key in seen:
+                continue
+            seen.add(key)
+            pending.append(row)
+        return pending
+
+    async def resolve_consent_reply(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        correlation_id: str,
+        reply_text: str,
+    ) -> list[WriteBackAudit]:
+        """Resolve pending write-back proposals from a developer's yes/no answer.
+
+        Returns the audit rows produced -- ``applied`` on an affirmative answer,
+        ``declined`` on a negative one, and nothing when the answer is unclear,
+        when there is no pending proposal, or when the gates have since closed
+        (idempotent: once a proposal is resolved it is no longer pending). All
+        writes still flow through the single audited ``_apply`` path.
+        """
+        pending = await self.list_pending_proposals(tenant_id, correlation_id)
+        if not pending:
+            return []
+        intent = interpret_consent_reply(reply_text)
+        if intent == "unclear":
+            return []
+        principal = Principal(
+            tenant_id=tenant_id,
+            subject=developer_id,
+            roles=frozenset({Role.DEV}),
+        )
+        if not self._policy.can(principal, Capability.WRITE_ISSUE_TRACKER):
+            return []
+        if not await self.system_gate_open(tenant_id):
+            return []
+        if await self._consent(tenant_id, developer_id) is WriteBackConsent.NEVER:
+            return []
+
+        results: list[WriteBackAudit] = []
+        for proposal in pending:
+            if intent == "affirm":
+                claim = IssueClaim(
+                    issue_key=proposal.issue_key,
+                    claimed_state=proposal.target_state,
+                    note=proposal.comment or "",
+                )
+                results.append(
+                    await self._apply(
+                        tenant_id,
+                        developer_id,
+                        correlation_id,
+                        claim,
+                        proposal.target_state,
+                        "consent_reply",
+                    )
+                )
+            else:  # intent == "decline"
+                results.append(
+                    await self._record(
+                        tenant_id=tenant_id,
+                        developer_id=developer_id,
+                        correlation_id=correlation_id,
+                        issue_key=proposal.issue_key,
+                        target_state=proposal.target_state,
+                        status=WriteBackStatus.DECLINED,
+                        before_state=proposal.before_state,
+                        after_state=proposal.before_state,
+                        comment=None,
+                        source="consent_reply",
                     )
                 )
         return results
@@ -285,6 +398,37 @@ class WriteBackService:
         )
         await self._audit.record(audit)
         return audit
+
+
+_AFFIRM_TOKENS = frozenset(
+    {"yes", "y", "yeah", "yep", "yup", "sure", "ok", "okay", "apply", "confirm", "confirmed"}
+)
+_AFFIRM_PHRASES = ("do it", "go ahead", "please do", "sounds good")
+_DECLINE_TOKENS = frozenset(
+    {"no", "n", "nope", "nah", "don't", "dont", "stop", "cancel", "decline", "skip"}
+)
+_DECLINE_PHRASES = ("do not", "leave it", "not now")
+
+
+def interpret_consent_reply(text: str) -> Literal["affirm", "decline", "unclear"]:
+    """Classify a developer's free-text reply as a yes/no to a write-back proposal.
+
+    A deliberately small keyword/phrase allow-list: ``affirm`` for yes-like
+    replies, ``decline`` for no-like replies, and ``unclear`` when neither or
+    both are present (an ambiguous reply leaves the proposal pending -- never
+    written). This is pure and provider-neutral so the reply pipeline can call it
+    without any I/O.
+    """
+    words = re.findall(r"[a-z']+", text.lower())
+    if not words:
+        return "unclear"
+    tokens = set(words)
+    bigrams = {f"{a} {b}" for a, b in zip(words, words[1:], strict=False)}
+    affirm = bool(tokens & _AFFIRM_TOKENS) or bool(bigrams & set(_AFFIRM_PHRASES))
+    decline = bool(tokens & _DECLINE_TOKENS) or bool(bigrams & set(_DECLINE_PHRASES))
+    if affirm == decline:
+        return "unclear"
+    return "affirm" if affirm else "decline"
 
 
 def _target_state(claim: IssueClaim) -> str | None:

@@ -379,6 +379,23 @@ class PostgresGraphRepository:
             )
         return [_writeback_audit_from_row(row) for row in rows]
 
+    async def list_writeback_by_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> list[WriteBackAudit]:
+        with _tracer.start_as_current_span("postgres.graph.list_writeback_by_correlation"):
+            rows = await self._executor.fetch(
+                """
+                SELECT id, tenant_id, developer_id, issue_key, correlation_id,
+                       status, target_state, before_state, after_state, comment,
+                       source, created_at
+                FROM writeback_audit
+                WHERE tenant_id = %s AND correlation_id = %s
+                ORDER BY created_at
+                """,
+                (tenant_id, correlation_id),
+            )
+        return [_writeback_audit_from_row(row) for row in rows]
+
     async def find_existing(
         self,
         tenant_id: str,

@@ -3753,6 +3753,126 @@
         }
       }
     },
+    "/config/members/{member_id}/writeback-consent": {
+      "get": {
+        "tags": ["config"],
+        "summary": "Get Config Member Writeback Consent",
+        "operationId": "get_config_member_writeback_consent_config_members__member_id__writeback_consent_get",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritebackConsentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["config"],
+        "summary": "Update Config Member Writeback Consent",
+        "operationId": "update_config_member_writeback_consent_config_members__member_id__writeback_consent_put",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WritebackConsentUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritebackConsentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/members/{member_id}/identity-link": {
       "get": {
         "tags": ["config"],
@@ -10330,6 +10450,12 @@
         "required": ["applied_count", "recent"],
         "title": "WriteBackAdoptionResponse"
       },
+      "WriteBackConsent": {
+        "type": "string",
+        "enum": ["always_ask", "auto_apply", "never"],
+        "title": "WriteBackConsent",
+        "description": "Per-developer standing consent for automated issue-tracker write-back.\n\n``always_ask`` (the safe default) never writes automatically; ``auto_apply``\ngrants standing consent; ``never`` opts out entirely."
+      },
       "WriteBackRevertResponse": {
         "properties": {
           "audit_id": {
@@ -10372,9 +10498,33 @@
       },
       "WriteBackStatus": {
         "type": "string",
-        "enum": ["proposed", "applied", "failed", "reverted"],
+        "enum": ["proposed", "applied", "failed", "reverted", "declined", "expired"],
         "title": "WriteBackStatus",
         "description": "Lifecycle of a single audited issue-tracker write."
+      },
+      "WritebackConsentResponse": {
+        "properties": {
+          "developer_id": {
+            "type": "string",
+            "title": "Developer Id"
+          },
+          "consent": {
+            "$ref": "#/components/schemas/WriteBackConsent"
+          }
+        },
+        "type": "object",
+        "required": ["developer_id", "consent"],
+        "title": "WritebackConsentResponse"
+      },
+      "WritebackConsentUpdateRequest": {
+        "properties": {
+          "consent": {
+            "$ref": "#/components/schemas/WriteBackConsent"
+          }
+        },
+        "type": "object",
+        "required": ["consent"],
+        "title": "WritebackConsentUpdateRequest"
       }
     }
   }

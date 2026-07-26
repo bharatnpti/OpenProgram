@@ -4,6 +4,7 @@ import {
   DatabaseZap,
   Fingerprint,
   Link2,
+  PenLine,
   Settings2,
   ShieldAlert,
   Trash2,
@@ -22,6 +23,7 @@ import type {
   DirectoryUserResponse,
   IdentityLinkUpdateRequest,
   PodEscalationContactsUpdateRequest,
+  WriteBackConsent,
 } from "../api/schema";
 import { DataTable, type DataTableColumn } from "../components/ops/DataTable";
 import {
@@ -107,6 +109,7 @@ export function AdminConfigPage() {
   const [editing, setEditing] = useState<ConfigNodeResponse | null>(null);
   const [escalationPod, setEscalationPod] = useState<ConfigNodeResponse | null>(null);
   const [identityMember, setIdentityMember] = useState<ConfigNodeResponse | null>(null);
+  const [consentMember, setConsentMember] = useState<ConfigNodeResponse | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState>({ open: false });
 
   const programs = useQuery({
@@ -269,6 +272,17 @@ export function AdminConfigPage() {
             >
               <Fingerprint className="h-3.5 w-3.5" />
               Identity
+            </Button>
+          )}
+          {activeEntity === "members" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setConsentMember(row.original)}
+            >
+              <PenLine className="h-3.5 w-3.5" />
+              Write-back
             </Button>
           )}
           <Button
@@ -538,6 +552,8 @@ export function AdminConfigPage() {
         <EscalationContactsDialog pod={escalationPod} onClose={() => setEscalationPod(null)} />
 
         <IdentityLinkDialog member={identityMember} onClose={() => setIdentityMember(null)} />
+
+        <WritebackConsentDialog member={consentMember} onClose={() => setConsentMember(null)} />
 
         <ConfirmDialog
           open={confirm.open}
@@ -1431,6 +1447,90 @@ function IdentityLinkDialog({
                 />
               </Field>
             </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={saveMutation.isPending}>
+                Save
+              </Button>
+            </div>
+          </form>
+        )}
+      </QueryState>
+    </Dialog>
+  );
+}
+
+const WRITEBACK_CONSENT_OPTIONS: { value: WriteBackConsent; label: string }[] = [
+  { value: "always_ask", label: "Always ask (default)" },
+  { value: "auto_apply", label: "Auto-apply" },
+  { value: "never", label: "Never" },
+];
+
+function WritebackConsentDialog({
+  member,
+  onClose,
+}: {
+  member: ConfigNodeResponse | null;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const memberId = member?.id ?? "";
+  const [consent, setConsent] = useState<WriteBackConsent>("always_ask");
+
+  const preference = useQuery({
+    queryKey: ["config", "member-writeback-consent", memberId],
+    queryFn: () => apiClient.configMemberWritebackConsent(memberId),
+    enabled: Boolean(member),
+  });
+
+  useEffect(() => {
+    if (!preference.data) return;
+    setConsent(preference.data.consent);
+  }, [preference.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: () => apiClient.updateConfigMemberWritebackConsent(memberId, { consent }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["config", "member-writeback-consent", memberId],
+      });
+      toast.success("Write-back consent saved.");
+      onClose();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <Dialog
+      open={Boolean(member)}
+      onOpenChange={(open) => !open && onClose()}
+      title={member ? `Write-back consent — ${member.name}` : "Write-back consent"}
+      description="Governs whether this member's check-in claims may update the issue tracker. Always-ask proposes the change and waits for a yes/no in the DM; auto-apply grants standing consent; never opts out. The tenant flag and capability must also be enabled."
+    >
+      <QueryState query={preference} loadingRows={2}>
+        {() => (
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveMutation.mutate();
+            }}
+          >
+            <Field label="Consent preference" htmlFor="writeback-consent">
+              <Select
+                id="writeback-consent"
+                value={consent}
+                onChange={(event) => setConsent(event.target.value as WriteBackConsent)}
+              >
+                {WRITEBACK_CONSENT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel

@@ -443,6 +443,12 @@ async def assert_writeback_audit_repository_contract(
     assert [entry.id for entry in recent] == ["wb-3", "wb-1"]
     assert await repository.list_applied_writebacks("demo", 1) == [applied_later]
 
+    # Correlation-scoped listing returns every status for the check-in, ordered.
+    assert await repository.list_writeback_by_correlation("demo", "corr-1") == [audit]
+    assert await repository.list_writeback_by_correlation("demo", "corr-2") == [proposed]
+    assert await repository.list_writeback_by_correlation("demo", "missing") == []
+    assert await repository.list_writeback_by_correlation("other", "corr-1") == []
+
 
 async def assert_directory_user_repository_contract(repository: DirectoryUserRepository) -> None:
     users = [
