@@ -11,6 +11,7 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { apiClient } from "../../api/client";
+import type { NodeTrendResponse } from "../../api/schema";
 import {
   AsOfControl,
   DataPanel,
@@ -32,6 +33,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { resolveSelection } from "../../lib/selection";
 import { HeatmapChart } from "./HeatmapChart";
 import { HierarchyFlow } from "./HierarchyFlow";
+import { Sparkline } from "./Sparkline";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -68,6 +70,9 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
   const showTeam = role === "sm";
   const showProgress = role === "po";
   const showPortfolio = role === "mgr" || role === "exec";
+  // The Manager view adds a delivery-momentum trend so it is no longer a
+  // byte-for-byte copy of the point-in-time Exec heatmap.
+  const showTrend = role === "mgr";
 
   const podsDirectory = useQuery({
     queryKey: ["directory", "pods", asOf],
@@ -180,6 +185,12 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
     enabled: showPortfolio && Boolean(selectedProgramId),
     staleTime: 5 * 60_000,
   });
+  const trend = useQuery({
+    queryKey: ["persona", "trend", selectedProgramId, asOf],
+    queryFn: () => apiClient.nodeTrend("program", selectedProgramId, { asOf, windowDays: 30 }),
+    enabled: showTrend && Boolean(selectedProgramId),
+    staleTime: 5 * 60_000,
+  });
 
   const queries = [
     health,
@@ -187,6 +198,7 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
     ...(showTeam ? [podsDirectory, blockers, checkins] : []),
     ...(showProgress ? [projectsDirectory, progress] : []),
     ...(showPortfolio ? [programsDirectory, tree, heatmap] : []),
+    ...(showTrend ? [trend] : []),
   ];
   const isRefreshing = queries.some((query) => query.isFetching);
 
@@ -543,6 +555,18 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
           </DataPanel>
         )}
 
+        {showTrend && (
+          <DataPanel
+            title="Delivery Momentum"
+            description="30-day RAG trend for the selected program — is it improving or sliding?"
+            action={<MomentumBadge data={trend.data} />}
+          >
+            <QueryState query={trend} loadingRows={3}>
+              {(data) => <Sparkline data={data} />}
+            </QueryState>
+          </DataPanel>
+        )}
+
         {showPortfolio && (
           <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_460px]">
             <DataPanel
@@ -694,6 +718,21 @@ function Count({ label, value, tone }: { label: string; value: number; tone: Bad
       </div>
     </div>
   );
+}
+
+function MomentumBadge({ data }: { data: NodeTrendResponse | undefined }) {
+  if (!data || data.points.length < 2) {
+    return <Badge tone="neutral">insufficient history</Badge>;
+  }
+  const first = data.points[0].score;
+  const last = data.points[data.points.length - 1].score;
+  if (last > first) {
+    return <Badge tone="success">improving</Badge>;
+  }
+  if (last < first) {
+    return <Badge tone="danger">sliding</Badge>;
+  }
+  return <Badge tone="info">steady</Badge>;
 }
 
 function statusForQuery(query: {
