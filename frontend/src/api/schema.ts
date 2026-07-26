@@ -60,6 +60,11 @@ export type EscalationContactDto = components["schemas"]["EscalationContactDto"]
 export type PodEscalationContactsResponse = components["schemas"]["PodEscalationContactsResponse"];
 export type PodEscalationContactsUpdateRequest =
   components["schemas"]["PodEscalationContactsUpdateRequest"];
+export type IdentityLinkResponse = components["schemas"]["IdentityLinkResponse"];
+export type IdentityLinkUpdateRequest = components["schemas"]["IdentityLinkUpdateRequest"];
+export type IdentityAutoMatchResponse = components["schemas"]["IdentityAutoMatchResponse"];
+export type IdentityAutoMatchMemberDto = components["schemas"]["IdentityAutoMatchMemberDto"];
+export type UnmappedMemberResponse = components["schemas"]["UnmappedMemberResponse"];
 export type BriefKind = components["schemas"]["BriefKind"];
 export type NarrativeBriefResponse = components["schemas"]["NarrativeBriefResponse"];
 export type NarrativeBriefsResponse = components["schemas"]["NarrativeBriefsResponse"];

@@ -23,6 +23,7 @@ from api.dtos import (
     DirectorySearchResponse,
     DirectorySyncResponse,
     DirectoryUserResponse,
+    IdentityAutoMatchResponse,
     IdentityLinkResponse,
     IdentityLinkUpdateRequest,
     MemberFromDirectoryRequest,
@@ -33,6 +34,7 @@ from api.dtos import (
     ProgramProjectLinkRequest,
     TenantWritebackResponse,
     TenantWritebackUpdateRequest,
+    UnmappedMemberResponse,
     WorkItemCreateRequest,
     WorkItemFromBranchRequest,
     WorkItemFromPrRequest,
@@ -505,6 +507,35 @@ async def list_config_members(
         ConfigNodeResponse.from_domain(node)
         for node in await service.list_nodes(principal.tenant_id, NodeKind.DEVELOPER)
     ]
+
+
+@router.get("/config/members/unmapped", response_model=list[UnmappedMemberResponse])
+async def list_config_unmapped_members(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> list[UnmappedMemberResponse]:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        members = await service.list_unmapped_members(principal.tenant_id)
+    except ConfigValidationError as exc:
+        raise _http_error(exc) from exc
+    return [UnmappedMemberResponse.from_domain(member) for member in members]
+
+
+@router.post(
+    "/config/members/identity-links/auto-match",
+    response_model=IdentityAutoMatchResponse,
+)
+async def auto_match_config_identity_links(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> IdentityAutoMatchResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        result = await service.auto_match_identity_links(principal.tenant_id)
+    except ConfigValidationError as exc:
+        raise _http_error(exc) from exc
+    return IdentityAutoMatchResponse.from_domain(result)
 
 
 @router.get("/config/directory/users", response_model=DirectorySearchResponse)

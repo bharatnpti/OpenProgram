@@ -1,6 +1,15 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DatabaseZap, Link2, Settings2, ShieldAlert, Trash2, UserPlus } from "lucide-react";
+import {
+  DatabaseZap,
+  Fingerprint,
+  Link2,
+  Settings2,
+  ShieldAlert,
+  Trash2,
+  UserPlus,
+  Wand2,
+} from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -11,6 +20,7 @@ import type {
   CheckinPreferenceResponse,
   ConfigNodeResponse,
   DirectoryUserResponse,
+  IdentityLinkUpdateRequest,
   PodEscalationContactsUpdateRequest,
 } from "../api/schema";
 import { DataTable, type DataTableColumn } from "../components/ops/DataTable";
@@ -96,6 +106,7 @@ export function AdminConfigPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ConfigNodeResponse | null>(null);
   const [escalationPod, setEscalationPod] = useState<ConfigNodeResponse | null>(null);
+  const [identityMember, setIdentityMember] = useState<ConfigNodeResponse | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState>({ open: false });
 
   const programs = useQuery({
@@ -116,6 +127,11 @@ export function AdminConfigPage() {
     queryKey: ["config", "checkin-preferences"],
     queryFn: apiClient.configCheckinPreferences,
   });
+  const unmapped = useQuery({
+    queryKey: ["config", "unmapped-members"],
+    queryFn: apiClient.configUnmappedMembers,
+  });
+  const unmappedCount = unmapped.data?.length ?? 0;
 
   const entityQueryByTab = {
     programs,
@@ -154,6 +170,21 @@ export function AdminConfigPage() {
     onSuccess: async () => {
       await invalidateAll();
       toast.success("Record deleted.");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const autoMatchMutation = useMutation({
+    mutationFn: () => apiClient.autoMatchConfigIdentityLinks(),
+    onSuccess: async (result) => {
+      await invalidateAll();
+      if (result.updated_count === 0) {
+        toast.info("No identity links needed auto-matching.");
+      } else {
+        toast.success(
+          `Auto-matched ${result.updated_count} member${result.updated_count === 1 ? "" : "s"} from the directory.`,
+        );
+      }
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -229,6 +260,17 @@ export function AdminConfigPage() {
               Escalation
             </Button>
           )}
+          {activeEntity === "members" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setIdentityMember(row.original)}
+            >
+              <Fingerprint className="h-3.5 w-3.5" />
+              Identity
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"
@@ -259,7 +301,19 @@ export function AdminConfigPage() {
           <KpiCard label="Projects" value={projects.data?.length ?? "-"} tone="info" />
           <KpiCard label="Workstreams" value={workstreams.data?.length ?? "-"} tone="info" />
           <KpiCard label="Pods" value={pods.data?.length ?? "-"} tone="info" />
-          <KpiCard label="Members" value={members.data?.length ?? "-"} tone="info" />
+          <KpiCard
+            label="Members"
+            value={members.data?.length ?? "-"}
+            tone={unmappedCount > 0 ? "warning" : "info"}
+            icon={unmappedCount > 0 ? <ShieldAlert className="h-4 w-4" /> : undefined}
+            detail={
+              unmappedCount > 0
+                ? `${unmappedCount} unmapped (no chat ID)`
+                : members.data
+                  ? "all mapped"
+                  : undefined
+            }
+          />
         </section>
 
         <Tabs defaultValue="entities">
@@ -287,9 +341,22 @@ export function AdminConfigPage() {
               title="Configured Entities"
               description="Create and maintain the program, project, pod, and member nodes used by the Graph of Truth."
               action={
-                <Button type="button" variant="primary" onClick={openCreate}>
-                  Add {entityLabels[activeEntity].slice(0, -1)}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {activeEntity === "members" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={autoMatchMutation.isPending}
+                      onClick={() => autoMatchMutation.mutate()}
+                    >
+                      <Wand2 className="h-4 w-4" />
+                      Auto-match
+                    </Button>
+                  )}
+                  <Button type="button" variant="primary" onClick={openCreate}>
+                    Add {entityLabels[activeEntity].slice(0, -1)}
+                  </Button>
+                </div>
               }
             >
               <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -469,6 +536,8 @@ export function AdminConfigPage() {
         </Dialog>
 
         <EscalationContactsDialog pod={escalationPod} onClose={() => setEscalationPod(null)} />
+
+        <IdentityLinkDialog member={identityMember} onClose={() => setIdentityMember(null)} />
 
         <ConfirmDialog
           open={confirm.open}
@@ -1263,6 +1332,118 @@ function contactPayload(chatId: string, displayName: string) {
   if (!id) return null;
   const name = displayName.trim();
   return { chat_external_id: id, display_name: name ? name : null };
+}
+
+function IdentityLinkDialog({
+  member,
+  onClose,
+}: {
+  member: ConfigNodeResponse | null;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const memberId = member?.id ?? "";
+  const [chatUserId, setChatUserId] = useState("");
+  const [jiraAccountId, setJiraAccountId] = useState("");
+  const [jiraEmail, setJiraEmail] = useState("");
+  const [vcsUsername, setVcsUsername] = useState("");
+
+  const link = useQuery({
+    queryKey: ["config", "member-identity-link", memberId],
+    queryFn: () => apiClient.configMemberIdentityLink(memberId),
+    enabled: Boolean(member),
+  });
+
+  useEffect(() => {
+    if (!link.data) return;
+    setChatUserId(link.data.chat_user_id ?? "");
+    setJiraAccountId(link.data.jira_account_id ?? "");
+    setJiraEmail(link.data.jira_email ?? "");
+    setVcsUsername(link.data.vcs_username ?? "");
+  }, [link.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const body: IdentityLinkUpdateRequest = {
+        chat_user_id: blankToNull(chatUserId),
+        jira_account_id: blankToNull(jiraAccountId),
+        jira_email: blankToNull(jiraEmail),
+        vcs_username: blankToNull(vcsUsername),
+      };
+      return apiClient.updateConfigMemberIdentityLink(memberId, body);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["config", "member-identity-link", memberId] }),
+        queryClient.invalidateQueries({ queryKey: ["config", "unmapped-members"] }),
+      ]);
+      toast.success("Identity link saved.");
+      onClose();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <Dialog
+      open={Boolean(member)}
+      onOpenChange={(open) => !open && onClose()}
+      title={member ? `Identity link — ${member.name}` : "Identity link"}
+      description="Provider-neutral ids used to resolve this member across chat, Jira, and version control. A missing chat user id degrades check-in delivery."
+    >
+      <QueryState query={link} loadingRows={4}>
+        {() => (
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveMutation.mutate();
+            }}
+          >
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Chat user ID" htmlFor="identity-chat-user-id">
+                <Input
+                  id="identity-chat-user-id"
+                  value={chatUserId}
+                  onChange={(event) => setChatUserId(event.target.value)}
+                  placeholder="e.g. U1001"
+                />
+              </Field>
+              <Field label="Jira account ID" htmlFor="identity-jira-account-id">
+                <Input
+                  id="identity-jira-account-id"
+                  value={jiraAccountId}
+                  onChange={(event) => setJiraAccountId(event.target.value)}
+                />
+              </Field>
+              <Field label="Jira email" htmlFor="identity-jira-email">
+                <Input
+                  id="identity-jira-email"
+                  value={jiraEmail}
+                  onChange={(event) => setJiraEmail(event.target.value)}
+                  placeholder="name@example.com"
+                />
+              </Field>
+              <Field label="VCS username" htmlFor="identity-vcs-username">
+                <Input
+                  id="identity-vcs-username"
+                  value={vcsUsername}
+                  onChange={(event) => setVcsUsername(event.target.value)}
+                />
+              </Field>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={saveMutation.isPending}>
+                Save
+              </Button>
+            </div>
+          </form>
+        )}
+      </QueryState>
+    </Dialog>
+  );
 }
 
 function LinkForm({

@@ -512,6 +512,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/config/members/unmapped": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Config Unmapped Members */
+    get: operations["list_config_unmapped_members_config_members_unmapped_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/members/identity-links/auto-match": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Auto Match Config Identity Links */
+    post: operations["auto_match_config_identity_links_config_members_identity_links_auto_match_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/directory/users": {
     parameters: {
       query?: never;
@@ -2033,6 +2067,22 @@ export interface components {
       why: string;
       source_ref: components["schemas"]["EntityRefDto"];
     };
+    /** IdentityAutoMatchMemberDto */
+    IdentityAutoMatchMemberDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Filled */
+      filled: string[];
+    };
+    /** IdentityAutoMatchResponse */
+    IdentityAutoMatchResponse: {
+      /** Updated Count */
+      updated_count: number;
+      /** Members */
+      members: components["schemas"]["IdentityAutoMatchMemberDto"][];
+    };
     /** IdentityLinkResponse */
     IdentityLinkResponse: {
       /** Developer Id */
@@ -2500,6 +2550,15 @@ export interface components {
       source: components["schemas"]["StatusSource"];
       /** Score */
       score: number;
+    };
+    /** UnmappedMemberResponse */
+    UnmappedMemberResponse: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Missing */
+      missing: string[];
     };
     /** ValidationError */
     ValidationError: {
@@ -4142,6 +4201,68 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ConfigNodeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_config_unmapped_members_config_members_unmapped_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UnmappedMemberResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  auto_match_config_identity_links_config_members_identity_links_auto_match_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IdentityAutoMatchResponse"];
         };
       };
       /** @description Validation Error */

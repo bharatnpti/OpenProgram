@@ -2262,6 +2262,104 @@
         }
       }
     },
+    "/config/members/unmapped": {
+      "get": {
+        "tags": ["config"],
+        "summary": "List Config Unmapped Members",
+        "operationId": "list_config_unmapped_members_config_members_unmapped_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UnmappedMemberResponse"
+                  },
+                  "title": "Response List Config Unmapped Members Config Members Unmapped Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/members/identity-links/auto-match": {
+      "post": {
+        "tags": ["config"],
+        "summary": "Auto Match Config Identity Links",
+        "operationId": "auto_match_config_identity_links_config_members_identity_links_auto_match_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityAutoMatchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/directory/users": {
       "get": {
         "tags": ["config"],
@@ -8251,6 +8349,46 @@
         "required": ["row", "column", "entity_ref", "rag", "source", "why", "source_ref"],
         "title": "HeatmapCellDto"
       },
+      "IdentityAutoMatchMemberDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "filled": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Filled"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "filled"],
+        "title": "IdentityAutoMatchMemberDto"
+      },
+      "IdentityAutoMatchResponse": {
+        "properties": {
+          "updated_count": {
+            "type": "integer",
+            "title": "Updated Count"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/IdentityAutoMatchMemberDto"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": ["updated_count", "members"],
+        "title": "IdentityAutoMatchResponse"
+      },
       "IdentityLinkResponse": {
         "properties": {
           "developer_id": {
@@ -9495,6 +9633,28 @@
         "type": "object",
         "required": ["as_of", "rag", "source", "score"],
         "title": "TrendPointDto"
+      },
+      "UnmappedMemberResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "missing"],
+        "title": "UnmappedMemberResponse"
       },
       "ValidationError": {
         "properties": {

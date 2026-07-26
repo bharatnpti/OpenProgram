@@ -22,6 +22,10 @@ import type {
   WriteBackAdoptionResponse,
   PodEscalationContactsResponse,
   PodEscalationContactsUpdateRequest,
+  IdentityLinkResponse,
+  IdentityLinkUpdateRequest,
+  IdentityAutoMatchResponse,
+  UnmappedMemberResponse,
   DirectoryItemResponse,
   DirectorySearchResponse,
   DirectorySyncResponse,
@@ -328,6 +332,18 @@ export const apiClient = {
     requestJson<PodEscalationContactsResponse>(`/config/pods/${podId}/escalation-contacts`, {
       method: "PUT",
       body,
+    }),
+  configMemberIdentityLink: (memberId: string) =>
+    requestJson<IdentityLinkResponse>(`/config/members/${memberId}/identity-link`),
+  updateConfigMemberIdentityLink: (memberId: string, body: IdentityLinkUpdateRequest) =>
+    requestJson<IdentityLinkResponse>(`/config/members/${memberId}/identity-link`, {
+      method: "PUT",
+      body,
+    }),
+  configUnmappedMembers: () => requestJson<UnmappedMemberResponse[]>("/config/members/unmapped"),
+  autoMatchConfigIdentityLinks: () =>
+    requestJson<IdentityAutoMatchResponse>("/config/members/identity-links/auto-match", {
+      method: "POST",
     }),
   personaBriefs: (kind?: BriefKind, limit = 20) =>
     requestJson<NarrativeBriefsResponse>(
