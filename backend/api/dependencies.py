@@ -76,6 +76,8 @@ def get_config_service(request: Request) -> ConfigService:
         status_repository=registry.status_repository(),
         directory_repository=registry.directory_user_repository(),
         time_series_repository=registry.time_series_repository(),
+        identity_link_repository=registry.identity_link_repository(),
+        writeback_config_repository=registry.writeback_config_repository(),
     )
 
 
@@ -104,12 +106,14 @@ def get_risk_service(request: Request) -> RiskService:
         graph_repository=registry.graph_repository(),
         time_series_repository=registry.time_series_repository(),
         status_repository=registry.status_repository(),
+        rollup_repository=registry.rollup_repository(),
         provider_config=RiskProviderConfig(
             jira_base_url=settings.jira_base_url,
             github_base_url=settings.github_base_url,
             default_no_pr_days=settings.risk_default_no_pr_days,
             default_pr_age_days=settings.risk_default_pr_age_days,
             default_stale_days=settings.risk_default_stale_days,
+            default_no_activity_days=settings.drift_no_activity_days,
         ),
     )
 

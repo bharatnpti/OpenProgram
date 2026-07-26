@@ -17,6 +17,7 @@ class Capability(StrEnum):
     READ_PROGRAM_ROLLUP = "read_program_rollup"
     READ_PORTFOLIO_HEATMAP = "read_portfolio_heatmap"
     WRITE_CONNECTOR_SECRET = "write_connector_secret"
+    WRITE_ISSUE_TRACKER = "write_issue_tracker"
     DISPATCH_WORKFLOWS = "dispatch_workflows"
     MANAGE_CONFIG = "manage_config"
 
@@ -33,6 +34,10 @@ class AuthorizationPolicy:
                 {
                     Capability.READ_OWN_WORK,
                     Capability.READ_DIRECTORY,
+                    # Developers may write back only to their own issues; ownership is
+                    # enforced by WriteBackService (claims come from the developer's
+                    # own finalized check-in). Admin is short-circuited above.
+                    Capability.WRITE_ISSUE_TRACKER,
                 }
             ),
             Role.PO: frozenset(

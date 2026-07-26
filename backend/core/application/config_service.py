@@ -15,14 +15,17 @@ from core.domain.graph import (
     NodeKind,
     WorkItem,
 )
+from core.domain.identity import IdentityLink
 from core.domain.rollup import Rag
 from core.domain.status import CheckInPreference, StatusSource
 from core.ports.directory import DirectoryUserRepository
 from core.ports.repositories import (
     GraphRepository,
+    IdentityLinkRepository,
     RollupRepository,
     StatusRepository,
     TimeSeriesRepository,
+    WriteBackConfigRepository,
 )
 
 
@@ -59,11 +62,15 @@ class ConfigService:
         status_repository: StatusRepository,
         directory_repository: DirectoryUserRepository | None = None,
         time_series_repository: TimeSeriesRepository | None = None,
+        identity_link_repository: IdentityLinkRepository | None = None,
+        writeback_config_repository: WriteBackConfigRepository | None = None,
     ) -> None:
         self._graph_repository = graph_repository
         self._status_repository = status_repository
         self._directory_repository = directory_repository
         self._time_series_repository = time_series_repository
+        self._identity_link_repository = identity_link_repository
+        self._writeback_config_repository = writeback_config_repository
 
     async def list_nodes(self, tenant_id: str, kind: NodeKind) -> list[GraphNode]:
         return await self._graph_repository.list_nodes(tenant_id, kind)
@@ -451,6 +458,31 @@ class ConfigService:
     async def list_checkin_preferences(self, tenant_id: str) -> list[CheckInPreference]:
         return await self._status_repository.list_checkin_preferences(tenant_id)
 
+    async def get_identity_link(
+        self,
+        tenant_id: str,
+        member_id: str,
+    ) -> IdentityLink | None:
+        await self._ensure_node(tenant_id, member_id, NodeKind.DEVELOPER)
+        repository = self._identity_link_repository_or_raise()
+        return await repository.get_identity_link(tenant_id, member_id)
+
+    async def set_identity_link(self, link: IdentityLink) -> IdentityLink:
+        await self._ensure_node(link.tenant_id, link.developer_id, NodeKind.DEVELOPER)
+        repository = self._identity_link_repository_or_raise()
+        await repository.upsert_identity_link(link)
+        return link
+
+    async def get_tenant_writeback_enabled(self, tenant_id: str, default: bool) -> bool:
+        """Resolve the system gate: persisted tenant override, else the fallback."""
+        repository = self._writeback_config_repository_or_raise()
+        override = await repository.get_writeback_enabled(tenant_id)
+        return default if override is None else override
+
+    async def set_tenant_writeback_enabled(self, tenant_id: str, enabled: bool) -> None:
+        repository = self._writeback_config_repository_or_raise()
+        await repository.set_writeback_enabled(tenant_id, enabled)
+
     async def search_directory(
         self,
         tenant_id: str,
@@ -594,6 +626,16 @@ class ConfigService:
         if self._directory_repository is None:
             raise ConfigValidationError("directory repository is not configured")
         return self._directory_repository
+
+    def _identity_link_repository_or_raise(self) -> IdentityLinkRepository:
+        if self._identity_link_repository is None:
+            raise ConfigValidationError("identity link repository is not configured")
+        return self._identity_link_repository
+
+    def _writeback_config_repository_or_raise(self) -> WriteBackConfigRepository:
+        if self._writeback_config_repository is None:
+            raise ConfigValidationError("writeback config repository is not configured")
+        return self._writeback_config_repository
 
     def _time_series_repository_or_raise(self) -> TimeSeriesRepository:
         if self._time_series_repository is None:

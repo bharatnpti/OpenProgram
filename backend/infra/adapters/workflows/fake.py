@@ -8,6 +8,7 @@ from core.domain.workflows import (
     CheckinScheduleConfig,
     ConversationPurgeScheduleConfig,
     DeveloperCheckinDispatch,
+    InboundSweeperScheduleConfig,
     ScheduleBootstrapResult,
     SyncDispatchInput,
     SyncScheduleConfig,
@@ -37,6 +38,11 @@ class FakeWorkflowScheduler:
     ) -> ScheduleBootstrapResult:
         return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
 
+    async def ensure_inbound_sweeper_schedule(
+        self, config: InboundSweeperScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
+
     async def ensure_sync_schedules(
         self, configs: Sequence[SyncScheduleConfig]
     ) -> list[ScheduleBootstrapResult]:
@@ -49,6 +55,9 @@ class FakeWorkflowScheduler:
         return safe_workflow_id(
             f"fake-checkin-{input.tenant_id}-{input.developer_id}-{input.checkin_date or 'today'}"
         )
+
+    async def arm_reply_coalesce(self, conversation_key: str, tenant_id: str) -> None:
+        return None
 
     async def dispatch_sync(self, input: SyncDispatchInput) -> str:
         return safe_workflow_id(f"fake-sync-{input.connector}-{input.scope}")

@@ -6,8 +6,9 @@ from datetime import UTC, date, datetime
 
 from core.domain.conversation import ConversationTurn
 from core.domain.directory import DirectoryUser
-from core.domain.errors import ProviderUnavailable
 from core.domain.graph import EntityRef, FactEvent
+from core.domain.identity import IdentityLink
+from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import (
     BuildResult,
     CalendarEvent,
@@ -31,8 +32,9 @@ from core.domain.status import (
     CheckInScheduleRun,
     DeveloperStatus,
 )
+from core.domain.writeback import WriteBackAudit
 from core.ports.directory import DirectoryUserRepository
-from core.ports.repositories import TimeSeriesRepository
+from core.ports.repositories import InboundChatEventRepository, TimeSeriesRepository
 from infra.adapters.llm.fake import FakeLlmProvider
 
 __all__ = ["FakeLlmProvider"]
@@ -59,6 +61,8 @@ class FakeIssueTracker:
     issues: dict[str, Issue] = field(default_factory=dict)
     projects: list[Project] = field(default_factory=list)
     sprints: list[Sprint] = field(default_factory=list)
+    transitions: list[tuple[str, str, str]] = field(default_factory=list)
+    comments: list[tuple[str, str, str]] = field(default_factory=list)
 
     async def list_projects(self, tenant_id: str) -> list[Project]:
         return [project for project in self.projects if project.tenant_id == tenant_id]
@@ -94,10 +98,10 @@ class FakeIssueTracker:
         return [issue for issue in self.issues.values() if issue.assignee == assignee]
 
     async def transition(self, tenant_id: str, key: str, to_state: str) -> None:
-        raise ProviderUnavailable("fake issue tracker is read-only")
+        self.transitions.append((tenant_id, key, to_state))
 
     async def add_comment(self, tenant_id: str, key: str, body: str) -> None:
-        raise ProviderUnavailable("fake issue tracker is read-only")
+        self.comments.append((tenant_id, key, body))
 
 
 @dataclass
@@ -413,6 +417,27 @@ class FakeStatusRepository:
 
 
 @dataclass
+class FakeIdentityLinkRepository:
+    identity_links: dict[tuple[str, str], IdentityLink] = field(default_factory=dict)
+
+    async def get_identity_link(self, tenant_id: str, developer_id: str) -> IdentityLink | None:
+        return self.identity_links.get((tenant_id, developer_id))
+
+    async def upsert_identity_link(self, link: IdentityLink) -> None:
+        self.identity_links[(link.tenant_id, link.developer_id)] = link
+
+    async def list_identity_links(self, tenant_id: str) -> list[IdentityLink]:
+        return sorted(
+            (
+                link
+                for (link_tenant_id, _), link in self.identity_links.items()
+                if link_tenant_id == tenant_id
+            ),
+            key=lambda link: link.developer_id,
+        )
+
+
+@dataclass
 class FakeDirectoryUserRepository(DirectoryUserRepository):
     users: dict[tuple[str, str], DirectoryUser] = field(default_factory=dict)
 
@@ -660,6 +685,75 @@ class FakeConversationRepository:
 
 
 @dataclass
+class FakeInboundChatEventRepository(InboundChatEventRepository):
+    events: list[InboundChatEvent] = field(default_factory=list)
+    _counter: int = 0
+
+    async def append(self, event: InboundChatEvent) -> bool:
+        for existing in self.events:
+            if (
+                existing.tenant_id == event.tenant_id
+                and existing.provider == event.provider
+                and existing.event_id == event.event_id
+            ):
+                return False
+        self._counter += 1
+        self.events.append(
+            event if event.id is not None else replace(event, id=f"evt-{self._counter}")
+        )
+        return True
+
+    async def list_unprocessed_for_conversation(
+        self, tenant_id: str, conversation_key: str
+    ) -> list[InboundChatEvent]:
+        return sorted(
+            (
+                event
+                for event in self.events
+                if event.tenant_id == tenant_id
+                and event.conversation_key == conversation_key
+                and event.processed_at is None
+            ),
+            key=lambda event: (event.received_at, event.message_ref),
+        )
+
+    async def mark_processed(
+        self, tenant_id: str, event_ids: Sequence[str], processed_at: datetime
+    ) -> None:
+        ids = set(event_ids)
+        self.events = [
+            replace(event, processed_at=processed_at)
+            if event.tenant_id == tenant_id and event.id in ids and event.processed_at is None
+            else event
+            for event in self.events
+        ]
+
+    async def list_stuck(self, tenant_id: str, older_than: datetime) -> list[InboundChatEvent]:
+        return sorted(
+            (
+                event
+                for event in self.events
+                if event.tenant_id == tenant_id
+                and event.processed_at is None
+                and event.received_at < older_than
+            ),
+            key=lambda event: (event.received_at, event.message_ref),
+        )
+
+    async def purge_processed_older_than(self, tenant_id: str, cutoff: datetime) -> int:
+        retained = [
+            event
+            for event in self.events
+            if event.tenant_id != tenant_id
+            or event.processed_at is None
+            or event.processed_at >= cutoff
+        ]
+        deleted_count = len(self.events) - len(retained)
+        self.events = retained
+        return deleted_count
+
+
+@dataclass
 class FakeCiProvider:
     builds: list[BuildResult] = field(default_factory=list)
 
@@ -773,3 +867,51 @@ def _fact_identity(fact: FactEvent) -> tuple[str, str, str, str, str, datetime]:
         fact.correlation_id,
         fact.observed_at,
     )
+
+
+@dataclass
+class FakeWriteBackConfigRepository:
+    enabled: dict[str, bool] = field(default_factory=dict)
+
+    async def get_writeback_enabled(self, tenant_id: str) -> bool | None:
+        return self.enabled.get(tenant_id)
+
+    async def set_writeback_enabled(self, tenant_id: str, enabled: bool) -> None:
+        self.enabled[tenant_id] = enabled
+
+
+@dataclass
+class FakeWriteBackAuditRepository:
+    audits: dict[str, WriteBackAudit] = field(default_factory=dict)
+
+    async def record(self, audit: WriteBackAudit) -> None:
+        self.audits.setdefault(audit.id, audit)
+
+    async def list_for_issue(self, tenant_id: str, issue_key: str) -> list[WriteBackAudit]:
+        return sorted(
+            (
+                audit
+                for audit in self.audits.values()
+                if audit.tenant_id == tenant_id and audit.issue_key == issue_key
+            ),
+            key=lambda audit: audit.created_at,
+        )
+
+    async def find_existing(
+        self,
+        tenant_id: str,
+        issue_key: str,
+        target_state: str,
+        correlation_id: str,
+    ) -> WriteBackAudit | None:
+        matches = [
+            audit
+            for audit in self.audits.values()
+            if audit.tenant_id == tenant_id
+            and audit.issue_key == issue_key
+            and audit.target_state == target_state
+            and audit.correlation_id == correlation_id
+        ]
+        if not matches:
+            return None
+        return min(matches, key=lambda audit: audit.created_at)

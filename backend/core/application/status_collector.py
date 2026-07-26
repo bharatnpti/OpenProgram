@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Literal, Protocol, TypedDict, cast
 from uuid import uuid4
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 from langgraph.graph import StateGraph
@@ -18,6 +17,7 @@ from core.application.status_parsing import ClarificationEvaluator, StatusParser
 from core.application.tools.conversation_history import MAX_HISTORY_LIMIT, ConversationHistoryTool
 from core.application.tools.git_activity import GitActivityTool
 from core.application.tools.issue_tracker import IssueTrackerTool
+from core.application.writeback_service import WriteBackService
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.cross_person import CrossPersonRequestResolution, CrossPersonRequestStatus
 from core.domain.directory import DirectoryUser
@@ -34,14 +34,23 @@ from core.domain.status import (
     CrossPersonMention,
     DeveloperStatus,
     StatusSource,
+    local_date,
+    resolve_timezone,
 )
 from core.ports.chat import ChatProvider
 from core.ports.directory import DirectoryUserRepository
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
-from core.ports.repositories import ConversationRepository, StatusRepository, TimeSeriesRepository
+from core.ports.repositories import (
+    ConversationRepository,
+    IdentityLinkRepository,
+    StatusRepository,
+    TimeSeriesRepository,
+)
 from core.ports.tools import AgentTool
 
+# Default lookback for recent facts fed into check-in context; overridable via
+# Settings (recent_fact_lookback_days) through the StatusCollector constructor.
 RECENT_FACT_LOOKBACK_DAYS = 30
 RECENT_CONVERSATION_LOOKBACK = timedelta(hours=24)
 RECENT_CONVERSATION_TURN_LIMIT = 20
@@ -56,6 +65,8 @@ COMPOSE_NUDGE_SYSTEM_PROMPT = (
     "as context and avoid assuming status is healthy without a reply. Return one plain chat DM "
     "with no labels, preamble, quoted prompt text, or markdown table."
 )
+# Default outbound DM safety cap (prompt-echo + length guard); overridable via
+# Settings (outbound_dm_max_chars) through the StatusCollector constructor.
 OUTBOUND_DM_MAX_CHARS = 320
 _PROMPT_ECHO_MARKERS = (
     "mock status summary:",
@@ -74,6 +85,7 @@ class StatusCollectorState(TypedDict, total=False):
     chat_external_id: str
     correlation_id: str
     asked_at: datetime
+    checkin_date: date | None
     context: str
     dm_text: str
     message_id: str
@@ -112,12 +124,16 @@ class StatusCollector:
         model: str,
         time_series_repository: TimeSeriesRepository | None = None,
         directory_repository: DirectoryUserRepository | None = None,
+        identity_link_repository: IdentityLinkRepository | None = None,
+        write_back_service: WriteBackService | None = None,
         parser: StatusParser | None = None,
         clarification_evaluator: ClarificationEvaluator | None = None,
         tool_agent: ToolCallingAgent | None = None,
         conversation_retention_days: int = 30,
         checkin_max_clarifications: int = 2,
         tenant_default_timezone: str = "UTC",
+        outbound_dm_max_chars: int = OUTBOUND_DM_MAX_CHARS,
+        recent_fact_lookback_days: int = RECENT_FACT_LOOKBACK_DAYS,
     ) -> None:
         self._issue_tracker = issue_tracker
         self._chat_provider = chat_provider
@@ -125,12 +141,16 @@ class StatusCollector:
         self._status_repository = status_repository
         self._time_series_repository = time_series_repository
         self._directory_repository = directory_repository
+        self._identity_link_repository = identity_link_repository
+        self._write_back_service = write_back_service
         self._conversation_repository = conversation_repository
         self._model = model
         self._tool_agent = tool_agent
         self._conversation_retention_days = conversation_retention_days
         self._checkin_max_clarifications = max(0, checkin_max_clarifications)
         self._tenant_default_timezone = tenant_default_timezone
+        self._outbound_dm_max_chars = outbound_dm_max_chars
+        self._recent_fact_lookback_days = recent_fact_lookback_days
         self._parser = parser or StatusParser(llm_provider, model, tool_agent=tool_agent)
         self._clarification_evaluator = clarification_evaluator or ClarificationEvaluator(
             llm_provider,
@@ -151,6 +171,7 @@ class StatusCollector:
         chat_external_id: str | None = None,
         correlation_id: str | None = None,
         asked_at: datetime | None = None,
+        checkin_date: date | None = None,
     ) -> CheckIn:
         state = await self._compiled_graph.ainvoke(
             {
@@ -160,6 +181,7 @@ class StatusCollector:
                 "chat_external_id": chat_external_id or developer_id,
                 "correlation_id": correlation_id or _new_correlation_id(),
                 "asked_at": asked_at or datetime.now(tz=UTC),
+                "checkin_date": checkin_date,
             }
         )
         checkin = state.get("checkin")
@@ -168,7 +190,12 @@ class StatusCollector:
             raise RuntimeError(message)
         return checkin
 
-    async def handle_reply(self, message: InboundMessage) -> ReplyOutcome:
+    async def handle_reply(
+        self,
+        message: InboundMessage,
+        *,
+        allow_reprocess: bool = False,
+    ) -> ReplyOutcome:
         checkin = await self._status_repository.checkin_by_correlation(
             message.tenant_id,
             message.correlation_id,
@@ -193,30 +220,36 @@ class StatusCollector:
                 kind="processed",
                 status=await self._status_for_duplicate_reply(checkin),
             )
-        if await self._user_turn_exists(
+        turn_already_recorded = await self._user_turn_exists(
             tenant_id=checkin.tenant_id,
             developer_id=checkin.developer_id,
             chat_message_id=message.message_id,
-        ):
+        )
+        # Legacy single-delivery dedup: a redelivered message id on an open
+        # check-in is ignored. The durable drain passes allow_reprocess=True so a
+        # retry after a transient failure can finish classify/finalize instead of
+        # leaving the reply permanently "ignored" (R3).
+        if turn_already_recorded and not allow_reprocess:
             return ReplyOutcome(kind="ignored")
 
-        await self._record_conversation_turn(
-            ConversationTurn(
-                tenant_id=checkin.tenant_id,
-                developer_id=checkin.developer_id,
-                conversation_id=checkin.correlation_id,
-                conversation_date=await self._local_date_for_developer(
-                    checkin.tenant_id,
-                    checkin.developer_id,
-                    message.received_at,
-                ),
-                role=ConversationRole.USER,
-                content=message.text,
-                correlation_id=message.correlation_id,
-                chat_message_id=message.message_id,
-                observed_at=message.received_at,
+        if not turn_already_recorded:
+            await self._record_conversation_turn(
+                ConversationTurn(
+                    tenant_id=checkin.tenant_id,
+                    developer_id=checkin.developer_id,
+                    conversation_id=checkin.correlation_id,
+                    conversation_date=await self._local_date_for_developer(
+                        checkin.tenant_id,
+                        checkin.developer_id,
+                        message.received_at,
+                    ),
+                    role=ConversationRole.USER,
+                    content=message.text,
+                    correlation_id=message.correlation_id,
+                    chat_message_id=message.message_id,
+                    observed_at=message.received_at,
+                )
             )
-        )
 
         conversation_turns = await self._recent_conversation_turns(
             tenant_id=message.tenant_id,
@@ -493,6 +526,7 @@ class StatusCollector:
             developer_name=developer_name,
             context=context,
             purpose="nudge",
+            max_chars=self._outbound_dm_max_chars,
         )
         message_id = await self._chat_provider.send_dm(
             ChatUserRef(
@@ -625,6 +659,21 @@ class StatusCollector:
             summary=f"No confirmed check-in after a nudge. Inferred from context: {context}",
         )
 
+    async def _resolve_issue_tracker_assignee_id(self, tenant_id: str, developer_id: str) -> str:
+        """Resolve the external id the issue tracker indexes assignments by.
+
+        Jira indexes issues by ``accountId`` rather than the chat-provider id
+        used as the canonical ``developer_id``. When an identity link maps the
+        developer to a ``jira_account_id`` we query by that; otherwise we fall
+        back to the canonical id so unmapped developers keep prior behaviour.
+        """
+        if self._identity_link_repository is None:
+            return developer_id
+        link = await self._identity_link_repository.get_identity_link(tenant_id, developer_id)
+        if link is not None and link.jira_account_id:
+            return link.jira_account_id
+        return developer_id
+
     async def build_context(
         self,
         *,
@@ -634,8 +683,11 @@ class StatusCollector:
         include_status: bool = True,
     ) -> str:
         reference_at = datetime.now(tz=UTC)
+        assignee_external_id = await self._resolve_issue_tracker_assignee_id(
+            tenant_id, developer_id
+        )
         issues = await self._issue_tracker.list_active_for(
-            UserRef(tenant_id=tenant_id, external_id=developer_id)
+            UserRef(tenant_id=tenant_id, external_id=assignee_external_id)
         )
         prioritized_issues = _prioritize_issues(issues)
         facts: list[FactEvent] = []
@@ -711,6 +763,7 @@ class StatusCollector:
             developer_name=state.get("developer_name"),
             context=state["context"],
             purpose="checkin",
+            max_chars=self._outbound_dm_max_chars,
         )
         return {"dm_text": text, "trace_id": response.trace_id}
 
@@ -727,7 +780,12 @@ class StatusCollector:
                 tenant_id=state["tenant_id"],
                 text=state["dm_text"],
                 correlation_id=state["correlation_id"],
-                metadata={"purpose": "status_checkin"},
+                metadata={
+                    "purpose": "status_checkin",
+                    # Keyed so a durable-step retry between send and record_checkin
+                    # returns the first ts instead of posting a second DM (C3).
+                    "idempotency_key": f"checkin:{state['correlation_id']}",
+                },
             ),
         )
         observed_at = state.get("asked_at", datetime.now(tz=UTC))
@@ -765,6 +823,7 @@ class StatusCollector:
             raw_reply=None,
             signals=None,
             last_accessed_at=asked_at,
+            checkin_date=state.get("checkin_date"),
         )
         await self._status_repository.record_checkin(checkin)
         await self._status_repository.record_checkin_correlation(
@@ -992,6 +1051,7 @@ class StatusCollector:
             replied_at=replied_at,
             raw_reply=raw_reply,
             signals=final_signals,
+            checkin_date=checkin.checkin_date,
         )
         recorded = await self._status_repository.record_checkin_reply_once(updated)
         if not recorded:
@@ -1021,7 +1081,45 @@ class StatusCollector:
             replied_at,
         )
         await self._append_checkin_fact(updated, status)
+        await self._maybe_write_back(updated, final_signals)
         return status
+
+    async def _maybe_write_back(self, checkin: CheckIn, signals: CheckInSignals) -> None:
+        """Apply gated write-back for a finalized check-in's issue claims.
+
+        The three default-deny gates and audit live in ``WriteBackService``; here we
+        only forward the claims. A write-back failure must never lose a recorded
+        check-in, so any error is logged (without raw reply content) and swallowed.
+        """
+        service = self._write_back_service
+        if service is None or not signals.issue_updates:
+            return
+        try:
+            results = await service.apply_from_checkin(
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+                claims=signals.issue_updates,
+            )
+        except Exception:  # pragma: no cover - defensive; write-back is best-effort
+            _logger.warning(
+                "writeback_failed",
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+            )
+            return
+        if results:
+            _logger.info(
+                "writeback_recorded",
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+                outcomes=[
+                    {"issue_key": audit.issue_key, "status": audit.status.value}
+                    for audit in results
+                ],
+            )
 
     async def _record_partial_checkin_status(
         self,
@@ -1350,7 +1448,7 @@ class StatusCollector:
             *(EntityRef(tenant_id=tenant_id, kind=NodeKind.TASK, id=issue.key) for issue in issues),
         ]
         facts: list[FactEvent] = []
-        since = datetime.now(tz=UTC) - timedelta(days=RECENT_FACT_LOOKBACK_DAYS)
+        since = datetime.now(tz=UTC) - timedelta(days=self._recent_fact_lookback_days)
         for ref in refs:
             facts.extend(await self._time_series_repository.list_facts(tenant_id, ref, since))
         return sorted(facts, key=lambda fact: fact.observed_at, reverse=True)[:10]
@@ -1387,9 +1485,10 @@ def _safe_outbound_checkin_text(
     developer_name: str | None,
     context: str,
     purpose: Literal["checkin", "nudge"],
+    max_chars: int = OUTBOUND_DM_MAX_CHARS,
 ) -> str:
     text = _normalize_outbound_dm_text(generated_text)
-    if not text or len(text) > OUTBOUND_DM_MAX_CHARS or _looks_like_prompt_echo(text):
+    if not text or len(text) > max_chars or _looks_like_prompt_echo(text):
         return _fallback_outbound_checkin_text(
             developer_id=developer_id,
             developer_name=developer_name,
@@ -1491,15 +1590,8 @@ def _single_correlation_or_log_ambiguous(
 
 
 def _signals_with_note(signals: CheckInSignals, note: str) -> CheckInSignals:
-    return CheckInSignals(
-        progress_note=f"{signals.progress_note} {note}",
-        blockers=signals.blockers,
-        eta_change_days=signals.eta_change_days,
-        blockers_answered=signals.blockers_answered,
-        eta_answered=signals.eta_answered,
-        requests=signals.requests,
-        issue_updates=signals.issue_updates,
-    )
+    # replace() preserves every other field (issue_updates, parser_confident, ...).
+    return replace(signals, progress_note=f"{signals.progress_note} {note}")
 
 
 def _signals_with_carried_blockers(
@@ -1510,17 +1602,14 @@ def _signals_with_carried_blockers(
 ) -> CheckInSignals:
     if not prior_blockers or signals.blockers or _explicitly_resolves_blockers(raw_reply):
         return signals
-    return CheckInSignals(
+    # replace() preserves every other field (issue_updates, parser_confident, ...).
+    return replace(
+        signals,
         progress_note=(
             f"{signals.progress_note} Prior blockers carried forward until explicitly resolved: "
             f"{', '.join(prior_blockers)}."
         ),
         blockers=prior_blockers,
-        eta_change_days=signals.eta_change_days,
-        blockers_answered=signals.blockers_answered,
-        eta_answered=signals.eta_answered,
-        requests=signals.requests,
-        issue_updates=signals.issue_updates,
     )
 
 
@@ -1554,7 +1643,8 @@ def _missing_required_status_question(
 
 
 def _status_source_for_signals(signals: CheckInSignals) -> StatusSource:
-    if _missing_required_status_details(signals):
+    # A low-confidence parse (unparseable model output) must never roll up green.
+    if not signals.parser_confident or _missing_required_status_details(signals):
         return StatusSource.PARTIAL
     return StatusSource.CONFIRMED
 
@@ -1727,12 +1817,7 @@ def _dedupe_correlations(correlations: Iterable[CheckInCorrelation]) -> list[Che
 
 
 def _local_date(at: datetime, timezone: str | None, tenant_default_timezone: str) -> date:
-    timezone_name = timezone or tenant_default_timezone
-    try:
-        return at.astimezone(ZoneInfo(timezone_name)).date()
-    except ZoneInfoNotFoundError:
-        _logger.warning("invalid_checkin_timezone", timezone=timezone_name)
-        return at.astimezone(UTC).date()
+    return local_date(at, resolve_timezone(timezone, tenant_default_timezone))
 
 
 def _status_context_lines(status: DeveloperStatus | None) -> list[str]:

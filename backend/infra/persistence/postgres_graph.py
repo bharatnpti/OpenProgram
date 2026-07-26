@@ -20,6 +20,8 @@ from core.domain.graph import (
     VectorMatch,
     normalize_vector,
 )
+from core.domain.identity import IdentityLink
+from core.domain.writeback import WriteBackAudit, WriteBackStatus
 
 _tracer = trace.get_tracer("openprogram.persistence.graph")
 
@@ -256,6 +258,155 @@ class PostgresGraphRepository:
                 (tenant_id, developer_id, developer_id, as_of, as_of),
             )
             return [_edge_from_row(row) for row in rows]
+
+    async def get_identity_link(self, tenant_id: str, developer_id: str) -> IdentityLink | None:
+        with _tracer.start_as_current_span("postgres.graph.get_identity_link"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, developer_id, chat_user_id, jira_account_id,
+                       jira_email, vcs_username
+                FROM identity_links
+                WHERE tenant_id = %s AND developer_id = %s
+                LIMIT 1
+                """,
+                (tenant_id, developer_id),
+            )
+        return _identity_link_from_row(rows[0]) if rows else None
+
+    async def upsert_identity_link(self, link: IdentityLink) -> None:
+        with _tracer.start_as_current_span("postgres.graph.upsert_identity_link"):
+            await self._executor.execute(
+                """
+                INSERT INTO identity_links (
+                    tenant_id, developer_id, chat_user_id, jira_account_id,
+                    jira_email, vcs_username
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, developer_id)
+                DO UPDATE SET
+                    chat_user_id = EXCLUDED.chat_user_id,
+                    jira_account_id = EXCLUDED.jira_account_id,
+                    jira_email = EXCLUDED.jira_email,
+                    vcs_username = EXCLUDED.vcs_username,
+                    updated_at = now()
+                """,
+                (
+                    link.tenant_id,
+                    link.developer_id,
+                    link.chat_user_id,
+                    link.jira_account_id,
+                    link.jira_email,
+                    link.vcs_username,
+                ),
+            )
+
+    async def list_identity_links(self, tenant_id: str) -> list[IdentityLink]:
+        with _tracer.start_as_current_span("postgres.graph.list_identity_links"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, developer_id, chat_user_id, jira_account_id,
+                       jira_email, vcs_username
+                FROM identity_links
+                WHERE tenant_id = %s
+                ORDER BY developer_id
+                """,
+                (tenant_id,),
+            )
+        return [_identity_link_from_row(row) for row in rows]
+
+    async def get_writeback_enabled(self, tenant_id: str) -> bool | None:
+        with _tracer.start_as_current_span("postgres.graph.get_writeback_enabled"):
+            rows = await self._executor.fetch(
+                """
+                SELECT enabled
+                FROM writeback_config
+                WHERE tenant_id = %s
+                LIMIT 1
+                """,
+                (tenant_id,),
+            )
+        if not rows:
+            return None
+        value = rows[0].get("enabled")
+        return bool(value) if value is not None else None
+
+    async def set_writeback_enabled(self, tenant_id: str, enabled: bool) -> None:
+        with _tracer.start_as_current_span("postgres.graph.set_writeback_enabled"):
+            await self._executor.execute(
+                """
+                INSERT INTO writeback_config (tenant_id, enabled)
+                VALUES (%s, %s)
+                ON CONFLICT (tenant_id)
+                DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()
+                """,
+                (tenant_id, enabled),
+            )
+
+    async def record(self, audit: WriteBackAudit) -> None:
+        with _tracer.start_as_current_span("postgres.graph.record_writeback_audit"):
+            await self._executor.execute(
+                """
+                INSERT INTO writeback_audit (
+                    id, tenant_id, developer_id, issue_key, correlation_id,
+                    status, target_state, before_state, after_state, comment,
+                    source, created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (
+                    audit.id,
+                    audit.tenant_id,
+                    audit.developer_id,
+                    audit.issue_key,
+                    audit.correlation_id,
+                    audit.status.value,
+                    audit.target_state,
+                    audit.before_state,
+                    audit.after_state,
+                    audit.comment,
+                    audit.source,
+                    audit.created_at,
+                ),
+            )
+
+    async def list_for_issue(self, tenant_id: str, issue_key: str) -> list[WriteBackAudit]:
+        with _tracer.start_as_current_span("postgres.graph.list_writeback_audit"):
+            rows = await self._executor.fetch(
+                """
+                SELECT id, tenant_id, developer_id, issue_key, correlation_id,
+                       status, target_state, before_state, after_state, comment,
+                       source, created_at
+                FROM writeback_audit
+                WHERE tenant_id = %s AND issue_key = %s
+                ORDER BY created_at
+                """,
+                (tenant_id, issue_key),
+            )
+        return [_writeback_audit_from_row(row) for row in rows]
+
+    async def find_existing(
+        self,
+        tenant_id: str,
+        issue_key: str,
+        target_state: str,
+        correlation_id: str,
+    ) -> WriteBackAudit | None:
+        with _tracer.start_as_current_span("postgres.graph.find_writeback_audit"):
+            rows = await self._executor.fetch(
+                """
+                SELECT id, tenant_id, developer_id, issue_key, correlation_id,
+                       status, target_state, before_state, after_state, comment,
+                       source, created_at
+                FROM writeback_audit
+                WHERE tenant_id = %s AND issue_key = %s
+                      AND target_state = %s AND correlation_id = %s
+                ORDER BY created_at
+                LIMIT 1
+                """,
+                (tenant_id, issue_key, target_state, correlation_id),
+            )
+        return _writeback_audit_from_row(rows[0]) if rows else None
 
     async def _sync_age_node(self, session: AsyncSqlSession, node: GraphNode) -> None:
         with _tracer.start_as_current_span("postgres.age.sync_node"):
@@ -518,6 +669,41 @@ def _node_from_row(row: Mapping[str, object]) -> GraphNode:
         kind=NodeKind(str(row["kind"])),
         name=str(row["name"]),
         metadata=_json_mapping(metadata),
+    )
+
+
+def _optional_str(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _identity_link_from_row(row: Mapping[str, object]) -> IdentityLink:
+    return IdentityLink(
+        tenant_id=str(row["tenant_id"]),
+        developer_id=str(row["developer_id"]),
+        chat_user_id=_optional_str(row.get("chat_user_id")),
+        jira_account_id=_optional_str(row.get("jira_account_id")),
+        jira_email=_optional_str(row.get("jira_email")),
+        vcs_username=_optional_str(row.get("vcs_username")),
+    )
+
+
+def _writeback_audit_from_row(row: Mapping[str, object]) -> WriteBackAudit:
+    created_at = row["created_at"]
+    if not isinstance(created_at, datetime):
+        raise GraphNotFound("writeback_audit row missing created_at")
+    return WriteBackAudit(
+        id=str(row["id"]),
+        tenant_id=str(row["tenant_id"]),
+        developer_id=str(row["developer_id"]),
+        issue_key=str(row["issue_key"]),
+        correlation_id=str(row["correlation_id"]),
+        status=WriteBackStatus(str(row["status"])),
+        target_state=str(row["target_state"]),
+        before_state=_optional_str(row.get("before_state")),
+        after_state=_optional_str(row.get("after_state")),
+        comment=_optional_str(row.get("comment")),
+        source=str(row["source"]),
+        created_at=created_at,
     )
 
 

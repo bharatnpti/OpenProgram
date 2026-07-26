@@ -1,8 +1,38 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import UTC, date, datetime, time
 from enum import StrEnum
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+def resolve_timezone(pref_tz: str | None, tenant_default: str) -> ZoneInfo:
+    """Resolve a check-in timezone, preferring the developer preference.
+
+    Resolution falls back preference -> tenant default -> UTC. Invalid IANA names
+    are skipped so legacy or unvalidated rows never crash local-date math; new
+    preferences are validated at the API and settings boundaries before they are
+    persisted. ``tenant_default`` is passed in explicitly to keep the domain free
+    of any dependency on ``config.settings``.
+    """
+    for candidate in (pref_tz, tenant_default):
+        if not candidate:
+            continue
+        try:
+            return ZoneInfo(candidate)
+        except (ZoneInfoNotFoundError, ValueError):
+            continue
+    return ZoneInfo("UTC")
+
+
+def local_date(instant: datetime, tz: ZoneInfo) -> date:
+    """Return the calendar date of ``instant`` as observed in timezone ``tz``.
+
+    Naive datetimes are treated as UTC so the result stays deterministic.
+    """
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=UTC)
+    return instant.astimezone(tz).date()
 
 
 class StatusSource(StrEnum):
@@ -11,6 +41,18 @@ class StatusSource(StrEnum):
     INFERRED = "inferred"
     STALE = "stale"
     UNKNOWN = "unknown"
+
+
+class WriteBackConsent(StrEnum):
+    """Per-developer standing consent for automated issue-tracker write-back.
+
+    ``always_ask`` (the safe default) never writes automatically; ``auto_apply``
+    grants standing consent; ``never`` opts out entirely.
+    """
+
+    ALWAYS_ASK = "always_ask"
+    AUTO_APPLY = "auto_apply"
+    NEVER = "never"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -38,6 +80,9 @@ class CheckInSignals:
     eta_answered: bool = False
     requests: tuple[CrossPersonMention, ...] = ()
     issue_updates: tuple[IssueClaim, ...] = ()
+    # False when the model output could not be parsed into structured signals, so
+    # downstream rollups must not treat the check-in as confirmed/green.
+    parser_confident: bool = True
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -50,6 +95,11 @@ class CheckIn:
     raw_reply: str | None
     signals: CheckInSignals | None
     last_accessed_at: datetime | None = None
+    # Developer-local calendar date this check-in belongs to. Used for
+    # timezone-correct roster/roll-up queries instead of UTC boundaries on
+    # ``replied_at``. Optional so legacy rows (pre-migration) degrade to the
+    # prior UTC-day behaviour.
+    checkin_date: date | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -73,6 +123,7 @@ class CheckInPreference:
     weekdays: tuple[int, ...] = (0, 1, 2, 3, 4)
     reply_wait_seconds: int = 14400
     final_reply_wait_seconds: int = 28800
+    write_back_consent: WriteBackConsent = WriteBackConsent.ALWAYS_ASK
 
 
 @dataclass(frozen=True, kw_only=True)

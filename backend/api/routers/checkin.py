@@ -122,6 +122,7 @@ async def update_checkin_preference(
             if "final_reply_wait_seconds" in fields and request.final_reply_wait_seconds is not None
             else existing.final_reply_wait_seconds
         ),
+        write_back_consent=existing.write_back_consent,
     )
     await registry.status_repository().record_checkin_preference(updated)
     return CheckinPreferenceResponse.from_domain(updated)
