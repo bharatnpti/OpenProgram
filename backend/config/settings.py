@@ -104,6 +104,7 @@ class Settings(BaseSettings):
     checkin_reply_wait_seconds: int = 14400
     checkin_final_reply_wait_seconds: int = 28800
     checkin_max_clarifications: int = 2
+    checkin_ack_enabled: bool = True
     escalation_enabled: bool = True
     escalation_scrum_master_enabled: bool = True
     escalation_manager_enabled: bool = True

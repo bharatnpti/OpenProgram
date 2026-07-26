@@ -132,6 +132,7 @@ class StatusCollector:
         tool_agent: ToolCallingAgent | None = None,
         conversation_retention_days: int = 30,
         checkin_max_clarifications: int = 2,
+        checkin_ack_enabled: bool = True,
         tenant_default_timezone: str = "UTC",
         outbound_dm_max_chars: int = OUTBOUND_DM_MAX_CHARS,
         recent_fact_lookback_days: int = RECENT_FACT_LOOKBACK_DAYS,
@@ -149,6 +150,7 @@ class StatusCollector:
         self._tool_agent = tool_agent
         self._conversation_retention_days = conversation_retention_days
         self._checkin_max_clarifications = max(0, checkin_max_clarifications)
+        self._checkin_ack_enabled = checkin_ack_enabled
         self._tenant_default_timezone = tenant_default_timezone
         self._outbound_dm_max_chars = outbound_dm_max_chars
         self._recent_fact_lookback_days = recent_fact_lookback_days
@@ -1134,7 +1136,64 @@ class StatusCollector:
         )
         await self._append_checkin_fact(updated, status)
         await self._maybe_write_back(updated, final_signals)
+        # Send exactly one "Got it" ack per accepted reply. Gated on the
+        # record_checkin_reply_once success above, so a durable retry or a
+        # duplicate delivery (which returns early) never double-acks (C3).
+        await self._send_checkin_ack(checkin=updated, signals=final_signals)
         return status
+
+    async def _send_checkin_ack(
+        self,
+        *,
+        checkin: CheckIn,
+        signals: CheckInSignals,
+    ) -> None:
+        """DM the developer a short receipt once their reply is finalized.
+
+        The ack goes to the developer themselves, so a concise recorded-summary
+        (state + first blocker) is fine; we never echo the raw reply text. A
+        low-confidence parse adds a correction hint so the developer can fix a
+        misread; a confident parse gets the plain ack. Best-effort: a send
+        failure must never lose the already-recorded check-in.
+        """
+        if not self._checkin_ack_enabled:
+            return
+        correlation = await self._status_repository.checkin_correlation_by_id(
+            checkin.tenant_id,
+            checkin.correlation_id,
+        )
+        if correlation is None:
+            return
+        recipient = ChatUserRef(
+            tenant_id=checkin.tenant_id,
+            external_id=correlation.chat_user_ref,
+        )
+        text = _compose_checkin_ack_text(
+            signals=signals,
+            max_chars=self._outbound_dm_max_chars,
+        )
+        try:
+            await self._chat_provider.send_dm(
+                recipient,
+                OutboundMessage(
+                    tenant_id=checkin.tenant_id,
+                    text=text,
+                    correlation_id=checkin.correlation_id,
+                    metadata={
+                        "purpose": "status_ack",
+                        # Keyed per correlation so a provider-level send-once still
+                        # collapses any retry to a single ack DM.
+                        "idempotency_key": f"checkin-ack:{checkin.correlation_id}",
+                    },
+                ),
+            )
+        except Exception:  # pragma: no cover - defensive; ack is best-effort
+            _logger.warning(
+                "checkin_ack_failed",
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+            )
 
     async def _maybe_write_back(self, checkin: CheckIn, signals: CheckInSignals) -> None:
         """Apply gated write-back for a finalized check-in's issue claims.
@@ -1551,6 +1610,46 @@ def _compose_escalation_notice(
     if len(notice) > max_chars:
         return notice[: max(0, max_chars - 1)].rstrip() + "…"
     return notice
+
+
+_CHECKIN_ACK_PLAIN = "Got it \U0001f44d Thanks — your update is recorded."
+_CHECKIN_ACK_LOW_CONFIDENCE_FALLBACK = (
+    "Got it \U0001f44d Recorded your update — reply 'fix' if I read it wrong."
+)
+
+
+def _compose_checkin_ack_text(
+    *,
+    signals: CheckInSignals,
+    max_chars: int = OUTBOUND_DM_MAX_CHARS,
+) -> str:
+    """Deterministic "Got it" ack for a finalized check-in reply.
+
+    A confident parse gets the plain ack. A low-confidence parse restates the
+    recorded status (state + first blocker, never the raw reply) and invites a
+    correction. Every branch stays within ``max_chars`` with a safe fallback.
+    """
+    if signals.parser_confident:
+        return _cap_outbound_dm_text(_CHECKIN_ACK_PLAIN, max_chars)
+    recorded = _recorded_status_phrase(signals)
+    text = f"Got it \U0001f44d I recorded this as {recorded} — reply 'fix' if that's wrong."
+    if len(text) > max_chars:
+        return _cap_outbound_dm_text(_CHECKIN_ACK_LOW_CONFIDENCE_FALLBACK, max_chars)
+    return text
+
+
+def _recorded_status_phrase(signals: CheckInSignals) -> str:
+    if signals.blockers:
+        return f"in progress with a blocker on {_truncate_subject(signals.blockers[0])}"
+    return "in progress with no blockers"
+
+
+def _cap_outbound_dm_text(text: str, max_chars: int) -> str:
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= 1:
+        return text[:max_chars]
+    return f"{text[: max_chars - 1].rstrip()}…"
 
 
 def _safe_outbound_checkin_text(
