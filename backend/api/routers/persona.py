@@ -19,6 +19,7 @@ from api.dtos import (
     CrossPersonRequestStatusUpdateRequest,
     DriftFindingResponse,
     FocusResponse,
+    NodeTrendResponse,
     PodBlockersResponse,
     PodCheckinsResponse,
     PortfolioFeedResponse,
@@ -41,8 +42,14 @@ from core.application.risk_service import RiskService
 from core.domain.auth import Principal
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
 from core.domain.errors import AuthorizationDenied, GraphNotFound
+from core.domain.graph import NodeKind
 
 router = APIRouter(tags=["personas"])
+
+# Entity kinds that carry a rolled-up RAG status in node_statuses.
+_TREND_KINDS = frozenset(
+    {NodeKind.PROGRAM, NodeKind.PROJECT, NodeKind.POD, NodeKind.DEVELOPER, NodeKind.TASK}
+)
 
 
 @router.get("/me/focus", response_model=FocusResponse)
@@ -126,6 +133,27 @@ async def portfolio_heatmap(
     _ensure(principal, Capability.READ_PORTFOLIO_HEATMAP)
     view = await persona_service.portfolio_heatmap(principal.tenant_id, as_of, program_root_id)
     return PortfolioHeatmapResponse.from_view(view)
+
+
+@router.get("/persona/{level}/{entity_id}/trend", response_model=NodeTrendResponse)
+async def node_trend(
+    level: NodeKind,
+    entity_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+    as_of: Annotated[date, Query(default_factory=date.today)],
+    window_days: Annotated[int, Query(ge=1, le=365)] = 30,
+) -> NodeTrendResponse:
+    _ensure_aggregate(principal)
+    if level not in _TREND_KINDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"trend is not available for entity kind '{level.value}'",
+        )
+    view = await persona_service.node_trend(
+        principal.tenant_id, level, entity_id, as_of, window_days
+    )
+    return NodeTrendResponse.from_view(view)
 
 
 @router.get("/workstreams/{workstream_id}/flow", response_model=WorkstreamFlowResponse)

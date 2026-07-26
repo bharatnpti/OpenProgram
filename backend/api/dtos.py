@@ -21,6 +21,7 @@ from core.application.persona_views import (
     FocusTaskView,
     FocusView,
     HeatmapCellView,
+    NodeTrendView,
     PodBlockersView,
     PodCheckinsView,
     PortfolioHeatmapView,
@@ -29,6 +30,7 @@ from core.application.persona_views import (
     TaskProgressView,
     TreeEdgeView,
     TreeNodeView,
+    TrendPointView,
     WorkstreamProgressView,
 )
 from core.application.portfolio_feed_service import PortfolioFeedItemView, PortfolioFeedView
@@ -914,6 +916,48 @@ class PortfolioHeatmapResponse(BaseModel):
             rows=list(view.rows),
             columns=list(view.columns),
             cells=[HeatmapCellDto.from_view(cell) for cell in view.cells],
+        )
+
+
+class TrendPointDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    as_of: date
+    rag: Rag
+    source: StatusSource
+    score: int
+
+    @classmethod
+    def from_view(cls, point: TrendPointView) -> TrendPointDto:
+        return cls(
+            as_of=point.as_of,
+            rag=point.rag,
+            source=point.source,
+            score=point.score,
+        )
+
+
+class NodeTrendResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    entity_ref: EntityRefDto
+    window_days: int
+    start: date
+    end: date
+    points: list[TrendPointDto]
+
+    @classmethod
+    def from_view(cls, view: NodeTrendView) -> NodeTrendResponse:
+        return cls(
+            entity_ref=EntityRefDto(
+                tenant_id=view.entity_ref.tenant_id,
+                kind=view.entity_ref.kind,
+                id=view.entity_ref.id,
+            ),
+            window_days=view.window_days,
+            start=view.start,
+            end=view.end,
+            points=[TrendPointDto.from_view(point) for point in view.points],
         )
 
 

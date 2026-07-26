@@ -266,6 +266,10 @@ class RollupRepository(Protocol):
 
     async def list_node_statuses(self, tenant_id: str, as_of: date) -> list[NodeStatus]: ...
 
+    async def node_status_history(
+        self, tenant_id: str, entity_ref: EntityRef, start: date, end: date
+    ) -> list[NodeStatus]: ...
+
 
 class SyncCursorRepository(Protocol):
     async def get_cursor(self, tenant_id: str, connector: str, scope: str) -> SyncCursor: ...
