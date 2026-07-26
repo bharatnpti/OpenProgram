@@ -19,6 +19,7 @@ import type {
   AuthStatusResponse,
   BriefKind,
   NarrativeBriefsResponse,
+  WriteBackAdoptionResponse,
   PodEscalationContactsResponse,
   PodEscalationContactsUpdateRequest,
   DirectoryItemResponse,
@@ -331,6 +332,13 @@ export const apiClient = {
   personaBriefs: (kind?: BriefKind, limit = 20) =>
     requestJson<NarrativeBriefsResponse>(
       withQuery("/persona/briefs", { kind, limit: String(limit) }),
+    ),
+  writebackAdoption: (windowDays?: number, limit = 5) =>
+    requestJson<WriteBackAdoptionResponse>(
+      withQuery("/persona/writeback-adoption", {
+        window_days: windowDays ? String(windowDays) : undefined,
+        limit: String(limit),
+      }),
     ),
 };
 

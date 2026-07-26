@@ -242,6 +242,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/ops/writeback/{audit_id}/revert": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Revert Writeback */
+    post: operations["revert_writeback_admin_ops_writeback__audit_id__revert_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/programs": {
     parameters: {
       query?: never;
@@ -1164,6 +1181,23 @@ export interface paths {
     };
     /** Narrative Briefs */
     get: operations["narrative_briefs_persona_briefs_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/persona/writeback-adoption": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Writeback Adoption */
+    get: operations["writeback_adoption_persona_writeback_adoption_get"];
     put?: never;
     post?: never;
     delete?: never;
@@ -2665,6 +2699,45 @@ export interface components {
       /** Tasks */
       tasks: components["schemas"]["TaskProgressDto"][];
     };
+    /** WriteBackAdoptionEntry */
+    WriteBackAdoptionEntry: {
+      /** Issue Key */
+      issue_key: string;
+      /** To State */
+      to_state: string;
+      /**
+       * Applied At
+       * Format: date-time
+       */
+      applied_at: string;
+      /** Correlation Id */
+      correlation_id: string;
+    };
+    /** WriteBackAdoptionResponse */
+    WriteBackAdoptionResponse: {
+      /** Applied Count */
+      applied_count: number;
+      /** Recent */
+      recent: components["schemas"]["WriteBackAdoptionEntry"][];
+    };
+    /** WriteBackRevertResponse */
+    WriteBackRevertResponse: {
+      /** Audit Id */
+      audit_id: string;
+      /** Issue Key */
+      issue_key: string;
+      /** From State */
+      from_state: string | null;
+      /** To State */
+      to_state: string | null;
+      status: components["schemas"]["WriteBackStatus"];
+    };
+    /**
+     * WriteBackStatus
+     * @description Lifecycle of a single audited issue-tracker write.
+     * @enum {string}
+     */
+    WriteBackStatus: "proposed" | "applied" | "failed" | "reverted";
   };
   responses: never;
   parameters: never;
@@ -3063,6 +3136,39 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["WorkflowDispatchResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  revert_writeback_admin_ops_writeback__audit_id__revert_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        audit_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WriteBackRevertResponse"];
         };
       };
       /** @description Validation Error */
@@ -5839,6 +5945,40 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["NarrativeBriefsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  writeback_adoption_persona_writeback_adoption_get: {
+    parameters: {
+      query?: {
+        window_days?: number | null;
+        limit?: number;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WriteBackAdoptionResponse"];
         };
       };
       /** @description Validation Error */

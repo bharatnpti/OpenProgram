@@ -35,7 +35,7 @@ from core.domain.status import (
     CheckInScheduleRun,
     DeveloperStatus,
 )
-from core.domain.writeback import WriteBackAudit
+from core.domain.writeback import WriteBackAudit, WriteBackStatus
 from core.ports.directory import DirectoryUserRepository
 
 
@@ -546,6 +546,40 @@ class InMemoryGraphStore:
         if not matches:
             return None
         return min(matches, key=lambda audit: audit.created_at)
+
+    async def get_writeback_audit(
+        self, tenant_id: str, audit_id: str
+    ) -> WriteBackAudit | None:
+        audit = self._writeback_audit.get(audit_id)
+        if audit is None or audit.tenant_id != tenant_id:
+            return None
+        return audit
+
+    async def count_applied_writebacks(
+        self, tenant_id: str, since: datetime | None = None
+    ) -> int:
+        return sum(1 for _ in self._applied_writebacks(tenant_id, since))
+
+    async def list_applied_writebacks(
+        self, tenant_id: str, limit: int, since: datetime | None = None
+    ) -> list[WriteBackAudit]:
+        ordered = sorted(
+            self._applied_writebacks(tenant_id, since),
+            key=lambda audit: audit.created_at,
+            reverse=True,
+        )
+        return ordered[:limit]
+
+    def _applied_writebacks(
+        self, tenant_id: str, since: datetime | None
+    ) -> list[WriteBackAudit]:
+        return [
+            audit
+            for audit in self._writeback_audit.values()
+            if audit.tenant_id == tenant_id
+            and audit.status is WriteBackStatus.APPLIED
+            and (since is None or audit.created_at >= since)
+        ]
 
     async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None:
         self._checkin_schedule_runs[(run.tenant_id, run.developer_id, run.checkin_date)] = run

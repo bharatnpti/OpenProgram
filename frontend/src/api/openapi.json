@@ -601,6 +601,62 @@
         }
       }
     },
+    "/admin/ops/writeback/{audit_id}/revert": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Revert Writeback",
+        "operationId": "revert_writeback_admin_ops_writeback__audit_id__revert_post",
+        "parameters": [
+          {
+            "name": "audit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Audit Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteBackRevertResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/programs": {
       "get": {
         "tags": ["config"],
@@ -5490,6 +5546,83 @@
         }
       }
     },
+    "/persona/writeback-adoption": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Writeback Adoption",
+        "operationId": "writeback_adoption_persona_writeback_adoption_get",
+        "parameters": [
+          {
+            "name": "window_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 365,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Days"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 5,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteBackAdoptionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/portfolio/cross-person-requests": {
       "get": {
         "tags": ["personas"],
@@ -9994,6 +10127,94 @@
           "tasks"
         ],
         "title": "WorkstreamProgressResponse"
+      },
+      "WriteBackAdoptionEntry": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "title": "Issue Key"
+          },
+          "to_state": {
+            "type": "string",
+            "title": "To State"
+          },
+          "applied_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Applied At"
+          },
+          "correlation_id": {
+            "type": "string",
+            "title": "Correlation Id"
+          }
+        },
+        "type": "object",
+        "required": ["issue_key", "to_state", "applied_at", "correlation_id"],
+        "title": "WriteBackAdoptionEntry"
+      },
+      "WriteBackAdoptionResponse": {
+        "properties": {
+          "applied_count": {
+            "type": "integer",
+            "title": "Applied Count"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/WriteBackAdoptionEntry"
+            },
+            "type": "array",
+            "title": "Recent"
+          }
+        },
+        "type": "object",
+        "required": ["applied_count", "recent"],
+        "title": "WriteBackAdoptionResponse"
+      },
+      "WriteBackRevertResponse": {
+        "properties": {
+          "audit_id": {
+            "type": "string",
+            "title": "Audit Id"
+          },
+          "issue_key": {
+            "type": "string",
+            "title": "Issue Key"
+          },
+          "from_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From State"
+          },
+          "to_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To State"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WriteBackStatus"
+          }
+        },
+        "type": "object",
+        "required": ["audit_id", "issue_key", "from_state", "to_state", "status"],
+        "title": "WriteBackRevertResponse"
+      },
+      "WriteBackStatus": {
+        "type": "string",
+        "enum": ["proposed", "applied", "failed", "reverted"],
+        "title": "WriteBackStatus",
+        "description": "Lifecycle of a single audited issue-tracker write."
       }
     }
   }

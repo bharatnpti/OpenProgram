@@ -5,12 +5,24 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from api.dependencies import get_current_principal, get_dead_letter_service, get_registry
-from api.dtos import DeadLetterResponse, DeadLettersResponse, WorkflowDispatchResponse
+from api.dependencies import (
+    get_current_principal,
+    get_dead_letter_service,
+    get_registry,
+    get_write_back_service,
+)
+from api.dtos import (
+    DeadLetterResponse,
+    DeadLettersResponse,
+    WorkflowDispatchResponse,
+    WriteBackRevertResponse,
+)
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.dead_letter_service import DeadLetterService
+from core.application.writeback_service import WriteBackService
 from core.domain.auth import Principal
 from core.domain.errors import AuthorizationDenied
+from core.domain.writeback import WriteBackStatus
 from infra.registry import ServiceRegistry
 
 router = APIRouter(prefix="/admin/ops", tags=["admin"])
@@ -46,6 +58,37 @@ async def rearm_dead_letter(
     return WorkflowDispatchResponse(
         workflow_id=drained.message_id or f"rearm:{rearmed.id}",
     )
+
+
+@router.post("/writeback/{audit_id}/revert", response_model=WriteBackRevertResponse)
+async def revert_writeback(
+    audit_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[WriteBackService, Depends(get_write_back_service)],
+) -> WriteBackRevertResponse:
+    _ensure_admin_ops(principal)
+    audit = await service.get_audit(principal.tenant_id, audit_id)
+    if audit is None:
+        raise HTTPException(status_code=404, detail="write-back audit not found")
+    if audit.status is not WriteBackStatus.APPLIED or audit.before_state is None:
+        raise HTTPException(
+            status_code=409,
+            detail="write-back is not an applied write and cannot be reverted",
+        )
+    # The revert goes THROUGH WriteBackService (the only sanctioned write caller),
+    # which is idempotent: a second revert of the same applied write returns None.
+    reverted = await service.revert(audit)
+    if reverted is None:
+        raise HTTPException(
+            status_code=409,
+            detail="write-back has already been reverted",
+        )
+    if reverted.status is WriteBackStatus.FAILED:
+        raise HTTPException(
+            status_code=502,
+            detail="issue tracker unavailable; revert was recorded as failed",
+        )
+    return WriteBackRevertResponse.from_domain(reverted)
 
 
 def _ensure_admin_ops(principal: Principal) -> None:

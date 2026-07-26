@@ -51,6 +51,10 @@ async def metrics(request: Request) -> Response:
             settings.tenant_id
         )
         metrics.set_workflow_backlog(open_dead_letters, len(stuck))
+        applied = await registry.writeback_audit_repository().count_applied_writebacks(
+            settings.tenant_id
+        )
+        metrics.set_writeback_applied(applied)
     except Exception:
         # Metrics scraping must never fail the endpoint; leave prior gauge values.
         pass

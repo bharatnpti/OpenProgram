@@ -44,6 +44,7 @@ from core.domain.identity import IdentityLink
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import Rag, RollupFactor
 from core.domain.status import CheckInPreference, DeveloperStatus, StatusSource
+from core.domain.writeback import WriteBackAdoption, WriteBackAudit, WriteBackStatus
 from core.ports.auth import AuthenticatedUser
 
 
@@ -1401,6 +1402,59 @@ class DeadLettersResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     dead_letters: list[DeadLetterResponse]
+
+
+class WriteBackRevertResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    audit_id: str
+    issue_key: str
+    from_state: str | None
+    to_state: str | None
+    status: WriteBackStatus
+
+    @classmethod
+    def from_domain(cls, audit: WriteBackAudit) -> WriteBackRevertResponse:
+        return cls(
+            audit_id=audit.id,
+            issue_key=audit.issue_key,
+            from_state=audit.before_state,
+            to_state=audit.after_state,
+            status=audit.status,
+        )
+
+
+class WriteBackAdoptionEntry(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    issue_key: str
+    to_state: str
+    applied_at: datetime
+    correlation_id: str
+
+    @classmethod
+    def from_domain(cls, audit: WriteBackAudit) -> WriteBackAdoptionEntry:
+        # Identifier-only: never expose the developer note or any DM/reply text.
+        return cls(
+            issue_key=audit.issue_key,
+            to_state=audit.after_state or audit.target_state,
+            applied_at=audit.created_at,
+            correlation_id=audit.correlation_id,
+        )
+
+
+class WriteBackAdoptionResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    applied_count: int
+    recent: list[WriteBackAdoptionEntry]
+
+    @classmethod
+    def from_domain(cls, adoption: WriteBackAdoption) -> WriteBackAdoptionResponse:
+        return cls(
+            applied_count=adoption.applied_count,
+            recent=[WriteBackAdoptionEntry.from_domain(entry) for entry in adoption.recent],
+        )
 
 
 class CheckinDispatchRequest(BaseModel):

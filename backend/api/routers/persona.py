@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,6 +13,7 @@ from api.dependencies import (
     get_persona_view_service,
     get_portfolio_feed_service,
     get_risk_service,
+    get_write_back_service,
 )
 from api.dtos import (
     CrossPersonRequestResponse,
@@ -35,6 +36,7 @@ from api.dtos import (
     RiskFindingResponse,
     WorkstreamFlowResponse,
     WorkstreamProgressResponse,
+    WriteBackAdoptionResponse,
 )
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.cross_person_service import CrossPersonRequestService
@@ -42,6 +44,7 @@ from core.application.flow_metrics_service import FlowMetricsService
 from core.application.persona_views import PersonaViewService
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.application.risk_service import RiskService
+from core.application.writeback_service import WriteBackService
 from core.domain.auth import Principal
 from core.domain.brief import BriefKind
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
@@ -208,6 +211,24 @@ async def narrative_briefs(
     return NarrativeBriefsResponse(
         briefs=[NarrativeBriefResponse.from_domain(brief) for brief in briefs],
     )
+
+
+@router.get("/persona/writeback-adoption", response_model=WriteBackAdoptionResponse)
+async def writeback_adoption(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[WriteBackService, Depends(get_write_back_service)],
+    window_days: Annotated[int | None, Query(ge=1, le=365)] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 5,
+) -> WriteBackAdoptionResponse:
+    # Surfaces "Jira updates applied via check-in" so the time-saved is visible.
+    _ensure_aggregate(principal)
+    since = (
+        datetime.now(tz=UTC) - timedelta(days=window_days)
+        if window_days is not None
+        else None
+    )
+    adoption = await service.adoption(principal.tenant_id, limit=limit, since=since)
+    return WriteBackAdoptionResponse.from_domain(adoption)
 
 
 @router.get("/portfolio/cross-person-requests", response_model=CrossPersonRequestsResponse)

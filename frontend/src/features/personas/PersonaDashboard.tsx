@@ -214,6 +214,11 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
     enabled: showTrend && Boolean(selectedProgramId),
     staleTime: 5 * 60_000,
   });
+  const writebackAdoption = useQuery({
+    queryKey: ["persona", "writeback-adoption"],
+    queryFn: () => apiClient.writebackAdoption(),
+    enabled: showPortfolio,
+  });
   const briefs = useQuery({
     queryKey: ["persona", "briefs"],
     queryFn: () => apiClient.personaBriefs(undefined, 20),
@@ -226,7 +231,7 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
     ...(showFocus ? [focus, myStatus] : []),
     ...(showTeam ? [podsDirectory, blockers, checkins] : []),
     ...(showProgress ? [projectsDirectory, progress] : []),
-    ...(showPortfolio ? [programsDirectory, tree, heatmap, briefs] : []),
+    ...(showPortfolio ? [programsDirectory, tree, heatmap, briefs, writebackAdoption] : []),
     ...(showTrend ? [trend] : []),
   ];
   const isRefreshing = queries.some((query) => query.isFetching);
@@ -383,6 +388,17 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
               value={heatmap.data?.cells.length ?? "-"}
               detail={statusForQuery(heatmap)}
               tone="warning"
+            />
+          )}
+          {showPortfolio && (
+            <KpiCard
+              icon={<CheckCircle2 className="h-4 w-4" />}
+              label="Jira updates via check-in"
+              value={writebackAdoption.data?.applied_count ?? "-"}
+              detail={
+                writebackAdoption.data ? "applied write-backs" : statusForQuery(writebackAdoption)
+              }
+              tone={writebackAdoption.data?.applied_count ? "success" : "neutral"}
             />
           )}
         </section>

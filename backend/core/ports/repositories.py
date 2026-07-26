@@ -353,3 +353,15 @@ class WriteBackAuditRepository(Protocol):
         target_state: str,
         correlation_id: str,
     ) -> WriteBackAudit | None: ...
+
+    async def get_writeback_audit(
+        self, tenant_id: str, audit_id: str
+    ) -> WriteBackAudit | None: ...
+
+    async def count_applied_writebacks(
+        self, tenant_id: str, since: datetime | None = None
+    ) -> int: ...
+
+    async def list_applied_writebacks(
+        self, tenant_id: str, limit: int, since: datetime | None = None
+    ) -> list[WriteBackAudit]: ...
