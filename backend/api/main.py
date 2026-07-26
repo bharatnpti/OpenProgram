@@ -20,6 +20,7 @@ from api.routers import (
     config,
     graph,
     health,
+    ops,
     persona,
     test_support,
     webhooks,
@@ -129,6 +130,7 @@ def create_app(
     app.include_router(health.router)
     app.include_router(graph.router)
     app.include_router(admin.router)
+    app.include_router(ops.router)
     app.include_router(config.router)
     app.include_router(ask.router)
     app.include_router(checkin.router)

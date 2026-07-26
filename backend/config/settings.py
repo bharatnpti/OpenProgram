@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     inbound_events_sweeper_schedule_id: str = "openprogram-inbound-events-sweeper"
     inbound_events_sweeper_cron: str = "*/5 * * * *"
     inbound_events_grace_seconds: int = 120
+    # Hard threshold after which a still-stuck inbound burst is dead-lettered.
+    inbound_events_dead_letter_seconds: int = 3600
+    # Open dead-letters at or below this count keep /ready healthy.
+    workflow_backlog_ready_threshold: int = 0
     checkin_fanout_concurrency: int = 10
     cross_person_auto_notify: bool = False
     # System gate fallback default for issue-tracker write-back (OFF by default).
@@ -473,6 +477,7 @@ class Settings(BaseSettings):
         "slack_signature_tolerance_seconds",
         "reply_debounce_seconds",
         "inbound_events_grace_seconds",
+        "inbound_events_dead_letter_seconds",
         "chat_send_once_ttl_seconds",
     )
     @classmethod

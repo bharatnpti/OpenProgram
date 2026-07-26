@@ -36,6 +36,7 @@ from core.application.persona_views import (
 from core.application.portfolio_feed_service import PortfolioFeedItemView, PortfolioFeedView
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
+from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.directory import DirectoryUser
 from core.domain.escalation import EscalationContact, EscalationTarget, PodEscalationContacts
 from core.domain.graph import EdgeKind, GraphEdge, GraphNode, GraphTree, NodeKind
@@ -1362,6 +1363,44 @@ class WorkflowDispatchResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     workflow_id: str
+
+
+class DeadLetterResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    tenant_id: str
+    kind: str
+    conversation_key: str
+    event_ids: list[str]
+    reason: str
+    attempts: int
+    first_seen_at: datetime
+    dead_lettered_at: datetime
+    status: DeadLetterStatus
+    rearmed_at: datetime | None = None
+
+    @classmethod
+    def from_domain(cls, dead_letter: DeadLetter) -> DeadLetterResponse:
+        return cls(
+            id=dead_letter.id,
+            tenant_id=dead_letter.tenant_id,
+            kind=dead_letter.kind,
+            conversation_key=dead_letter.conversation_key,
+            event_ids=list(dead_letter.event_ids),
+            reason=dead_letter.reason,
+            attempts=dead_letter.attempts,
+            first_seen_at=dead_letter.first_seen_at,
+            dead_lettered_at=dead_letter.dead_lettered_at,
+            status=dead_letter.status,
+            rearmed_at=dead_letter.rearmed_at,
+        )
+
+
+class DeadLettersResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    dead_letters: list[DeadLetterResponse]
 
 
 class CheckinDispatchRequest(BaseModel):

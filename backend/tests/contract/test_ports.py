@@ -16,6 +16,7 @@ from tests.contract.contracts import (
     assert_chat_contract,
     assert_chat_webhook_mapper_contract,
     assert_conversation_repository_contract,
+    assert_dead_letter_repository_contract,
     assert_directory_user_repository_contract,
     assert_identity_link_repository_contract,
     assert_inbound_chat_event_repository_contract,
@@ -33,6 +34,7 @@ from tests.contract.fakes import (
     FakeCalendarProvider,
     FakeChatProvider,
     FakeConversationRepository,
+    FakeDeadLetterRepository,
     FakeDirectoryUserRepository,
     FakeIdentityLinkRepository,
     FakeInboundChatEventRepository,
@@ -113,6 +115,14 @@ async def test_fake_narrative_brief_repository_satisfies_contract() -> None:
 
 async def test_in_memory_graph_store_satisfies_narrative_brief_contract() -> None:
     await assert_narrative_brief_repository_contract(InMemoryGraphStore())
+
+
+async def test_fake_dead_letter_repository_satisfies_contract() -> None:
+    await assert_dead_letter_repository_contract(FakeDeadLetterRepository())
+
+
+async def test_in_memory_graph_store_satisfies_dead_letter_contract() -> None:
+    await assert_dead_letter_repository_contract(InMemoryGraphStore())
 
 
 async def test_fake_conversation_repository_satisfies_contract() -> None:

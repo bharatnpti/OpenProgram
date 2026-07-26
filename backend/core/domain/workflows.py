@@ -172,6 +172,7 @@ class InboundSweeperResult:
     tenant_id: str
     rearmed: int
     conversation_keys: list[str]
+    dead_lettered: int = 0
 
 
 @dataclass(frozen=True, kw_only=True)

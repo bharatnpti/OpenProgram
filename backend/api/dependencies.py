@@ -8,6 +8,7 @@ from config.settings import Settings
 from core.application.ask_service import AskService
 from core.application.config_service import ConfigService, DirectoryService
 from core.application.cross_person_service import CrossPersonRequestService
+from core.application.dead_letter_service import DeadLetterService
 from core.application.directory_sync_service import DirectorySyncService
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.graph_queries import GraphQueryService
@@ -98,6 +99,11 @@ def get_portfolio_feed_service(request: Request) -> PortfolioFeedService:
 def get_narrative_brief_repository(request: Request) -> NarrativeBriefRepository:
     registry = get_registry(request)
     return registry.narrative_brief_repository()
+
+
+def get_dead_letter_service(request: Request) -> DeadLetterService:
+    registry = get_registry(request)
+    return registry.dead_letter_service()
 
 
 def get_cross_person_request_service(request: Request) -> CrossPersonRequestService:
