@@ -48,6 +48,7 @@ export type CheckinDispatchRequest = components["schemas"]["CheckinDispatchReque
 export type WorkflowDispatchResponse = components["schemas"]["WorkflowDispatchResponse"];
 export type RiskEvidenceDto = components["schemas"]["RiskEvidenceDto"];
 export type RiskFindingResponse = components["schemas"]["RiskFindingResponse"];
+export type DriftFindingResponse = components["schemas"]["DriftFindingResponse"];
 export type ProjectRisksResponse = components["schemas"]["ProjectRisksResponse"];
 export type PortfolioRisksResponse = components["schemas"]["PortfolioRisksResponse"];
 export type CrossPersonRequestResponse = components["schemas"]["CrossPersonRequestResponse"];
