@@ -17,6 +17,10 @@ import type {
   AskRequest,
   AskResponse,
   AuthStatusResponse,
+  BriefKind,
+  NarrativeBriefsResponse,
+  PodEscalationContactsResponse,
+  PodEscalationContactsUpdateRequest,
   DirectoryItemResponse,
   DirectorySearchResponse,
   DirectorySyncResponse,
@@ -317,6 +321,17 @@ export const apiClient = {
     }),
   configCheckinPreferences: () =>
     requestJson<CheckinPreferenceResponse[]>("/config/checkin-preferences"),
+  podEscalationContacts: (podId: string) =>
+    requestJson<PodEscalationContactsResponse>(`/config/pods/${podId}/escalation-contacts`),
+  updatePodEscalationContacts: (podId: string, body: PodEscalationContactsUpdateRequest) =>
+    requestJson<PodEscalationContactsResponse>(`/config/pods/${podId}/escalation-contacts`, {
+      method: "PUT",
+      body,
+    }),
+  personaBriefs: (kind?: BriefKind, limit = 20) =>
+    requestJson<NarrativeBriefsResponse>(
+      withQuery("/persona/briefs", { kind, limit: String(limit) }),
+    ),
 };
 
 function withAsOf(path: string, asOf?: string): string {

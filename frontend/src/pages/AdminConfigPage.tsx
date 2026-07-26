@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DatabaseZap, Link2, Settings2, Trash2, UserPlus } from "lucide-react";
+import { DatabaseZap, Link2, Settings2, ShieldAlert, Trash2, UserPlus } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import type {
   CheckinPreferenceResponse,
   ConfigNodeResponse,
   DirectoryUserResponse,
+  PodEscalationContactsUpdateRequest,
 } from "../api/schema";
 import { DataTable, type DataTableColumn } from "../components/ops/DataTable";
 import {
@@ -94,6 +95,7 @@ export function AdminConfigPage() {
   const [entityQuery, setEntityQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ConfigNodeResponse | null>(null);
+  const [escalationPod, setEscalationPod] = useState<ConfigNodeResponse | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState>({ open: false });
 
   const programs = useQuery({
@@ -216,6 +218,17 @@ export function AdminConfigPage() {
           <Button type="button" size="sm" variant="outline" onClick={() => openEdit(row.original)}>
             Edit
           </Button>
+          {activeEntity === "pods" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setEscalationPod(row.original)}
+            >
+              <ShieldAlert className="h-3.5 w-3.5" />
+              Escalation
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"
@@ -454,6 +467,8 @@ export function AdminConfigPage() {
             </div>
           </form>
         </Dialog>
+
+        <EscalationContactsDialog pod={escalationPod} onClose={() => setEscalationPod(null)} />
 
         <ConfirmDialog
           open={confirm.open}
@@ -1124,6 +1139,130 @@ function CheckinPreferencesPanel({
       current.includes(day) ? current.filter((item) => item !== day) : [...current, day].sort(),
     );
   }
+}
+
+function EscalationContactsDialog({
+  pod,
+  onClose,
+}: {
+  pod: ConfigNodeResponse | null;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const podId = pod?.id ?? "";
+  const [smId, setSmId] = useState("");
+  const [smName, setSmName] = useState("");
+  const [managerId, setManagerId] = useState("");
+  const [managerName, setManagerName] = useState("");
+
+  const contacts = useQuery({
+    queryKey: ["config", "pod-escalation-contacts", podId],
+    queryFn: () => apiClient.podEscalationContacts(podId),
+    enabled: Boolean(pod),
+  });
+
+  useEffect(() => {
+    if (!contacts.data) return;
+    setSmId(contacts.data.scrum_master?.chat_external_id ?? "");
+    setSmName(contacts.data.scrum_master?.display_name ?? "");
+    setManagerId(contacts.data.manager?.chat_external_id ?? "");
+    setManagerName(contacts.data.manager?.display_name ?? "");
+  }, [contacts.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const body: PodEscalationContactsUpdateRequest = {
+        scrum_master: contactPayload(smId, smName),
+        manager: contactPayload(managerId, managerName),
+      };
+      return apiClient.updatePodEscalationContacts(podId, body);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["config", "pod-escalation-contacts", podId],
+      });
+      toast.success("Escalation contacts saved.");
+      onClose();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <Dialog
+      open={Boolean(pod)}
+      onOpenChange={(open) => !open && onClose()}
+      title={pod ? `Escalation contacts — ${pod.name}` : "Escalation contacts"}
+      description="Scrum master and manager targets for this pod's check-in escalation ladder. Clear a chat ID to remove that contact."
+    >
+      <QueryState query={contacts} loadingRows={3}>
+        {() => (
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveMutation.mutate();
+            }}
+          >
+            <div className="space-y-3 rounded-md border border-border bg-surface-muted/30 p-3">
+              <div className="text-sm font-semibold">Scrum master</div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="Chat ID" htmlFor="escalation-sm-id">
+                  <Input
+                    id="escalation-sm-id"
+                    value={smId}
+                    onChange={(event) => setSmId(event.target.value)}
+                    placeholder="e.g. U1001"
+                  />
+                </Field>
+                <Field label="Display name" htmlFor="escalation-sm-name">
+                  <Input
+                    id="escalation-sm-name"
+                    value={smName}
+                    onChange={(event) => setSmName(event.target.value)}
+                  />
+                </Field>
+              </div>
+            </div>
+            <div className="space-y-3 rounded-md border border-border bg-surface-muted/30 p-3">
+              <div className="text-sm font-semibold">Manager</div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="Chat ID" htmlFor="escalation-manager-id">
+                  <Input
+                    id="escalation-manager-id"
+                    value={managerId}
+                    onChange={(event) => setManagerId(event.target.value)}
+                    placeholder="e.g. U1002"
+                  />
+                </Field>
+                <Field label="Display name" htmlFor="escalation-manager-name">
+                  <Input
+                    id="escalation-manager-name"
+                    value={managerName}
+                    onChange={(event) => setManagerName(event.target.value)}
+                  />
+                </Field>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={saveMutation.isPending}>
+                Save
+              </Button>
+            </div>
+          </form>
+        )}
+      </QueryState>
+    </Dialog>
+  );
+}
+
+function contactPayload(chatId: string, displayName: string) {
+  const id = chatId.trim();
+  if (!id) return null;
+  const name = displayName.trim();
+  return { chat_external_id: id, display_name: name ? name : null };
 }
 
 function LinkForm({

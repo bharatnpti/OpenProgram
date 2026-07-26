@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
-import type { NodeKind, NodeTrendResponse } from "../../api/schema";
+import type { BriefKind, NodeKind, NodeTrendResponse } from "../../api/schema";
 import {
   AsOfControl,
   DataPanel,
@@ -38,6 +38,20 @@ import { HierarchyFlow } from "./HierarchyFlow";
 import { Sparkline } from "./Sparkline";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
+
+const briefKindLabels: Record<BriefKind, string> = {
+  daily_pod: "Daily pod",
+  weekly_project: "Weekly project",
+  exec: "Exec",
+};
+
+function formatBriefDate(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString();
+}
 
 type DashboardRole = "dev" | "sm" | "po" | "mgr" | "exec";
 
@@ -200,13 +214,19 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
     enabled: showTrend && Boolean(selectedProgramId),
     staleTime: 5 * 60_000,
   });
+  const briefs = useQuery({
+    queryKey: ["persona", "briefs"],
+    queryFn: () => apiClient.personaBriefs(undefined, 20),
+    enabled: showPortfolio,
+    staleTime: 5 * 60_000,
+  });
 
   const queries = [
     health,
     ...(showFocus ? [focus, myStatus] : []),
     ...(showTeam ? [podsDirectory, blockers, checkins] : []),
     ...(showProgress ? [projectsDirectory, progress] : []),
-    ...(showPortfolio ? [programsDirectory, tree, heatmap] : []),
+    ...(showPortfolio ? [programsDirectory, tree, heatmap, briefs] : []),
     ...(showTrend ? [trend] : []),
   ];
   const isRefreshing = queries.some((query) => query.isFetching);
@@ -621,6 +641,56 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
               </QueryState>
             </DataPanel>
           </section>
+        )}
+
+        {showPortfolio && (
+          <DataPanel
+            title="Narrative Briefs"
+            description="Generated daily pod, weekly project, and exec summaries. Newest first."
+            action={
+              <Badge tone="info">{briefs.data ? `${briefs.data.briefs.length} briefs` : "-"}</Badge>
+            }
+          >
+            <QueryState query={briefs} loadingRows={3}>
+              {(data) =>
+                data.briefs.length === 0 ? (
+                  <EmptyState
+                    title="No briefs yet"
+                    description="Narrative briefs appear here once generated."
+                  />
+                ) : (
+                  <div className="space-y-3">
+                    {data.briefs.map((brief) => (
+                      <article
+                        key={`${brief.kind}-${brief.scope_id}-${brief.generated_at}`}
+                        className="rounded-md border border-border bg-surface p-3"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h3 className="text-sm font-semibold">{brief.title}</h3>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              {formatBriefDate(brief.generated_at)}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            <Badge tone="neutral">
+                              {briefKindLabels[brief.kind] ?? brief.kind}
+                            </Badge>
+                            <Badge tone="info">
+                              {brief.sources.length} source{brief.sources.length === 1 ? "" : "s"}
+                            </Badge>
+                          </div>
+                        </div>
+                        <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-sm text-muted-foreground">
+                          {brief.body}
+                        </pre>
+                      </article>
+                    ))}
+                  </div>
+                )
+              }
+            </QueryState>
+          </DataPanel>
         )}
       </div>
       {showFocus && (
