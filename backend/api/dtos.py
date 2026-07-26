@@ -36,6 +36,7 @@ from core.application.persona_views import (
 from core.application.portfolio_feed_service import PortfolioFeedItemView, PortfolioFeedView
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
 from core.domain.directory import DirectoryUser
+from core.domain.escalation import EscalationContact, EscalationTarget, PodEscalationContacts
 from core.domain.graph import EdgeKind, GraphEdge, GraphNode, GraphTree, NodeKind
 from core.domain.identity import IdentityLink
 from core.domain.risk import DriftFinding, RiskFinding
@@ -1457,6 +1458,67 @@ class IdentityLinkUpdateRequest(BaseModel):
     jira_account_id: str | None = None
     jira_email: str | None = None
     vcs_username: str | None = None
+
+
+class EscalationContactDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    chat_external_id: str = Field(min_length=1)
+    display_name: str | None = None
+
+
+class PodEscalationContactsResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    pod_id: str
+    scrum_master: EscalationContactDto | None
+    manager: EscalationContactDto | None
+
+    @classmethod
+    def from_domain(
+        cls, pod_id: str, contacts: PodEscalationContacts
+    ) -> PodEscalationContactsResponse:
+        return cls(
+            pod_id=pod_id,
+            scrum_master=_escalation_contact_dto(contacts.scrum_master),
+            manager=_escalation_contact_dto(contacts.manager),
+        )
+
+
+class PodEscalationContactsUpdateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    scrum_master: EscalationContactDto | None = None
+    manager: EscalationContactDto | None = None
+
+    def to_domain(self) -> PodEscalationContacts:
+        return PodEscalationContacts(
+            scrum_master=_escalation_contact_domain(
+                self.scrum_master, EscalationTarget.SCRUM_MASTER
+            ),
+            manager=_escalation_contact_domain(self.manager, EscalationTarget.MANAGER),
+        )
+
+
+def _escalation_contact_dto(contact: EscalationContact | None) -> EscalationContactDto | None:
+    if contact is None:
+        return None
+    return EscalationContactDto(
+        chat_external_id=contact.chat_external_id,
+        display_name=contact.display_name,
+    )
+
+
+def _escalation_contact_domain(
+    dto: EscalationContactDto | None, target: EscalationTarget
+) -> EscalationContact | None:
+    if dto is None:
+        return None
+    return EscalationContact(
+        target=target,
+        chat_external_id=dto.chat_external_id,
+        display_name=dto.display_name,
+    )
 
 
 class TenantWritebackResponse(BaseModel):

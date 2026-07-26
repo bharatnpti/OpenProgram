@@ -108,6 +108,40 @@ def test_node_trend_endpoint_rejects_unsupported_kind(settings: Settings) -> Non
     assert response.status_code == 422
 
 
+def test_pod_escalation_contacts_endpoint_round_trip(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        create = client.post("/config/pods", json={"id": "pod-1", "name": "Runtime Pod"})
+        empty = client.get("/config/pods/pod-1/escalation-contacts")
+        update = client.put(
+            "/config/pods/pod-1/escalation-contacts",
+            json={
+                "scrum_master": {"chat_external_id": "U-SM", "display_name": "Sam SM"},
+                "manager": {"chat_external_id": "U-MGR"},
+            },
+        )
+        reloaded = client.get("/config/pods/pod-1/escalation-contacts")
+
+    assert create.status_code == 201
+    assert empty.status_code == 200
+    assert empty.json()["scrum_master"] is None
+    assert update.status_code == 200
+    body = reloaded.json()
+    assert body["pod_id"] == "pod-1"
+    assert body["scrum_master"]["chat_external_id"] == "U-SM"
+    assert body["scrum_master"]["display_name"] == "Sam SM"
+    assert body["manager"]["chat_external_id"] == "U-MGR"
+    assert body["manager"]["display_name"] is None
+
+
+def test_pod_escalation_contacts_endpoint_missing_pod_returns_404(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/config/pods/missing/escalation-contacts")
+
+    assert response.status_code == 404
+
+
 def test_admin_directory_search_and_member_add_flow(settings: Settings) -> None:
     app = create_app(settings=settings)
     with TestClient(app) as client:
