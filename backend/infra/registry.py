@@ -741,6 +741,7 @@ class ServiceRegistry:
             tool_agent=tool_agent,
             conversation_retention_days=self.settings.conversation_retention_days,
             checkin_max_clarifications=self.settings.checkin_max_clarifications,
+            checkin_ack_enabled=self.settings.checkin_ack_enabled,
             tenant_default_timezone=self.settings.tenant_default_timezone,
             outbound_dm_max_chars=self.settings.outbound_dm_max_chars,
             recent_fact_lookback_days=self.settings.recent_fact_lookback_days,
