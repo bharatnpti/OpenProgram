@@ -32,7 +32,7 @@ Alembic migrations through `0025_dead_letters`. **Next free number: `0026`.**
 
 ## REMAINING — to do now (this batch)
 Being implemented feature-by-feature via sub-agents; each committed + this doc updated on completion.
-- **UX Theme 2 — reply-path trust:** a lightweight **"got it 👍" ack** when a reply is accepted; a **low-confidence transparency line** surfacing Plan 02 C2's confidence ("I recorded this as … reply 'fix' if that's wrong").
+- **UX Theme 2 — reply-path trust — DONE** (commit `998a097`): "Got it 👍" ack DM on reply finalization (single chokepoint, idempotent, not in conversation history); low-confidence acks (`CheckInSignals.parser_confident` False) add a recorded-summary + "reply 'fix'" hint. `checkin_ack_enabled` setting.
 - **UX Theme 1 — contextual check-in prefill:** DM prefilled with the developer's active issues + carried-forward blockers as tappable confirm/correct items; **"unmapped members"** visibility for admins.
 - **UX Theme 3 — write-back adoption metric:** track "Jira updates applied via check-in" on the admin/exec surface.
 - **Plan 03 A follow-ons:** interactive DM consent loop (propose diff → await yes/no; today records a `proposed` row); consent-setting API + Admin UI; **undo HTTP route** (`WriteBackService.revert()` exists + tested, no endpoint).
