@@ -1,57 +1,53 @@
 # Implementation Status — plans/ execution handoff
 
-Working branch: **`feat/openprogram-hardening`** (off `master`). All work below is **uncommitted** in the working tree (no commits made per instruction). Recommend a checkpoint commit before continuing.
+Working branch: **`feat/openprogram-hardening`** (off `master`). Work is committed via `lore commit` (see Execution notes).
 
-## Verified baseline (as of this handoff)
-Run from repo root; all currently GREEN:
-- `uv run ruff check .` → clean
-- `uv run ruff format --check .` → clean **except** the pre-existing, out-of-scope `backend/tests/contract/test_gitlab_adapter.py` (unformatted at HEAD; leave it)
+## Verified baseline (current)
+Run from repo root; all GREEN:
+- `uv run ruff check backend` → clean
+- `uv run ruff format --check backend` → clean **except** the pre-existing, out-of-scope `backend/tests/contract/test_gitlab_adapter.py` (unformatted at HEAD; leave it)
 - `uv run lint-imports` → Contracts: 5 kept, 0 broken
-- `PYTHONPATH=backend uv run mypy` → no issues (153 files)
-- `PYTHONPATH=backend uv run pytest backend/tests/unit backend/tests/contract --no-cov` → **395 passed**
-- `PYTHONPATH=backend uv run pytest backend/tests/bdd` → **25 failed / 14 passed / 10 skipped** — this is the PRE-EXISTING baseline (mock-slack "no bot message found"; environmental — needs the running simulator/LLM, verified identical at HEAD). Do not treat these as regressions.
-- Frontend: `cd frontend && npm run typecheck` → clean. `openapi.json` + `generated.ts` regenerated and in sync.
+- `PYTHONPATH=backend uv run mypy` → no issues (157 files)
+- `PYTHONPATH=backend uv run pytest backend/tests/unit backend/tests/contract --no-cov` → **432 passed**
+- Frontend: `npm run typecheck` / `lint` / `format:check` / `build` → clean. `openapi.json` + `generated.ts` regenerated and in sync (regenerate with the LOCAL prettier: `./node_modules/.bin/prettier`, NOT a global `npx prettier` — versions differ and cause spurious drift).
+- `backend/tests/bdd` remains the PRE-EXISTING environmental baseline (needs the running simulator/LLM; not a regression).
 
-Alembic migrations added: `0019_inbound_chat_events`, `0020_checkin_local_date`, `0021_identity_links`, `0022_writeback_audit`. **Next free number: `0023`.**
+Alembic migrations through `0025_dead_letters`. **Next free number: `0026`.**
 
 ## DONE + verified
-- **Plan 01 — Reliability** (`plans/01-reliability.md`): fast-ack webhook + Slack signature-verification fix + `event_id`/retry dedup; durable async coalescing on DBOS (30s reset-on-message debounce) with `inbound_chat_events` buffer + drain step + sweeper safety-net; `ReplyIngestionService` (fixes lost-reply-on-LLM-failure); bounded-concurrent fanout. Mirrored in Temporal.
-- **Plan 02 — Correctness** (`plans/02-correctness.md`): C2 JSON-mode + fence-tolerant parse + **safe fallbacks** (garbled reply never finalizes as healthy); C3 honored send-once idempotency (`send_once.py`); C1 timezone/DST coherence (`local_date`/`resolve_timezone` domain helpers, developer-local `checkin_date` column + roster rewrite with UTC fallback, DTO timezone validator, DST-safe scheduling); C4 identity mapping (`IdentityLink`, `IdentityLinkRepository`, `build_context` resolves Jira accountId; config API `GET/PUT /config/members/{id}/identity-link`; field is `chat_user_id` — NOT `slack_*`, per the provider-neutrality guard).
-- **Plan 03 Feature A — Jira write-back** (`plans/03-new-features.md` §A): 3 default-deny gates (tenant `jira_writeback_enabled` admin flag via `GET/PUT /config/tenant/writeback` → `Capability.WRITE_ISSUE_TRACKER` → per-dev `write_back_consent` {always_ask|auto_apply|never}, default always_ask); real Jira `transition`/`add_comment`; idempotent audited `WriteBackService` (+`revert()`); `writeback_audit`+`writeback_config` tables. Architecture guard tightened: only `writeback_service.py` may call the write path.
-- **Plan 03 Feature B — Drift/watermelon detection** (`plans/03-new-features.md` §B): extends `risk_service`/`risk.py`; findings `said_done_no_pr`/`claimed_progress_no_activity`/`green_over_red`; scheduled `drift_scan` via the shared sync-workflow path in both engines + `drift_scan_cron`; contradicted statuses downgraded out of `confirmed` (never green); exposed on persona risk endpoints (`drift: [...]`).
+- **Plan 01 — Reliability**: fast-ack webhook + Slack signature-verification fix + `event_id`/retry dedup; durable async coalescing (30s reset-on-message debounce) with `inbound_chat_events` buffer + drain + sweeper safety-net; `ReplyIngestionService` (no lost-reply-on-LLM-failure); bounded-concurrent fanout. Mirrored in Temporal.
+- **Plan 02 — Correctness**: C2 JSON-mode + fence-tolerant parse + safe fallbacks (garbled reply never finalizes healthy); C3 send-once idempotency; C1 timezone/DST coherence (developer-local `checkin_date`); C4 identity mapping (`IdentityLink`, `build_context` resolves Jira accountId; `GET/PUT /config/members/{id}/identity-link`; field is `chat_user_id`, provider-neutral).
+- **Plan 03 A — Jira write-back**: 3 default-deny gates (tenant `jira_writeback_enabled` → `Capability.WRITE_ISSUE_TRACKER` → per-dev `write_back_consent` {always_ask|auto_apply|never}); real Jira `transition`/`add_comment`; idempotent audited `WriteBackService` (+`revert()`, tested, no route yet); `writeback_audit`+`writeback_config` tables. Only `writeback_service.py` may call the write path.
+- **Plan 03 B — Drift/watermelon**: `risk_service`/`risk.py` findings `said_done_no_pr`/`claimed_progress_no_activity`/`green_over_red`; scheduled `drift_scan` in both engines; contradicted statuses kept out of green; on persona risk endpoints; **frontend Drift KPI + table on `RisksPage.tsx`** (commit `7b098cc`).
+- **Plan 03 C — Trends/sparklines** (`470452a`, `94b5b8e`): `RollupRepository.node_status_history`; `PersonaViewService.node_trend`; `GET /persona/{level}/{id}/trend`; frontend `Sparkline` + Manager-only "Delivery Momentum" panel (Manager ≠ Exec).
+- **Plan 03 D — Click-to-drill** (`27a5740`): `personaDrillPath`; ECharts cell + ReactFlow node + list-row clicks → detail routes.
+- **Plan 03 E — Escalation ladder** (`9c31f4c`, `36994c0`, `4c5bab0`, `5bbc83c`): pod-level escalation contacts (`GET/PUT /config/pods/{id}/escalation-contacts`); `EscalationPolicy`/settings ladder; `send_nudge(nudge_number, target, recipient)` with privacy-safe SM/manager notice; N-step dev→SM→manager loop in both engines with `AvailabilityService` PTO suppression + pod-contact resolution.
+- **Plan 03 F — Scheduled narrative briefs** (`d9584c8`): `NarrativeBrief`/`BriefKind`; `NarrativeBriefRepository` (migration `0023`); `NarrativeBriefService.generate` (descriptive, sourced, privacy-safe, LLM + fallback); `brief_generation` scheduled in both engines; `GET /persona/briefs`. Chat delivery stubbed off.
+- **Frontend surfacing for E + F** (`54287ee`): per-pod Escalation dialog on AdminConfigPage; Manager+Exec Narrative Briefs panel.
+- **Plan 04 §4f — security boot-guard** (`b706893`): startup fails when `environment != local` and dev-auth or the default `secret_key` is in use.
+- **Plan 04 §4e — CI branch/deploy** (`4828849`): CI runs on `master`; removed the no-op `deploy-dev`. (Coverage-gate extension still deferred — see below.)
+- **Plan 04 §4b — slim docker-compose** (`3ce4cdb`): langfuse/temporal/observability are opt-in profiles; default `up` = postgres+redis+litellm+mock-llm+backend+worker.
+- **Plan 04 §4c — remove dead infra** (`e45c4d9`): removed AGE graph sync + Cypher-injection surface, pgvector/VectorStore, CiProvider/BuildResult, StatusAgentNode; readiness needs only `timescaledb`; migration `0024`. heartbeat KEPT (justified liveness beacon).
+- **Plan 04 §4d — dead-letter + alerting** (`57c0c29`): `DeadLetter` domain + repository (migration `0025`, identifiers only); sweeper dead-letters exhausted bursts; admin ops `GET/POST /admin/ops/dead-letters[/{id}/rearm]`; workflow-backlog gauge + `/ready` `workflow_backlog` dependency.
 
-## DONE + verified (continuation — this window)
-- **Plan 04 §4f security boot-guard** (`config/settings.py`): `Settings` now fails startup when `environment != "local"` and either `auth_provider="dev"` (unauthenticated admin) or `secret_key` is the public default committed for local bring-up. Enforced in the cross-field `model_validator` (via `_guard_shared_deployment`), so it fires at `get_settings()`. Tested in `test_settings.py`. Commit `b706893`.
-- **Plan 04 §4e delivery hygiene (partial)** (`.github/workflows/ci.yml`): push trigger + deploy gate moved from `main` → `master` (direct pushes were skipping CI); removed the no-op `deploy-dev` echo job. Commit `4828849`. **Still pending in §4e:** coverage-gate extension to `infra`/`api` — current core+infra+api coverage is ~75% on unit+contract (below the 85% gate); needs new tests or a ratcheted threshold measured *with* integration tests, so deferred as a separate effort.
-- **Plan 03 Feature C — Trends/sparklines** (§C): `RollupRepository.node_status_history` (postgres + in-memory + contract fake); `PersonaViewService.node_trend` → ordinal-scored daily points; `NodeTrendResponse` DTO; `GET /persona/{level}/{id}/trend` (aggregate-gated, `window_days` 1–365, 422 for kinds without rollups). Frontend `Sparkline` (ECharts, RAG via CSS tokens) + Manager-only "Delivery Momentum" panel (improving/steady/sliding) so Manager ≠ Exec. Commits `470452a`, `94b5b8e`. **Note:** regenerating the client also normalized a pre-existing `openapi.json` drift from the pinned prettier 3.8.4 in the lockfile (HEAD was unformatted) — the CI api-contract drift gate would have failed at HEAD regardless.
-- **Plan 03 Feature D — Click-to-drill** (§D): `personaDrillPath` helper; wired ECharts cell clicks on `HeatmapChart`, ReactFlow `onNodeClick` on `HierarchyFlow`, and clickable heatmap rows → detail routes (project/pod/workstream; program/developer/task have no page and are non-interactive). Commit `27a5740`.
-- **Plan 03 Feature B drift-list rendering** (deferred sub-item): `RisksPage.tsx` now shows a Drift-findings KPI + a Drift/Watermelon table. Commit `7b098cc`.
+## REMAINING — to do now (this batch)
+Being implemented feature-by-feature via sub-agents; each committed + this doc updated on completion.
+- **UX Theme 2 — reply-path trust:** a lightweight **"got it 👍" ack** when a reply is accepted; a **low-confidence transparency line** surfacing Plan 02 C2's confidence ("I recorded this as … reply 'fix' if that's wrong").
+- **UX Theme 1 — contextual check-in prefill:** DM prefilled with the developer's active issues + carried-forward blockers as tappable confirm/correct items; **"unmapped members"** visibility for admins.
+- **UX Theme 3 — write-back adoption metric:** track "Jira updates applied via check-in" on the admin/exec surface.
+- **Plan 03 A follow-ons:** interactive DM consent loop (propose diff → await yes/no; today records a `proposed` row); consent-setting API + Admin UI; **undo HTTP route** (`WriteBackService.revert()` exists + tested, no endpoint).
+- **Plan 02 C4 follow-ons:** identity-link Admin UI; directory **email auto-match** to pre-populate links.
+- **Plan 01 follow-ons:** Temporal `continue_as_new` for very long coalesce conversations; dedicated burst/retry BDD scenarios.
 
-## DONE + verified (continuation — this window, part 2)
-- **Plan 03 Feature F — Scheduled narrative briefs** (§F): DONE. `NarrativeBrief` domain + `BriefKind` (daily_pod/weekly_project/exec); `NarrativeBriefRepository` (postgres + in-memory + contract fake) on new migration **`0023_narrative_briefs`**; `NarrativeBriefService.generate` composes a descriptive, sourced, privacy-safe brief from the portfolio feed + persona rollups via the LLM with a deterministic fallback; `brief_generation` workflow on the shared sync-dispatch path, scheduled (daily/weekly/exec crons behind `narrative_brief_enabled`) in **both** DBOS + Temporal; `GET /persona/briefs` (aggregate-gated). Chat delivery deferred (`narrative_brief_chat_delivery_enabled` stub, off). Commit `d9584c8`. **Not verified:** postgres repo SQL / activity end-to-end / durable scheduled execution (need the running stack + live DB). **Migration `0023` added — next free number: `0024`.**
-- **Plan 03 Feature E — Escalation ladder** (§E): DONE in 4 committed stages. Decision taken (user): **pod-level escalation contacts**. (E1 `9c31f4c`) provider-neutral escalation domain + per-pod SM/manager chat contacts in scalar pod metadata + `GET/PUT /config/pods/{id}/escalation-contacts`. (E2 `36994c0`) `EscalationPolicy`/`EscalationStep` + `default_escalation_policy` + settings (`escalation_enabled`, per-target enable flags + wait windows) + `Settings.escalation_policy()`. (E3 `4c5bab0`) `send_nudge` generalized to `(nudge_number, target, recipient)` with a privacy-safe non-response notice for SM/manager (no raw reply content, not written to dev conversation history). (E4 `5bbc83c`) N-step ladder loop in **both** DBOS + Temporal nudge workflows; `send_escalation_step_activity` resolves the developer chat id (suppressing the rung via `AvailabilityService` on PTO) or the pod contact (`active_developer_memberships` → pod metadata) with a pure `decide_escalation_delivery` helper; steps built from `settings.escalation_policy()` and threaded JSON-native through `DailyCheckinResult`→`NudgeInput`. Empty ladder preserves the historical single dev nudge. **Not verified:** durable multi-rung execution needs the running DBOS/Temporal stack (covered by integration/BDD).
+## DEFERRED — not in this batch (per user)
+- **Plan 04 ops bucket:** §4a engine consolidation (keep both engines by decision); §4e coverage-gate extension to `infra`/`api`; §4e doc reconciliation (`uat.md`/`slack.md`/`checin.md` scratch files, "PulseOps" string, GitLab-provider doc contradiction).
 
-## REMAINING
-- **Frontend surfacing for Plan 03 E + F — DONE** (commit `54287ee`): AdminConfigPage per-pod "Escalation" dialog (GET/PUT `/config/pods/{id}/escalation-contacts`); Manager+Exec "Narrative Briefs" panel (GET `/persona/briefs`). apiClient methods + schema re-exports added. Verified via typecheck/lint/format/build (no runtime browser check — no FE harness).
-- **Plan 04 — System helpfulness / ops** (`plans/04-system-helpfulness.md`): §4f boot-guard **DONE**; §4e CI branch/deploy **DONE** (coverage-gate extension still pending, see above); **§4b slim docker-compose DONE** (commit `3ce4cdb`); **§4c remove dead infra DONE** (commit `e45c4d9` — removed AGE graph sync + Cypher-injection surface, pgvector/VectorStore + `embedding_dimension`, CiProvider + BuildResult, StatusAgentNode + smoke script; readiness now needs only `timescaledb`; **migration `0024_remove_dead_infra`** drops vector_items + AGE graph + age/vector extensions; **heartbeat KEPT** as justified liveness beacon. **Next free migration: `0025`.** baseline 430→426, the −4 being removed dead-code tests). Remaining: **engine consolidation deferred by user decision — keep both engines for now**; **§4d** dead-letter/alerting for stuck check-ins; plus the UX polish cross-refs (contextual check-in prefill, "got it" ack, low-confidence transparency, write-back adoption metric).
+## Verification gaps (environment, not code)
+- Durable multi-step execution (escalation ladder, brief scheduling, dead-letter sweeper) in **both engines**, and **migrations 0023/0024/0025 against a live Postgres**, are unverified here — they need the running stack (`OPENPROGRAM_RUN_INTEGRATION=1` + docker) and the integration/BDD suites. Run before shipping.
 
-- **Plan 04 §4d — dead-letter + alerting — DONE** (commit `57c0c29`): `DeadLetter` domain + `DeadLetterRepository` (postgres + in-memory + fake) on **migration `0025_dead_letters`** (identifiers only, no raw content); `DeadLetterService` (deterministic id → idempotent re-sweeps); the inbound sweeper dead-letters bursts whose retries are exhausted (hard time threshold `inbound_events_dead_letter_seconds`=3600 or `reply_processing_max_retries`) before draining; admin ops `GET /admin/ops/dead-letters` + `POST /admin/ops/dead-letters/{id}/rearm` (DISPATCH_WORKFLOWS-gated, rearm re-drives the conversation); Prometheus workflow-backlog gauge on `/metrics`; `/ready` gains a `workflow_backlog` dependency. **Next free migration: `0026`.** **Not verified:** postgres SQL/migration against a live DB; gauge under real scrape; the hook is sweeper-based (not deep engine retry internals).
-
-Baseline now: **432 unit+contract passing**; mypy (157 files)/ruff/lint-imports clean; frontend typecheck/lint/format/build clean; openapi+client in sync.
-
-### All Plan 03 (A–F) + Plan 04 (§4b/4c/4d/4e/4f) items are now DONE. Only these remain open:
-- **Plan 04 §4e coverage-gate extension** to `infra`/`api` (needs new tests or a ratcheted threshold measured with integration tests) — deferred.
-- **Engine consolidation (§4a)** — deferred by user decision (keep both engines).
-- UX-polish cross-refs (contextual check-in prefill, "got it" ack, low-confidence transparency, write-back adoption metric) and the deferred sub-items listed below.
-
-### Deferred sub-items inside DONE features (pick up when convenient)
-- Plan 01: Temporal `continue_as_new` for very long coalesce conversations; dedicated burst/retry BDD scenarios (covered by unit tests for now).
-- Plan 02 C4: frontend Admin UI for identity links; directory email auto-match to pre-populate links.
-- Plan 03 A: interactive DM consent loop (propose diff → await yes/no; currently records a `proposed` audit row); consent-setting API + Admin UI; undo HTTP endpoint (`WriteBackService.revert()` exists + tested, no route yet).
-- Plan 03 B: frontend `RisksPage.tsx` rendering of the new `drift` list — **DONE** (commit `7b098cc`).
-
-## Execution notes for the next window
-- **Repo protocol (Lore):** before editing files run `lore constraints/rejected/directives <path> --json` (see `.agents/skills/lore-protocol/SKILL.md`). Commits go via `lore commit` (staged files + JSON intent/trailers).
-- **Architecture:** hexagonal, import-linter enforced (`core` never imports `infra`/`api`/`config.settings`; provider values thread through constructors). A guard test bans the literal `slack` in `core`/`api`.
-- **Sub-agent caveat:** background agents in this environment repeatedly hit a 600s stream watchdog during long file-reading phases (and one was lost to a session restart). **Synchronous agent runs (`run_in_background:false`) and inline edits were reliable.** For investigation-heavy tasks, pre-load the brief with exact code/line refs to minimize reading, or run synchronously.
-- **Verify after every sub-step** against the 395 unit+contract baseline; regenerate OpenAPI + client whenever API routes/DTOs change (CI has a drift gate).
+## Execution notes
+- **Lore protocol:** before editing files run `lore constraints/rejected/directives <path> --json` (see `.agents/skills/lore-protocol/SKILL.md`). Commit via `lore commit` (staged files + JSON intent/trailers). `Supersedes`/`Depends-on`/`Related` trailers require 8-char hex lore-ids (use plain body text otherwise).
+- **Architecture:** hexagonal, import-linter enforced (`core` never imports `infra`/`api`/`config.settings`; provider values thread through constructors). A guard test bans the literal `slack` in `core`/`api` — keep provider-neutral (use `chat_external_id`, not provider fields).
+- **Both engines:** any workflow change must be mirrored in DBOS (`infra/adapters/workflows/dbos.py`) AND Temporal (`temporal.py`); keep payloads JSON-native (ISO strings, no datetime objects).
+- **Verify after every sub-step** against the unit+contract baseline; regenerate OpenAPI + client (local prettier) whenever API routes/DTOs change (CI has a drift gate).
+- **Sub-agent caveat:** background agents can hit a 600s watchdog on long file-reading; prefer `run_in_background:false` and pre-load briefs with exact file/line refs.
