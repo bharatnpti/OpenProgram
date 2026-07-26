@@ -11,6 +11,7 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.domain.auth import Role
+from core.domain.escalation import EscalationPolicy, default_escalation_policy
 
 # The Fernet key committed to `.env.example`/`docker-compose.yml` for local bring-up.
 # It is public, so it must never protect a shared (non-local) deployment.
@@ -89,6 +90,11 @@ class Settings(BaseSettings):
     checkin_reply_wait_seconds: int = 14400
     checkin_final_reply_wait_seconds: int = 28800
     checkin_max_clarifications: int = 2
+    escalation_enabled: bool = True
+    escalation_scrum_master_enabled: bool = True
+    escalation_manager_enabled: bool = True
+    escalation_scrum_master_wait_seconds: int = 14400
+    escalation_manager_wait_seconds: int = 14400
     outbound_dm_max_chars: int = 320
     recent_fact_lookback_days: int = 30
     chat_send_once_ttl_seconds: int = 86400
@@ -474,7 +480,12 @@ class Settings(BaseSettings):
             raise ValueError("seconds value must be positive")
         return value
 
-    @field_validator("checkin_reply_wait_seconds", "checkin_final_reply_wait_seconds")
+    @field_validator(
+        "checkin_reply_wait_seconds",
+        "checkin_final_reply_wait_seconds",
+        "escalation_scrum_master_wait_seconds",
+        "escalation_manager_wait_seconds",
+    )
     @classmethod
     def validate_non_negative_seconds(cls, value: int) -> int:
         if value < 0:
@@ -614,6 +625,18 @@ class Settings(BaseSettings):
     @property
     def default_llm_model(self) -> str:
         return self.litellm_model
+
+    def escalation_policy(self) -> EscalationPolicy:
+        """Resolve the tenant-default escalation ladder from settings."""
+        if not self.escalation_enabled:
+            return EscalationPolicy(steps=())
+        return default_escalation_policy(
+            developer_wait_seconds=self.checkin_reply_wait_seconds,
+            scrum_master_wait_seconds=self.escalation_scrum_master_wait_seconds,
+            manager_wait_seconds=self.escalation_manager_wait_seconds,
+            escalate_to_scrum_master=self.escalation_scrum_master_enabled,
+            escalate_to_manager=self.escalation_manager_enabled,
+        )
 
 
 def _origin(value: str) -> str:
