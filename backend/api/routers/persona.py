@@ -9,6 +9,7 @@ from api.dependencies import (
     get_cross_person_request_service,
     get_current_principal,
     get_flow_metrics_service,
+    get_narrative_brief_repository,
     get_persona_view_service,
     get_portfolio_feed_service,
     get_risk_service,
@@ -19,6 +20,8 @@ from api.dtos import (
     CrossPersonRequestStatusUpdateRequest,
     DriftFindingResponse,
     FocusResponse,
+    NarrativeBriefResponse,
+    NarrativeBriefsResponse,
     NodeTrendResponse,
     PodBlockersResponse,
     PodCheckinsResponse,
@@ -40,9 +43,11 @@ from core.application.persona_views import PersonaViewService
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.application.risk_service import RiskService
 from core.domain.auth import Principal
+from core.domain.brief import BriefKind
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
 from core.domain.errors import AuthorizationDenied, GraphNotFound
 from core.domain.graph import NodeKind
+from core.ports.repositories import NarrativeBriefRepository
 
 router = APIRouter(tags=["personas"])
 
@@ -188,6 +193,21 @@ async def portfolio_feed(
     _ensure_aggregate(principal)
     view = await service.feed(principal.tenant_id, since)
     return PortfolioFeedResponse.from_view(view)
+
+
+@router.get("/persona/briefs", response_model=NarrativeBriefsResponse)
+async def narrative_briefs(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    repository: Annotated[NarrativeBriefRepository, Depends(get_narrative_brief_repository)],
+    kind: Annotated[BriefKind | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> NarrativeBriefsResponse:
+    # apiClient note: frontend client regen picks this up automatically.
+    _ensure_aggregate(principal)
+    briefs = await repository.latest_briefs(principal.tenant_id, kind, limit)
+    return NarrativeBriefsResponse(
+        briefs=[NarrativeBriefResponse.from_domain(brief) for brief in briefs],
+    )
 
 
 @router.get("/portfolio/cross-person-requests", response_model=CrossPersonRequestsResponse)

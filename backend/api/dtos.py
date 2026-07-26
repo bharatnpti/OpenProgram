@@ -34,6 +34,7 @@ from core.application.persona_views import (
     WorkstreamProgressView,
 )
 from core.application.portfolio_feed_service import PortfolioFeedItemView, PortfolioFeedView
+from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
 from core.domain.directory import DirectoryUser
 from core.domain.escalation import EscalationContact, EscalationTarget, PodEscalationContacts
@@ -1122,6 +1123,34 @@ class PortfolioFeedResponse(BaseModel):
             since=view.since,
             items=[PortfolioFeedItemResponse.from_view(item) for item in view.items],
         )
+
+
+class NarrativeBriefResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    kind: BriefKind
+    scope_id: str
+    title: str
+    body: str
+    generated_at: datetime
+    sources: list[str]
+
+    @classmethod
+    def from_domain(cls, brief: NarrativeBrief) -> NarrativeBriefResponse:
+        return cls(
+            kind=brief.kind,
+            scope_id=brief.scope_id,
+            title=brief.title,
+            body=brief.body,
+            generated_at=brief.generated_at,
+            sources=list(brief.sources),
+        )
+
+
+class NarrativeBriefsResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    briefs: list[NarrativeBriefResponse]
 
 
 class RiskEvidenceDto(BaseModel):

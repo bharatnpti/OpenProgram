@@ -38,6 +38,7 @@ from core.domain.workflows import (
     record_heartbeat,
 )
 from infra.workflows import (
+    brief_generation,
     calendar_sync,
     checkin_fanout,
     conversation_purge,
@@ -51,6 +52,7 @@ from infra.workflows import (
     risk_assessment,
     runtime_sync,
 )
+from infra.workflows.brief_generation import BriefGenerationInput, BriefGenerationResult
 from infra.workflows.calendar_sync import CalendarSyncInput, CalendarSyncWorkflowResult
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
 from infra.workflows.dispatch import (
@@ -75,6 +77,7 @@ SyncWorkflowResult = (
     | RuntimeSyncWorkflowResult
     | RiskAssessmentWorkflowResult
     | DriftScanWorkflowResult
+    | BriefGenerationResult
 )
 
 
@@ -273,6 +276,20 @@ async def dbos_run_drift_scan_step(payload: DriftScanInput) -> DriftScanWorkflow
 @DBOS.workflow(name="openprogram_drift_scan")
 async def dbos_drift_scan_workflow(payload: DriftScanInput) -> DriftScanWorkflowResult:
     return await dbos_run_drift_scan_step(payload)
+
+
+@DBOS.step(name="openprogram_run_brief_generation", retries_allowed=True)
+async def dbos_run_brief_generation_step(
+    payload: BriefGenerationInput,
+) -> BriefGenerationResult:
+    return await brief_generation.run_brief_generation_activity(payload)
+
+
+@DBOS.workflow(name="openprogram_brief_generation")
+async def dbos_brief_generation_workflow(
+    payload: BriefGenerationInput,
+) -> BriefGenerationResult:
+    return await dbos_run_brief_generation_step(payload)
 
 
 @DBOS.workflow(name="openprogram_scheduled_sync")
@@ -504,6 +521,8 @@ async def _run_sync_dispatch(
         return await dbos_run_risk_assessment_step(workflow_input)
     if isinstance(workflow_input, DriftScanInput):
         return await dbos_run_drift_scan_step(workflow_input)
+    if isinstance(workflow_input, BriefGenerationInput):
+        return await dbos_run_brief_generation_step(workflow_input)
     raise ValueError(f"unsupported sync connector: {input.connector}")
 
 
@@ -678,6 +697,8 @@ class DbosWorkflowScheduler:
                 await DBOS.start_workflow_async(dbos_risk_assessment_workflow, workflow_input)
             elif isinstance(workflow_input, DriftScanInput):
                 await DBOS.start_workflow_async(dbos_drift_scan_workflow, workflow_input)
+            elif isinstance(workflow_input, BriefGenerationInput):
+                await DBOS.start_workflow_async(dbos_brief_generation_workflow, workflow_input)
             else:
                 raise ValueError(f"unsupported sync connector: {input.connector}")
         return workflow_id

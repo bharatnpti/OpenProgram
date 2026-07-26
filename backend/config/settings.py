@@ -79,6 +79,16 @@ class Settings(BaseSettings):
     risk_run_default_local_time: str = "18:00"
     drift_scan_cron: str = "*/30 * * * *"
     drift_no_activity_days: int = 3
+    narrative_brief_enabled: bool = True
+    # Chat delivery of briefs is explicitly out of scope for this pass; the flag
+    # is a stub so the delivery path can be wired later without a settings churn.
+    narrative_brief_chat_delivery_enabled: bool = False
+    narrative_brief_daily_cron: str = "0 17 * * 1-5"
+    narrative_brief_weekly_cron: str = "0 16 * * 5"
+    narrative_brief_exec_cron: str = "0 16 * * 1"
+    narrative_brief_daily_schedule_id: str = "openprogram-narrative-brief-daily"
+    narrative_brief_weekly_schedule_id: str = "openprogram-narrative-brief-weekly"
+    narrative_brief_exec_schedule_id: str = "openprogram-narrative-brief-exec"
     temporal_target: str = "localhost:7233"
     temporal_task_queue: str = "openprogram-foundation"
     temporal_schedule_id: str = "openprogram-heartbeat"
@@ -340,6 +350,12 @@ class Settings(BaseSettings):
         "risk_assessment_cron",
         "risk_run_default_local_time",
         "drift_scan_cron",
+        "narrative_brief_daily_cron",
+        "narrative_brief_weekly_cron",
+        "narrative_brief_exec_cron",
+        "narrative_brief_daily_schedule_id",
+        "narrative_brief_weekly_schedule_id",
+        "narrative_brief_exec_schedule_id",
         "auth_public_backend_url",
         "auth_frontend_url",
         "auth_cookie_name",

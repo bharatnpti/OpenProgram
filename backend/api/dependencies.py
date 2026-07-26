@@ -23,6 +23,7 @@ from core.domain.errors import (
 )
 from core.domain.risk import RiskProviderConfig
 from core.ports.auth import AuthCredentials
+from core.ports.repositories import NarrativeBriefRepository
 from infra.registry import ServiceRegistry
 
 
@@ -92,6 +93,11 @@ def get_flow_metrics_service(request: Request) -> FlowMetricsService:
 def get_portfolio_feed_service(request: Request) -> PortfolioFeedService:
     registry = get_registry(request)
     return PortfolioFeedService(registry.time_series_repository())
+
+
+def get_narrative_brief_repository(request: Request) -> NarrativeBriefRepository:
+    registry = get_registry(request)
+    return registry.narrative_brief_repository()
 
 
 def get_cross_person_request_service(request: Request) -> CrossPersonRequestService:

@@ -527,6 +527,9 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
         ("directory", "directory"),
         ("risk", "assessment"),
         ("drift", "scan"),
+        ("brief", "daily_pod"),
+        ("brief", "weekly_project"),
+        ("brief", "exec"),
     ]
     assert [result.schedule_id for result in results] == [
         "heartbeat-test",

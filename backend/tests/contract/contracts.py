@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
+from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.directory import DirectoryUser
 from core.domain.graph import EntityRef, FactEvent, NodeKind
@@ -43,6 +44,7 @@ from core.ports.repositories import (
     ConversationRepository,
     IdentityLinkRepository,
     InboundChatEventRepository,
+    NarrativeBriefRepository,
     RollupRepository,
     StatusRepository,
     SyncCursorRepository,
@@ -480,6 +482,41 @@ async def assert_rollup_repository_contract(repository: RollupRepository) -> Non
     assert latest == status
     statuses = await repository.list_node_statuses("demo", as_of)
     assert status in statuses
+
+
+async def assert_narrative_brief_repository_contract(
+    repository: NarrativeBriefRepository,
+) -> None:
+    assert await repository.latest_briefs("demo") == []
+    daily = NarrativeBrief(
+        tenant_id="demo",
+        kind=BriefKind.DAILY_POD,
+        scope_id="pod-1",
+        title="Pod 1 daily",
+        body="Descriptive rollup of pod-1 facts.",
+        generated_at=datetime(2026, 1, 10, 17, 0, tzinfo=UTC),
+        sources=("pod:pod-1",),
+    )
+    later = NarrativeBrief(
+        tenant_id="demo",
+        kind=BriefKind.EXEC,
+        scope_id="",
+        title="Exec brief",
+        body="Portfolio-wide descriptive rollup.",
+        generated_at=datetime(2026, 1, 11, 16, 0, tzinfo=UTC),
+        sources=("program:root",),
+    )
+    await repository.record_brief(daily)
+    await repository.record_brief(later)
+
+    newest_first = await repository.latest_briefs("demo")
+    assert [brief.generated_at for brief in newest_first] == [
+        later.generated_at,
+        daily.generated_at,
+    ]
+    assert await repository.latest_briefs("demo", BriefKind.DAILY_POD) == [daily]
+    assert await repository.latest_briefs("demo", limit=1) == [later]
+    assert await repository.latest_briefs("other") == []
 
 
 async def assert_sync_cursor_repository_contract(repository: SyncCursorRepository) -> None:
