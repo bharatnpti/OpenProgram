@@ -7,6 +7,7 @@ from core.domain.workflows import (
     CheckinReconcileScheduleConfig,
     CheckinScheduleConfig,
     ConversationPurgeScheduleConfig,
+    InboundSweeperScheduleConfig,
     ScheduleBootstrapResult,
     SyncScheduleConfig,
 )
@@ -43,6 +44,10 @@ async def ensure_workflow_schedules(
         results.append(
             await scheduler.ensure_conversation_purge_schedule(conversation_purge_config(settings))
         )
+    if settings.inbound_events_sweeper_enabled:
+        results.append(
+            await scheduler.ensure_inbound_sweeper_schedule(inbound_sweeper_config(settings))
+        )
     results.extend(await scheduler.ensure_sync_schedules(sync_schedule_configs(settings)))
     return results
 
@@ -71,6 +76,15 @@ def conversation_purge_config(settings: Settings) -> ConversationPurgeScheduleCo
         tenant_id=settings.tenant_id,
         retention_days=settings.conversation_retention_days,
         cron=settings.conversation_purge_cron,
+    )
+
+
+def inbound_sweeper_config(settings: Settings) -> InboundSweeperScheduleConfig:
+    return InboundSweeperScheduleConfig(
+        schedule_id=settings.inbound_events_sweeper_schedule_id,
+        tenant_id=settings.tenant_id,
+        cron=settings.inbound_events_sweeper_cron,
+        grace_seconds=settings.inbound_events_grace_seconds,
     )
 
 
@@ -107,6 +121,14 @@ def sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
             scope="assessment",
             payload={},
             cron=settings.risk_assessment_cron,
+        ),
+        SyncScheduleConfig(
+            schedule_id="openprogram-runtime-drift-scan",
+            tenant_id=settings.tenant_id,
+            connector="drift",
+            scope="scan",
+            payload={},
+            cron=settings.drift_scan_cron,
         ),
     )
 

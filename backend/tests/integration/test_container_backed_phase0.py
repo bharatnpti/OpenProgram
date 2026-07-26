@@ -26,13 +26,17 @@ from infra.persistence.postgres_graph import (
     PostgresTimeSeriesRepository,
     PostgresVectorStore,
 )
+from infra.persistence.postgres_inbound import PostgresInboundChatEventRepository
 from infra.persistence.postgres_status import (
     PostgresConversationRepository,
     PostgresRollupRepository,
     PostgresStatusRepository,
 )
 from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
-from tests.contract.contracts import assert_conversation_repository_contract
+from tests.contract.contracts import (
+    assert_conversation_repository_contract,
+    assert_inbound_chat_event_repository_contract,
+)
 from tests.fixtures.demo_graph import populate_demo_graph
 
 pytestmark = [
@@ -183,6 +187,9 @@ async def test_conversation_store_migration_and_repository_contract(
             assert await _conversation_turns_table_exists(executor)
             assert await _conversation_turns_hypertable_exists(executor)
             await assert_conversation_repository_contract(PostgresConversationRepository(executor))
+            await assert_inbound_chat_event_repository_contract(
+                PostgresInboundChatEventRepository(executor)
+            )
         finally:
             await executor.close()
 

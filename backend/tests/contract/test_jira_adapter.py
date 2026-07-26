@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 import httpx
@@ -12,7 +13,7 @@ from infra.adapters.jira.jira_adapter import JiraIssueTrackerAdapter
 
 
 @respx.mock
-async def test_jira_adapter_maps_read_payloads_and_rejects_writes() -> None:
+async def test_jira_adapter_maps_read_payloads() -> None:
     adapter = JiraIssueTrackerAdapter(
         base_url="https://jira.test",
         email="agent@example.com",
@@ -85,11 +86,6 @@ async def test_jira_adapter_maps_read_payloads_and_rejects_writes() -> None:
     assert sprints[0].id == "7"
     assert issue.title == "Wire read-only adapters"
     assert active[0].key == "PO-2"
-
-    with pytest.raises(ProviderUnavailable):
-        await adapter.transition("demo", "PO-1", IssueState.DONE.value)
-    with pytest.raises(ProviderUnavailable):
-        await adapter.add_comment("demo", "PO-1", "done")
     assert {call.request.method for call in respx.calls} == {"GET"}
     search_jqls = [
         str(call.request.url.params["jql"])
@@ -122,3 +118,78 @@ def _issue_payload(key: str) -> dict[str, object]:
             },
         },
     }
+
+
+@respx.mock
+async def test_jira_adapter_applies_transition_and_comment() -> None:
+    adapter = JiraIssueTrackerAdapter(
+        base_url="https://jira.test",
+        email="agent@example.com",
+        api_token="token",
+    )
+    transitions_route = respx.get("https://jira.test/rest/api/3/issue/PO-1/transitions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "transitions": [
+                    {
+                        "id": "11",
+                        "name": "Start Progress",
+                        "to": {
+                            "name": "In Progress",
+                            "statusCategory": {"key": "indeterminate"},
+                        },
+                    },
+                    {
+                        "id": "31",
+                        "name": "Finish",
+                        "to": {"name": "Done", "statusCategory": {"key": "done"}},
+                    },
+                ]
+            },
+        )
+    )
+    post_transition = respx.post("https://jira.test/rest/api/3/issue/PO-1/transitions").mock(
+        return_value=httpx.Response(204)
+    )
+    post_comment = respx.post("https://jira.test/rest/api/3/issue/PO-1/comment").mock(
+        return_value=httpx.Response(201, json={"id": "10000"})
+    )
+
+    await adapter.transition("demo", "PO-1", IssueState.DONE.value)
+    await adapter.add_comment("demo", "PO-1", "shipped it")
+
+    assert transitions_route.called
+    assert post_transition.called
+    assert json.loads(post_transition.calls.last.request.content) == {"transition": {"id": "31"}}
+    comment_body = json.loads(post_comment.calls.last.request.content)["body"]
+    assert comment_body["type"] == "doc"
+    assert comment_body["content"][0]["content"][0]["text"] == "shipped it"
+
+
+@respx.mock
+async def test_jira_adapter_transition_raises_when_state_unavailable() -> None:
+    adapter = JiraIssueTrackerAdapter(
+        base_url="https://jira.test",
+        email="agent@example.com",
+        api_token="token",
+    )
+    respx.get("https://jira.test/rest/api/3/issue/PO-1/transitions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "transitions": [
+                    {
+                        "id": "11",
+                        "name": "Start Progress",
+                        "to": {
+                            "name": "In Progress",
+                            "statusCategory": {"key": "indeterminate"},
+                        },
+                    }
+                ]
+            },
+        )
+    )
+    with pytest.raises(ProviderUnavailable):
+        await adapter.transition("demo", "PO-1", IssueState.DONE.value)

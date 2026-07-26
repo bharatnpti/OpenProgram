@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-import pytest
-
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.directory import DirectoryUser
-from core.domain.errors import ProviderUnavailable
 from core.domain.graph import EntityRef, FactEvent, NodeKind
+from core.domain.identity import IdentityLink
+from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import (
     BuildResult,
     CalendarEvent,
@@ -34,6 +33,7 @@ from core.domain.status import (
     DeveloperStatus,
     StatusSource,
 )
+from core.domain.writeback import WriteBackAudit, WriteBackStatus
 from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.ci import CiProvider
@@ -41,10 +41,14 @@ from core.ports.directory import DirectoryUserRepository
 from core.ports.issue_tracker import IssueTracker
 from core.ports.repositories import (
     ConversationRepository,
+    IdentityLinkRepository,
+    InboundChatEventRepository,
     RollupRepository,
     StatusRepository,
     SyncCursorRepository,
     TimeSeriesRepository,
+    WriteBackAuditRepository,
+    WriteBackConfigRepository,
 )
 from core.ports.vcs import VcsProvider
 
@@ -85,10 +89,11 @@ async def assert_issue_tracker_contract(provider: IssueTracker) -> None:
     issue = await provider.get_issue("demo", "PO-1")
     assert isinstance(issue, Issue)
     assert await provider.list_active_for(user)
-    with pytest.raises(ProviderUnavailable):
-        await provider.transition("demo", "PO-1", IssueState.DONE.value)
-    with pytest.raises(ProviderUnavailable):
-        await provider.add_comment("demo", "PO-1", "done")
+    # Write-back is now implemented behind the gated, audited WriteBackService, so
+    # the port itself accepts writes. The closed-system-gate no-op is enforced and
+    # covered in test_writeback_service.py, not at the raw port level.
+    await provider.transition("demo", "PO-1", IssueState.DONE.value)
+    await provider.add_comment("demo", "PO-1", "done")
 
 
 async def assert_vcs_contract(provider: VcsProvider) -> None:
@@ -321,6 +326,77 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
     assert all(isinstance(developer_id, str) for developer_id in missing)
 
 
+async def assert_identity_link_repository_contract(
+    repository: IdentityLinkRepository,
+) -> None:
+    assert await repository.get_identity_link("demo", "dev-1") is None
+    assert await repository.list_identity_links("demo") == []
+
+    link = IdentityLink(
+        tenant_id="demo",
+        developer_id="dev-1",
+        chat_user_id="U123",
+        jira_account_id="acct-1",
+        jira_email="dev1@example.com",
+        vcs_username="dev1",
+    )
+    await repository.upsert_identity_link(link)
+    assert await repository.get_identity_link("demo", "dev-1") == link
+    assert await repository.list_identity_links("demo") == [link]
+
+    remapped = IdentityLink(
+        tenant_id="demo",
+        developer_id="dev-1",
+        jira_account_id="acct-2",
+    )
+    await repository.upsert_identity_link(remapped)
+    assert await repository.get_identity_link("demo", "dev-1") == remapped
+    assert await repository.list_identity_links("demo") == [remapped]
+
+
+async def assert_writeback_config_repository_contract(
+    repository: WriteBackConfigRepository,
+) -> None:
+    assert await repository.get_writeback_enabled("demo") is None
+    await repository.set_writeback_enabled("demo", True)
+    assert await repository.get_writeback_enabled("demo") is True
+    await repository.set_writeback_enabled("demo", False)
+    assert await repository.get_writeback_enabled("demo") is False
+
+
+async def assert_writeback_audit_repository_contract(
+    repository: WriteBackAuditRepository,
+) -> None:
+    assert await repository.list_for_issue("demo", "PO-1") == []
+    assert await repository.find_existing("demo", "PO-1", "done", "corr-1") is None
+
+    audit = WriteBackAudit(
+        id="wb-1",
+        tenant_id="demo",
+        developer_id="dev-1",
+        issue_key="PO-1",
+        correlation_id="corr-1",
+        status=WriteBackStatus.APPLIED,
+        target_state="done",
+        before_state="in_progress",
+        after_state="done",
+        comment="done via check-in",
+        source="checkin",
+        created_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+    )
+    await repository.record(audit)
+    assert await repository.list_for_issue("demo", "PO-1") == [audit]
+    assert await repository.find_existing("demo", "PO-1", "done", "corr-1") == audit
+
+    # Idempotent: re-recording the same id does not duplicate.
+    await repository.record(audit)
+    assert await repository.list_for_issue("demo", "PO-1") == [audit]
+
+    # A different (target_state, correlation_id) tuple is not matched.
+    assert await repository.find_existing("demo", "PO-1", "todo", "corr-1") is None
+    assert await repository.find_existing("demo", "PO-1", "done", "corr-2") is None
+
+
 async def assert_directory_user_repository_contract(repository: DirectoryUserRepository) -> None:
     users = [
         DirectoryUser(
@@ -518,6 +594,91 @@ async def assert_conversation_repository_contract(repository: ConversationReposi
         turn.content
         for turn in await repository.list_turns_for_day("demo", "dev-2", date(2026, 1, 10))
     ] == [other_developer.content]
+
+
+async def assert_inbound_chat_event_repository_contract(
+    repository: InboundChatEventRepository,
+) -> None:
+    first = InboundChatEvent(
+        tenant_id="demo",
+        provider="slack",
+        event_id="Ev-1",
+        conversation_key="demo:thread-1",
+        chat_user_ref="U123",
+        message_ref="1700000000.000001",
+        text="first message",
+        correlation_id="corr-1",
+        chat_thread_ref="thread-1",
+        received_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+    )
+    second = InboundChatEvent(
+        tenant_id="demo",
+        provider="slack",
+        event_id="Ev-2",
+        conversation_key="demo:thread-1",
+        chat_user_ref="U123",
+        message_ref="1700000000.000002",
+        text="second message",
+        correlation_id="corr-1",
+        chat_thread_ref="thread-1",
+        received_at=datetime(2026, 1, 10, 9, 0, 20, tzinfo=UTC),
+    )
+    other_tenant = InboundChatEvent(
+        tenant_id="other",
+        provider="slack",
+        event_id="Ev-1",
+        conversation_key="other:thread-1",
+        chat_user_ref="U999",
+        message_ref="1700000000.000003",
+        text="other tenant",
+        correlation_id="corr-x",
+        chat_thread_ref="thread-1",
+        received_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+    )
+
+    assert await repository.append(first) is True
+    assert await repository.append(second) is True
+    # Same (tenant, provider, event_id) is a redelivery -> deduped.
+    assert await repository.append(first) is False
+    # Same event_id under a different tenant is a distinct row.
+    assert await repository.append(other_tenant) is True
+
+    unprocessed = await repository.list_unprocessed_for_conversation("demo", "demo:thread-1")
+    assert [event.event_id for event in unprocessed] == ["Ev-1", "Ev-2"]
+    assert all(event.id is not None for event in unprocessed)
+
+    processed_at = datetime(2026, 1, 10, 9, 1, tzinfo=UTC)
+    await repository.mark_processed(
+        "demo",
+        [event.id for event in unprocessed if event.id is not None],
+        processed_at,
+    )
+    assert await repository.list_unprocessed_for_conversation("demo", "demo:thread-1") == []
+
+    stuck_before = InboundChatEvent(
+        tenant_id="demo",
+        provider="slack",
+        event_id="Ev-3",
+        conversation_key="demo:thread-2",
+        chat_user_ref="U456",
+        message_ref="1700000000.000004",
+        text="stuck message",
+        correlation_id="corr-2",
+        chat_thread_ref="thread-2",
+        received_at=datetime(2026, 1, 10, 8, 0, tzinfo=UTC),
+    )
+    assert await repository.append(stuck_before) is True
+    stuck = await repository.list_stuck("demo", datetime(2026, 1, 10, 8, 30, tzinfo=UTC))
+    assert [event.event_id for event in stuck] == ["Ev-3"]
+
+    purged = await repository.purge_processed_older_than(
+        "demo",
+        datetime(2026, 1, 10, 9, 30, tzinfo=UTC),
+    )
+    # Only the two processed rows are purged; the unprocessed stuck row survives.
+    assert purged == 2
+    remaining_stuck = await repository.list_stuck("demo", datetime(2026, 1, 10, 8, 30, tzinfo=UTC))
+    assert [event.event_id for event in remaining_stuck] == ["Ev-3"]
 
 
 async def assert_time_series_repository_contract(repository: TimeSeriesRepository) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from datetime import UTC, date, datetime, time
 from typing import TYPE_CHECKING
@@ -11,8 +12,10 @@ from core.domain.workflows import (
     CheckinReconcileDispatchPlan,
     CheckinReconcileInput,
     CheckinReconcileResult,
+    CheckinReconcileStatus,
     DeveloperCheckinDispatch,
 )
+from core.ports.workflows import WorkflowScheduler
 
 if TYPE_CHECKING:
     from infra.registry import ServiceRegistry
@@ -24,10 +27,11 @@ async def dispatch_checkins_for_tenant_activity(
     registry = _service_registry()
     try:
         dispatches = await _developer_checkin_dispatches(registry, payload)
-        workflow_ids: list[str] = []
-        scheduler = registry.workflow_scheduler()
-        for dispatch in dispatches:
-            workflow_ids.append(await scheduler.dispatch_developer_checkin(dispatch))
+        workflow_ids = await _dispatch_developer_checkins_concurrently(
+            registry.workflow_scheduler(),
+            dispatches,
+            registry.settings.checkin_fanout_concurrency,
+        )
         return CheckinFanoutResult(
             tenant_id=payload.tenant_id,
             checkin_date=payload.checkin_date,
@@ -36,6 +40,24 @@ async def dispatch_checkins_for_tenant_activity(
         )
     finally:
         await registry.close()
+
+
+async def _dispatch_developer_checkins_concurrently(
+    scheduler: WorkflowScheduler,
+    dispatches: list[DeveloperCheckinDispatch],
+    concurrency: int,
+) -> list[str]:
+    """Dispatch child check-ins concurrently, bounded to protect Slack rate
+    limits. asyncio.gather preserves dispatch order in the returned ids."""
+    if not dispatches:
+        return []
+    semaphore = asyncio.Semaphore(max(1, concurrency))
+
+    async def dispatch_one(dispatch: DeveloperCheckinDispatch) -> str:
+        async with semaphore:
+            return await scheduler.dispatch_developer_checkin(dispatch)
+
+    return list(await asyncio.gather(*(dispatch_one(dispatch) for dispatch in dispatches)))
 
 
 async def developer_checkin_dispatches_for_tenant_activity(
@@ -66,10 +88,11 @@ async def reconcile_checkins_for_tenant_activity(
         plan = await _checkin_reconcile_dispatch_plan(registry, payload)
         if plan.result.status != "dispatched":
             return plan.result
-        workflow_ids: list[str] = []
-        scheduler = registry.workflow_scheduler()
-        for dispatch in plan.dispatches:
-            workflow_ids.append(await scheduler.dispatch_developer_checkin(dispatch))
+        workflow_ids = await _dispatch_developer_checkins_concurrently(
+            registry.workflow_scheduler(),
+            plan.dispatches,
+            registry.settings.checkin_fanout_concurrency,
+        )
         if not workflow_ids:
             return replace(plan.result, status="no_missing", dispatched=0, workflow_ids=[])
         return replace(plan.result, dispatched=len(workflow_ids), workflow_ids=workflow_ids)
@@ -135,7 +158,7 @@ async def _checkin_reconcile_dispatch_plan(
                 checkin_date=checkin_date.isoformat(),
             )
         )
-    status = "dispatched" if dispatches else "no_missing"
+    status: CheckinReconcileStatus = "dispatched" if dispatches else "no_missing"
     return CheckinReconcileDispatchPlan(
         result=CheckinReconcileResult(
             tenant_id=payload.tenant_id,
