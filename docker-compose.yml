@@ -89,6 +89,7 @@ services:
 
   clickhouse:
     image: clickhouse/clickhouse-server:24.8
+    profiles: ["langfuse"]
     restart: unless-stopped
     environment:
       CLICKHOUSE_DB: default
@@ -107,6 +108,7 @@ services:
 
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    profiles: ["langfuse"]
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minio
@@ -118,6 +120,7 @@ services:
       - minio-data:/data
   minio-create-bucket:
     image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    profiles: ["langfuse"]
     depends_on:
       - minio
     entrypoint: >
@@ -128,6 +131,7 @@ services:
 
   temporal:
     image: temporalio/auto-setup:1.24
+    profiles: ["temporal"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -148,6 +152,7 @@ services:
 
   temporal-ui:
     image: temporalio/ui:2.30.0
+    profiles: ["temporal"]
     depends_on:
       - temporal
     environment:
@@ -157,6 +162,7 @@ services:
 
   langfuse-worker:
     image: ghcr.io/langfuse/langfuse-worker:3
+    profiles: ["langfuse"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -171,6 +177,7 @@ services:
 
   langfuse-web:
     image: langfuse/langfuse:3
+    profiles: ["langfuse"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -233,6 +240,7 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.102.1
+    profiles: ["observability"]
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./infra/otel/otel-collector.yaml:/etc/otelcol/config.yaml:ro
@@ -243,6 +251,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.53.0
+    profiles: ["observability"]
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
@@ -250,6 +259,7 @@ services:
 
   grafana:
     image: grafana/grafana:11.0.0
+    profiles: ["observability"]
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
@@ -311,8 +321,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      langfuse-web:
-        condition: service_healthy
       litellm:
         condition: service_healthy
 
@@ -366,8 +374,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      langfuse-web:
         condition: service_healthy
       litellm:
         condition: service_healthy
