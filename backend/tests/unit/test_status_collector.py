@@ -26,6 +26,7 @@ from core.domain.status import (
     CheckInCorrelation,
     CheckInPreference,
     CheckInScheduleRun,
+    CheckInSignals,
     DeveloperStatus,
     StatusSource,
 )
@@ -2237,3 +2238,140 @@ async def test_status_collector_records_inferred_and_unknown_non_response() -> N
     assert "Recent implementation work" in inferred.summary
     assert unknown.source is StatusSource.UNKNOWN
     assert unknown.blockers == ("no confirmed reply",)
+
+
+async def _record_open_checkin_with_correlation(store: InMemoryGraphStore) -> None:
+    asked_at = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=asked_at,
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    await store.record_checkin_correlation(
+        CheckInCorrelation(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            chat_user_ref="U123",
+            chat_thread_ref="thread-1",
+            outbound_message_id="msg-outbound-1",
+            asked_at=asked_at,
+        )
+    )
+
+
+async def test_status_collector_acks_accepted_reply_exactly_once() -> None:
+    store = InMemoryGraphStore()
+    await _record_open_checkin_with_correlation(store)
+    chat = FakeChatProvider()
+    evaluator_llm = SequenceLlmProvider(
+        texts=[
+            '{"is_status_update":true,"sufficient":true,"question":null,'
+            '"signals":{"progress_note":"Graph sync is in review",'
+            '"blockers":["schema review"],"eta_change_days":1,'
+            '"blockers_answered":true,"eta_answered":true}}'
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=evaluator_llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+    raw_reply = "Graph sync is in review, blocked on schema review."
+
+    outcome = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text=raw_reply,
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
+        )
+    )
+
+    assert outcome.kind == "processed"
+    acks = [message for message in chat.sent if message.metadata.get("purpose") == "status_ack"]
+    assert len(acks) == 1
+    ack = acks[0]
+    # A confident parse gets the plain ack: no correction hint, no raw reply echo.
+    assert ack.text == status_collector_module._CHECKIN_ACK_PLAIN
+    assert "fix" not in ack.text
+    assert raw_reply not in ack.text
+    assert "schema review" not in ack.text
+    assert ack.correlation_id == "corr-1"
+    assert ack.metadata["idempotency_key"] == "checkin-ack:corr-1"
+
+    # Reprocessing the same reply (durable-drain retry) must not double-ack.
+    duplicate = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text=raw_reply,
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 8, tzinfo=UTC),
+        ),
+        allow_reprocess=True,
+    )
+
+    assert duplicate.kind == "processed"
+    acks_after = [
+        message for message in chat.sent if message.metadata.get("purpose") == "status_ack"
+    ]
+    assert len(acks_after) == 1
+
+
+def test_compose_checkin_ack_low_confidence_includes_summary_and_hint() -> None:
+    signals = CheckInSignals(
+        progress_note="honestly no idea, ask me tomorrow maybe",
+        blockers=("API review",),
+        parser_confident=False,
+    )
+
+    text = status_collector_module._compose_checkin_ack_text(signals=signals, max_chars=320)
+
+    assert text.startswith("Got it")
+    assert "in progress with a blocker on API review" in text
+    assert "fix" in text
+    # Never echo the raw prior reply text; only the structured recorded summary.
+    assert "honestly no idea, ask me tomorrow maybe" not in text
+
+
+def test_compose_checkin_ack_high_confidence_is_plain() -> None:
+    signals = CheckInSignals(
+        progress_note="shipped the migration, no blockers, eta unchanged",
+        blockers=(),
+        parser_confident=True,
+    )
+
+    text = status_collector_module._compose_checkin_ack_text(signals=signals, max_chars=320)
+
+    assert text == status_collector_module._CHECKIN_ACK_PLAIN
+    assert "fix" not in text
+    assert "shipped the migration, no blockers, eta unchanged" not in text
+
+
+def test_compose_checkin_ack_low_confidence_falls_back_within_cap() -> None:
+    signals = CheckInSignals(
+        progress_note="raw",
+        blockers=("a very long blocker description " * 10,),
+        parser_confident=False,
+    )
+
+    text = status_collector_module._compose_checkin_ack_text(signals=signals, max_chars=80)
+
+    assert len(text) <= 80
+    # The fallback keeps the correction hint so a misread stays correctable.
+    assert "fix" in text
