@@ -659,6 +659,25 @@ class PostgresRollupRepository:
             )
         return [_node_status_from_row(row) for row in rows]
 
+    async def node_status_history(
+        self, tenant_id: str, entity_ref: EntityRef, start: date, end: date
+    ) -> list[NodeStatus]:
+        with _tracer.start_as_current_span("postgres.rollup.node_status_history"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, entity_kind, entity_id, as_of, rag, source, factors
+                FROM node_statuses
+                WHERE tenant_id = %s
+                  AND entity_kind = %s
+                  AND entity_id = %s
+                  AND as_of >= %s
+                  AND as_of <= %s
+                ORDER BY as_of ASC
+                """,
+                (tenant_id, entity_ref.kind.value, entity_ref.id, start, end),
+            )
+        return [_node_status_from_row(row) for row in rows]
+
 
 class PostgresSyncCursorRepository:
     def __init__(self, executor: AsyncSqlExecutor) -> None:

@@ -585,6 +585,18 @@ class FakeRollupRepository:
             if status.entity_ref.tenant_id == tenant_id and status.as_of <= as_of
         ]
 
+    async def node_status_history(
+        self, tenant_id: str, entity_ref: EntityRef, start: date, end: date
+    ) -> list[NodeStatus]:
+        matching = [
+            status
+            for status in self.node_statuses
+            if status.entity_ref.tenant_id == tenant_id
+            and status.entity_ref == entity_ref
+            and start <= status.as_of <= end
+        ]
+        return sorted(matching, key=lambda status: status.as_of)
+
 
 @dataclass
 class FakeSyncCursorRepository:

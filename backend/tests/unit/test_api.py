@@ -16,8 +16,10 @@ from api.dependencies import get_directory_sync_service
 from api.main import create_app
 from config.settings import Settings
 from core.domain.errors import ProviderConfigurationError
-from core.domain.graph import Task
+from core.domain.graph import EntityRef, NodeKind, Task
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
+from core.domain.rollup import NodeStatus, Rag
+from core.domain.status import StatusSource
 from core.domain.workflows import (
     CheckinScheduleConfig,
     ConversationPurgeScheduleConfig,
@@ -57,6 +59,53 @@ def test_memory_app_starts_without_demo_data(settings: Settings) -> None:
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_node_trend_endpoint_returns_daily_rag_history(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        registry = app.state.registry
+        for day, rag in (
+            ("2026-01-08", Rag.RED),
+            ("2026-01-09", Rag.AMBER),
+            ("2026-01-10", Rag.GREEN),
+        ):
+            asyncio.run(
+                registry.rollup_repository().record_node_status(
+                    NodeStatus(
+                        entity_ref=EntityRef(
+                            tenant_id="demo", kind=NodeKind.PROJECT, id="project-api"
+                        ),
+                        rag=rag,
+                        source=StatusSource.CONFIRMED,
+                        factors=(),
+                        as_of=date.fromisoformat(day),
+                    )
+                )
+            )
+        response = client.get(
+            "/persona/project/project-api/trend",
+            params={"as_of": "2026-01-10", "window_days": 5},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["entity_ref"]["id"] == "project-api"
+    assert body["window_days"] == 5
+    assert [point["as_of"] for point in body["points"]] == [
+        "2026-01-08",
+        "2026-01-09",
+        "2026-01-10",
+    ]
+    assert [point["score"] for point in body["points"]] == [1, 2, 3]
+
+
+def test_node_trend_endpoint_rejects_unsupported_kind(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/persona/workstream/ws-1/trend")
+
+    assert response.status_code == 422
 
 
 def test_admin_directory_search_and_member_add_flow(settings: Settings) -> None:

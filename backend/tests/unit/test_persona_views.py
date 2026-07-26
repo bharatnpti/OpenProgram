@@ -270,6 +270,72 @@ async def test_portfolio_heatmap_uses_existing_rollups_without_graph_fallback() 
     assert view.cells[1].source_ref == source_ref
 
 
+async def test_node_trend_returns_daily_rag_history_in_window() -> None:
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    entity_ref = EntityRef(tenant_id="demo", kind=NodeKind.PROJECT, id="project-api")
+    for day, rag in (
+        (date(2026, 1, 8), Rag.RED),
+        (date(2026, 1, 9), Rag.AMBER),
+        (date(2026, 1, 10), Rag.GREEN),
+    ):
+        await store.record_node_status(
+            NodeStatus(
+                entity_ref=entity_ref,
+                rag=rag,
+                source=StatusSource.CONFIRMED,
+                factors=(),
+                as_of=day,
+            )
+        )
+    # A status outside the window must be excluded.
+    await store.record_node_status(
+        NodeStatus(
+            entity_ref=entity_ref,
+            rag=Rag.UNKNOWN,
+            source=StatusSource.STALE,
+            factors=(),
+            as_of=date(2026, 1, 1),
+        )
+    )
+    service = PersonaViewService(
+        graph_repository=store,
+        status_repository=store,
+        rollup_repository=store,
+        time_series_repository=store,
+    )
+
+    view = await service.node_trend("demo", NodeKind.PROJECT, "project-api", as_of, window_days=5)
+
+    assert view.entity_ref == entity_ref
+    assert view.window_days == 5
+    assert view.start == date(2026, 1, 6)
+    assert view.end == as_of
+    assert [point.as_of for point in view.points] == [
+        date(2026, 1, 8),
+        date(2026, 1, 9),
+        date(2026, 1, 10),
+    ]
+    assert [point.rag for point in view.points] == [Rag.RED, Rag.AMBER, Rag.GREEN]
+    assert [point.score for point in view.points] == [1, 2, 3]
+
+
+async def test_node_trend_is_empty_when_no_history_exists() -> None:
+    store = InMemoryGraphStore()
+    service = PersonaViewService(
+        graph_repository=store,
+        status_repository=store,
+        rollup_repository=store,
+        time_series_repository=store,
+    )
+
+    view = await service.node_trend(
+        "demo", NodeKind.POD, "pod-runtime", date(2026, 1, 10), window_days=30
+    )
+
+    assert view.points == ()
+
+
 async def test_portfolio_heatmap_uses_first_configured_program_when_root_is_omitted() -> None:
     store = InMemoryGraphStore()
     as_of = date(2026, 1, 10)
