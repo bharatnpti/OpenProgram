@@ -9,9 +9,10 @@ import {
   UserRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
-import type { NodeTrendResponse } from "../../api/schema";
+import type { NodeKind, NodeTrendResponse } from "../../api/schema";
 import {
   AsOfControl,
   DataPanel,
@@ -30,6 +31,7 @@ import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
+import { personaDrillPath } from "../../lib/drill";
 import { resolveSelection } from "../../lib/selection";
 import { HeatmapChart } from "./HeatmapChart";
 import { HierarchyFlow } from "./HierarchyFlow";
@@ -57,6 +59,13 @@ const roleDescriptions: Record<DashboardRole, string> = {
 
 export function PersonaDashboard({ role }: { role: DashboardRole }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const drillTo = (kind: NodeKind, id: string) => {
+    const path = personaDrillPath(kind, id);
+    if (path) {
+      navigate(path);
+    }
+  };
   const [asOf, setAsOf] = useState(todayIso);
   const [podId, setPodId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -574,7 +583,7 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
               description="Rollup path from program to execution layers."
             >
               <QueryState query={tree} loadingRows={6}>
-                {(data) => <HierarchyFlow data={data} />}
+                {(data) => <HierarchyFlow data={data} onSelect={drillTo} />}
               </QueryState>
             </DataPanel>
 
@@ -585,16 +594,27 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
               <QueryState query={heatmap} loadingRows={6}>
                 {(data) => (
                   <div className="space-y-3">
-                    <HeatmapChart data={data} />
+                    <HeatmapChart data={data} onSelect={drillTo} />
                     <div className="max-h-72 divide-y divide-border overflow-y-auto rounded-md border border-border scrollbar-thin">
-                      {data.cells.map((cell) => (
-                        <ItemRow
-                          key={`${cell.entity_ref.kind}-${cell.entity_ref.id}`}
-                          primary={`${cell.entity_ref.kind}:${cell.entity_ref.id}`}
-                          secondary={`${cell.why} / ${cell.source}`}
-                          badge={<StatusBadge rag={cell.rag} />}
-                        />
-                      ))}
+                      {data.cells.map((cell) => {
+                        const drillPath = personaDrillPath(
+                          cell.entity_ref.kind,
+                          cell.entity_ref.id,
+                        );
+                        return (
+                          <ItemRow
+                            key={`${cell.entity_ref.kind}-${cell.entity_ref.id}`}
+                            primary={`${cell.entity_ref.kind}:${cell.entity_ref.id}`}
+                            secondary={`${cell.why} / ${cell.source}`}
+                            badge={<StatusBadge rag={cell.rag} />}
+                            onClick={
+                              drillPath
+                                ? () => drillTo(cell.entity_ref.kind, cell.entity_ref.id)
+                                : undefined
+                            }
+                          />
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -692,18 +712,36 @@ function ItemRow({
   primary,
   secondary,
   badge,
+  onClick,
 }: {
   primary: ReactNode;
   secondary: ReactNode;
   badge: ReactNode;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-sm">
+  const content = (
+    <>
       <div className="min-w-0">
         <div className="truncate font-medium">{primary}</div>
         <div className="truncate text-xs text-muted-foreground">{secondary}</div>
       </div>
       {badge}
+    </>
+  );
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-muted"
+      >
+        {content}
+      </button>
+    );
+  }
+  return (
+    <div className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-sm">
+      {content}
     </div>
   );
 }
