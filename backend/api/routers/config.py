@@ -27,6 +27,8 @@ from api.dtos import (
     IdentityLinkUpdateRequest,
     MemberFromDirectoryRequest,
     MemberTaskAssignmentRequest,
+    PodEscalationContactsResponse,
+    PodEscalationContactsUpdateRequest,
     PodMemberLinkRequest,
     ProgramProjectLinkRequest,
     TenantWritebackResponse,
@@ -965,6 +967,43 @@ async def update_config_member_identity_link(
     except (ConfigValidationError, GraphNotFound) as exc:
         raise _http_error(exc) from exc
     return IdentityLinkResponse.from_domain(updated)
+
+
+@router.get(
+    "/config/pods/{pod_id}/escalation-contacts",
+    response_model=PodEscalationContactsResponse,
+)
+async def get_config_pod_escalation_contacts(
+    pod_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> PodEscalationContactsResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        contacts = await service.get_pod_escalation_contacts(principal.tenant_id, pod_id)
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return PodEscalationContactsResponse.from_domain(pod_id, contacts)
+
+
+@router.put(
+    "/config/pods/{pod_id}/escalation-contacts",
+    response_model=PodEscalationContactsResponse,
+)
+async def update_config_pod_escalation_contacts(
+    pod_id: str,
+    request: PodEscalationContactsUpdateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> PodEscalationContactsResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        updated = await service.set_pod_escalation_contacts(
+            principal.tenant_id, pod_id, request.to_domain()
+        )
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return PodEscalationContactsResponse.from_domain(pod_id, updated)
 
 
 @router.get("/config/tenant/writeback", response_model=TenantWritebackResponse)

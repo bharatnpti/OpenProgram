@@ -710,6 +710,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/config/pods/{pod_id}/escalation-contacts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Config Pod Escalation Contacts */
+    get: operations["get_config_pod_escalation_contacts_config_pods__pod_id__escalation_contacts_get"];
+    /** Update Config Pod Escalation Contacts */
+    put: operations["update_config_pod_escalation_contacts_config_pods__pod_id__escalation_contacts_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/tenant/writeback": {
     parameters: {
       query?: never;
@@ -1746,6 +1764,13 @@ export interface components {
       /** Id */
       id: string;
     };
+    /** EscalationContactDto */
+    EscalationContactDto: {
+      /** Chat External Id */
+      chat_external_id: string;
+      /** Display Name */
+      display_name?: string | null;
+    };
     /** FocusItemDto */
     FocusItemDto: {
       /**
@@ -2032,6 +2057,18 @@ export interface components {
       missing: number;
       /** Developers */
       developers: components["schemas"]["CheckinDeveloperDto"][];
+    };
+    /** PodEscalationContactsResponse */
+    PodEscalationContactsResponse: {
+      /** Pod Id */
+      pod_id: string;
+      scrum_master: components["schemas"]["EscalationContactDto"] | null;
+      manager: components["schemas"]["EscalationContactDto"] | null;
+    };
+    /** PodEscalationContactsUpdateRequest */
+    PodEscalationContactsUpdateRequest: {
+      scrum_master?: components["schemas"]["EscalationContactDto"] | null;
+      manager?: components["schemas"]["EscalationContactDto"] | null;
     };
     /** PodMemberLinkRequest */
     PodMemberLinkRequest: {
@@ -4656,6 +4693,76 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["IdentityLinkResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_config_pod_escalation_contacts_config_pods__pod_id__escalation_contacts_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PodEscalationContactsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_config_pod_escalation_contacts_config_pods__pod_id__escalation_contacts_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PodEscalationContactsUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PodEscalationContactsResponse"];
         };
       };
       /** @description Validation Error */

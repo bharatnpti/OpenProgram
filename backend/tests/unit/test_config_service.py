@@ -7,6 +7,7 @@ import pytest
 from core.application.config_service import ConfigConflict, ConfigService, DirectoryService
 from core.domain.directory import DirectoryUser
 from core.domain.errors import GraphNotFound
+from core.domain.escalation import EscalationContact, EscalationTarget, PodEscalationContacts
 from core.domain.graph import EdgeKind, EntityRef, NodeKind
 from core.domain.rollup import NodeStatus, Rag
 from core.domain.status import CheckInPreference, StatusSource
@@ -294,3 +295,54 @@ async def test_add_member_from_directory_rejects_wrong_kind_conflict() -> None:
 
     with pytest.raises(ConfigConflict, match="exists as a project, not a developer"):
         await service.add_member_from_directory("demo", "U1001")
+
+
+async def test_pod_escalation_contacts_round_trip_and_clear() -> None:
+    store = InMemoryGraphStore()
+    service = ConfigService(store, store)
+    await service.create_node("demo", NodeKind.POD, "pod-1", "Pod")
+
+    empty = await service.get_pod_escalation_contacts("demo", "pod-1")
+    assert empty.scrum_master is None
+    assert empty.manager is None
+
+    saved = await service.set_pod_escalation_contacts(
+        "demo",
+        "pod-1",
+        PodEscalationContacts(
+            scrum_master=EscalationContact(
+                target=EscalationTarget.SCRUM_MASTER,
+                chat_external_id="U-SM",
+                display_name="Sam SM",
+            ),
+            manager=EscalationContact(
+                target=EscalationTarget.MANAGER,
+                chat_external_id="U-MGR",
+            ),
+        ),
+    )
+    assert saved.scrum_master is not None
+
+    reloaded = await service.get_pod_escalation_contacts("demo", "pod-1")
+    assert reloaded.scrum_master is not None
+    assert reloaded.scrum_master.chat_external_id == "U-SM"
+    assert reloaded.scrum_master.display_name == "Sam SM"
+    assert reloaded.manager is not None
+    assert reloaded.manager.chat_external_id == "U-MGR"
+    assert reloaded.manager.display_name is None
+
+    cleared = await service.set_pod_escalation_contacts(
+        "demo", "pod-1", PodEscalationContacts()
+    )
+    assert cleared.scrum_master is None
+    reloaded_after_clear = await service.get_pod_escalation_contacts("demo", "pod-1")
+    assert reloaded_after_clear.scrum_master is None
+    assert reloaded_after_clear.manager is None
+
+
+async def test_pod_escalation_contacts_requires_pod_node() -> None:
+    store = InMemoryGraphStore()
+    service = ConfigService(store, store)
+
+    with pytest.raises(GraphNotFound):
+        await service.get_pod_escalation_contacts("demo", "missing-pod")
