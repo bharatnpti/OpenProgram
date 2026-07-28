@@ -26,11 +26,18 @@ async def purge_conversation_turns_activity(
                 cutoff,
             )
         )
+        inbound_events_cleared = (
+            await registry.inbound_chat_event_repository().purge_processed_older_than(
+                payload.tenant_id,
+                cutoff,
+            )
+        )
         return ConversationPurgeResult(
             tenant_id=payload.tenant_id,
             cutoff=cutoff.isoformat(),
             deleted_count=deleted_count,
             checkin_raw_cleared=checkin_raw_cleared,
+            inbound_events_cleared=inbound_events_cleared,
         )
     finally:
         await registry.close()

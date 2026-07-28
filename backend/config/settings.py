@@ -11,6 +11,11 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.domain.auth import Role
+from core.domain.escalation import EscalationPolicy, default_escalation_policy
+
+# The Fernet key committed to `.env.example`/`docker-compose.yml` for local bring-up.
+# It is public, so it must never protect a shared (non-local) deployment.
+DEFAULT_SECRET_KEY = "q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ="
 
 
 class Settings(BaseSettings):
@@ -50,7 +55,23 @@ class Settings(BaseSettings):
     conversation_purge_enabled: bool = True
     conversation_purge_cron: str = "0 3 * * *"
     conversation_purge_schedule_id: str = "openprogram-conversation-purge"
+    slack_fast_ack_enabled: bool = True
+    reply_debounce_seconds: int = 30
+    reply_processing_max_retries: int = 5
+    reply_processing_retry_backoff_seconds: float = 2.0
+    inbound_events_sweeper_enabled: bool = True
+    inbound_events_sweeper_schedule_id: str = "openprogram-inbound-events-sweeper"
+    inbound_events_sweeper_cron: str = "*/5 * * * *"
+    inbound_events_grace_seconds: int = 120
+    # Hard threshold after which a still-stuck inbound burst is dead-lettered.
+    inbound_events_dead_letter_seconds: int = 3600
+    # Open dead-letters at or below this count keep /ready healthy.
+    workflow_backlog_ready_threshold: int = 0
+    checkin_fanout_concurrency: int = 10
     cross_person_auto_notify: bool = False
+    # System gate fallback default for issue-tracker write-back (OFF by default).
+    # A persisted per-tenant override (admin-controlled) wins when present.
+    jira_writeback_enabled: bool = False
     directory_provider: str = "slack"
     chat_simulator_enabled: bool = False
     directory_sync_cron: str = "0 */6 * * *"
@@ -60,6 +81,18 @@ class Settings(BaseSettings):
     risk_default_pr_age_days: int = 3
     risk_default_stale_days: int = 7
     risk_run_default_local_time: str = "18:00"
+    drift_scan_cron: str = "*/30 * * * *"
+    drift_no_activity_days: int = 3
+    narrative_brief_enabled: bool = True
+    # Chat delivery of briefs is explicitly out of scope for this pass; the flag
+    # is a stub so the delivery path can be wired later without a settings churn.
+    narrative_brief_chat_delivery_enabled: bool = False
+    narrative_brief_daily_cron: str = "0 17 * * 1-5"
+    narrative_brief_weekly_cron: str = "0 16 * * 5"
+    narrative_brief_exec_cron: str = "0 16 * * 1"
+    narrative_brief_daily_schedule_id: str = "openprogram-narrative-brief-daily"
+    narrative_brief_weekly_schedule_id: str = "openprogram-narrative-brief-weekly"
+    narrative_brief_exec_schedule_id: str = "openprogram-narrative-brief-exec"
     temporal_target: str = "localhost:7233"
     temporal_task_queue: str = "openprogram-foundation"
     temporal_schedule_id: str = "openprogram-heartbeat"
@@ -71,12 +104,20 @@ class Settings(BaseSettings):
     checkin_reply_wait_seconds: int = 14400
     checkin_final_reply_wait_seconds: int = 28800
     checkin_max_clarifications: int = 2
+    checkin_ack_enabled: bool = True
+    escalation_enabled: bool = True
+    escalation_scrum_master_enabled: bool = True
+    escalation_manager_enabled: bool = True
+    escalation_scrum_master_wait_seconds: int = 14400
+    escalation_manager_wait_seconds: int = 14400
+    outbound_dm_max_chars: int = 320
+    recent_fact_lookback_days: int = 30
+    chat_send_once_ttl_seconds: int = 86400
     litellm_base_url: str = "http://localhost:4000"
     litellm_api_key: str | None = None
     litellm_model: str = "gpt-4o-mini"
     llm_provider: str = "litellm"
     llm_max_tool_iterations: int = 3
-    embedding_dimension: int = 1536
     langfuse_host: str = "http://localhost:3001"
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
@@ -306,10 +347,19 @@ class Settings(BaseSettings):
         "calendar_sync_cron",
         "conversation_purge_cron",
         "conversation_purge_schedule_id",
+        "inbound_events_sweeper_cron",
+        "inbound_events_sweeper_schedule_id",
         "directory_sync_cron",
         "directory_sync_schedule_id",
         "risk_assessment_cron",
         "risk_run_default_local_time",
+        "drift_scan_cron",
+        "narrative_brief_daily_cron",
+        "narrative_brief_weekly_cron",
+        "narrative_brief_exec_cron",
+        "narrative_brief_daily_schedule_id",
+        "narrative_brief_weekly_schedule_id",
+        "narrative_brief_exec_schedule_id",
         "auth_public_backend_url",
         "auth_frontend_url",
         "auth_cookie_name",
@@ -398,13 +448,6 @@ class Settings(BaseSettings):
             raise ValueError("secret_key must be a 44-character Fernet key")
         return value
 
-    @field_validator("embedding_dimension")
-    @classmethod
-    def validate_embedding_dimension(cls, value: int) -> int:
-        if value <= 0:
-            raise ValueError("embedding_dimension must be positive")
-        return value
-
     @field_validator(
         "slack_retry_attempts",
         "redis_rate_limit_max_events",
@@ -418,6 +461,10 @@ class Settings(BaseSettings):
         "risk_default_stale_days",
         "auth_session_ttl_seconds",
         "auth_flow_state_ttl_seconds",
+        "reply_processing_max_retries",
+        "checkin_fanout_concurrency",
+        "outbound_dm_max_chars",
+        "recent_fact_lookback_days",
     )
     @classmethod
     def validate_positive_int(cls, value: int) -> int:
@@ -429,6 +476,10 @@ class Settings(BaseSettings):
         "temporal_heartbeat_interval_seconds",
         "redis_rate_limit_window_seconds",
         "slack_signature_tolerance_seconds",
+        "reply_debounce_seconds",
+        "inbound_events_grace_seconds",
+        "inbound_events_dead_letter_seconds",
+        "chat_send_once_ttl_seconds",
     )
     @classmethod
     def validate_positive_seconds(cls, value: int) -> int:
@@ -436,7 +487,19 @@ class Settings(BaseSettings):
             raise ValueError("seconds value must be positive")
         return value
 
-    @field_validator("checkin_reply_wait_seconds", "checkin_final_reply_wait_seconds")
+    @field_validator("reply_processing_retry_backoff_seconds")
+    @classmethod
+    def validate_positive_backoff(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("seconds value must be positive")
+        return value
+
+    @field_validator(
+        "checkin_reply_wait_seconds",
+        "checkin_final_reply_wait_seconds",
+        "escalation_scrum_master_wait_seconds",
+        "escalation_manager_wait_seconds",
+    )
     @classmethod
     def validate_non_negative_seconds(cls, value: int) -> int:
         if value < 0:
@@ -458,6 +521,7 @@ class Settings(BaseSettings):
             object.__setattr__(self, "heartbeat_schedule_id", self.temporal_schedule_id)
         if self.auth_cookie_samesite == "none" and not self.auth_cookie_secure:
             raise ValueError("auth_cookie_secure must be true when auth_cookie_samesite is none")
+        self._guard_shared_deployment()
         if self.auth_provider == "oidc_bff":
             missing = [
                 name
@@ -477,6 +541,21 @@ class Settings(BaseSettings):
                 raise ValueError("redis_url is required for OIDC BFF container mode")
         _ = self.oidc_role_map
         return self
+
+    def _guard_shared_deployment(self) -> None:
+        """Fail startup when a non-local environment uses local-only credentials."""
+        if self.environment == "local":
+            return
+        if self.auth_provider == "dev":
+            raise ValueError(
+                "auth_provider='dev' grants unauthenticated admin access and is refused "
+                "when environment is not 'local' -- set auth_provider='oidc_bff'"
+            )
+        if self.secret_key == DEFAULT_SECRET_KEY:
+            raise ValueError(
+                "secret_key is the public default committed for local bring-up and is "
+                "refused when environment is not 'local' -- provide a unique Fernet key"
+            )
 
     @property
     def dev_roles(self) -> frozenset[Role]:
@@ -560,6 +639,18 @@ class Settings(BaseSettings):
     @property
     def default_llm_model(self) -> str:
         return self.litellm_model
+
+    def escalation_policy(self) -> EscalationPolicy:
+        """Resolve the tenant-default escalation ladder from settings."""
+        if not self.escalation_enabled:
+            return EscalationPolicy(steps=())
+        return default_escalation_policy(
+            developer_wait_seconds=self.checkin_reply_wait_seconds,
+            scrum_master_wait_seconds=self.escalation_scrum_master_wait_seconds,
+            manager_wait_seconds=self.escalation_manager_wait_seconds,
+            escalate_to_scrum_master=self.escalation_scrum_master_enabled,
+            escalate_to_manager=self.escalation_manager_enabled,
+        )
 
 
 def _origin(value: str) -> str:

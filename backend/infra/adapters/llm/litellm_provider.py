@@ -19,6 +19,12 @@ from core.domain.llm import LlmRequest, LlmResponse, LlmTool, LlmToolCall, Token
 _logger = structlog.get_logger(__name__)
 _tracer = trace.get_tracer("openprogram.adapters.llm.litellm")
 
+# Deterministic decoding settings applied to JSON-mode (structured parse/clarify)
+# calls so a garbled reply cannot depend on sampling temperature or run unbounded.
+_JSON_MODE_TEMPERATURE = 0.0
+_JSON_MODE_MAX_TOKENS = 1024
+_RESPONSE_COST_HEADER = "x-litellm-response-cost"
+
 
 class LlmTraceSink(Protocol):
     async def record(self, request: LlmRequest, response: LlmResponse) -> str: ...
@@ -135,6 +141,10 @@ class LiteLlmProvider:
                 }
                 if request.tools:
                     body["tools"] = [_tool_payload(tool) for tool in request.tools]
+                if request.json_mode:
+                    body["response_format"] = {"type": "json_object"}
+                    body["temperature"] = _JSON_MODE_TEMPERATURE
+                    body["max_tokens"] = _JSON_MODE_MAX_TOKENS
                 http_response = await client.post(
                     "/v1/chat/completions",
                     headers=headers,
@@ -143,7 +153,8 @@ class LiteLlmProvider:
                 http_response.raise_for_status()
                 payload = http_response.json()
             latency_ms = (perf_counter() - started) * 1000
-            response = _response_from_payload(request, payload, latency_ms)
+            cost_usd = _response_cost(http_response.headers, payload)
+            response = _response_from_payload(request, payload, latency_ms, cost_usd)
             trace_id = await self.trace_sink.record(request, response)
             return LlmResponse(
                 tenant_id=response.tenant_id,
@@ -158,7 +169,7 @@ class LiteLlmProvider:
 
 
 def _response_from_payload(
-    request: LlmRequest, payload: Mapping[str, object], latency_ms: float
+    request: LlmRequest, payload: Mapping[str, object], latency_ms: float, cost_usd: float = 0.0
 ) -> LlmResponse:
     choices = payload.get("choices")
     text = ""
@@ -193,7 +204,7 @@ def _response_from_payload(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
-            cost_usd=0.0,
+            cost_usd=cost_usd,
             latency_ms=latency_ms,
         ),
         trace_id=str(payload.get("id") or uuid4()),
@@ -205,6 +216,37 @@ def _response_from_payload(
 def _int_field(payload: Mapping[str, object], key: str) -> int:
     value = payload.get(key)
     return value if isinstance(value, int) else 0
+
+
+def _response_cost(headers: httpx.Headers, payload: Mapping[str, object]) -> float:
+    """Capture LiteLLM's computed request cost so Langfuse traces are meaningful.
+
+    LiteLLM surfaces the cost in the ``x-litellm-response-cost`` header; some
+    deployments also inline it on the usage or response body. Falls back to 0.0.
+    """
+    header = _parse_float(headers.get(_RESPONSE_COST_HEADER))
+    if header is not None:
+        return header
+    usage = payload.get("usage")
+    if isinstance(usage, Mapping):
+        usage_cost = _parse_float(usage.get("cost"))
+        if usage_cost is not None:
+            return usage_cost
+    body_cost = _parse_float(payload.get("response_cost"))
+    return body_cost if body_cost is not None else 0.0
+
+
+def _parse_float(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
 
 
 def _chat_messages(request: LlmRequest) -> list[dict[str, object]]:

@@ -4,12 +4,14 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 
+from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationTurn
+from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.directory import DirectoryUser
-from core.domain.errors import ProviderUnavailable
 from core.domain.graph import EntityRef, FactEvent
+from core.domain.identity import IdentityLink
+from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import (
-    BuildResult,
     CalendarEvent,
     Commit,
     Issue,
@@ -31,8 +33,9 @@ from core.domain.status import (
     CheckInScheduleRun,
     DeveloperStatus,
 )
+from core.domain.writeback import WriteBackAudit, WriteBackStatus
 from core.ports.directory import DirectoryUserRepository
-from core.ports.repositories import TimeSeriesRepository
+from core.ports.repositories import InboundChatEventRepository, TimeSeriesRepository
 from infra.adapters.llm.fake import FakeLlmProvider
 
 __all__ = ["FakeLlmProvider"]
@@ -59,6 +62,8 @@ class FakeIssueTracker:
     issues: dict[str, Issue] = field(default_factory=dict)
     projects: list[Project] = field(default_factory=list)
     sprints: list[Sprint] = field(default_factory=list)
+    transitions: list[tuple[str, str, str]] = field(default_factory=list)
+    comments: list[tuple[str, str, str]] = field(default_factory=list)
 
     async def list_projects(self, tenant_id: str) -> list[Project]:
         return [project for project in self.projects if project.tenant_id == tenant_id]
@@ -94,10 +99,10 @@ class FakeIssueTracker:
         return [issue for issue in self.issues.values() if issue.assignee == assignee]
 
     async def transition(self, tenant_id: str, key: str, to_state: str) -> None:
-        raise ProviderUnavailable("fake issue tracker is read-only")
+        self.transitions.append((tenant_id, key, to_state))
 
     async def add_comment(self, tenant_id: str, key: str, body: str) -> None:
-        raise ProviderUnavailable("fake issue tracker is read-only")
+        self.comments.append((tenant_id, key, body))
 
 
 @dataclass
@@ -413,6 +418,27 @@ class FakeStatusRepository:
 
 
 @dataclass
+class FakeIdentityLinkRepository:
+    identity_links: dict[tuple[str, str], IdentityLink] = field(default_factory=dict)
+
+    async def get_identity_link(self, tenant_id: str, developer_id: str) -> IdentityLink | None:
+        return self.identity_links.get((tenant_id, developer_id))
+
+    async def upsert_identity_link(self, link: IdentityLink) -> None:
+        self.identity_links[(link.tenant_id, link.developer_id)] = link
+
+    async def list_identity_links(self, tenant_id: str) -> list[IdentityLink]:
+        return sorted(
+            (
+                link
+                for (link_tenant_id, _), link in self.identity_links.items()
+                if link_tenant_id == tenant_id
+            ),
+            key=lambda link: link.developer_id,
+        )
+
+
+@dataclass
 class FakeDirectoryUserRepository(DirectoryUserRepository):
     users: dict[tuple[str, str], DirectoryUser] = field(default_factory=dict)
 
@@ -560,6 +586,91 @@ class FakeRollupRepository:
             if status.entity_ref.tenant_id == tenant_id and status.as_of <= as_of
         ]
 
+    async def node_status_history(
+        self, tenant_id: str, entity_ref: EntityRef, start: date, end: date
+    ) -> list[NodeStatus]:
+        matching = [
+            status
+            for status in self.node_statuses
+            if status.entity_ref.tenant_id == tenant_id
+            and status.entity_ref == entity_ref
+            and start <= status.as_of <= end
+        ]
+        return sorted(matching, key=lambda status: status.as_of)
+
+
+@dataclass
+class FakeNarrativeBriefRepository:
+    briefs: list[NarrativeBrief] = field(default_factory=list)
+
+    async def record_brief(self, brief: NarrativeBrief) -> None:
+        self.briefs = [
+            existing
+            for existing in self.briefs
+            if not (
+                existing.tenant_id == brief.tenant_id
+                and existing.kind == brief.kind
+                and existing.scope_id == brief.scope_id
+                and existing.generated_at == brief.generated_at
+            )
+        ]
+        self.briefs.append(brief)
+
+    async def latest_briefs(
+        self,
+        tenant_id: str,
+        kind: BriefKind | None = None,
+        limit: int = 20,
+    ) -> list[NarrativeBrief]:
+        if limit <= 0:
+            return []
+        matching = [
+            brief
+            for brief in self.briefs
+            if brief.tenant_id == tenant_id and (kind is None or brief.kind == kind)
+        ]
+        matching.sort(key=lambda brief: brief.generated_at, reverse=True)
+        return matching[:limit]
+
+
+@dataclass
+class FakeDeadLetterRepository:
+    dead_letters: dict[tuple[str, str], DeadLetter] = field(default_factory=dict)
+
+    async def record_dead_letter(self, dl: DeadLetter) -> None:
+        self.dead_letters[(dl.tenant_id, dl.id)] = dl
+
+    async def list_open_dead_letters(self, tenant_id: str, limit: int = 100) -> list[DeadLetter]:
+        if limit <= 0:
+            return []
+        matching = [
+            dl
+            for dl in self.dead_letters.values()
+            if dl.tenant_id == tenant_id and dl.status == DeadLetterStatus.OPEN
+        ]
+        matching.sort(key=lambda dl: dl.dead_lettered_at, reverse=True)
+        return matching[:limit]
+
+    async def get_dead_letter(self, tenant_id: str, id: str) -> DeadLetter | None:
+        return self.dead_letters.get((tenant_id, id))
+
+    async def mark_dead_letter_rearmed(
+        self, tenant_id: str, id: str, rearmed_at: datetime
+    ) -> DeadLetter | None:
+        existing = self.dead_letters.get((tenant_id, id))
+        if existing is None:
+            return None
+        updated = replace(existing, status=DeadLetterStatus.REARMED, rearmed_at=rearmed_at)
+        self.dead_letters[(tenant_id, id)] = updated
+        return updated
+
+    async def count_open_dead_letters(self, tenant_id: str) -> int:
+        return sum(
+            1
+            for dl in self.dead_letters.values()
+            if dl.tenant_id == tenant_id and dl.status == DeadLetterStatus.OPEN
+        )
+
 
 @dataclass
 class FakeSyncCursorRepository:
@@ -660,23 +771,72 @@ class FakeConversationRepository:
 
 
 @dataclass
-class FakeCiProvider:
-    builds: list[BuildResult] = field(default_factory=list)
+class FakeInboundChatEventRepository(InboundChatEventRepository):
+    events: list[InboundChatEvent] = field(default_factory=list)
+    _counter: int = 0
 
-    async def latest_build(self, tenant_id: str, pipeline_id: str) -> BuildResult | None:
-        matching = [
-            build
-            for build in self.builds
-            if build.tenant_id == tenant_id and build.id == pipeline_id
-        ]
-        return matching[-1] if matching else None
+    async def append(self, event: InboundChatEvent) -> bool:
+        for existing in self.events:
+            if (
+                existing.tenant_id == event.tenant_id
+                and existing.provider == event.provider
+                and existing.event_id == event.event_id
+            ):
+                return False
+        self._counter += 1
+        self.events.append(
+            event if event.id is not None else replace(event, id=f"evt-{self._counter}")
+        )
+        return True
 
-    async def list_recent_failures(self, tenant_id: str, repo: str) -> list[BuildResult]:
-        return [
-            build
-            for build in self.builds
-            if build.tenant_id == tenant_id and build.status == "failed"
+    async def list_unprocessed_for_conversation(
+        self, tenant_id: str, conversation_key: str
+    ) -> list[InboundChatEvent]:
+        return sorted(
+            (
+                event
+                for event in self.events
+                if event.tenant_id == tenant_id
+                and event.conversation_key == conversation_key
+                and event.processed_at is None
+            ),
+            key=lambda event: (event.received_at, event.message_ref),
+        )
+
+    async def mark_processed(
+        self, tenant_id: str, event_ids: Sequence[str], processed_at: datetime
+    ) -> None:
+        ids = set(event_ids)
+        self.events = [
+            replace(event, processed_at=processed_at)
+            if event.tenant_id == tenant_id and event.id in ids and event.processed_at is None
+            else event
+            for event in self.events
         ]
+
+    async def list_stuck(self, tenant_id: str, older_than: datetime) -> list[InboundChatEvent]:
+        return sorted(
+            (
+                event
+                for event in self.events
+                if event.tenant_id == tenant_id
+                and event.processed_at is None
+                and event.received_at < older_than
+            ),
+            key=lambda event: (event.received_at, event.message_ref),
+        )
+
+    async def purge_processed_older_than(self, tenant_id: str, cutoff: datetime) -> int:
+        retained = [
+            event
+            for event in self.events
+            if event.tenant_id != tenant_id
+            or event.processed_at is None
+            or event.processed_at >= cutoff
+        ]
+        deleted_count = len(self.events) - len(retained)
+        self.events = retained
+        return deleted_count
 
 
 @dataclass
@@ -773,3 +933,97 @@ def _fact_identity(fact: FactEvent) -> tuple[str, str, str, str, str, datetime]:
         fact.correlation_id,
         fact.observed_at,
     )
+
+
+@dataclass
+class FakeWriteBackConfigRepository:
+    enabled: dict[str, bool] = field(default_factory=dict)
+
+    async def get_writeback_enabled(self, tenant_id: str) -> bool | None:
+        return self.enabled.get(tenant_id)
+
+    async def set_writeback_enabled(self, tenant_id: str, enabled: bool) -> None:
+        self.enabled[tenant_id] = enabled
+
+
+@dataclass
+class FakeWriteBackAuditRepository:
+    audits: dict[str, WriteBackAudit] = field(default_factory=dict)
+
+    async def record(self, audit: WriteBackAudit) -> None:
+        self.audits.setdefault(audit.id, audit)
+
+    async def list_for_issue(self, tenant_id: str, issue_key: str) -> list[WriteBackAudit]:
+        return sorted(
+            (
+                audit
+                for audit in self.audits.values()
+                if audit.tenant_id == tenant_id and audit.issue_key == issue_key
+            ),
+            key=lambda audit: audit.created_at,
+        )
+
+    async def list_writeback_by_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> list[WriteBackAudit]:
+        return sorted(
+            (
+                audit
+                for audit in self.audits.values()
+                if audit.tenant_id == tenant_id and audit.correlation_id == correlation_id
+            ),
+            key=lambda audit: audit.created_at,
+        )
+
+    async def find_existing(
+        self,
+        tenant_id: str,
+        issue_key: str,
+        target_state: str,
+        correlation_id: str,
+    ) -> WriteBackAudit | None:
+        matches = [
+            audit
+            for audit in self.audits.values()
+            if audit.tenant_id == tenant_id
+            and audit.issue_key == issue_key
+            and audit.target_state == target_state
+            and audit.correlation_id == correlation_id
+        ]
+        if not matches:
+            return None
+        return min(matches, key=lambda audit: audit.created_at)
+
+    async def get_writeback_audit(
+        self, tenant_id: str, audit_id: str
+    ) -> WriteBackAudit | None:
+        audit = self.audits.get(audit_id)
+        if audit is None or audit.tenant_id != tenant_id:
+            return None
+        return audit
+
+    async def count_applied_writebacks(
+        self, tenant_id: str, since: datetime | None = None
+    ) -> int:
+        return sum(1 for _ in self._applied(tenant_id, since))
+
+    async def list_applied_writebacks(
+        self, tenant_id: str, limit: int, since: datetime | None = None
+    ) -> list[WriteBackAudit]:
+        ordered = sorted(
+            self._applied(tenant_id, since),
+            key=lambda audit: audit.created_at,
+            reverse=True,
+        )
+        return ordered[:limit]
+
+    def _applied(
+        self, tenant_id: str, since: datetime | None
+    ) -> list[WriteBackAudit]:
+        return [
+            audit
+            for audit in self.audits.values()
+            if audit.tenant_id == tenant_id
+            and audit.status is WriteBackStatus.APPLIED
+            and (since is None or audit.created_at >= since)
+        ]

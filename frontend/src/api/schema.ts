@@ -42,10 +42,13 @@ export type ProjectProgressResponse = components["schemas"]["ProjectProgressResp
 export type WorkstreamProgressResponse = components["schemas"]["WorkstreamProgressResponse"];
 export type ProgramTreeResponse = components["schemas"]["ProgramTreeResponse"];
 export type PortfolioHeatmapResponse = components["schemas"]["PortfolioHeatmapResponse"];
+export type NodeTrendResponse = components["schemas"]["NodeTrendResponse"];
+export type TrendPointDto = components["schemas"]["TrendPointDto"];
 export type CheckinDispatchRequest = components["schemas"]["CheckinDispatchRequest"];
 export type WorkflowDispatchResponse = components["schemas"]["WorkflowDispatchResponse"];
 export type RiskEvidenceDto = components["schemas"]["RiskEvidenceDto"];
 export type RiskFindingResponse = components["schemas"]["RiskFindingResponse"];
+export type DriftFindingResponse = components["schemas"]["DriftFindingResponse"];
 export type ProjectRisksResponse = components["schemas"]["ProjectRisksResponse"];
 export type PortfolioRisksResponse = components["schemas"]["PortfolioRisksResponse"];
 export type CrossPersonRequestResponse = components["schemas"]["CrossPersonRequestResponse"];
@@ -53,6 +56,22 @@ export type CrossPersonRequestsResponse = components["schemas"]["CrossPersonRequ
 export type CrossPersonRequestStatus = components["schemas"]["CrossPersonRequestStatus"];
 export type CrossPersonRequestStatusUpdateRequest =
   components["schemas"]["CrossPersonRequestStatusUpdateRequest"];
+export type EscalationContactDto = components["schemas"]["EscalationContactDto"];
+export type PodEscalationContactsResponse = components["schemas"]["PodEscalationContactsResponse"];
+export type PodEscalationContactsUpdateRequest =
+  components["schemas"]["PodEscalationContactsUpdateRequest"];
+export type IdentityLinkResponse = components["schemas"]["IdentityLinkResponse"];
+export type IdentityLinkUpdateRequest = components["schemas"]["IdentityLinkUpdateRequest"];
+export type IdentityAutoMatchResponse = components["schemas"]["IdentityAutoMatchResponse"];
+export type IdentityAutoMatchMemberDto = components["schemas"]["IdentityAutoMatchMemberDto"];
+export type UnmappedMemberResponse = components["schemas"]["UnmappedMemberResponse"];
+export type BriefKind = components["schemas"]["BriefKind"];
+export type NarrativeBriefResponse = components["schemas"]["NarrativeBriefResponse"];
+export type NarrativeBriefsResponse = components["schemas"]["NarrativeBriefsResponse"];
+export type WriteBackAdoptionResponse = components["schemas"]["WriteBackAdoptionResponse"];
+export type WriteBackConsent = components["schemas"]["WriteBackConsent"];
+export type WritebackConsentResponse = components["schemas"]["WritebackConsentResponse"];
+export type WritebackConsentUpdateRequest = components["schemas"]["WritebackConsentUpdateRequest"];
 
 export interface WorkItemFlowResponse {
   id: string;

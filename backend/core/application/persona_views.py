@@ -195,6 +195,32 @@ class PortfolioHeatmapView:
     cells: tuple[HeatmapCellView, ...]
 
 
+# RAG mapped to an ordinal for sparkline plotting (higher is healthier).
+_RAG_SCORE: dict[Rag, int] = {
+    Rag.UNKNOWN: 0,
+    Rag.RED: 1,
+    Rag.AMBER: 2,
+    Rag.GREEN: 3,
+}
+
+
+@dataclass(frozen=True, kw_only=True)
+class TrendPointView:
+    as_of: date
+    rag: Rag
+    source: StatusSource
+    score: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class NodeTrendView:
+    entity_ref: EntityRef
+    window_days: int
+    start: date
+    end: date
+    points: tuple[TrendPointView, ...]
+
+
 class PersonaViewService:
     def __init__(
         self,
@@ -486,6 +512,37 @@ class PersonaViewService:
         rows = tuple(dict.fromkeys(cell.row for cell in cells))
         columns = tuple(dict.fromkeys(cell.column for cell in cells))
         return PortfolioHeatmapView(as_of=as_of, rows=rows, columns=columns, cells=cells)
+
+    async def node_trend(
+        self,
+        tenant_id: str,
+        kind: NodeKind,
+        entity_id: str,
+        as_of: date,
+        window_days: int,
+    ) -> NodeTrendView:
+        end = as_of
+        start = as_of - timedelta(days=window_days - 1)
+        entity_ref = EntityRef(tenant_id=tenant_id, kind=kind, id=entity_id)
+        history = await self._rollup_repository.node_status_history(
+            tenant_id, entity_ref, start, end
+        )
+        points = tuple(
+            TrendPointView(
+                as_of=status.as_of,
+                rag=status.rag,
+                source=status.source,
+                score=_RAG_SCORE.get(status.rag, 0),
+            )
+            for status in history
+        )
+        return NodeTrendView(
+            entity_ref=entity_ref,
+            window_days=window_days,
+            start=start,
+            end=end,
+            points=points,
+        )
 
     async def _first_program_id(self, tenant_id: str) -> str | None:
         programs = await self._graph_repository.list_nodes(tenant_id, NodeKind.PROGRAM)

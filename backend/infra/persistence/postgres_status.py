@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from datetime import date, datetime, time
@@ -7,7 +8,9 @@ from typing import Protocol
 
 from opentelemetry import trace
 
+from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationRole, ConversationTurn
+from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.graph import EntityRef, JsonScalar, NodeKind
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
@@ -23,6 +26,7 @@ from core.domain.status import (
     DeveloperStatus,
     IssueClaim,
     StatusSource,
+    WriteBackConsent,
 )
 
 _tracer = trace.get_tracer("openprogram.persistence.status")
@@ -46,9 +50,9 @@ class PostgresStatusRepository:
                 """
                 INSERT INTO checkins (
                     tenant_id, developer_id, correlation_id, asked_at,
-                    replied_at, raw_reply, signals, last_accessed_at
+                    replied_at, raw_reply, signals, last_accessed_at, checkin_date
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id, correlation_id)
                 DO UPDATE SET
                     developer_id = EXCLUDED.developer_id,
@@ -56,7 +60,8 @@ class PostgresStatusRepository:
                     replied_at = EXCLUDED.replied_at,
                     raw_reply = EXCLUDED.raw_reply,
                     signals = EXCLUDED.signals,
-                    last_accessed_at = EXCLUDED.last_accessed_at
+                    last_accessed_at = EXCLUDED.last_accessed_at,
+                    checkin_date = COALESCE(checkins.checkin_date, EXCLUDED.checkin_date)
                 """,
                 (
                     checkin.tenant_id,
@@ -67,6 +72,7 @@ class PostgresStatusRepository:
                     checkin.raw_reply,
                     _signals_to_json(checkin.signals),
                     _checkin_last_accessed_at(checkin),
+                    checkin.checkin_date,
                 ),
             )
 
@@ -76,9 +82,9 @@ class PostgresStatusRepository:
                 """
                 INSERT INTO checkins (
                     tenant_id, developer_id, correlation_id, asked_at,
-                    replied_at, raw_reply, signals, last_accessed_at
+                    replied_at, raw_reply, signals, last_accessed_at, checkin_date
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id, correlation_id)
                 DO UPDATE SET
                     developer_id = EXCLUDED.developer_id,
@@ -86,7 +92,8 @@ class PostgresStatusRepository:
                     replied_at = EXCLUDED.replied_at,
                     raw_reply = EXCLUDED.raw_reply,
                     signals = EXCLUDED.signals,
-                    last_accessed_at = EXCLUDED.last_accessed_at
+                    last_accessed_at = EXCLUDED.last_accessed_at,
+                    checkin_date = COALESCE(checkins.checkin_date, EXCLUDED.checkin_date)
                 WHERE checkins.replied_at IS NULL
                 """,
                 (
@@ -98,6 +105,7 @@ class PostgresStatusRepository:
                     checkin.raw_reply,
                     _signals_to_json(checkin.signals),
                     _checkin_last_accessed_at(checkin),
+                    checkin.checkin_date,
                 ),
             )
         return int(getattr(result, "rowcount", 0) or 0) > 0
@@ -107,7 +115,7 @@ class PostgresStatusRepository:
             rows = await self._executor.fetch(
                 """
                 SELECT tenant_id, developer_id, correlation_id, asked_at,
-                       replied_at, raw_reply, signals, last_accessed_at
+                       replied_at, raw_reply, signals, last_accessed_at, checkin_date
                 FROM checkins
                 WHERE tenant_id = %s AND correlation_id = %s
                 LIMIT 1
@@ -260,9 +268,9 @@ class PostgresStatusRepository:
                 """
                 INSERT INTO checkin_preferences (
                     tenant_id, developer_id, local_time, timezone, weekdays,
-                    reply_wait_seconds, final_reply_wait_seconds
+                    reply_wait_seconds, final_reply_wait_seconds, write_back_consent
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (tenant_id, developer_id)
                 DO UPDATE SET
                     local_time = EXCLUDED.local_time,
@@ -270,6 +278,7 @@ class PostgresStatusRepository:
                     weekdays = EXCLUDED.weekdays,
                     reply_wait_seconds = EXCLUDED.reply_wait_seconds,
                     final_reply_wait_seconds = EXCLUDED.final_reply_wait_seconds,
+                    write_back_consent = EXCLUDED.write_back_consent,
                     updated_at = now()
                 """,
                 (
@@ -280,6 +289,7 @@ class PostgresStatusRepository:
                     _int_tuple_to_json(preference.weekdays),
                     preference.reply_wait_seconds,
                     preference.final_reply_wait_seconds,
+                    preference.write_back_consent.value,
                 ),
             )
 
@@ -290,7 +300,7 @@ class PostgresStatusRepository:
             rows = await self._executor.fetch(
                 """
                 SELECT tenant_id, developer_id, local_time, timezone, weekdays,
-                       reply_wait_seconds, final_reply_wait_seconds
+                       reply_wait_seconds, final_reply_wait_seconds, write_back_consent
                 FROM checkin_preferences
                 WHERE tenant_id = %s AND developer_id = %s
                 LIMIT 1
@@ -304,7 +314,7 @@ class PostgresStatusRepository:
             rows = await self._executor.fetch(
                 """
                 SELECT tenant_id, developer_id, local_time, timezone, weekdays,
-                       reply_wait_seconds, final_reply_wait_seconds
+                       reply_wait_seconds, final_reply_wait_seconds, write_back_consent
                 FROM checkin_preferences
                 WHERE tenant_id = %s
                 ORDER BY developer_id
@@ -542,12 +552,19 @@ class PostgresStatusRepository:
                     FROM checkins replied
                     WHERE replied.tenant_id = %s
                       AND replied.developer_id = known.developer_id
-                      AND replied.replied_at >= %s::date
-                      AND replied.replied_at < (%s::date + INTERVAL '1 day')
+                      AND replied.replied_at IS NOT NULL
+                      AND (
+                        replied.checkin_date = %s
+                        OR (
+                          replied.checkin_date IS NULL
+                          AND replied.replied_at >= %s::date
+                          AND replied.replied_at < (%s::date + INTERVAL '1 day')
+                        )
+                      )
                 )
                 ORDER BY known.developer_id
                 """,
-                (tenant_id, tenant_id, tenant_id, tenant_id, as_of, as_of),
+                (tenant_id, tenant_id, tenant_id, tenant_id, as_of, as_of, as_of),
             )
         return [str(row["developer_id"]) for row in rows]
 
@@ -644,6 +661,186 @@ class PostgresRollupRepository:
                 (tenant_id, as_of),
             )
         return [_node_status_from_row(row) for row in rows]
+
+    async def node_status_history(
+        self, tenant_id: str, entity_ref: EntityRef, start: date, end: date
+    ) -> list[NodeStatus]:
+        with _tracer.start_as_current_span("postgres.rollup.node_status_history"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, entity_kind, entity_id, as_of, rag, source, factors
+                FROM node_statuses
+                WHERE tenant_id = %s
+                  AND entity_kind = %s
+                  AND entity_id = %s
+                  AND as_of >= %s
+                  AND as_of <= %s
+                ORDER BY as_of ASC
+                """,
+                (tenant_id, entity_ref.kind.value, entity_ref.id, start, end),
+            )
+        return [_node_status_from_row(row) for row in rows]
+
+
+class PostgresNarrativeBriefRepository:
+    def __init__(self, executor: AsyncSqlExecutor) -> None:
+        self._executor = executor
+
+    async def record_brief(self, brief: NarrativeBrief) -> None:
+        with _tracer.start_as_current_span("postgres.brief.record_brief"):
+            await self._executor.execute(
+                """
+                INSERT INTO narrative_briefs (
+                    tenant_id, kind, scope_id, title, body, generated_at, sources
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
+                ON CONFLICT (tenant_id, kind, scope_id, generated_at)
+                DO UPDATE SET
+                    title = EXCLUDED.title,
+                    body = EXCLUDED.body,
+                    sources = EXCLUDED.sources
+                """,
+                (
+                    brief.tenant_id,
+                    brief.kind.value,
+                    brief.scope_id,
+                    brief.title,
+                    brief.body,
+                    brief.generated_at,
+                    json.dumps(list(brief.sources)),
+                ),
+            )
+
+    async def latest_briefs(
+        self,
+        tenant_id: str,
+        kind: BriefKind | None = None,
+        limit: int = 20,
+    ) -> list[NarrativeBrief]:
+        bounded = max(0, limit)
+        if bounded == 0:
+            return []
+        with _tracer.start_as_current_span("postgres.brief.latest_briefs"):
+            if kind is None:
+                rows = await self._executor.fetch(
+                    """
+                    SELECT tenant_id, kind, scope_id, title, body, generated_at, sources
+                    FROM narrative_briefs
+                    WHERE tenant_id = %s
+                    ORDER BY generated_at DESC
+                    LIMIT %s
+                    """,
+                    (tenant_id, bounded),
+                )
+            else:
+                rows = await self._executor.fetch(
+                    """
+                    SELECT tenant_id, kind, scope_id, title, body, generated_at, sources
+                    FROM narrative_briefs
+                    WHERE tenant_id = %s AND kind = %s
+                    ORDER BY generated_at DESC
+                    LIMIT %s
+                    """,
+                    (tenant_id, kind.value, bounded),
+                )
+        return [_narrative_brief_from_row(row) for row in rows]
+
+
+class PostgresDeadLetterRepository:
+    def __init__(self, executor: AsyncSqlExecutor) -> None:
+        self._executor = executor
+
+    async def record_dead_letter(self, dl: DeadLetter) -> None:
+        with _tracer.start_as_current_span("postgres.dead_letter.record"):
+            await self._executor.execute(
+                """
+                INSERT INTO dead_letters (
+                    tenant_id, id, kind, conversation_key, event_ids, reason,
+                    attempts, first_seen_at, dead_lettered_at, status, rearmed_at
+                )
+                VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, id)
+                DO UPDATE SET
+                    kind = EXCLUDED.kind,
+                    conversation_key = EXCLUDED.conversation_key,
+                    event_ids = EXCLUDED.event_ids,
+                    reason = EXCLUDED.reason,
+                    attempts = EXCLUDED.attempts,
+                    dead_lettered_at = EXCLUDED.dead_lettered_at
+                """,
+                (
+                    dl.tenant_id,
+                    dl.id,
+                    dl.kind,
+                    dl.conversation_key,
+                    json.dumps(list(dl.event_ids)),
+                    dl.reason,
+                    dl.attempts,
+                    dl.first_seen_at,
+                    dl.dead_lettered_at,
+                    dl.status.value,
+                    dl.rearmed_at,
+                ),
+            )
+
+    async def list_open_dead_letters(self, tenant_id: str, limit: int = 100) -> list[DeadLetter]:
+        bounded = max(0, limit)
+        if bounded == 0:
+            return []
+        with _tracer.start_as_current_span("postgres.dead_letter.list_open"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, id, kind, conversation_key, event_ids, reason,
+                       attempts, first_seen_at, dead_lettered_at, status, rearmed_at
+                FROM dead_letters
+                WHERE tenant_id = %s AND status = 'open'
+                ORDER BY dead_lettered_at DESC
+                LIMIT %s
+                """,
+                (tenant_id, bounded),
+            )
+        return [_dead_letter_from_row(row) for row in rows]
+
+    async def get_dead_letter(self, tenant_id: str, id: str) -> DeadLetter | None:
+        with _tracer.start_as_current_span("postgres.dead_letter.get"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, id, kind, conversation_key, event_ids, reason,
+                       attempts, first_seen_at, dead_lettered_at, status, rearmed_at
+                FROM dead_letters
+                WHERE tenant_id = %s AND id = %s
+                """,
+                (tenant_id, id),
+            )
+        return _dead_letter_from_row(rows[0]) if rows else None
+
+    async def mark_dead_letter_rearmed(
+        self, tenant_id: str, id: str, rearmed_at: datetime
+    ) -> DeadLetter | None:
+        with _tracer.start_as_current_span("postgres.dead_letter.mark_rearmed"):
+            rows = await self._executor.fetch(
+                """
+                UPDATE dead_letters
+                SET status = 'rearmed', rearmed_at = %s
+                WHERE tenant_id = %s AND id = %s
+                RETURNING tenant_id, id, kind, conversation_key, event_ids, reason,
+                          attempts, first_seen_at, dead_lettered_at, status, rearmed_at
+                """,
+                (rearmed_at, tenant_id, id),
+            )
+        return _dead_letter_from_row(rows[0]) if rows else None
+
+    async def count_open_dead_letters(self, tenant_id: str) -> int:
+        with _tracer.start_as_current_span("postgres.dead_letter.count_open"):
+            rows = await self._executor.fetch(
+                """
+                SELECT COUNT(*) AS open_count
+                FROM dead_letters
+                WHERE tenant_id = %s AND status = 'open'
+                """,
+                (tenant_id,),
+            )
+        return _int_field(rows[0]["open_count"], "open_count") if rows else 0
 
 
 class PostgresSyncCursorRepository:
@@ -839,6 +1036,18 @@ class PostgresConversationRepository:
             )
 
 
+def _optional_date_field(value: object) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        return date.fromisoformat(value)
+    raise TypeError(f"expected date-like value, got {type(value)!r}")
+
+
 def _checkin_from_row(row: Mapping[str, object]) -> CheckIn:
     raw_reply = row.get("raw_reply")
     return CheckIn(
@@ -850,6 +1059,7 @@ def _checkin_from_row(row: Mapping[str, object]) -> CheckIn:
         raw_reply=raw_reply if isinstance(raw_reply, str) else None,
         signals=_signals_from_json(row.get("signals")),
         last_accessed_at=_optional_datetime_field(row.get("last_accessed_at"), "last_accessed_at"),
+        checkin_date=_optional_date_field(row.get("checkin_date")),
     )
 
 
@@ -879,7 +1089,17 @@ def _checkin_preference_from_row(row: Mapping[str, object]) -> CheckInPreference
             row["final_reply_wait_seconds"],
             "final_reply_wait_seconds",
         ),
+        write_back_consent=_write_back_consent_from_row(row.get("write_back_consent")),
     )
+
+
+def _write_back_consent_from_row(value: object) -> WriteBackConsent:
+    if isinstance(value, str):
+        try:
+            return WriteBackConsent(value)
+        except ValueError:
+            return WriteBackConsent.ALWAYS_ASK
+    return WriteBackConsent.ALWAYS_ASK
 
 
 def _checkin_schedule_run_from_row(row: Mapping[str, object]) -> CheckInScheduleRun:
@@ -952,6 +1172,40 @@ def _node_status_from_row(row: Mapping[str, object]) -> NodeStatus:
     )
 
 
+def _narrative_brief_from_row(row: Mapping[str, object]) -> NarrativeBrief:
+    raw_sources = row.get("sources")
+    sources = tuple(str(item) for item in raw_sources) if isinstance(raw_sources, list) else ()
+    return NarrativeBrief(
+        tenant_id=str(row["tenant_id"]),
+        kind=BriefKind(str(row["kind"])),
+        scope_id=str(row["scope_id"]),
+        title=str(row["title"]),
+        body=str(row["body"]),
+        generated_at=_datetime_field(row["generated_at"], "generated_at"),
+        sources=sources,
+    )
+
+
+def _dead_letter_from_row(row: Mapping[str, object]) -> DeadLetter:
+    raw_event_ids = row.get("event_ids")
+    event_ids = (
+        tuple(str(item) for item in raw_event_ids) if isinstance(raw_event_ids, list) else ()
+    )
+    return DeadLetter(
+        id=str(row["id"]),
+        tenant_id=str(row["tenant_id"]),
+        kind=str(row["kind"]),
+        conversation_key=str(row["conversation_key"]),
+        event_ids=event_ids,
+        reason=str(row["reason"]),
+        attempts=_int_field(row["attempts"], "attempts"),
+        first_seen_at=_datetime_field(row["first_seen_at"], "first_seen_at"),
+        dead_lettered_at=_datetime_field(row["dead_lettered_at"], "dead_lettered_at"),
+        status=DeadLetterStatus(str(row["status"])),
+        rearmed_at=_optional_datetime_field(row.get("rearmed_at"), "rearmed_at"),
+    )
+
+
 def _sync_cursor_from_row(row: Mapping[str, object]) -> SyncCursor:
     cursor_value = row.get("cursor_value")
     return SyncCursor(
@@ -991,6 +1245,7 @@ def _signals_to_json(signals: CheckInSignals | None) -> dict[str, object] | None
         "eta_change_days": signals.eta_change_days,
         "blockers_answered": signals.blockers_answered,
         "eta_answered": signals.eta_answered,
+        "parser_confident": signals.parser_confident,
         "requests": [
             {
                 "name": request.raw_name,
@@ -1025,12 +1280,15 @@ def _signals_from_json(value: object) -> CheckInSignals | None:
         if isinstance(eta_change_days, int) and not isinstance(eta_change_days, bool)
         else None
     )
+    raw_parser_confident = value.get("parser_confident")
     return CheckInSignals(
         progress_note=progress_note,
         blockers=blockers,
         eta_change_days=parsed_eta,
         blockers_answered=bool(blockers) or _bool_from_json(value.get("blockers_answered")),
         eta_answered=parsed_eta is not None or _bool_from_json(value.get("eta_answered")),
+        # Absent on legacy rows: default confident so existing check-ins are unaffected.
+        parser_confident=(raw_parser_confident if isinstance(raw_parser_confident, bool) else True),
         requests=_cross_person_mentions_from_json(value.get("requests")),
         issue_updates=_issue_claims_from_json(value.get("issue_updates")),
     )

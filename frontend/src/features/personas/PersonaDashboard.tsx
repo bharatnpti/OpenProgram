@@ -9,8 +9,10 @@ import {
   UserRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
+import type { BriefKind, NodeKind, NodeTrendResponse } from "../../api/schema";
 import {
   AsOfControl,
   DataPanel,
@@ -29,11 +31,27 @@ import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Textarea } from "../../components/ui/textarea";
+import { personaDrillPath } from "../../lib/drill";
 import { resolveSelection } from "../../lib/selection";
 import { HeatmapChart } from "./HeatmapChart";
 import { HierarchyFlow } from "./HierarchyFlow";
+import { Sparkline } from "./Sparkline";
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
+
+const briefKindLabels: Record<BriefKind, string> = {
+  daily_pod: "Daily pod",
+  weekly_project: "Weekly project",
+  exec: "Exec",
+};
+
+function formatBriefDate(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString();
+}
 
 type DashboardRole = "dev" | "sm" | "po" | "mgr" | "exec";
 
@@ -55,6 +73,13 @@ const roleDescriptions: Record<DashboardRole, string> = {
 
 export function PersonaDashboard({ role }: { role: DashboardRole }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const drillTo = (kind: NodeKind, id: string) => {
+    const path = personaDrillPath(kind, id);
+    if (path) {
+      navigate(path);
+    }
+  };
   const [asOf, setAsOf] = useState(todayIso);
   const [podId, setPodId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -68,6 +93,9 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
   const showTeam = role === "sm";
   const showProgress = role === "po";
   const showPortfolio = role === "mgr" || role === "exec";
+  // The Manager view adds a delivery-momentum trend so it is no longer a
+  // byte-for-byte copy of the point-in-time Exec heatmap.
+  const showTrend = role === "mgr";
 
   const podsDirectory = useQuery({
     queryKey: ["directory", "pods", asOf],
@@ -180,13 +208,31 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
     enabled: showPortfolio && Boolean(selectedProgramId),
     staleTime: 5 * 60_000,
   });
+  const trend = useQuery({
+    queryKey: ["persona", "trend", selectedProgramId, asOf],
+    queryFn: () => apiClient.nodeTrend("program", selectedProgramId, { asOf, windowDays: 30 }),
+    enabled: showTrend && Boolean(selectedProgramId),
+    staleTime: 5 * 60_000,
+  });
+  const writebackAdoption = useQuery({
+    queryKey: ["persona", "writeback-adoption"],
+    queryFn: () => apiClient.writebackAdoption(),
+    enabled: showPortfolio,
+  });
+  const briefs = useQuery({
+    queryKey: ["persona", "briefs"],
+    queryFn: () => apiClient.personaBriefs(undefined, 20),
+    enabled: showPortfolio,
+    staleTime: 5 * 60_000,
+  });
 
   const queries = [
     health,
     ...(showFocus ? [focus, myStatus] : []),
     ...(showTeam ? [podsDirectory, blockers, checkins] : []),
     ...(showProgress ? [projectsDirectory, progress] : []),
-    ...(showPortfolio ? [programsDirectory, tree, heatmap] : []),
+    ...(showPortfolio ? [programsDirectory, tree, heatmap, briefs, writebackAdoption] : []),
+    ...(showTrend ? [trend] : []),
   ];
   const isRefreshing = queries.some((query) => query.isFetching);
 
@@ -342,6 +388,17 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
               value={heatmap.data?.cells.length ?? "-"}
               detail={statusForQuery(heatmap)}
               tone="warning"
+            />
+          )}
+          {showPortfolio && (
+            <KpiCard
+              icon={<CheckCircle2 className="h-4 w-4" />}
+              label="Jira updates via check-in"
+              value={writebackAdoption.data?.applied_count ?? "-"}
+              detail={
+                writebackAdoption.data ? "applied write-backs" : statusForQuery(writebackAdoption)
+              }
+              tone={writebackAdoption.data?.applied_count ? "success" : "neutral"}
             />
           )}
         </section>
@@ -543,6 +600,18 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
           </DataPanel>
         )}
 
+        {showTrend && (
+          <DataPanel
+            title="Delivery Momentum"
+            description="30-day RAG trend for the selected program — is it improving or sliding?"
+            action={<MomentumBadge data={trend.data} />}
+          >
+            <QueryState query={trend} loadingRows={3}>
+              {(data) => <Sparkline data={data} />}
+            </QueryState>
+          </DataPanel>
+        )}
+
         {showPortfolio && (
           <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_460px]">
             <DataPanel
@@ -550,7 +619,7 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
               description="Rollup path from program to execution layers."
             >
               <QueryState query={tree} loadingRows={6}>
-                {(data) => <HierarchyFlow data={data} />}
+                {(data) => <HierarchyFlow data={data} onSelect={drillTo} />}
               </QueryState>
             </DataPanel>
 
@@ -561,22 +630,83 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
               <QueryState query={heatmap} loadingRows={6}>
                 {(data) => (
                   <div className="space-y-3">
-                    <HeatmapChart data={data} />
+                    <HeatmapChart data={data} onSelect={drillTo} />
                     <div className="max-h-72 divide-y divide-border overflow-y-auto rounded-md border border-border scrollbar-thin">
-                      {data.cells.map((cell) => (
-                        <ItemRow
-                          key={`${cell.entity_ref.kind}-${cell.entity_ref.id}`}
-                          primary={`${cell.entity_ref.kind}:${cell.entity_ref.id}`}
-                          secondary={`${cell.why} / ${cell.source}`}
-                          badge={<StatusBadge rag={cell.rag} />}
-                        />
-                      ))}
+                      {data.cells.map((cell) => {
+                        const drillPath = personaDrillPath(
+                          cell.entity_ref.kind,
+                          cell.entity_ref.id,
+                        );
+                        return (
+                          <ItemRow
+                            key={`${cell.entity_ref.kind}-${cell.entity_ref.id}`}
+                            primary={`${cell.entity_ref.kind}:${cell.entity_ref.id}`}
+                            secondary={`${cell.why} / ${cell.source}`}
+                            badge={<StatusBadge rag={cell.rag} />}
+                            onClick={
+                              drillPath
+                                ? () => drillTo(cell.entity_ref.kind, cell.entity_ref.id)
+                                : undefined
+                            }
+                          />
+                        );
+                      })}
                     </div>
                   </div>
                 )}
               </QueryState>
             </DataPanel>
           </section>
+        )}
+
+        {showPortfolio && (
+          <DataPanel
+            title="Narrative Briefs"
+            description="Generated daily pod, weekly project, and exec summaries. Newest first."
+            action={
+              <Badge tone="info">{briefs.data ? `${briefs.data.briefs.length} briefs` : "-"}</Badge>
+            }
+          >
+            <QueryState query={briefs} loadingRows={3}>
+              {(data) =>
+                data.briefs.length === 0 ? (
+                  <EmptyState
+                    title="No briefs yet"
+                    description="Narrative briefs appear here once generated."
+                  />
+                ) : (
+                  <div className="space-y-3">
+                    {data.briefs.map((brief) => (
+                      <article
+                        key={`${brief.kind}-${brief.scope_id}-${brief.generated_at}`}
+                        className="rounded-md border border-border bg-surface p-3"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h3 className="text-sm font-semibold">{brief.title}</h3>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                              {formatBriefDate(brief.generated_at)}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            <Badge tone="neutral">
+                              {briefKindLabels[brief.kind] ?? brief.kind}
+                            </Badge>
+                            <Badge tone="info">
+                              {brief.sources.length} source{brief.sources.length === 1 ? "" : "s"}
+                            </Badge>
+                          </div>
+                        </div>
+                        <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-sm text-muted-foreground">
+                          {brief.body}
+                        </pre>
+                      </article>
+                    ))}
+                  </div>
+                )
+              }
+            </QueryState>
+          </DataPanel>
         )}
       </div>
       {showFocus && (
@@ -668,18 +798,36 @@ function ItemRow({
   primary,
   secondary,
   badge,
+  onClick,
 }: {
   primary: ReactNode;
   secondary: ReactNode;
   badge: ReactNode;
+  onClick?: () => void;
 }) {
-  return (
-    <div className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-sm">
+  const content = (
+    <>
       <div className="min-w-0">
         <div className="truncate font-medium">{primary}</div>
         <div className="truncate text-xs text-muted-foreground">{secondary}</div>
       </div>
       {badge}
+    </>
+  );
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="grid min-h-14 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-muted"
+      >
+        {content}
+      </button>
+    );
+  }
+  return (
+    <div className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-sm">
+      {content}
     </div>
   );
 }
@@ -694,6 +842,21 @@ function Count({ label, value, tone }: { label: string; value: number; tone: Bad
       </div>
     </div>
   );
+}
+
+function MomentumBadge({ data }: { data: NodeTrendResponse | undefined }) {
+  if (!data || data.points.length < 2) {
+    return <Badge tone="neutral">insufficient history</Badge>;
+  }
+  const first = data.points[0].score;
+  const last = data.points[data.points.length - 1].score;
+  if (last > first) {
+    return <Badge tone="success">improving</Badge>;
+  }
+  if (last < first) {
+    return <Badge tone="danger">sliding</Badge>;
+  }
+  return <Badge tone="info">steady</Badge>;
 }
 
 function statusForQuery(query: {

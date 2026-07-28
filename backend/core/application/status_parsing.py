@@ -1,19 +1,32 @@
 from __future__ import annotations
 
-import json
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Iterable, Mapping
+from dataclasses import dataclass, replace
 
 import structlog
 
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.conversation_history import llm_messages_from_turns
+from core.application.json_parsing import extract_json_object
 from core.domain.conversation import ConversationTurn
 from core.domain.cross_person import CrossPersonRequestKind
 from core.domain.llm import LlmRequest, LlmResponse
 from core.domain.status import CheckInSignals, CrossPersonMention, IssueClaim
 from core.ports.llm import LlmProvider
 from core.ports.tools import AgentTool
+
+# Appended to a structured-output prompt on a single retry when the first response
+# is not valid JSON, before any safe fallback.
+JSON_RETRY_REMINDER = (
+    "\n\nYour previous response was not valid JSON. Respond again with only a single "
+    "valid JSON object matching the requested schema and no other text."
+)
+# Safe fallback question used when the model output cannot be parsed at all, so a
+# garbled reply routes to a clarification instead of silently finalizing as healthy.
+GENERIC_CLARIFICATION_QUESTION = (
+    "Thanks. Could you share your progress, any blockers, and your ETA so I can "
+    "record today's status?"
+)
 
 PARSE_REPLY_SYSTEM_PROMPT = (
     "Extract structured status signals from the current reply. Use prior conversation turns only "
@@ -73,16 +86,15 @@ class StatusParser:
             correlation_id=correlation_id,
             system=PARSE_REPLY_SYSTEM_PROMPT,
             messages=llm_messages_from_turns(conversation_turns),
+            json_mode=True,
             metadata={
                 "service": "status_parser",
                 "purpose": "parse_checkin_signals",
                 "developer_id": developer_id,
             },
         )
-        response = await self._complete(request, tools)
-        try:
-            parsed = json.loads(response.text)
-        except json.JSONDecodeError as exc:
+        parsed, response = await _complete_json_with_retry(self._complete, request, tuple(tools))
+        if parsed is None:
             _logger.warning(
                 "status_parser_json_decode_failed",
                 tenant_id=tenant_id,
@@ -90,9 +102,10 @@ class StatusParser:
                 correlation_id=correlation_id,
                 purpose="parse_checkin_signals",
                 trace_id=response.trace_id,
-                error=str(exc),
             )
-            return CheckInSignals(progress_note=raw_reply)
+            # Keep the raw progress note but mark it unverified: with no answered
+            # blocker/ETA signals and parser_confident False, it cannot roll up green.
+            return CheckInSignals(progress_note=raw_reply, parser_confident=False)
         return _signals_from_json(parsed, fallback_progress_note=raw_reply)
 
     async def _complete(
@@ -137,20 +150,15 @@ class ClarificationEvaluator:
             correlation_id=correlation_id,
             system=CLARIFICATION_EVALUATOR_SYSTEM_PROMPT,
             messages=llm_messages_from_turns(conversation_turns),
+            json_mode=True,
             metadata={
                 "service": "status_parser",
                 "purpose": "evaluate_checkin_clarification",
                 "developer_id": developer_id,
             },
         )
-        response = (
-            await self._tool_agent.run(request, tools)
-            if self._tool_agent is not None
-            else await self._llm_provider.complete(request)
-        )
-        try:
-            parsed = json.loads(response.text)
-        except json.JSONDecodeError as exc:
+        parsed, response = await _complete_json_with_retry(self._complete, request, tuple(tools))
+        if parsed is None:
             _logger.warning(
                 "clarification_evaluator_json_decode_failed",
                 tenant_id=tenant_id,
@@ -158,10 +166,43 @@ class ClarificationEvaluator:
                 correlation_id=correlation_id,
                 purpose="evaluate_checkin_clarification",
                 trace_id=response.trace_id,
-                error=str(exc),
             )
-            return ClarificationDecision(sufficient=True)
+            # Safety-critical: never default an unparseable reply to sufficient, or a
+            # garbled/blocked check-in would finalize as healthy. Ask for a status.
+            return ClarificationDecision(
+                sufficient=False,
+                question=GENERIC_CLARIFICATION_QUESTION,
+            )
         return _clarification_decision_from_json(parsed, fallback_progress_note=raw_reply)
+
+    async def _complete(
+        self,
+        request: LlmRequest,
+        tools: Iterable[AgentTool],
+    ) -> LlmResponse:
+        if self._tool_agent is not None:
+            return await self._tool_agent.run(request, tools)
+        return await self._llm_provider.complete(request)
+
+
+async def _complete_json_with_retry(
+    complete: Callable[[LlmRequest, tuple[AgentTool, ...]], Awaitable[LlmResponse]],
+    request: LlmRequest,
+    tools: tuple[AgentTool, ...],
+) -> tuple[dict[str, object] | None, LlmResponse]:
+    """Run the LLM, extract a JSON object, and retry once before giving up.
+
+    Returns ``(parsed_or_none, last_response)``. The single retry appends a terse
+    "return only valid JSON" reminder; a persistent failure returns ``None`` so the
+    caller applies its safe fallback.
+    """
+    response = await complete(request, tools)
+    parsed = extract_json_object(response.text)
+    if parsed is not None:
+        return parsed, response
+    retry_request = replace(request, prompt=request.prompt + JSON_RETRY_REMINDER)
+    retry_response = await complete(retry_request, tools)
+    return extract_json_object(retry_response.text), retry_response
 
 
 def _parser_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ()) -> str:
@@ -222,7 +263,8 @@ def _clarification_decision_from_json(
     fallback_progress_note: str,
 ) -> ClarificationDecision:
     if not isinstance(value, Mapping):
-        return ClarificationDecision(sufficient=True)
+        # Unparseable/invalid shape must not finalize as healthy; ask for a status.
+        return ClarificationDecision(sufficient=False, question=GENERIC_CLARIFICATION_QUESTION)
 
     is_status_update = value.get("is_status_update")
     if isinstance(is_status_update, bool) and not is_status_update:
@@ -230,8 +272,10 @@ def _clarification_decision_from_json(
 
     sufficient = value.get("sufficient")
     if not isinstance(sufficient, bool):
+        # Missing/invalid sufficiency flag defaults to a clarification, never green.
         return ClarificationDecision(
-            sufficient=True,
+            sufficient=False,
+            question=GENERIC_CLARIFICATION_QUESTION,
             signals=_signals_from_json(value, fallback_progress_note=fallback_progress_note),
         )
 

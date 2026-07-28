@@ -15,6 +15,19 @@ class RiskRuleId(StrEnum):
     STALE_WORK_ITEM = "stale_work_item"
 
 
+class DriftFindingKind(StrEnum):
+    """Continuous stated-vs-actual divergence ("watermelon") findings.
+
+    Each kind compares a developer-stated status against hard signals
+    (issue-tracker state + Git/PR facts). Distinct from :class:`RiskRuleId`,
+    which scores signal-only staleness/age without a stated-status contrast.
+    """
+
+    SAID_DONE_NO_PR = "said_done_no_pr"
+    CLAIMED_PROGRESS_NO_ACTIVITY = "claimed_progress_no_activity"
+    GREEN_OVER_RED = "green_over_red"
+
+
 class RiskFindingStatus(StrEnum):
     OPEN = "open"
     CLEARED = "cleared"
@@ -55,6 +68,30 @@ class RiskFinding:
 
 
 @dataclass(frozen=True, kw_only=True)
+class DriftFinding:
+    """A continuous drift ("watermelon") finding.
+
+    Produced by contrasting the owner's own stated status/confidence against
+    hard signals already in the graph and fact store. Provider-neutral: carries
+    no raw reply/DM content, only derived, sanitised fields safe for persona
+    views. Never overrides rollup RAG; shown alongside the stated status so the
+    divergence is explicit.
+    """
+
+    tenant_id: str
+    kind: DriftFindingKind
+    severity: Rag
+    entity_ref: EntityRef
+    workstream_id: str | None
+    reason: str
+    detected_at: datetime
+    owner_id: str | None = None
+    stated_source: StatusSource | None = None
+    evidence: RiskEvidence | None = None
+    child_entity_ref: EntityRef | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
 class RiskThresholds:
     """Per-workstream thresholds; falls back to global defaults when unset."""
 
@@ -77,3 +114,6 @@ class RiskProviderConfig:
     default_no_pr_days: int = 3
     default_pr_age_days: int = 3
     default_stale_days: int = 7
+    # Drift/watermelon detection knobs.
+    default_no_activity_days: int = 3
+    done_states: tuple[str, ...] = ("done", "closed", "resolved", "merged")

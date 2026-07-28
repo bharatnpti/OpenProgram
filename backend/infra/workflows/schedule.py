@@ -7,6 +7,7 @@ from core.domain.workflows import (
     CheckinReconcileScheduleConfig,
     CheckinScheduleConfig,
     ConversationPurgeScheduleConfig,
+    InboundSweeperScheduleConfig,
     ScheduleBootstrapResult,
     SyncScheduleConfig,
 )
@@ -43,7 +44,14 @@ async def ensure_workflow_schedules(
         results.append(
             await scheduler.ensure_conversation_purge_schedule(conversation_purge_config(settings))
         )
-    results.extend(await scheduler.ensure_sync_schedules(sync_schedule_configs(settings)))
+    if settings.inbound_events_sweeper_enabled:
+        results.append(
+            await scheduler.ensure_inbound_sweeper_schedule(inbound_sweeper_config(settings))
+        )
+    sync_configs = sync_schedule_configs(settings)
+    if settings.narrative_brief_enabled:
+        sync_configs = (*sync_configs, *narrative_brief_schedule_configs(settings))
+    results.extend(await scheduler.ensure_sync_schedules(sync_configs))
     return results
 
 
@@ -71,6 +79,15 @@ def conversation_purge_config(settings: Settings) -> ConversationPurgeScheduleCo
         tenant_id=settings.tenant_id,
         retention_days=settings.conversation_retention_days,
         cron=settings.conversation_purge_cron,
+    )
+
+
+def inbound_sweeper_config(settings: Settings) -> InboundSweeperScheduleConfig:
+    return InboundSweeperScheduleConfig(
+        schedule_id=settings.inbound_events_sweeper_schedule_id,
+        tenant_id=settings.tenant_id,
+        cron=settings.inbound_events_sweeper_cron,
+        grace_seconds=settings.inbound_events_grace_seconds,
     )
 
 
@@ -107,6 +124,43 @@ def sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
             scope="assessment",
             payload={},
             cron=settings.risk_assessment_cron,
+        ),
+        SyncScheduleConfig(
+            schedule_id="openprogram-runtime-drift-scan",
+            tenant_id=settings.tenant_id,
+            connector="drift",
+            scope="scan",
+            payload={},
+            cron=settings.drift_scan_cron,
+        ),
+    )
+
+
+def narrative_brief_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
+    return (
+        SyncScheduleConfig(
+            schedule_id=settings.narrative_brief_daily_schedule_id,
+            tenant_id=settings.tenant_id,
+            connector="brief",
+            scope="daily_pod",
+            payload={"kind": "daily_pod"},
+            cron=settings.narrative_brief_daily_cron,
+        ),
+        SyncScheduleConfig(
+            schedule_id=settings.narrative_brief_weekly_schedule_id,
+            tenant_id=settings.tenant_id,
+            connector="brief",
+            scope="weekly_project",
+            payload={"kind": "weekly_project"},
+            cron=settings.narrative_brief_weekly_cron,
+        ),
+        SyncScheduleConfig(
+            schedule_id=settings.narrative_brief_exec_schedule_id,
+            tenant_id=settings.tenant_id,
+            connector="brief",
+            scope="exec",
+            payload={"kind": "exec"},
+            cron=settings.narrative_brief_exec_cron,
         ),
     )
 

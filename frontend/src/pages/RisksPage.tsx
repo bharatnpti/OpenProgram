@@ -4,7 +4,11 @@ import { ExternalLink, ShieldAlert } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { apiClient } from "../api/client";
-import type { PortfolioRisksResponse, RiskFindingResponse } from "../api/schema";
+import type {
+  DriftFindingResponse,
+  PortfolioRisksResponse,
+  RiskFindingResponse,
+} from "../api/schema";
 import { DataTable } from "../components/ops/DataTable";
 import {
   AsOfControl,
@@ -25,6 +29,12 @@ const RULE_LABELS: Record<string, string> = {
   stale_work_item: "Stale work item",
 };
 
+const DRIFT_LABELS: Record<string, string> = {
+  said_done_no_pr: "Said done, no PR",
+  claimed_progress_no_activity: "Claimed progress, no activity",
+  green_over_red: "Green hiding a red child",
+};
+
 export function RisksPage() {
   const [asOf, setAsOf] = useState(todayIso);
   const query = useQuery({
@@ -33,7 +43,55 @@ export function RisksPage() {
   });
 
   const rows = query.data?.risks ?? [];
+  const driftRows = query.data?.drift ?? [];
   const watermelonCount = rows.filter((risk) => risk.is_watermelon).length;
+
+  const driftColumns = useMemo<ColumnDef<DriftFindingResponse>[]>(
+    () => [
+      {
+        accessorKey: "kind",
+        header: "Drift signal",
+        cell: ({ row }) => (
+          <div className="flex flex-col gap-1">
+            <span className="font-medium text-foreground">
+              {DRIFT_LABELS[row.original.kind] ?? row.original.kind}
+            </span>
+            <StatusBadge rag={row.original.severity} />
+          </div>
+        ),
+      },
+      {
+        accessorKey: "reason",
+        header: "Reason",
+        cell: ({ row }) => (
+          <div className="flex flex-col gap-1 text-sm">
+            <span>{row.original.reason}</span>
+            {row.original.evidence && <EvidenceLink evidence={row.original.evidence} />}
+          </div>
+        ),
+      },
+      {
+        id: "entity",
+        header: "Entity",
+        cell: ({ row }) => (
+          <span className="text-sm">
+            {row.original.entity_ref.kind}:{row.original.entity_ref.id}
+          </span>
+        ),
+      },
+      {
+        id: "stated_source",
+        header: "Stated status",
+        cell: ({ row }) =>
+          row.original.stated_source ? (
+            <SourceConfidence source={row.original.stated_source} confidence={null} />
+          ) : (
+            <span className="text-xs text-muted-foreground">-</span>
+          ),
+      },
+    ],
+    [],
+  );
 
   const columns = useMemo<ColumnDef<RiskFindingResponse>[]>(
     () => [
@@ -110,13 +168,20 @@ export function RisksPage() {
           <RefreshButton refreshing={query.isFetching} onClick={() => void query.refetch()} />
         </Toolbar>
 
-        <section className="grid gap-3 md:grid-cols-3">
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <KpiCard
             icon={<ShieldAlert className="h-4 w-4" />}
             label="Open risks"
             value={rows.length}
             detail="signal-derived findings currently open"
             tone="warning"
+          />
+          <KpiCard
+            icon={<ShieldAlert className="h-4 w-4" />}
+            label="Drift findings"
+            value={driftRows.length}
+            detail="stated status contradicted by activity"
+            tone={driftRows.length ? "danger" : "success"}
           />
           <KpiCard
             icon={<ShieldAlert className="h-4 w-4" />}
@@ -145,6 +210,22 @@ export function RisksPage() {
                 columns={columns}
                 emptyTitle="No open risks"
                 emptyDescription="Nothing crossed the configured PR-age, no-PR, or staleness thresholds."
+              />
+            )}
+          </QueryState>
+        </DataPanel>
+
+        <DataPanel
+          title="Drift / Watermelon Detection"
+          description="Where a stated status is contradicted by PR and work-item activity -- said-done-with-no-PR, claimed-progress-with-no-activity, or a green parent hiding a red child."
+        >
+          <QueryState query={query} loadingRows={4}>
+            {(data: PortfolioRisksResponse) => (
+              <DataTable
+                data={data.drift}
+                columns={driftColumns}
+                emptyTitle="No drift detected"
+                emptyDescription="Stated statuses are consistent with observed PR and work-item activity."
               />
             )}
           </QueryState>

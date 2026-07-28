@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,15 +9,21 @@ from api.dependencies import (
     get_cross_person_request_service,
     get_current_principal,
     get_flow_metrics_service,
+    get_narrative_brief_repository,
     get_persona_view_service,
     get_portfolio_feed_service,
     get_risk_service,
+    get_write_back_service,
 )
 from api.dtos import (
     CrossPersonRequestResponse,
     CrossPersonRequestsResponse,
     CrossPersonRequestStatusUpdateRequest,
+    DriftFindingResponse,
     FocusResponse,
+    NarrativeBriefResponse,
+    NarrativeBriefsResponse,
+    NodeTrendResponse,
     PodBlockersResponse,
     PodCheckinsResponse,
     PortfolioFeedResponse,
@@ -30,6 +36,7 @@ from api.dtos import (
     RiskFindingResponse,
     WorkstreamFlowResponse,
     WorkstreamProgressResponse,
+    WriteBackAdoptionResponse,
 )
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.cross_person_service import CrossPersonRequestService
@@ -37,11 +44,20 @@ from core.application.flow_metrics_service import FlowMetricsService
 from core.application.persona_views import PersonaViewService
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.application.risk_service import RiskService
+from core.application.writeback_service import WriteBackService
 from core.domain.auth import Principal
+from core.domain.brief import BriefKind
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
 from core.domain.errors import AuthorizationDenied, GraphNotFound
+from core.domain.graph import NodeKind
+from core.ports.repositories import NarrativeBriefRepository
 
 router = APIRouter(tags=["personas"])
+
+# Entity kinds that carry a rolled-up RAG status in node_statuses.
+_TREND_KINDS = frozenset(
+    {NodeKind.PROGRAM, NodeKind.PROJECT, NodeKind.POD, NodeKind.DEVELOPER, NodeKind.TASK}
+)
 
 
 @router.get("/me/focus", response_model=FocusResponse)
@@ -127,6 +143,27 @@ async def portfolio_heatmap(
     return PortfolioHeatmapResponse.from_view(view)
 
 
+@router.get("/persona/{level}/{entity_id}/trend", response_model=NodeTrendResponse)
+async def node_trend(
+    level: NodeKind,
+    entity_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+    as_of: Annotated[date, Query(default_factory=date.today)],
+    window_days: Annotated[int, Query(ge=1, le=365)] = 30,
+) -> NodeTrendResponse:
+    _ensure_aggregate(principal)
+    if level not in _TREND_KINDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"trend is not available for entity kind '{level.value}'",
+        )
+    view = await persona_service.node_trend(
+        principal.tenant_id, level, entity_id, as_of, window_days
+    )
+    return NodeTrendResponse.from_view(view)
+
+
 @router.get("/workstreams/{workstream_id}/flow", response_model=WorkstreamFlowResponse)
 async def workstream_flow(
     workstream_id: str,
@@ -159,6 +196,39 @@ async def portfolio_feed(
     _ensure_aggregate(principal)
     view = await service.feed(principal.tenant_id, since)
     return PortfolioFeedResponse.from_view(view)
+
+
+@router.get("/persona/briefs", response_model=NarrativeBriefsResponse)
+async def narrative_briefs(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    repository: Annotated[NarrativeBriefRepository, Depends(get_narrative_brief_repository)],
+    kind: Annotated[BriefKind | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> NarrativeBriefsResponse:
+    # apiClient note: frontend client regen picks this up automatically.
+    _ensure_aggregate(principal)
+    briefs = await repository.latest_briefs(principal.tenant_id, kind, limit)
+    return NarrativeBriefsResponse(
+        briefs=[NarrativeBriefResponse.from_domain(brief) for brief in briefs],
+    )
+
+
+@router.get("/persona/writeback-adoption", response_model=WriteBackAdoptionResponse)
+async def writeback_adoption(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[WriteBackService, Depends(get_write_back_service)],
+    window_days: Annotated[int | None, Query(ge=1, le=365)] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 5,
+) -> WriteBackAdoptionResponse:
+    # Surfaces "Jira updates applied via check-in" so the time-saved is visible.
+    _ensure_aggregate(principal)
+    since = (
+        datetime.now(tz=UTC) - timedelta(days=window_days)
+        if window_days is not None
+        else None
+    )
+    adoption = await service.adoption(principal.tenant_id, limit=limit, since=since)
+    return WriteBackAdoptionResponse.from_domain(adoption)
 
 
 @router.get("/portfolio/cross-person-requests", response_model=CrossPersonRequestsResponse)
@@ -231,12 +301,14 @@ async def project_risks(
     _ensure_aggregate(principal)
     try:
         findings = await service.project_risks(principal.tenant_id, project_id, as_of)
+        drift = await service.project_drift(principal.tenant_id, project_id, as_of)
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return ProjectRisksResponse(
         project_id=project_id,
         as_of=as_of,
         risks=[RiskFindingResponse.from_domain(finding) for finding in findings],
+        drift=[DriftFindingResponse.from_domain(finding) for finding in drift],
     )
 
 
@@ -248,9 +320,11 @@ async def portfolio_risks(
 ) -> PortfolioRisksResponse:
     _ensure_aggregate(principal)
     findings = await service.portfolio_risks(principal.tenant_id, as_of)
+    drift = await service.portfolio_drift(principal.tenant_id, as_of)
     return PortfolioRisksResponse(
         as_of=as_of,
         risks=[RiskFindingResponse.from_domain(finding) for finding in findings],
+        drift=[DriftFindingResponse.from_domain(finding) for finding in drift],
     )
 
 
