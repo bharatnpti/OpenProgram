@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 
 from core.domain.directory import DirectoryUser
 from core.domain.errors import GraphNotFound, OpenProgramError
+from core.domain.escalation import (
+    PodEscalationContacts,
+    apply_escalation_contacts_to_metadata,
+    escalation_contacts_from_metadata,
+)
 from core.domain.graph import (
     EdgeKind,
     FactEvent,
@@ -15,14 +20,17 @@ from core.domain.graph import (
     NodeKind,
     WorkItem,
 )
+from core.domain.identity import IdentityLink
 from core.domain.rollup import Rag
 from core.domain.status import CheckInPreference, StatusSource
 from core.ports.directory import DirectoryUserRepository
 from core.ports.repositories import (
     GraphRepository,
+    IdentityLinkRepository,
     RollupRepository,
     StatusRepository,
     TimeSeriesRepository,
+    WriteBackConfigRepository,
 )
 
 
@@ -52,6 +60,26 @@ class DirectoryItemView:
     task_ids: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, kw_only=True)
+class IdentityAutoMatchMember:
+    id: str
+    name: str
+    filled: tuple[str, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class IdentityAutoMatchResult:
+    updated_count: int
+    members: tuple[IdentityAutoMatchMember, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class UnmappedMember:
+    id: str
+    name: str
+    missing: tuple[str, ...]
+
+
 class ConfigService:
     def __init__(
         self,
@@ -59,11 +87,15 @@ class ConfigService:
         status_repository: StatusRepository,
         directory_repository: DirectoryUserRepository | None = None,
         time_series_repository: TimeSeriesRepository | None = None,
+        identity_link_repository: IdentityLinkRepository | None = None,
+        writeback_config_repository: WriteBackConfigRepository | None = None,
     ) -> None:
         self._graph_repository = graph_repository
         self._status_repository = status_repository
         self._directory_repository = directory_repository
         self._time_series_repository = time_series_repository
+        self._identity_link_repository = identity_link_repository
+        self._writeback_config_repository = writeback_config_repository
 
     async def list_nodes(self, tenant_id: str, kind: NodeKind) -> list[GraphNode]:
         return await self._graph_repository.list_nodes(tenant_id, kind)
@@ -451,6 +483,109 @@ class ConfigService:
     async def list_checkin_preferences(self, tenant_id: str) -> list[CheckInPreference]:
         return await self._status_repository.list_checkin_preferences(tenant_id)
 
+    async def get_identity_link(
+        self,
+        tenant_id: str,
+        member_id: str,
+    ) -> IdentityLink | None:
+        await self._ensure_node(tenant_id, member_id, NodeKind.DEVELOPER)
+        repository = self._identity_link_repository_or_raise()
+        return await repository.get_identity_link(tenant_id, member_id)
+
+    async def set_identity_link(self, link: IdentityLink) -> IdentityLink:
+        await self._ensure_node(link.tenant_id, link.developer_id, NodeKind.DEVELOPER)
+        repository = self._identity_link_repository_or_raise()
+        await repository.upsert_identity_link(link)
+        return link
+
+    async def auto_match_identity_links(self, tenant_id: str) -> IdentityAutoMatchResult:
+        """Pre-populate missing identity-link fields from directory data.
+
+        For every configured developer node, resolve the matching directory user
+        (the member id is the directory ``external_id``) and fill any field that
+        is currently unset: ``external_id`` -> ``chat_user_id`` and ``email`` ->
+        ``jira_email``. Admin-set values are never overwritten.
+        """
+        directory = self._directory_repository_or_raise()
+        repository = self._identity_link_repository_or_raise()
+        members = await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER)
+        matched: list[IdentityAutoMatchMember] = []
+        for member in members:
+            directory_user = await directory.get(tenant_id, member.id)
+            if directory_user is None:
+                continue
+            existing = await repository.get_identity_link(tenant_id, member.id)
+            link = existing or IdentityLink(tenant_id=tenant_id, developer_id=member.id)
+            filled: list[str] = []
+            chat_user_id = link.chat_user_id
+            jira_email = link.jira_email
+            if chat_user_id is None and directory_user.external_id:
+                chat_user_id = directory_user.external_id
+                filled.append("chat_user_id")
+            if jira_email is None and directory_user.email:
+                jira_email = directory_user.email
+                filled.append("jira_email")
+            if not filled:
+                continue
+            await repository.upsert_identity_link(
+                replace(link, chat_user_id=chat_user_id, jira_email=jira_email)
+            )
+            matched.append(
+                IdentityAutoMatchMember(id=member.id, name=member.name, filled=tuple(filled))
+            )
+        return IdentityAutoMatchResult(updated_count=len(matched), members=tuple(matched))
+
+    async def list_unmapped_members(self, tenant_id: str) -> list[UnmappedMember]:
+        """List developer nodes whose identity link is missing or lacks a chat id.
+
+        A member with no resolved ``chat_user_id`` cannot receive check-in DMs, so
+        it is surfaced to admins together with the identity fields still unset.
+        """
+        repository = self._identity_link_repository_or_raise()
+        members = await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER)
+        links = {
+            link.developer_id: link
+            for link in await repository.list_identity_links(tenant_id)
+        }
+        unmapped: list[UnmappedMember] = []
+        for member in members:
+            link = links.get(member.id)
+            if link is not None and link.chat_user_id is not None:
+                continue
+            unmapped.append(
+                UnmappedMember(
+                    id=member.id,
+                    name=member.name,
+                    missing=_missing_identity_fields(link),
+                )
+            )
+        return unmapped
+
+    async def get_tenant_writeback_enabled(self, tenant_id: str, default: bool) -> bool:
+        """Resolve the system gate: persisted tenant override, else the fallback."""
+        repository = self._writeback_config_repository_or_raise()
+        override = await repository.get_writeback_enabled(tenant_id)
+        return default if override is None else override
+
+    async def set_tenant_writeback_enabled(self, tenant_id: str, enabled: bool) -> None:
+        repository = self._writeback_config_repository_or_raise()
+        await repository.set_writeback_enabled(tenant_id, enabled)
+
+    async def get_pod_escalation_contacts(
+        self, tenant_id: str, pod_id: str
+    ) -> PodEscalationContacts:
+        node = await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
+        return escalation_contacts_from_metadata(node.metadata)
+
+    async def set_pod_escalation_contacts(
+        self, tenant_id: str, pod_id: str, contacts: PodEscalationContacts
+    ) -> PodEscalationContacts:
+        node = await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
+        metadata = dict(node.metadata)
+        apply_escalation_contacts_to_metadata(metadata, contacts)
+        await self._graph_repository.upsert_node(replace(node, metadata=metadata))
+        return contacts
+
     async def search_directory(
         self,
         tenant_id: str,
@@ -594,6 +729,16 @@ class ConfigService:
         if self._directory_repository is None:
             raise ConfigValidationError("directory repository is not configured")
         return self._directory_repository
+
+    def _identity_link_repository_or_raise(self) -> IdentityLinkRepository:
+        if self._identity_link_repository is None:
+            raise ConfigValidationError("identity link repository is not configured")
+        return self._identity_link_repository
+
+    def _writeback_config_repository_or_raise(self) -> WriteBackConfigRepository:
+        if self._writeback_config_repository is None:
+            raise ConfigValidationError("writeback config repository is not configured")
+        return self._writeback_config_repository
 
     def _time_series_repository_or_raise(self) -> TimeSeriesRepository:
         if self._time_series_repository is None:
@@ -777,6 +922,13 @@ def _target_ids(
         if node is not None and node.kind is kind and node.id not in ids:
             ids.append(node.id)
     return tuple(sorted(ids))
+
+
+def _missing_identity_fields(link: IdentityLink | None) -> tuple[str, ...]:
+    if link is None:
+        return ("chat_user_id", "jira_account_id", "jira_email", "vcs_username")
+    fields = ("chat_user_id", "jira_account_id", "jira_email", "vcs_username")
+    return tuple(field for field in fields if getattr(link, field) is None)
 
 
 def _metadata(metadata: Mapping[str, JsonScalar] | None) -> dict[str, JsonScalar]:

@@ -43,11 +43,19 @@ async def chat_webhook(
         return JSONResponse({"challenge": challenge})
 
     try:
-        outcome = await registry.process_chat_webhook(
-            provider,
-            mapped_payload,
-            current_correlation_id(),
-        )
+        if registry.fast_ack_enabled():
+            # Fast intake: verify + dedup + arm; no LLM in the request path.
+            outcome = await registry.enqueue_inbound_chat_event(
+                provider,
+                mapped_payload,
+                current_correlation_id(),
+            )
+        else:
+            outcome = await registry.process_chat_webhook(
+                provider,
+                mapped_payload,
+                current_correlation_id(),
+            )
     except ProviderUnavailable:
         return _ignored_response("provider-unavailable")
 

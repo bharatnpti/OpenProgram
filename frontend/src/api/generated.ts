@@ -208,6 +208,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/ops/dead-letters": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Dead Letters */
+    get: operations["list_dead_letters_admin_ops_dead_letters_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/ops/dead-letters/{dead_letter_id}/rearm": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Rearm Dead Letter */
+    post: operations["rearm_dead_letter_admin_ops_dead_letters__dead_letter_id__rearm_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/admin/ops/writeback/{audit_id}/revert": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Revert Writeback */
+    post: operations["revert_writeback_admin_ops_writeback__audit_id__revert_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/programs": {
     parameters: {
       query?: never;
@@ -461,6 +512,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/config/members/unmapped": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Config Unmapped Members */
+    get: operations["list_config_unmapped_members_config_members_unmapped_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/members/identity-links/auto-match": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Auto Match Config Identity Links */
+    post: operations["auto_match_config_identity_links_config_members_identity_links_auto_match_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/directory/users": {
     parameters: {
       query?: never;
@@ -685,6 +770,78 @@ export interface paths {
     /** List Config Checkin Preferences */
     get: operations["list_config_checkin_preferences_config_checkin_preferences_get"];
     put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/members/{member_id}/writeback-consent": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Config Member Writeback Consent */
+    get: operations["get_config_member_writeback_consent_config_members__member_id__writeback_consent_get"];
+    /** Update Config Member Writeback Consent */
+    put: operations["update_config_member_writeback_consent_config_members__member_id__writeback_consent_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/members/{member_id}/identity-link": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Config Member Identity Link */
+    get: operations["get_config_member_identity_link_config_members__member_id__identity_link_get"];
+    /** Update Config Member Identity Link */
+    put: operations["update_config_member_identity_link_config_members__member_id__identity_link_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/pods/{pod_id}/escalation-contacts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Config Pod Escalation Contacts */
+    get: operations["get_config_pod_escalation_contacts_config_pods__pod_id__escalation_contacts_get"];
+    /** Update Config Pod Escalation Contacts */
+    put: operations["update_config_pod_escalation_contacts_config_pods__pod_id__escalation_contacts_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/tenant/writeback": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Config Tenant Writeback */
+    get: operations["get_config_tenant_writeback_config_tenant_writeback_get"];
+    /** Update Config Tenant Writeback */
+    put: operations["update_config_tenant_writeback_config_tenant_writeback_put"];
     post?: never;
     delete?: never;
     options?: never;
@@ -999,6 +1156,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/persona/{level}/{entity_id}/trend": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Node Trend */
+    get: operations["node_trend_persona__level___entity_id__trend_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/workstreams/{workstream_id}/flow": {
     parameters: {
       query?: never;
@@ -1042,6 +1216,40 @@ export interface paths {
     };
     /** Portfolio Feed */
     get: operations["portfolio_feed_portfolio_feed_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/persona/briefs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Narrative Briefs */
+    get: operations["narrative_briefs_persona_briefs_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/persona/writeback-adoption": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Writeback Adoption */
+    get: operations["writeback_adoption_persona_writeback_adoption_get"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1292,6 +1500,15 @@ export interface components {
       status_as_of: string;
       source_ref: components["schemas"]["EntityRefDto"];
     };
+    /**
+     * BriefKind
+     * @description The scheduled narrative brief flavors.
+     *
+     *     Each kind targets a different scope: pod-level daily summaries, project-level
+     *     weekly updates, and a single portfolio-wide executive brief.
+     * @enum {string}
+     */
+    BriefKind: "daily_pod" | "weekly_project" | "exec";
     /** CalendarSyncDispatchRequest */
     CalendarSyncDispatchRequest: {
       /** Tenant Id */
@@ -1584,6 +1801,50 @@ export interface components {
       /** Requests */
       requests: components["schemas"]["CrossPersonRequestResponse"][];
     };
+    /** DeadLetterResponse */
+    DeadLetterResponse: {
+      /** Id */
+      id: string;
+      /** Tenant Id */
+      tenant_id: string;
+      /** Kind */
+      kind: string;
+      /** Conversation Key */
+      conversation_key: string;
+      /** Event Ids */
+      event_ids: string[];
+      /** Reason */
+      reason: string;
+      /** Attempts */
+      attempts: number;
+      /**
+       * First Seen At
+       * Format: date-time
+       */
+      first_seen_at: string;
+      /**
+       * Dead Lettered At
+       * Format: date-time
+       */
+      dead_lettered_at: string;
+      status: components["schemas"]["DeadLetterStatus"];
+      /** Rearmed At */
+      rearmed_at?: string | null;
+    };
+    /**
+     * DeadLetterStatus
+     * @description Lifecycle of a dead-lettered workflow event.
+     *
+     *     ``OPEN`` means the event exhausted its durable retries and awaits operator
+     *     action; ``REARMED`` means an operator re-triggered processing for it.
+     * @enum {string}
+     */
+    DeadLetterStatus: "open" | "rearmed";
+    /** DeadLettersResponse */
+    DeadLettersResponse: {
+      /** Dead Letters */
+      dead_letters: components["schemas"]["DeadLetterResponse"][];
+    };
     /** DirectoryItemResponse */
     DirectoryItemResponse: {
       /** Id */
@@ -1654,6 +1915,33 @@ export interface components {
       };
     };
     /**
+     * DriftFindingResponse
+     * @description A continuous drift ("watermelon") finding for persona risk views.
+     *
+     *     Carries only derived, sanitised fields -- never raw DM/reply content -- so
+     *     the stated-vs-actual divergence is explicit alongside signal-only risks.
+     */
+    DriftFindingResponse: {
+      /** Kind */
+      kind: string;
+      severity: components["schemas"]["Rag"];
+      entity_ref: components["schemas"]["EntityRefDto"];
+      /** Workstream Id */
+      workstream_id: string | null;
+      /** Reason */
+      reason: string;
+      /**
+       * Detected At
+       * Format: date-time
+       */
+      detected_at: string;
+      /** Owner Id */
+      owner_id: string | null;
+      stated_source: components["schemas"]["StatusSource"] | null;
+      evidence: components["schemas"]["RiskEvidenceDto"] | null;
+      child_entity_ref: components["schemas"]["EntityRefDto"] | null;
+    };
+    /**
      * EdgeKind
      * @enum {string}
      */
@@ -1665,6 +1953,13 @@ export interface components {
       kind: components["schemas"]["NodeKind"];
       /** Id */
       id: string;
+    };
+    /** EscalationContactDto */
+    EscalationContactDto: {
+      /** Chat External Id */
+      chat_external_id: string;
+      /** Display Name */
+      display_name?: string | null;
     };
     /** FocusItemDto */
     FocusItemDto: {
@@ -1790,6 +2085,46 @@ export interface components {
       why: string;
       source_ref: components["schemas"]["EntityRefDto"];
     };
+    /** IdentityAutoMatchMemberDto */
+    IdentityAutoMatchMemberDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Filled */
+      filled: string[];
+    };
+    /** IdentityAutoMatchResponse */
+    IdentityAutoMatchResponse: {
+      /** Updated Count */
+      updated_count: number;
+      /** Members */
+      members: components["schemas"]["IdentityAutoMatchMemberDto"][];
+    };
+    /** IdentityLinkResponse */
+    IdentityLinkResponse: {
+      /** Developer Id */
+      developer_id: string;
+      /** Chat User Id */
+      chat_user_id: string | null;
+      /** Jira Account Id */
+      jira_account_id: string | null;
+      /** Jira Email */
+      jira_email: string | null;
+      /** Vcs Username */
+      vcs_username: string | null;
+    };
+    /** IdentityLinkUpdateRequest */
+    IdentityLinkUpdateRequest: {
+      /** Chat User Id */
+      chat_user_id?: string | null;
+      /** Jira Account Id */
+      jira_account_id?: string | null;
+      /** Jira Email */
+      jira_email?: string | null;
+      /** Vcs Username */
+      vcs_username?: string | null;
+    };
     /** JiraSyncDispatchRequest */
     JiraSyncDispatchRequest: {
       /** Tenant Id */
@@ -1839,6 +2174,28 @@ export interface components {
       /** Confirmed At */
       confirmed_at: string | null;
     };
+    /** NarrativeBriefResponse */
+    NarrativeBriefResponse: {
+      kind: components["schemas"]["BriefKind"];
+      /** Scope Id */
+      scope_id: string;
+      /** Title */
+      title: string;
+      /** Body */
+      body: string;
+      /**
+       * Generated At
+       * Format: date-time
+       */
+      generated_at: string;
+      /** Sources */
+      sources: string[];
+    };
+    /** NarrativeBriefsResponse */
+    NarrativeBriefsResponse: {
+      /** Briefs */
+      briefs: components["schemas"]["NarrativeBriefResponse"][];
+    };
     /**
      * NodeKind
      * @enum {string}
@@ -1853,6 +2210,24 @@ export interface components {
       | "developer"
       | "task"
       | "work_item";
+    /** NodeTrendResponse */
+    NodeTrendResponse: {
+      entity_ref: components["schemas"]["EntityRefDto"];
+      /** Window Days */
+      window_days: number;
+      /**
+       * Start
+       * Format: date
+       */
+      start: string;
+      /**
+       * End
+       * Format: date
+       */
+      end: string;
+      /** Points */
+      points: components["schemas"]["TrendPointDto"][];
+    };
     /** PersonaTreeEdgeDto */
     PersonaTreeEdgeDto: {
       /** From Node Id */
@@ -1910,6 +2285,18 @@ export interface components {
       missing: number;
       /** Developers */
       developers: components["schemas"]["CheckinDeveloperDto"][];
+    };
+    /** PodEscalationContactsResponse */
+    PodEscalationContactsResponse: {
+      /** Pod Id */
+      pod_id: string;
+      scrum_master: components["schemas"]["EscalationContactDto"] | null;
+      manager: components["schemas"]["EscalationContactDto"] | null;
+    };
+    /** PodEscalationContactsUpdateRequest */
+    PodEscalationContactsUpdateRequest: {
+      scrum_master?: components["schemas"]["EscalationContactDto"] | null;
+      manager?: components["schemas"]["EscalationContactDto"] | null;
     };
     /** PodMemberLinkRequest */
     PodMemberLinkRequest: {
@@ -1997,6 +2384,11 @@ export interface components {
       as_of: string;
       /** Risks */
       risks: components["schemas"]["RiskFindingResponse"][];
+      /**
+       * Drift
+       * @default []
+       */
+      drift: components["schemas"]["DriftFindingResponse"][];
     };
     /** ProgramProjectLinkRequest */
     ProgramProjectLinkRequest: {
@@ -2060,6 +2452,11 @@ export interface components {
       as_of: string;
       /** Risks */
       risks: components["schemas"]["RiskFindingResponse"][];
+      /**
+       * Drift
+       * @default []
+       */
+      drift: components["schemas"]["DriftFindingResponse"][];
     };
     /**
      * Rag
@@ -2149,6 +2546,37 @@ export interface components {
       confidence: number | null;
       /** Deadline */
       deadline: string | null;
+    };
+    /** TenantWritebackResponse */
+    TenantWritebackResponse: {
+      /** Enabled */
+      enabled: boolean;
+    };
+    /** TenantWritebackUpdateRequest */
+    TenantWritebackUpdateRequest: {
+      /** Enabled */
+      enabled: boolean;
+    };
+    /** TrendPointDto */
+    TrendPointDto: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      rag: components["schemas"]["Rag"];
+      source: components["schemas"]["StatusSource"];
+      /** Score */
+      score: number;
+    };
+    /** UnmappedMemberResponse */
+    UnmappedMemberResponse: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Missing */
+      missing: string[];
     };
     /** ValidationError */
     ValidationError: {
@@ -2347,6 +2775,64 @@ export interface components {
       factors: components["schemas"]["RollupFactorDto"][];
       /** Tasks */
       tasks: components["schemas"]["TaskProgressDto"][];
+    };
+    /** WriteBackAdoptionEntry */
+    WriteBackAdoptionEntry: {
+      /** Issue Key */
+      issue_key: string;
+      /** To State */
+      to_state: string;
+      /**
+       * Applied At
+       * Format: date-time
+       */
+      applied_at: string;
+      /** Correlation Id */
+      correlation_id: string;
+    };
+    /** WriteBackAdoptionResponse */
+    WriteBackAdoptionResponse: {
+      /** Applied Count */
+      applied_count: number;
+      /** Recent */
+      recent: components["schemas"]["WriteBackAdoptionEntry"][];
+    };
+    /**
+     * WriteBackConsent
+     * @description Per-developer standing consent for automated issue-tracker write-back.
+     *
+     *     ``always_ask`` (the safe default) never writes automatically; ``auto_apply``
+     *     grants standing consent; ``never`` opts out entirely.
+     * @enum {string}
+     */
+    WriteBackConsent: "always_ask" | "auto_apply" | "never";
+    /** WriteBackRevertResponse */
+    WriteBackRevertResponse: {
+      /** Audit Id */
+      audit_id: string;
+      /** Issue Key */
+      issue_key: string;
+      /** From State */
+      from_state: string | null;
+      /** To State */
+      to_state: string | null;
+      status: components["schemas"]["WriteBackStatus"];
+    };
+    /**
+     * WriteBackStatus
+     * @description Lifecycle of a single audited issue-tracker write.
+     * @enum {string}
+     */
+    WriteBackStatus: "proposed" | "applied" | "failed" | "reverted" | "declined" | "expired";
+    /** WritebackConsentResponse */
+    WritebackConsentResponse: {
+      /** Developer Id */
+      developer_id: string;
+      consent: components["schemas"]["WriteBackConsent"];
+    };
+    /** WritebackConsentUpdateRequest */
+    WritebackConsentUpdateRequest: {
+      consent: components["schemas"]["WriteBackConsent"];
     };
   };
   responses: never;
@@ -2682,6 +3168,103 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["WorkflowDispatchResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_dead_letters_admin_ops_dead_letters_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeadLettersResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  rearm_dead_letter_admin_ops_dead_letters__dead_letter_id__rearm_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        dead_letter_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WorkflowDispatchResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  revert_writeback_admin_ops_writeback__audit_id__revert_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        audit_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WriteBackRevertResponse"];
         };
       };
       /** @description Validation Error */
@@ -3668,6 +4251,68 @@ export interface operations {
       };
     };
   };
+  list_config_unmapped_members_config_members_unmapped_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UnmappedMemberResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  auto_match_config_identity_links_config_members_identity_links_auto_match_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IdentityAutoMatchResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   search_config_directory_users_config_directory_users_get: {
     parameters: {
       query?: {
@@ -4445,6 +5090,282 @@ export interface operations {
       };
     };
   };
+  get_config_member_writeback_consent_config_members__member_id__writeback_consent_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WritebackConsentResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_config_member_writeback_consent_config_members__member_id__writeback_consent_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WritebackConsentUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WritebackConsentResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_config_member_identity_link_config_members__member_id__identity_link_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IdentityLinkResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_config_member_identity_link_config_members__member_id__identity_link_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        member_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["IdentityLinkUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IdentityLinkResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_config_pod_escalation_contacts_config_pods__pod_id__escalation_contacts_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PodEscalationContactsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_config_pod_escalation_contacts_config_pods__pod_id__escalation_contacts_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PodEscalationContactsUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PodEscalationContactsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_config_tenant_writeback_config_tenant_writeback_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TenantWritebackResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_config_tenant_writeback_config_tenant_writeback_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TenantWritebackUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TenantWritebackResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   list_programs_programs_get: {
     parameters: {
       query?: {
@@ -5093,6 +6014,43 @@ export interface operations {
       };
     };
   };
+  node_trend_persona__level___entity_id__trend_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        window_days?: number;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        level: components["schemas"]["NodeKind"];
+        entity_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["NodeTrendResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   workstream_flow_workstreams__workstream_id__flow_get: {
     parameters: {
       query?: {
@@ -5181,6 +6139,74 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PortfolioFeedResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  narrative_briefs_persona_briefs_get: {
+    parameters: {
+      query?: {
+        kind?: components["schemas"]["BriefKind"] | null;
+        limit?: number;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["NarrativeBriefsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  writeback_adoption_persona_writeback_adoption_get: {
+    parameters: {
+      query?: {
+        window_days?: number | null;
+        limit?: number;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["WriteBackAdoptionResponse"];
         };
       };
       /** @description Validation Error */

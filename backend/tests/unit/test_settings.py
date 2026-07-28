@@ -182,6 +182,62 @@ def test_settings_fail_fast_on_invalid_secret_key() -> None:
         _settings(secret_key="too-short")
 
 
+def test_settings_reject_dev_auth_outside_local() -> None:
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, environment="production", auth_provider="dev")
+
+
+def test_settings_reject_default_secret_key_outside_local() -> None:
+    with pytest.raises(ValidationError):
+        _settings(
+            environment="staging",
+            secret_key=SECRET_KEY,
+            auth_provider="oidc_bff",
+            oidc_issuer_url="https://issuer.example.com",
+            oidc_client_id="openprogram",
+            oidc_client_secret="secret",
+            runtime_mode="memory",
+        )
+
+
+def test_settings_allow_hardened_non_local_config() -> None:
+    unique_key = "A" * 43 + "="
+    settings = _settings(
+        environment="production",
+        secret_key=unique_key,
+        auth_provider="oidc_bff",
+        oidc_issuer_url="https://issuer.example.com",
+        oidc_client_id="openprogram",
+        oidc_client_secret="secret",
+        runtime_mode="memory",
+    )
+    assert settings.environment == "production"
+    assert settings.auth_provider == "oidc_bff"
+
+
+def test_settings_allow_dev_auth_and_default_key_in_local() -> None:
+    settings = _settings(secret_key=SECRET_KEY, environment="local", auth_provider="dev")
+    assert settings.auth_provider == "dev"
+    assert settings.secret_key == SECRET_KEY
+
+
+def test_settings_escalation_policy_default_ladder() -> None:
+    settings = _settings(
+        secret_key=SECRET_KEY,
+        checkin_reply_wait_seconds=100,
+        escalation_scrum_master_wait_seconds=200,
+        escalation_manager_wait_seconds=300,
+    )
+    policy = settings.escalation_policy()
+    assert [step.target.value for step in policy.steps] == ["developer", "scrum_master", "manager"]
+    assert [step.wait_seconds for step in policy.steps] == [100, 200, 300]
+
+
+def test_settings_escalation_policy_disabled_is_empty() -> None:
+    settings = _settings(secret_key=SECRET_KEY, escalation_enabled=False)
+    assert settings.escalation_policy().steps == ()
+
+
 def test_settings_validate_provider_selectors() -> None:
     settings = _settings(
         secret_key=SECRET_KEY,

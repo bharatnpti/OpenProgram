@@ -15,9 +15,13 @@ from fastapi.testclient import TestClient
 from api.dependencies import get_directory_sync_service
 from api.main import create_app
 from config.settings import Settings
+from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.errors import ProviderConfigurationError
-from core.domain.graph import Task
+from core.domain.graph import EntityRef, NodeKind, Task
+from core.domain.integrations import Issue, IssueState
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
+from core.domain.rollup import NodeStatus, Rag
+from core.domain.status import StatusSource
 from core.domain.workflows import (
     CheckinScheduleConfig,
     ConversationPurgeScheduleConfig,
@@ -26,8 +30,10 @@ from core.domain.workflows import (
     SyncDispatchInput,
     SyncScheduleConfig,
 )
+from core.domain.writeback import WriteBackAudit, WriteBackStatus
 from core.ports.llm import LlmProvider
 from infra.registry import ServiceRegistry
+from tests.contract.fakes import FakeIssueTracker
 from tests.fixtures.demo_graph import populate_demo_graph
 
 
@@ -57,6 +63,216 @@ def test_memory_app_starts_without_demo_data(settings: Settings) -> None:
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_node_trend_endpoint_returns_daily_rag_history(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        registry = app.state.registry
+        for day, rag in (
+            ("2026-01-08", Rag.RED),
+            ("2026-01-09", Rag.AMBER),
+            ("2026-01-10", Rag.GREEN),
+        ):
+            asyncio.run(
+                registry.rollup_repository().record_node_status(
+                    NodeStatus(
+                        entity_ref=EntityRef(
+                            tenant_id="demo", kind=NodeKind.PROJECT, id="project-api"
+                        ),
+                        rag=rag,
+                        source=StatusSource.CONFIRMED,
+                        factors=(),
+                        as_of=date.fromisoformat(day),
+                    )
+                )
+            )
+        response = client.get(
+            "/persona/project/project-api/trend",
+            params={"as_of": "2026-01-10", "window_days": 5},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["entity_ref"]["id"] == "project-api"
+    assert body["window_days"] == 5
+    assert [point["as_of"] for point in body["points"]] == [
+        "2026-01-08",
+        "2026-01-09",
+        "2026-01-10",
+    ]
+    assert [point["score"] for point in body["points"]] == [1, 2, 3]
+
+
+def test_narrative_briefs_endpoint_returns_newest_first(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        repository = app.state.registry.narrative_brief_repository()
+        for kind, scope_id, generated_at, title in (
+            (BriefKind.DAILY_POD, "pod-1", "2026-01-10T17:00:00+00:00", "Pod 1 daily"),
+            (BriefKind.EXEC, "", "2026-01-11T16:00:00+00:00", "Exec brief"),
+        ):
+            asyncio.run(
+                repository.record_brief(
+                    NarrativeBrief(
+                        tenant_id="demo",
+                        kind=kind,
+                        scope_id=scope_id,
+                        title=title,
+                        body="Descriptive rollup only.",
+                        generated_at=datetime.fromisoformat(generated_at),
+                        sources=("pod:pod-1",),
+                    )
+                )
+            )
+        all_response = client.get("/persona/briefs")
+        exec_response = client.get("/persona/briefs", params={"kind": "exec"})
+
+    assert all_response.status_code == 200
+    briefs = all_response.json()["briefs"]
+    assert [brief["title"] for brief in briefs] == ["Exec brief", "Pod 1 daily"]
+    assert briefs[0]["kind"] == "exec"
+    assert briefs[1]["sources"] == ["pod:pod-1"]
+
+    assert exec_response.status_code == 200
+    exec_briefs = exec_response.json()["briefs"]
+    assert [brief["title"] for brief in exec_briefs] == ["Exec brief"]
+
+
+def test_narrative_briefs_endpoint_rejects_out_of_range_limit(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/persona/briefs", params={"limit": 0})
+
+    assert response.status_code == 422
+
+
+def test_node_trend_endpoint_rejects_unsupported_kind(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/persona/workstream/ws-1/trend")
+
+    assert response.status_code == 422
+
+
+def test_pod_escalation_contacts_endpoint_round_trip(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        create = client.post("/config/pods", json={"id": "pod-1", "name": "Runtime Pod"})
+        empty = client.get("/config/pods/pod-1/escalation-contacts")
+        update = client.put(
+            "/config/pods/pod-1/escalation-contacts",
+            json={
+                "scrum_master": {"chat_external_id": "U-SM", "display_name": "Sam SM"},
+                "manager": {"chat_external_id": "U-MGR"},
+            },
+        )
+        reloaded = client.get("/config/pods/pod-1/escalation-contacts")
+
+    assert create.status_code == 201
+    assert empty.status_code == 200
+    assert empty.json()["scrum_master"] is None
+    assert update.status_code == 200
+    body = reloaded.json()
+    assert body["pod_id"] == "pod-1"
+    assert body["scrum_master"]["chat_external_id"] == "U-SM"
+    assert body["scrum_master"]["display_name"] == "Sam SM"
+    assert body["manager"]["chat_external_id"] == "U-MGR"
+    assert body["manager"]["display_name"] is None
+
+
+def test_pod_escalation_contacts_endpoint_missing_pod_returns_404(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/config/pods/missing/escalation-contacts")
+
+    assert response.status_code == 404
+
+
+def test_identity_link_auto_match_and_unmapped_flow(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        client.post("/config/directory/sync")
+        client.post("/config/members/from-directory", json={"external_ids": ["U1001", "U1002"]})
+        # U1002 gets an admin-set chat id that auto-match must not overwrite.
+        client.put(
+            "/config/members/U1002/identity-link",
+            json={"chat_user_id": "ADMIN-CHAT"},
+        )
+
+        unmapped_before = client.get("/config/members/unmapped")
+        auto_match = client.post("/config/members/identity-links/auto-match")
+        u1001_link = client.get("/config/members/U1001/identity-link")
+        u1002_link = client.get("/config/members/U1002/identity-link")
+        unmapped_after = client.get("/config/members/unmapped")
+
+    assert unmapped_before.status_code == 200
+    # U1002 already has an admin chat id, so only U1001 is unmapped for delivery.
+    assert {item["id"] for item in unmapped_before.json()} == {"U1001"}
+    u1001_before = next(item for item in unmapped_before.json() if item["id"] == "U1001")
+    assert "chat_user_id" in u1001_before["missing"]
+
+    assert auto_match.status_code == 200
+    summary = auto_match.json()
+    # U1001 gets both fields; U1002 keeps its admin chat id and only gains jira_email.
+    assert summary["updated_count"] == 2
+    matched = {member["id"]: member for member in summary["members"]}
+    assert set(matched) == {"U1001", "U1002"}
+    assert set(matched["U1001"]["filled"]) == {"chat_user_id", "jira_email"}
+    assert set(matched["U1002"]["filled"]) == {"jira_email"}
+
+    assert u1001_link.json()["chat_user_id"] == "U1001"
+    assert u1001_link.json()["jira_email"] == "asha@example.com"
+    # Admin-set value survives; only the missing jira_email is filled.
+    assert u1002_link.json()["chat_user_id"] == "ADMIN-CHAT"
+    assert u1002_link.json()["jira_email"] == "liam@example.com"
+
+    assert unmapped_after.status_code == 200
+    assert unmapped_after.json() == []
+
+
+def test_identity_unmapped_requires_manage_config(settings: Settings) -> None:
+    app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "dev"}))
+    with TestClient(app, raise_server_exceptions=False) as client:
+        unmapped = client.get("/config/members/unmapped")
+        auto_match = client.post("/config/members/identity-links/auto-match")
+
+    assert unmapped.status_code == 403
+    assert auto_match.status_code == 403
+
+
+def test_writeback_consent_put_then_get_round_trips(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        client.post("/config/directory/sync")
+        client.post("/config/members/from-directory", json={"external_ids": ["U1001"]})
+
+        default = client.get("/config/members/U1001/writeback-consent")
+        for value in ("auto_apply", "never", "always_ask"):
+            updated = client.put(
+                "/config/members/U1001/writeback-consent",
+                json={"consent": value},
+            )
+            assert updated.status_code == 200, value
+            assert updated.json() == {"developer_id": "U1001", "consent": value}
+            after = client.get("/config/members/U1001/writeback-consent")
+            assert after.json()["consent"] == value
+
+    assert default.status_code == 200
+    # Default when unset is always_ask.
+    assert default.json() == {"developer_id": "U1001", "consent": "always_ask"}
+
+
+def test_writeback_consent_requires_manage_config(settings: Settings) -> None:
+    app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "dev"}))
+    with TestClient(app, raise_server_exceptions=False) as client:
+        get_resp = client.get("/config/members/U1001/writeback-consent")
+        put_resp = client.put(
+            "/config/members/U1001/writeback-consent",
+            json={"consent": "never"},
+        )
+    assert get_resp.status_code == 403
+    assert put_resp.status_code == 403
 
 
 def test_admin_directory_search_and_member_add_flow(settings: Settings) -> None:
@@ -421,6 +637,68 @@ def test_container_slack_webhook_route_ignores_signed_bot_message_event(
 
     assert response.status_code == 200
     assert response.json() == {"status": "ignored", "message_id": "unsupported-provider"}
+
+
+def test_chat_signature_required_keys_off_configured_provider_not_url(
+    settings: Settings,
+) -> None:
+    # Configured chat provider is Slack in container mode: verification is
+    # required regardless of the URL segment (mock_slack must not bypass it).
+    configured = _container_slack_settings(settings)
+    registry = ServiceRegistry(configured)
+    body = _slack_json_body({"event": {"type": "message"}})
+
+    assert not registry.chat_webhook_signature_valid("mock_slack", {}, body)
+    assert registry.chat_webhook_signature_valid("slack", _signed_slack_headers(body), body)
+
+
+def test_chat_signature_skipped_when_configured_provider_is_not_slack(
+    settings: Settings,
+) -> None:
+    # Configured chat provider is the credential-free simulator: no signature.
+    configured = settings.model_copy(
+        update={"runtime_mode": "container", "chat_provider": "mock_slack"}
+    )
+    registry = ServiceRegistry(configured)
+
+    assert registry.chat_webhook_signature_valid("slack", {}, b"{}")
+    assert registry.chat_webhook_signature_valid("mock_slack", {}, b"{}")
+
+
+def test_chat_webhook_dedupes_redelivered_event_id(settings: Settings) -> None:
+    app = create_app(
+        settings=settings.model_copy(
+            update={
+                "chat_provider": "fake",
+                "issue_tracker_provider": "fake",
+                "llm_provider": "fake",
+            }
+        )
+    )
+    with TestClient(app) as client:
+        asyncio.run(
+            app.state.registry.status_collector().start_checkin(
+                tenant_id=settings.tenant_id,
+                developer_id="dev-1",
+                chat_external_id="U123",
+                correlation_id="corr-route",
+                asked_at=datetime.now(tz=UTC),
+            )
+        )
+        first = client.post(
+            "/webhooks/chat/fake",
+            json={"user_id": "U123", "text": "blocked on API", "message_id": "msg-dup"},
+        )
+        # Same message id => same derived event_id => absorbed as a redelivery.
+        redelivery = client.post(
+            "/webhooks/chat/fake",
+            json={"user_id": "U123", "text": "blocked on API", "message_id": "msg-dup"},
+        )
+
+    assert first.status_code == 200
+    assert first.json()["status"] == "processed"
+    assert redelivery.status_code == 200
+    assert redelivery.json() == {"status": "duplicate", "message_id": "msg-dup"}
 
 
 def test_metrics_endpoint_exposes_prometheus_metrics(settings: Settings) -> None:
@@ -1082,6 +1360,123 @@ def _signed_slack_headers(
         "x-slack-request-timestamp": timestamp_value,
         "x-slack-signature": f"v0={digest}",
     }
+
+
+def _seed_applied_writeback(
+    app: FastAPI,
+    *,
+    audit_id: str,
+    issue_key: str,
+    correlation_id: str,
+    before_state: str,
+    after_state: str,
+    created_at: datetime,
+) -> None:
+    asyncio.run(
+        app.state.registry.writeback_audit_repository().record(
+            WriteBackAudit(
+                id=audit_id,
+                tenant_id="demo",
+                developer_id="dev-1",
+                issue_key=issue_key,
+                correlation_id=correlation_id,
+                status=WriteBackStatus.APPLIED,
+                target_state=after_state,
+                before_state=before_state,
+                after_state=after_state,
+                comment="done via check-in",
+                source="checkin",
+                created_at=created_at,
+            )
+        )
+    )
+
+
+def test_revert_writeback_route_reverts_then_is_idempotent(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        registry = app.state.registry
+        # Inject a writable tracker so the sanctioned revert transition succeeds.
+        registry._issue_tracker = FakeIssueTracker(
+            issues={
+                "PO-1": Issue(
+                    tenant_id="demo",
+                    key="PO-1",
+                    title="Wire write-back",
+                    state=IssueState.DONE,
+                )
+            }
+        )
+        _seed_applied_writeback(
+            app,
+            audit_id="wb-1",
+            issue_key="PO-1",
+            correlation_id="corr-1",
+            before_state="in_progress",
+            after_state="done",
+            created_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+        )
+
+        first = client.post("/admin/ops/writeback/wb-1/revert")
+        second = client.post("/admin/ops/writeback/wb-1/revert")
+        missing = client.post("/admin/ops/writeback/does-not-exist/revert")
+
+    assert first.status_code == 200
+    body = first.json()
+    assert body["issue_key"] == "PO-1"
+    assert body["from_state"] == "done"
+    assert body["to_state"] == "in_progress"
+    assert body["status"] == "reverted"
+
+    # A second revert of the same applied write must not double-apply.
+    assert second.status_code == 409
+    assert missing.status_code == 404
+
+
+def test_writeback_adoption_endpoint_counts_applied_writes(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        _seed_applied_writeback(
+            app,
+            audit_id="wb-1",
+            issue_key="PO-1",
+            correlation_id="corr-1",
+            before_state="in_progress",
+            after_state="done",
+            created_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+        )
+        _seed_applied_writeback(
+            app,
+            audit_id="wb-2",
+            issue_key="PO-2",
+            correlation_id="corr-2",
+            before_state="todo",
+            after_state="in_progress",
+            created_at=datetime(2026, 1, 11, 9, 0, tzinfo=UTC),
+        )
+        response = client.get("/persona/writeback-adoption")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["applied_count"] == 2
+    # Newest-first, identifier-only (no developer note / DM content leaked).
+    assert [entry["issue_key"] for entry in body["recent"]] == ["PO-2", "PO-1"]
+    assert body["recent"][0]["to_state"] == "in_progress"
+    assert "comment" not in body["recent"][0]
+    assert "note" not in body["recent"][0]
+
+
+def test_writeback_adoption_endpoint_requires_aggregate_scope() -> None:
+    non_admin = Settings(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        runtime_mode="memory",
+        dev_principal_roles="dev",
+    )
+    app = create_app(settings=non_admin)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/persona/writeback-adoption")
+    assert response.status_code == 403
 
 
 def _populate_graph_fixture(app: FastAPI, settings: Settings) -> None:

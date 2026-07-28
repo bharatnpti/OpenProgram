@@ -33,6 +33,7 @@ from infra.persistence.postgres_status import (
 )
 from tests.contract.contracts import (
     assert_conversation_repository_contract,
+    assert_inbound_chat_event_repository_contract,
     assert_rollup_repository_contract,
     assert_status_repository_contract,
     assert_sync_cursor_repository_contract,
@@ -47,6 +48,7 @@ async def test_in_memory_store_satisfies_phase_1_repository_contracts() -> None:
     await assert_rollup_repository_contract(store)
     await assert_sync_cursor_repository_contract(store)
     await assert_conversation_repository_contract(store)
+    await assert_inbound_chat_event_repository_contract(store)
 
 
 async def test_demo_graph_fixture_adds_memory_statuses_and_rollups() -> None:

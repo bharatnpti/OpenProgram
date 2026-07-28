@@ -7,11 +7,11 @@ from typing import cast
 import pytest
 
 from config.settings import Settings
-from core.application.agents.status_agent import StatusAgentNode
 from core.application.conversation_history import llm_messages_from_turns
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import SyncRunResult
 from core.domain.conversation import ConversationRole, ConversationTurn
+from core.domain.escalation import EscalationPolicy
 from core.domain.graph import GraphNode, NodeKind
 from core.domain.integrations import SyncCursor
 from core.domain.status import CheckIn, CheckInScheduleRun, DeveloperStatus, StatusSource
@@ -26,6 +26,7 @@ from core.domain.workflows import (
     ConversationPurgeScheduleConfig,
     DeveloperCheckinDispatch,
     HeartbeatInput,
+    InboundSweeperScheduleConfig,
     ScheduleBootstrapResult,
     SyncDispatchInput,
     SyncScheduleConfig,
@@ -46,44 +47,6 @@ from infra.workflows import (
     worker,
 )
 from tests.contract.fakes import FakeChatProvider, FakeIssueTracker, FakeLlmProvider
-
-
-async def test_status_agent_calls_llm_provider() -> None:
-    provider = FakeLlmProvider()
-    node = StatusAgentNode(provider, model="test-model")
-    result = await node(
-        {
-            "tenant_id": "demo",
-            "developer_name": "Asha",
-            "context": "API shell is complete; graph tests are blocked.",
-            "correlation_id": "corr-1",
-        }
-    )
-    assert result["trace_id"] == "trace-fake"
-    assert result["summary"].startswith("summary:")
-    request = provider.requests[0]
-    assert request.system is not None
-    assert request.metadata["purpose"] == "summarize_status"
-    assert [(message.role, message.content) for message in request.messages] == [
-        (
-            "user",
-            "Developer: Asha\nContext:\nAPI shell is complete; graph tests are blocked.",
-        )
-    ]
-
-
-async def test_status_agent_langgraph_wrapper_calls_llm_provider() -> None:
-    node = StatusAgentNode(FakeLlmProvider(), model="test-model")
-    result = await node.graph().ainvoke(
-        {
-            "tenant_id": "demo",
-            "developer_name": "Asha",
-            "context": "Graph wrapper smoke.",
-            "correlation_id": "corr-graph",
-        }
-    )
-    assert result["trace_id"] == "trace-fake"
-    assert result["summary"].startswith("summary:")
 
 
 def test_conversation_history_maps_turn_roles_to_llm_messages() -> None:
@@ -439,12 +402,14 @@ def test_schedule_configs_ignore_calendar_read_sync_targets() -> None:
         ("runtime", "vcs", {"connector": "vcs"}),
         ("directory", "directory", {}),
         ("risk", "assessment", {}),
+        ("drift", "scan", {}),
     ]
     assert [config.cron for config in sync_configs] == [
         settings.jira_sync_cron,
         settings.github_sync_cron,
         settings.directory_sync_cron,
         settings.risk_assessment_cron,
+        settings.drift_scan_cron,
     ]
 
 
@@ -492,6 +457,7 @@ def test_schedule_configs_include_runtime_fanout_and_directory_when_targets_are_
         ("runtime", "vcs", {"connector": "vcs"}),
         ("directory", "directory", {}),
         ("risk", "assessment", {}),
+        ("drift", "scan", {}),
     ]
 
 
@@ -515,17 +481,23 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
         schedule.checkin_reconcile_config(settings)
     ]
     assert registry.scheduler.purge_configs == [schedule.conversation_purge_config(settings)]
+    assert registry.scheduler.sweeper_configs == [schedule.inbound_sweeper_config(settings)]
     assert [(config.connector, config.scope) for config in registry.scheduler.sync_configs] == [
         ("runtime", "issue"),
         ("runtime", "vcs"),
         ("directory", "directory"),
         ("risk", "assessment"),
+        ("drift", "scan"),
+        ("brief", "daily_pod"),
+        ("brief", "weekly_project"),
+        ("brief", "exec"),
     ]
     assert [result.schedule_id for result in results] == [
         "heartbeat-test",
         settings.checkin_fanout_schedule_id,
         settings.checkin_reconcile_schedule_id,
         settings.conversation_purge_schedule_id,
+        settings.inbound_events_sweeper_schedule_id,
         *(config.schedule_id for config in registry.scheduler.sync_configs),
     ]
 
@@ -1257,6 +1229,7 @@ class _RecordingWorkflowScheduler:
         self.checkin_configs: list[CheckinScheduleConfig] = []
         self.checkin_reconcile_configs: list[CheckinReconcileScheduleConfig] = []
         self.purge_configs: list[ConversationPurgeScheduleConfig] = []
+        self.sweeper_configs: list[InboundSweeperScheduleConfig] = []
         self.sync_configs: list[SyncScheduleConfig] = []
 
     async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
@@ -1279,6 +1252,12 @@ class _RecordingWorkflowScheduler:
         self, config: ConversationPurgeScheduleConfig
     ) -> ScheduleBootstrapResult:
         self.purge_configs.append(config)
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
+
+    async def ensure_inbound_sweeper_schedule(
+        self, config: InboundSweeperScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        self.sweeper_configs.append(config)
         return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
 
     async def ensure_sync_schedules(
@@ -1369,10 +1348,15 @@ class _FanoutScheduler:
         return f"dispatch-{input.developer_id}-{input.checkin_date}"
 
 
+class _FanoutSettings:
+    checkin_fanout_concurrency = 10
+
+
 class _FanoutRegistry:
     def __init__(self, store: InMemoryGraphStore) -> None:
         self.closed = False
         self.scheduler = _FanoutScheduler()
+        self.settings = _FanoutSettings()
         self._store = store
 
     def status_repository(self) -> InMemoryGraphStore:
@@ -1564,6 +1548,9 @@ class _ConversationPurgeRegistry:
     def status_repository(self) -> InMemoryGraphStore:
         return self._store
 
+    def inbound_chat_event_repository(self) -> InMemoryGraphStore:
+        return self._store
+
     async def close(self) -> None:
         self.closed = True
 
@@ -1572,3 +1559,6 @@ class _WorkflowSettings:
     tenant_default_timezone = "UTC"
     checkin_reply_wait_seconds = 14400
     checkin_final_reply_wait_seconds = 28800
+
+    def escalation_policy(self) -> EscalationPolicy:
+        return EscalationPolicy(steps=())

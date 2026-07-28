@@ -17,6 +17,17 @@ import type {
   AskRequest,
   AskResponse,
   AuthStatusResponse,
+  BriefKind,
+  NarrativeBriefsResponse,
+  WriteBackAdoptionResponse,
+  PodEscalationContactsResponse,
+  PodEscalationContactsUpdateRequest,
+  IdentityLinkResponse,
+  IdentityLinkUpdateRequest,
+  IdentityAutoMatchResponse,
+  UnmappedMemberResponse,
+  WritebackConsentResponse,
+  WritebackConsentUpdateRequest,
   DirectoryItemResponse,
   DirectorySearchResponse,
   DirectorySyncResponse,
@@ -28,6 +39,8 @@ import type {
   PodMemberLinkRequest,
   PodBlockersResponse,
   PodCheckinsResponse,
+  NodeKind,
+  NodeTrendResponse,
   PortfolioHeatmapResponse,
   PortfolioFeedResponse,
   PortfolioFlowResponse,
@@ -127,6 +140,17 @@ export const apiClient = {
   portfolioHeatmap: (asOf?: string, programRootId?: string) =>
     requestJson<PortfolioHeatmapResponse>(
       withQuery("/portfolio/heatmap", { as_of: asOf, program_root_id: programRootId }),
+    ),
+  nodeTrend: (
+    level: NodeKind,
+    entityId: string,
+    options?: { asOf?: string; windowDays?: number },
+  ) =>
+    requestJson<NodeTrendResponse>(
+      withQuery(`/persona/${level}/${entityId}/trend`, {
+        as_of: options?.asOf,
+        window_days: options?.windowDays ? String(options.windowDays) : undefined,
+      }),
     ),
   workstreamFlow: (workstreamId: string, asOf?: string) =>
     requestJson<WorkstreamFlowResponse>(
@@ -304,6 +328,43 @@ export const apiClient = {
     }),
   configCheckinPreferences: () =>
     requestJson<CheckinPreferenceResponse[]>("/config/checkin-preferences"),
+  podEscalationContacts: (podId: string) =>
+    requestJson<PodEscalationContactsResponse>(`/config/pods/${podId}/escalation-contacts`),
+  updatePodEscalationContacts: (podId: string, body: PodEscalationContactsUpdateRequest) =>
+    requestJson<PodEscalationContactsResponse>(`/config/pods/${podId}/escalation-contacts`, {
+      method: "PUT",
+      body,
+    }),
+  configMemberWritebackConsent: (memberId: string) =>
+    requestJson<WritebackConsentResponse>(`/config/members/${memberId}/writeback-consent`),
+  updateConfigMemberWritebackConsent: (memberId: string, body: WritebackConsentUpdateRequest) =>
+    requestJson<WritebackConsentResponse>(`/config/members/${memberId}/writeback-consent`, {
+      method: "PUT",
+      body,
+    }),
+  configMemberIdentityLink: (memberId: string) =>
+    requestJson<IdentityLinkResponse>(`/config/members/${memberId}/identity-link`),
+  updateConfigMemberIdentityLink: (memberId: string, body: IdentityLinkUpdateRequest) =>
+    requestJson<IdentityLinkResponse>(`/config/members/${memberId}/identity-link`, {
+      method: "PUT",
+      body,
+    }),
+  configUnmappedMembers: () => requestJson<UnmappedMemberResponse[]>("/config/members/unmapped"),
+  autoMatchConfigIdentityLinks: () =>
+    requestJson<IdentityAutoMatchResponse>("/config/members/identity-links/auto-match", {
+      method: "POST",
+    }),
+  personaBriefs: (kind?: BriefKind, limit = 20) =>
+    requestJson<NarrativeBriefsResponse>(
+      withQuery("/persona/briefs", { kind, limit: String(limit) }),
+    ),
+  writebackAdoption: (windowDays?: number, limit = 5) =>
+    requestJson<WriteBackAdoptionResponse>(
+      withQuery("/persona/writeback-adoption", {
+        window_days: windowDays ? String(windowDays) : undefined,
+        limit: String(limit),
+      }),
+    ),
 };
 
 function withAsOf(path: string, asOf?: string): string {

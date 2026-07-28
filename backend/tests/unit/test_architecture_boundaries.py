@@ -59,14 +59,24 @@ def test_core_and_api_do_not_name_concrete_providers() -> None:
     assert violations == []
 
 
-def test_application_layer_does_not_call_issue_tracker_write_back() -> None:
+def test_only_writeback_service_calls_issue_tracker_write_back() -> None:
+    # Phase 2 unlock: issue-tracker write-back is permitted only through the
+    # gated, audited, reversible WriteBackService. Every other application module
+    # must stay read-only.
+    sanctioned = APPLICATION_PACKAGE / "writeback_service.py"
     violations: list[str] = []
+    sanctioned_uses_write_back = False
     for path in APPLICATION_PACKAGE.rglob("*.py"):
         content = path.read_text(encoding="utf-8")
         for forbidden in (".transition(", ".add_comment("):
-            if forbidden in content:
+            if forbidden not in content:
+                continue
+            if path == sanctioned:
+                sanctioned_uses_write_back = True
+            else:
                 violations.append(f"{path.relative_to(ROOT)} calls {forbidden}")
     assert violations == []
+    assert sanctioned_uses_write_back
 
 
 def _python_files() -> list[Path]:

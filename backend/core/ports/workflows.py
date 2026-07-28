@@ -8,6 +8,7 @@ from core.domain.workflows import (
     CheckinScheduleConfig,
     ConversationPurgeScheduleConfig,
     DeveloperCheckinDispatch,
+    InboundSweeperScheduleConfig,
     ScheduleBootstrapResult,
     SyncDispatchInput,
     SyncScheduleConfig,
@@ -29,11 +30,17 @@ class WorkflowScheduler(Protocol):
         self, config: ConversationPurgeScheduleConfig
     ) -> ScheduleBootstrapResult: ...
 
+    async def ensure_inbound_sweeper_schedule(
+        self, config: InboundSweeperScheduleConfig
+    ) -> ScheduleBootstrapResult: ...
+
     async def ensure_sync_schedules(
         self, configs: Sequence[SyncScheduleConfig]
     ) -> list[ScheduleBootstrapResult]: ...
 
     async def dispatch_developer_checkin(self, input: DeveloperCheckinDispatch) -> str: ...
+
+    async def arm_reply_coalesce(self, conversation_key: str, tenant_id: str) -> None: ...
 
     async def dispatch_sync(self, input: SyncDispatchInput) -> str: ...
 
