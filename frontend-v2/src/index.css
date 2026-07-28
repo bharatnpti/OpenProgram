@@ -1,0 +1,233 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "TeleNeo";
+  src: url("/fonts/TeleNeoOffice-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "TeleNeo";
+  src: url("/fonts/TeleNeoOffice-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "TeleNeo";
+  src: url("/fonts/TeleNeoOffice-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "TeleNeo";
+  src: url("/fonts/TeleNeoOffice-ExtraBold.ttf") format("truetype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* ODS brand */
+  --op-magenta: #e20074;
+  --op-magenta-hover: #c4006a;
+  --op-magenta-tint: #f9cce3;
+  --op-black: #000000;
+  --op-black-hover: #414141;
+
+  /* Greys */
+  --op-grey-table-header: #fafafa;
+  --op-grey-fill: #f1f1f1;
+  --op-grey-hover: #e7e7e7;
+  --op-grey-border: #dddddd;
+  --op-grey-disabled: #b6b6b6;
+  --op-grey-secondary: #616161;
+  --op-grey-body: #414141;
+
+  /* RAG */
+  --op-green: #007845;
+  --op-green-bg: #ccf0e1;
+  --op-amber: #993300;
+  --op-amber-bg: #ffddcc;
+  --op-amber-deep: #661f00;
+  --op-red: #c20d00;
+  --op-red-bg: #ffdddb;
+  --op-unknown: #616161;
+  --op-unknown-bg: #dddddd;
+  --op-info: #2238df;
+  --op-info-bg: #d3d7f9;
+
+  /* Shadows */
+  --op-shadow-menu: 0 16px 48px rgba(0, 0, 0, 0.14);
+  --op-shadow-palette: 0 32px 80px rgba(0, 0, 0, 0.3);
+  --op-shadow-hover: 0 10px 24px rgba(0, 0, 0, 0.08);
+}
+
+@theme {
+  --color-magenta: var(--op-magenta);
+  --color-magenta-hover: var(--op-magenta-hover);
+  --color-magenta-tint: var(--op-magenta-tint);
+  --color-ink: var(--op-black);
+  --color-ink-hover: var(--op-black-hover);
+
+  --color-grey-header: var(--op-grey-table-header);
+  --color-grey-fill: var(--op-grey-fill);
+  --color-grey-hover: var(--op-grey-hover);
+  --color-grey-border: var(--op-grey-border);
+  --color-grey-disabled: var(--op-grey-disabled);
+  --color-grey-secondary: var(--op-grey-secondary);
+  --color-grey-body: var(--op-grey-body);
+
+  --color-rag-green: var(--op-green);
+  --color-rag-green-bg: var(--op-green-bg);
+  --color-rag-amber: var(--op-amber);
+  --color-rag-amber-bg: var(--op-amber-bg);
+  --color-rag-amber-deep: var(--op-amber-deep);
+  --color-rag-red: var(--op-red);
+  --color-rag-red-bg: var(--op-red-bg);
+  --color-rag-unknown: var(--op-unknown);
+  --color-rag-unknown-bg: var(--op-unknown-bg);
+  --color-rag-info: var(--op-info);
+  --color-rag-info-bg: var(--op-info-bg);
+
+  --font-sans: "TeleNeo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --shadow-op-menu: var(--op-shadow-menu);
+  --shadow-op-palette: var(--op-shadow-palette);
+  --shadow-op-hover: var(--op-shadow-hover);
+}
+
+@keyframes op-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes op-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes op-draw {
+  from {
+    stroke-dashoffset: 600;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes op-ring {
+  from {
+    stroke-dashoffset: 264;
+  }
+  to {
+    stroke-dashoffset: var(--op-ring-offset, 66);
+  }
+}
+@keyframes op-bar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@keyframes op-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(194, 13, 0, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(194, 13, 0, 0);
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    margin: 0;
+    background: #ffffff;
+    color: #000000;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    line-height: 1.25;
+    text-rendering: optimizeLegibility;
+  }
+
+  a {
+    color: var(--op-magenta);
+    text-decoration: underline;
+  }
+  a:hover {
+    color: var(--op-magenta-hover);
+  }
+
+  ::selection {
+    background: var(--op-magenta-tint);
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--op-magenta);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .animate-op-fade-up {
+    animation: op-fade-up 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  }
+  .animate-op-pop {
+    animation: op-pop 0.18s ease-out both;
+  }
+  .animate-op-draw {
+    animation: op-draw 1.4s ease-out forwards;
+  }
+  .animate-op-ring {
+    animation: op-ring 1.1s ease-out forwards;
+  }
+  .animate-op-bar {
+    animation: op-bar 0.75s ease-out both;
+    transform-origin: left;
+  }
+  .animate-op-pulse {
+    animation: op-pulse 1.8s ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
