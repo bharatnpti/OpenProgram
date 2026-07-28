@@ -30,7 +30,12 @@ class Settings(BaseSettings):
     environment: str = "local"
     tenant_id: str = "demo"
     runtime_mode: Literal["container", "memory"] = "container"
-    cors_origins: tuple[str, ...] = ("http://localhost:5173", "http://127.0.0.1:5173")
+    cors_origins: tuple[str, ...] = (
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    )
     database_url: str = "postgresql://openprogram:openprogram@localhost:5432/openprogram"
     postgres_pool_min_size: int = 1
     postgres_pool_max_size: int = 5
