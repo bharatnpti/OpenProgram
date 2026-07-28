@@ -1,6 +1,16 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DatabaseZap, Link2, Settings2, Trash2, UserPlus } from "lucide-react";
+import {
+  DatabaseZap,
+  Fingerprint,
+  Link2,
+  PenLine,
+  Settings2,
+  ShieldAlert,
+  Trash2,
+  UserPlus,
+  Wand2,
+} from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -11,6 +21,9 @@ import type {
   CheckinPreferenceResponse,
   ConfigNodeResponse,
   DirectoryUserResponse,
+  IdentityLinkUpdateRequest,
+  PodEscalationContactsUpdateRequest,
+  WriteBackConsent,
 } from "../api/schema";
 import { DataTable, type DataTableColumn } from "../components/ops/DataTable";
 import {
@@ -94,6 +107,9 @@ export function AdminConfigPage() {
   const [entityQuery, setEntityQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ConfigNodeResponse | null>(null);
+  const [escalationPod, setEscalationPod] = useState<ConfigNodeResponse | null>(null);
+  const [identityMember, setIdentityMember] = useState<ConfigNodeResponse | null>(null);
+  const [consentMember, setConsentMember] = useState<ConfigNodeResponse | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState>({ open: false });
 
   const programs = useQuery({
@@ -114,6 +130,11 @@ export function AdminConfigPage() {
     queryKey: ["config", "checkin-preferences"],
     queryFn: apiClient.configCheckinPreferences,
   });
+  const unmapped = useQuery({
+    queryKey: ["config", "unmapped-members"],
+    queryFn: apiClient.configUnmappedMembers,
+  });
+  const unmappedCount = unmapped.data?.length ?? 0;
 
   const entityQueryByTab = {
     programs,
@@ -152,6 +173,21 @@ export function AdminConfigPage() {
     onSuccess: async () => {
       await invalidateAll();
       toast.success("Record deleted.");
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const autoMatchMutation = useMutation({
+    mutationFn: () => apiClient.autoMatchConfigIdentityLinks(),
+    onSuccess: async (result) => {
+      await invalidateAll();
+      if (result.updated_count === 0) {
+        toast.info("No identity links needed auto-matching.");
+      } else {
+        toast.success(
+          `Auto-matched ${result.updated_count} member${result.updated_count === 1 ? "" : "s"} from the directory.`,
+        );
+      }
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -216,6 +252,39 @@ export function AdminConfigPage() {
           <Button type="button" size="sm" variant="outline" onClick={() => openEdit(row.original)}>
             Edit
           </Button>
+          {activeEntity === "pods" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setEscalationPod(row.original)}
+            >
+              <ShieldAlert className="h-3.5 w-3.5" />
+              Escalation
+            </Button>
+          )}
+          {activeEntity === "members" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setIdentityMember(row.original)}
+            >
+              <Fingerprint className="h-3.5 w-3.5" />
+              Identity
+            </Button>
+          )}
+          {activeEntity === "members" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setConsentMember(row.original)}
+            >
+              <PenLine className="h-3.5 w-3.5" />
+              Write-back
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"
@@ -246,7 +315,19 @@ export function AdminConfigPage() {
           <KpiCard label="Projects" value={projects.data?.length ?? "-"} tone="info" />
           <KpiCard label="Workstreams" value={workstreams.data?.length ?? "-"} tone="info" />
           <KpiCard label="Pods" value={pods.data?.length ?? "-"} tone="info" />
-          <KpiCard label="Members" value={members.data?.length ?? "-"} tone="info" />
+          <KpiCard
+            label="Members"
+            value={members.data?.length ?? "-"}
+            tone={unmappedCount > 0 ? "warning" : "info"}
+            icon={unmappedCount > 0 ? <ShieldAlert className="h-4 w-4" /> : undefined}
+            detail={
+              unmappedCount > 0
+                ? `${unmappedCount} unmapped (no chat ID)`
+                : members.data
+                  ? "all mapped"
+                  : undefined
+            }
+          />
         </section>
 
         <Tabs defaultValue="entities">
@@ -274,9 +355,22 @@ export function AdminConfigPage() {
               title="Configured Entities"
               description="Create and maintain the program, project, pod, and member nodes used by the Graph of Truth."
               action={
-                <Button type="button" variant="primary" onClick={openCreate}>
-                  Add {entityLabels[activeEntity].slice(0, -1)}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  {activeEntity === "members" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={autoMatchMutation.isPending}
+                      onClick={() => autoMatchMutation.mutate()}
+                    >
+                      <Wand2 className="h-4 w-4" />
+                      Auto-match
+                    </Button>
+                  )}
+                  <Button type="button" variant="primary" onClick={openCreate}>
+                    Add {entityLabels[activeEntity].slice(0, -1)}
+                  </Button>
+                </div>
               }
             >
               <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -454,6 +548,12 @@ export function AdminConfigPage() {
             </div>
           </form>
         </Dialog>
+
+        <EscalationContactsDialog pod={escalationPod} onClose={() => setEscalationPod(null)} />
+
+        <IdentityLinkDialog member={identityMember} onClose={() => setIdentityMember(null)} />
+
+        <WritebackConsentDialog member={consentMember} onClose={() => setConsentMember(null)} />
 
         <ConfirmDialog
           open={confirm.open}
@@ -1124,6 +1224,326 @@ function CheckinPreferencesPanel({
       current.includes(day) ? current.filter((item) => item !== day) : [...current, day].sort(),
     );
   }
+}
+
+function EscalationContactsDialog({
+  pod,
+  onClose,
+}: {
+  pod: ConfigNodeResponse | null;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const podId = pod?.id ?? "";
+  const [smId, setSmId] = useState("");
+  const [smName, setSmName] = useState("");
+  const [managerId, setManagerId] = useState("");
+  const [managerName, setManagerName] = useState("");
+
+  const contacts = useQuery({
+    queryKey: ["config", "pod-escalation-contacts", podId],
+    queryFn: () => apiClient.podEscalationContacts(podId),
+    enabled: Boolean(pod),
+  });
+
+  useEffect(() => {
+    if (!contacts.data) return;
+    setSmId(contacts.data.scrum_master?.chat_external_id ?? "");
+    setSmName(contacts.data.scrum_master?.display_name ?? "");
+    setManagerId(contacts.data.manager?.chat_external_id ?? "");
+    setManagerName(contacts.data.manager?.display_name ?? "");
+  }, [contacts.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const body: PodEscalationContactsUpdateRequest = {
+        scrum_master: contactPayload(smId, smName),
+        manager: contactPayload(managerId, managerName),
+      };
+      return apiClient.updatePodEscalationContacts(podId, body);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["config", "pod-escalation-contacts", podId],
+      });
+      toast.success("Escalation contacts saved.");
+      onClose();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <Dialog
+      open={Boolean(pod)}
+      onOpenChange={(open) => !open && onClose()}
+      title={pod ? `Escalation contacts — ${pod.name}` : "Escalation contacts"}
+      description="Scrum master and manager targets for this pod's check-in escalation ladder. Clear a chat ID to remove that contact."
+    >
+      <QueryState query={contacts} loadingRows={3}>
+        {() => (
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveMutation.mutate();
+            }}
+          >
+            <div className="space-y-3 rounded-md border border-border bg-surface-muted/30 p-3">
+              <div className="text-sm font-semibold">Scrum master</div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="Chat ID" htmlFor="escalation-sm-id">
+                  <Input
+                    id="escalation-sm-id"
+                    value={smId}
+                    onChange={(event) => setSmId(event.target.value)}
+                    placeholder="e.g. U1001"
+                  />
+                </Field>
+                <Field label="Display name" htmlFor="escalation-sm-name">
+                  <Input
+                    id="escalation-sm-name"
+                    value={smName}
+                    onChange={(event) => setSmName(event.target.value)}
+                  />
+                </Field>
+              </div>
+            </div>
+            <div className="space-y-3 rounded-md border border-border bg-surface-muted/30 p-3">
+              <div className="text-sm font-semibold">Manager</div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="Chat ID" htmlFor="escalation-manager-id">
+                  <Input
+                    id="escalation-manager-id"
+                    value={managerId}
+                    onChange={(event) => setManagerId(event.target.value)}
+                    placeholder="e.g. U1002"
+                  />
+                </Field>
+                <Field label="Display name" htmlFor="escalation-manager-name">
+                  <Input
+                    id="escalation-manager-name"
+                    value={managerName}
+                    onChange={(event) => setManagerName(event.target.value)}
+                  />
+                </Field>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={saveMutation.isPending}>
+                Save
+              </Button>
+            </div>
+          </form>
+        )}
+      </QueryState>
+    </Dialog>
+  );
+}
+
+function contactPayload(chatId: string, displayName: string) {
+  const id = chatId.trim();
+  if (!id) return null;
+  const name = displayName.trim();
+  return { chat_external_id: id, display_name: name ? name : null };
+}
+
+function IdentityLinkDialog({
+  member,
+  onClose,
+}: {
+  member: ConfigNodeResponse | null;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const memberId = member?.id ?? "";
+  const [chatUserId, setChatUserId] = useState("");
+  const [jiraAccountId, setJiraAccountId] = useState("");
+  const [jiraEmail, setJiraEmail] = useState("");
+  const [vcsUsername, setVcsUsername] = useState("");
+
+  const link = useQuery({
+    queryKey: ["config", "member-identity-link", memberId],
+    queryFn: () => apiClient.configMemberIdentityLink(memberId),
+    enabled: Boolean(member),
+  });
+
+  useEffect(() => {
+    if (!link.data) return;
+    setChatUserId(link.data.chat_user_id ?? "");
+    setJiraAccountId(link.data.jira_account_id ?? "");
+    setJiraEmail(link.data.jira_email ?? "");
+    setVcsUsername(link.data.vcs_username ?? "");
+  }, [link.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const body: IdentityLinkUpdateRequest = {
+        chat_user_id: blankToNull(chatUserId),
+        jira_account_id: blankToNull(jiraAccountId),
+        jira_email: blankToNull(jiraEmail),
+        vcs_username: blankToNull(vcsUsername),
+      };
+      return apiClient.updateConfigMemberIdentityLink(memberId, body);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["config", "member-identity-link", memberId] }),
+        queryClient.invalidateQueries({ queryKey: ["config", "unmapped-members"] }),
+      ]);
+      toast.success("Identity link saved.");
+      onClose();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <Dialog
+      open={Boolean(member)}
+      onOpenChange={(open) => !open && onClose()}
+      title={member ? `Identity link — ${member.name}` : "Identity link"}
+      description="Provider-neutral ids used to resolve this member across chat, Jira, and version control. A missing chat user id degrades check-in delivery."
+    >
+      <QueryState query={link} loadingRows={4}>
+        {() => (
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveMutation.mutate();
+            }}
+          >
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Chat user ID" htmlFor="identity-chat-user-id">
+                <Input
+                  id="identity-chat-user-id"
+                  value={chatUserId}
+                  onChange={(event) => setChatUserId(event.target.value)}
+                  placeholder="e.g. U1001"
+                />
+              </Field>
+              <Field label="Jira account ID" htmlFor="identity-jira-account-id">
+                <Input
+                  id="identity-jira-account-id"
+                  value={jiraAccountId}
+                  onChange={(event) => setJiraAccountId(event.target.value)}
+                />
+              </Field>
+              <Field label="Jira email" htmlFor="identity-jira-email">
+                <Input
+                  id="identity-jira-email"
+                  value={jiraEmail}
+                  onChange={(event) => setJiraEmail(event.target.value)}
+                  placeholder="name@example.com"
+                />
+              </Field>
+              <Field label="VCS username" htmlFor="identity-vcs-username">
+                <Input
+                  id="identity-vcs-username"
+                  value={vcsUsername}
+                  onChange={(event) => setVcsUsername(event.target.value)}
+                />
+              </Field>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={saveMutation.isPending}>
+                Save
+              </Button>
+            </div>
+          </form>
+        )}
+      </QueryState>
+    </Dialog>
+  );
+}
+
+const WRITEBACK_CONSENT_OPTIONS: { value: WriteBackConsent; label: string }[] = [
+  { value: "always_ask", label: "Always ask (default)" },
+  { value: "auto_apply", label: "Auto-apply" },
+  { value: "never", label: "Never" },
+];
+
+function WritebackConsentDialog({
+  member,
+  onClose,
+}: {
+  member: ConfigNodeResponse | null;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const memberId = member?.id ?? "";
+  const [consent, setConsent] = useState<WriteBackConsent>("always_ask");
+
+  const preference = useQuery({
+    queryKey: ["config", "member-writeback-consent", memberId],
+    queryFn: () => apiClient.configMemberWritebackConsent(memberId),
+    enabled: Boolean(member),
+  });
+
+  useEffect(() => {
+    if (!preference.data) return;
+    setConsent(preference.data.consent);
+  }, [preference.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: () => apiClient.updateConfigMemberWritebackConsent(memberId, { consent }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["config", "member-writeback-consent", memberId],
+      });
+      toast.success("Write-back consent saved.");
+      onClose();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <Dialog
+      open={Boolean(member)}
+      onOpenChange={(open) => !open && onClose()}
+      title={member ? `Write-back consent — ${member.name}` : "Write-back consent"}
+      description="Governs whether this member's check-in claims may update the issue tracker. Always-ask proposes the change and waits for a yes/no in the DM; auto-apply grants standing consent; never opts out. The tenant flag and capability must also be enabled."
+    >
+      <QueryState query={preference} loadingRows={2}>
+        {() => (
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveMutation.mutate();
+            }}
+          >
+            <Field label="Consent preference" htmlFor="writeback-consent">
+              <Select
+                id="writeback-consent"
+                value={consent}
+                onChange={(event) => setConsent(event.target.value as WriteBackConsent)}
+              >
+                {WRITEBACK_CONSENT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={saveMutation.isPending}>
+                Save
+              </Button>
+            </div>
+          </form>
+        )}
+      </QueryState>
+    </Dialog>
+  );
 }
 
 function LinkForm({

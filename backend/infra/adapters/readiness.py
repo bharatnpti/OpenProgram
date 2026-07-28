@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -45,10 +45,27 @@ class DatabaseExtensionsReadinessProbe:
                 """
                 SELECT extname
                 FROM pg_extension
-                WHERE extname IN ('age', 'timescaledb', 'vector')
+                WHERE extname IN ('timescaledb')
                 """
             )
-            return {str(row["extname"]) for row in rows} == {"age", "timescaledb", "vector"}
+            return {str(row["extname"]) for row in rows} == {"timescaledb"}
+
+
+@dataclass(frozen=True)
+class WorkflowBacklogReadinessProbe:
+    """Healthy when the open dead-letter backlog stays at or below ``threshold``.
+
+    Surfaces the "recorded but never finalized" failure mode: a growing backlog
+    of dead-lettered inbound events makes ``/ready`` report degraded so an
+    operator investigates instead of silently losing replies.
+    """
+
+    count_open: Callable[[], Awaitable[int]]
+    threshold: int = 0
+
+    async def check(self) -> bool:
+        with _tracer.start_as_current_span("readiness.workflow_backlog"):
+            return await self.count_open() <= self.threshold
 
 
 @dataclass(frozen=True)

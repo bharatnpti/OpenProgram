@@ -32,7 +32,13 @@ const nodeColors: Record<Rag | "none", string> = {
   red: "#f5d1d1",
 };
 
-export function HierarchyFlow({ data }: { data: ProgramTreeResponse | undefined }) {
+export function HierarchyFlow({
+  data,
+  onSelect,
+}: {
+  data: ProgramTreeResponse | undefined;
+  onSelect?: (kind: NodeKind, id: string) => void;
+}) {
   const { nodes, edges } = useMemo(() => buildFlow(data), [data]);
 
   if (!data) {
@@ -51,6 +57,12 @@ export function HierarchyFlow({ data }: { data: ProgramTreeResponse | undefined 
         fitView
         nodesDraggable={false}
         proOptions={{ hideAttribution: true }}
+        onNodeClick={(_event, node) => {
+          const kind = (node.data as { kind?: NodeKind }).kind;
+          if (onSelect && kind) {
+            onSelect(kind, node.id);
+          }
+        }}
       >
         <Background color="#d7dde5" gap={18} />
         <MiniMap pannable={false} zoomable={false} nodeStrokeWidth={2} />
@@ -75,6 +87,7 @@ function buildFlow(data: ProgramTreeResponse | undefined): { nodes: Node[]; edge
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
       data: {
+        kind: item.kind,
         label: (
           <div className="min-w-36">
             <div className="text-[11px] uppercase text-muted-foreground">{item.kind}</div>

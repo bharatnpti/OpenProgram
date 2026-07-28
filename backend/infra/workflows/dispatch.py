@@ -10,8 +10,10 @@ from core.domain.workflows import (
     SyncDispatchInput,
     SyncScheduleConfig,
 )
+from infra.workflows.brief_generation import BriefGenerationInput
 from infra.workflows.calendar_sync import CalendarSyncInput
 from infra.workflows.daily_checkin import DailyCheckinInput
+from infra.workflows.drift_scan import DriftScanInput
 from infra.workflows.git_sync import GitSyncInput
 from infra.workflows.jira_sync import JiraSyncInput
 from infra.workflows.risk_assessment import RiskAssessmentInput
@@ -24,6 +26,8 @@ type SyncWorkflowInput = (
     | DirectorySyncInput
     | RuntimeSyncInput
     | RiskAssessmentInput
+    | DriftScanInput
+    | BriefGenerationInput
 )
 
 
@@ -104,6 +108,18 @@ def sync_workflow_input(input: SyncDispatchInput) -> SyncWorkflowInput:
             project_id=_optional_str(input.payload, "project_id"),
             observed_at=_optional_str(input.payload, "observed_at"),
         )
+    if connector == "drift":
+        return DriftScanInput(
+            tenant_id=input.tenant_id,
+            project_id=_optional_str(input.payload, "project_id"),
+            observed_at=_optional_str(input.payload, "observed_at"),
+        )
+    if connector == "brief":
+        return BriefGenerationInput(
+            tenant_id=input.tenant_id,
+            kind=_required_str(input.payload, "kind"),
+            observed_at=_optional_str(input.payload, "observed_at"),
+        )
     raise ValueError(f"unsupported sync connector: {input.connector}")
 
 
@@ -121,6 +137,10 @@ def sync_workflow_name(input: SyncDispatchInput) -> str:
         return "runtime"
     if connector == "risk":
         return "risk"
+    if connector == "drift":
+        return "drift"
+    if connector == "brief":
+        return "brief"
     raise ValueError(f"unsupported sync connector: {input.connector}")
 
 
@@ -143,6 +163,10 @@ def _connector(value: str) -> str:
         return "runtime"
     if normalized in {"risk", "risk_assessment"}:
         return "risk"
+    if normalized in {"drift", "drift_scan"}:
+        return "drift"
+    if normalized in {"brief", "brief_generation", "narrative_brief"}:
+        return "brief"
     return normalized
 
 

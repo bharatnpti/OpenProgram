@@ -17,9 +17,9 @@ from core.domain.graph import (
     GraphTree,
     JsonScalar,
     NodeKind,
-    VectorMatch,
-    normalize_vector,
 )
+from core.domain.identity import IdentityLink
+from core.domain.writeback import WriteBackAudit, WriteBackStatus
 
 _tracer = trace.get_tracer("openprogram.persistence.graph")
 
@@ -92,7 +92,6 @@ class PostgresGraphRepository:
                     """,
                     (node.tenant_id, node.id, node.kind.value, node.name, dict(node.metadata)),
                 )
-                await self._sync_age_node(transaction, node)
 
     async def delete_node(self, tenant_id: str, id: str) -> None:
         with _tracer.start_as_current_span("postgres.graph.delete_node"):
@@ -112,7 +111,6 @@ class PostgresGraphRepository:
                     """,
                     (tenant_id, id),
                 )
-                await self._sync_age_delete_node(transaction, tenant_id, id)
 
     async def add_edge(self, edge: GraphEdge) -> None:
         with _tracer.start_as_current_span("postgres.graph.add_edge"):
@@ -134,7 +132,6 @@ class PostgresGraphRepository:
                         dict(edge.metadata),
                     ),
                 )
-                await self._sync_age_edge(transaction, edge)
 
     async def list_edges(
         self,
@@ -188,7 +185,6 @@ class PostgresGraphRepository:
                         dict(edge.metadata),
                     ),
                 )
-                await self._sync_age_remove_edge(transaction, edge)
 
     async def get_program_tree(self, tenant_id: str, program_id: str, as_of: date) -> GraphTree:
         with _tracer.start_as_current_span("postgres.graph.get_program_tree"):
@@ -257,99 +253,222 @@ class PostgresGraphRepository:
             )
             return [_edge_from_row(row) for row in rows]
 
-    async def _sync_age_node(self, session: AsyncSqlSession, node: GraphNode) -> None:
-        with _tracer.start_as_current_span("postgres.age.sync_node"):
-            await _prepare_age_session(session)
-            await session.execute(
-                f"""
-                SELECT *
-                FROM cypher('openprogram_graph', $$
-                    MERGE (n:GraphNode {{
-                        tenant_id: {_cypher_string(node.tenant_id)},
-                        id: {_cypher_string(node.id)}
-                    }})
-                    SET n.kind = {_cypher_string(node.kind.value)},
-                        n.name = {_cypher_string(node.name)}
-                    RETURN n
-                $$) AS (n agtype)
+    async def get_identity_link(self, tenant_id: str, developer_id: str) -> IdentityLink | None:
+        with _tracer.start_as_current_span("postgres.graph.get_identity_link"):
+            rows = await self._executor.fetch(
                 """
+                SELECT tenant_id, developer_id, chat_user_id, jira_account_id,
+                       jira_email, vcs_username
+                FROM identity_links
+                WHERE tenant_id = %s AND developer_id = %s
+                LIMIT 1
+                """,
+                (tenant_id, developer_id),
+            )
+        return _identity_link_from_row(rows[0]) if rows else None
+
+    async def upsert_identity_link(self, link: IdentityLink) -> None:
+        with _tracer.start_as_current_span("postgres.graph.upsert_identity_link"):
+            await self._executor.execute(
+                """
+                INSERT INTO identity_links (
+                    tenant_id, developer_id, chat_user_id, jira_account_id,
+                    jira_email, vcs_username
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, developer_id)
+                DO UPDATE SET
+                    chat_user_id = EXCLUDED.chat_user_id,
+                    jira_account_id = EXCLUDED.jira_account_id,
+                    jira_email = EXCLUDED.jira_email,
+                    vcs_username = EXCLUDED.vcs_username,
+                    updated_at = now()
+                """,
+                (
+                    link.tenant_id,
+                    link.developer_id,
+                    link.chat_user_id,
+                    link.jira_account_id,
+                    link.jira_email,
+                    link.vcs_username,
+                ),
             )
 
-    async def _sync_age_edge(self, session: AsyncSqlSession, edge: GraphEdge) -> None:
-        relation = {
-            EdgeKind.CONTAINS: "CONTAINS",
-            EdgeKind.ASSIGNED_TO: "ASSIGNED_TO",
-            EdgeKind.DEPENDS_ON: "DEPENDS_ON",
-        }[edge.kind]
-        valid_from = _cypher_string(edge.valid_from.isoformat()) if edge.valid_from else "null"
-        valid_to = _cypher_string(edge.valid_to.isoformat()) if edge.valid_to else "null"
-        with _tracer.start_as_current_span("postgres.age.sync_edge"):
-            await _prepare_age_session(session)
-            await session.execute(
-                f"""
-                SELECT *
-                FROM cypher('openprogram_graph', $$
-                    MATCH (from_node:GraphNode {{
-                        tenant_id: {_cypher_string(edge.tenant_id)},
-                        id: {_cypher_string(edge.from_node_id)}
-                    }})
-                    MATCH (to_node:GraphNode {{
-                        tenant_id: {_cypher_string(edge.tenant_id)},
-                        id: {_cypher_string(edge.to_node_id)}
-                    }})
-                    CREATE (from_node)-[edge:{relation} {{
-                        kind: {_cypher_string(edge.kind.value)},
-                        valid_from: {valid_from},
-                        valid_to: {valid_to}
-                    }}]->(to_node)
-                    RETURN edge
-                $$) AS (edge agtype)
+    async def list_identity_links(self, tenant_id: str) -> list[IdentityLink]:
+        with _tracer.start_as_current_span("postgres.graph.list_identity_links"):
+            rows = await self._executor.fetch(
                 """
+                SELECT tenant_id, developer_id, chat_user_id, jira_account_id,
+                       jira_email, vcs_username
+                FROM identity_links
+                WHERE tenant_id = %s
+                ORDER BY developer_id
+                """,
+                (tenant_id,),
+            )
+        return [_identity_link_from_row(row) for row in rows]
+
+    async def get_writeback_enabled(self, tenant_id: str) -> bool | None:
+        with _tracer.start_as_current_span("postgres.graph.get_writeback_enabled"):
+            rows = await self._executor.fetch(
+                """
+                SELECT enabled
+                FROM writeback_config
+                WHERE tenant_id = %s
+                LIMIT 1
+                """,
+                (tenant_id,),
+            )
+        if not rows:
+            return None
+        value = rows[0].get("enabled")
+        return bool(value) if value is not None else None
+
+    async def set_writeback_enabled(self, tenant_id: str, enabled: bool) -> None:
+        with _tracer.start_as_current_span("postgres.graph.set_writeback_enabled"):
+            await self._executor.execute(
+                """
+                INSERT INTO writeback_config (tenant_id, enabled)
+                VALUES (%s, %s)
+                ON CONFLICT (tenant_id)
+                DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now()
+                """,
+                (tenant_id, enabled),
             )
 
-    async def _sync_age_delete_node(
-        self, session: AsyncSqlSession, tenant_id: str, id: str
-    ) -> None:
-        with _tracer.start_as_current_span("postgres.age.delete_node"):
-            await _prepare_age_session(session)
-            await session.execute(
-                f"""
-                SELECT *
-                FROM cypher('openprogram_graph', $$
-                    MATCH (n:GraphNode {{
-                        tenant_id: {_cypher_string(tenant_id)},
-                        id: {_cypher_string(id)}
-                    }})
-                    DETACH DELETE n
-                    RETURN 1
-                $$) AS (n agtype)
+    async def record(self, audit: WriteBackAudit) -> None:
+        with _tracer.start_as_current_span("postgres.graph.record_writeback_audit"):
+            await self._executor.execute(
                 """
+                INSERT INTO writeback_audit (
+                    id, tenant_id, developer_id, issue_key, correlation_id,
+                    status, target_state, before_state, after_state, comment,
+                    source, created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                (
+                    audit.id,
+                    audit.tenant_id,
+                    audit.developer_id,
+                    audit.issue_key,
+                    audit.correlation_id,
+                    audit.status.value,
+                    audit.target_state,
+                    audit.before_state,
+                    audit.after_state,
+                    audit.comment,
+                    audit.source,
+                    audit.created_at,
+                ),
             )
 
-    async def _sync_age_remove_edge(self, session: AsyncSqlSession, edge: GraphEdge) -> None:
-        relation = {
-            EdgeKind.CONTAINS: "CONTAINS",
-            EdgeKind.ASSIGNED_TO: "ASSIGNED_TO",
-            EdgeKind.DEPENDS_ON: "DEPENDS_ON",
-        }[edge.kind]
-        with _tracer.start_as_current_span("postgres.age.remove_edge"):
-            await _prepare_age_session(session)
-            await session.execute(
-                f"""
-                SELECT *
-                FROM cypher('openprogram_graph', $$
-                    MATCH (from_node:GraphNode {{
-                        tenant_id: {_cypher_string(edge.tenant_id)},
-                        id: {_cypher_string(edge.from_node_id)}
-                    }})-[edge:{relation}]->(to_node:GraphNode {{
-                        tenant_id: {_cypher_string(edge.tenant_id)},
-                        id: {_cypher_string(edge.to_node_id)}
-                    }})
-                    DELETE edge
-                    RETURN 1
-                $$) AS (edge agtype)
+    async def list_for_issue(self, tenant_id: str, issue_key: str) -> list[WriteBackAudit]:
+        with _tracer.start_as_current_span("postgres.graph.list_writeback_audit"):
+            rows = await self._executor.fetch(
                 """
+                SELECT id, tenant_id, developer_id, issue_key, correlation_id,
+                       status, target_state, before_state, after_state, comment,
+                       source, created_at
+                FROM writeback_audit
+                WHERE tenant_id = %s AND issue_key = %s
+                ORDER BY created_at
+                """,
+                (tenant_id, issue_key),
             )
+        return [_writeback_audit_from_row(row) for row in rows]
+
+    async def list_writeback_by_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> list[WriteBackAudit]:
+        with _tracer.start_as_current_span("postgres.graph.list_writeback_by_correlation"):
+            rows = await self._executor.fetch(
+                """
+                SELECT id, tenant_id, developer_id, issue_key, correlation_id,
+                       status, target_state, before_state, after_state, comment,
+                       source, created_at
+                FROM writeback_audit
+                WHERE tenant_id = %s AND correlation_id = %s
+                ORDER BY created_at
+                """,
+                (tenant_id, correlation_id),
+            )
+        return [_writeback_audit_from_row(row) for row in rows]
+
+    async def find_existing(
+        self,
+        tenant_id: str,
+        issue_key: str,
+        target_state: str,
+        correlation_id: str,
+    ) -> WriteBackAudit | None:
+        with _tracer.start_as_current_span("postgres.graph.find_writeback_audit"):
+            rows = await self._executor.fetch(
+                """
+                SELECT id, tenant_id, developer_id, issue_key, correlation_id,
+                       status, target_state, before_state, after_state, comment,
+                       source, created_at
+                FROM writeback_audit
+                WHERE tenant_id = %s AND issue_key = %s
+                      AND target_state = %s AND correlation_id = %s
+                ORDER BY created_at
+                LIMIT 1
+                """,
+                (tenant_id, issue_key, target_state, correlation_id),
+            )
+        return _writeback_audit_from_row(rows[0]) if rows else None
+
+    async def get_writeback_audit(
+        self, tenant_id: str, audit_id: str
+    ) -> WriteBackAudit | None:
+        with _tracer.start_as_current_span("postgres.graph.get_writeback_audit"):
+            rows = await self._executor.fetch(
+                """
+                SELECT id, tenant_id, developer_id, issue_key, correlation_id,
+                       status, target_state, before_state, after_state, comment,
+                       source, created_at
+                FROM writeback_audit
+                WHERE tenant_id = %s AND id = %s
+                LIMIT 1
+                """,
+                (tenant_id, audit_id),
+            )
+        return _writeback_audit_from_row(rows[0]) if rows else None
+
+    async def count_applied_writebacks(
+        self, tenant_id: str, since: datetime | None = None
+    ) -> int:
+        with _tracer.start_as_current_span("postgres.graph.count_applied_writebacks"):
+            rows = await self._executor.fetch(
+                """
+                SELECT COUNT(*)::int AS applied_count
+                FROM writeback_audit
+                WHERE tenant_id = %s AND status = %s
+                      AND (%s IS NULL OR created_at >= %s)
+                """,
+                (tenant_id, WriteBackStatus.APPLIED.value, since, since),
+            )
+        return _int_value(rows[0].get("applied_count")) if rows else 0
+
+    async def list_applied_writebacks(
+        self, tenant_id: str, limit: int, since: datetime | None = None
+    ) -> list[WriteBackAudit]:
+        with _tracer.start_as_current_span("postgres.graph.list_applied_writebacks"):
+            rows = await self._executor.fetch(
+                """
+                SELECT id, tenant_id, developer_id, issue_key, correlation_id,
+                       status, target_state, before_state, after_state, comment,
+                       source, created_at
+                FROM writeback_audit
+                WHERE tenant_id = %s AND status = %s
+                      AND (%s IS NULL OR created_at >= %s)
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                (tenant_id, WriteBackStatus.APPLIED.value, since, since, limit),
+            )
+        return [_writeback_audit_from_row(row) for row in rows]
 
 
 class PostgresTimeSeriesRepository:
@@ -450,66 +569,6 @@ class PostgresTimeSeriesRepository:
         return [_fact_from_row(row) for row in rows]
 
 
-class PostgresVectorStore:
-    def __init__(self, executor: AsyncSqlExecutor) -> None:
-        self._executor = executor
-
-    async def upsert_embedding(
-        self, tenant_id: str, entity_ref: EntityRef, vector: Sequence[float]
-    ) -> None:
-        with _tracer.start_as_current_span("postgres.vector.upsert_embedding"):
-            await self._executor.execute(
-                """
-                INSERT INTO vector_items (tenant_id, entity_kind, entity_id, embedding)
-                VALUES (%s, %s, %s, %s::vector)
-                ON CONFLICT (tenant_id, entity_kind, entity_id)
-                DO UPDATE SET embedding = EXCLUDED.embedding
-                """,
-                (
-                    tenant_id,
-                    entity_ref.kind.value,
-                    entity_ref.id,
-                    _vector_literal(normalize_vector(vector)),
-                ),
-            )
-
-    async def search(
-        self, tenant_id: str, vector: Sequence[float], limit: int
-    ) -> list[VectorMatch]:
-        with _tracer.start_as_current_span("postgres.vector.search"):
-            rows = await self._executor.fetch(
-                """
-                SELECT entity_kind, entity_id, 1 - (embedding <=> %s::vector) AS score
-                FROM vector_items
-                WHERE tenant_id = %s
-                ORDER BY embedding <=> %s::vector
-                LIMIT %s
-                """,
-                (
-                    _vector_literal(normalize_vector(vector)),
-                    tenant_id,
-                    _vector_literal(normalize_vector(vector)),
-                    limit,
-                ),
-            )
-            return [
-                VectorMatch(
-                    entity_ref=EntityRef(
-                        tenant_id=tenant_id,
-                        kind=NodeKind(str(row["entity_kind"])),
-                        id=str(row["entity_id"]),
-                    ),
-                    score=_float_field(row.get("score")),
-                )
-                for row in rows
-            ]
-
-
-async def _prepare_age_session(session: AsyncSqlSession) -> None:
-    await session.execute("LOAD 'age'")
-    await session.execute('SET LOCAL search_path = ag_catalog, "$user", public')
-
-
 def _node_from_row(row: Mapping[str, object]) -> GraphNode:
     metadata = row.get("metadata")
     return GraphNode(
@@ -518,6 +577,47 @@ def _node_from_row(row: Mapping[str, object]) -> GraphNode:
         kind=NodeKind(str(row["kind"])),
         name=str(row["name"]),
         metadata=_json_mapping(metadata),
+    )
+
+
+def _optional_str(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _int_value(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise GraphNotFound("expected an integer aggregate value")
+    return value
+
+
+def _identity_link_from_row(row: Mapping[str, object]) -> IdentityLink:
+    return IdentityLink(
+        tenant_id=str(row["tenant_id"]),
+        developer_id=str(row["developer_id"]),
+        chat_user_id=_optional_str(row.get("chat_user_id")),
+        jira_account_id=_optional_str(row.get("jira_account_id")),
+        jira_email=_optional_str(row.get("jira_email")),
+        vcs_username=_optional_str(row.get("vcs_username")),
+    )
+
+
+def _writeback_audit_from_row(row: Mapping[str, object]) -> WriteBackAudit:
+    created_at = row["created_at"]
+    if not isinstance(created_at, datetime):
+        raise GraphNotFound("writeback_audit row missing created_at")
+    return WriteBackAudit(
+        id=str(row["id"]),
+        tenant_id=str(row["tenant_id"]),
+        developer_id=str(row["developer_id"]),
+        issue_key=str(row["issue_key"]),
+        correlation_id=str(row["correlation_id"]),
+        status=WriteBackStatus(str(row["status"])),
+        target_state=str(row["target_state"]),
+        before_state=_optional_str(row.get("before_state")),
+        after_state=_optional_str(row.get("after_state")),
+        comment=_optional_str(row.get("comment")),
+        source=str(row["source"]),
+        created_at=created_at,
     )
 
 
@@ -568,17 +668,3 @@ def _json_mapping(value: object) -> dict[str, JsonScalar]:
         if isinstance(key, str) and (item is None or isinstance(item, str | int | float | bool)):
             result[key] = item
     return result
-
-
-def _float_field(value: object) -> float:
-    if isinstance(value, str | int | float):
-        return float(value)
-    return 0.0
-
-
-def _vector_literal(vector: Sequence[float]) -> str:
-    return "[" + ",".join(str(float(value)) for value in vector) + "]"
-
-
-def _cypher_string(value: str) -> str:
-    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"

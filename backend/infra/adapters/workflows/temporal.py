@@ -24,23 +24,32 @@ from core.domain.workflows import (
     DirectorySyncResult,
     HeartbeatInput,
     HeartbeatResult,
+    InboundSweeperInput,
+    InboundSweeperResult,
+    InboundSweeperScheduleConfig,
+    ReplyCoalesceInput,
+    ReplyCoalesceResult,
     ScheduleBootstrapResult,
     SyncDispatchInput,
     SyncScheduleConfig,
     record_heartbeat,
 )
 from infra.workflows import (
+    brief_generation,
     calendar_sync,
     checkin_fanout,
     conversation_purge,
     daily_checkin,
     directory_sync,
+    drift_scan,
     git_sync,
+    inbound_events,
     jira_sync,
     nudge,
     risk_assessment,
     runtime_sync,
 )
+from infra.workflows.brief_generation import BriefGenerationInput, BriefGenerationResult
 from infra.workflows.calendar_sync import CalendarSyncInput, CalendarSyncWorkflowResult
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
 from infra.workflows.dispatch import (
@@ -50,9 +59,10 @@ from infra.workflows.dispatch import (
     sync_workflow_input,
     sync_workflow_name,
 )
+from infra.workflows.drift_scan import DriftScanInput, DriftScanWorkflowResult
 from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
-from infra.workflows.nudge import NudgeInput, NudgeResult
+from infra.workflows.nudge import EscalationStepInput, NudgeInput, NudgeResult
 from infra.workflows.risk_assessment import RiskAssessmentInput, RiskAssessmentWorkflowResult
 from infra.workflows.runtime_sync import RuntimeSyncInput, RuntimeSyncWorkflowResult
 
@@ -63,6 +73,8 @@ SyncWorkflowResult = (
     | DirectorySyncResult
     | RuntimeSyncWorkflowResult
     | RiskAssessmentWorkflowResult
+    | DriftScanWorkflowResult
+    | BriefGenerationResult
 )
 
 if TYPE_CHECKING:
@@ -274,6 +286,40 @@ class RiskAssessmentWorkflow:
         )
 
 
+@activity.defn
+async def run_drift_scan_activity(payload: DriftScanInput) -> DriftScanWorkflowResult:
+    return await drift_scan.run_drift_scan_activity(payload)
+
+
+@workflow.defn
+class DriftScanWorkflow:
+    @workflow.run
+    async def run(self, payload: DriftScanInput) -> DriftScanWorkflowResult:
+        return await workflow.execute_activity(
+            run_drift_scan_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+
+
+@activity.defn
+async def run_brief_generation_activity(
+    payload: BriefGenerationInput,
+) -> BriefGenerationResult:
+    return await brief_generation.run_brief_generation_activity(payload)
+
+
+@workflow.defn
+class BriefGenerationWorkflow:
+    @workflow.run
+    async def run(self, payload: BriefGenerationInput) -> BriefGenerationResult:
+        return await workflow.execute_activity(
+            run_brief_generation_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=10),
+        )
+
+
 @workflow.defn
 class ScheduledSyncWorkflow:
     @workflow.run
@@ -327,6 +373,11 @@ async def send_checkin_nudge_activity(payload: NudgeInput) -> NudgeResult:
 
 
 @activity.defn
+async def send_escalation_step_activity(payload: EscalationStepInput) -> NudgeResult:
+    return await nudge.send_escalation_step_activity(payload)
+
+
+@activity.defn
 async def close_checkin_non_response_activity(payload: NudgeInput) -> NudgeResult:
     return await nudge.close_checkin_non_response_activity(payload)
 
@@ -335,15 +386,19 @@ async def close_checkin_non_response_activity(payload: NudgeInput) -> NudgeResul
 class NudgeWorkflow:
     @workflow.run
     async def run(self, payload: NudgeInput) -> NudgeResult:
-        if payload.reply_wait_seconds > 0:
-            await workflow.sleep(timedelta(seconds=payload.reply_wait_seconds))
-        nudge_result = await workflow.execute_activity(
-            send_checkin_nudge_activity,
-            payload,
-            start_to_close_timeout=timedelta(minutes=5),
-        )
-        if nudge_result.status == "already_replied":
-            return nudge_result
+        last_nudge: NudgeResult | None = None
+        for number, step in enumerate(payload.resolved_steps(), start=1):
+            if step.wait_seconds > 0:
+                await workflow.sleep(timedelta(seconds=step.wait_seconds))
+            step_result = await workflow.execute_activity(
+                send_escalation_step_activity,
+                payload.step_input(number, step.target),
+                start_to_close_timeout=timedelta(minutes=5),
+            )
+            if step_result.status == "already_replied":
+                return step_result
+            if step_result.nudge_message_id is not None:
+                last_nudge = step_result
         if payload.final_reply_wait_seconds > 0:
             await workflow.sleep(timedelta(seconds=payload.final_reply_wait_seconds))
         close_result = await workflow.execute_activity(
@@ -357,10 +412,84 @@ class NudgeWorkflow:
                 developer_id=close_result.developer_id,
                 correlation_id=close_result.correlation_id,
                 status=close_result.status,
-                nudge_message_id=nudge_result.nudge_message_id,
+                nudge_message_id=last_nudge.nudge_message_id if last_nudge else None,
                 terminal_source=close_result.terminal_source,
             )
         return close_result
+
+
+@activity.defn
+async def drain_inbound_conversation_activity(
+    payload: ReplyCoalesceInput,
+) -> ReplyCoalesceResult:
+    return await inbound_events.drain_conversation_activity(payload)
+
+
+@activity.defn
+async def sweep_inbound_events_activity(payload: InboundSweeperInput) -> InboundSweeperResult:
+    return await inbound_events.sweep_inbound_events_activity(payload)
+
+
+# Max consecutive debounce resets before continue_as_new truncates history. Each
+# reset appends timer events to the Temporal history; capping the run keeps it
+# bounded on chatty conversations. Mirrors the intent of DBOS `_MAX_COALESCE_PASSES`.
+_MAX_COALESCE_RESETS = 500
+
+
+@workflow.defn
+class ReplyCoalesceWorkflow:
+    """Per-conversation debounce/coalesce workflow (signal_with_start driven)."""
+
+    def __init__(self) -> None:
+        self._pending: bool = False
+
+    @workflow.signal
+    def new_event(self) -> None:
+        self._pending = True
+
+    @workflow.run
+    async def run(self, payload: ReplyCoalesceInput) -> ReplyCoalesceResult:
+        debounce = timedelta(seconds=payload.debounce_seconds)
+        # Reset-on-message quiet window: consume the pending signal, then wait up
+        # to `debounce` for another. A new signal returns early (timer resets); a
+        # quiet window raises TimeoutError, which ends the loop and drains.
+        resets = 0
+        while True:
+            self._pending = False
+            try:
+                await workflow.wait_condition(lambda: self._pending, timeout=debounce)
+            except TimeoutError:
+                break
+            resets += 1
+            # Bound Temporal event history on a pathologically chatty conversation:
+            # each reset appends timer events, so after enough consecutive resets
+            # continue-as-new into a fresh run with a truncated history. The buffered
+            # events stay durably in inbound_chat_events and the fresh run's quiet
+            # window still drains them, so no reply is dropped -- only the same
+            # (conversation_key, tenant, debounce) input is carried forward. Mirrors
+            # the intent of the DBOS coalesce bound.
+            if resets >= _MAX_COALESCE_RESETS:
+                workflow.continue_as_new(payload)
+        return await workflow.execute_activity(
+            drain_inbound_conversation_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+
+
+@workflow.defn
+class ScheduledInboundSweeperWorkflow:
+    @workflow.run
+    async def run(self, config: InboundSweeperScheduleConfig) -> InboundSweeperResult:
+        return await workflow.execute_activity(
+            sweep_inbound_events_activity,
+            InboundSweeperInput(
+                tenant_id=config.tenant_id,
+                grace_seconds=config.grace_seconds,
+                now=workflow.now().isoformat(),
+            ),
+            start_to_close_timeout=timedelta(minutes=5),
+        )
 
 
 async def _execute_sync_activity(
@@ -369,7 +498,9 @@ async def _execute_sync_activity(
     | CalendarSyncInput
     | DirectorySyncInput
     | RuntimeSyncInput
-    | RiskAssessmentInput,
+    | RiskAssessmentInput
+    | DriftScanInput
+    | BriefGenerationInput,
 ) -> SyncWorkflowResult:
     if isinstance(payload, JiraSyncInput):
         return await workflow.execute_activity(
@@ -407,6 +538,18 @@ async def _execute_sync_activity(
             payload,
             start_to_close_timeout=timedelta(minutes=5),
         )
+    if isinstance(payload, DriftScanInput):
+        return await workflow.execute_activity(
+            run_drift_scan_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+    if isinstance(payload, BriefGenerationInput):
+        return await workflow.execute_activity(
+            run_brief_generation_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=10),
+        )
     raise ValueError("unsupported sync payload")
 
 
@@ -417,6 +560,7 @@ class TemporalWorkflowScheduler:
     schedule_id: str
     tenant_id: str
     interval_seconds: int
+    reply_debounce_seconds: int = 30
 
     async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
         from temporalio.client import (
@@ -522,6 +666,31 @@ class TemporalWorkflowScheduler:
         status = await _ensure_temporal_schedule(client, config.schedule_id, schedule)
         return ScheduleBootstrapResult(schedule_id=config.schedule_id, status=status)
 
+    async def ensure_inbound_sweeper_schedule(
+        self, config: InboundSweeperScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        from temporalio.client import (
+            Schedule,
+            ScheduleActionStartWorkflow,
+            ScheduleOverlapPolicy,
+            SchedulePolicy,
+            ScheduleSpec,
+        )
+
+        client = await _connect_temporal(self.target)
+        schedule = Schedule(
+            action=ScheduleActionStartWorkflow(
+                ScheduledInboundSweeperWorkflow.run,
+                config,
+                id=f"{config.schedule_id}-workflow",
+                task_queue=self.task_queue,
+            ),
+            spec=ScheduleSpec(cron_expressions=[config.cron]),
+            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
+        )
+        status = await _ensure_temporal_schedule(client, config.schedule_id, schedule)
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status=status)
+
     async def ensure_sync_schedules(
         self, configs: Sequence[SyncScheduleConfig]
     ) -> list[ScheduleBootstrapResult]:
@@ -564,6 +733,23 @@ class TemporalWorkflowScheduler:
             task_queue=self.task_queue,
         )
         return workflow_id
+
+    async def arm_reply_coalesce(self, conversation_key: str, tenant_id: str) -> None:
+        client = await _connect_temporal(self.target)
+        coalesce_id = safe_workflow_id(f"reply-coalesce-{tenant_id}-{conversation_key}")
+        # signal_with_start: start the debounce workflow if idle, and in all cases
+        # deliver the signal that resets its quiet-window timer.
+        await client.start_workflow(
+            ReplyCoalesceWorkflow.run,
+            ReplyCoalesceInput(
+                tenant_id=tenant_id,
+                conversation_key=conversation_key,
+                debounce_seconds=self.reply_debounce_seconds,
+            ),
+            id=coalesce_id,
+            task_queue=self.task_queue,
+            start_signal="new_event",
+        )
 
     async def dispatch_sync(self, input: SyncDispatchInput) -> str:
         client = await _connect_temporal(self.target)
@@ -614,6 +800,20 @@ class TemporalWorkflowScheduler:
                 id=workflow_id,
                 task_queue=self.task_queue,
             )
+        elif isinstance(workflow_input, DriftScanInput):
+            await client.start_workflow(
+                DriftScanWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
+        elif isinstance(workflow_input, BriefGenerationInput):
+            await client.start_workflow(
+                BriefGenerationWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
         else:
             raise ValueError(f"unsupported sync connector: {input.connector}")
         return workflow_id
@@ -644,9 +844,13 @@ class TemporalWorkflowWorker:
                 DirectorySyncWorkflow,
                 RuntimeSyncWorkflow,
                 RiskAssessmentWorkflow,
+                DriftScanWorkflow,
+                BriefGenerationWorkflow,
                 ScheduledSyncWorkflow,
                 DailyCheckinWorkflow,
                 NudgeWorkflow,
+                ReplyCoalesceWorkflow,
+                ScheduledInboundSweeperWorkflow,
             ],
             activities=[
                 record_heartbeat_activity,
@@ -659,9 +863,14 @@ class TemporalWorkflowWorker:
                 sync_directory_activity,
                 run_runtime_config_sync_activity,
                 run_risk_assessment_activity,
+                run_drift_scan_activity,
+                run_brief_generation_activity,
                 start_daily_checkin_activity,
                 send_checkin_nudge_activity,
+                send_escalation_step_activity,
                 close_checkin_non_response_activity,
+                drain_inbound_conversation_activity,
+                sweep_inbound_events_activity,
             ],
         )
         await worker.run()

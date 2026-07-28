@@ -8,6 +8,7 @@ from config.settings import Settings
 from core.application.ask_service import AskService
 from core.application.config_service import ConfigService, DirectoryService
 from core.application.cross_person_service import CrossPersonRequestService
+from core.application.dead_letter_service import DeadLetterService
 from core.application.directory_sync_service import DirectorySyncService
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.graph_queries import GraphQueryService
@@ -15,6 +16,7 @@ from core.application.persona_views import PersonaViewService
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.application.risk_service import RiskService
 from core.application.self_status_service import SelfStatusService
+from core.application.writeback_service import WriteBackService
 from core.domain.auth import Principal
 from core.domain.errors import (
     AuthenticationRequired,
@@ -23,6 +25,7 @@ from core.domain.errors import (
 )
 from core.domain.risk import RiskProviderConfig
 from core.ports.auth import AuthCredentials
+from core.ports.repositories import NarrativeBriefRepository
 from infra.registry import ServiceRegistry
 
 
@@ -76,6 +79,8 @@ def get_config_service(request: Request) -> ConfigService:
         status_repository=registry.status_repository(),
         directory_repository=registry.directory_user_repository(),
         time_series_repository=registry.time_series_repository(),
+        identity_link_repository=registry.identity_link_repository(),
+        writeback_config_repository=registry.writeback_config_repository(),
     )
 
 
@@ -92,6 +97,21 @@ def get_portfolio_feed_service(request: Request) -> PortfolioFeedService:
     return PortfolioFeedService(registry.time_series_repository())
 
 
+def get_narrative_brief_repository(request: Request) -> NarrativeBriefRepository:
+    registry = get_registry(request)
+    return registry.narrative_brief_repository()
+
+
+def get_dead_letter_service(request: Request) -> DeadLetterService:
+    registry = get_registry(request)
+    return registry.dead_letter_service()
+
+
+def get_write_back_service(request: Request) -> WriteBackService:
+    registry = get_registry(request)
+    return registry.write_back_service()
+
+
 def get_cross_person_request_service(request: Request) -> CrossPersonRequestService:
     registry = get_registry(request)
     return registry.cross_person_request_service()
@@ -104,12 +124,14 @@ def get_risk_service(request: Request) -> RiskService:
         graph_repository=registry.graph_repository(),
         time_series_repository=registry.time_series_repository(),
         status_repository=registry.status_repository(),
+        rollup_repository=registry.rollup_repository(),
         provider_config=RiskProviderConfig(
             jira_base_url=settings.jira_base_url,
             github_base_url=settings.github_base_url,
             default_no_pr_days=settings.risk_default_no_pr_days,
             default_pr_age_days=settings.risk_default_pr_age_days,
             default_stale_days=settings.risk_default_stale_days,
+            default_no_activity_days=settings.drift_no_activity_days,
         ),
     )
 

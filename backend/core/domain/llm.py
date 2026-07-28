@@ -47,6 +47,9 @@ class LlmRequest:
     # Prior assistant tool-call turns carried through multi-turn tool loops.
     tool_calls: tuple[LlmToolCall, ...] = ()
     tool_results: tuple[LlmToolResult, ...] = ()
+    # Request provider-enforced JSON output (response_format=json_object) plus
+    # deterministic decoding settings for structured parse/clarification calls.
+    json_mode: bool = False
     metadata: Mapping[str, JsonScalar] = field(default_factory=dict)
 
 

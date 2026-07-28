@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.status_parsing import (
+    GENERIC_CLARIFICATION_QUESTION,
     ClarificationDecision,
     ClarificationEvaluator,
     StatusParser,
@@ -214,7 +215,7 @@ async def test_status_parser_extracts_issue_updates() -> None:
     assert "issue_updates array" in provider.requests[0].prompt
 
 
-async def test_status_parser_falls_back_to_raw_reply_when_output_is_malformed() -> None:
+async def test_status_parser_falls_back_to_low_confidence_when_output_is_malformed() -> None:
     provider = CapturingLlmProvider(text="not valid structured output")
     parser = StatusParser(provider, model="test-model")
 
@@ -225,12 +226,19 @@ async def test_status_parser_falls_back_to_raw_reply_when_output_is_malformed() 
         correlation_id="corr-1",
     )
 
+    # Safe fallback: keep the raw note but mark it unverified so it cannot roll up
+    # green (parser_confident False, no answered blocker/ETA signals).
     assert signals == CheckInSignals(
         progress_note="Finished the cache work; waiting on review.",
+        parser_confident=False,
     )
+    assert signals.blockers_answered is False
+    assert signals.eta_answered is False
+    # One terse "return only valid JSON" retry happens before the fallback.
+    assert len(provider.requests) == 2
 
 
-async def test_status_parser_falls_back_when_json_is_not_an_object() -> None:
+async def test_status_parser_falls_back_to_low_confidence_when_json_is_not_an_object() -> None:
     provider = CapturingLlmProvider(text='["not", "an", "object"]')
     parser = StatusParser(provider, model="test-model")
 
@@ -241,7 +249,47 @@ async def test_status_parser_falls_back_when_json_is_not_an_object() -> None:
         correlation_id="corr-1",
     )
 
-    assert signals == CheckInSignals(progress_note="Raw status text.")
+    assert signals == CheckInSignals(progress_note="Raw status text.", parser_confident=False)
+
+
+async def test_status_parser_requests_json_mode() -> None:
+    provider = CapturingLlmProvider(
+        text='{"progress_note":"x","blockers":[],"eta_change_days":0,'
+        '"blockers_answered":true,"eta_answered":true}'
+    )
+    parser = StatusParser(provider, model="test-model")
+
+    await parser.parse_reply(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="x",
+        correlation_id="corr-1",
+    )
+
+    assert provider.requests[0].json_mode is True
+
+
+async def test_status_parser_parses_fenced_json_without_retry() -> None:
+    provider = CapturingLlmProvider(
+        text=(
+            "```json\n"
+            '{"progress_note":"API handoff is ready","blockers":[],'
+            '"eta_change_days":0,"blockers_answered":true,"eta_answered":true}\n'
+            "```"
+        )
+    )
+    parser = StatusParser(provider, model="test-model")
+
+    signals = await parser.parse_reply(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="API handoff is ready.",
+        correlation_id="corr-1",
+    )
+
+    assert signals.progress_note == "API handoff is ready"
+    assert signals.parser_confident is True
+    assert len(provider.requests) == 1
 
 
 async def test_status_parser_ignores_wrongly_typed_optional_fields() -> None:
@@ -338,6 +386,65 @@ async def test_clarification_evaluator_parses_sufficient_signals() -> None:
             ),
         ),
     )
+
+
+async def test_clarification_evaluator_parses_fenced_json() -> None:
+    provider = CapturingLlmProvider(
+        text=(
+            "```json\n"
+            '{"is_status_update":true,"sufficient":false,'
+            '"question":"What is blocking the handoff?","signals":null}\n'
+            "```"
+        )
+    )
+    evaluator = ClarificationEvaluator(provider, model="test-model")
+
+    decision = await evaluator.evaluate(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="Still working on it.",
+        correlation_id="corr-1",
+    )
+
+    assert decision == ClarificationDecision(
+        sufficient=False,
+        question="What is blocking the handoff?",
+    )
+    assert len(provider.requests) == 1
+
+
+async def test_clarification_evaluator_corrupt_output_is_not_sufficient() -> None:
+    # Safety-critical: a garbled reply must never finalize as healthy/sufficient.
+    provider = CapturingLlmProvider(text="totally not valid json")
+    evaluator = ClarificationEvaluator(provider, model="test-model")
+
+    decision = await evaluator.evaluate(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="Graph sync is blocked on schema review.",
+        correlation_id="corr-1",
+    )
+
+    assert decision.sufficient is False
+    assert decision.question == GENERIC_CLARIFICATION_QUESTION
+    # One terse "return only valid JSON" retry happens before the safe fallback.
+    assert len(provider.requests) == 2
+
+
+async def test_clarification_evaluator_missing_sufficient_flag_is_not_sufficient() -> None:
+    # Valid JSON object but no sufficiency flag must default to a clarification.
+    provider = CapturingLlmProvider(text='{"progress_note":"looks done"}')
+    evaluator = ClarificationEvaluator(provider, model="test-model")
+
+    decision = await evaluator.evaluate(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="It is done.",
+        correlation_id="corr-1",
+    )
+
+    assert decision.sufficient is False
+    assert decision.question == GENERIC_CLARIFICATION_QUESTION
 
 
 async def test_clarification_evaluator_parses_non_status_intent() -> None:

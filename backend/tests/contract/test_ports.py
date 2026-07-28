@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date
 
 from core.domain.integrations import (
-    BuildResult,
     CalendarEvent,
     Issue,
     IssueState,
@@ -11,32 +10,43 @@ from core.domain.integrations import (
     UserRef,
 )
 from infra.adapters.chat.fake import FakeChatWebhookMapper
+from infra.persistence.in_memory_graph import InMemoryGraphStore
 from tests.contract.contracts import (
     assert_calendar_contract,
     assert_chat_contract,
     assert_chat_webhook_mapper_contract,
-    assert_ci_contract,
     assert_conversation_repository_contract,
+    assert_dead_letter_repository_contract,
     assert_directory_user_repository_contract,
+    assert_identity_link_repository_contract,
+    assert_inbound_chat_event_repository_contract,
     assert_issue_tracker_contract,
+    assert_narrative_brief_repository_contract,
     assert_rollup_repository_contract,
     assert_status_repository_contract,
     assert_sync_cursor_repository_contract,
     assert_time_series_repository_contract,
     assert_vcs_contract,
+    assert_writeback_audit_repository_contract,
+    assert_writeback_config_repository_contract,
 )
 from tests.contract.fakes import (
     FakeCalendarProvider,
     FakeChatProvider,
-    FakeCiProvider,
     FakeConversationRepository,
+    FakeDeadLetterRepository,
     FakeDirectoryUserRepository,
+    FakeIdentityLinkRepository,
+    FakeInboundChatEventRepository,
     FakeIssueTracker,
+    FakeNarrativeBriefRepository,
     FakeRollupRepository,
     FakeStatusRepository,
     FakeSyncCursorRepository,
     FakeTimeSeriesRepository,
     FakeVcsProvider,
+    FakeWriteBackAuditRepository,
+    FakeWriteBackConfigRepository,
 )
 
 
@@ -99,17 +109,28 @@ async def test_fake_sync_cursor_repository_satisfies_contract() -> None:
     await assert_sync_cursor_repository_contract(FakeSyncCursorRepository())
 
 
+async def test_fake_narrative_brief_repository_satisfies_contract() -> None:
+    await assert_narrative_brief_repository_contract(FakeNarrativeBriefRepository())
+
+
+async def test_in_memory_graph_store_satisfies_narrative_brief_contract() -> None:
+    await assert_narrative_brief_repository_contract(InMemoryGraphStore())
+
+
+async def test_fake_dead_letter_repository_satisfies_contract() -> None:
+    await assert_dead_letter_repository_contract(FakeDeadLetterRepository())
+
+
+async def test_in_memory_graph_store_satisfies_dead_letter_contract() -> None:
+    await assert_dead_letter_repository_contract(InMemoryGraphStore())
+
+
 async def test_fake_conversation_repository_satisfies_contract() -> None:
     await assert_conversation_repository_contract(FakeConversationRepository())
 
 
-async def test_fake_ci_provider_satisfies_contract() -> None:
-    provider = FakeCiProvider(
-        builds=[
-            BuildResult(tenant_id="demo", id="build-1", status="failed"),
-        ]
-    )
-    await assert_ci_contract(provider)
+async def test_fake_inbound_chat_event_repository_satisfies_contract() -> None:
+    await assert_inbound_chat_event_repository_contract(FakeInboundChatEventRepository())
 
 
 async def test_fake_calendar_provider_satisfies_contract() -> None:
@@ -130,3 +151,27 @@ async def test_fake_calendar_provider_satisfies_contract() -> None:
 
 async def test_fake_directory_user_repository_satisfies_contract() -> None:
     await assert_directory_user_repository_contract(FakeDirectoryUserRepository())
+
+
+async def test_fake_identity_link_repository_satisfies_contract() -> None:
+    await assert_identity_link_repository_contract(FakeIdentityLinkRepository())
+
+
+async def test_in_memory_graph_store_satisfies_identity_link_contract() -> None:
+    await assert_identity_link_repository_contract(InMemoryGraphStore())
+
+
+async def test_fake_writeback_config_repository_satisfies_contract() -> None:
+    await assert_writeback_config_repository_contract(FakeWriteBackConfigRepository())
+
+
+async def test_in_memory_graph_store_satisfies_writeback_config_contract() -> None:
+    await assert_writeback_config_repository_contract(InMemoryGraphStore())
+
+
+async def test_fake_writeback_audit_repository_satisfies_contract() -> None:
+    await assert_writeback_audit_repository_contract(FakeWriteBackAuditRepository())
+
+
+async def test_in_memory_graph_store_satisfies_writeback_audit_contract() -> None:
+    await assert_writeback_audit_repository_contract(InMemoryGraphStore())

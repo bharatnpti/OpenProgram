@@ -15,6 +15,7 @@ from core.application.status_parsing import StatusParser
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.cross_person import CrossPersonRequestStatus
 from core.domain.directory import DirectoryUser
+from core.domain.escalation import EscalationTarget
 from core.domain.graph import EntityRef, FactEvent, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
@@ -25,6 +26,7 @@ from core.domain.status import (
     CheckInCorrelation,
     CheckInPreference,
     CheckInScheduleRun,
+    CheckInSignals,
     DeveloperStatus,
     StatusSource,
 )
@@ -224,7 +226,10 @@ async def test_status_collector_graph_sends_dm_and_records_checkin() -> None:
     assert correlation.chat_thread_ref == "thread-U123"
     assert correlation.outbound_message_id == "msg-U123-1"
     assert chat.sent[0].correlation_id == "corr-1"
-    assert chat.sent[0].metadata == {"purpose": "status_checkin"}
+    assert chat.sent[0].metadata == {
+        "purpose": "status_checkin",
+        "idempotency_key": "checkin:corr-1",
+    }
     assert "Build graph sync" in llm.requests[0].prompt
     assert "schema review" in llm.requests[0].prompt
     assert "ancient dependency" not in llm.requests[0].prompt
@@ -390,22 +395,22 @@ async def test_status_collector_handles_reply_by_correlation(
             signals=None,
         )
     )
-    parser_llm = SequenceLlmProvider(
+    evaluator_llm = SequenceLlmProvider(
         texts=[
-            '{"progress_note":"Graph sync is in review",'
+            '{"is_status_update":true,"sufficient":true,"question":null,'
+            '"signals":{"progress_note":"Graph sync is in review",'
             '"blockers":["schema review"],"eta_change_days":1,'
-            '"blockers_answered":true,"eta_answered":true}'
+            '"blockers_answered":true,"eta_answered":true}}'
         ]
     )
     collector = StatusCollector(
         issue_tracker=FakeIssueTracker(),
         chat_provider=FakeChatProvider(),
-        llm_provider=SequenceLlmProvider(texts=["unused"]),
+        llm_provider=evaluator_llm,
         status_repository=store,
         time_series_repository=store,
         conversation_repository=store,
         model="test-model",
-        parser=StatusParser(parser_llm, model="test-model"),
     )
     logger = CapturingLogger()
     span = CapturingSpan()
@@ -451,13 +456,13 @@ async def test_status_collector_handles_reply_by_correlation(
     assert status.blockers == ("schema review",)
     assert status.eta_change_days == 1
     assert await store.latest_developer_status("demo", "dev-1", date(2026, 1, 10)) == status
-    assert "Graph sync is in review" not in parser_llm.requests[0].metadata.values()
-    assert [message.content for message in parser_llm.requests[0].messages] == [
+    assert "Graph sync is in review" not in evaluator_llm.requests[0].metadata.values()
+    assert [message.content for message in evaluator_llm.requests[0].messages] == [
         "Can you share progress, blockers, and ETA changes?"
     ]
     assert all(
         message.content != "Graph sync is in review, blocked on schema review."
-        for message in parser_llm.requests[0].messages
+        for message in evaluator_llm.requests[0].messages
     )
     facts = await store.list_facts(
         "demo",
@@ -498,8 +503,57 @@ async def test_status_collector_handles_reply_by_correlation(
     assert duplicate_checkin.raw_reply == updated.raw_reply
     assert duplicate_checkin.signals == updated.signals
     assert duplicate_checkin.replied_at == updated.replied_at
-    assert len(parser_llm.requests) == 1
+    assert len(evaluator_llm.requests) == 1
     assert duplicate_facts == facts
+
+
+async def test_handle_reply_corrupt_evaluation_routes_to_clarification_not_green() -> None:
+    # C2 safety-critical: a garbled model response must never finalize a check-in as
+    # confirmed/green; it routes to a clarification with the check-in still open.
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    chat = FakeChatProvider()
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        # Corrupt on both the initial call and the one retry.
+        llm_provider=SequenceLlmProvider(texts=["not json", "still not json"]),
+        status_repository=store,
+        time_series_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    outcome = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="asdkjh gibberish that is not a real status update",
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
+        )
+    )
+
+    assert outcome.kind == "clarifying"
+    finalized = await store.checkin_by_correlation("demo", "corr-1")
+    assert finalized is not None
+    assert finalized.replied_at is None
+    latest = await store.latest_developer_status("demo", "dev-1", date(2026, 1, 10))
+    assert latest is None or latest.source is not StatusSource.CONFIRMED
+    # A clarification DM went out; the check-in was not silently finalized.
+    assert len(chat.sent) == 1
 
 
 async def test_status_collector_records_scheduled_checkin_status_on_schedule_date() -> None:
@@ -1286,6 +1340,75 @@ async def test_status_collector_ignores_duplicate_message_id_while_open() -> Non
     assert chat.sent == []
 
 
+async def test_handle_reply_reprocesses_existing_turn_when_allowed() -> None:
+    # R3: on a durable retry the user turn already exists, but allow_reprocess
+    # must let classify/finalize run to completion instead of returning "ignored".
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    message = InboundMessage(
+        tenant_id="demo",
+        user=ChatUserRef(tenant_id="demo", external_id="U123"),
+        text="Graph sync is in review, blocked on schema review.",
+        thread_id="thread-1",
+        message_id="msg-1",
+        correlation_id="corr-1",
+        received_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
+    )
+    # Simulate the first (failed) drain attempt having recorded the user turn.
+    await store.append_turn(
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            conversation_id="corr-1",
+            conversation_date=date(2026, 1, 10),
+            role=ConversationRole.USER,
+            content=message.text,
+            correlation_id="corr-1",
+            chat_message_id="msg-1",
+            observed_at=message.received_at,
+        )
+    )
+    evaluator_llm = SequenceLlmProvider(
+        texts=[
+            '{"is_status_update":true,"sufficient":true,"question":null,'
+            '"signals":{"progress_note":"Graph sync is in review",'
+            '"blockers":["schema review"],"eta_change_days":1,'
+            '"blockers_answered":true,"eta_answered":true}}'
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=evaluator_llm,
+        status_repository=store,
+        time_series_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    ignored = await collector.handle_reply(message)
+    assert ignored.kind == "ignored"
+
+    processed = await collector.handle_reply(message, allow_reprocess=True)
+    assert processed.kind == "processed"
+    finalized = await store.checkin_by_correlation("demo", "corr-1")
+    assert finalized is not None
+    assert finalized.replied_at is not None
+    # The pre-existing turn is not duplicated on reprocess.
+    turns = await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
+    assert [turn.chat_message_id for turn in turns].count("msg-1") == 1
+
+
 async def test_status_collector_timeout_finalizes_accumulated_clarification_reply() -> None:
     store = InMemoryGraphStore()
     await store.record_checkin(
@@ -1904,6 +2027,7 @@ async def test_status_collector_nudges_once_and_records_stale_non_response() -> 
     assert chat.sent[0].metadata == {
         "purpose": "status_nudge",
         "nudge_number": 1,
+        "escalation_target": "developer",
         "idempotency_key": "nudge:corr-1:1",
     }
     turns = await store.list_recent_turns("demo", "dev-1", limit=1)
@@ -1917,6 +2041,92 @@ async def test_status_collector_nudges_once_and_records_stale_non_response() -> 
     assert terminal_status.source is StatusSource.STALE
     assert terminal_status.blockers == ("no confirmed reply",)
     assert "Yesterday was on track" in terminal_status.summary
+
+
+async def test_status_collector_escalation_nudge_notifies_contact_without_reply_content() -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    chat = FakeChatProvider()
+    llm = SequenceLlmProvider(texts=["unused"])
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    message_id = await collector.send_nudge(
+        tenant_id="demo",
+        correlation_id="corr-1",
+        developer_name="Asha",
+        nudge_number=2,
+        target=EscalationTarget.SCRUM_MASTER,
+        recipient_chat_external_id="U-SM",
+        recipient_display_name="Sam SM",
+    )
+
+    assert message_id == "msg-U-SM-1"
+    assert len(chat.sent) == 1
+    sent = chat.sent[0]
+    assert sent.metadata == {
+        "purpose": "status_escalation",
+        "nudge_number": 2,
+        "escalation_target": "scrum_master",
+        "idempotency_key": "nudge:corr-1:2",
+    }
+    assert "Asha" in sent.text
+    assert "scrum master" in sent.text
+    # No LLM composition and no reply content leaked to the escalation contact.
+    assert llm.requests == []
+    # The escalation DM must not land in the developer's conversation history.
+    turns = await store.list_recent_turns("demo", "dev-1", limit=5)
+    assert turns == []
+    nudge = await store.checkin_nudge_for("demo", "corr-1", 2)
+    assert nudge is not None
+    assert nudge.outbound_message_id == "msg-U-SM-1"
+
+
+async def test_status_collector_escalation_requires_recipient() -> None:
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(texts=[]),
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    with pytest.raises(ValueError, match="recipient chat id"):
+        await collector.send_nudge(
+            tenant_id="demo",
+            correlation_id="corr-1",
+            nudge_number=2,
+            target=EscalationTarget.MANAGER,
+        )
 
 
 async def test_status_collector_replaces_prompt_echo_nudge_dm() -> None:
@@ -2028,3 +2238,140 @@ async def test_status_collector_records_inferred_and_unknown_non_response() -> N
     assert "Recent implementation work" in inferred.summary
     assert unknown.source is StatusSource.UNKNOWN
     assert unknown.blockers == ("no confirmed reply",)
+
+
+async def _record_open_checkin_with_correlation(store: InMemoryGraphStore) -> None:
+    asked_at = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=asked_at,
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    await store.record_checkin_correlation(
+        CheckInCorrelation(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            chat_user_ref="U123",
+            chat_thread_ref="thread-1",
+            outbound_message_id="msg-outbound-1",
+            asked_at=asked_at,
+        )
+    )
+
+
+async def test_status_collector_acks_accepted_reply_exactly_once() -> None:
+    store = InMemoryGraphStore()
+    await _record_open_checkin_with_correlation(store)
+    chat = FakeChatProvider()
+    evaluator_llm = SequenceLlmProvider(
+        texts=[
+            '{"is_status_update":true,"sufficient":true,"question":null,'
+            '"signals":{"progress_note":"Graph sync is in review",'
+            '"blockers":["schema review"],"eta_change_days":1,'
+            '"blockers_answered":true,"eta_answered":true}}'
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=evaluator_llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+    raw_reply = "Graph sync is in review, blocked on schema review."
+
+    outcome = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text=raw_reply,
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
+        )
+    )
+
+    assert outcome.kind == "processed"
+    acks = [message for message in chat.sent if message.metadata.get("purpose") == "status_ack"]
+    assert len(acks) == 1
+    ack = acks[0]
+    # A confident parse gets the plain ack: no correction hint, no raw reply echo.
+    assert ack.text == status_collector_module._CHECKIN_ACK_PLAIN
+    assert "fix" not in ack.text
+    assert raw_reply not in ack.text
+    assert "schema review" not in ack.text
+    assert ack.correlation_id == "corr-1"
+    assert ack.metadata["idempotency_key"] == "checkin-ack:corr-1"
+
+    # Reprocessing the same reply (durable-drain retry) must not double-ack.
+    duplicate = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text=raw_reply,
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 8, tzinfo=UTC),
+        ),
+        allow_reprocess=True,
+    )
+
+    assert duplicate.kind == "processed"
+    acks_after = [
+        message for message in chat.sent if message.metadata.get("purpose") == "status_ack"
+    ]
+    assert len(acks_after) == 1
+
+
+def test_compose_checkin_ack_low_confidence_includes_summary_and_hint() -> None:
+    signals = CheckInSignals(
+        progress_note="honestly no idea, ask me tomorrow maybe",
+        blockers=("API review",),
+        parser_confident=False,
+    )
+
+    text = status_collector_module._compose_checkin_ack_text(signals=signals, max_chars=320)
+
+    assert text.startswith("Got it")
+    assert "in progress with a blocker on API review" in text
+    assert "fix" in text
+    # Never echo the raw prior reply text; only the structured recorded summary.
+    assert "honestly no idea, ask me tomorrow maybe" not in text
+
+
+def test_compose_checkin_ack_high_confidence_is_plain() -> None:
+    signals = CheckInSignals(
+        progress_note="shipped the migration, no blockers, eta unchanged",
+        blockers=(),
+        parser_confident=True,
+    )
+
+    text = status_collector_module._compose_checkin_ack_text(signals=signals, max_chars=320)
+
+    assert text == status_collector_module._CHECKIN_ACK_PLAIN
+    assert "fix" not in text
+    assert "shipped the migration, no blockers, eta unchanged" not in text
+
+
+def test_compose_checkin_ack_low_confidence_falls_back_within_cap() -> None:
+    signals = CheckInSignals(
+        progress_note="raw",
+        blockers=("a very long blocker description " * 10,),
+        parser_confident=False,
+    )
+
+    text = status_collector_module._compose_checkin_ack_text(signals=signals, max_chars=80)
+
+    assert len(text) <= 80
+    # The fallback keeps the correction hint so a misread stays correctable.
+    assert "fix" in text

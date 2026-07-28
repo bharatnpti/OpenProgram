@@ -15,7 +15,11 @@ from core.domain.llm import (
     TokenUsage,
 )
 from infra.adapters.llm.fake import FakeLlmProvider
-from infra.adapters.llm.litellm_provider import LangfuseTraceSink, LiteLlmProvider
+from infra.adapters.llm.litellm_provider import (
+    LangfuseTraceSink,
+    LiteLlmProvider,
+    NoopTraceSink,
+)
 
 
 @respx.mock
@@ -112,6 +116,85 @@ async def test_litellm_sends_system_history_then_prompt() -> None:
         {"role": "assistant", "content": "Noted."},
         {"role": "user", "content": "What changed?"},
     ]
+
+
+@respx.mock
+async def test_litellm_json_mode_sends_response_format_and_deterministic_settings() -> None:
+    route = respx.post("https://litellm.test/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "trace-llm",
+                "model": "test-model",
+                "choices": [{"message": {"content": "{}"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            },
+        )
+    )
+    provider = LiteLlmProvider(base_url="https://litellm.test", trace_sink=NoopTraceSink())
+
+    await provider.complete(
+        LlmRequest(
+            tenant_id="demo",
+            prompt="return status json",
+            model="test-model",
+            correlation_id="corr-1",
+            json_mode=True,
+        )
+    )
+
+    body = json.loads(route.calls[0].request.content)
+    assert body["response_format"] == {"type": "json_object"}
+    assert body["temperature"] == 0.0
+    assert body["max_tokens"] > 0
+
+
+@respx.mock
+async def test_litellm_omits_json_mode_settings_by_default() -> None:
+    route = respx.post("https://litellm.test/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "trace-llm",
+                "model": "test-model",
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            },
+        )
+    )
+    provider = LiteLlmProvider(base_url="https://litellm.test", trace_sink=NoopTraceSink())
+
+    await provider.complete(
+        LlmRequest(tenant_id="demo", prompt="hi", model="test-model", correlation_id="corr-1")
+    )
+
+    body = json.loads(route.calls[0].request.content)
+    assert "response_format" not in body
+    assert "temperature" not in body
+    assert "max_tokens" not in body
+
+
+@respx.mock
+async def test_litellm_captures_response_cost_from_header() -> None:
+    respx.post("https://litellm.test/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            headers={"x-litellm-response-cost": "0.001234"},
+            json={
+                "id": "trace-llm",
+                "model": "test-model",
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            },
+        )
+    )
+    provider = LiteLlmProvider(base_url="https://litellm.test", trace_sink=NoopTraceSink())
+
+    response = await provider.complete(
+        LlmRequest(tenant_id="demo", prompt="hi", model="test-model", correlation_id="corr-1")
+    )
+
+    assert response.usage.cost_usd == 0.001234
 
 
 async def test_fake_llm_provider_captures_multi_turn_request() -> None:

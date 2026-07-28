@@ -498,6 +498,165 @@
         }
       }
     },
+    "/admin/ops/dead-letters": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "List Dead Letters",
+        "operationId": "list_dead_letters_admin_ops_dead_letters_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeadLettersResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/ops/dead-letters/{dead_letter_id}/rearm": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Rearm Dead Letter",
+        "operationId": "rearm_dead_letter_admin_ops_dead_letters__dead_letter_id__rearm_post",
+        "parameters": [
+          {
+            "name": "dead_letter_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dead Letter Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDispatchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/ops/writeback/{audit_id}/revert": {
+      "post": {
+        "tags": ["admin"],
+        "summary": "Revert Writeback",
+        "operationId": "revert_writeback_admin_ops_writeback__audit_id__revert_post",
+        "parameters": [
+          {
+            "name": "audit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Audit Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteBackRevertResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/programs": {
       "get": {
         "tags": ["config"],
@@ -2103,6 +2262,104 @@
         }
       }
     },
+    "/config/members/unmapped": {
+      "get": {
+        "tags": ["config"],
+        "summary": "List Config Unmapped Members",
+        "operationId": "list_config_unmapped_members_config_members_unmapped_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UnmappedMemberResponse"
+                  },
+                  "title": "Response List Config Unmapped Members Config Members Unmapped Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/members/identity-links/auto-match": {
+      "post": {
+        "tags": ["config"],
+        "summary": "Auto Match Config Identity Links",
+        "operationId": "auto_match_config_identity_links_config_members_identity_links_auto_match_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityAutoMatchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/directory/users": {
       "get": {
         "tags": ["config"],
@@ -3496,6 +3753,468 @@
         }
       }
     },
+    "/config/members/{member_id}/writeback-consent": {
+      "get": {
+        "tags": ["config"],
+        "summary": "Get Config Member Writeback Consent",
+        "operationId": "get_config_member_writeback_consent_config_members__member_id__writeback_consent_get",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritebackConsentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["config"],
+        "summary": "Update Config Member Writeback Consent",
+        "operationId": "update_config_member_writeback_consent_config_members__member_id__writeback_consent_put",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WritebackConsentUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WritebackConsentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/members/{member_id}/identity-link": {
+      "get": {
+        "tags": ["config"],
+        "summary": "Get Config Member Identity Link",
+        "operationId": "get_config_member_identity_link_config_members__member_id__identity_link_get",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityLinkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["config"],
+        "summary": "Update Config Member Identity Link",
+        "operationId": "update_config_member_identity_link_config_members__member_id__identity_link_put",
+        "parameters": [
+          {
+            "name": "member_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Member Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityLinkUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityLinkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/pods/{pod_id}/escalation-contacts": {
+      "get": {
+        "tags": ["config"],
+        "summary": "Get Config Pod Escalation Contacts",
+        "operationId": "get_config_pod_escalation_contacts_config_pods__pod_id__escalation_contacts_get",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodEscalationContactsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["config"],
+        "summary": "Update Config Pod Escalation Contacts",
+        "operationId": "update_config_pod_escalation_contacts_config_pods__pod_id__escalation_contacts_put",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PodEscalationContactsUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodEscalationContactsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/tenant/writeback": {
+      "get": {
+        "tags": ["config"],
+        "summary": "Get Config Tenant Writeback",
+        "operationId": "get_config_tenant_writeback_config_tenant_writeback_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantWritebackResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["config"],
+        "summary": "Update Config Tenant Writeback",
+        "operationId": "update_config_tenant_writeback_config_tenant_writeback_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantWritebackUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantWritebackResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/programs": {
       "get": {
         "tags": ["config"],
@@ -4697,6 +5416,92 @@
         }
       }
     },
+    "/persona/{level}/{entity_id}/trend": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Node Trend",
+        "operationId": "node_trend_persona__level___entity_id__trend_get",
+        "parameters": [
+          {
+            "name": "level",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/NodeKind"
+            }
+          },
+          {
+            "name": "entity_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Entity Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "window_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 365,
+              "minimum": 1,
+              "default": 30,
+              "title": "Window Days"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeTrendResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/workstreams/{workstream_id}/flow": {
       "get": {
         "tags": ["personas"],
@@ -4867,6 +5672,158 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PortfolioFeedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/persona/briefs": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Narrative Briefs",
+        "operationId": "narrative_briefs_persona_briefs_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/BriefKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NarrativeBriefsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/persona/writeback-adoption": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Writeback Adoption",
+        "operationId": "writeback_adoption_persona_writeback_adoption_get",
+        "parameters": [
+          {
+            "name": "window_days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 365,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Window Days"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 5,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WriteBackAdoptionResponse"
                 }
               }
             }
@@ -5632,6 +6589,12 @@
           "source_ref"
         ],
         "title": "BlockerDto"
+      },
+      "BriefKind": {
+        "type": "string",
+        "enum": ["daily_pod", "weekly_project", "exec"],
+        "title": "BriefKind",
+        "description": "The scheduled narrative brief flavors.\n\nEach kind targets a different scope: pod-level daily summaries, project-level\nweekly updates, and a single portfolio-wide executive brief."
       },
       "CalendarSyncDispatchRequest": {
         "properties": {
@@ -6634,6 +7597,100 @@
         "required": ["requests"],
         "title": "CrossPersonRequestsResponse"
       },
+      "DeadLetterResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "conversation_key": {
+            "type": "string",
+            "title": "Conversation Key"
+          },
+          "event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Event Ids"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "attempts": {
+            "type": "integer",
+            "title": "Attempts"
+          },
+          "first_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "First Seen At"
+          },
+          "dead_lettered_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Dead Lettered At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeadLetterStatus"
+          },
+          "rearmed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rearmed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tenant_id",
+          "kind",
+          "conversation_key",
+          "event_ids",
+          "reason",
+          "attempts",
+          "first_seen_at",
+          "dead_lettered_at",
+          "status"
+        ],
+        "title": "DeadLetterResponse"
+      },
+      "DeadLetterStatus": {
+        "type": "string",
+        "enum": ["open", "rearmed"],
+        "title": "DeadLetterStatus",
+        "description": "Lifecycle of a dead-lettered workflow event.\n\n``OPEN`` means the event exhausted its durable retries and awaits operator\naction; ``REARMED`` means an operator re-triggered processing for it."
+      },
+      "DeadLettersResponse": {
+        "properties": {
+          "dead_letters": {
+            "items": {
+              "$ref": "#/components/schemas/DeadLetterResponse"
+            },
+            "type": "array",
+            "title": "Dead Letters"
+          }
+        },
+        "type": "object",
+        "required": ["dead_letters"],
+        "title": "DeadLettersResponse"
+      },
       "DirectoryItemResponse": {
         "properties": {
           "id": {
@@ -6911,6 +7968,96 @@
         ],
         "title": "DirectoryUserResponse"
       },
+      "DriftFindingResponse": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "entity_ref": {
+            "$ref": "#/components/schemas/EntityRefDto"
+          },
+          "workstream_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workstream Id"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "detected_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Detected At"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "stated_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatusSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RiskEvidenceDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "child_entity_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntityRefDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "severity",
+          "entity_ref",
+          "workstream_id",
+          "reason",
+          "detected_at",
+          "owner_id",
+          "stated_source",
+          "evidence",
+          "child_entity_ref"
+        ],
+        "title": "DriftFindingResponse",
+        "description": "A continuous drift (\"watermelon\") finding for persona risk views.\n\nCarries only derived, sanitised fields -- never raw DM/reply content -- so\nthe stated-vs-actual divergence is explicit alongside signal-only risks."
+      },
       "EdgeKind": {
         "type": "string",
         "enum": ["contains", "assigned_to", "depends_on"],
@@ -6933,6 +8080,29 @@
         "type": "object",
         "required": ["tenant_id", "kind", "id"],
         "title": "EntityRefDto"
+      },
+      "EscalationContactDto": {
+        "properties": {
+          "chat_external_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Chat External Id"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": ["chat_external_id"],
+        "title": "EscalationContactDto"
       },
       "FocusItemDto": {
         "properties": {
@@ -7299,6 +8469,157 @@
         "required": ["row", "column", "entity_ref", "rag", "source", "why", "source_ref"],
         "title": "HeatmapCellDto"
       },
+      "IdentityAutoMatchMemberDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "filled": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Filled"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "filled"],
+        "title": "IdentityAutoMatchMemberDto"
+      },
+      "IdentityAutoMatchResponse": {
+        "properties": {
+          "updated_count": {
+            "type": "integer",
+            "title": "Updated Count"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/IdentityAutoMatchMemberDto"
+            },
+            "type": "array",
+            "title": "Members"
+          }
+        },
+        "type": "object",
+        "required": ["updated_count", "members"],
+        "title": "IdentityAutoMatchResponse"
+      },
+      "IdentityLinkResponse": {
+        "properties": {
+          "developer_id": {
+            "type": "string",
+            "title": "Developer Id"
+          },
+          "chat_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat User Id"
+          },
+          "jira_account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Account Id"
+          },
+          "jira_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Email"
+          },
+          "vcs_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vcs Username"
+          }
+        },
+        "type": "object",
+        "required": [
+          "developer_id",
+          "chat_user_id",
+          "jira_account_id",
+          "jira_email",
+          "vcs_username"
+        ],
+        "title": "IdentityLinkResponse"
+      },
+      "IdentityLinkUpdateRequest": {
+        "properties": {
+          "chat_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat User Id"
+          },
+          "jira_account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Account Id"
+          },
+          "jira_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Email"
+          },
+          "vcs_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vcs Username"
+          }
+        },
+        "type": "object",
+        "title": "IdentityLinkUpdateRequest"
+      },
       "JiraSyncDispatchRequest": {
         "properties": {
           "tenant_id": {
@@ -7444,6 +8765,54 @@
         ],
         "title": "MyStatusResponse"
       },
+      "NarrativeBriefResponse": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/BriefKind"
+          },
+          "scope_id": {
+            "type": "string",
+            "title": "Scope Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "body": {
+            "type": "string",
+            "title": "Body"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sources"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "scope_id", "title", "body", "generated_at", "sources"],
+        "title": "NarrativeBriefResponse"
+      },
+      "NarrativeBriefsResponse": {
+        "properties": {
+          "briefs": {
+            "items": {
+              "$ref": "#/components/schemas/NarrativeBriefResponse"
+            },
+            "type": "array",
+            "title": "Briefs"
+          }
+        },
+        "type": "object",
+        "required": ["briefs"],
+        "title": "NarrativeBriefsResponse"
+      },
       "NodeKind": {
         "type": "string",
         "enum": [
@@ -7458,6 +8827,37 @@
           "work_item"
         ],
         "title": "NodeKind"
+      },
+      "NodeTrendResponse": {
+        "properties": {
+          "entity_ref": {
+            "$ref": "#/components/schemas/EntityRefDto"
+          },
+          "window_days": {
+            "type": "integer",
+            "title": "Window Days"
+          },
+          "start": {
+            "type": "string",
+            "format": "date",
+            "title": "Start"
+          },
+          "end": {
+            "type": "string",
+            "format": "date",
+            "title": "End"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/TrendPointDto"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "type": "object",
+        "required": ["entity_ref", "window_days", "start", "end", "points"],
+        "title": "NodeTrendResponse"
       },
       "PersonaTreeEdgeDto": {
         "properties": {
@@ -7611,6 +9011,63 @@
           "developers"
         ],
         "title": "PodCheckinsResponse"
+      },
+      "PodEscalationContactsResponse": {
+        "properties": {
+          "pod_id": {
+            "type": "string",
+            "title": "Pod Id"
+          },
+          "scrum_master": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EscalationContactDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "manager": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EscalationContactDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["pod_id", "scrum_master", "manager"],
+        "title": "PodEscalationContactsResponse"
+      },
+      "PodEscalationContactsUpdateRequest": {
+        "properties": {
+          "scrum_master": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EscalationContactDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "manager": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EscalationContactDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "PodEscalationContactsUpdateRequest"
       },
       "PodMemberLinkRequest": {
         "properties": {
@@ -7815,6 +9272,14 @@
             },
             "type": "array",
             "title": "Risks"
+          },
+          "drift": {
+            "items": {
+              "$ref": "#/components/schemas/DriftFindingResponse"
+            },
+            "type": "array",
+            "title": "Drift",
+            "default": []
           }
         },
         "type": "object",
@@ -7970,6 +9435,14 @@
             },
             "type": "array",
             "title": "Risks"
+          },
+          "drift": {
+            "items": {
+              "$ref": "#/components/schemas/DriftFindingResponse"
+            },
+            "type": "array",
+            "title": "Drift",
+            "default": []
           }
         },
         "type": "object",
@@ -8236,6 +9709,72 @@
         "type": "object",
         "required": ["id", "name", "rag", "source", "confidence", "deadline"],
         "title": "TaskProgressDto"
+      },
+      "TenantWritebackResponse": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": ["enabled"],
+        "title": "TenantWritebackResponse"
+      },
+      "TenantWritebackUpdateRequest": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": ["enabled"],
+        "title": "TenantWritebackUpdateRequest"
+      },
+      "TrendPointDto": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "rag": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "source": {
+            "$ref": "#/components/schemas/StatusSource"
+          },
+          "score": {
+            "type": "integer",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": ["as_of", "rag", "source", "score"],
+        "title": "TrendPointDto"
+      },
+      "UnmappedMemberResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "missing"],
+        "title": "UnmappedMemberResponse"
       },
       "ValidationError": {
         "properties": {
@@ -8868,6 +10407,124 @@
           "tasks"
         ],
         "title": "WorkstreamProgressResponse"
+      },
+      "WriteBackAdoptionEntry": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "title": "Issue Key"
+          },
+          "to_state": {
+            "type": "string",
+            "title": "To State"
+          },
+          "applied_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Applied At"
+          },
+          "correlation_id": {
+            "type": "string",
+            "title": "Correlation Id"
+          }
+        },
+        "type": "object",
+        "required": ["issue_key", "to_state", "applied_at", "correlation_id"],
+        "title": "WriteBackAdoptionEntry"
+      },
+      "WriteBackAdoptionResponse": {
+        "properties": {
+          "applied_count": {
+            "type": "integer",
+            "title": "Applied Count"
+          },
+          "recent": {
+            "items": {
+              "$ref": "#/components/schemas/WriteBackAdoptionEntry"
+            },
+            "type": "array",
+            "title": "Recent"
+          }
+        },
+        "type": "object",
+        "required": ["applied_count", "recent"],
+        "title": "WriteBackAdoptionResponse"
+      },
+      "WriteBackConsent": {
+        "type": "string",
+        "enum": ["always_ask", "auto_apply", "never"],
+        "title": "WriteBackConsent",
+        "description": "Per-developer standing consent for automated issue-tracker write-back.\n\n``always_ask`` (the safe default) never writes automatically; ``auto_apply``\ngrants standing consent; ``never`` opts out entirely."
+      },
+      "WriteBackRevertResponse": {
+        "properties": {
+          "audit_id": {
+            "type": "string",
+            "title": "Audit Id"
+          },
+          "issue_key": {
+            "type": "string",
+            "title": "Issue Key"
+          },
+          "from_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From State"
+          },
+          "to_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To State"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WriteBackStatus"
+          }
+        },
+        "type": "object",
+        "required": ["audit_id", "issue_key", "from_state", "to_state", "status"],
+        "title": "WriteBackRevertResponse"
+      },
+      "WriteBackStatus": {
+        "type": "string",
+        "enum": ["proposed", "applied", "failed", "reverted", "declined", "expired"],
+        "title": "WriteBackStatus",
+        "description": "Lifecycle of a single audited issue-tracker write."
+      },
+      "WritebackConsentResponse": {
+        "properties": {
+          "developer_id": {
+            "type": "string",
+            "title": "Developer Id"
+          },
+          "consent": {
+            "$ref": "#/components/schemas/WriteBackConsent"
+          }
+        },
+        "type": "object",
+        "required": ["developer_id", "consent"],
+        "title": "WritebackConsentResponse"
+      },
+      "WritebackConsentUpdateRequest": {
+        "properties": {
+          "consent": {
+            "$ref": "#/components/schemas/WriteBackConsent"
+          }
+        },
+        "type": "object",
+        "required": ["consent"],
+        "title": "WritebackConsentUpdateRequest"
       }
     }
   }

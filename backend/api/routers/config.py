@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from typing import Annotated
 
@@ -23,14 +24,24 @@ from api.dtos import (
     DirectorySearchResponse,
     DirectorySyncResponse,
     DirectoryUserResponse,
+    IdentityAutoMatchResponse,
+    IdentityLinkResponse,
+    IdentityLinkUpdateRequest,
     MemberFromDirectoryRequest,
     MemberTaskAssignmentRequest,
+    PodEscalationContactsResponse,
+    PodEscalationContactsUpdateRequest,
     PodMemberLinkRequest,
     ProgramProjectLinkRequest,
+    TenantWritebackResponse,
+    TenantWritebackUpdateRequest,
+    UnmappedMemberResponse,
     WorkItemCreateRequest,
     WorkItemFromBranchRequest,
     WorkItemFromPrRequest,
     WorkItemTransitionRequest,
+    WritebackConsentResponse,
+    WritebackConsentUpdateRequest,
 )
 from config.settings import Settings
 from core.application.authorization import AuthorizationPolicy, Capability
@@ -49,6 +60,7 @@ from core.domain.errors import (
     ProviderUnavailable,
 )
 from core.domain.graph import GraphNode, JsonScalar, NodeKind
+from core.domain.identity import IdentityLink
 from core.domain.status import CheckInPreference
 
 router = APIRouter(tags=["config"])
@@ -500,6 +512,35 @@ async def list_config_members(
     ]
 
 
+@router.get("/config/members/unmapped", response_model=list[UnmappedMemberResponse])
+async def list_config_unmapped_members(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> list[UnmappedMemberResponse]:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        members = await service.list_unmapped_members(principal.tenant_id)
+    except ConfigValidationError as exc:
+        raise _http_error(exc) from exc
+    return [UnmappedMemberResponse.from_domain(member) for member in members]
+
+
+@router.post(
+    "/config/members/identity-links/auto-match",
+    response_model=IdentityAutoMatchResponse,
+)
+async def auto_match_config_identity_links(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> IdentityAutoMatchResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        result = await service.auto_match_identity_links(principal.tenant_id)
+    except ConfigValidationError as exc:
+        raise _http_error(exc) from exc
+    return IdentityAutoMatchResponse.from_domain(result)
+
+
 @router.get("/config/directory/users", response_model=DirectorySearchResponse)
 async def search_config_directory_users(
     principal: Annotated[Principal, Depends(get_current_principal)],
@@ -920,6 +961,157 @@ async def list_config_checkin_preferences(
     ]
 
 
+@router.get(
+    "/config/members/{member_id}/writeback-consent",
+    response_model=WritebackConsentResponse,
+)
+async def get_config_member_writeback_consent(
+    member_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+    settings: Annotated[Settings, Depends(get_settings_from_request)],
+) -> WritebackConsentResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        preference = await service.get_checkin_preference(principal.tenant_id, member_id)
+    except GraphNotFound as exc:
+        raise _http_error(exc) from exc
+    return WritebackConsentResponse.from_domain(
+        preference or _default_preference(principal.tenant_id, member_id, settings)
+    )
+
+
+@router.put(
+    "/config/members/{member_id}/writeback-consent",
+    response_model=WritebackConsentResponse,
+)
+async def update_config_member_writeback_consent(
+    member_id: str,
+    request: WritebackConsentUpdateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+    settings: Annotated[Settings, Depends(get_settings_from_request)],
+) -> WritebackConsentResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        existing = await service.get_checkin_preference(principal.tenant_id, member_id)
+        base = existing or _default_preference(principal.tenant_id, member_id, settings)
+        preference = replace(base, write_back_consent=request.consent)
+        updated = await service.record_checkin_preference(preference)
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return WritebackConsentResponse.from_domain(updated)
+
+
+@router.get(
+    "/config/members/{member_id}/identity-link",
+    response_model=IdentityLinkResponse,
+)
+async def get_config_member_identity_link(
+    member_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> IdentityLinkResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        link = await service.get_identity_link(principal.tenant_id, member_id)
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return IdentityLinkResponse.from_domain(
+        link or IdentityLink(tenant_id=principal.tenant_id, developer_id=member_id)
+    )
+
+
+@router.put(
+    "/config/members/{member_id}/identity-link",
+    response_model=IdentityLinkResponse,
+)
+async def update_config_member_identity_link(
+    member_id: str,
+    request: IdentityLinkUpdateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> IdentityLinkResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        existing = await service.get_identity_link(principal.tenant_id, member_id)
+        link = _merge_identity_link(
+            request,
+            existing or IdentityLink(tenant_id=principal.tenant_id, developer_id=member_id),
+        )
+        updated = await service.set_identity_link(link)
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return IdentityLinkResponse.from_domain(updated)
+
+
+@router.get(
+    "/config/pods/{pod_id}/escalation-contacts",
+    response_model=PodEscalationContactsResponse,
+)
+async def get_config_pod_escalation_contacts(
+    pod_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> PodEscalationContactsResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        contacts = await service.get_pod_escalation_contacts(principal.tenant_id, pod_id)
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return PodEscalationContactsResponse.from_domain(pod_id, contacts)
+
+
+@router.put(
+    "/config/pods/{pod_id}/escalation-contacts",
+    response_model=PodEscalationContactsResponse,
+)
+async def update_config_pod_escalation_contacts(
+    pod_id: str,
+    request: PodEscalationContactsUpdateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> PodEscalationContactsResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        updated = await service.set_pod_escalation_contacts(
+            principal.tenant_id, pod_id, request.to_domain()
+        )
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return PodEscalationContactsResponse.from_domain(pod_id, updated)
+
+
+@router.get("/config/tenant/writeback", response_model=TenantWritebackResponse)
+async def get_config_tenant_writeback(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+    settings: Annotated[Settings, Depends(get_settings_from_request)],
+) -> TenantWritebackResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        enabled = await service.get_tenant_writeback_enabled(
+            principal.tenant_id, settings.jira_writeback_enabled
+        )
+    except ConfigValidationError as exc:
+        raise _http_error(exc) from exc
+    return TenantWritebackResponse(enabled=enabled)
+
+
+@router.put("/config/tenant/writeback", response_model=TenantWritebackResponse)
+async def update_config_tenant_writeback(
+    request: TenantWritebackUpdateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> TenantWritebackResponse:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        await service.set_tenant_writeback_enabled(principal.tenant_id, request.enabled)
+    except ConfigValidationError as exc:
+        raise _http_error(exc) from exc
+    return TenantWritebackResponse(enabled=request.enabled)
+
+
 @router.get("/programs", response_model=list[DirectoryItemResponse])
 async def list_programs(
     as_of: Annotated[date, Query(default_factory=date.today)],
@@ -1215,6 +1407,24 @@ def _merge_preference(
             if "final_reply_wait_seconds" in fields and request.final_reply_wait_seconds is not None
             else existing.final_reply_wait_seconds
         ),
+        write_back_consent=existing.write_back_consent,
+    )
+
+
+def _merge_identity_link(
+    request: IdentityLinkUpdateRequest,
+    existing: IdentityLink,
+) -> IdentityLink:
+    fields = request.model_fields_set
+    return IdentityLink(
+        tenant_id=existing.tenant_id,
+        developer_id=existing.developer_id,
+        chat_user_id=(request.chat_user_id if "chat_user_id" in fields else existing.chat_user_id),
+        jira_account_id=(
+            request.jira_account_id if "jira_account_id" in fields else existing.jira_account_id
+        ),
+        jira_email=request.jira_email if "jira_email" in fields else existing.jira_email,
+        vcs_username=(request.vcs_username if "vcs_username" in fields else existing.vcs_username),
     )
 
 

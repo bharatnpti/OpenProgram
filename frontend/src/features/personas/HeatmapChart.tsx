@@ -2,7 +2,7 @@ import * as echarts from "echarts";
 import type { EChartsOption } from "echarts";
 import { useEffect, useMemo, useRef } from "react";
 
-import type { PortfolioHeatmapResponse, Rag } from "../../api/schema";
+import type { NodeKind, PortfolioHeatmapResponse, Rag } from "../../api/schema";
 
 const ragScores: Record<Rag, number> = {
   unknown: 0,
@@ -13,7 +13,13 @@ const ragScores: Record<Rag, number> = {
 
 const ragColors = ["#d7dde5", "#2f9b68", "#d88a16", "#cf3f3f"];
 
-export function HeatmapChart({ data }: { data: PortfolioHeatmapResponse | undefined }) {
+export function HeatmapChart({
+  data,
+  onSelect,
+}: {
+  data: PortfolioHeatmapResponse | undefined;
+  onSelect?: (kind: NodeKind, id: string) => void;
+}) {
   const elementRef = useRef<HTMLDivElement | null>(null);
   const rows = useMemo(() => (data?.rows.length ? data.rows : ["portfolio"]), [data]);
   const columns = useMemo(() => (data?.columns.length ? data.columns : ["no-data"]), [data]);
@@ -94,13 +100,24 @@ export function HeatmapChart({ data }: { data: PortfolioHeatmapResponse | undefi
     }
     const chart = echarts.init(elementRef.current);
     chart.setOption(option);
+    if (onSelect) {
+      chart.on("click", (params: unknown) => {
+        const value = cellValue(params);
+        const cell = cells.find(
+          (item) => item.column === columns[value.columnIndex] && item.row === rows[value.rowIndex],
+        );
+        if (cell) {
+          onSelect(cell.entity_ref.kind, cell.entity_ref.id);
+        }
+      });
+    }
     const resizeObserver = new ResizeObserver(() => chart.resize());
     resizeObserver.observe(elementRef.current);
     return () => {
       resizeObserver.disconnect();
       chart.dispose();
     };
-  }, [option]);
+  }, [option, onSelect, cells, columns, rows]);
 
   return <div ref={elementRef} className="h-72 w-full min-w-0" />;
 }

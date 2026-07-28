@@ -5,10 +5,12 @@ from collections import deque
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
-from math import sqrt
+from uuid import uuid4
 
+from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationTurn
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
+from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.directory import DirectoryUser
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
@@ -19,9 +21,9 @@ from core.domain.graph import (
     GraphNode,
     GraphTree,
     NodeKind,
-    VectorMatch,
-    normalize_vector,
 )
+from core.domain.identity import IdentityLink
+from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import SyncCursor
 from core.domain.rollup import NodeStatus
 from core.domain.status import (
@@ -33,6 +35,7 @@ from core.domain.status import (
     CheckInScheduleRun,
     DeveloperStatus,
 )
+from core.domain.writeback import WriteBackAudit, WriteBackStatus
 from core.ports.directory import DirectoryUserRepository
 
 
@@ -41,7 +44,6 @@ class InMemoryGraphStore:
     _nodes: dict[tuple[str, str], GraphNode] = field(default_factory=dict)
     _edges: list[GraphEdge] = field(default_factory=list)
     _facts: list[FactEvent] = field(default_factory=list)
-    _vectors: dict[tuple[str, str, str], tuple[float, ...]] = field(default_factory=dict)
     _checkins: list[CheckIn] = field(default_factory=list)
     _checkin_correlations: list[CheckInCorrelation] = field(default_factory=list)
     _checkin_preferences: dict[tuple[str, str], CheckInPreference] = field(default_factory=dict)
@@ -56,8 +58,14 @@ class InMemoryGraphStore:
     _node_statuses: dict[tuple[str, str, str, date], NodeStatus] = field(default_factory=dict)
     _sync_cursors: dict[tuple[str, str, str], SyncCursor] = field(default_factory=dict)
     _directory_users: dict[tuple[str, str], DirectoryUser] = field(default_factory=dict)
+    _identity_links: dict[tuple[str, str], IdentityLink] = field(default_factory=dict)
+    _writeback_config: dict[str, bool] = field(default_factory=dict)
+    _writeback_audit: dict[str, WriteBackAudit] = field(default_factory=dict)
     _conversation_turns: list[ConversationTurn] = field(default_factory=list)
     _cross_person_requests: dict[tuple[str, str], CrossPersonRequest] = field(default_factory=dict)
+    _inbound_chat_events: list[InboundChatEvent] = field(default_factory=list)
+    _narrative_briefs: list[NarrativeBrief] = field(default_factory=list)
+    _dead_letters: dict[tuple[str, str], DeadLetter] = field(default_factory=dict)
     _checkin_reply_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
@@ -485,6 +493,106 @@ class InMemoryGraphStore:
     async def delete_checkin_preference(self, tenant_id: str, developer_id: str) -> None:
         self._checkin_preferences.pop((tenant_id, developer_id), None)
 
+    async def get_identity_link(self, tenant_id: str, developer_id: str) -> IdentityLink | None:
+        return self._identity_links.get((tenant_id, developer_id))
+
+    async def upsert_identity_link(self, link: IdentityLink) -> None:
+        self._identity_links[(link.tenant_id, link.developer_id)] = link
+
+    async def list_identity_links(self, tenant_id: str) -> list[IdentityLink]:
+        return sorted(
+            (
+                link
+                for (link_tenant_id, _), link in self._identity_links.items()
+                if link_tenant_id == tenant_id
+            ),
+            key=lambda link: link.developer_id,
+        )
+
+    async def get_writeback_enabled(self, tenant_id: str) -> bool | None:
+        return self._writeback_config.get(tenant_id)
+
+    async def set_writeback_enabled(self, tenant_id: str, enabled: bool) -> None:
+        self._writeback_config[tenant_id] = enabled
+
+    async def record(self, audit: WriteBackAudit) -> None:
+        self._writeback_audit.setdefault(audit.id, audit)
+
+    async def list_for_issue(self, tenant_id: str, issue_key: str) -> list[WriteBackAudit]:
+        return sorted(
+            (
+                audit
+                for audit in self._writeback_audit.values()
+                if audit.tenant_id == tenant_id and audit.issue_key == issue_key
+            ),
+            key=lambda audit: audit.created_at,
+        )
+
+    async def list_writeback_by_correlation(
+        self, tenant_id: str, correlation_id: str
+    ) -> list[WriteBackAudit]:
+        return sorted(
+            (
+                audit
+                for audit in self._writeback_audit.values()
+                if audit.tenant_id == tenant_id and audit.correlation_id == correlation_id
+            ),
+            key=lambda audit: audit.created_at,
+        )
+
+    async def find_existing(
+        self,
+        tenant_id: str,
+        issue_key: str,
+        target_state: str,
+        correlation_id: str,
+    ) -> WriteBackAudit | None:
+        matches = [
+            audit
+            for audit in self._writeback_audit.values()
+            if audit.tenant_id == tenant_id
+            and audit.issue_key == issue_key
+            and audit.target_state == target_state
+            and audit.correlation_id == correlation_id
+        ]
+        if not matches:
+            return None
+        return min(matches, key=lambda audit: audit.created_at)
+
+    async def get_writeback_audit(
+        self, tenant_id: str, audit_id: str
+    ) -> WriteBackAudit | None:
+        audit = self._writeback_audit.get(audit_id)
+        if audit is None or audit.tenant_id != tenant_id:
+            return None
+        return audit
+
+    async def count_applied_writebacks(
+        self, tenant_id: str, since: datetime | None = None
+    ) -> int:
+        return sum(1 for _ in self._applied_writebacks(tenant_id, since))
+
+    async def list_applied_writebacks(
+        self, tenant_id: str, limit: int, since: datetime | None = None
+    ) -> list[WriteBackAudit]:
+        ordered = sorted(
+            self._applied_writebacks(tenant_id, since),
+            key=lambda audit: audit.created_at,
+            reverse=True,
+        )
+        return ordered[:limit]
+
+    def _applied_writebacks(
+        self, tenant_id: str, since: datetime | None
+    ) -> list[WriteBackAudit]:
+        return [
+            audit
+            for audit in self._writeback_audit.values()
+            if audit.tenant_id == tenant_id
+            and audit.status is WriteBackStatus.APPLIED
+            and (since is None or audit.created_at >= since)
+        ]
+
     async def record_checkin_schedule_run(self, run: CheckInScheduleRun) -> None:
         self._checkin_schedule_runs[(run.tenant_id, run.developer_id, run.checkin_date)] = run
 
@@ -592,7 +700,11 @@ class InMemoryGraphStore:
             for checkin in self._checkins
             if checkin.tenant_id == tenant_id
             and checkin.replied_at is not None
-            and checkin.replied_at.date() == as_of
+            and (
+                checkin.checkin_date == as_of
+                if checkin.checkin_date is not None
+                else checkin.replied_at.date() == as_of
+            )
         }
         return sorted(known_developer_ids - replied_developer_ids)
 
@@ -647,6 +759,81 @@ class InMemoryGraphStore:
         return sorted(
             latest_by_entity.values(),
             key=lambda status: (status.entity_ref.kind.value, status.entity_ref.id),
+        )
+
+    async def node_status_history(
+        self, tenant_id: str, entity_ref: EntityRef, start: date, end: date
+    ) -> list[NodeStatus]:
+        matching = [
+            status
+            for status in self._node_statuses.values()
+            if status.entity_ref.tenant_id == tenant_id
+            and status.entity_ref == entity_ref
+            and start <= status.as_of <= end
+        ]
+        return sorted(matching, key=lambda status: status.as_of)
+
+    async def record_brief(self, brief: NarrativeBrief) -> None:
+        self._narrative_briefs = [
+            existing
+            for existing in self._narrative_briefs
+            if not (
+                existing.tenant_id == brief.tenant_id
+                and existing.kind == brief.kind
+                and existing.scope_id == brief.scope_id
+                and existing.generated_at == brief.generated_at
+            )
+        ]
+        self._narrative_briefs.append(brief)
+
+    async def latest_briefs(
+        self,
+        tenant_id: str,
+        kind: BriefKind | None = None,
+        limit: int = 20,
+    ) -> list[NarrativeBrief]:
+        if limit <= 0:
+            return []
+        matching = [
+            brief
+            for brief in self._narrative_briefs
+            if brief.tenant_id == tenant_id and (kind is None or brief.kind == kind)
+        ]
+        matching.sort(key=lambda brief: brief.generated_at, reverse=True)
+        return matching[:limit]
+
+    async def record_dead_letter(self, dl: DeadLetter) -> None:
+        self._dead_letters[(dl.tenant_id, dl.id)] = dl
+
+    async def list_open_dead_letters(self, tenant_id: str, limit: int = 100) -> list[DeadLetter]:
+        if limit <= 0:
+            return []
+        matching = [
+            dl
+            for dl in self._dead_letters.values()
+            if dl.tenant_id == tenant_id and dl.status == DeadLetterStatus.OPEN
+        ]
+        matching.sort(key=lambda dl: dl.dead_lettered_at, reverse=True)
+        return matching[:limit]
+
+    async def get_dead_letter(self, tenant_id: str, id: str) -> DeadLetter | None:
+        return self._dead_letters.get((tenant_id, id))
+
+    async def mark_dead_letter_rearmed(
+        self, tenant_id: str, id: str, rearmed_at: datetime
+    ) -> DeadLetter | None:
+        existing = self._dead_letters.get((tenant_id, id))
+        if existing is None:
+            return None
+        updated = replace(existing, status=DeadLetterStatus.REARMED, rearmed_at=rearmed_at)
+        self._dead_letters[(tenant_id, id)] = updated
+        return updated
+
+    async def count_open_dead_letters(self, tenant_id: str) -> int:
+        return sum(
+            1
+            for dl in self._dead_letters.values()
+            if dl.tenant_id == tenant_id and dl.status == DeadLetterStatus.OPEN
         )
 
     async def get_cursor(self, tenant_id: str, connector: str, scope: str) -> SyncCursor:
@@ -737,27 +924,67 @@ class InMemoryGraphStore:
             for turn in self._conversation_turns
         ]
 
-    async def upsert_embedding(
-        self, tenant_id: str, entity_ref: EntityRef, vector: Sequence[float]
-    ) -> None:
-        self._vectors[(tenant_id, entity_ref.kind.value, entity_ref.id)] = normalize_vector(vector)
+    async def append(self, event: InboundChatEvent) -> bool:
+        for existing in self._inbound_chat_events:
+            if (
+                existing.tenant_id == event.tenant_id
+                and existing.provider == event.provider
+                and existing.event_id == event.event_id
+            ):
+                return False
+        self._inbound_chat_events.append(
+            event if event.id is not None else replace(event, id=uuid4().hex)
+        )
+        return True
 
-    async def search(
-        self, tenant_id: str, vector: Sequence[float], limit: int
-    ) -> list[VectorMatch]:
-        query = normalize_vector(vector)
-        scored: list[VectorMatch] = []
-        for (stored_tenant, kind, entity_id), stored_vector in self._vectors.items():
-            if stored_tenant != tenant_id:
-                continue
-            score = _cosine(query, stored_vector)
-            scored.append(
-                VectorMatch(
-                    entity_ref=EntityRef(tenant_id=tenant_id, kind=_node_kind(kind), id=entity_id),
-                    score=score,
-                )
-            )
-        return sorted(scored, key=lambda match: match.score, reverse=True)[:limit]
+    async def list_unprocessed_for_conversation(
+        self, tenant_id: str, conversation_key: str
+    ) -> list[InboundChatEvent]:
+        return sorted(
+            (
+                event
+                for event in self._inbound_chat_events
+                if event.tenant_id == tenant_id
+                and event.conversation_key == conversation_key
+                and event.processed_at is None
+            ),
+            key=lambda event: (event.received_at, event.message_ref),
+        )
+
+    async def mark_processed(
+        self, tenant_id: str, event_ids: Sequence[str], processed_at: datetime
+    ) -> None:
+        ids = set(event_ids)
+        self._inbound_chat_events = [
+            replace(event, processed_at=processed_at)
+            if event.tenant_id == tenant_id and event.id in ids and event.processed_at is None
+            else event
+            for event in self._inbound_chat_events
+        ]
+
+    async def list_stuck(self, tenant_id: str, older_than: datetime) -> list[InboundChatEvent]:
+        return sorted(
+            (
+                event
+                for event in self._inbound_chat_events
+                if event.tenant_id == tenant_id
+                and event.processed_at is None
+                and event.received_at < older_than
+            ),
+            key=lambda event: (event.received_at, event.message_ref),
+        )
+
+    async def purge_processed_older_than(self, tenant_id: str, cutoff: datetime) -> int:
+        retained = [
+            event
+            for event in self._inbound_chat_events
+            if event.tenant_id != tenant_id
+            or event.processed_at is None
+            or event.processed_at >= cutoff
+        ]
+        deleted_count = len(self._inbound_chat_events) - len(retained)
+        self._inbound_chat_events = retained
+        return deleted_count
 
     async def upsert_users(self, users: Sequence[DirectoryUser]) -> None:
         for user in users:
@@ -871,21 +1098,6 @@ class InMemoryDirectoryUserRepository(DirectoryUserRepository):
 
     async def deactivate_missing(self, tenant_id: str, seen_external_ids: Sequence[str]) -> int:
         return await self.store.deactivate_missing_directory_users(tenant_id, seen_external_ids)
-
-
-def _cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:
-    if len(left) != len(right) or not left:
-        return 0.0
-    numerator = sum(a * b for a, b in zip(left, right, strict=True))
-    left_norm = sqrt(sum(a * a for a in left))
-    right_norm = sqrt(sum(b * b for b in right))
-    if left_norm == 0.0 or right_norm == 0.0:
-        return 0.0
-    return numerator / (left_norm * right_norm)
-
-
-def _node_kind(value: str) -> NodeKind:
-    return NodeKind(value)
 
 
 def _fact_identity(fact: FactEvent) -> tuple[str, str, str, str, str, datetime]:
