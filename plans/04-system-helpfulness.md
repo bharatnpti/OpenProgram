@@ -75,8 +75,9 @@ Each of these is built, maintained, and **unused** — carrying cost with no ret
 > Two consequences of the restore that this plan's rationale did not anticipate: the write-latency cost
 > of the AGE mirror returns, and AGE becomes a hard runtime extension dependency that rules out
 > RDS/Aurora independently of TimescaleDB (see `docs/ops/infrastructure-procurement.md` DP-1). The
-> "never read" observation still holds — nothing reads the AGE mirror, and it is not backfilled, so it
-> reflects only mutations since restore.
+> "never read" observation still holds — nothing reads the AGE mirror. It is kept consistent with the
+> relational tables by migration `0027_backfill_age_graph_mirror`, so the mirror is now complete rather
+> than reflecting only post-restore mutations; it still has no reader to justify its write cost.
 
 ### 4d. Dead-letter + alerting for stuck check-ins/replies
 
