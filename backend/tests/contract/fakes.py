@@ -12,6 +12,7 @@ from core.domain.graph import EntityRef, FactEvent
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import (
+    BuildResult,
     CalendarEvent,
     Commit,
     Issue,
@@ -840,6 +841,26 @@ class FakeInboundChatEventRepository(InboundChatEventRepository):
 
 
 @dataclass
+class FakeCiProvider:
+    builds: list[BuildResult] = field(default_factory=list)
+
+    async def latest_build(self, tenant_id: str, pipeline_id: str) -> BuildResult | None:
+        matching = [
+            build
+            for build in self.builds
+            if build.tenant_id == tenant_id and build.id == pipeline_id
+        ]
+        return matching[-1] if matching else None
+
+    async def list_recent_failures(self, tenant_id: str, repo: str) -> list[BuildResult]:
+        return [
+            build
+            for build in self.builds
+            if build.tenant_id == tenant_id and build.status == "failed"
+        ]
+
+
+@dataclass
 class FakeCalendarProvider:
     events: list[CalendarEvent] = field(default_factory=list)
 
@@ -994,17 +1015,13 @@ class FakeWriteBackAuditRepository:
             return None
         return min(matches, key=lambda audit: audit.created_at)
 
-    async def get_writeback_audit(
-        self, tenant_id: str, audit_id: str
-    ) -> WriteBackAudit | None:
+    async def get_writeback_audit(self, tenant_id: str, audit_id: str) -> WriteBackAudit | None:
         audit = self.audits.get(audit_id)
         if audit is None or audit.tenant_id != tenant_id:
             return None
         return audit
 
-    async def count_applied_writebacks(
-        self, tenant_id: str, since: datetime | None = None
-    ) -> int:
+    async def count_applied_writebacks(self, tenant_id: str, since: datetime | None = None) -> int:
         return sum(1 for _ in self._applied(tenant_id, since))
 
     async def list_applied_writebacks(
@@ -1017,9 +1034,7 @@ class FakeWriteBackAuditRepository:
         )
         return ordered[:limit]
 
-    def _applied(
-        self, tenant_id: str, since: datetime | None
-    ) -> list[WriteBackAudit]:
+    def _applied(self, tenant_id: str, since: datetime | None) -> list[WriteBackAudit]:
         return [
             audit
             for audit in self.audits.values()

@@ -7,6 +7,7 @@ from typing import cast
 import pytest
 
 from config.settings import Settings
+from core.application.agents.status_agent import StatusAgentNode
 from core.application.conversation_history import llm_messages_from_turns
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import SyncRunResult
@@ -47,6 +48,44 @@ from infra.workflows import (
     worker,
 )
 from tests.contract.fakes import FakeChatProvider, FakeIssueTracker, FakeLlmProvider
+
+
+async def test_status_agent_calls_llm_provider() -> None:
+    provider = FakeLlmProvider()
+    node = StatusAgentNode(provider, model="test-model")
+    result = await node(
+        {
+            "tenant_id": "demo",
+            "developer_name": "Asha",
+            "context": "API shell is complete; graph tests are blocked.",
+            "correlation_id": "corr-1",
+        }
+    )
+    assert result["trace_id"] == "trace-fake"
+    assert result["summary"].startswith("summary:")
+    request = provider.requests[0]
+    assert request.system is not None
+    assert request.metadata["purpose"] == "summarize_status"
+    assert [(message.role, message.content) for message in request.messages] == [
+        (
+            "user",
+            "Developer: Asha\nContext:\nAPI shell is complete; graph tests are blocked.",
+        )
+    ]
+
+
+async def test_status_agent_langgraph_wrapper_calls_llm_provider() -> None:
+    node = StatusAgentNode(FakeLlmProvider(), model="test-model")
+    result = await node.graph().ainvoke(
+        {
+            "tenant_id": "demo",
+            "developer_name": "Asha",
+            "context": "Graph wrapper smoke.",
+            "correlation_id": "corr-graph",
+        }
+    )
+    assert result["trace_id"] == "trace-fake"
+    assert result["summary"].startswith("summary:")
 
 
 def test_conversation_history_maps_turn_roles_to_llm_messages() -> None:

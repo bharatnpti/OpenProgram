@@ -5,6 +5,7 @@ from collections import deque
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
+from math import sqrt
 from uuid import uuid4
 
 from core.domain.brief import BriefKind, NarrativeBrief
@@ -21,6 +22,8 @@ from core.domain.graph import (
     GraphNode,
     GraphTree,
     NodeKind,
+    VectorMatch,
+    normalize_vector,
 )
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
@@ -44,6 +47,7 @@ class InMemoryGraphStore:
     _nodes: dict[tuple[str, str], GraphNode] = field(default_factory=dict)
     _edges: list[GraphEdge] = field(default_factory=list)
     _facts: list[FactEvent] = field(default_factory=list)
+    _vectors: dict[tuple[str, str, str], tuple[float, ...]] = field(default_factory=dict)
     _checkins: list[CheckIn] = field(default_factory=list)
     _checkin_correlations: list[CheckInCorrelation] = field(default_factory=list)
     _checkin_preferences: dict[tuple[str, str], CheckInPreference] = field(default_factory=dict)
@@ -559,17 +563,13 @@ class InMemoryGraphStore:
             return None
         return min(matches, key=lambda audit: audit.created_at)
 
-    async def get_writeback_audit(
-        self, tenant_id: str, audit_id: str
-    ) -> WriteBackAudit | None:
+    async def get_writeback_audit(self, tenant_id: str, audit_id: str) -> WriteBackAudit | None:
         audit = self._writeback_audit.get(audit_id)
         if audit is None or audit.tenant_id != tenant_id:
             return None
         return audit
 
-    async def count_applied_writebacks(
-        self, tenant_id: str, since: datetime | None = None
-    ) -> int:
+    async def count_applied_writebacks(self, tenant_id: str, since: datetime | None = None) -> int:
         return sum(1 for _ in self._applied_writebacks(tenant_id, since))
 
     async def list_applied_writebacks(
@@ -582,9 +582,7 @@ class InMemoryGraphStore:
         )
         return ordered[:limit]
 
-    def _applied_writebacks(
-        self, tenant_id: str, since: datetime | None
-    ) -> list[WriteBackAudit]:
+    def _applied_writebacks(self, tenant_id: str, since: datetime | None) -> list[WriteBackAudit]:
         return [
             audit
             for audit in self._writeback_audit.values()
@@ -986,6 +984,28 @@ class InMemoryGraphStore:
         self._inbound_chat_events = retained
         return deleted_count
 
+    async def upsert_embedding(
+        self, tenant_id: str, entity_ref: EntityRef, vector: Sequence[float]
+    ) -> None:
+        self._vectors[(tenant_id, entity_ref.kind.value, entity_ref.id)] = normalize_vector(vector)
+
+    async def search(
+        self, tenant_id: str, vector: Sequence[float], limit: int
+    ) -> list[VectorMatch]:
+        query = normalize_vector(vector)
+        scored: list[VectorMatch] = []
+        for (stored_tenant, kind, entity_id), stored_vector in self._vectors.items():
+            if stored_tenant != tenant_id:
+                continue
+            score = _cosine(query, stored_vector)
+            scored.append(
+                VectorMatch(
+                    entity_ref=EntityRef(tenant_id=tenant_id, kind=_node_kind(kind), id=entity_id),
+                    score=score,
+                )
+            )
+        return sorted(scored, key=lambda match: match.score, reverse=True)[:limit]
+
     async def upsert_users(self, users: Sequence[DirectoryUser]) -> None:
         for user in users:
             self._directory_users[(user.tenant_id, user.external_id)] = user
@@ -1098,6 +1118,21 @@ class InMemoryDirectoryUserRepository(DirectoryUserRepository):
 
     async def deactivate_missing(self, tenant_id: str, seen_external_ids: Sequence[str]) -> int:
         return await self.store.deactivate_missing_directory_users(tenant_id, seen_external_ids)
+
+
+def _cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:
+    if len(left) != len(right) or not left:
+        return 0.0
+    numerator = sum(a * b for a, b in zip(left, right, strict=True))
+    left_norm = sqrt(sum(a * a for a in left))
+    right_norm = sqrt(sum(b * b for b in right))
+    if left_norm == 0.0 or right_norm == 0.0:
+        return 0.0
+    return numerator / (left_norm * right_norm)
+
+
+def _node_kind(value: str) -> NodeKind:
+    return NodeKind(value)
 
 
 def _fact_identity(fact: FactEvent) -> tuple[str, str, str, str, str, datetime]:

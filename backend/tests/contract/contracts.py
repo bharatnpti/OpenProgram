@@ -10,6 +10,7 @@ from core.domain.graph import EntityRef, FactEvent, NodeKind
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import (
+    BuildResult,
     CalendarEvent,
     Commit,
     Issue,
@@ -37,6 +38,7 @@ from core.domain.status import (
 from core.domain.writeback import WriteBackAudit, WriteBackStatus
 from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
+from core.ports.ci import CiProvider
 from core.ports.directory import DirectoryUserRepository
 from core.ports.issue_tracker import IssueTracker
 from core.ports.repositories import (
@@ -436,9 +438,10 @@ async def assert_writeback_audit_repository_contract(
     await repository.record(applied_later)
     assert await repository.count_applied_writebacks("demo") == 2
     assert await repository.count_applied_writebacks("other") == 0
-    assert await repository.count_applied_writebacks(
-        "demo", datetime(2026, 1, 12, 0, 0, tzinfo=UTC)
-    ) == 1
+    assert (
+        await repository.count_applied_writebacks("demo", datetime(2026, 1, 12, 0, 0, tzinfo=UTC))
+        == 1
+    )
     recent = await repository.list_applied_writebacks("demo", 5)
     assert [entry.id for entry in recent] == ["wb-3", "wb-1"]
     assert await repository.list_applied_writebacks("demo", 1) == [applied_later]
@@ -890,6 +893,12 @@ async def assert_time_series_repository_contract(repository: TimeSeriesRepositor
     ]
     assert await repository.list_recent_facts("demo", limit=0) == []
     assert await repository.list_recent_facts("demo", sources=(), limit=10) == []
+
+
+async def assert_ci_contract(provider: CiProvider) -> None:
+    build = await provider.latest_build("demo", "build-1")
+    assert isinstance(build, BuildResult)
+    assert await provider.list_recent_failures("demo", "repo")
 
 
 async def assert_calendar_contract(provider: CalendarProvider) -> None:

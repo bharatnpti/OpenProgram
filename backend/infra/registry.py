@@ -53,6 +53,7 @@ from core.ports.repositories import (
     StatusRepository,
     SyncCursorRepository,
     TimeSeriesRepository,
+    VectorStore,
     WriteBackAuditRepository,
     WriteBackConfigRepository,
 )
@@ -81,6 +82,7 @@ from infra.persistence.postgres_directory import PostgresDirectoryUserRepository
 from infra.persistence.postgres_graph import (
     PostgresGraphRepository,
     PostgresTimeSeriesRepository,
+    PostgresVectorStore,
 )
 from infra.persistence.postgres_inbound import PostgresInboundChatEventRepository
 from infra.persistence.postgres_status import (
@@ -113,6 +115,7 @@ class ServiceRegistry:
         default=None,
         init=False,
     )
+    _postgres_vector_store: PostgresVectorStore | None = field(default=None, init=False)
     _postgres_status_repository: PostgresStatusRepository | None = field(default=None, init=False)
     _postgres_conversation_repository: PostgresConversationRepository | None = field(
         default=None,
@@ -187,6 +190,13 @@ class ServiceRegistry:
         if self._postgres_time_series_repository is None:
             self._postgres_time_series_repository = PostgresTimeSeriesRepository(self._executor())
         return self._postgres_time_series_repository
+
+    def vector_store(self) -> VectorStore:
+        if self.settings.runtime_mode == "memory":
+            return self._memory_graph_store()
+        if self._postgres_vector_store is None:
+            self._postgres_vector_store = PostgresVectorStore(self._executor())
+        return self._postgres_vector_store
 
     def cross_person_request_repository(self) -> CrossPersonRequestRepository:
         if self.settings.runtime_mode == "memory":

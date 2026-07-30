@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 from core.domain.integrations import (
+    BuildResult,
     CalendarEvent,
     Issue,
     IssueState,
@@ -15,6 +16,7 @@ from tests.contract.contracts import (
     assert_calendar_contract,
     assert_chat_contract,
     assert_chat_webhook_mapper_contract,
+    assert_ci_contract,
     assert_conversation_repository_contract,
     assert_dead_letter_repository_contract,
     assert_directory_user_repository_contract,
@@ -33,6 +35,7 @@ from tests.contract.contracts import (
 from tests.contract.fakes import (
     FakeCalendarProvider,
     FakeChatProvider,
+    FakeCiProvider,
     FakeConversationRepository,
     FakeDeadLetterRepository,
     FakeDirectoryUserRepository,
@@ -131,6 +134,15 @@ async def test_fake_conversation_repository_satisfies_contract() -> None:
 
 async def test_fake_inbound_chat_event_repository_satisfies_contract() -> None:
     await assert_inbound_chat_event_repository_contract(FakeInboundChatEventRepository())
+
+
+async def test_fake_ci_provider_satisfies_contract() -> None:
+    provider = FakeCiProvider(
+        builds=[
+            BuildResult(tenant_id="demo", id="build-1", status="failed"),
+        ]
+    )
+    await assert_ci_contract(provider)
 
 
 async def test_fake_calendar_provider_satisfies_contract() -> None:
