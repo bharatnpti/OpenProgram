@@ -94,9 +94,7 @@ async def test_gitlab_adapter_maps_recorded_rest_payloads() -> None:
         SyncCursor(updated_at=datetime(2026, 1, 1, tzinfo=UTC)),
     )
     pull_requests = await adapter.list_pull_requests("demo", "openprogram/repo", SyncCursor())
-    authored = await adapter.list_pull_requests_for(
-        UserRef(tenant_id="demo", external_id="asha")
-    )
+    authored = await adapter.list_pull_requests_for(UserRef(tenant_id="demo", external_id="asha"))
 
     assert repos[0].name == "openprogram/repo"
     assert repos[0].default_branch == "main"

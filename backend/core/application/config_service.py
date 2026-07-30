@@ -544,8 +544,7 @@ class ConfigService:
         repository = self._identity_link_repository_or_raise()
         members = await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER)
         links = {
-            link.developer_id: link
-            for link in await repository.list_identity_links(tenant_id)
+            link.developer_id: link for link in await repository.list_identity_links(tenant_id)
         }
         unmapped: list[UnmappedMember] = []
         for member in members:

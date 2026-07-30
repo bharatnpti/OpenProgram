@@ -1741,9 +1741,7 @@ def _compose_consent_prompt_text(
         )
     else:
         diffs = ", ".join(f"{p.issue_key} → {p.target_state}" for p in proposals)
-        prompt = (
-            f"Want me to apply these issue-tracker updates: {diffs}? Reply yes or no."
-        )
+        prompt = f"Want me to apply these issue-tracker updates: {diffs}? Reply yes or no."
     if len(prompt) > max_chars:
         return prompt[: max(0, max_chars - 1)].rstrip() + "…"
     return prompt
