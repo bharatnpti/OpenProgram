@@ -58,15 +58,25 @@ Two full engines are maintained in parallel — DBOS (`infra/adapters/workflows/
 
 Each of these is built, maintained, and **unused** — carrying cost with no return (see the assessment):
 
-| Component | Why it's dead | Action |
-|---|---|---|
-| **Apache AGE graph** | Written on every node/edge mutation but **never read** (no `cypher(` in any read path; relational recursive CTEs are the real source of truth). Doubles write latency + is a Cypher-injection surface + required for readiness | Remove the AGE sync + extension requirement; drop from `readiness.py` |
-| **pgvector / `VectorStore`** | Instantiated + implemented, called by no use case | Remove until a semantic-search feature needs it |
-| **`CiProvider` port** | No adapter, no references | Remove |
-| **`StatusAgentNode` LangGraph** | Only caller is a demo smoke script | Remove |
-| **`heartbeat` workflow** | No-op liveness beacon | Remove or justify |
+| Component | Why it's dead | Action | Status |
+|---|---|---|---|
+| **Apache AGE graph** | Written on every node/edge mutation but **never read** (no `cypher(` in any read path; relational recursive CTEs are the real source of truth). Doubles write latency + is a Cypher-injection surface + required for readiness | Remove the AGE sync + extension requirement; drop from `readiness.py` | Removed in `e45c4d9`, **restored** in migration `0026` — see note below |
+| **pgvector / `VectorStore`** | Instantiated + implemented, called by no use case | Remove until a semantic-search feature needs it | Removed in `e45c4d9`, **restored** in migration `0026` |
+| **`CiProvider` port** | No adapter, no references | Remove | Removed in `e45c4d9`, **restored** |
+| **`StatusAgentNode` LangGraph** | Only caller is a demo smoke script | Remove | Removed in `e45c4d9`, **restored** |
+| **`heartbeat` workflow** | No-op liveness beacon | Remove or justify | KEPT — justified as the liveness beacon |
 
-> Removing the AGE graph also deletes the Cypher-injection surface (`postgres_graph.py:583` hand-rolled escaping) at the same time — a security win folded into a cleanup.
+> **Superseded for four of five rows.** All four removed components were restored on request. The AGE
+> graph came back as a **parameterized** implementation: values are bound via the `cypher()` third
+> argument as an `agtype` document (`_age_params`), so the hand-rolled `_cypher_string` escaping — and
+> the Cypher-injection surface this section called out — is *not* back. Relationship labels still cannot
+> be bound in Cypher, so they come from a closed `EdgeKind` → literal map.
+>
+> Two consequences of the restore that this plan's rationale did not anticipate: the write-latency cost
+> of the AGE mirror returns, and AGE becomes a hard runtime extension dependency that rules out
+> RDS/Aurora independently of TimescaleDB (see `docs/ops/infrastructure-procurement.md` DP-1). The
+> "never read" observation still holds — nothing reads the AGE mirror, and it is not backfilled, so it
+> reflects only mutations since restore.
 
 ### 4d. Dead-letter + alerting for stuck check-ins/replies
 

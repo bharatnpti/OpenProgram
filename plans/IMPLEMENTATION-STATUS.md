@@ -12,7 +12,7 @@ Run from repo root; all GREEN:
 - Frontend: `npm run typecheck` / `lint` / `format:check` / `build` → clean. `openapi.json` + `generated.ts` regenerated and in sync (regenerate with the LOCAL prettier: `./node_modules/.bin/prettier`, NOT a global `npx prettier` — versions differ and cause spurious drift).
 - `backend/tests/bdd` remains the PRE-EXISTING environmental baseline (needs the running simulator/LLM; not a regression).
 
-Alembic migrations through `0025_dead_letters`. **Next free number: `0026`.**
+Alembic migrations through `0026_restore_vector_and_age_graph`. **Next free number: `0027`.**
 
 ## DONE + verified
 - **Plan 01 — Reliability**: fast-ack webhook + Slack signature-verification fix + `event_id`/retry dedup; durable async coalescing (30s reset-on-message debounce) with `inbound_chat_events` buffer + drain + sweeper safety-net; `ReplyIngestionService` (no lost-reply-on-LLM-failure); bounded-concurrent fanout. Mirrored in Temporal.
@@ -28,6 +28,7 @@ Alembic migrations through `0025_dead_letters`. **Next free number: `0026`.**
 - **Plan 04 §4e — CI branch/deploy** (`4828849`): CI runs on `master`; removed the no-op `deploy-dev`. (Coverage-gate extension still deferred — see below.)
 - **Plan 04 §4b — slim docker-compose** (`3ce4cdb`): langfuse/temporal/observability are opt-in profiles; default `up` = postgres+redis+litellm+mock-llm+backend+worker.
 - **Plan 04 §4c — remove dead infra** (`e45c4d9`): removed AGE graph sync + Cypher-injection surface, pgvector/VectorStore, CiProvider/BuildResult, StatusAgentNode; readiness needs only `timescaledb`; migration `0024`. heartbeat KEPT (justified liveness beacon).
+  - **REVERSED on request** (migration `0026_restore_vector_and_age_graph`): all four components restored. AGE sync rebuilt **parameterized** (`_age_params` binds values through the `cypher()` third argument as `agtype`; the hand-rolled `_cypher_string` escaping is *not* back, so the injection surface stays closed). Labels come from a closed `EdgeKind` → literal map. Readiness requires `age`+`timescaledb`+`vector` again. 0024 was left untouched; 0026 is a forward migration with a working downgrade. Still uncalled by any use case — capability restored, not a feature. Notable fallout: AGE is now a hard extension dependency that rules out RDS/Aurora independently of TimescaleDB (see `docs/ops/infrastructure-procurement.md` DP-1), and the AGE mirror is **not backfilled** — it reflects only mutations since the restore.
 - **Plan 04 §4d — dead-letter + alerting** (`57c0c29`): `DeadLetter` domain + repository (migration `0025`, identifiers only); sweeper dead-letters exhausted bursts; admin ops `GET/POST /admin/ops/dead-letters[/{id}/rearm]`; workflow-backlog gauge + `/ready` `workflow_backlog` dependency.
 
 ## DONE — this batch (all committed; each via a sub-agent unless noted)
