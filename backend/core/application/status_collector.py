@@ -12,17 +12,27 @@ from langgraph.graph import StateGraph
 from opentelemetry import trace
 
 from core.application.agents.tool_loop import ToolCallingAgent
+from core.application.blocker_lifecycle import (
+    BlockerLifecycleService,
+    reconciliation_with_updates,
+)
 from core.application.conversation_history import llm_messages_from_turns
 from core.application.status_parsing import ClarificationEvaluator, StatusParser
 from core.application.tools.conversation_history import MAX_HISTORY_LIMIT, ConversationHistoryTool
 from core.application.tools.git_activity import GitActivityTool
 from core.application.tools.issue_tracker import IssueTrackerTool
 from core.application.writeback_service import WriteBackService
+from core.domain.blockers import (
+    BlockerReconciliation,
+    BlockerSource,
+    DeveloperBlocker,
+    ReconcileMode,
+)
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.cross_person import CrossPersonRequestResolution, CrossPersonRequestStatus
 from core.domain.directory import DirectoryUser
 from core.domain.escalation import EscalationTarget
-from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
+from core.domain.graph import EntityRef, FactEvent, GraphNode, JsonScalar, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
@@ -45,6 +55,7 @@ from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
 from core.ports.repositories import (
     ConversationRepository,
+    GraphRepository,
     IdentityLinkRepository,
     StatusRepository,
     TimeSeriesRepository,
@@ -128,6 +139,7 @@ class StatusCollector:
         directory_repository: DirectoryUserRepository | None = None,
         identity_link_repository: IdentityLinkRepository | None = None,
         write_back_service: WriteBackService | None = None,
+        graph_repository: GraphRepository | None = None,
         parser: StatusParser | None = None,
         clarification_evaluator: ClarificationEvaluator | None = None,
         tool_agent: ToolCallingAgent | None = None,
@@ -146,6 +158,9 @@ class StatusCollector:
         self._directory_repository = directory_repository
         self._identity_link_repository = identity_link_repository
         self._write_back_service = write_back_service
+        # Without a graph repository the attribution machinery degrades
+        # cleanly: no pods resolve, so no attribution question is ever asked.
+        self._blockers = BlockerLifecycleService(status_repository, graph_repository)
         self._conversation_repository = conversation_repository
         self._model = model
         self._tool_agent = tool_agent
@@ -221,36 +236,8 @@ class StatusCollector:
 
         if checkin.replied_at is not None:
             return await self._handle_already_replied(checkin=checkin, message=message)
-        turn_already_recorded = await self._user_turn_exists(
-            tenant_id=checkin.tenant_id,
-            developer_id=checkin.developer_id,
-            chat_message_id=message.message_id,
-        )
-        # Legacy single-delivery dedup: a redelivered message id on an open
-        # check-in is ignored. The durable drain passes allow_reprocess=True so a
-        # retry after a transient failure can finish classify/finalize instead of
-        # leaving the reply permanently "ignored" (R3).
-        if turn_already_recorded and not allow_reprocess:
+        if await self._register_reply_turn(checkin, message, allow_reprocess=allow_reprocess):
             return ReplyOutcome(kind="ignored")
-
-        if not turn_already_recorded:
-            await self._record_conversation_turn(
-                ConversationTurn(
-                    tenant_id=checkin.tenant_id,
-                    developer_id=checkin.developer_id,
-                    conversation_id=checkin.correlation_id,
-                    conversation_date=await self._local_date_for_developer(
-                        checkin.tenant_id,
-                        checkin.developer_id,
-                        message.received_at,
-                    ),
-                    role=ConversationRole.USER,
-                    content=message.text,
-                    correlation_id=message.correlation_id,
-                    chat_message_id=message.message_id,
-                    observed_at=message.received_at,
-                )
-            )
 
         conversation_turns = await self._recent_conversation_turns(
             tenant_id=message.tenant_id,
@@ -310,27 +297,27 @@ class StatusCollector:
             tools=tools,
             prior_blockers=prior_blockers,
         )
-        required_check_signals = _signals_with_carried_blockers(
-            signals,
+        reconciliation = await self._reconcile_reply_blockers(
+            checkin=checkin,
+            at=message.received_at,
+            prior=prior_blockers,
+            signals=signals,
             raw_reply=message.text,
-            prior_blockers=prior_blockers,
         )
-        missing_required = _missing_required_status_details(required_check_signals)
-        if missing_required and clarification_count < self._checkin_max_clarifications:
-            partial_status = await self._record_partial_checkin_status(
-                checkin=checkin,
-                as_of_at=message.received_at,
-                signals=required_check_signals,
-            )
-            await self._send_clarification(
-                checkin=checkin,
-                message=message,
-                question=_missing_required_status_question(missing_required),
-                clarification_number=clarification_count + 1,
-            )
+        required_details_outcome = await self._maybe_required_details_clarification(
+            checkin=checkin,
+            message=message,
+            signals=signals,
+            reconciliation=reconciliation,
+            clarification_count=clarification_count,
+        )
+        if required_details_outcome is not None:
             span.set_attribute("openprogram.reply_classification", "clarifying")
-            span.set_attribute("openprogram.has_blocker", bool(partial_status.blockers))
-            return ReplyOutcome(kind="clarifying", status=partial_status)
+            span.set_attribute(
+                "openprogram.has_blocker",
+                bool(required_details_outcome.status and required_details_outcome.status.blockers),
+            )
+            return required_details_outcome
         if not decision.sufficient:
             signals = _signals_with_note(
                 signals,
@@ -352,12 +339,23 @@ class StatusCollector:
             span.set_attribute("openprogram.reply_classification", "needs_person_resolution")
             span.set_attribute("openprogram.has_blocker", bool(signals.blockers))
             return ReplyOutcome(kind="clarifying")
+        attribution_outcome, reconciliation = await self._maybe_attribution_clarification(
+            checkin=checkin,
+            message=message,
+            signals=signals,
+            reconciliation=reconciliation,
+            clarification_count=clarification_count,
+        )
+        if attribution_outcome is not None:
+            span.set_attribute("openprogram.reply_classification", "clarifying")
+            span.set_attribute("openprogram.has_blocker", True)
+            return attribution_outcome
         status = await self._finalize_checkin_reply(
             checkin=checkin,
             replied_at=message.received_at,
             raw_reply=message.text,
             signals=signals,
-            prior_blockers=prior_blockers,
+            reconciliation=reconciliation,
         )
         span.set_attribute("openprogram.reply_classification", "status_update")
         span.set_attribute("openprogram.has_blocker", bool(status.blockers))
@@ -366,6 +364,142 @@ class StatusCollector:
             status=status,
             cross_person_requests=person_resolution.resolutions,
         )
+
+    async def _register_reply_turn(
+        self,
+        checkin: CheckIn,
+        message: InboundMessage,
+        *,
+        allow_reprocess: bool,
+    ) -> bool:
+        """Record the USER turn; True means a duplicate delivery to ignore.
+
+        Legacy single-delivery dedup: a redelivered message id on an open
+        check-in is ignored. The durable drain passes ``allow_reprocess=True``
+        so a retry after a transient failure can finish classify/finalize
+        instead of leaving the reply permanently "ignored" (R3).
+        """
+        turn_already_recorded = await self._user_turn_exists(
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            chat_message_id=message.message_id,
+        )
+        if turn_already_recorded:
+            return not allow_reprocess
+        await self._record_conversation_turn(
+            ConversationTurn(
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                conversation_id=checkin.correlation_id,
+                conversation_date=await self._local_date_for_developer(
+                    checkin.tenant_id,
+                    checkin.developer_id,
+                    message.received_at,
+                ),
+                role=ConversationRole.USER,
+                content=message.text,
+                correlation_id=message.correlation_id,
+                chat_message_id=message.message_id,
+                observed_at=message.received_at,
+            )
+        )
+        return False
+
+    async def _reconcile_reply_blockers(
+        self,
+        *,
+        checkin: CheckIn,
+        at: datetime,
+        prior: tuple[DeveloperBlocker, ...],
+        signals: CheckInSignals,
+        raw_reply: str,
+    ) -> BlockerReconciliation:
+        return await self._blockers.reconcile(
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            as_of=await self._status_as_of_for_checkin(checkin, at),
+            prior=prior,
+            signals=signals,
+            mode=_reconcile_mode_for_reply(signals, raw_reply),
+            source=BlockerSource.CHECKIN,
+            source_correlation_id=checkin.correlation_id,
+        )
+
+    async def _maybe_required_details_clarification(
+        self,
+        *,
+        checkin: CheckIn,
+        message: InboundMessage,
+        signals: CheckInSignals,
+        reconciliation: BlockerReconciliation,
+        clarification_count: int,
+    ) -> ReplyOutcome | None:
+        required_check_signals = _signals_with_open_blockers(signals, reconciliation)
+        missing_required = _missing_required_status_details(required_check_signals)
+        if not missing_required or clarification_count >= self._checkin_max_clarifications:
+            return None
+        partial_status = await self._record_partial_checkin_status(
+            checkin=checkin,
+            as_of_at=message.received_at,
+            signals=required_check_signals,
+            reconciliation=reconciliation,
+        )
+        await self._send_clarification(
+            checkin=checkin,
+            message=message,
+            question=_missing_required_status_question(missing_required),
+            clarification_number=clarification_count + 1,
+        )
+        return ReplyOutcome(kind="clarifying", status=partial_status)
+
+    async def _maybe_attribution_clarification(
+        self,
+        *,
+        checkin: CheckIn,
+        message: InboundMessage,
+        signals: CheckInSignals,
+        reconciliation: BlockerReconciliation,
+        clarification_count: int,
+    ) -> tuple[ReplyOutcome | None, BlockerReconciliation]:
+        """Ask (once per blocker, ever) which pod/work item an open blocker belongs to.
+
+        Only multi-pod developers are asked, only within the clarification
+        budget, and required-detail/person clarifications always outrank this
+        one. A single-pod developer's unattributed blockers auto-attribute.
+        """
+        candidates = tuple(
+            blocker
+            for blocker in self._blockers.unattributed(reconciliation.open_after)
+            if blocker.attribution_asked_at is None
+        )
+        if not candidates:
+            return None, reconciliation
+        pods = await self._blockers.pods_for_developer(
+            checkin.tenant_id,
+            checkin.developer_id,
+            await self._status_as_of_for_checkin(checkin, message.received_at),
+        )
+        if len(pods) == 1:
+            auto_attributed = tuple(replace(blocker, pod_id=pods[0].id) for blocker in candidates)
+            return None, reconciliation_with_updates(reconciliation, auto_attributed)
+        if len(pods) < 2 or clarification_count >= self._checkin_max_clarifications:
+            return None, reconciliation
+        asked_at = datetime.now(tz=UTC)
+        stamped = tuple(replace(blocker, attribution_asked_at=asked_at) for blocker in candidates)
+        updated = reconciliation_with_updates(reconciliation, stamped)
+        partial_status = await self._record_partial_checkin_status(
+            checkin=checkin,
+            as_of_at=message.received_at,
+            signals=_signals_with_open_blockers(signals, updated),
+            reconciliation=updated,
+        )
+        await self._send_clarification(
+            checkin=checkin,
+            message=message,
+            question=_attribution_question(candidates, pods),
+            clarification_number=clarification_count + 1,
+        )
+        return ReplyOutcome(kind="clarifying", status=partial_status), updated
 
     async def resolve_reply_correlation(self, message: InboundMessage) -> str | None:
         correlation = await self._status_repository.checkin_correlation_by_id(
@@ -660,12 +794,21 @@ class StatusCollector:
             as_of,
         )
         if prior is not None and prior.source is not StatusSource.UNKNOWN:
+            # No lifecycle operations: open blocker rows simply stay open and
+            # keep aging — the compat strings mirror the true open set.
+            open_rows = await self._blockers.open_blockers(
+                tenant_id,
+                developer_id,
+                as_of,
+                legacy_status=prior,
+            )
             stale = DeveloperStatus(
                 tenant_id=tenant_id,
                 developer_id=developer_id,
                 as_of=as_of,
                 source=StatusSource.STALE,
-                blockers=prior.blockers or ("no confirmed reply",),
+                blockers=tuple(blocker.description for blocker in open_rows)
+                or ("no confirmed reply",),
                 summary=(
                     "No confirmed check-in after a nudge. "
                     f"Last known {prior.source.value} status on {prior.as_of.isoformat()}: "
@@ -891,7 +1034,15 @@ class StatusCollector:
         )
         return {"checkin": checkin}
 
-    async def _status_for_duplicate_reply(self, checkin: CheckIn) -> DeveloperStatus:
+    async def _recover_finalized_status(self, checkin: CheckIn) -> DeveloperStatus:
+        """Return (or reconstruct) the status for an already-finalized check-in.
+
+        Fast path: a CONFIRMED/PARTIAL status already exists. Otherwise the
+        process died between ``record_checkin_reply_once`` and the status
+        write, so rebuild from the persisted ``checkin.signals`` (which
+        round-trip blocker reports and resolved ids) and persist idempotently —
+        blocker upserts converge by natural key.
+        """
         status_as_of = await self._status_as_of_for_checkin(
             checkin,
             checkin.replied_at or checkin.asked_at,
@@ -904,16 +1055,30 @@ class StatusCollector:
         if latest is not None and latest.source in {StatusSource.CONFIRMED, StatusSource.PARTIAL}:
             return latest
         signals = checkin.signals or CheckInSignals(progress_note="Duplicate confirmed reply.")
-        missing_required = _missing_required_status_details(signals)
-        return DeveloperStatus(
+        prior = await self._prior_open_blockers(checkin, checkin.replied_at or checkin.asked_at)
+        reconciliation = await self._reconcile_reply_blockers(
+            checkin=checkin,
+            at=checkin.replied_at or checkin.asked_at,
+            prior=prior,
+            signals=signals,
+            raw_reply=checkin.raw_reply or "",
+        )
+        final_signals = _signals_with_open_blockers(signals, reconciliation)
+        missing_required = _missing_required_status_details(final_signals)
+        status = DeveloperStatus(
             tenant_id=checkin.tenant_id,
             developer_id=checkin.developer_id,
             as_of=status_as_of,
-            source=_status_source_for_signals(signals),
-            blockers=signals.blockers,
-            summary=_summary_with_missing_required_details(signals.progress_note, missing_required),
-            eta_change_days=signals.eta_change_days,
+            source=_status_source_for_signals(final_signals),
+            blockers=final_signals.blockers,
+            summary=_summary_with_missing_required_details(
+                final_signals.progress_note, missing_required
+            ),
+            eta_change_days=final_signals.eta_change_days,
         )
+        await self._blockers.persist_with_status(status, reconciliation)
+        await self._append_checkin_fact(checkin, status, reconciliation=reconciliation)
+        return status
 
     async def _send_clarification(
         self,
@@ -1088,13 +1253,9 @@ class StatusCollector:
         replied_at: datetime,
         raw_reply: str,
         signals: CheckInSignals,
-        prior_blockers: tuple[str, ...] = (),
+        reconciliation: BlockerReconciliation,
     ) -> DeveloperStatus:
-        final_signals = _signals_with_carried_blockers(
-            signals,
-            raw_reply=raw_reply,
-            prior_blockers=prior_blockers,
-        )
+        final_signals = _signals_with_open_blockers(signals, reconciliation)
         updated = CheckIn(
             tenant_id=checkin.tenant_id,
             developer_id=checkin.developer_id,
@@ -1111,7 +1272,7 @@ class StatusCollector:
                 checkin.tenant_id,
                 checkin.correlation_id,
             )
-            return await self._status_for_duplicate_reply(duplicate or checkin)
+            return await self._recover_finalized_status(duplicate or checkin)
 
         missing_required = _missing_required_status_details(final_signals)
         status = DeveloperStatus(
@@ -1126,13 +1287,14 @@ class StatusCollector:
             ),
             eta_change_days=final_signals.eta_change_days,
         )
-        await self._status_repository.record_developer_status(status)
+        await self._blockers.persist_with_status(status, reconciliation)
         await self._status_repository.consume_checkin_correlation(
             checkin.tenant_id,
             checkin.correlation_id,
             replied_at,
         )
-        await self._append_checkin_fact(updated, status)
+        await self._append_checkin_fact(updated, status, reconciliation=reconciliation)
+        await self._append_blocker_resolved_facts(updated, status, reconciliation)
         await self._maybe_write_back(updated, final_signals)
         # Send exactly one "Got it" ack per accepted reply. Gated on the
         # record_checkin_reply_once success above, so a durable retry or a
@@ -1295,7 +1457,7 @@ class StatusCollector:
             return consent_outcome
         return ReplyOutcome(
             kind="processed",
-            status=await self._status_for_duplicate_reply(checkin),
+            status=await self._recover_finalized_status(checkin),
         )
 
     async def _maybe_resolve_consent(
@@ -1349,6 +1511,7 @@ class StatusCollector:
         checkin: CheckIn,
         as_of_at: datetime,
         signals: CheckInSignals,
+        reconciliation: BlockerReconciliation,
     ) -> DeveloperStatus:
         missing_required = _missing_required_status_details(signals)
         status = DeveloperStatus(
@@ -1363,7 +1526,9 @@ class StatusCollector:
             ),
             eta_change_days=signals.eta_change_days,
         )
-        await self._status_repository.record_developer_status(status)
+        # Atomic with the blocker rows so a clarify-then-timeout never orphans
+        # blockers minted in a clarifying turn.
+        await self._blockers.persist_with_status(status, reconciliation)
         return status
 
     async def _finalize_accumulated_reply_on_timeout(
@@ -1415,6 +1580,15 @@ class StatusCollector:
             tools=tools,
             prior_blockers=prior_blockers,
         )
+        # The timeout path never asks the attribution question; unattributed
+        # blockers finalize unattributed (visible in every pod, flagged).
+        reconciliation = await self._reconcile_reply_blockers(
+            checkin=checkin,
+            at=user_turns[-1].observed_at,
+            prior=prior_blockers,
+            signals=signals,
+            raw_reply=raw_reply,
+        )
         return await self._finalize_checkin_reply(
             checkin=checkin,
             replied_at=user_turns[-1].observed_at,
@@ -1423,7 +1597,7 @@ class StatusCollector:
                 signals,
                 "Finalized from accumulated replies after clarification timeout.",
             ),
-            prior_blockers=prior_blockers,
+            reconciliation=reconciliation,
         )
 
     async def _complete_llm(
@@ -1440,6 +1614,7 @@ class StatusCollector:
         self,
         checkin: CheckIn,
         status: DeveloperStatus,
+        reconciliation: BlockerReconciliation | None = None,
     ) -> None:
         if self._time_series_repository is None or checkin.replied_at is None:
             return
@@ -1450,6 +1625,12 @@ class StatusCollector:
             "has_eta_change": signals.eta_change_days is not None if signals else False,
             "eta_change_days": signals.eta_change_days if signals else None,
         }
+        if reconciliation is not None:
+            payload["new_blocker_count"] = len(reconciliation.minted)
+            payload["resolved_blocker_count"] = len(reconciliation.resolved)
+            payload["unattributed_blocker_count"] = len(
+                self._blockers.unattributed(reconciliation.open_after)
+            )
         await self._time_series_repository.append_fact_once(
             FactEvent(
                 tenant_id=checkin.tenant_id,
@@ -1464,6 +1645,38 @@ class StatusCollector:
                 correlation_id=checkin.correlation_id,
             )
         )
+
+    async def _append_blocker_resolved_facts(
+        self,
+        checkin: CheckIn,
+        status: DeveloperStatus,
+        reconciliation: BlockerReconciliation,
+    ) -> None:
+        """One convergent fact per blocker resolved by this reply (no free text)."""
+        if self._time_series_repository is None or checkin.replied_at is None:
+            return
+        for blocker in reconciliation.resolved:
+            await self._time_series_repository.append_fact_once(
+                FactEvent(
+                    tenant_id=checkin.tenant_id,
+                    source="checkin",
+                    entity_ref=EntityRef(
+                        tenant_id=checkin.tenant_id,
+                        kind=NodeKind.DEVELOPER,
+                        id=checkin.developer_id,
+                    ),
+                    payload={
+                        "event": "blocker_resolved",
+                        "blocker_id": blocker.blocker_id,
+                        "blocker_age_days": max((status.as_of - blocker.first_seen_on).days, 0),
+                        "attributed": blocker.is_attributed,
+                    },
+                    observed_at=checkin.replied_at,
+                    correlation_id=(
+                        f"{checkin.correlation_id}:blocker-resolved:{blocker.blocker_id}"
+                    ),
+                )
+            )
 
     async def _record_conversation_turn(self, turn: ConversationTurn) -> None:
         await self._conversation_repository.append_turn(turn)
@@ -1598,13 +1811,24 @@ class StatusCollector:
         matches = await self._local_date_matches(_dedupe_correlations(correlations), received_at)
         return matches[0] if matches else None
 
-    async def _prior_open_blockers(self, checkin: CheckIn, at: datetime) -> tuple[str, ...]:
+    async def _prior_open_blockers(
+        self, checkin: CheckIn, at: datetime
+    ) -> tuple[DeveloperBlocker, ...]:
+        as_of = await self._status_as_of_for_checkin(checkin, at)
         status = await self._status_repository.latest_developer_status(
             checkin.tenant_id,
             checkin.developer_id,
-            await self._status_as_of_for_checkin(checkin, at),
+            as_of,
         )
-        return _open_blockers_from_status(status)
+        if status is not None and status.source is StatusSource.UNKNOWN:
+            # Matches the legacy rule: UNKNOWN statuses never seed carry-forward.
+            status = None
+        return await self._blockers.open_blockers(
+            checkin.tenant_id,
+            checkin.developer_id,
+            as_of,
+            legacy_status=status,
+        )
 
     async def _recent_conversation_turns(
         self,
@@ -1903,22 +2127,59 @@ def _signals_with_note(signals: CheckInSignals, note: str) -> CheckInSignals:
     return replace(signals, progress_note=f"{signals.progress_note} {note}")
 
 
-def _signals_with_carried_blockers(
+def _reconcile_mode_for_reply(signals: CheckInSignals, raw_reply: str) -> ReconcileMode:
+    """Heuristic all-resolved fallback applies only to unstructured replies.
+
+    When the model reported structured blockers or resolved ids, those are the
+    single source of resolution truth; the legacy text heuristic then never
+    fires (it kept "no blockers now" replies working before structured output).
+    """
+    if signals.blocker_reports or signals.resolved_blocker_ids:
+        return ReconcileMode.CHECKIN
+    if _explicitly_resolves_blockers(raw_reply):
+        return ReconcileMode.RESOLVE_ALL
+    return ReconcileMode.CHECKIN
+
+
+def _signals_with_open_blockers(
     signals: CheckInSignals,
-    *,
-    raw_reply: str,
-    prior_blockers: tuple[str, ...],
+    reconciliation: BlockerReconciliation,
 ) -> CheckInSignals:
-    if not prior_blockers or signals.blockers or _explicitly_resolves_blockers(raw_reply):
+    """Derive the day's compat blocker strings from the true open set.
+
+    Unlike the legacy carry-forward, a reply naming a NEW blocker no longer
+    silently drops the old open one from the day's status — the strings are
+    the union of what is actually open after reconciliation.
+    """
+    open_descriptions = tuple(blocker.description for blocker in reconciliation.open_after)
+    note = signals.progress_note
+    if reconciliation.carried:
+        carried_text = ", ".join(blocker.description for blocker in reconciliation.carried)
+        note = f"{note} Prior blockers carried forward until explicitly resolved: {carried_text}."
+    if open_descriptions == signals.blockers and note == signals.progress_note:
         return signals
     # replace() preserves every other field (issue_updates, parser_confident, ...).
-    return replace(
-        signals,
-        progress_note=(
-            f"{signals.progress_note} Prior blockers carried forward until explicitly resolved: "
-            f"{', '.join(prior_blockers)}."
-        ),
-        blockers=prior_blockers,
+    return replace(signals, progress_note=note, blockers=open_descriptions)
+
+
+def _attribution_question(
+    candidates: tuple[DeveloperBlocker, ...],
+    pods: tuple[GraphNode, ...],
+) -> str:
+    pod_names = ", ".join(pod.name for pod in pods)
+    if len(candidates) == 1:
+        description = candidates[0].description
+        return (
+            f"Quick check so this lands on the right board: which pod or work item is "
+            f'"{description}" blocking? Your pods: {pod_names}. '
+            "Reply with a pod name or an issue key."
+        )
+    numbered = " ".join(
+        f"{index}) {blocker.description}" for index, blocker in enumerate(candidates, start=1)
+    )
+    return (
+        f"Which pod or work item does each blocker belong to? {numbered}. "
+        f'Your pods: {pod_names}. Reply like "1: {pods[0].name}" or "1: PROJ-123".'
     )
 
 

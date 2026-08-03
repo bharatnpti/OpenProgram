@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime
 
+from core.domain.blockers import (
+    BlockerResolutionReason,
+    BlockerSource,
+    DeveloperBlocker,
+    normalize_blocker_key,
+)
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.directory import DirectoryUser
-from core.domain.graph import EntityRef, FactEvent, NodeKind
+from core.domain.graph import EdgeKind, EntityRef, FactEvent, GraphEdge, GraphNode, NodeKind
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import (
@@ -44,6 +51,7 @@ from core.ports.issue_tracker import IssueTracker
 from core.ports.repositories import (
     ConversationRepository,
     DeadLetterRepository,
+    GraphRepository,
     IdentityLinkRepository,
     InboundChatEventRepository,
     NarrativeBriefRepository,
@@ -328,6 +336,259 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
     assert latest == status
     missing = await repository.developers_without_checkin("demo", date(2026, 1, 10))
     assert all(isinstance(developer_id, str) for developer_id in missing)
+
+    # --- Blocker lifecycle -------------------------------------------------
+    # (a) status + blockers written together: the compat tuple round-trips and
+    # the blocker rows come back ordered by (first_seen_on, blocker_id).
+    attributed = DeveloperBlocker(
+        tenant_id="demo",
+        blocker_id="blk-a",
+        developer_id="dev-1",
+        description="Waiting on API keys",
+        normalized_key=normalize_blocker_key("Waiting on API keys"),
+        work_item_id="PO-1",
+        source=BlockerSource.CHECKIN,
+        source_correlation_id="corr-1",
+        first_seen_on=date(2026, 2, 1),
+        last_seen_on=date(2026, 2, 2),
+    )
+    unattributed = DeveloperBlocker(
+        tenant_id="demo",
+        blocker_id="blk-b",
+        developer_id="dev-1",
+        description="Flaky CI pipeline",
+        normalized_key=normalize_blocker_key("Flaky CI pipeline"),
+        source=BlockerSource.CHECKIN,
+        source_correlation_id="corr-1",
+        first_seen_on=date(2026, 2, 2),
+        last_seen_on=date(2026, 2, 2),
+    )
+    status_with_blockers = DeveloperStatus(
+        tenant_id="demo",
+        developer_id="dev-1",
+        as_of=date(2026, 2, 2),
+        source=StatusSource.CONFIRMED,
+        blockers=("Waiting on API keys", "Flaky CI pipeline"),
+        summary="Blocked on API keys and a flaky CI pipeline.",
+        developer_confirmed=True,
+        confirmed_at=datetime(2026, 2, 2, 9, 5, tzinfo=UTC),
+    )
+    await repository.record_developer_status_with_blockers(
+        status_with_blockers, [attributed, unattributed]
+    )
+    assert (
+        await repository.latest_developer_status("demo", "dev-1", date(2026, 2, 2))
+        == status_with_blockers
+    )
+    open_blockers = await repository.open_blockers("demo", "dev-1", date(2026, 2, 2))
+    assert open_blockers == [attributed, unattributed]
+    assert open_blockers[0].is_attributed
+    assert not open_blockers[1].is_attributed
+
+    # (b) as_of windows: nothing is open before its first_seen_on, and a
+    # resolved blocker is excluded on resolved_on but open the day before
+    # (half-open interval).
+    assert await repository.open_blockers("demo", "dev-1", date(2026, 1, 31)) == []
+    assert await repository.open_blockers("demo", "dev-1", date(2026, 2, 1)) == [attributed]
+    resolved_unattributed = replace(
+        unattributed,
+        last_seen_on=date(2026, 2, 3),
+        resolved_on=date(2026, 2, 3),
+        resolved_reason=BlockerResolutionReason.REPORTED_RESOLVED,
+    )
+    await repository.record_developer_blockers("demo", [resolved_unattributed])
+    assert await repository.open_blockers("demo", "dev-1", date(2026, 2, 3)) == [attributed]
+    assert await repository.open_blockers("demo", "dev-1", date(2026, 2, 2)) == [
+        attributed,
+        resolved_unattributed,
+    ]
+
+    # (c) re-upserting the same blocker_id updates the single row in place:
+    # description/normalized_key/last_seen_on move, while first_seen_on and
+    # source_correlation_id are immutable once recorded (postgres semantics).
+    reworded = replace(
+        attributed,
+        description="Still waiting on API keys!",
+        normalized_key=normalize_blocker_key("Still waiting on API keys!"),
+        first_seen_on=date(2026, 2, 4),
+        last_seen_on=date(2026, 2, 4),
+        source_correlation_id="corr-later",
+    )
+    await repository.record_developer_blockers("demo", [reworded])
+    expected_updated = replace(
+        reworded,
+        first_seen_on=attributed.first_seen_on,
+        source_correlation_id=attributed.source_correlation_id,
+    )
+    assert await repository.open_blockers("demo", "dev-1", date(2026, 2, 4)) == [expected_updated]
+
+    # (d) standalone attribution update: an explicit pod lands on the row.
+    attributed_to_pod = replace(
+        expected_updated,
+        pod_id="pod-1",
+        attribution_asked_at=datetime(2026, 2, 4, 10, 0, tzinfo=UTC),
+    )
+    await repository.record_developer_blockers("demo", [attributed_to_pod])
+    assert await repository.open_blockers("demo", "dev-1", date(2026, 2, 4)) == [attributed_to_pod]
+
+    # (e) multi-developer read, ordered by (developer_id, first_seen_on,
+    # blocker_id) regardless of the requested id order.
+    second_developer_blocker = DeveloperBlocker(
+        tenant_id="demo",
+        blocker_id="blk-z",
+        developer_id="dev-2",
+        description="Waiting on design review",
+        normalized_key=normalize_blocker_key("Waiting on design review"),
+        source=BlockerSource.CORRECTION,
+        first_seen_on=date(2026, 2, 1),
+        last_seen_on=date(2026, 2, 4),
+    )
+    await repository.record_developer_blockers("demo", [second_developer_blocker])
+    assert await repository.open_blockers_for_developers(
+        "demo", ["dev-2", "dev-1"], date(2026, 2, 4)
+    ) == [attributed_to_pod, second_developer_blocker]
+    assert await repository.open_blockers_for_developers("demo", [], date(2026, 2, 4)) == []
+
+    # (f) work-item scoped read honours attribution and the as_of window.
+    assert await repository.blockers_for_work_item("demo", "PO-1", date(2026, 2, 4)) == [
+        attributed_to_pod
+    ]
+    assert await repository.blockers_for_work_item("demo", "PO-1", date(2026, 1, 31)) == []
+    assert await repository.blockers_for_work_item("demo", "PO-9", date(2026, 2, 4)) == []
+
+    # (g) has_blocker_rows is true once any row exists -- even fully resolved
+    # -- and false for unknown developers and other tenants.
+    resolved_only = DeveloperBlocker(
+        tenant_id="demo",
+        blocker_id="blk-r",
+        developer_id="dev-3",
+        description="Old blocker",
+        normalized_key=normalize_blocker_key("Old blocker"),
+        source=BlockerSource.BACKFILL,
+        first_seen_on=date(2026, 2, 1),
+        last_seen_on=date(2026, 2, 2),
+        resolved_on=date(2026, 2, 2),
+        resolved_reason=BlockerResolutionReason.CONFIRMED_NO_BLOCKERS,
+    )
+    await repository.record_developer_blockers("demo", [resolved_only])
+    assert await repository.open_blockers("demo", "dev-3", date(2026, 2, 4)) == []
+    assert await repository.has_blocker_rows("demo", "dev-1")
+    assert await repository.has_blocker_rows("demo", "dev-3")
+    assert not await repository.has_blocker_rows("demo", "dev-unknown")
+    assert not await repository.has_blocker_rows("other", "dev-1")
+    assert await repository.open_blockers("other", "dev-1", date(2026, 2, 4)) == []
+
+
+async def assert_graph_repository_contract(repository: GraphRepository) -> None:
+    as_of = date(2026, 3, 15)
+    pod_a = GraphNode(tenant_id="demo", id="pod-a", kind=NodeKind.POD, name="Pod A")
+    pod_b = GraphNode(tenant_id="demo", id="pod-b", kind=NodeKind.POD, name="Pod B")
+    pod_old = GraphNode(tenant_id="demo", id="pod-old", kind=NodeKind.POD, name="Pod Old")
+    developer = GraphNode(tenant_id="demo", id="dev-1", kind=NodeKind.DEVELOPER, name="Asha")
+    workstream = GraphNode(
+        tenant_id="demo", id="ws-1", kind=NodeKind.WORKSTREAM, name="Workstream 1"
+    )
+    task = GraphNode(tenant_id="demo", id="task-1", kind=NodeKind.TASK, name="Task 1")
+    for node in (pod_a, pod_b, pod_old, developer, workstream, task):
+        await repository.upsert_node(node)
+
+    await repository.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id="pod-a",
+            to_node_id="dev-1",
+            kind=EdgeKind.CONTAINS,
+            valid_from=date(2026, 3, 1),
+        )
+    )
+    await repository.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id="pod-b",
+            to_node_id="dev-1",
+            kind=EdgeKind.CONTAINS,
+        )
+    )
+    # Membership that ended in the past: excluded once valid_to is reached.
+    await repository.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id="pod-old",
+            to_node_id="dev-1",
+            kind=EdgeKind.CONTAINS,
+            valid_from=date(2026, 1, 1),
+            valid_to=date(2026, 3, 1),
+        )
+    )
+
+    assert await repository.pods_containing_developer("demo", "dev-1", as_of) == [pod_a, pod_b]
+    # Before pod-a's membership started, the since-ended membership was active.
+    assert await repository.pods_containing_developer("demo", "dev-1", date(2026, 2, 15)) == [
+        pod_b,
+        pod_old,
+    ]
+    # Edge windows are half-open: valid_to itself is already outside, while
+    # valid_from itself is inside.
+    assert await repository.pods_containing_developer("demo", "dev-1", date(2026, 3, 1)) == [
+        pod_a,
+        pod_b,
+    ]
+    assert await repository.pods_containing_developer("demo", "dev-unknown", as_of) == []
+    assert await repository.pods_containing_developer("other", "dev-1", as_of) == []
+
+    # pod-a owns task-1 directly AND via ws-1 (dedup); pod-b only via ws-1;
+    # pod-old's workstream assignment expired before as_of.
+    await repository.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id="pod-a",
+            to_node_id="task-1",
+            kind=EdgeKind.CONTAINS,
+        )
+    )
+    await repository.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id="ws-1",
+            to_node_id="task-1",
+            kind=EdgeKind.CONTAINS,
+        )
+    )
+    await repository.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id="pod-a",
+            to_node_id="ws-1",
+            kind=EdgeKind.ASSIGNED_TO,
+        )
+    )
+    await repository.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id="pod-b",
+            to_node_id="ws-1",
+            kind=EdgeKind.ASSIGNED_TO,
+        )
+    )
+    await repository.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id="pod-old",
+            to_node_id="ws-1",
+            kind=EdgeKind.ASSIGNED_TO,
+            valid_from=date(2026, 1, 1),
+            valid_to=date(2026, 3, 1),
+        )
+    )
+
+    assert await repository.pods_for_task("demo", "task-1", as_of) == [pod_a, pod_b]
+    assert await repository.pods_for_task("demo", "task-1", date(2026, 2, 15)) == [
+        pod_a,
+        pod_b,
+        pod_old,
+    ]
+    assert await repository.pods_for_task("demo", "task-unknown", as_of) == []
+    assert await repository.pods_for_task("other", "task-1", as_of) == []
 
 
 async def assert_identity_link_repository_contract(

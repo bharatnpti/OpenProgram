@@ -269,6 +269,78 @@ class PostgresGraphRepository:
             )
             return [_edge_from_row(row) for row in rows]
 
+    async def pods_containing_developer(
+        self, tenant_id: str, developer_id: str, as_of: date
+    ) -> list[GraphNode]:
+        with _tracer.start_as_current_span("postgres.graph.pods_containing_developer"):
+            rows = await self._executor.fetch(
+                """
+                SELECT n.tenant_id, n.id, n.kind, n.name, n.metadata
+                FROM graph_edges e
+                JOIN graph_nodes n
+                  ON n.tenant_id = e.tenant_id AND n.id = e.from_node_id
+                WHERE e.tenant_id = %s
+                  AND e.to_node_id = %s
+                  AND e.kind = 'contains'
+                  AND n.kind = 'pod'
+                  AND (e.valid_from IS NULL OR e.valid_from <= %s)
+                  AND (e.valid_to IS NULL OR e.valid_to > %s)
+                ORDER BY n.id
+                """,
+                (tenant_id, developer_id, as_of, as_of),
+            )
+            return [_node_from_row(row) for row in rows]
+
+    async def pods_for_task(self, tenant_id: str, task_id: str, as_of: date) -> list[GraphNode]:
+        """Pods owning a task/work item, via direct containment or a workstream.
+
+        The target id may be a TASK node id (Jira issue key) or a WORK_ITEM
+        node id — the query never filters the target's kind, only that the
+        resolved ancestors are pods.
+        """
+        with _tracer.start_as_current_span("postgres.graph.pods_for_task"):
+            rows = await self._executor.fetch(
+                """
+                SELECT DISTINCT n.tenant_id, n.id, n.kind, n.name, n.metadata
+                FROM graph_nodes n
+                JOIN (
+                    SELECT e.from_node_id AS pod_id
+                    FROM graph_edges e
+                    WHERE e.tenant_id = %s AND e.to_node_id = %s AND e.kind = 'contains'
+                      AND (e.valid_from IS NULL OR e.valid_from <= %s)
+                      AND (e.valid_to IS NULL OR e.valid_to > %s)
+                  UNION
+                    SELECT pw.from_node_id
+                    FROM graph_edges wt
+                    JOIN graph_edges pw
+                      ON pw.tenant_id = wt.tenant_id
+                     AND pw.to_node_id = wt.from_node_id
+                     AND pw.kind = 'assigned_to'
+                    WHERE wt.tenant_id = %s AND wt.to_node_id = %s AND wt.kind = 'contains'
+                      AND (wt.valid_from IS NULL OR wt.valid_from <= %s)
+                      AND (wt.valid_to IS NULL OR wt.valid_to > %s)
+                      AND (pw.valid_from IS NULL OR pw.valid_from <= %s)
+                      AND (pw.valid_to IS NULL OR pw.valid_to > %s)
+                ) pods ON n.id = pods.pod_id
+                WHERE n.tenant_id = %s AND n.kind = 'pod'
+                ORDER BY n.id
+                """,
+                (
+                    tenant_id,
+                    task_id,
+                    as_of,
+                    as_of,
+                    tenant_id,
+                    task_id,
+                    as_of,
+                    as_of,
+                    as_of,
+                    as_of,
+                    tenant_id,
+                ),
+            )
+            return [_node_from_row(row) for row in rows]
+
     async def get_identity_link(self, tenant_id: str, developer_id: str) -> IdentityLink | None:
         with _tracer.start_as_current_span("postgres.graph.get_identity_link"):
             rows = await self._executor.fetch(

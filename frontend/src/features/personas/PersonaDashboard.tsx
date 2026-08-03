@@ -457,11 +457,20 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
                         </div>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {(myStatus.data?.blockers ?? data.blockers).map((blocker) => (
-                          <Badge key={blocker} tone="danger">
-                            {blocker}
-                          </Badge>
-                        ))}
+                        {myStatus.data?.blocker_details?.length
+                          ? myStatus.data.blocker_details.map((detail) => (
+                              <Badge key={detail.blocker_id} tone="danger">
+                                {detail.description}
+                                {detail.work_item_id && (
+                                  <span className="ml-1 opacity-75">· {detail.work_item_id}</span>
+                                )}
+                              </Badge>
+                            ))
+                          : (myStatus.data?.blockers ?? data.blockers).map((blocker, index) => (
+                              <Badge key={`${blocker}-${index}`} tone="danger">
+                                {blocker}
+                              </Badge>
+                            ))}
                         {myStatus.data?.eta_change_days !== null &&
                           myStatus.data?.eta_change_days !== undefined && (
                             <Badge tone="warning">{myStatus.data.eta_change_days}d ETA</Badge>
@@ -545,7 +554,17 @@ export function PersonaDashboard({ role }: { role: DashboardRole }) {
                       {data.blockers.map((blocker) => (
                         <ItemRow
                           key={blocker.id}
-                          primary={blocker.description}
+                          primary={
+                            <span className="flex flex-wrap items-center gap-1.5">
+                              <span className="truncate">{blocker.description}</span>
+                              {blocker.work_item_ref ? (
+                                <Badge tone="neutral">{blocker.work_item_ref.id}</Badge>
+                              ) : blocker.pod_ref ? (
+                                <Badge tone="neutral">{blocker.pod_ref.id}</Badge>
+                              ) : null}
+                              {blocker.unattributed && <Badge tone="warning">unattributed</Badge>}
+                            </span>
+                          }
                           secondary={`${blocker.owner_name} / ${blocker.source}`}
                           badge={
                             <Badge tone={blocker.age_days > 0 ? "warning" : "neutral"}>

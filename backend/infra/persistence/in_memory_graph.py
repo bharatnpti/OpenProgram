@@ -8,6 +8,7 @@ from datetime import UTC, date, datetime
 from math import sqrt
 from uuid import uuid4
 
+from core.domain.blockers import DeveloperBlocker
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationTurn
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
@@ -59,6 +60,7 @@ class InMemoryGraphStore:
         default_factory=dict
     )
     _developer_statuses: dict[tuple[str, str, date], DeveloperStatus] = field(default_factory=dict)
+    _developer_blockers: dict[tuple[str, str], DeveloperBlocker] = field(default_factory=dict)
     _node_statuses: dict[tuple[str, str, str, date], NodeStatus] = field(default_factory=dict)
     _sync_cursors: dict[tuple[str, str, str], SyncCursor] = field(default_factory=dict)
     _directory_users: dict[tuple[str, str], DirectoryUser] = field(default_factory=dict)
@@ -168,6 +170,51 @@ class InMemoryGraphStore:
             and edge.is_active_on(as_of)
             and (edge.from_node_id == developer_id or edge.to_node_id == developer_id)
         ]
+
+    async def pods_containing_developer(
+        self, tenant_id: str, developer_id: str, as_of: date
+    ) -> list[GraphNode]:
+        pods: dict[str, GraphNode] = {}
+        for edge in self._edges:
+            if (
+                edge.tenant_id != tenant_id
+                or edge.kind is not EdgeKind.CONTAINS
+                or edge.to_node_id != developer_id
+                or not edge.is_active_on(as_of)
+            ):
+                continue
+            node = self._nodes.get((tenant_id, edge.from_node_id))
+            if node is not None and node.kind is NodeKind.POD:
+                pods[node.id] = node
+        return sorted(pods.values(), key=lambda node: node.id)
+
+    async def pods_for_task(self, tenant_id: str, task_id: str, as_of: date) -> list[GraphNode]:
+        """Pods owning a task/work item, via direct containment or a workstream."""
+        containers = [
+            edge.from_node_id
+            for edge in self._edges
+            if edge.tenant_id == tenant_id
+            and edge.kind is EdgeKind.CONTAINS
+            and edge.to_node_id == task_id
+            and edge.is_active_on(as_of)
+        ]
+        candidate_ids = set(containers)
+        for container_id in containers:
+            candidate_ids.update(
+                edge.from_node_id
+                for edge in self._edges
+                if edge.tenant_id == tenant_id
+                and edge.kind is EdgeKind.ASSIGNED_TO
+                and edge.to_node_id == container_id
+                and edge.is_active_on(as_of)
+            )
+        pods = {
+            node.id: node
+            for candidate_id in candidate_ids
+            if (node := self._nodes.get((tenant_id, candidate_id))) is not None
+            and node.kind is NodeKind.POD
+        }
+        return sorted(pods.values(), key=lambda node: node.id)
 
     async def append_fact(self, fact: FactEvent) -> None:
         identity = _fact_identity(fact)
@@ -666,6 +713,80 @@ class InMemoryGraphStore:
 
     async def record_developer_status(self, status: DeveloperStatus) -> None:
         self._developer_statuses[(status.tenant_id, status.developer_id, status.as_of)] = status
+
+    async def record_developer_blockers(
+        self, tenant_id: str, blockers: Sequence[DeveloperBlocker]
+    ) -> None:
+        for blocker in blockers:
+            if blocker.tenant_id != tenant_id:
+                msg = "blocker tenant does not match the requested tenant"
+                raise ValueError(msg)
+            key = (blocker.tenant_id, blocker.blocker_id)
+            existing = self._developer_blockers.get(key)
+            if existing is not None:
+                # Match the postgres upsert: first_seen_on and
+                # source_correlation_id are immutable once recorded.
+                blocker = replace(
+                    blocker,
+                    first_seen_on=existing.first_seen_on,
+                    source_correlation_id=existing.source_correlation_id,
+                )
+            self._developer_blockers[key] = blocker
+
+    async def record_developer_status_with_blockers(
+        self, status: DeveloperStatus, blockers: Sequence[DeveloperBlocker]
+    ) -> None:
+        await self.record_developer_status(status)
+        await self.record_developer_blockers(status.tenant_id, blockers)
+
+    async def open_blockers(
+        self, tenant_id: str, developer_id: str, as_of: date
+    ) -> list[DeveloperBlocker]:
+        return sorted(
+            (
+                blocker
+                for blocker in self._developer_blockers.values()
+                if blocker.tenant_id == tenant_id
+                and blocker.developer_id == developer_id
+                and blocker.is_open_on(as_of)
+            ),
+            key=lambda blocker: (blocker.first_seen_on, blocker.blocker_id),
+        )
+
+    async def open_blockers_for_developers(
+        self, tenant_id: str, developer_ids: Sequence[str], as_of: date
+    ) -> list[DeveloperBlocker]:
+        wanted = set(developer_ids)
+        return sorted(
+            (
+                blocker
+                for blocker in self._developer_blockers.values()
+                if blocker.tenant_id == tenant_id
+                and blocker.developer_id in wanted
+                and blocker.is_open_on(as_of)
+            ),
+            key=lambda blocker: (blocker.developer_id, blocker.first_seen_on, blocker.blocker_id),
+        )
+
+    async def blockers_for_work_item(
+        self, tenant_id: str, work_item_id: str, as_of: date
+    ) -> list[DeveloperBlocker]:
+        return sorted(
+            (
+                blocker
+                for blocker in self._developer_blockers.values()
+                if blocker.tenant_id == tenant_id
+                and blocker.work_item_id == work_item_id
+                and blocker.is_open_on(as_of)
+            ),
+            key=lambda blocker: (blocker.developer_id, blocker.first_seen_on, blocker.blocker_id),
+        )
+
+    async def has_blocker_rows(self, tenant_id: str, developer_id: str) -> bool:
+        return any(
+            blocker.tenant_id == tenant_id and blocker.developer_id == developer_id
+            for blocker in self._developer_blockers.values()
+        )
 
     async def latest_developer_status(
         self, tenant_id: str, developer_id: str, as_of: date

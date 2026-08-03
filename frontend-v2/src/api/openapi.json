@@ -6543,11 +6543,136 @@
         "required": ["subject", "roles", "scopes"],
         "title": "AuthUserResponse"
       },
+      "BlockerCorrectionItemDto": {
+        "properties": {
+          "blocker_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocker Id"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Description"
+          },
+          "work_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Item Id"
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
+          },
+          "resolved": {
+            "type": "boolean",
+            "title": "Resolved",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["description"],
+        "title": "BlockerCorrectionItemDto"
+      },
+      "BlockerDetailDto": {
+        "properties": {
+          "blocker_id": {
+            "type": "string",
+            "title": "Blocker Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "work_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Item Id"
+          },
+          "work_item_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Item Name"
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
+          },
+          "unattributed": {
+            "type": "boolean",
+            "title": "Unattributed"
+          },
+          "first_seen_on": {
+            "type": "string",
+            "format": "date",
+            "title": "First Seen On"
+          },
+          "age_days": {
+            "type": "integer",
+            "title": "Age Days"
+          }
+        },
+        "type": "object",
+        "required": [
+          "blocker_id",
+          "description",
+          "work_item_id",
+          "work_item_name",
+          "pod_id",
+          "unattributed",
+          "first_seen_on",
+          "age_days"
+        ],
+        "title": "BlockerDetailDto"
+      },
       "BlockerDto": {
         "properties": {
           "id": {
             "type": "string",
             "title": "Id"
+          },
+          "blocker_id": {
+            "type": "string",
+            "title": "Blocker Id"
           },
           "description": {
             "type": "string",
@@ -6575,18 +6700,52 @@
           },
           "source_ref": {
             "$ref": "#/components/schemas/EntityRefDto"
+          },
+          "work_item_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntityRefDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pod_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntityRefDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unattributed": {
+            "type": "boolean",
+            "title": "Unattributed"
+          },
+          "first_seen_on": {
+            "type": "string",
+            "format": "date",
+            "title": "First Seen On"
           }
         },
         "type": "object",
         "required": [
           "id",
+          "blocker_id",
           "description",
           "age_days",
           "owner_id",
           "owner_name",
           "source",
           "status_as_of",
-          "source_ref"
+          "source_ref",
+          "work_item_ref",
+          "pod_ref",
+          "unattributed",
+          "first_seen_on"
         ],
         "title": "BlockerDto"
       },
@@ -8194,6 +8353,13 @@
             "type": "array",
             "title": "Blockers"
           },
+          "blocker_details": {
+            "items": {
+              "$ref": "#/components/schemas/BlockerDetailDto"
+            },
+            "type": "array",
+            "title": "Blocker Details"
+          },
           "tasks": {
             "items": {
               "$ref": "#/components/schemas/FocusTaskDto"
@@ -8219,6 +8385,7 @@
           "status_as_of",
           "summary",
           "blockers",
+          "blocker_details",
           "tasks",
           "focus"
         ],
@@ -8723,6 +8890,13 @@
             },
             "type": "array",
             "title": "Blockers"
+          },
+          "blocker_details": {
+            "items": {
+              "$ref": "#/components/schemas/BlockerDetailDto"
+            },
+            "type": "array",
+            "title": "Blocker Details"
           },
           "eta_change_days": {
             "anyOf": [
@@ -9587,7 +9761,8 @@
           },
           "owner_status_has_blockers": {
             "type": "boolean",
-            "title": "Owner Status Has Blockers"
+            "title": "Owner Status Has Blockers",
+            "description": "True when the owner has an open blocker relevant to this finding's work item: either attributed to that work item or unattributed (could concern anything). A blocker attributed to a different work item does not count."
           },
           "is_watermelon": {
             "type": "boolean",
@@ -9625,10 +9800,55 @@
           },
           "source_ref": {
             "$ref": "#/components/schemas/EntityRefDto"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "blocker_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocker Id"
+          },
+          "work_item_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EntityRefDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unattributed": {
+            "type": "boolean",
+            "title": "Unattributed"
+          },
+          "applies_to_pod_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Applies To Pod Ids"
           }
         },
         "type": "object",
-        "required": ["description", "contributes", "source_ref"],
+        "required": [
+          "description",
+          "contributes",
+          "source_ref",
+          "kind",
+          "blocker_id",
+          "work_item_ref",
+          "unattributed",
+          "applies_to_pod_ids"
+        ],
         "title": "RollupFactorDto"
       },
       "StatusCorrectionRequest": {
@@ -9655,6 +9875,21 @@
               }
             ],
             "title": "Eta Change Days"
+          },
+          "blocker_items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BlockerCorrectionItemDto"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocker Items",
+            "description": "Structured blocker corrections. When present, this is the authoritative set; the flat blockers list is ignored."
           }
         },
         "type": "object",

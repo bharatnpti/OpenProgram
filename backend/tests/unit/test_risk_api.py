@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from config.settings import Settings
+from core.application.blocker_resolution import BlockerResolutionService
 from core.application.risk_service import RiskService
 from core.domain.risk import RiskProviderConfig
 from infra.persistence.in_memory_graph import InMemoryGraphStore
@@ -48,6 +49,9 @@ def _seed_project_with_open_risk(admin_app: FastAPI, client: TestClient) -> None
         graph_repository=registry.graph_repository(),
         time_series_repository=registry.time_series_repository(),
         status_repository=registry.status_repository(),
+        blocker_resolution=BlockerResolutionService(
+            registry.graph_repository(), registry.status_repository()
+        ),
         provider_config=RiskProviderConfig(default_no_pr_days=3, default_stale_days=30),
     )
     asyncio.run(service.assess_and_persist_project("demo", "proj-1", date.fromisoformat(AS_OF)))

@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 
+from core.domain.blockers import DeveloperBlocker
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationTurn
 from core.domain.dead_letter import DeadLetter, DeadLetterStatus
@@ -154,6 +155,7 @@ class FakeStatusRepository:
         default_factory=dict
     )
     developer_statuses: list[DeveloperStatus] = field(default_factory=list)
+    developer_blockers: dict[tuple[str, str], DeveloperBlocker] = field(default_factory=dict)
     developer_ids: set[str] = field(default_factory=set)
 
     async def record_checkin(self, checkin: CheckIn) -> None:
@@ -369,6 +371,80 @@ class FakeStatusRepository:
     async def record_developer_status(self, status: DeveloperStatus) -> None:
         self.developer_ids.add(status.developer_id)
         self.developer_statuses.append(status)
+
+    async def record_developer_blockers(
+        self, tenant_id: str, blockers: Sequence[DeveloperBlocker]
+    ) -> None:
+        for blocker in blockers:
+            if blocker.tenant_id != tenant_id:
+                msg = "blocker tenant does not match the requested tenant"
+                raise ValueError(msg)
+            key = (blocker.tenant_id, blocker.blocker_id)
+            existing = self.developer_blockers.get(key)
+            if existing is not None:
+                # Match the postgres upsert: first_seen_on and
+                # source_correlation_id are immutable once recorded.
+                blocker = replace(
+                    blocker,
+                    first_seen_on=existing.first_seen_on,
+                    source_correlation_id=existing.source_correlation_id,
+                )
+            self.developer_blockers[key] = blocker
+
+    async def record_developer_status_with_blockers(
+        self, status: DeveloperStatus, blockers: Sequence[DeveloperBlocker]
+    ) -> None:
+        await self.record_developer_status(status)
+        await self.record_developer_blockers(status.tenant_id, blockers)
+
+    async def open_blockers(
+        self, tenant_id: str, developer_id: str, as_of: date
+    ) -> list[DeveloperBlocker]:
+        return sorted(
+            (
+                blocker
+                for blocker in self.developer_blockers.values()
+                if blocker.tenant_id == tenant_id
+                and blocker.developer_id == developer_id
+                and blocker.is_open_on(as_of)
+            ),
+            key=lambda blocker: (blocker.first_seen_on, blocker.blocker_id),
+        )
+
+    async def open_blockers_for_developers(
+        self, tenant_id: str, developer_ids: Sequence[str], as_of: date
+    ) -> list[DeveloperBlocker]:
+        wanted = set(developer_ids)
+        return sorted(
+            (
+                blocker
+                for blocker in self.developer_blockers.values()
+                if blocker.tenant_id == tenant_id
+                and blocker.developer_id in wanted
+                and blocker.is_open_on(as_of)
+            ),
+            key=lambda blocker: (blocker.developer_id, blocker.first_seen_on, blocker.blocker_id),
+        )
+
+    async def blockers_for_work_item(
+        self, tenant_id: str, work_item_id: str, as_of: date
+    ) -> list[DeveloperBlocker]:
+        return sorted(
+            (
+                blocker
+                for blocker in self.developer_blockers.values()
+                if blocker.tenant_id == tenant_id
+                and blocker.work_item_id == work_item_id
+                and blocker.is_open_on(as_of)
+            ),
+            key=lambda blocker: (blocker.developer_id, blocker.first_seen_on, blocker.blocker_id),
+        )
+
+    async def has_blocker_rows(self, tenant_id: str, developer_id: str) -> bool:
+        return any(
+            blocker.tenant_id == tenant_id and blocker.developer_id == developer_id
+            for blocker in self.developer_blockers.values()
+        )
 
     async def latest_developer_status(
         self, tenant_id: str, developer_id: str, as_of: date

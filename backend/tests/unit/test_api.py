@@ -805,7 +805,12 @@ def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
         project_denied = client.get("/projects/project-foundations/progress?as_of=2026-06-15")
 
     assert blockers.status_code == 200
-    assert blockers.json()["blockers"][0]["owner_id"] == "dev-liam"
+    first_blocker = blockers.json()["blockers"][0]
+    assert first_blocker["owner_id"] == "dev-liam"
+    assert first_blocker["blocker_id"] == first_blocker["id"]
+    # Liam's fixture blocker is a flat status string: unattributed fallback.
+    assert first_blocker["unattributed"] is True
+    assert first_blocker["first_seen_on"] == "2026-06-14"
     assert checkins.status_code == 200
     assert checkins.json()["stale"] >= 1
     assert project_denied.status_code == 403

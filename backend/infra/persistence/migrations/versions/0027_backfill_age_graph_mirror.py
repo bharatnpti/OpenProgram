@@ -118,6 +118,10 @@ def upgrade() -> None:
         $do$;
         """
     )
+    # Alembic runs the whole chain on one connection, so the session-level
+    # search_path above must be restored or every LATER migration's unqualified
+    # DDL would silently land in ag_catalog instead of public.
+    op.execute("SET search_path = public;")
 
 
 def downgrade() -> None:

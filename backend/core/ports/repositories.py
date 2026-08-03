@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Protocol
 
+from core.domain.blockers import DeveloperBlocker
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationTurn
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
@@ -60,6 +61,12 @@ class GraphRepository(Protocol):
     async def active_developer_memberships(
         self, tenant_id: str, developer_id: str, as_of: date
     ) -> list[GraphEdge]: ...
+
+    async def pods_containing_developer(
+        self, tenant_id: str, developer_id: str, as_of: date
+    ) -> list[GraphNode]: ...
+
+    async def pods_for_task(self, tenant_id: str, task_id: str, as_of: date) -> list[GraphNode]: ...
 
 
 class TimeSeriesRepository(Protocol):
@@ -203,6 +210,28 @@ class StatusRepository(Protocol):
     async def checkin_clarification_count(self, tenant_id: str, correlation_id: str) -> int: ...
 
     async def record_developer_status(self, status: DeveloperStatus) -> None: ...
+
+    async def record_developer_blockers(
+        self, tenant_id: str, blockers: Sequence[DeveloperBlocker]
+    ) -> None: ...
+
+    async def record_developer_status_with_blockers(
+        self, status: DeveloperStatus, blockers: Sequence[DeveloperBlocker]
+    ) -> None: ...
+
+    async def open_blockers(
+        self, tenant_id: str, developer_id: str, as_of: date
+    ) -> list[DeveloperBlocker]: ...
+
+    async def open_blockers_for_developers(
+        self, tenant_id: str, developer_ids: Sequence[str], as_of: date
+    ) -> list[DeveloperBlocker]: ...
+
+    async def blockers_for_work_item(
+        self, tenant_id: str, work_item_id: str, as_of: date
+    ) -> list[DeveloperBlocker]: ...
+
+    async def has_blocker_rows(self, tenant_id: str, developer_id: str) -> bool: ...
 
     async def latest_developer_status(
         self, tenant_id: str, developer_id: str, as_of: date

@@ -12,6 +12,8 @@ from redis.asyncio import Redis
 from config.settings import Settings
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.availability import AvailabilityService
+from core.application.blocker_lifecycle import BlockerLifecycleService
+from core.application.blocker_resolution import BlockerResolutionService
 from core.application.cross_person_service import CrossPersonRequestService
 from core.application.dead_letter_service import DeadLetterService
 from core.application.directory_sync_service import DirectorySyncService
@@ -720,7 +722,15 @@ class ServiceRegistry:
         return AvailabilityService(self.calendar_provider())
 
     def self_status_service(self) -> SelfStatusService:
-        return SelfStatusService(self.status_repository())
+        return SelfStatusService(
+            self.status_repository(),
+            blocker_lifecycle=BlockerLifecycleService(
+                self.status_repository(), self.graph_repository()
+            ),
+            blocker_resolution=BlockerResolutionService(
+                self.graph_repository(), self.status_repository()
+            ),
+        )
 
     def write_back_service(self) -> WriteBackService:
         return WriteBackService(
@@ -747,6 +757,7 @@ class ServiceRegistry:
             directory_repository=self.directory_user_repository(),
             identity_link_repository=self.identity_link_repository(),
             write_back_service=self.write_back_service(),
+            graph_repository=self.graph_repository(),
             model=self.settings.litellm_model,
             tool_agent=tool_agent,
             conversation_retention_days=self.settings.conversation_retention_days,
