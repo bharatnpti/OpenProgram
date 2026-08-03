@@ -1,0 +1,20 @@
+frontend-v2/src/features/delivery/DeliveryNavigator.tsx
+  s_05eda906e5fbd0::t_c2edb311536edf 1-2,50-57,62-78,94-104,106-108,111-113,123-124,126-154,178-195
+  s_05eda906e5fbd0::t_fb5fdb49e0402c 196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "4c63777076edfd74a2e6c953df1803a479b62cf8",
+  "prompts": {},
+  "sessions": {
+    "s_05eda906e5fbd0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fffd9eeb-6a81-41eb-8eb9-9f2863da42b9",
+        "model": "claude-fable-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
