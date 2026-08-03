@@ -1,0 +1,305 @@
+backend/infra/adapters/llm/fake.py
+  s_05eda906e5fbd0::t_4fda5f983b6a89 20-21,28-29
+backend/core/application/blocker_resolution.py
+  s_05eda906e5fbd0::t_24c25be4409380 117,119-123,130-139
+  s_05eda906e5fbd0::t_6803dc2c5c05c9 1-26,28-84,86-88,90-116,118,124-129,140-180,182-188
+  s_05eda906e5fbd0::t_333fe86239deb5 85,89
+  s_05eda906e5fbd0::t_1562726964fead 181
+  s_05eda906e5fbd0::t_c9406d51af52ca 27
+backend/infra/workflows/drift_scan.py
+  s_05eda906e5fbd0::t_36c360120b5aa3 131-133
+  s_05eda906e5fbd0::t_0fe36ed29fcf51 8
+backend/tests/contract/fakes.py
+  s_05eda906e5fbd0::t_1c165e8ceb7b25 382-392
+  s_05eda906e5fbd0::t_d0ff4e3605b83c 7
+  s_05eda906e5fbd0::t_1fc7f6edb3a2ae 158
+  s_05eda906e5fbd0::t_1b614367cb0624 375-381,393-447
+  s_05eda906e5fbd0::t_e5386fccc5c227 448
+backend/infra/workflows/risk_assessment.py
+  s_05eda906e5fbd0::t_85597d210b420a 8
+  s_05eda906e5fbd0::t_56f6e7460a5ba5 134-136
+frontend/src/features/personas/PersonaDashboard.tsx
+  s_05eda906e5fbd0::t_3b1fe67c435e93 460-473
+  s_05eda906e5fbd0::t_6ea900ba74a8f4 557-567
+backend/infra/registry.py
+  s_05eda906e5fbd0::t_919880d0fe9219 15-16
+  s_05eda906e5fbd0::t_b9b1da22a8514f 760
+  s_05eda906e5fbd0::t_0778913b47413e 725-733
+frontend-v2/src/features/today/DeveloperToday.tsx
+  s_05eda906e5fbd0::t_44055b61a6bcf5 48-63
+  s_05eda906e5fbd0::t_786be8c7a48a50 105
+  s_05eda906e5fbd0::t_d568ace491aa39 78-80,83-90,94-95
+  s_05eda906e5fbd0::t_bc932f100a023d 120,122-143
+  s_05eda906e5fbd0::t_8b10c9bb78ad51 278-350
+  s_05eda906e5fbd0::t_0a671e1ebfdb48 16-22,29
+backend/core/application/blocker_lifecycle.py
+  s_05eda906e5fbd0::t_e92e098dbddaa1 180-181,183-188,190-193,196-198
+  s_05eda906e5fbd0::t_87ea451c7b5649 87,101
+  s_05eda906e5fbd0::t_f0914bcdad96a4 15
+  s_05eda906e5fbd0::t_bfeb1de885ab66 73,90,202
+  s_05eda906e5fbd0::t_81654a100adbc3 123-150
+  s_05eda906e5fbd0::t_cbfef4bd269183 1-14,16-72,74-86,88-89,91-100,102-122,151-179,182,189,194-195,199-201,203-214
+backend/tests/unit/test_blockers_domain.py
+  s_05eda906e5fbd0::t_32953c2048cc89 1-4,6-8,10-47,49-56,65-224
+  s_05eda906e5fbd0::t_06a2c4eda17114 5,9
+  s_05eda906e5fbd0::t_7f066cc2303073 48,57-64
+docs/lld/phase-1/check-in-conversation-model.md
+  s_05eda906e5fbd0::t_e39d03ca3a6c1f 19-54
+  s_05eda906e5fbd0::t_3c23c36c48e9aa 16-18
+  s_05eda906e5fbd0::t_f864a9be53a67d 55-57
+  s_05eda906e5fbd0::t_38ca414a621973 1-15,58-92
+backend/api/routers/checkin.py
+  s_05eda906e5fbd0::t_3ead5aac9c9a18 24
+  s_05eda906e5fbd0::t_07721b283a50e7 39-40,43-46,56-57,60-63,74-87,91,95,99-102
+backend/api/dependencies.py
+  s_05eda906e5fbd0::t_7c4dbc4246d977 128-130
+  s_05eda906e5fbd0::t_1b436c9cfdb97c 9
+backend/tests/unit/test_risk_api.py
+  s_05eda906e5fbd0::t_874a4a5ac6a136 11
+  s_05eda906e5fbd0::t_4d3b5f1d923506 52-54
+backend/tests/unit/test_blocker_lifecycle.py
+  s_05eda906e5fbd0::t_b109e622b93b76 52
+  s_05eda906e5fbd0::t_bf36e9bd36fcdc 1-51,53-193
+backend/tests/unit/test_rollup_service.py
+  s_05eda906e5fbd0::t_c4376b17a342ac 364
+  s_05eda906e5fbd0::t_40b0991bf40942 342-363,365-541
+  s_05eda906e5fbd0::t_65cf6e48a1fc50 34,36,44-45,49,51
+  s_05eda906e5fbd0::t_aa0707ed1edf6b 542-572
+  s_05eda906e5fbd0::t_bacffc289814c0 677-683
+  s_05eda906e5fbd0::t_2c4fa7a977ad66 578-579,629-659
+  s_05eda906e5fbd0::t_f31cf7b0739798 7,10
+  s_05eda906e5fbd0::t_2d01639e087024 25
+  s_05eda906e5fbd0::t_30f00bf2d077fa 27
+  s_05eda906e5fbd0::t_5537c3df3ae57a 270-271,279-280,283-285
+  s_05eda906e5fbd0::t_0e7341c846e0e0 684
+backend/tests/bdd/steps_blocker_lifecycle.py
+  s_05eda906e5fbd0::t_568b3197476f32 51-52
+  s_05eda906e5fbd0::t_05c0016be1cc9c 43,202,206
+  s_05eda906e5fbd0::t_8024acedb06443 1-42,44-50,53-201,203-205,207-210
+backend/core/domain/blockers.py
+  s_05eda906e5fbd0::t_ecafe5b165be19 162-163
+  s_05eda906e5fbd0::t_0f522cbb421a26 213-224,226
+  s_05eda906e5fbd0::t_f80356539174dd 1-97,99-143,145-151,155-161,164-165,169-192,194-212,225,227-239,245,252-255,258-326,328-330
+  s_05eda906e5fbd0::t_f78dac52b6ca87 144,152-154,166-168
+  s_05eda906e5fbd0::t_ce44b7a06bf3ee 193,327
+  s_05eda906e5fbd0::t_958dff8d1840a9 98
+  s_05eda906e5fbd0::t_b3b6e63f2238d7 240-244,246-251,256-257
+backend/core/application/risk_service.py
+  s_05eda906e5fbd0::t_97fb7372cbf2d9 520
+  s_05eda906e5fbd0::t_85507fed4c1ba5 293
+  s_05eda906e5fbd0::t_a04b5504efa91c 592-594
+  s_05eda906e5fbd0::t_98ba4dc4e3e763 227
+  s_05eda906e5fbd0::t_cb106f4918b3ff 909-911
+  s_05eda906e5fbd0::t_7abeffdb7a7e07 869,874-876
+  s_05eda906e5fbd0::t_45b1e97330d2a5 7
+  s_05eda906e5fbd0::t_1dff9352535de6 196
+  s_05eda906e5fbd0::t_a3e5f331dabbb8 174
+  s_05eda906e5fbd0::t_8bd07c651aad23 261
+  s_05eda906e5fbd0::t_16f321d73823a8 558
+  s_05eda906e5fbd0::t_d26edaae33f873 81,88-90
+  s_05eda906e5fbd0::t_d8ef1326da0e5c 278
+  s_05eda906e5fbd0::t_f66b837c7290cd 499
+  s_05eda906e5fbd0::t_bcd28f1c79db94 723-729,735-741,743,749-755
+  s_05eda906e5fbd0::t_ef7c26bf25f467 890
+  s_05eda906e5fbd0::t_388a7f3612b3ba 386,404-439
+  s_05eda906e5fbd0::t_a9f5028fa15d7f 214
+  s_05eda906e5fbd0::t_b640aa2a3f7816 936
+  s_05eda906e5fbd0::t_9a4ccc067a672d 346,365,368-370
+  s_05eda906e5fbd0::t_651ff65f14fc42 440,756
+backend/infra/persistence/migrations/versions/0029_backfill_developer_blockers.py
+  s_05eda906e5fbd0::t_c73509d6da6b15 52
+  s_05eda906e5fbd0::t_814f8f6b36746d 42,53
+  s_05eda906e5fbd0::t_a78ad791ae5d78 1-41,43-51,54-73
+backend/tests/integration/test_container_backed_phase0.py
+  s_05eda906e5fbd0::t_f4c597f03040c4 38,40
+  s_05eda906e5fbd0::t_e9e8b0936f25ba 274-370
+  s_05eda906e5fbd0::t_875369e24c2fe7 649-690
+  s_05eda906e5fbd0::t_6a5741e19c2cc9 691-692
+backend/tests/unit/test_self_status_service.py
+  s_05eda906e5fbd0::t_05c0016be1cc9c 209,219,230
+  s_05eda906e5fbd0::t_28679dfc246007 101-208,210-218,220-229,231-257
+  s_05eda906e5fbd0::t_cea5ea350878bb 5-6,8-14
+backend/core/application/status_collector.py
+  s_05eda906e5fbd0::t_8dbe9414bba656 1617,1628-1633,1649-1670,1672-1679
+  s_05eda906e5fbd0::t_596be7b8e3956a 239
+  s_05eda906e5fbd0::t_cf068be9a2de40 1814-1817,1821-1830
+  s_05eda906e5fbd0::t_9ca7f958f37ba9 1460
+  s_05eda906e5fbd0::t_466befcf7ccb61 368-407
+  s_05eda906e5fbd0::t_3d3ff092301b28 1037-1045,1059-1068,1072-1077,1079-1081
+  s_05eda906e5fbd0::t_bfeb1de885ab66 483,488,1058,1671,2158,2173
+  s_05eda906e5fbd0::t_8ab317016d79cb 1583-1591,1600
+  s_05eda906e5fbd0::t_6689b3a2311559 1256,1258,1275,1290,1296-1297
+  s_05eda906e5fbd0::t_3832970b74bafd 1514,1529-1531
+  s_05eda906e5fbd0::t_e1287f8f9f6994 58
+  s_05eda906e5fbd0::t_6a45d689579dae 2130-2144,2146,2148-2157,2159,2162-2172,2174-2182
+  s_05eda906e5fbd0::t_527c90311b7962 142,161-163
+  s_05eda906e5fbd0::t_d029f091eddf2b 428-454
+  s_05eda906e5fbd0::t_dbfaaf2a7d23a1 307-314,316-320
+  s_05eda906e5fbd0::t_8c362a6c6674a4 797-804,810-811
+  s_05eda906e5fbd0::t_2d9070a6124db3 408-427,455-482,484-487,489-502
+  s_05eda906e5fbd0::t_78bd4224d9fc90 35
+  s_05eda906e5fbd0::t_9560047a4e356d 300-304,342-352,358
+  s_05eda906e5fbd0::t_748c5541ee3a15 25-30
+  s_05eda906e5fbd0::t_afa55c8266824e 15-18
+  s_05eda906e5fbd0::t_793d2c3b089f98 503,1680
+backend/infra/persistence/migrations/versions/0027_backfill_age_graph_mirror.py
+  s_05eda906e5fbd0::t_f9031b564e6c63 121-124
+frontend-v2/src/features/today/ScrumMasterToday.tsx
+  s_05eda906e5fbd0::t_5d2963b18fac30 116-133
+Makefile
+  s_05eda906e5fbd0::t_1fb2bf5b18c233 88-91
+backend/tests/fixtures/demo_graph.py
+  s_05eda906e5fbd0::t_6fa15c58a1ef01 261-269
+backend/core/application/rollup_service.py
+  s_05eda906e5fbd0::t_d10b40f5ac767f 11-12,18-26,31,35,48,55-58,81,98,102-103,106-114,135,145,157,162-166,169-176,178,180-181,191,204,216,222-312,330,335,344,373,377,388,397,420,429,438,447,459
+  s_05eda906e5fbd0::t_bb07cae7edd7af 6-10
+backend/tests/bdd/conftest.py
+  s_05eda906e5fbd0::t_33190d1cc07ad3 26
+  s_05eda906e5fbd0::t_2f1f8b84c9b92a 7
+  s_05eda906e5fbd0::t_7c9eca4cacf15f 56-63
+backend/tests/bdd/test_blocker_lifecycle.py
+  s_05eda906e5fbd0::t_d99fa2da4eb7f4 1-3
+frontend/src/pages/PodDetailPage.tsx
+  s_05eda906e5fbd0::t_33b70b7f130801 228-236
+backend/infra/persistence/postgres_status.py
+  s_05eda906e5fbd0::t_29ccf0e55fb815 521
+  s_05eda906e5fbd0::t_1f484629338ccb 500-515,517-520,522-541,543-590,592
+  s_05eda906e5fbd0::t_fa4011f593f4f4 22
+  s_05eda906e5fbd0::t_bbc21716ef6f6a 1604-1616
+  s_05eda906e5fbd0::t_f0fb2685a108de 498,1345,1481-1486,1497-1499,1503-1522
+  s_05eda906e5fbd0::t_99dd6e2aaf097e 1241-1338,1340-1344
+  s_05eda906e5fbd0::t_9e53d5ec7c386d 1637-1638,1643-1656,1660-1673
+  s_05eda906e5fbd0::t_49557e17d4c1c6 1454-1463
+  s_05eda906e5fbd0::t_519858c105317a 1339
+  s_05eda906e5fbd0::t_dc9ee4414332fc 41-44,52
+  s_05eda906e5fbd0::t_e46343854b3384 12
+  s_05eda906e5fbd0::t_e076d0a21afba1 497
+  s_05eda906e5fbd0::t_81bd6550c519fb 5,11,13-16
+  s_05eda906e5fbd0::t_d85739eeef0043 53,499,1346-1347,1523-1524,1674-1675
+backend/tests/bdd/features/blocker_lifecycle.feature
+  s_05eda906e5fbd0::t_245f8c65524daf 11
+  s_05eda906e5fbd0::t_90c4a7a199cb6b 1-10,12-35
+backend/tests/unit/test_api.py
+  s_05eda906e5fbd0::t_cb9b7eb2fd04a0 808-813
+backend/core/application/status_parsing.py
+  s_05eda906e5fbd0::t_2ca844a6534085 81,83,86,111-113
+  s_05eda906e5fbd0::t_6df72cdfe6859a 215,219-220,222-225,230-231,239-243,248,255,257-259,263-271,281
+  s_05eda906e5fbd0::t_e43584fbdc8147 372-377,382-388,396-398,402-435,437-449
+  s_05eda906e5fbd0::t_aa61e45a91d170 3,11
+  s_05eda906e5fbd0::t_7a8b59be7d7b72 290,306-310,315-319
+  s_05eda906e5fbd0::t_f12aa2991694b2 145,150,153,181-183
+  s_05eda906e5fbd0::t_ac061c539d01ea 333-355
+frontend/src/api/schema.ts
+  s_05eda906e5fbd0::t_de9259b8912178 33-34
+backend/core/domain/rollup.py
+  s_05eda906e5fbd0::t_5da448f874d5a5 18-27,33-40
+backend/tests/unit/test_status_persistence.py
+  s_05eda906e5fbd0::t_470b33e0d346e8 38-39
+  s_05eda906e5fbd0::t_b667e2f0560b8f 60
+  s_05eda906e5fbd0::t_f9e3912a9159ae 14
+  s_05eda906e5fbd0::t_50a904cec51c83 5-10
+  s_05eda906e5fbd0::t_d3e75387327453 36,41-42,47
+  s_05eda906e5fbd0::t_dc5cd1c3346d66 405-516
+  s_05eda906e5fbd0::t_68395fc585c8cd 517-570
+backend/core/domain/status.py
+  s_05eda906e5fbd0::t_3cc46b42aa1832 8
+  s_05eda906e5fbd0::t_f377e3df90079e 85-91
+  s_05eda906e5fbd0::t_0d5aab728c554b 9
+frontend/src/api/generated.ts
+  s_05eda906e5fbd0::t_194705a953907c 1483-1520,1525-1526,1542-1550,2049-2050,2218-2219,2564-2567,2578-2586,2596-2600
+backend/tests/unit/test_risk_service.py
+  s_05eda906e5fbd0::t_0c2e876d91f9f2 7
+  s_05eda906e5fbd0::t_7ed1b28ed872d2 57
+backend/core/ports/repositories.py
+  s_05eda906e5fbd0::t_8630212b4a825c 65-68,70
+  s_05eda906e5fbd0::t_536d95bd77207d 214-234
+  s_05eda906e5fbd0::t_147bb1312b249b 7
+  s_05eda906e5fbd0::t_29ccf0e55fb815 69
+  s_05eda906e5fbd0::t_cd9c9e5f3ac1ac 235
+backend/tests/unit/test_status_parsing.py
+  s_05eda906e5fbd0::t_8895b37e5ce9b9 192
+  s_05eda906e5fbd0::t_51886ef067d5ee 140-142
+  s_05eda906e5fbd0::t_4d6dda5fbcfe25 14-19
+  s_05eda906e5fbd0::t_c1a099bcaf654e 332,336-438,440-450
+backend/core/application/persona_views.py
+  s_05eda906e5fbd0::t_b9ad3821fef3d7 266-268,283
+  s_05eda906e5fbd0::t_3df2da00b2112e 53-65,76,84,92-95
+  s_05eda906e5fbd0::t_e81e8dee80179f 8
+  s_05eda906e5fbd0::t_069bae12ca53de 660-701,703-708
+  s_05eda906e5fbd0::t_730740c0623a35 257-260
+  s_05eda906e5fbd0::t_d11b9eedc3dca1 336-340,353-360
+  s_05eda906e5fbd0::t_5e13560dd5fece 52
+backend/infra/persistence/postgres_graph.py
+  s_05eda906e5fbd0::t_71fd822cf7b2cd 272-343
+frontend-v2/src/api/schema.ts
+  s_05eda906e5fbd0::t_89711b29c95f5a 33-34
+backend/core/application/self_status_service.py
+  s_05eda906e5fbd0::t_615542ab3f0da6 5-15,20-33,35-36,50-74,86-92,98,104,116,123-136,142,148,150-181
+backend/tests/contract/test_ports.py
+  s_05eda906e5fbd0::t_66a48ca67d6d10 23
+  s_05eda906e5fbd0::t_f6df2a7efbac34 104-105
+  s_05eda906e5fbd0::t_2e49d42439fa30 106-107
+backend/tests/unit/test_persona_views.py
+  s_05eda906e5fbd0::t_c4d18cc58ec68a 460-663
+  s_05eda906e5fbd0::t_9ce6847fe9c010 3,6
+  s_05eda906e5fbd0::t_4b8b0b8b00d820 664-665
+backend/infra/persistence/migrations/versions/0028_developer_blockers.py
+  s_05eda906e5fbd0::t_93522b8c0633eb 1-24,29-94
+  s_05eda906e5fbd0::t_81428b612cab2f 25-28
+backend/api/dtos.py
+  s_05eda906e5fbd0::t_9fc6a08d77c64e 1797,1803-1807,1813,1820-1837,1844-1850,1872-1880
+  s_05eda906e5fbd0::t_033bae06d2ecb9 684,692-695,701,713-716
+  s_05eda906e5fbd0::t_1b4b9e4364d961 622-647,659
+  s_05eda906e5fbd0::t_9ca4603aafe980 535-542,550-554,566-570
+  s_05eda906e5fbd0::t_83bb21d0968d87 47
+  s_05eda906e5fbd0::t_3f60e148151782 1248-1255
+  s_05eda906e5fbd0::t_61c23e6401d632 22
+  s_05eda906e5fbd0::t_c4376b17a342ac 674
+backend/tests/unit/test_drift_service.py
+  s_05eda906e5fbd0::t_927e775dcd68a7 112-164
+  s_05eda906e5fbd0::t_61a0049f34abf3 11
+  s_05eda906e5fbd0::t_150993d2c36c23 46
+  s_05eda906e5fbd0::t_04165ed4e8c8d2 364-466
+  s_05eda906e5fbd0::t_39746d852e8944 9,13,20,25
+  s_05eda906e5fbd0::t_dd08cb6e5029d2 467-468
+backend/tests/contract/contracts.py
+  s_05eda906e5fbd0::t_3f8d8252b1c006 16
+  s_05eda906e5fbd0::t_3ef67d7c622a35 54
+  s_05eda906e5fbd0::t_6dd4a1af4420f6 340-591
+  s_05eda906e5fbd0::t_4cdfff91352058 3,6-11
+  s_05eda906e5fbd0::t_6535e2794e0b2c 592
+backend/tests/unit/test_status_collector.py
+  s_05eda906e5fbd0::t_1a8507408bb854 2381-2589,2591-2632
+  s_05eda906e5fbd0::t_d19e18b46b507e 477-479
+  s_05eda906e5fbd0::t_b109e622b93b76 2590
+backend/infra/persistence/in_memory_graph.py
+  s_05eda906e5fbd0::t_8003962a1fb587 63
+  s_05eda906e5fbd0::t_298c107c8bce18 717-723,735-789
+  s_05eda906e5fbd0::t_a929879ae6f612 11
+  s_05eda906e5fbd0::t_17481d8e7e7968 724-734
+  s_05eda906e5fbd0::t_53efae182f8370 174-218
+  s_05eda906e5fbd0::t_8467cbb82f9388 790
+frontend-v2/src/api/generated.ts
+  s_05eda906e5fbd0::t_b109e622b93b76 1483-1520,1525-1526,1542-1550,1839,2045-2046,2214-2215,2560-2563,2574-2582,2592-2596
+frontend/src/api/openapi.json
+  s_05eda906e5fbd0::t_194705a953907c 6594
+  s_05eda906e5fbd0::t_33d36a095d4dee 6546-6593,6595-6666,6673-6676,6703-6731,6737,6744-6748,8356-8362,8388,8894-8900,9764-9765,9803-9838,9842-9851,9878-9892
+frontend-v2/src/api/openapi.json
+  s_05eda906e5fbd0::t_3fedb372176622 6546-6666,6673-6676,6703-6731,6737,6744-6748,8356-8362,8388,8894-8900,9764-9765,9803-9838,9842-9851,9878-9892
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "2c727dcfd1733bd66e889d9b7bac0cc3df7897ef",
+  "prompts": {},
+  "sessions": {
+    "s_05eda906e5fbd0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fffd9eeb-6a81-41eb-8eb9-9f2863da42b9",
+        "model": "claude-fable-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
