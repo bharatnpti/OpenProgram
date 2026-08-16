@@ -2,18 +2,24 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from contextlib import suppress
+from contextlib import AbstractAsyncContextManager, suppress
 from datetime import date, datetime, time
 from typing import Protocol
 
 from opentelemetry import trace
 
+from core.domain.blockers import (
+    BlockerReport,
+    BlockerResolutionReason,
+    BlockerSource,
+    DeveloperBlocker,
+)
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.graph import EntityRef, JsonScalar, NodeKind
 from core.domain.integrations import SyncCursor
-from core.domain.rollup import NodeStatus, Rag, RollupFactor
+from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import (
     CheckIn,
     CheckInClarification,
@@ -32,12 +38,18 @@ from core.domain.status import (
 _tracer = trace.get_tracer("openprogram.persistence.status")
 
 
+class AsyncSqlSession(Protocol):
+    async def execute(self, query: str, params: Sequence[object] = ()) -> object: ...
+
+
 class AsyncSqlExecutor(Protocol):
     async def execute(self, query: str, params: Sequence[object] = ()) -> object: ...
 
     async def fetch(
         self, query: str, params: Sequence[object] = ()
     ) -> Sequence[Mapping[str, object]]: ...
+
+    def transaction(self) -> AbstractAsyncContextManager[AsyncSqlSession]: ...
 
 
 class PostgresStatusRepository:
@@ -482,34 +494,102 @@ class PostgresStatusRepository:
     async def record_developer_status(self, status: DeveloperStatus) -> None:
         with _tracer.start_as_current_span("postgres.status.record_developer_status"):
             await self._executor.execute(
-                """
-                INSERT INTO developer_statuses (
-                    tenant_id, developer_id, as_of, source, blockers, summary,
-                    eta_change_days, developer_confirmed, confirmed_at
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (tenant_id, developer_id, as_of)
-                DO UPDATE SET
-                    source = EXCLUDED.source,
-                    blockers = EXCLUDED.blockers,
-                    summary = EXCLUDED.summary,
-                    eta_change_days = EXCLUDED.eta_change_days,
-                    developer_confirmed = EXCLUDED.developer_confirmed,
-                    confirmed_at = EXCLUDED.confirmed_at,
-                    updated_at = now()
-                """,
-                (
-                    status.tenant_id,
-                    status.developer_id,
-                    status.as_of,
-                    status.source.value,
-                    _string_tuple_to_json(status.blockers),
-                    status.summary,
-                    status.eta_change_days,
-                    status.developer_confirmed,
-                    status.confirmed_at,
-                ),
+                _DEVELOPER_STATUS_UPSERT_SQL, _developer_status_params(status)
             )
+
+    async def record_developer_blockers(
+        self, tenant_id: str, blockers: Sequence[DeveloperBlocker]
+    ) -> None:
+        """Batch-upsert blocker rows keyed by (tenant_id, blocker_id).
+
+        A concurrent mint of the same open normalized key from two writers
+        raises UniqueViolation via developer_blockers_open_key_uq; acceptable
+        because check-in processing is serialized per conversation.
+        """
+        with _tracer.start_as_current_span("postgres.status.record_developer_blockers"):
+            for blocker in blockers:
+                if blocker.tenant_id != tenant_id:
+                    msg = "blocker tenant does not match the requested tenant"
+                    raise ValueError(msg)
+                await self._executor.execute(
+                    _DEVELOPER_BLOCKER_UPSERT_SQL, _developer_blocker_params(blocker)
+                )
+
+    async def record_developer_status_with_blockers(
+        self, status: DeveloperStatus, blockers: Sequence[DeveloperBlocker]
+    ) -> None:
+        with _tracer.start_as_current_span("postgres.status.record_developer_status_with_blockers"):
+            async with self._executor.transaction() as transaction:
+                await transaction.execute(
+                    _DEVELOPER_STATUS_UPSERT_SQL, _developer_status_params(status)
+                )
+                for blocker in blockers:
+                    await transaction.execute(
+                        _DEVELOPER_BLOCKER_UPSERT_SQL, _developer_blocker_params(blocker)
+                    )
+
+    async def open_blockers(
+        self, tenant_id: str, developer_id: str, as_of: date
+    ) -> list[DeveloperBlocker]:
+        with _tracer.start_as_current_span("postgres.status.open_blockers"):
+            rows = await self._executor.fetch(
+                f"""
+                {_DEVELOPER_BLOCKER_SELECT_SQL}
+                WHERE tenant_id = %s AND developer_id = %s
+                  AND first_seen_on <= %s
+                  AND (resolved_on IS NULL OR resolved_on > %s)
+                ORDER BY first_seen_on, blocker_id
+                """,
+                (tenant_id, developer_id, as_of, as_of),
+            )
+        return [_developer_blocker_from_row(row) for row in rows]
+
+    async def open_blockers_for_developers(
+        self, tenant_id: str, developer_ids: Sequence[str], as_of: date
+    ) -> list[DeveloperBlocker]:
+        if not developer_ids:
+            return []
+        with _tracer.start_as_current_span("postgres.status.open_blockers_for_developers"):
+            rows = await self._executor.fetch(
+                f"""
+                {_DEVELOPER_BLOCKER_SELECT_SQL}
+                WHERE tenant_id = %s AND developer_id = ANY(%s)
+                  AND first_seen_on <= %s
+                  AND (resolved_on IS NULL OR resolved_on > %s)
+                ORDER BY developer_id, first_seen_on, blocker_id
+                """,
+                (tenant_id, list(developer_ids), as_of, as_of),
+            )
+        return [_developer_blocker_from_row(row) for row in rows]
+
+    async def blockers_for_work_item(
+        self, tenant_id: str, work_item_id: str, as_of: date
+    ) -> list[DeveloperBlocker]:
+        with _tracer.start_as_current_span("postgres.status.blockers_for_work_item"):
+            rows = await self._executor.fetch(
+                f"""
+                {_DEVELOPER_BLOCKER_SELECT_SQL}
+                WHERE tenant_id = %s AND work_item_id = %s
+                  AND first_seen_on <= %s
+                  AND (resolved_on IS NULL OR resolved_on > %s)
+                ORDER BY developer_id, first_seen_on, blocker_id
+                """,
+                (tenant_id, work_item_id, as_of, as_of),
+            )
+        return [_developer_blocker_from_row(row) for row in rows]
+
+    async def has_blocker_rows(self, tenant_id: str, developer_id: str) -> bool:
+        with _tracer.start_as_current_span("postgres.status.has_blocker_rows"):
+            rows = await self._executor.fetch(
+                """
+                SELECT 1 AS present
+                FROM developer_blockers
+                WHERE tenant_id = %s AND developer_id = %s
+                LIMIT 1
+                """,
+                (tenant_id, developer_id),
+            )
+        return bool(rows)
 
     async def latest_developer_status(
         self, tenant_id: str, developer_id: str, as_of: date
@@ -1158,6 +1238,113 @@ def _developer_status_from_row(row: Mapping[str, object]) -> DeveloperStatus:
     )
 
 
+_DEVELOPER_STATUS_UPSERT_SQL = """
+INSERT INTO developer_statuses (
+    tenant_id, developer_id, as_of, source, blockers, summary,
+    eta_change_days, developer_confirmed, confirmed_at
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+ON CONFLICT (tenant_id, developer_id, as_of)
+DO UPDATE SET
+    source = EXCLUDED.source,
+    blockers = EXCLUDED.blockers,
+    summary = EXCLUDED.summary,
+    eta_change_days = EXCLUDED.eta_change_days,
+    developer_confirmed = EXCLUDED.developer_confirmed,
+    confirmed_at = EXCLUDED.confirmed_at,
+    updated_at = now()
+"""
+
+# first_seen_on and source_correlation_id are deliberately immutable on conflict:
+# they record when/where the blocker was first reported.
+_DEVELOPER_BLOCKER_UPSERT_SQL = """
+INSERT INTO developer_blockers (
+    tenant_id, blocker_id, developer_id, description, normalized_key,
+    work_item_id, pod_id, source, source_correlation_id, attribution_asked_at,
+    first_seen_on, last_seen_on, resolved_on, resolved_reason
+)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+ON CONFLICT (tenant_id, blocker_id)
+DO UPDATE SET
+    description = EXCLUDED.description,
+    normalized_key = EXCLUDED.normalized_key,
+    work_item_id = EXCLUDED.work_item_id,
+    pod_id = EXCLUDED.pod_id,
+    source = EXCLUDED.source,
+    attribution_asked_at = EXCLUDED.attribution_asked_at,
+    last_seen_on = EXCLUDED.last_seen_on,
+    resolved_on = EXCLUDED.resolved_on,
+    resolved_reason = EXCLUDED.resolved_reason,
+    updated_at = now()
+"""
+
+_DEVELOPER_BLOCKER_SELECT_SQL = """
+SELECT tenant_id, blocker_id, developer_id, description, normalized_key,
+       work_item_id, pod_id, source, source_correlation_id, attribution_asked_at,
+       first_seen_on, last_seen_on, resolved_on, resolved_reason
+FROM developer_blockers
+"""
+
+
+def _developer_status_params(status: DeveloperStatus) -> tuple[object, ...]:
+    return (
+        status.tenant_id,
+        status.developer_id,
+        status.as_of,
+        status.source.value,
+        _string_tuple_to_json(status.blockers),
+        status.summary,
+        status.eta_change_days,
+        status.developer_confirmed,
+        status.confirmed_at,
+    )
+
+
+def _developer_blocker_params(blocker: DeveloperBlocker) -> tuple[object, ...]:
+    return (
+        blocker.tenant_id,
+        blocker.blocker_id,
+        blocker.developer_id,
+        blocker.description,
+        blocker.normalized_key,
+        blocker.work_item_id,
+        blocker.pod_id,
+        blocker.source.value,
+        blocker.source_correlation_id,
+        blocker.attribution_asked_at,
+        blocker.first_seen_on,
+        blocker.last_seen_on,
+        blocker.resolved_on,
+        blocker.resolved_reason.value if blocker.resolved_reason is not None else None,
+    )
+
+
+def _developer_blocker_from_row(row: Mapping[str, object]) -> DeveloperBlocker:
+    resolved_reason = row.get("resolved_reason")
+    return DeveloperBlocker(
+        tenant_id=str(row["tenant_id"]),
+        blocker_id=str(row["blocker_id"]),
+        developer_id=str(row["developer_id"]),
+        description=str(row["description"]),
+        normalized_key=str(row["normalized_key"]),
+        work_item_id=_optional_string(row.get("work_item_id")),
+        pod_id=_optional_string(row.get("pod_id")),
+        source=BlockerSource(str(row["source"])),
+        source_correlation_id=_optional_string(row.get("source_correlation_id")),
+        attribution_asked_at=_optional_datetime_field(
+            row.get("attribution_asked_at"), "attribution_asked_at"
+        ),
+        first_seen_on=_date_field(row["first_seen_on"], "first_seen_on"),
+        last_seen_on=_date_field(row["last_seen_on"], "last_seen_on"),
+        resolved_on=_optional_date_field(row.get("resolved_on")),
+        resolved_reason=(
+            BlockerResolutionReason(str(resolved_reason))
+            if isinstance(resolved_reason, str)
+            else None
+        ),
+    )
+
+
 def _node_status_from_row(row: Mapping[str, object]) -> NodeStatus:
     return NodeStatus(
         entity_ref=EntityRef(
@@ -1264,6 +1451,16 @@ def _signals_to_json(signals: CheckInSignals | None) -> dict[str, object] | None
             }
             for update in signals.issue_updates
         ],
+        "blocker_reports": [
+            {
+                "description": report.description,
+                "issue_key": report.issue_key,
+                "pod_id": report.pod_id,
+                "resolved": report.resolved,
+            }
+            for report in signals.blocker_reports
+        ],
+        "resolved_blocker_ids": list(signals.resolved_blocker_ids),
     }
 
 
@@ -1281,6 +1478,12 @@ def _signals_from_json(value: object) -> CheckInSignals | None:
         else None
     )
     raw_parser_confident = value.get("parser_confident")
+    raw_resolved_ids = value.get("resolved_blocker_ids")
+    resolved_blocker_ids = (
+        tuple(item for item in raw_resolved_ids if isinstance(item, str))
+        if isinstance(raw_resolved_ids, list | tuple)
+        else ()
+    )
     return CheckInSignals(
         progress_note=progress_note,
         blockers=blockers,
@@ -1291,7 +1494,32 @@ def _signals_from_json(value: object) -> CheckInSignals | None:
         parser_confident=(raw_parser_confident if isinstance(raw_parser_confident, bool) else True),
         requests=_cross_person_mentions_from_json(value.get("requests")),
         issue_updates=_issue_claims_from_json(value.get("issue_updates")),
+        # Absent on legacy rows: both default empty.
+        blocker_reports=_blocker_reports_from_json(value.get("blocker_reports")),
+        resolved_blocker_ids=resolved_blocker_ids,
     )
+
+
+def _blocker_reports_from_json(value: object) -> tuple[BlockerReport, ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    reports: list[BlockerReport] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        description = _optional_string(item.get("description"))
+        if description is None:
+            continue
+        resolved = item.get("resolved")
+        reports.append(
+            BlockerReport(
+                description=description,
+                issue_key=_optional_string(item.get("issue_key")),
+                pod_id=_optional_string(item.get("pod_id")),
+                resolved=resolved if isinstance(resolved, bool) else False,
+            )
+        )
+    return tuple(reports)
 
 
 def _string_tuple_to_json(values: tuple[str, ...]) -> dict[str, object]:
@@ -1373,6 +1601,19 @@ def _factor_to_json(factor: RollupFactor) -> dict[str, object]:
             "kind": factor.source_ref.kind.value,
             "id": factor.source_ref.id,
         },
+        "kind": factor.kind.value,
+        "blocker_id": factor.blocker_id,
+        "work_item_ref": (
+            {
+                "tenant_id": factor.work_item_ref.tenant_id,
+                "kind": factor.work_item_ref.kind.value,
+                "id": factor.work_item_ref.id,
+            }
+            if factor.work_item_ref is not None
+            else None
+        ),
+        "applies_to_pod_ids": list(factor.applies_to_pod_ids),
+        "unattributed": factor.unattributed,
     }
 
 
@@ -1393,11 +1634,43 @@ def _factor_from_json(value: object) -> RollupFactor | None:
     source_ref = _entity_ref_from_json(value.get("source_ref"))
     if not isinstance(description, str) or contributes is None or source_ref is None:
         return None
+    raw_pod_ids = value.get("applies_to_pod_ids")
+    unattributed = value.get("unattributed")
     return RollupFactor(
         description=description,
         contributes=contributes,
         source_ref=source_ref,
+        kind=_factor_kind_from_json(value.get("kind"), description),
+        blocker_id=_optional_string(value.get("blocker_id")),
+        work_item_ref=_entity_ref_from_json(value.get("work_item_ref")),
+        applies_to_pod_ids=(
+            tuple(item for item in raw_pod_ids if isinstance(item, str))
+            if isinstance(raw_pod_ids, list | tuple)
+            else ()
+        ),
+        unattributed=(
+            unattributed
+            if isinstance(unattributed, bool)
+            # Legacy blocker rows predate attribution and were globally visible.
+            else _legacy_factor_is_blocker(value.get("kind"), description)
+        ),
     )
+
+
+def _factor_kind_from_json(raw_kind: object, description: str) -> FactorKind:
+    """Tolerant read: legacy rows have no kind; infer blockers from the prefix."""
+    if isinstance(raw_kind, str):
+        try:
+            return FactorKind(raw_kind)
+        except ValueError:
+            return FactorKind.STATUS
+    if _legacy_factor_is_blocker(raw_kind, description):
+        return FactorKind.BLOCKER
+    return FactorKind.STATUS
+
+
+def _legacy_factor_is_blocker(raw_kind: object, description: str) -> bool:
+    return raw_kind is None and description.startswith("Blocker: ")
 
 
 def _entity_ref_from_json(value: object) -> EntityRef | None:

@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, time
 
+from core.domain.blockers import (
+    BlockerReport,
+    BlockerResolutionReason,
+    BlockerSource,
+    DeveloperBlocker,
+)
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.graph import EntityRef, NodeKind
 from core.domain.integrations import SyncCursor
-from core.domain.rollup import NodeStatus, Rag, RollupFactor
+from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import (
     CheckIn,
     CheckInClarification,
@@ -27,12 +33,18 @@ from infra.persistence.postgres_status import (
     _checkin_preference_from_row,
     _checkin_schedule_run_from_row,
     _conversation_turn_from_row,
+    _developer_blocker_from_row,
     _developer_status_from_row,
+    _factor_from_json,
+    _factor_to_json,
     _node_status_from_row,
+    _signals_from_json,
+    _signals_to_json,
     _sync_cursor_from_row,
 )
 from tests.contract.contracts import (
     assert_conversation_repository_contract,
+    assert_graph_repository_contract,
     assert_inbound_chat_event_repository_contract,
     assert_rollup_repository_contract,
     assert_status_repository_contract,
@@ -45,6 +57,7 @@ async def test_in_memory_store_satisfies_phase_1_repository_contracts() -> None:
     store = InMemoryGraphStore()
 
     await assert_status_repository_contract(store)
+    await assert_graph_repository_contract(store)
     await assert_rollup_repository_contract(store)
     await assert_sync_cursor_repository_contract(store)
     await assert_conversation_repository_contract(store)
@@ -389,3 +402,169 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
         sent_at=replied_at,
         outbound_message_id="clarify-1",
     )
+
+
+def test_developer_blocker_row_mapper_reconstructs_full_row() -> None:
+    attribution_asked_at = datetime(2026, 1, 10, 9, 30, tzinfo=UTC)
+    blocker = _developer_blocker_from_row(
+        {
+            "tenant_id": "demo",
+            "blocker_id": "blk-1",
+            "developer_id": "dev-1",
+            "description": "Waiting on API keys.",
+            "normalized_key": "waiting on api keys",
+            "work_item_id": "PO-1",
+            "pod_id": "pod-1",
+            "source": "carry_forward",
+            "source_correlation_id": "corr-1",
+            "attribution_asked_at": attribution_asked_at,
+            # first/last_seen_on arrive as date objects from psycopg; the
+            # nullable resolved_on tolerates ISO strings as well.
+            "first_seen_on": date(2026, 1, 8),
+            "last_seen_on": date(2026, 1, 10),
+            "resolved_on": "2026-01-12",
+            "resolved_reason": "omitted_in_correction",
+        }
+    )
+
+    assert blocker == DeveloperBlocker(
+        tenant_id="demo",
+        blocker_id="blk-1",
+        developer_id="dev-1",
+        description="Waiting on API keys.",
+        normalized_key="waiting on api keys",
+        work_item_id="PO-1",
+        pod_id="pod-1",
+        source=BlockerSource.CARRY_FORWARD,
+        source_correlation_id="corr-1",
+        attribution_asked_at=attribution_asked_at,
+        first_seen_on=date(2026, 1, 8),
+        last_seen_on=date(2026, 1, 10),
+        resolved_on=date(2026, 1, 12),
+        resolved_reason=BlockerResolutionReason.OMITTED_IN_CORRECTION,
+    )
+    assert blocker.source is BlockerSource.CARRY_FORWARD
+    assert blocker.resolved_reason is BlockerResolutionReason.OMITTED_IN_CORRECTION
+    assert blocker.is_attributed
+    assert blocker.is_open_on(date(2026, 1, 11))
+    assert not blocker.is_open_on(date(2026, 1, 12))
+
+
+def test_developer_blocker_row_mapper_defaults_missing_optionals() -> None:
+    blocker = _developer_blocker_from_row(
+        {
+            "tenant_id": "demo",
+            "blocker_id": "blk-2",
+            "developer_id": "dev-1",
+            "description": "Flaky CI pipeline",
+            "normalized_key": "flaky ci pipeline",
+            "work_item_id": None,
+            "pod_id": None,
+            "source": "backfill",
+            "source_correlation_id": None,
+            "attribution_asked_at": None,
+            "first_seen_on": date(2026, 1, 8),
+            "last_seen_on": date(2026, 1, 8),
+            "resolved_on": None,
+            "resolved_reason": None,
+        }
+    )
+
+    assert blocker.source is BlockerSource.BACKFILL
+    assert blocker.work_item_id is None
+    assert blocker.pod_id is None
+    assert blocker.source_correlation_id is None
+    assert blocker.attribution_asked_at is None
+    assert blocker.resolved_on is None
+    assert blocker.resolved_reason is None
+    assert not blocker.is_attributed
+    assert blocker.is_open_on(date(2026, 1, 8))
+    assert not blocker.is_open_on(date(2026, 1, 7))
+
+
+def test_signals_json_round_trip_preserves_blocker_reports_and_resolved_ids() -> None:
+    signals = CheckInSignals(
+        progress_note="Graph sync in progress",
+        blockers=("Waiting on API keys", "Flaky CI pipeline"),
+        blockers_answered=True,
+        blocker_reports=(
+            BlockerReport(description="Waiting on API keys", issue_key="PO-1"),
+            BlockerReport(description="Flaky CI pipeline", pod_id="pod-1", resolved=True),
+        ),
+        resolved_blocker_ids=("blk-9", "blk-10"),
+    )
+
+    assert _signals_from_json(_signals_to_json(signals)) == signals
+    assert _signals_to_json(None) is None
+    assert _signals_from_json(None) is None
+
+
+def test_signals_from_json_defaults_blocker_fields_on_legacy_rows() -> None:
+    legacy = {
+        "progress_note": "Graph sync",
+        "blockers": ["dependency"],
+        "eta_change_days": 1,
+        "blockers_answered": True,
+        "eta_answered": True,
+    }
+
+    parsed = _signals_from_json(legacy)
+
+    assert parsed is not None
+    assert parsed.blockers == ("dependency",)
+    assert parsed.blocker_reports == ()
+    assert parsed.resolved_blocker_ids == ()
+
+
+def test_factor_json_round_trips_attribution_fields() -> None:
+    factor = RollupFactor(
+        description="Blocker: waiting on API keys",
+        contributes=Rag.AMBER,
+        source_ref=EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="task-1"),
+        kind=FactorKind.BLOCKER,
+        blocker_id="blk-1",
+        work_item_ref=EntityRef(tenant_id="demo", kind=NodeKind.WORK_ITEM, id="wi-1"),
+        applies_to_pod_ids=("pod-1", "pod-2"),
+        unattributed=True,
+    )
+
+    assert _factor_from_json(_factor_to_json(factor)) == factor
+
+
+def test_factor_from_json_tolerates_legacy_rows() -> None:
+    source_ref = {"tenant_id": "demo", "kind": "developer", "id": "dev-1"}
+    legacy_blocker = _factor_from_json(
+        {
+            "description": "Blocker: waiting on API keys",
+            "contributes": "amber",
+            "source_ref": source_ref,
+        }
+    )
+    legacy_status = _factor_from_json(
+        {
+            "description": "Developer status is stale and needs confirmation.",
+            "contributes": "amber",
+            "source_ref": source_ref,
+        }
+    )
+    unknown_kind = _factor_from_json(
+        {
+            "description": "Blocker: waiting on API keys",
+            "contributes": "amber",
+            "source_ref": source_ref,
+            "kind": "not-a-kind",
+        }
+    )
+
+    # Legacy blocker rows predate attribution: inferred BLOCKER kind, globally
+    # visible (unattributed, no pod scoping).
+    assert legacy_blocker is not None
+    assert legacy_blocker.kind is FactorKind.BLOCKER
+    assert legacy_blocker.unattributed is True
+    assert legacy_blocker.applies_to_pod_ids == ()
+    assert legacy_blocker.blocker_id is None
+    assert legacy_status is not None
+    assert legacy_status.kind is FactorKind.STATUS
+    assert legacy_status.unattributed is False
+    assert unknown_kind is not None
+    assert unknown_kind.kind is FactorKind.STATUS

@@ -11,6 +11,12 @@ from core.application.status_parsing import (
     ClarificationEvaluator,
     StatusParser,
 )
+from core.domain.blockers import (
+    BlockerReport,
+    BlockerSource,
+    DeveloperBlocker,
+    normalize_blocker_key,
+)
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.graph import JsonScalar
 from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
@@ -131,6 +137,9 @@ async def test_status_parser_converts_valid_json_to_signals() -> None:
                 note="API handoff ready",
             ),
         ),
+        # Legacy string blockers synthesize plain reports so the lifecycle
+        # write path always has structured input.
+        blocker_reports=(BlockerReport(description="schema review"),),
     )
     assert provider.requests[0].metadata == {
         "service": "status_parser",
@@ -180,6 +189,7 @@ async def test_status_parser_extracts_cross_person_requests() -> None:
                 email="alice@example.com",
             ),
         ),
+        blocker_reports=(BlockerReport(description="schema review"),),
     )
     assert "requests array" in provider.requests[0].prompt
     assert "specific named person" in provider.requests[0].prompt
@@ -319,14 +329,125 @@ async def test_status_parser_includes_prior_blockers_without_resolving_them() ->
         developer_id="dev-1",
         raw_reply="Same as yesterday.",
         correlation_id="corr-1",
-        prior_blockers=("release gate",),
+        prior_blockers=(_prior_blocker("blk-1", "release gate", work_item_id="PO-9"),),
     )
 
     assert "Previously open blockers" in provider.requests[0].prompt
-    assert "release gate" in provider.requests[0].prompt
-    assert (
-        "mark them resolved only if the reply says they are resolved" in provider.requests[0].prompt
+    assert "- [B1] release gate (PO-9)" in provider.requests[0].prompt
+    assert "never mark a blocker resolved otherwise" in provider.requests[0].prompt
+
+
+def _prior_blocker(
+    blocker_id: str, description: str, *, work_item_id: str | None = None
+) -> DeveloperBlocker:
+    return DeveloperBlocker(
+        tenant_id="demo",
+        blocker_id=blocker_id,
+        developer_id="dev-1",
+        description=description,
+        normalized_key=normalize_blocker_key(description),
+        work_item_id=work_item_id,
+        source=BlockerSource.CHECKIN,
+        first_seen_on=date(2026, 1, 9),
+        last_seen_on=date(2026, 1, 9),
     )
+
+
+async def test_status_parser_parses_blocker_details_with_issue_key_and_pod() -> None:
+    provider = CapturingLlmProvider(
+        text=(
+            '{"progress_note":"Two blockers","blockers":["vendor API","staging DB access"],'
+            '"blocker_details":[{"description":"vendor API","issue_key":"PAY-7","pod":null},'
+            '{"description":"staging DB access","issue_key":null,"pod":"checkout"}],'
+            '"resolved_blocker_ids":[],"eta_change_days":null,'
+            '"blockers_answered":true,"eta_answered":false}'
+        )
+    )
+    parser = StatusParser(provider, model="test-model")
+
+    signals = await parser.parse_reply(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="PAY-7 blocked on vendor API; also waiting on staging DB access.",
+        correlation_id="corr-1",
+    )
+
+    assert signals.blocker_reports == (
+        BlockerReport(description="vendor API", issue_key="PAY-7"),
+        BlockerReport(description="staging DB access", pod_id="checkout"),
+    )
+    assert signals.blockers == ("vendor API", "staging DB access")
+
+
+async def test_status_parser_merges_legacy_strings_missing_from_details() -> None:
+    provider = CapturingLlmProvider(
+        text=(
+            '{"progress_note":"x","blockers":["vendor API","extra blocker"],'
+            '"blocker_details":[{"description":"Vendor  API.","issue_key":"PAY-7","pod":null}],'
+            '"eta_change_days":null,"blockers_answered":true,"eta_answered":false}'
+        )
+    )
+    parser = StatusParser(provider, model="test-model")
+
+    signals = await parser.parse_reply(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="raw",
+        correlation_id="corr-1",
+    )
+
+    assert signals.blocker_reports == (
+        BlockerReport(description="Vendor  API.", issue_key="PAY-7"),
+        BlockerReport(description="extra blocker"),
+    )
+    assert signals.blockers == ("Vendor  API.", "extra blocker")
+
+
+async def test_status_parser_maps_resolved_handles_to_blocker_ids() -> None:
+    provider = CapturingLlmProvider(
+        text=(
+            '{"progress_note":"DB one is fixed","blockers":[],"blocker_details":[],'
+            '"resolved_blocker_ids":["B1","[B2]","B9","unknown"],"eta_change_days":null,'
+            '"blockers_answered":false,"eta_answered":false}'
+        )
+    )
+    parser = StatusParser(provider, model="test-model")
+
+    signals = await parser.parse_reply(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="The staging DB blocker is resolved.",
+        correlation_id="corr-1",
+        prior_blockers=(
+            _prior_blocker("blk-1", "staging DB access"),
+            _prior_blocker("blk-2", "vendor API"),
+        ),
+    )
+
+    assert signals.resolved_blocker_ids == ("blk-1", "blk-2")
+    # Resolving a tracked blocker answers the blockers question.
+    assert signals.blockers_answered is True
+
+
+async def test_status_parser_accepts_raw_blocker_ids_in_resolved_list() -> None:
+    provider = CapturingLlmProvider(
+        text=(
+            '{"progress_note":"fixed","blockers":[],'
+            '"resolved_blocker_ids":["blk-1"],"eta_change_days":null,'
+            '"blockers_answered":false,"eta_answered":false}'
+        )
+    )
+    parser = StatusParser(provider, model="test-model")
+
+    signals = await parser.parse_reply(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="fixed",
+        correlation_id="corr-1",
+        prior_blockers=(_prior_blocker("blk-1", "staging DB access"),),
+    )
+
+    assert signals.resolved_blocker_ids == ("blk-1",)
 
 
 async def test_clarification_evaluator_parses_needed_question() -> None:

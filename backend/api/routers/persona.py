@@ -222,11 +222,7 @@ async def writeback_adoption(
 ) -> WriteBackAdoptionResponse:
     # Surfaces "Jira updates applied via check-in" so the time-saved is visible.
     _ensure_aggregate(principal)
-    since = (
-        datetime.now(tz=UTC) - timedelta(days=window_days)
-        if window_days is not None
-        else None
-    )
+    since = datetime.now(tz=UTC) - timedelta(days=window_days) if window_days is not None else None
     adoption = await service.adoption(principal.tenant_id, limit=limit, since=since)
     return WriteBackAdoptionResponse.from_domain(adoption)
 

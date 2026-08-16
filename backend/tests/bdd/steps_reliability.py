@@ -137,9 +137,7 @@ def _then_coalesced_join(world: World) -> None:
 # ---------------------------------------------------------------------------
 
 
-@given(
-    parsers.parse('an inbound reply "{text}" is buffered for conversation "{conversation_key}"')
-)
+@given(parsers.parse('an inbound reply "{text}" is buffered for conversation "{conversation_key}"'))
 def _given_reply_buffered(world: World, text: str, conversation_key: str) -> None:
     _buffer_events(world, conversation_key, [text])
     world.stash["reliability_key"] = conversation_key
@@ -171,9 +169,7 @@ def _when_drain_attempt_fails(world: World, conversation_key: str) -> None:
 def _then_reply_still_pending(world: World) -> None:
     repository = world.registry().inbound_chat_event_repository()
     conversation_key = world.stash["reliability_key"]
-    pending = asyncio.run(
-        repository.list_unprocessed_for_conversation(_TENANT, conversation_key)
-    )
+    pending = asyncio.run(repository.list_unprocessed_for_conversation(_TENANT, conversation_key))
     assert len(pending) == 1, pending
     assert pending[0].text == world.stash["reliability_text"]
 
@@ -194,9 +190,7 @@ def _then_drain_finalizes(world: World) -> None:
     assert result.status == "processed", result
     repository = world.registry().inbound_chat_event_repository()
     conversation_key = world.stash["reliability_key"]
-    pending = asyncio.run(
-        repository.list_unprocessed_for_conversation(_TENANT, conversation_key)
-    )
+    pending = asyncio.run(repository.list_unprocessed_for_conversation(_TENANT, conversation_key))
     assert pending == [], pending
 
 

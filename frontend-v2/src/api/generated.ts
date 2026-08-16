@@ -1480,10 +1480,50 @@ export interface components {
       /** Scopes */
       scopes: string[];
     };
+    /** BlockerCorrectionItemDto */
+    BlockerCorrectionItemDto: {
+      /** Blocker Id */
+      blocker_id?: string | null;
+      /** Description */
+      description: string;
+      /** Work Item Id */
+      work_item_id?: string | null;
+      /** Pod Id */
+      pod_id?: string | null;
+      /**
+       * Resolved
+       * @default false
+       */
+      resolved: boolean;
+    };
+    /** BlockerDetailDto */
+    BlockerDetailDto: {
+      /** Blocker Id */
+      blocker_id: string;
+      /** Description */
+      description: string;
+      /** Work Item Id */
+      work_item_id: string | null;
+      /** Work Item Name */
+      work_item_name: string | null;
+      /** Pod Id */
+      pod_id: string | null;
+      /** Unattributed */
+      unattributed: boolean;
+      /**
+       * First Seen On
+       * Format: date
+       */
+      first_seen_on: string;
+      /** Age Days */
+      age_days: number;
+    };
     /** BlockerDto */
     BlockerDto: {
       /** Id */
       id: string;
+      /** Blocker Id */
+      blocker_id: string;
       /** Description */
       description: string;
       /** Age Days */
@@ -1499,6 +1539,15 @@ export interface components {
        */
       status_as_of: string;
       source_ref: components["schemas"]["EntityRefDto"];
+      work_item_ref: components["schemas"]["EntityRefDto"] | null;
+      pod_ref: components["schemas"]["EntityRefDto"] | null;
+      /** Unattributed */
+      unattributed: boolean;
+      /**
+       * First Seen On
+       * Format: date
+       */
+      first_seen_on: string;
     };
     /**
      * BriefKind
@@ -1787,11 +1836,7 @@ export interface components {
      * @enum {string}
      */
     CrossPersonRequestStatus:
-      | "open"
-      | "acknowledged"
-      | "resolved"
-      | "dismissed"
-      | "needs_resolution";
+      "open" | "acknowledged" | "resolved" | "dismissed" | "needs_resolution";
     /** CrossPersonRequestStatusUpdateRequest */
     CrossPersonRequestStatusUpdateRequest: {
       status: components["schemas"]["CrossPersonRequestStatus"];
@@ -1997,6 +2042,8 @@ export interface components {
       summary: string;
       /** Blockers */
       blockers: string[];
+      /** Blocker Details */
+      blocker_details: components["schemas"]["BlockerDetailDto"][];
       /** Tasks */
       tasks: components["schemas"]["FocusTaskDto"][];
       /** Focus */
@@ -2164,6 +2211,8 @@ export interface components {
       summary: string;
       /** Blockers */
       blockers: string[];
+      /** Blocker Details */
+      blocker_details?: components["schemas"]["BlockerDetailDto"][];
       /** Eta Change Days */
       eta_change_days: number | null;
       /**
@@ -2508,7 +2557,10 @@ export interface components {
       owner_status_source: components["schemas"]["StatusSource"] | null;
       /** Owner Status As Of */
       owner_status_as_of: string | null;
-      /** Owner Status Has Blockers */
+      /**
+       * Owner Status Has Blockers
+       * @description True when the owner has an open blocker relevant to this finding's work item: either attributed to that work item or unattributed (could concern anything). A blocker attributed to a different work item does not count.
+       */
       owner_status_has_blockers: boolean;
       /** Is Watermelon */
       is_watermelon: boolean;
@@ -2519,6 +2571,15 @@ export interface components {
       description: string;
       contributes: components["schemas"]["Rag"];
       source_ref: components["schemas"]["EntityRefDto"];
+      /** Kind */
+      kind: string;
+      /** Blocker Id */
+      blocker_id: string | null;
+      work_item_ref: components["schemas"]["EntityRefDto"] | null;
+      /** Unattributed */
+      unattributed: boolean;
+      /** Applies To Pod Ids */
+      applies_to_pod_ids: string[];
     };
     /** StatusCorrectionRequest */
     StatusCorrectionRequest: {
@@ -2528,6 +2589,11 @@ export interface components {
       blockers?: string[];
       /** Eta Change Days */
       eta_change_days?: number | null;
+      /**
+       * Blocker Items
+       * @description Structured blocker corrections. When present, this is the authoritative set; the flat blockers list is ignored.
+       */
+      blocker_items?: components["schemas"]["BlockerCorrectionItemDto"][] | null;
     };
     /**
      * StatusSource

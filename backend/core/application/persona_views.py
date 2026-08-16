@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 
+from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
 from core.application.rollup_service import RollupService
 from core.domain.errors import GraphNotFound
 from core.domain.graph import EdgeKind, EntityRef, FactEvent, GraphNode, GraphTree, NodeKind
@@ -49,6 +50,20 @@ class FocusItemView:
 
 
 @dataclass(frozen=True, kw_only=True)
+class BlockerDetailView:
+    """Attribution-aware projection of one open blocker for a developer."""
+
+    blocker_id: str
+    description: str
+    work_item_id: str | None
+    work_item_name: str | None
+    pod_id: str | None
+    unattributed: bool
+    first_seen_on: date
+    age_days: int
+
+
+@dataclass(frozen=True, kw_only=True)
 class FocusView:
     developer_id: str
     developer_name: str
@@ -58,6 +73,7 @@ class FocusView:
     status_as_of: date | None
     summary: str
     blockers: tuple[str, ...]
+    blocker_details: tuple[BlockerDetailView, ...]
     tasks: tuple[FocusTaskView, ...]
     focus: tuple[FocusItemView, ...]
 
@@ -65,6 +81,7 @@ class FocusView:
 @dataclass(frozen=True, kw_only=True)
 class BlockerView:
     id: str
+    blocker_id: str
     description: str
     age_days: int
     owner_id: str
@@ -72,6 +89,10 @@ class BlockerView:
     source: StatusSource
     status_as_of: date
     source_ref: EntityRef
+    work_item_ref: EntityRef | None
+    pod_ref: EntityRef | None
+    unattributed: bool
+    first_seen_on: date
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -233,10 +254,16 @@ class PersonaViewService:
         self._status_repository = status_repository
         self._rollup_repository = rollup_repository
         self._time_series_repository = time_series_repository
-        self._rollup_service = RollupService(status_repository, rollup_repository)
+        self._blocker_resolution = BlockerResolutionService(graph_repository, status_repository)
+        self._rollup_service = RollupService(
+            status_repository, rollup_repository, self._blocker_resolution
+        )
 
     async def focus(self, tenant_id: str, developer_id: str, as_of: date) -> FocusView:
         status = await self._status_repository.latest_developer_status(
+            tenant_id, developer_id, as_of
+        )
+        resolved_blockers = await self._blocker_resolution.open_blockers_for_developer(
             tenant_id, developer_id, as_of
         )
         try:
@@ -253,6 +280,7 @@ class PersonaViewService:
                 status_as_of=status.as_of if status else None,
                 summary=status.summary if status else "No developer status data is available.",
                 blockers=blockers,
+                blocker_details=_blocker_details(resolved_blockers, {}, as_of),
                 tasks=(),
                 focus=tuple(
                     FocusItemView(
@@ -305,6 +333,11 @@ class PersonaViewService:
             status_as_of=status.as_of if status else None,
             summary=status.summary if status else "No developer status data is available.",
             blockers=blockers,
+            blocker_details=_blocker_details(
+                resolved_blockers,
+                {node.id: node.name for node in tree.nodes},
+                as_of,
+            ),
             tasks=tasks,
             focus=focus,
         )
@@ -317,9 +350,14 @@ class PersonaViewService:
             status = await self._status_repository.latest_developer_status(
                 tenant_id, developer.id, as_of
             )
-            if status is None:
-                continue
-            blockers.extend(_blockers_for_status(developer, status, as_of))
+            resolved = await self._blocker_resolution.open_blockers_for_developer(
+                tenant_id, developer.id, as_of
+            )
+            blockers.extend(
+                _blocker_view(developer, status, blocker, as_of)
+                for blocker in resolved
+                if tree.root.id in blocker.pod_ids
+            )
         return PodBlockersView(
             pod_id=tree.root.id,
             pod_name=tree.root.name,
@@ -619,22 +657,55 @@ def _since_for_as_of(as_of: date) -> datetime:
     return datetime.combine(as_of - timedelta(days=TASK_FACT_LOOKBACK_DAYS), time.min, tzinfo=UTC)
 
 
-def _blockers_for_status(
-    developer: GraphNode, status: DeveloperStatus, as_of: date
-) -> list[BlockerView]:
-    return [
-        BlockerView(
-            id=f"{developer.id}:{index}",
-            description=blocker,
-            age_days=max((as_of - status.as_of).days, 0),
-            owner_id=developer.id,
-            owner_name=developer.name,
-            source=status.source,
-            status_as_of=status.as_of,
-            source_ref=developer.ref,
+def _blocker_view(
+    developer: GraphNode,
+    status: DeveloperStatus | None,
+    blocker: ResolvedBlocker,
+    as_of: date,
+) -> BlockerView:
+    return BlockerView(
+        id=blocker.blocker_id,
+        blocker_id=blocker.blocker_id,
+        description=blocker.description,
+        age_days=_blocker_age_days(blocker, as_of),
+        owner_id=developer.id,
+        owner_name=developer.name,
+        source=status.source if status is not None else StatusSource.UNKNOWN,
+        status_as_of=status.as_of if status is not None else as_of,
+        source_ref=blocker.work_item_ref or developer.ref,
+        work_item_ref=blocker.work_item_ref,
+        pod_ref=blocker.explicit_pod_ref,
+        unattributed=blocker.unattributed,
+        first_seen_on=blocker.first_seen_on,
+    )
+
+
+def _blocker_details(
+    blockers: tuple[ResolvedBlocker, ...],
+    node_names: dict[str, str],
+    as_of: date,
+) -> tuple[BlockerDetailView, ...]:
+    return tuple(
+        BlockerDetailView(
+            blocker_id=blocker.blocker_id,
+            description=blocker.description,
+            work_item_id=blocker.work_item_ref.id if blocker.work_item_ref is not None else None,
+            work_item_name=(
+                node_names.get(blocker.work_item_ref.id)
+                if blocker.work_item_ref is not None
+                else None
+            ),
+            pod_id=blocker.explicit_pod_ref.id if blocker.explicit_pod_ref is not None else None,
+            unattributed=blocker.unattributed,
+            first_seen_on=blocker.first_seen_on,
+            age_days=_blocker_age_days(blocker, as_of),
         )
-        for index, blocker in enumerate(status.blockers, start=1)
-    ]
+        for blocker in blockers
+    )
+
+
+def _blocker_age_days(blocker: ResolvedBlocker, as_of: date) -> int:
+    return max((as_of - blocker.first_seen_on).days, 0)
 
 
 def _checkin_state(

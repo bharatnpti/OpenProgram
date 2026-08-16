@@ -23,6 +23,7 @@ A small number of scenarios need real backing infrastructure:
 
 from __future__ import annotations
 
+import asyncio
 import os
 import socket
 import subprocess
@@ -31,6 +32,7 @@ import time
 from collections.abc import Iterator
 from contextlib import ExitStack
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +43,7 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from config.settings import Settings
+from core.domain.auth import Role
 from core.domain.workflows import CheckinScheduleConfig as _CheckinScheduleConfig
 from core.domain.workflows import (
     ConversationPurgeScheduleConfig,
@@ -49,11 +52,59 @@ from core.domain.workflows import (
     SyncDispatchInput,
     SyncScheduleConfig,
 )
+from core.ports.auth import AuthenticatedUser
 from infra.registry import ServiceRegistry
 from infra.workflows import daily_checkin
 
 ROOT = Path(__file__).resolve().parents[3]
 SECRET_KEY = "q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ="
+
+# Settings that a non-local environment requires, because the §4f boot guard
+# refuses both dev auth and the default local Fernet key outside `local`. Any
+# scenario that runs with `environment != "local"` must merge these in, or
+# `Settings` construction fails before the app is even built.
+NON_LOCAL_SETTINGS: dict[str, object] = {
+    "secret_key": "mhIhBUGaIwYh-uxsTtrxIAk0DJxC9DPr5URotvoMWYM=",
+    "auth_provider": "oidc_bff",
+    "oidc_issuer_url": "https://idp.example.com",
+    "oidc_client_id": "openprogram-test",
+    "oidc_client_secret": "test-client-secret",
+}
+
+
+def authenticate_as_admin(world: World) -> None:
+    """Give ``world.client`` a valid admin OIDC BFF session.
+
+    Needed for scenarios running under ``NON_LOCAL_SETTINGS``: without a session
+    the BFF middleware answers 401 before the request reaches the route, so an
+    endpoint's own guard (for example the simulator's ``environment != "local"``
+    404) can never be observed.
+    """
+    assert world.app is not None, "app not started yet"
+    assert world.client is not None, "client not started yet"
+    assert world.settings is not None, "settings not built yet"
+    csrf_token = "csrf-token"
+    session = asyncio.run(
+        world.app.state.registry.auth_session_store().save_session(
+            session_id="bdd-session",
+            user=AuthenticatedUser(
+                tenant_id=world.settings.tenant_id,
+                subject="oidc-admin",
+                roles=frozenset({Role.ADMIN}),
+                scopes=frozenset({"openid"}),
+                username="oidc-admin",
+                email="oidc-admin@example.com",
+                name="OIDC Admin",
+                token_expires_at=None,
+            ),
+            csrf_token=csrf_token,
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+            token_material={"access_token": "secret-token"},
+            ttl_seconds=600,
+        )
+    )
+    world.client.cookies.set(world.settings.auth_cookie_name, session.session_id)
+    world.client.cookies.set(world.settings.auth_csrf_cookie_name, session.csrf_token)
 
 
 class InProcessWorkflowScheduler:

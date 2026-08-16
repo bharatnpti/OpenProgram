@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime, time
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from core.application.blocker_resolution import BlockerResolutionService
 from core.application.risk_service import RiskService
 from core.domain.graph import GraphNode, NodeKind
 from core.domain.integrations import SyncCursor
@@ -127,6 +128,9 @@ def _drift_service(registry: ServiceRegistry) -> RiskService:
         graph_repository=registry.graph_repository(),
         time_series_repository=registry.time_series_repository(),
         status_repository=registry.status_repository(),
+        blocker_resolution=BlockerResolutionService(
+            registry.graph_repository(), registry.status_repository()
+        ),
         rollup_repository=registry.rollup_repository(),
         provider_config=RiskProviderConfig(
             jira_base_url=settings.jira_base_url,

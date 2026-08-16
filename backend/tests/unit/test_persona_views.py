@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from core.application.persona_views import PersonaViewService
+from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
 from core.domain.graph import (
     Developer,
     EdgeKind,
@@ -454,6 +455,212 @@ async def test_pod_checkins_counts_partial_statuses() -> None:
         "dev-stale": "stale",
         "dev-missing": "missing",
     }
+
+
+async def test_pod_blockers_excludes_blockers_attributed_to_other_pod() -> None:
+    store = await _two_pod_store()
+    as_of = date(2026, 1, 10)
+    await store.record_developer_status_with_blockers(
+        _status("dev-1", as_of, blockers=("infra access",)),
+        (_blocker_row("infra access", pod_id="pod-a", as_of=as_of),),
+    )
+    service = _persona_service(store)
+
+    pod_a_view = await service.pod_blockers("demo", "pod-a", as_of)
+    pod_b_view = await service.pod_blockers("demo", "pod-b", as_of)
+
+    assert pod_b_view.blockers == ()
+    assert len(pod_a_view.blockers) == 1
+    blocker = pod_a_view.blockers[0]
+    assert blocker.id == blocker.blocker_id
+    assert blocker.pod_ref is not None
+    assert blocker.pod_ref.id == "pod-a"
+    assert blocker.unattributed is False
+
+
+async def test_pod_blockers_includes_unattributed_blockers_with_flag() -> None:
+    store = await _two_pod_store()
+    as_of = date(2026, 1, 10)
+    await store.record_developer_status_with_blockers(
+        _status("dev-1", as_of, blockers=("mystery dependency",)),
+        (_blocker_row("mystery dependency", as_of=as_of),),
+    )
+    service = _persona_service(store)
+
+    pod_a_view = await service.pod_blockers("demo", "pod-a", as_of)
+    pod_b_view = await service.pod_blockers("demo", "pod-b", as_of)
+
+    for view in (pod_a_view, pod_b_view):
+        assert len(view.blockers) == 1
+        assert view.blockers[0].unattributed is True
+        assert view.blockers[0].pod_ref is None
+
+
+async def test_pod_blockers_age_days_counts_from_first_seen_on_not_status_date() -> None:
+    store = await _two_pod_store()
+    as_of = date(2026, 1, 10)
+    first_seen_on = as_of - timedelta(days=5)
+    await store.record_developer_status_with_blockers(
+        _status("dev-1", as_of, blockers=("infra access",)),
+        (_blocker_row("infra access", as_of=first_seen_on, last_seen_on=as_of),),
+    )
+    service = _persona_service(store)
+
+    view = await service.pod_blockers("demo", "pod-a", as_of)
+
+    assert len(view.blockers) == 1
+    assert view.blockers[0].age_days == 5
+    assert view.blockers[0].first_seen_on == first_seen_on
+    assert view.blockers[0].status_as_of == as_of
+
+
+async def test_pod_blockers_falls_back_to_legacy_status_blockers() -> None:
+    store = await _two_pod_store()
+    as_of = date(2026, 1, 10)
+    status_as_of = as_of - timedelta(days=2)
+    await store.record_developer_status(
+        _status("dev-1", status_as_of, blockers=("waiting on schema", "no confirmed reply"))
+    )
+    service = _persona_service(store)
+
+    view = await service.pod_blockers("demo", "pod-a", as_of)
+
+    assert [blocker.description for blocker in view.blockers] == ["waiting on schema"]
+    assert view.blockers[0].unattributed is True
+    assert view.blockers[0].age_days == 2
+    assert view.blockers[0].first_seen_on == status_as_of
+
+
+async def test_pod_checkins_counts_multipod_developer_in_both_pods() -> None:
+    store = await _two_pod_store()
+    as_of = date(2026, 1, 10)
+    await store.record_developer_status(_status("dev-1", as_of))
+    service = _persona_service(store)
+
+    pod_a_view = await service.pod_checkins("demo", "pod-a", as_of)
+    pod_b_view = await service.pod_checkins("demo", "pod-b", as_of)
+
+    # Check-in rosters are person-global by design: a multi-pod developer is
+    # accountable for a check-in on every board they belong to.
+    for view in (pod_a_view, pod_b_view):
+        assert view.confirmed == 1
+        assert [developer.developer_id for developer in view.developers] == ["dev-1"]
+
+
+async def test_focus_blocker_details_carry_attribution() -> None:
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    developer = Developer(tenant_id="demo", id="dev-1", name="Asha")
+    pod = Pod(tenant_id="demo", id="pod-x", name="Pod X")
+    task = Task(tenant_id="demo", id="task-api", name="API handoff")
+    for node in (developer, pod, task):
+        await store.upsert_node(node)
+    await store.add_edge(
+        GraphEdge(
+            tenant_id="demo", from_node_id="pod-x", to_node_id="dev-1", kind=EdgeKind.CONTAINS
+        )
+    )
+    await store.add_edge(
+        GraphEdge(
+            tenant_id="demo", from_node_id="pod-x", to_node_id="task-api", kind=EdgeKind.CONTAINS
+        )
+    )
+    await store.add_edge(
+        GraphEdge(
+            tenant_id="demo", from_node_id="dev-1", to_node_id="task-api", kind=EdgeKind.ASSIGNED_TO
+        )
+    )
+    first_seen_on = as_of - timedelta(days=3)
+    await store.record_developer_status_with_blockers(
+        _status("dev-1", as_of, blockers=("waiting on API review",)),
+        (
+            _blocker_row(
+                "waiting on API review",
+                work_item_id="task-api",
+                as_of=first_seen_on,
+                last_seen_on=as_of,
+            ),
+        ),
+    )
+    service = _persona_service(store)
+
+    view = await service.focus("demo", "dev-1", as_of)
+
+    assert view.blockers == ("waiting on API review",)
+    assert len(view.blocker_details) == 1
+    detail = view.blocker_details[0]
+    assert detail.blocker_id == "blk-waiting-on-api-review"
+    assert detail.work_item_id == "task-api"
+    assert detail.work_item_name == "API handoff"
+    assert detail.pod_id is None
+    assert detail.unattributed is False
+    assert detail.first_seen_on == first_seen_on
+    assert detail.age_days == 3
+
+
+def _persona_service(store: InMemoryGraphStore) -> PersonaViewService:
+    return PersonaViewService(
+        graph_repository=store,
+        status_repository=store,
+        rollup_repository=store,
+        time_series_repository=store,
+    )
+
+
+async def _two_pod_store() -> InMemoryGraphStore:
+    store = InMemoryGraphStore()
+    developer = Developer(tenant_id="demo", id="dev-1", name="Asha")
+    await store.upsert_node(developer)
+    for pod_id, pod_name in (("pod-a", "Pod A"), ("pod-b", "Pod B")):
+        await store.upsert_node(Pod(tenant_id="demo", id=pod_id, name=pod_name))
+        await store.add_edge(
+            GraphEdge(
+                tenant_id="demo",
+                from_node_id=pod_id,
+                to_node_id="dev-1",
+                kind=EdgeKind.CONTAINS,
+            )
+        )
+    return store
+
+
+def _status(
+    developer_id: str,
+    as_of: date,
+    *,
+    blockers: tuple[str, ...] = (),
+) -> DeveloperStatus:
+    return DeveloperStatus(
+        tenant_id="demo",
+        developer_id=developer_id,
+        as_of=as_of,
+        source=StatusSource.CONFIRMED,
+        blockers=blockers,
+        summary="Status summary.",
+    )
+
+
+def _blocker_row(
+    description: str,
+    *,
+    as_of: date,
+    developer_id: str = "dev-1",
+    work_item_id: str | None = None,
+    pod_id: str | None = None,
+    last_seen_on: date | None = None,
+) -> DeveloperBlocker:
+    return DeveloperBlocker(
+        tenant_id="demo",
+        blocker_id=f"blk-{normalize_blocker_key(description).replace(' ', '-')}",
+        developer_id=developer_id,
+        description=description,
+        normalized_key=normalize_blocker_key(description),
+        work_item_id=work_item_id,
+        pod_id=pod_id,
+        source=BlockerSource.CHECKIN,
+        first_seen_on=as_of,
+        last_seen_on=last_seen_on or as_of,
+    )
 
 
 async def _populate_developer_task_tree(store: InMemoryGraphStore) -> Program:
