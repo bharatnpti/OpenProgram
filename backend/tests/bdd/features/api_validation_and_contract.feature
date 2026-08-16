@@ -31,7 +31,10 @@ Feature: Simulator API validation, webhook path, and message contract
     Then the response status code should be 200
     And the response status should be "processed"
     And developer "U1003" should have a confirmed status
-    And the simulator message count is 1
+    # 2 = the check-in DM plus the "Got it" ack sent on finalization. The reply
+    # itself arrived over the webhook, so it is never echoed into the simulator.
+    And the simulator message count is 2
+    And a bot ack message should be recorded for member "U1003"
 
   @ms_e2e_039
   Scenario: Simulator message payload contract is complete for bot and user messages

@@ -13,13 +13,20 @@ import { RagChip } from "../../components/ui/RagChip";
 import { todayIso } from "../../lib/today";
 import { toneForRag } from "../../lib/status";
 
+interface BlockerRow {
+  blocker_id: string | null;
+  description: string;
+  work_item_id: string | null;
+  resolved: boolean;
+}
+
 export function DeveloperToday() {
   const asOf = todayIso();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [correctOpen, setCorrectOpen] = useState(false);
   const [summary, setSummary] = useState("");
-  const [blockers, setBlockers] = useState("");
+  const [blockerRows, setBlockerRows] = useState<BlockerRow[]>([]);
   const [etaChange, setEtaChange] = useState("");
 
   const focus = useQuery({
@@ -38,7 +45,22 @@ export function DeveloperToday() {
   useEffect(() => {
     if (myStatus.data) {
       setSummary(myStatus.data.summary);
-      setBlockers(myStatus.data.blockers.join("\n"));
+      const details = myStatus.data.blocker_details ?? [];
+      setBlockerRows(
+        details.length
+          ? details.map((detail) => ({
+              blocker_id: detail.blocker_id,
+              description: detail.description,
+              work_item_id: detail.work_item_id,
+              resolved: false,
+            }))
+          : myStatus.data.blockers.map((description) => ({
+              blocker_id: null,
+              description,
+              work_item_id: null,
+              resolved: false,
+            })),
+      );
       setEtaChange(myStatus.data.eta_change_days != null ? String(myStatus.data.eta_change_days) : "");
     }
   }, [myStatus.data]);
@@ -53,18 +75,24 @@ export function DeveloperToday() {
   });
 
   const correctStatus = useMutation({
-    mutationFn: () =>
-      apiClient.correctMyStatus(
+    mutationFn: () => {
+      const rows = blockerRows.filter((row) => row.description.trim());
+      return apiClient.correctMyStatus(
         {
           summary,
-          blockers: blockers
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean),
+          blockers: rows.filter((row) => !row.resolved).map((row) => row.description.trim()),
+          blocker_items: rows.map((row) => ({
+            blocker_id: row.blocker_id,
+            description: row.description.trim(),
+            work_item_id: row.work_item_id,
+            pod_id: null,
+            resolved: row.resolved,
+          })),
           eta_change_days: etaChange.trim() ? Number(etaChange) : null,
         },
         asOf,
-      ),
+      );
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["persona", "my-status"] });
       await queryClient.invalidateQueries({ queryKey: ["persona", "focus"] });
@@ -74,6 +102,7 @@ export function DeveloperToday() {
   });
 
   const confirmed = myStatus.data?.developer_confirmed ?? false;
+  const blockerDetails = myStatus.data?.blocker_details ?? [];
   const blockerList = myStatus.data?.blockers ?? focus.data?.blockers ?? [];
   const etaDays = myStatus.data?.eta_change_days ?? null;
 
@@ -88,13 +117,30 @@ export function DeveloperToday() {
           <p className="mt-3.5 text-[17px] leading-snug">
             {focus.data?.summary ?? myStatus.data?.summary ?? "No check-in on record yet."}
           </p>
-          {(blockerList.length > 0 || etaDays != null) && (
+          {(blockerDetails.length > 0 || blockerList.length > 0 || etaDays != null) && (
             <div className="mt-4 flex flex-wrap gap-2.5">
-              {blockerList.map((blocker, index) => (
-                <RagChip key={index} tone="danger" dot pulse>
-                  {blocker}
-                </RagChip>
-              ))}
+              {blockerDetails.length > 0
+                ? blockerDetails.map((detail) => (
+                    <RagChip
+                      key={detail.blocker_id}
+                      tone={detail.unattributed ? "warning" : "danger"}
+                      dot
+                      pulse={!detail.unattributed}
+                    >
+                      {detail.description}
+                      {detail.work_item_id ? (
+                        <span className="font-medium opacity-70">· {detail.work_item_id}</span>
+                      ) : null}
+                      {detail.unattributed ? (
+                        <span className="font-medium opacity-70">· unattributed</span>
+                      ) : null}
+                    </RagChip>
+                  ))
+                : blockerList.map((blocker, index) => (
+                    <RagChip key={index} tone="danger" dot pulse>
+                      {blocker}
+                    </RagChip>
+                  ))}
               {etaDays != null ? (
                 <RagChip tone="warning">
                   ETA {etaDays >= 0 ? "+" : ""}
@@ -229,14 +275,79 @@ export function DeveloperToday() {
             />
           </div>
           <div>
-            <label className="text-[13px] font-bold text-grey-secondary">
-              Blockers (one per line)
-            </label>
-            <TextArea
-              className="mt-1.5"
-              value={blockers}
-              onChange={(event) => setBlockers(event.target.value)}
-            />
+            <label className="text-[13px] font-bold text-grey-secondary">Blockers</label>
+            <div className="mt-1.5 flex flex-col gap-2.5">
+              {blockerRows.map((row, index) => (
+                <div
+                  key={row.blocker_id ?? `new-${index}`}
+                  className="flex flex-col gap-2 rounded-2xl border border-grey-border p-3"
+                >
+                  <TextInput
+                    value={row.description}
+                    placeholder="Blocker description"
+                    className={row.resolved ? "line-through opacity-60" : undefined}
+                    onChange={(event) =>
+                      setBlockerRows((rows) =>
+                        rows.map((item, i) =>
+                          i === index ? { ...item, description: event.target.value } : item,
+                        ),
+                      )
+                    }
+                  />
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={row.work_item_id ?? ""}
+                      disabled={row.resolved}
+                      className="h-9 min-w-0 flex-1 rounded-full border border-grey-border bg-white px-3 text-[13px] outline-none focus:border-ink disabled:opacity-60"
+                      onChange={(event) =>
+                        setBlockerRows((rows) =>
+                          rows.map((item, i) =>
+                            i === index
+                              ? { ...item, work_item_id: event.target.value || null }
+                              : item,
+                          ),
+                        )
+                      }
+                    >
+                      <option value="">No work item</option>
+                      {(focus.data?.tasks ?? []).map((task) => (
+                        <option key={task.id} value={task.id}>
+                          {task.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Pill
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() =>
+                        setBlockerRows((rows) =>
+                          rows.map((item, i) =>
+                            i === index ? { ...item, resolved: !item.resolved } : item,
+                          ),
+                        )
+                      }
+                    >
+                      {row.resolved ? "Reopen" : "Resolve"}
+                    </Pill>
+                    {row.resolved ? <RagChip tone="success">resolved</RagChip> : null}
+                  </div>
+                </div>
+              ))}
+              <Pill
+                variant="ghost"
+                size="sm"
+                className="self-start"
+                onClick={() =>
+                  setBlockerRows((rows) => [
+                    ...rows,
+                    { blocker_id: null, description: "", work_item_id: null, resolved: false },
+                  ])
+                }
+              >
+                Add blocker
+              </Pill>
+            </div>
           </div>
           <div>
             <label className="text-[13px] font-bold text-grey-secondary">ETA change (days)</label>

@@ -19,6 +19,7 @@ from core.application.flow_metrics_service import (
     WorkstreamFlowView,
 )
 from core.application.persona_views import (
+    BlockerDetailView,
     BlockerView,
     CheckinDeveloperView,
     FocusItemView,
@@ -43,7 +44,7 @@ from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatu
 from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.directory import DirectoryUser
 from core.domain.escalation import EscalationContact, EscalationTarget, PodEscalationContacts
-from core.domain.graph import EdgeKind, GraphEdge, GraphNode, GraphTree, NodeKind
+from core.domain.graph import EdgeKind, EntityRef, GraphEdge, GraphNode, GraphTree, NodeKind
 from core.domain.identity import IdentityLink
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import Rag, RollupFactor
@@ -531,6 +532,14 @@ class EntityRefDto(BaseModel):
     kind: NodeKind
     id: str
 
+    @classmethod
+    def from_domain(cls, ref: EntityRef) -> EntityRefDto:
+        return cls(tenant_id=ref.tenant_id, kind=ref.kind, id=ref.id)
+
+    @classmethod
+    def from_optional(cls, ref: EntityRef | None) -> EntityRefDto | None:
+        return cls.from_domain(ref) if ref is not None else None
+
 
 class RollupFactorDto(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -538,6 +547,11 @@ class RollupFactorDto(BaseModel):
     description: str
     contributes: Rag
     source_ref: EntityRefDto
+    kind: str
+    blocker_id: str | None
+    work_item_ref: EntityRefDto | None
+    unattributed: bool
+    applies_to_pod_ids: list[str]
 
     @classmethod
     def from_domain(cls, factor: RollupFactor) -> RollupFactorDto:
@@ -549,6 +563,11 @@ class RollupFactorDto(BaseModel):
                 kind=factor.source_ref.kind,
                 id=factor.source_ref.id,
             ),
+            kind=factor.kind.value,
+            blocker_id=factor.blocker_id,
+            work_item_ref=EntityRefDto.from_optional(factor.work_item_ref),
+            unattributed=factor.unattributed,
+            applies_to_pod_ids=list(factor.applies_to_pod_ids),
         )
 
 
@@ -600,6 +619,32 @@ class FocusItemDto(BaseModel):
         )
 
 
+class BlockerDetailDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    blocker_id: str
+    description: str
+    work_item_id: str | None
+    work_item_name: str | None
+    pod_id: str | None
+    unattributed: bool
+    first_seen_on: date
+    age_days: int
+
+    @classmethod
+    def from_view(cls, detail: BlockerDetailView) -> BlockerDetailDto:
+        return cls(
+            blocker_id=detail.blocker_id,
+            description=detail.description,
+            work_item_id=detail.work_item_id,
+            work_item_name=detail.work_item_name,
+            pod_id=detail.pod_id,
+            unattributed=detail.unattributed,
+            first_seen_on=detail.first_seen_on,
+            age_days=detail.age_days,
+        )
+
+
 class FocusResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -611,6 +656,7 @@ class FocusResponse(BaseModel):
     status_as_of: date | None
     summary: str
     blockers: list[str]
+    blocker_details: list[BlockerDetailDto]
     tasks: list[FocusTaskDto]
     focus: list[FocusItemDto]
 
@@ -625,6 +671,7 @@ class FocusResponse(BaseModel):
             status_as_of=view.status_as_of,
             summary=view.summary,
             blockers=list(view.blockers),
+            blocker_details=[BlockerDetailDto.from_view(detail) for detail in view.blocker_details],
             tasks=[FocusTaskDto.from_view(task) for task in view.tasks],
             focus=[FocusItemDto.from_view(item) for item in view.focus],
         )
@@ -634,6 +681,7 @@ class BlockerDto(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: str
+    blocker_id: str
     description: str
     age_days: int
     owner_id: str
@@ -641,11 +689,16 @@ class BlockerDto(BaseModel):
     source: StatusSource
     status_as_of: date
     source_ref: EntityRefDto
+    work_item_ref: EntityRefDto | None
+    pod_ref: EntityRefDto | None
+    unattributed: bool
+    first_seen_on: date
 
     @classmethod
     def from_view(cls, blocker: BlockerView) -> BlockerDto:
         return cls(
             id=blocker.id,
+            blocker_id=blocker.blocker_id,
             description=blocker.description,
             age_days=blocker.age_days,
             owner_id=blocker.owner_id,
@@ -657,6 +710,10 @@ class BlockerDto(BaseModel):
                 kind=blocker.source_ref.kind,
                 id=blocker.source_ref.id,
             ),
+            work_item_ref=EntityRefDto.from_optional(blocker.work_item_ref),
+            pod_ref=EntityRefDto.from_optional(blocker.pod_ref),
+            unattributed=blocker.unattributed,
+            first_seen_on=blocker.first_seen_on,
         )
 
 
@@ -1188,7 +1245,14 @@ class RiskFindingResponse(BaseModel):
     owner_status_summary: str | None
     owner_status_source: StatusSource | None
     owner_status_as_of: date | None
-    owner_status_has_blockers: bool
+    owner_status_has_blockers: bool = Field(
+        description=(
+            "True when the owner has an open blocker relevant to this finding's "
+            "work item: either attributed to that work item or unattributed "
+            "(could concern anything). A blocker attributed to a different work "
+            "item does not count."
+        ),
+    )
     is_watermelon: bool
 
     @classmethod
@@ -1730,21 +1794,45 @@ class MyStatusResponse(BaseModel):
     developer_confirmed: bool
     summary: str
     blockers: list[str]
+    blocker_details: list[BlockerDetailDto] = Field(default_factory=list)
     eta_change_days: int | None
     status_as_of: date
     confirmed_at: datetime | None
 
     @classmethod
-    def from_domain(cls, status: DeveloperStatus) -> MyStatusResponse:
+    def from_domain(
+        cls,
+        status: DeveloperStatus,
+        blocker_details: tuple[BlockerDetailView, ...] = (),
+    ) -> MyStatusResponse:
         return cls(
             source=status.source,
             developer_confirmed=status.developer_confirmed,
             summary=status.summary,
             blockers=list(status.blockers),
+            blocker_details=[BlockerDetailDto.from_view(detail) for detail in blocker_details],
             eta_change_days=status.eta_change_days,
             status_as_of=status.as_of,
             confirmed_at=status.confirmed_at,
         )
+
+
+class BlockerCorrectionItemDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    blocker_id: str | None = None
+    description: str = Field(min_length=1, max_length=500)
+    work_item_id: str | None = None
+    pod_id: str | None = None
+    resolved: bool = False
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("description must not be blank")
+        return stripped
 
 
 class StatusCorrectionRequest(BaseModel):
@@ -1753,6 +1841,13 @@ class StatusCorrectionRequest(BaseModel):
     summary: str = Field(min_length=1)
     blockers: list[str] = Field(default_factory=list)
     eta_change_days: int | None = None
+    blocker_items: list[BlockerCorrectionItemDto] | None = Field(
+        default=None,
+        description=(
+            "Structured blocker corrections. When present, this is the "
+            "authoritative set; the flat blockers list is ignored."
+        ),
+    )
 
     @field_validator("summary")
     @classmethod
@@ -1774,3 +1869,12 @@ class StatusCorrectionRequest(BaseModel):
             seen.add(stripped)
             normalized.append(stripped)
         return normalized
+
+    @field_validator("blocker_items")
+    @classmethod
+    def limit_blocker_items(
+        cls, value: list[BlockerCorrectionItemDto] | None
+    ) -> list[BlockerCorrectionItemDto] | None:
+        if value is not None and len(value) > 20:
+            raise ValueError("blocker_items must contain at most 20 items")
+        return value

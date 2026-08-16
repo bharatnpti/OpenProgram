@@ -225,7 +225,15 @@ export function PodDetailPage() {
                       className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-sm"
                     >
                       <div className="min-w-0">
-                        <div className="truncate font-medium">{blocker.description}</div>
+                        <div className="flex flex-wrap items-center gap-1.5 font-medium">
+                          <span className="truncate">{blocker.description}</span>
+                          {blocker.work_item_ref ? (
+                            <Badge tone="neutral">{blocker.work_item_ref.id}</Badge>
+                          ) : blocker.pod_ref ? (
+                            <Badge tone="neutral">{blocker.pod_ref.id}</Badge>
+                          ) : null}
+                          {blocker.unattributed && <Badge tone="warning">unattributed</Badge>}
+                        </div>
                         <div className="truncate text-xs text-muted-foreground">
                           {blocker.owner_name} / {blocker.source}
                         </div>

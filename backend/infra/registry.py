@@ -12,6 +12,8 @@ from redis.asyncio import Redis
 from config.settings import Settings
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.availability import AvailabilityService
+from core.application.blocker_lifecycle import BlockerLifecycleService
+from core.application.blocker_resolution import BlockerResolutionService
 from core.application.cross_person_service import CrossPersonRequestService
 from core.application.dead_letter_service import DeadLetterService
 from core.application.directory_sync_service import DirectorySyncService
@@ -53,6 +55,7 @@ from core.ports.repositories import (
     StatusRepository,
     SyncCursorRepository,
     TimeSeriesRepository,
+    VectorStore,
     WriteBackAuditRepository,
     WriteBackConfigRepository,
 )
@@ -81,6 +84,7 @@ from infra.persistence.postgres_directory import PostgresDirectoryUserRepository
 from infra.persistence.postgres_graph import (
     PostgresGraphRepository,
     PostgresTimeSeriesRepository,
+    PostgresVectorStore,
 )
 from infra.persistence.postgres_inbound import PostgresInboundChatEventRepository
 from infra.persistence.postgres_status import (
@@ -113,6 +117,7 @@ class ServiceRegistry:
         default=None,
         init=False,
     )
+    _postgres_vector_store: PostgresVectorStore | None = field(default=None, init=False)
     _postgres_status_repository: PostgresStatusRepository | None = field(default=None, init=False)
     _postgres_conversation_repository: PostgresConversationRepository | None = field(
         default=None,
@@ -187,6 +192,13 @@ class ServiceRegistry:
         if self._postgres_time_series_repository is None:
             self._postgres_time_series_repository = PostgresTimeSeriesRepository(self._executor())
         return self._postgres_time_series_repository
+
+    def vector_store(self) -> VectorStore:
+        if self.settings.runtime_mode == "memory":
+            return self._memory_graph_store()
+        if self._postgres_vector_store is None:
+            self._postgres_vector_store = PostgresVectorStore(self._executor())
+        return self._postgres_vector_store
 
     def cross_person_request_repository(self) -> CrossPersonRequestRepository:
         if self.settings.runtime_mode == "memory":
@@ -710,7 +722,15 @@ class ServiceRegistry:
         return AvailabilityService(self.calendar_provider())
 
     def self_status_service(self) -> SelfStatusService:
-        return SelfStatusService(self.status_repository())
+        return SelfStatusService(
+            self.status_repository(),
+            blocker_lifecycle=BlockerLifecycleService(
+                self.status_repository(), self.graph_repository()
+            ),
+            blocker_resolution=BlockerResolutionService(
+                self.graph_repository(), self.status_repository()
+            ),
+        )
 
     def write_back_service(self) -> WriteBackService:
         return WriteBackService(
@@ -737,6 +757,7 @@ class ServiceRegistry:
             directory_repository=self.directory_user_repository(),
             identity_link_repository=self.identity_link_repository(),
             write_back_service=self.write_back_service(),
+            graph_repository=self.graph_repository(),
             model=self.settings.litellm_model,
             tool_agent=tool_agent,
             conversation_retention_days=self.settings.conversation_retention_days,

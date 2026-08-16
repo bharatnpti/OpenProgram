@@ -258,6 +258,15 @@ def demo_edges(tenant_id: str) -> tuple[GraphEdge, ...]:
             kind=EdgeKind.CONTAINS,
             valid_from=start,
         ),
+        # Liam belongs to two pods: multi-pod membership keeps blocker
+        # attribution honest in fixtures-backed tests.
+        GraphEdge(
+            tenant_id=tenant_id,
+            from_node_id="pod-experience",
+            to_node_id="dev-liam",
+            kind=EdgeKind.CONTAINS,
+            valid_from=start,
+        ),
         GraphEdge(
             tenant_id=tenant_id,
             from_node_id="pod-experience",

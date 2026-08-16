@@ -45,10 +45,10 @@ class DatabaseExtensionsReadinessProbe:
                 """
                 SELECT extname
                 FROM pg_extension
-                WHERE extname IN ('timescaledb')
+                WHERE extname IN ('age', 'timescaledb', 'vector')
                 """
             )
-            return {str(row["extname"]) for row in rows} == {"timescaledb"}
+            return {str(row["extname"]) for row in rows} == {"age", "timescaledb", "vector"}
 
 
 @dataclass(frozen=True)

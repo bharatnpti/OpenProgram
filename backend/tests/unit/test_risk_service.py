@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
+from core.application.blocker_resolution import BlockerResolutionService
 from core.application.risk_service import RiskService
 from core.domain.errors import GraphNotFound
 from core.domain.graph import EntityRef, FactEvent, NodeKind
@@ -53,6 +54,7 @@ def _service(store: InMemoryGraphStore, **overrides: object) -> RiskService:
         graph_repository=store,
         time_series_repository=store,
         status_repository=store,
+        blocker_resolution=BlockerResolutionService(store, store),
         provider_config=RiskProviderConfig(**overrides),
     )
 

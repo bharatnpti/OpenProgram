@@ -5,6 +5,8 @@ from datetime import UTC, date, datetime, time
 from enum import StrEnum
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from core.domain.blockers import BlockerReport
+
 
 def resolve_timezone(pref_tz: str | None, tenant_default: str) -> ZoneInfo:
     """Resolve a check-in timezone, preferring the developer preference.
@@ -80,6 +82,13 @@ class CheckInSignals:
     eta_answered: bool = False
     requests: tuple[CrossPersonMention, ...] = ()
     issue_updates: tuple[IssueClaim, ...] = ()
+    # Structured per-blocker statements (description + optional issue key or
+    # pod). When present, ``blockers`` mirrors their descriptions; legacy
+    # replies without details keep the flat strings only.
+    blocker_reports: tuple[BlockerReport, ...] = ()
+    # Real blocker ids the reply explicitly resolved (mapped from the
+    # bracketed handles shown in the prior-blockers prompt context).
+    resolved_blocker_ids: tuple[str, ...] = ()
     # False when the model output could not be parsed into structured signals, so
     # downstream rollups must not treat the check-in as confirmed/green.
     parser_confident: bool = True

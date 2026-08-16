@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Protocol
 
+from core.domain.blockers import DeveloperBlocker
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationTurn
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
@@ -16,6 +17,7 @@ from core.domain.graph import (
     GraphNode,
     GraphTree,
     NodeKind,
+    VectorMatch,
 )
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
@@ -59,6 +61,12 @@ class GraphRepository(Protocol):
     async def active_developer_memberships(
         self, tenant_id: str, developer_id: str, as_of: date
     ) -> list[GraphEdge]: ...
+
+    async def pods_containing_developer(
+        self, tenant_id: str, developer_id: str, as_of: date
+    ) -> list[GraphNode]: ...
+
+    async def pods_for_task(self, tenant_id: str, task_id: str, as_of: date) -> list[GraphNode]: ...
 
 
 class TimeSeriesRepository(Protocol):
@@ -202,6 +210,28 @@ class StatusRepository(Protocol):
     async def checkin_clarification_count(self, tenant_id: str, correlation_id: str) -> int: ...
 
     async def record_developer_status(self, status: DeveloperStatus) -> None: ...
+
+    async def record_developer_blockers(
+        self, tenant_id: str, blockers: Sequence[DeveloperBlocker]
+    ) -> None: ...
+
+    async def record_developer_status_with_blockers(
+        self, status: DeveloperStatus, blockers: Sequence[DeveloperBlocker]
+    ) -> None: ...
+
+    async def open_blockers(
+        self, tenant_id: str, developer_id: str, as_of: date
+    ) -> list[DeveloperBlocker]: ...
+
+    async def open_blockers_for_developers(
+        self, tenant_id: str, developer_ids: Sequence[str], as_of: date
+    ) -> list[DeveloperBlocker]: ...
+
+    async def blockers_for_work_item(
+        self, tenant_id: str, work_item_id: str, as_of: date
+    ) -> list[DeveloperBlocker]: ...
+
+    async def has_blocker_rows(self, tenant_id: str, developer_id: str) -> bool: ...
 
     async def latest_developer_status(
         self, tenant_id: str, developer_id: str, as_of: date
@@ -358,9 +388,7 @@ class WriteBackAuditRepository(Protocol):
         correlation_id: str,
     ) -> WriteBackAudit | None: ...
 
-    async def get_writeback_audit(
-        self, tenant_id: str, audit_id: str
-    ) -> WriteBackAudit | None: ...
+    async def get_writeback_audit(self, tenant_id: str, audit_id: str) -> WriteBackAudit | None: ...
 
     async def count_applied_writebacks(
         self, tenant_id: str, since: datetime | None = None
@@ -369,3 +397,13 @@ class WriteBackAuditRepository(Protocol):
     async def list_applied_writebacks(
         self, tenant_id: str, limit: int, since: datetime | None = None
     ) -> list[WriteBackAudit]: ...
+
+
+class VectorStore(Protocol):
+    async def upsert_embedding(
+        self, tenant_id: str, entity_ref: EntityRef, vector: Sequence[float]
+    ) -> None: ...
+
+    async def search(
+        self, tenant_id: str, vector: Sequence[float], limit: int
+    ) -> list[VectorMatch]: ...

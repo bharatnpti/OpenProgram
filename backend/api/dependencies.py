@@ -6,6 +6,7 @@ from fastapi import Header, HTTPException, Request, status
 
 from config.settings import Settings
 from core.application.ask_service import AskService
+from core.application.blocker_resolution import BlockerResolutionService
 from core.application.config_service import ConfigService, DirectoryService
 from core.application.cross_person_service import CrossPersonRequestService
 from core.application.dead_letter_service import DeadLetterService
@@ -124,6 +125,9 @@ def get_risk_service(request: Request) -> RiskService:
         graph_repository=registry.graph_repository(),
         time_series_repository=registry.time_series_repository(),
         status_repository=registry.status_repository(),
+        blocker_resolution=BlockerResolutionService(
+            registry.graph_repository(), registry.status_repository()
+        ),
         rollup_repository=registry.rollup_repository(),
         provider_config=RiskProviderConfig(
             jira_base_url=settings.jira_base_url,
