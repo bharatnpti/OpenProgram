@@ -292,7 +292,7 @@ class _FakeReadinessExecutor:
         params: tuple[object, ...] = (),
     ) -> list[dict[str, object]]:
         if "pg_extension" in query:
-            return [{"extname": "timescaledb"}]
+            return [{"extname": "age"}, {"extname": "timescaledb"}, {"extname": "vector"}]
         return [{"ok": 1}]
 
 

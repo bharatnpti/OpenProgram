@@ -21,6 +21,7 @@ from config.settings import Settings
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.self_status_service import SelfStatusService
 from core.domain.auth import Principal
+from core.domain.blockers import BlockerReport
 from core.domain.errors import AuthorizationDenied
 from core.domain.status import CheckInPreference
 from infra.registry import ServiceRegistry
@@ -35,10 +36,14 @@ async def get_my_status(
     as_of: date | None = None,
 ) -> MyStatusResponse:
     _ensure_own_work(principal)
-    status = await service.my_status(principal.tenant_id, principal.subject, as_of or date.today())
+    effective_as_of = as_of or date.today()
+    status = await service.my_status(principal.tenant_id, principal.subject, effective_as_of)
     if status is None:
         raise HTTPException(status_code=404, detail="status is not available")
-    return MyStatusResponse.from_domain(status)
+    details = await service.my_blocker_details(
+        principal.tenant_id, principal.subject, effective_as_of
+    )
+    return MyStatusResponse.from_domain(status, blocker_details=details)
 
 
 @router.post("/me/status/confirm", response_model=MyStatusResponse)
@@ -48,10 +53,14 @@ async def confirm_my_status(
     as_of: date | None = None,
 ) -> MyStatusResponse:
     _ensure_own_work(principal)
-    status = await service.confirm(principal.tenant_id, principal.subject, as_of or date.today())
+    effective_as_of = as_of or date.today()
+    status = await service.confirm(principal.tenant_id, principal.subject, effective_as_of)
     if status is None:
         raise HTTPException(status_code=404, detail="status is not available")
-    return MyStatusResponse.from_domain(status)
+    details = await service.my_blocker_details(
+        principal.tenant_id, principal.subject, effective_as_of
+    )
+    return MyStatusResponse.from_domain(status, blocker_details=details)
 
 
 @router.post("/me/status/correct", response_model=MyStatusResponse)
@@ -62,17 +71,35 @@ async def correct_my_status(
     as_of: date | None = None,
 ) -> MyStatusResponse:
     _ensure_own_work(principal)
+    effective_as_of = as_of or date.today()
+    blocker_reports = (
+        tuple(
+            BlockerReport(
+                description=item.description,
+                issue_key=item.work_item_id,
+                pod_id=item.pod_id,
+                resolved=item.resolved,
+            )
+            for item in request.blocker_items
+        )
+        if request.blocker_items is not None
+        else None
+    )
     status = await service.correct(
         principal.tenant_id,
         principal.subject,
-        as_of or date.today(),
+        effective_as_of,
         summary=request.summary,
         blockers=tuple(request.blockers),
         eta_change_days=request.eta_change_days,
+        blocker_reports=blocker_reports,
     )
     if status is None:
         raise HTTPException(status_code=404, detail="status is not available")
-    return MyStatusResponse.from_domain(status)
+    details = await service.my_blocker_details(
+        principal.tenant_id, principal.subject, effective_as_of
+    )
+    return MyStatusResponse.from_domain(status, blocker_details=details)
 
 
 @router.get("/me/checkin-preference", response_model=CheckinPreferenceResponse)

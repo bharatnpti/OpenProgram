@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 
 import structlog
@@ -8,6 +8,7 @@ import structlog
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.conversation_history import llm_messages_from_turns
 from core.application.json_parsing import extract_json_object
+from core.domain.blockers import BlockerReport, DeveloperBlocker, normalize_blocker_key
 from core.domain.conversation import ConversationTurn
 from core.domain.cross_person import CrossPersonRequestKind
 from core.domain.llm import LlmRequest, LlmResponse
@@ -77,11 +78,12 @@ class StatusParser:
         correlation_id: str,
         conversation_turns: Iterable[ConversationTurn] = (),
         tools: Iterable[AgentTool] = (),
-        prior_blockers: Iterable[str] = (),
+        prior_blockers: Sequence[DeveloperBlocker] = (),
     ) -> CheckInSignals:
+        prior_text, handles = _prior_blocker_prompt(prior_blockers)
         request = LlmRequest(
             tenant_id=tenant_id,
-            prompt=_parser_prompt(raw_reply, prior_blockers=prior_blockers),
+            prompt=_parser_prompt(raw_reply, prior_text=prior_text),
             model=self._model,
             correlation_id=correlation_id,
             system=PARSE_REPLY_SYSTEM_PROMPT,
@@ -106,7 +108,9 @@ class StatusParser:
             # Keep the raw progress note but mark it unverified: with no answered
             # blocker/ETA signals and parser_confident False, it cannot roll up green.
             return CheckInSignals(progress_note=raw_reply, parser_confident=False)
-        return _signals_from_json(parsed, fallback_progress_note=raw_reply)
+        return _signals_from_json(
+            parsed, fallback_progress_note=raw_reply, prior_blocker_handles=handles
+        )
 
     async def _complete(
         self,
@@ -138,14 +142,15 @@ class ClarificationEvaluator:
         correlation_id: str,
         conversation_turns: Iterable[ConversationTurn] = (),
         tools: Iterable[AgentTool] = (),
-        prior_blockers: Iterable[str] = (),
+        prior_blockers: Sequence[DeveloperBlocker] = (),
     ) -> ClarificationDecision:
         if _is_trivial_non_status_reply(raw_reply):
             return ClarificationDecision(sufficient=False, is_status_update=False)
 
+        prior_text, handles = _prior_blocker_prompt(prior_blockers)
         request = LlmRequest(
             tenant_id=tenant_id,
-            prompt=_clarification_prompt(raw_reply, prior_blockers=prior_blockers),
+            prompt=_clarification_prompt(raw_reply, prior_text=prior_text),
             model=self._model,
             correlation_id=correlation_id,
             system=CLARIFICATION_EVALUATOR_SYSTEM_PROMPT,
@@ -173,7 +178,9 @@ class ClarificationEvaluator:
                 sufficient=False,
                 question=GENERIC_CLARIFICATION_QUESTION,
             )
-        return _clarification_decision_from_json(parsed, fallback_progress_note=raw_reply)
+        return _clarification_decision_from_json(
+            parsed, fallback_progress_note=raw_reply, prior_blocker_handles=handles
+        )
 
     async def _complete(
         self,
@@ -205,17 +212,23 @@ async def _complete_json_with_retry(
     return extract_json_object(retry_response.text), retry_response
 
 
-def _parser_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ()) -> str:
+def _parser_prompt(raw_reply: str, *, prior_text: str = "") -> str:
     return (
         "Extract structured check-in signals from the reply below. "
         "Return only a JSON object with keys: progress_note string, "
-        "blockers array of strings, eta_change_days integer or null, blockers_answered boolean, "
+        "blockers array of strings, blocker_details array, resolved_blocker_ids array of "
+        "strings, eta_change_days integer or null, blockers_answered boolean, "
         "eta_answered boolean, requests array, and issue_updates array. "
+        "Each blocker_details item uses keys: description string, issue_key string or null, "
+        "and pod string or null; include one item per blocker stated in the reply, copying an "
+        "issue key or pod/team name only when the reply states it. Keep the blockers array "
+        "equal to the blocker_details descriptions. "
         "Each requests item uses keys: name string, kind dependency/review/input, "
         "note string, email string or null. "
         "Each issue_updates item uses keys: issue_key string, claimed_done boolean, "
         "claimed_state string or null, and note string. "
-        "Do not invent blockers; use an empty blockers array when no blocker is stated. "
+        "Do not invent blockers; use empty blockers and blocker_details arrays when no "
+        "blocker is stated. "
         "Set blockers_answered true only when the reply explicitly says there are no blockers "
         "or names one or more blockers. Set eta_answered true only when the reply explicitly "
         "gives an ETA, ETA change, or says there is no ETA change. "
@@ -223,26 +236,39 @@ def _parser_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ()) -> str
         "or input from a specific named person. Use an empty requests array otherwise. "
         "Only include an issue_updates item when the reply explicitly names an issue key or "
         "unambiguously refers to an active issue in context. "
-        "Previously open blockers are context only; mark them resolved only if the reply says "
-        f"they are resolved.{_prior_blocker_prompt(prior_blockers)}\n\n"
+        "Previously open blockers are context only. When the reply says a previously open "
+        "blocker is resolved, add its bracketed id to resolved_blocker_ids; never mark a "
+        "blocker resolved otherwise. When the reply gives a pod or work item for a previously "
+        "open blocker, add a blocker_details item repeating that blocker's description with "
+        f"the stated issue_key or pod.{prior_text}\n\n"
         f"Reply:\n{raw_reply}"
     )
 
 
-def _clarification_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ()) -> str:
+def _clarification_prompt(raw_reply: str, *, prior_text: str = "") -> str:
     return (
         "Evaluate the latest check-in reply below. Return only a JSON object with keys: "
         "is_status_update boolean, sufficient boolean, question string or null, and "
         "signals object or null. Set is_status_update false for acknowledgements, thanks, "
         "reactions, or questions that do not provide status progress, blockers, or ETA. "
         "The signals object uses keys: progress_note string, blockers array of strings, "
+        "blocker_details array, resolved_blocker_ids array of strings, "
         "eta_change_days integer or null, blockers_answered boolean, eta_answered boolean, "
-        "requests array, and issue_updates array. Each requests item uses keys: name string, "
+        "requests array, and issue_updates array. Each blocker_details item uses keys: "
+        "description string, issue_key string or null, and pod string or null. "
+        "Each requests item uses keys: name string, "
         "kind dependency/review/input, note string, email string or null. Each issue_updates "
         "item uses keys: issue_key string, claimed_done boolean, claimed_state string or null, "
         "and note string. "
-        "Do not invent blockers. Previously open blockers are context only; mark them resolved "
-        "only if the reply says they are resolved. Only include a request when the reply "
+        "Do not invent blockers. Previously open blockers are context only. When the reply "
+        "says a previously open blocker is resolved, add its bracketed id to "
+        "resolved_blocker_ids; never mark a blocker resolved otherwise. When the reply gives "
+        "a pod or work item for a previously open blocker, add a blocker_details item "
+        "repeating that blocker's description with the stated issue_key or pod. "
+        "If the latest reply answers a question about which pod or work item a previously "
+        "open blocker belongs to, treat it as a status update, set sufficient true, and "
+        "record the attribution in blocker_details. "
+        "Only include a request when the reply "
         "explicitly needs a deliverable, review, or input from a specific named person. "
         "Use Jira/Git tools when available to cross-check issue and progress claims. If a reply "
         "says an issue is done but Jira is not done, or claims substantial progress while recent "
@@ -252,7 +278,7 @@ def _clarification_prompt(raw_reply: str, *, prior_blockers: Iterable[str] = ())
         "or names one or more blockers. Set eta_answered true only when the reply explicitly "
         "gives an ETA, ETA change, or says there is no ETA change. "
         "When sufficient is false, question must ask only for the missing status detail."
-        f"{_prior_blocker_prompt(prior_blockers)}\n\n"
+        f"{prior_text}\n\n"
         f"Latest reply:\n{raw_reply}"
     )
 
@@ -261,6 +287,7 @@ def _clarification_decision_from_json(
     value: object,
     *,
     fallback_progress_note: str,
+    prior_blocker_handles: Mapping[str, str] = {},
 ) -> ClarificationDecision:
     if not isinstance(value, Mapping):
         # Unparseable/invalid shape must not finalize as healthy; ask for a status.
@@ -276,12 +303,20 @@ def _clarification_decision_from_json(
         return ClarificationDecision(
             sufficient=False,
             question=GENERIC_CLARIFICATION_QUESTION,
-            signals=_signals_from_json(value, fallback_progress_note=fallback_progress_note),
+            signals=_signals_from_json(
+                value,
+                fallback_progress_note=fallback_progress_note,
+                prior_blocker_handles=prior_blocker_handles,
+            ),
         )
 
     raw_signals = value.get("signals")
     signals = (
-        _signals_from_json(raw_signals, fallback_progress_note=fallback_progress_note)
+        _signals_from_json(
+            raw_signals,
+            fallback_progress_note=fallback_progress_note,
+            prior_blocker_handles=prior_blocker_handles,
+        )
         if isinstance(raw_signals, Mapping)
         else None
     )
@@ -295,11 +330,29 @@ def _clarification_decision_from_json(
     return ClarificationDecision(sufficient=False, question=clean_question, signals=signals)
 
 
-def _prior_blocker_prompt(prior_blockers: Iterable[str]) -> str:
-    blockers = tuple(blocker.strip() for blocker in prior_blockers if blocker.strip())
-    if not blockers:
-        return ""
-    return "\n\nPreviously open blockers:\n" + "\n".join(f"- {blocker}" for blocker in blockers)
+def _prior_blocker_prompt(
+    prior_blockers: Sequence[DeveloperBlocker],
+) -> tuple[str, dict[str, str]]:
+    """Render prior open blockers with bracketed handles, returning the handle map.
+
+    Handles (``B1``, ``B2``, …) are positional per call; the returned map lets
+    the deserializer translate model-reported handles back to real blocker ids
+    so the collector never sees handles.
+    """
+    if not prior_blockers:
+        return "", {}
+    lines: list[str] = []
+    handles: dict[str, str] = {}
+    for index, blocker in enumerate(prior_blockers, start=1):
+        handle = f"B{index}"
+        handles[handle] = blocker.blocker_id
+        suffix = f" ({blocker.work_item_id})" if blocker.work_item_id else ""
+        lines.append(f"- [{handle}] {blocker.description}{suffix}")
+    text = (
+        "\n\nPreviously open blockers (reference the bracketed id in resolved_blocker_ids):\n"
+        + "\n".join(lines)
+    )
+    return text, handles
 
 
 def _is_trivial_non_status_reply(raw_reply: str) -> bool:
@@ -316,12 +369,23 @@ def _is_trivial_non_status_reply(raw_reply: str) -> bool:
     }
 
 
-def _signals_from_json(value: object, *, fallback_progress_note: str) -> CheckInSignals:
+def _signals_from_json(
+    value: object,
+    *,
+    fallback_progress_note: str,
+    prior_blocker_handles: Mapping[str, str] = {},
+) -> CheckInSignals:
     if not isinstance(value, Mapping):
         return CheckInSignals(progress_note=fallback_progress_note)
 
     progress_note = value.get("progress_note")
-    blockers = _string_tuple(value.get("blockers"))
+    legacy_blockers = _string_tuple(value.get("blockers"))
+    details = _blocker_report_tuple(value.get("blocker_details"))
+    blocker_reports = _merge_blocker_reports(details, legacy_blockers)
+    blockers = tuple(report.description for report in blocker_reports)
+    resolved_blocker_ids = _resolved_blocker_ids(
+        value.get("resolved_blocker_ids"), prior_blocker_handles
+    )
     eta_change_days = _optional_int(value.get("eta_change_days"))
     return CheckInSignals(
         progress_note=progress_note.strip()
@@ -329,11 +393,60 @@ def _signals_from_json(value: object, *, fallback_progress_note: str) -> CheckIn
         else fallback_progress_note,
         blockers=blockers,
         eta_change_days=eta_change_days,
-        blockers_answered=bool(blockers) or _optional_bool(value.get("blockers_answered")),
+        blockers_answered=bool(blockers)
+        or bool(resolved_blocker_ids)
+        or _optional_bool(value.get("blockers_answered")),
         eta_answered=eta_change_days is not None or _optional_bool(value.get("eta_answered")),
         requests=_request_tuple(value.get("requests")),
         issue_updates=_issue_claim_tuple(value.get("issue_updates")),
+        blocker_reports=blocker_reports,
+        resolved_blocker_ids=resolved_blocker_ids,
     )
+
+
+def _blocker_report_tuple(value: object) -> tuple[BlockerReport, ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    reports: list[BlockerReport] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        description = _clean_string(item.get("description"))
+        if description is None:
+            continue
+        reports.append(
+            BlockerReport(
+                description=description,
+                issue_key=_clean_string(item.get("issue_key") or item.get("key")),
+                pod_id=_clean_string(item.get("pod") or item.get("pod_id")),
+            )
+        )
+    return tuple(reports)
+
+
+def _merge_blocker_reports(
+    details: tuple[BlockerReport, ...], legacy: tuple[str, ...]
+) -> tuple[BlockerReport, ...]:
+    """Details win; legacy strings not covered by a detail append as plain reports."""
+    covered = {normalize_blocker_key(report.description) for report in details}
+    extras = tuple(
+        BlockerReport(description=item)
+        for item in legacy
+        if normalize_blocker_key(item) not in covered
+    )
+    return details + extras
+
+
+def _resolved_blocker_ids(value: object, handles: Mapping[str, str]) -> tuple[str, ...]:
+    """Translate bracketed handles (or raw ids) to real blocker ids, deduped."""
+    known_ids = set(handles.values())
+    resolved: list[str] = []
+    for token in _string_tuple(value):
+        stripped = token.strip("[]")
+        blocker_id = handles.get(stripped) or (stripped if stripped in known_ids else None)
+        if blocker_id is not None and blocker_id not in resolved:
+            resolved.append(blocker_id)
+    return tuple(resolved)
 
 
 def _string_tuple(value: object) -> tuple[str, ...]:

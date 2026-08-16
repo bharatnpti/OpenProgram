@@ -30,6 +30,8 @@ export type RollupFactorDto = components["schemas"]["RollupFactorDto"];
 export type FocusResponse = components["schemas"]["FocusResponse"];
 export type MyStatusResponse = components["schemas"]["MyStatusResponse"];
 export type StatusCorrectionRequest = components["schemas"]["StatusCorrectionRequest"];
+export type BlockerDetailDto = components["schemas"]["BlockerDetailDto"];
+export type BlockerCorrectionItemDto = components["schemas"]["BlockerCorrectionItemDto"];
 export type CheckinPreferenceResponse = components["schemas"]["CheckinPreferenceResponse"];
 export type CheckinPreferenceUpdateRequest =
   components["schemas"]["CheckinPreferenceUpdateRequest"];

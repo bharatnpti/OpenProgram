@@ -5,8 +5,10 @@ from collections import deque
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
+from math import sqrt
 from uuid import uuid4
 
+from core.domain.blockers import DeveloperBlocker
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationTurn
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
@@ -21,6 +23,8 @@ from core.domain.graph import (
     GraphNode,
     GraphTree,
     NodeKind,
+    VectorMatch,
+    normalize_vector,
 )
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
@@ -44,6 +48,7 @@ class InMemoryGraphStore:
     _nodes: dict[tuple[str, str], GraphNode] = field(default_factory=dict)
     _edges: list[GraphEdge] = field(default_factory=list)
     _facts: list[FactEvent] = field(default_factory=list)
+    _vectors: dict[tuple[str, str, str], tuple[float, ...]] = field(default_factory=dict)
     _checkins: list[CheckIn] = field(default_factory=list)
     _checkin_correlations: list[CheckInCorrelation] = field(default_factory=list)
     _checkin_preferences: dict[tuple[str, str], CheckInPreference] = field(default_factory=dict)
@@ -55,6 +60,7 @@ class InMemoryGraphStore:
         default_factory=dict
     )
     _developer_statuses: dict[tuple[str, str, date], DeveloperStatus] = field(default_factory=dict)
+    _developer_blockers: dict[tuple[str, str], DeveloperBlocker] = field(default_factory=dict)
     _node_statuses: dict[tuple[str, str, str, date], NodeStatus] = field(default_factory=dict)
     _sync_cursors: dict[tuple[str, str, str], SyncCursor] = field(default_factory=dict)
     _directory_users: dict[tuple[str, str], DirectoryUser] = field(default_factory=dict)
@@ -164,6 +170,51 @@ class InMemoryGraphStore:
             and edge.is_active_on(as_of)
             and (edge.from_node_id == developer_id or edge.to_node_id == developer_id)
         ]
+
+    async def pods_containing_developer(
+        self, tenant_id: str, developer_id: str, as_of: date
+    ) -> list[GraphNode]:
+        pods: dict[str, GraphNode] = {}
+        for edge in self._edges:
+            if (
+                edge.tenant_id != tenant_id
+                or edge.kind is not EdgeKind.CONTAINS
+                or edge.to_node_id != developer_id
+                or not edge.is_active_on(as_of)
+            ):
+                continue
+            node = self._nodes.get((tenant_id, edge.from_node_id))
+            if node is not None and node.kind is NodeKind.POD:
+                pods[node.id] = node
+        return sorted(pods.values(), key=lambda node: node.id)
+
+    async def pods_for_task(self, tenant_id: str, task_id: str, as_of: date) -> list[GraphNode]:
+        """Pods owning a task/work item, via direct containment or a workstream."""
+        containers = [
+            edge.from_node_id
+            for edge in self._edges
+            if edge.tenant_id == tenant_id
+            and edge.kind is EdgeKind.CONTAINS
+            and edge.to_node_id == task_id
+            and edge.is_active_on(as_of)
+        ]
+        candidate_ids = set(containers)
+        for container_id in containers:
+            candidate_ids.update(
+                edge.from_node_id
+                for edge in self._edges
+                if edge.tenant_id == tenant_id
+                and edge.kind is EdgeKind.ASSIGNED_TO
+                and edge.to_node_id == container_id
+                and edge.is_active_on(as_of)
+            )
+        pods = {
+            node.id: node
+            for candidate_id in candidate_ids
+            if (node := self._nodes.get((tenant_id, candidate_id))) is not None
+            and node.kind is NodeKind.POD
+        }
+        return sorted(pods.values(), key=lambda node: node.id)
 
     async def append_fact(self, fact: FactEvent) -> None:
         identity = _fact_identity(fact)
@@ -559,17 +610,13 @@ class InMemoryGraphStore:
             return None
         return min(matches, key=lambda audit: audit.created_at)
 
-    async def get_writeback_audit(
-        self, tenant_id: str, audit_id: str
-    ) -> WriteBackAudit | None:
+    async def get_writeback_audit(self, tenant_id: str, audit_id: str) -> WriteBackAudit | None:
         audit = self._writeback_audit.get(audit_id)
         if audit is None or audit.tenant_id != tenant_id:
             return None
         return audit
 
-    async def count_applied_writebacks(
-        self, tenant_id: str, since: datetime | None = None
-    ) -> int:
+    async def count_applied_writebacks(self, tenant_id: str, since: datetime | None = None) -> int:
         return sum(1 for _ in self._applied_writebacks(tenant_id, since))
 
     async def list_applied_writebacks(
@@ -582,9 +629,7 @@ class InMemoryGraphStore:
         )
         return ordered[:limit]
 
-    def _applied_writebacks(
-        self, tenant_id: str, since: datetime | None
-    ) -> list[WriteBackAudit]:
+    def _applied_writebacks(self, tenant_id: str, since: datetime | None) -> list[WriteBackAudit]:
         return [
             audit
             for audit in self._writeback_audit.values()
@@ -668,6 +713,80 @@ class InMemoryGraphStore:
 
     async def record_developer_status(self, status: DeveloperStatus) -> None:
         self._developer_statuses[(status.tenant_id, status.developer_id, status.as_of)] = status
+
+    async def record_developer_blockers(
+        self, tenant_id: str, blockers: Sequence[DeveloperBlocker]
+    ) -> None:
+        for blocker in blockers:
+            if blocker.tenant_id != tenant_id:
+                msg = "blocker tenant does not match the requested tenant"
+                raise ValueError(msg)
+            key = (blocker.tenant_id, blocker.blocker_id)
+            existing = self._developer_blockers.get(key)
+            if existing is not None:
+                # Match the postgres upsert: first_seen_on and
+                # source_correlation_id are immutable once recorded.
+                blocker = replace(
+                    blocker,
+                    first_seen_on=existing.first_seen_on,
+                    source_correlation_id=existing.source_correlation_id,
+                )
+            self._developer_blockers[key] = blocker
+
+    async def record_developer_status_with_blockers(
+        self, status: DeveloperStatus, blockers: Sequence[DeveloperBlocker]
+    ) -> None:
+        await self.record_developer_status(status)
+        await self.record_developer_blockers(status.tenant_id, blockers)
+
+    async def open_blockers(
+        self, tenant_id: str, developer_id: str, as_of: date
+    ) -> list[DeveloperBlocker]:
+        return sorted(
+            (
+                blocker
+                for blocker in self._developer_blockers.values()
+                if blocker.tenant_id == tenant_id
+                and blocker.developer_id == developer_id
+                and blocker.is_open_on(as_of)
+            ),
+            key=lambda blocker: (blocker.first_seen_on, blocker.blocker_id),
+        )
+
+    async def open_blockers_for_developers(
+        self, tenant_id: str, developer_ids: Sequence[str], as_of: date
+    ) -> list[DeveloperBlocker]:
+        wanted = set(developer_ids)
+        return sorted(
+            (
+                blocker
+                for blocker in self._developer_blockers.values()
+                if blocker.tenant_id == tenant_id
+                and blocker.developer_id in wanted
+                and blocker.is_open_on(as_of)
+            ),
+            key=lambda blocker: (blocker.developer_id, blocker.first_seen_on, blocker.blocker_id),
+        )
+
+    async def blockers_for_work_item(
+        self, tenant_id: str, work_item_id: str, as_of: date
+    ) -> list[DeveloperBlocker]:
+        return sorted(
+            (
+                blocker
+                for blocker in self._developer_blockers.values()
+                if blocker.tenant_id == tenant_id
+                and blocker.work_item_id == work_item_id
+                and blocker.is_open_on(as_of)
+            ),
+            key=lambda blocker: (blocker.developer_id, blocker.first_seen_on, blocker.blocker_id),
+        )
+
+    async def has_blocker_rows(self, tenant_id: str, developer_id: str) -> bool:
+        return any(
+            blocker.tenant_id == tenant_id and blocker.developer_id == developer_id
+            for blocker in self._developer_blockers.values()
+        )
 
     async def latest_developer_status(
         self, tenant_id: str, developer_id: str, as_of: date
@@ -986,6 +1105,28 @@ class InMemoryGraphStore:
         self._inbound_chat_events = retained
         return deleted_count
 
+    async def upsert_embedding(
+        self, tenant_id: str, entity_ref: EntityRef, vector: Sequence[float]
+    ) -> None:
+        self._vectors[(tenant_id, entity_ref.kind.value, entity_ref.id)] = normalize_vector(vector)
+
+    async def search(
+        self, tenant_id: str, vector: Sequence[float], limit: int
+    ) -> list[VectorMatch]:
+        query = normalize_vector(vector)
+        scored: list[VectorMatch] = []
+        for (stored_tenant, kind, entity_id), stored_vector in self._vectors.items():
+            if stored_tenant != tenant_id:
+                continue
+            score = _cosine(query, stored_vector)
+            scored.append(
+                VectorMatch(
+                    entity_ref=EntityRef(tenant_id=tenant_id, kind=_node_kind(kind), id=entity_id),
+                    score=score,
+                )
+            )
+        return sorted(scored, key=lambda match: match.score, reverse=True)[:limit]
+
     async def upsert_users(self, users: Sequence[DirectoryUser]) -> None:
         for user in users:
             self._directory_users[(user.tenant_id, user.external_id)] = user
@@ -1098,6 +1239,21 @@ class InMemoryDirectoryUserRepository(DirectoryUserRepository):
 
     async def deactivate_missing(self, tenant_id: str, seen_external_ids: Sequence[str]) -> int:
         return await self.store.deactivate_missing_directory_users(tenant_id, seen_external_ids)
+
+
+def _cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:
+    if len(left) != len(right) or not left:
+        return 0.0
+    numerator = sum(a * b for a, b in zip(left, right, strict=True))
+    left_norm = sqrt(sum(a * a for a in left))
+    right_norm = sqrt(sum(b * b for b in right))
+    if left_norm == 0.0 or right_norm == 0.0:
+        return 0.0
+    return numerator / (left_norm * right_norm)
+
+
+def _node_kind(value: str) -> NodeKind:
+    return NodeKind(value)
 
 
 def _fact_identity(fact: FactEvent) -> tuple[str, str, str, str, str, datetime]:

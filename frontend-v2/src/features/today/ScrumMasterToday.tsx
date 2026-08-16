@@ -113,6 +113,24 @@ export function ScrumMasterToday() {
                 </div>
               </div>
               <div className="mt-1 text-[13px] text-grey-secondary">{blocker.owner_name}</div>
+              {(blocker.work_item_ref ?? blocker.pod_ref) || blocker.unattributed ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {blocker.work_item_ref ? (
+                    <RagChip tone="neutral" className="h-6 px-2.5 text-[12px]">
+                      {blocker.work_item_ref.id}
+                    </RagChip>
+                  ) : blocker.pod_ref ? (
+                    <RagChip tone="neutral" className="h-6 px-2.5 text-[12px]">
+                      {blocker.pod_ref.id}
+                    </RagChip>
+                  ) : null}
+                  {blocker.unattributed ? (
+                    <RagChip tone="warning" className="h-6 px-2.5 text-[12px]">
+                      unattributed
+                    </RagChip>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-grey-border">
                 <div
                   className="animate-op-bar h-full rounded-full"

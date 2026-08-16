@@ -17,14 +17,16 @@ class FakeLlmProvider:
         purpose = request.metadata.get("purpose")
         if purpose == "parse_checkin_signals":
             text = (
-                '{"progress_note":"Status update received","blockers":[],"eta_change_days":null,'
+                '{"progress_note":"Status update received","blockers":[],"blocker_details":[],'
+                '"resolved_blocker_ids":[],"eta_change_days":null,'
                 '"blockers_answered":true,"eta_answered":true}'
             )
         elif purpose == "evaluate_checkin_clarification":
             text = (
                 '{"sufficient":true,"question":null,'
                 '"signals":{"progress_note":"Status update received",'
-                '"blockers":[],"eta_change_days":null,'
+                '"blockers":[],"blocker_details":[],"resolved_blocker_ids":[],'
+                '"eta_change_days":null,'
                 '"blockers_answered":true,"eta_answered":true}}'
             )
         else:

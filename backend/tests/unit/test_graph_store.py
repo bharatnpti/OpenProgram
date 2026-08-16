@@ -190,3 +190,12 @@ async def test_fact_log_filters_by_observed_since() -> None:
     await store.append_fact(new_fact)
 
     assert await store.list_facts("demo", ref, datetime(2026, 1, 5, tzinfo=UTC)) == [new_fact]
+
+
+async def test_vector_search_returns_best_match() -> None:
+    store = InMemoryGraphStore()
+    ref = EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="task-api")
+    await store.upsert_embedding("demo", ref, [1.0, 0.0])
+    matches = await store.search("demo", [1.0, 0.0], limit=1)
+    assert matches[0].entity_ref == ref
+    assert matches[0].score == 1.0

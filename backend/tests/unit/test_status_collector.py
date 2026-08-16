@@ -474,6 +474,9 @@ async def test_status_collector_handles_reply_by_correlation(
         "blocker_count": 1,
         "has_eta_change": True,
         "eta_change_days": 1,
+        "new_blocker_count": 1,
+        "resolved_blocker_count": 0,
+        "unattributed_blocker_count": 1,
     }
     turns = await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
     assert turns[-1].role is ConversationRole.USER
@@ -2375,3 +2378,255 @@ def test_compose_checkin_ack_low_confidence_falls_back_within_cap() -> None:
     assert len(text) <= 80
     # The fallback keeps the correction hint so a misread stays correctable.
     assert "fix" in text
+
+
+# --- Blocker attribution flow -------------------------------------------------
+
+
+async def _pod_membership(store: InMemoryGraphStore, *pod_names: str) -> None:
+    from core.domain.graph import EdgeKind, GraphEdge, Pod
+
+    for name in pod_names:
+        pod_id = f"pod-{name.lower()}"
+        await store.upsert_node(Pod(tenant_id="demo", id=pod_id, name=name))
+        await store.add_edge(
+            GraphEdge(
+                tenant_id="demo",
+                from_node_id=pod_id,
+                to_node_id="dev-1",
+                kind=EdgeKind.CONTAINS,
+            )
+        )
+
+
+def _attribution_collector(
+    store: InMemoryGraphStore,
+    llm: SequenceLlmProvider,
+    chat: FakeChatProvider | None = None,
+) -> StatusCollector:
+    return StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat or FakeChatProvider(),
+        llm_provider=llm,
+        status_repository=store,
+        time_series_repository=store,
+        conversation_repository=store,
+        graph_repository=store,
+        model="test-model",
+    )
+
+
+def _sufficient_reply_json(
+    *,
+    blockers: tuple[str, ...] = (),
+    details: str = "[]",
+    resolved_ids: str = "[]",
+) -> str:
+    blocker_json = ",".join(f'"{blocker}"' for blocker in blockers)
+    return (
+        '{"is_status_update":true,"sufficient":true,"question":null,'
+        '"signals":{"progress_note":"Working through the queue",'
+        f'"blockers":[{blocker_json}],"blocker_details":{details},'
+        f'"resolved_blocker_ids":{resolved_ids},"eta_change_days":0,'
+        '"blockers_answered":true,"eta_answered":true}}'
+    )
+
+
+async def test_status_collector_asks_attribution_for_multi_pod_unattributed_blocker() -> None:
+    store = InMemoryGraphStore()
+    await _pod_membership(store, "Checkout", "Payments")
+    await _record_open_checkin(store)
+    chat = FakeChatProvider()
+    llm = SequenceLlmProvider(texts=[_sufficient_reply_json(blockers=("staging DB access",))])
+    collector = _attribution_collector(store, llm, chat)
+
+    outcome = await collector.handle_reply(_reply_message("Blocked on staging DB access."))
+
+    assert outcome.kind == "clarifying"
+    assert outcome.status is not None
+    assert outcome.status.source is StatusSource.PARTIAL
+    question = chat.sent[-1].text
+    assert "staging DB access" in question
+    assert "Checkout" in question and "Payments" in question
+    rows = await store.open_blockers("demo", "dev-1", date(2026, 1, 10))
+    assert len(rows) == 1
+    assert rows[0].attribution_asked_at is not None
+    assert rows[0].pod_id is None
+
+
+async def test_status_collector_auto_attributes_single_pod_developer() -> None:
+    store = InMemoryGraphStore()
+    await _pod_membership(store, "Checkout")
+    await _record_open_checkin(store)
+    llm = SequenceLlmProvider(texts=[_sufficient_reply_json(blockers=("staging DB access",))])
+    collector = _attribution_collector(store, llm)
+
+    outcome = await collector.handle_reply(_reply_message("Blocked on staging DB access."))
+
+    assert outcome.kind == "processed"
+    rows = await store.open_blockers("demo", "dev-1", date(2026, 1, 10))
+    assert rows[0].pod_id == "pod-checkout"
+
+
+async def test_status_collector_skips_attribution_when_blocker_has_issue_key() -> None:
+    store = InMemoryGraphStore()
+    await _pod_membership(store, "Checkout", "Payments")
+    await _record_open_checkin(store)
+    details = '[{"description":"vendor API","issue_key":"PAY-7","pod":null}]'
+    llm = SequenceLlmProvider(
+        texts=[_sufficient_reply_json(blockers=("vendor API",), details=details)]
+    )
+    collector = _attribution_collector(store, llm)
+
+    outcome = await collector.handle_reply(_reply_message("PAY-7 blocked on vendor API."))
+
+    assert outcome.kind == "processed"
+    rows = await store.open_blockers("demo", "dev-1", date(2026, 1, 10))
+    assert rows[0].work_item_id == "PAY-7"
+    assert rows[0].attribution_asked_at is None
+
+
+async def test_status_collector_asks_attribution_only_once_per_blocker() -> None:
+    from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
+
+    store = InMemoryGraphStore()
+    await _pod_membership(store, "Checkout", "Payments")
+    await _record_open_checkin(store)
+    await store.record_developer_blockers(
+        "demo",
+        (
+            DeveloperBlocker(
+                tenant_id="demo",
+                blocker_id="blk-1",
+                developer_id="dev-1",
+                description="staging DB access",
+                normalized_key=normalize_blocker_key("staging DB access"),
+                source=BlockerSource.CHECKIN,
+                attribution_asked_at=datetime(2026, 1, 9, 10, 0, tzinfo=UTC),
+                first_seen_on=date(2026, 1, 9),
+                last_seen_on=date(2026, 1, 9),
+            ),
+        ),
+    )
+    llm = SequenceLlmProvider(texts=[_sufficient_reply_json(blockers=("staging DB access",))])
+    collector = _attribution_collector(store, llm)
+
+    outcome = await collector.handle_reply(_reply_message("Still blocked on staging DB access."))
+
+    assert outcome.kind == "processed"
+    rows = await store.open_blockers("demo", "dev-1", date(2026, 1, 10))
+    assert rows[0].pod_id is None  # finalized unattributed, no re-ask
+
+
+async def test_status_collector_attributes_blocker_from_clarification_reply() -> None:
+    from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
+
+    store = InMemoryGraphStore()
+    await _pod_membership(store, "Checkout", "Payments")
+    await _record_open_checkin(store)
+    await store.record_developer_blockers(
+        "demo",
+        (
+            DeveloperBlocker(
+                tenant_id="demo",
+                blocker_id="blk-1",
+                developer_id="dev-1",
+                description="staging DB access",
+                normalized_key=normalize_blocker_key("staging DB access"),
+                source=BlockerSource.CHECKIN,
+                attribution_asked_at=datetime(2026, 1, 10, 9, 11, tzinfo=UTC),
+                first_seen_on=date(2026, 1, 10),
+                last_seen_on=date(2026, 1, 10),
+            ),
+        ),
+    )
+    details = '[{"description":"staging DB access","issue_key":null,"pod":"Checkout"}]'
+    llm = SequenceLlmProvider(
+        texts=[_sufficient_reply_json(blockers=("staging DB access",), details=details)]
+    )
+    collector = _attribution_collector(store, llm)
+
+    outcome = await collector.handle_reply(_reply_message("1: Checkout"))
+
+    assert outcome.kind == "processed"
+    rows = await store.open_blockers("demo", "dev-1", date(2026, 1, 10))
+    assert rows[0].pod_id == "pod-checkout"
+
+
+async def test_status_collector_resolves_blocker_from_model_reported_handle() -> None:
+    from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
+
+    store = InMemoryGraphStore()
+    await _pod_membership(store, "Checkout")
+    await _record_open_checkin(store)
+    await store.record_developer_blockers(
+        "demo",
+        (
+            DeveloperBlocker(
+                tenant_id="demo",
+                blocker_id="blk-1",
+                developer_id="dev-1",
+                description="staging DB access",
+                normalized_key=normalize_blocker_key("staging DB access"),
+                pod_id="pod-checkout",
+                source=BlockerSource.CHECKIN,
+                first_seen_on=date(2026, 1, 8),
+                last_seen_on=date(2026, 1, 9),
+            ),
+        ),
+    )
+    llm = SequenceLlmProvider(texts=[_sufficient_reply_json(resolved_ids='["B1"]')])
+    collector = _attribution_collector(store, llm)
+
+    outcome = await collector.handle_reply(_reply_message("The staging DB blocker is resolved."))
+
+    assert outcome.kind == "processed"
+    assert outcome.status is not None
+    assert outcome.status.blockers == ()
+    assert await store.open_blockers("demo", "dev-1", date(2026, 1, 10)) == []
+    facts = await store.list_facts(
+        "demo", EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1")
+    )
+    resolved_facts = [fact for fact in facts if fact.payload.get("event") == "blocker_resolved"]
+    assert len(resolved_facts) == 1
+    assert resolved_facts[0].payload["blocker_id"] == "blk-1"
+    assert resolved_facts[0].payload["blocker_age_days"] == 2
+
+
+async def test_status_collector_stale_non_response_leaves_lifecycle_untouched() -> None:
+    from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
+
+    store = InMemoryGraphStore()
+    row = DeveloperBlocker(
+        tenant_id="demo",
+        blocker_id="blk-1",
+        developer_id="dev-1",
+        description="staging DB access",
+        normalized_key=normalize_blocker_key("staging DB access"),
+        source=BlockerSource.CHECKIN,
+        first_seen_on=date(2026, 1, 8),
+        last_seen_on=date(2026, 1, 8),
+    )
+    await store.record_developer_blockers("demo", (row,))
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-1",
+            as_of=date(2026, 1, 9),
+            source=StatusSource.CONFIRMED,
+            blockers=("staging DB access",),
+            summary="Blocked.",
+        )
+    )
+    collector = _attribution_collector(store, SequenceLlmProvider(texts=[]))
+
+    stale = await collector.record_non_response(
+        tenant_id="demo",
+        developer_id="dev-1",
+        as_of=date(2026, 1, 10),
+    )
+
+    assert stale.source is StatusSource.STALE
+    assert stale.blockers == ("staging DB access",)
+    rows = await store.open_blockers("demo", "dev-1", date(2026, 1, 10))
+    assert rows == [row]  # untouched: last_seen_on not bumped, still open

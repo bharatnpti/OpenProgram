@@ -24,6 +24,7 @@ from infra.adapters.workflows.temporal import HeartbeatWorkflow, record_heartbea
 from infra.persistence.postgres_graph import (
     PostgresGraphRepository,
     PostgresTimeSeriesRepository,
+    PostgresVectorStore,
 )
 from infra.persistence.postgres_inbound import PostgresInboundChatEventRepository
 from infra.persistence.postgres_status import (
@@ -34,7 +35,9 @@ from infra.persistence.postgres_status import (
 from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
 from tests.contract.contracts import (
     assert_conversation_repository_contract,
+    assert_graph_repository_contract,
     assert_inbound_chat_event_repository_contract,
+    assert_status_repository_contract,
 )
 from tests.fixtures.demo_graph import populate_demo_graph
 
@@ -100,14 +103,15 @@ async def test_postgres_extensions_fixture_vector_and_secret(
 
     executor = PsycopgAsyncExecutor(database_url)
     extension_rows = await executor.fetch(
-        "SELECT extname FROM pg_extension WHERE extname IN ('timescaledb')"
+        "SELECT extname FROM pg_extension WHERE extname IN ('age', 'timescaledb', 'vector')"
     )
-    assert {str(row["extname"]) for row in extension_rows} == {"timescaledb"}
+    assert {str(row["extname"]) for row in extension_rows} == {"age", "timescaledb", "vector"}
 
     graph_repository = PostgresGraphRepository(executor)
     time_series_repository = PostgresTimeSeriesRepository(executor)
     status_repository = PostgresStatusRepository(executor)
     rollup_repository = PostgresRollupRepository(executor)
+    vector_store = PostgresVectorStore(executor)
     try:
         await populate_demo_graph(
             graph_repository,
@@ -151,6 +155,13 @@ async def test_postgres_extensions_fixture_vector_and_secret(
         assert confirmed is not None
         assert confirmed.source.value == "confirmed"
         assert rollups
+
+        vector = [0.0] * 1536
+        vector[0] = 1.0
+        await vector_store.upsert_embedding("demo", ref, vector)
+        matches = await vector_store.search("demo", vector, limit=1)
+        assert matches[0].entity_ref == ref
+        assert matches[0].score == pytest.approx(1.0)
 
         secret_store = FernetSecretStore(
             Fernet(SECRET_KEY.encode("utf-8")),
@@ -253,6 +264,103 @@ async def test_developer_status_signals_migration_and_repository_round_trip(
         executor = PsycopgAsyncExecutor(database_url)
         try:
             assert not await _developer_status_signal_columns_exist(executor)
+        finally:
+            await executor.close()
+    finally:
+        get_settings.cache_clear()
+        await _drop_database(admin_database_url, database_name)
+
+
+async def test_developer_blockers_migration_backfill_and_round_trip(
+    compose_stack: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admin_database_url = _service_url(compose_stack, "postgres", 5432, "postgres")
+    database_name = f"openprogram_it_0029_{uuid4().hex[:12]}"
+    database_url = _service_url(compose_stack, "postgres", 5432, database_name)
+    await _create_database(admin_database_url, database_name)
+    try:
+        # Stop right before the 0029 backfill so legacy JSONB rows can be
+        # seeded first, exactly as a pre-upgrade database would hold them.
+        _run_alembic(monkeypatch, database_url, "upgrade", "0028_developer_blockers")
+        executor = PsycopgAsyncExecutor(database_url)
+        try:
+            assert await _developer_blockers_table_exists(executor)
+            assert await _graph_edges_to_index_exists(executor)
+            # Day 1: two blockers; "dropped blocker" is absent from the latest
+            # row, so the backfill must not resurrect it.
+            await _insert_legacy_developer_status(
+                executor,
+                "legacy",
+                "dev-1",
+                date(2026, 1, 1),
+                ["waiting on API keys", "dropped blocker"],
+            )
+            # The latest row restates the surviving blocker with different
+            # spacing, case, and punctuation: same normalized identity.
+            await _insert_legacy_developer_status(
+                executor,
+                "legacy",
+                "dev-1",
+                date(2026, 1, 3),
+                ["Waiting on  API keys."],
+            )
+            # The synthetic sentinel never becomes a blocker row.
+            await _insert_legacy_developer_status(
+                executor,
+                "legacy",
+                "dev-2",
+                date(2026, 1, 3),
+                ["no confirmed reply"],
+            )
+        finally:
+            await executor.close()
+
+        _run_alembic(monkeypatch, database_url, "upgrade", "head")
+        executor = PsycopgAsyncExecutor(database_url)
+        try:
+            rows = await executor.fetch(
+                """
+                SELECT developer_id, description, normalized_key, source,
+                       first_seen_on, last_seen_on, resolved_on
+                FROM developer_blockers
+                WHERE tenant_id = 'legacy'
+                ORDER BY developer_id, normalized_key
+                """
+            )
+            assert len(rows) == 1
+            backfilled = rows[0]
+            assert str(backfilled["developer_id"]) == "dev-1"
+            # Latest wording wins; the age spans the developer's history.
+            assert str(backfilled["description"]) == "Waiting on  API keys."
+            assert str(backfilled["normalized_key"]) == "waiting on api keys"
+            assert str(backfilled["source"]) == "backfill"
+            assert backfilled["first_seen_on"] == date(2026, 1, 1)
+            assert backfilled["last_seen_on"] == date(2026, 1, 3)
+            assert backfilled["resolved_on"] is None
+
+            await assert_status_repository_contract(PostgresStatusRepository(executor))
+            # upsert_node/add_edge inside the graph contract also sync the AGE
+            # mirror; PostgresGraphRepository prepares each session itself
+            # (LOAD 'age' + search_path), the same construction the fixture
+            # test above uses, so a plain executor is sufficient.
+            await assert_graph_repository_contract(PostgresGraphRepository(executor))
+        finally:
+            await executor.close()
+
+        _run_alembic(monkeypatch, database_url, "downgrade", "0027_backfill_age_graph_mirror")
+        executor = PsycopgAsyncExecutor(database_url)
+        try:
+            assert not await _developer_blockers_table_exists(executor)
+            assert not await _graph_edges_to_index_exists(executor)
+        finally:
+            await executor.close()
+
+        _run_alembic(monkeypatch, database_url, "upgrade", "head")
+        executor = PsycopgAsyncExecutor(database_url)
+        try:
+            assert await _developer_blockers_table_exists(executor)
+            assert await _graph_edges_to_index_exists(executor)
         finally:
             await executor.close()
     finally:
@@ -536,6 +644,50 @@ async def _developer_status_signal_columns_exist(executor: PsycopgAsyncExecutor)
         """
     )
     return {str(row["column_name"]) for row in rows} == {"eta_change_days"}
+
+
+async def _developer_blockers_table_exists(executor: PsycopgAsyncExecutor) -> bool:
+    rows = await executor.fetch("SELECT to_regclass('public.developer_blockers') AS relation_name")
+    return rows[0]["relation_name"] is not None
+
+
+async def _graph_edges_to_index_exists(executor: PsycopgAsyncExecutor) -> bool:
+    rows = await executor.fetch(
+        """
+        SELECT indexname
+        FROM pg_indexes
+        WHERE schemaname = 'public'
+          AND tablename = 'graph_edges'
+          AND indexname = 'graph_edges_to_idx'
+        """
+    )
+    return bool(rows)
+
+
+async def _insert_legacy_developer_status(
+    executor: PsycopgAsyncExecutor,
+    tenant_id: str,
+    developer_id: str,
+    as_of: date,
+    blocker_items: list[str],
+) -> None:
+    """Seed a pre-0029 developer_statuses row with legacy JSONB blockers."""
+    await executor.execute(
+        """
+        INSERT INTO developer_statuses (
+            tenant_id, developer_id, as_of, source, blockers, summary
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """,
+        (
+            tenant_id,
+            developer_id,
+            as_of,
+            "confirmed",
+            {"items": blocker_items},
+            "legacy status row",
+        ),
+    )
 
 
 async def _directory_user_search_indexes_exist(executor: PsycopgAsyncExecutor) -> bool:

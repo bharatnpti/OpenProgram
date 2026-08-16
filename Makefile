@@ -85,7 +85,10 @@ openapi-check:
 	$(MAKE) openapi
 	cd frontend && npx prettier --write src/api/openapi.json
 	cd frontend && npm run generate:client
-	git diff --exit-code frontend/src/api/openapi.json frontend/src/api/generated.ts
+	cp frontend/src/api/openapi.json frontend-v2/src/api/openapi.json
+	cd frontend-v2 && npx prettier --write src/api/openapi.json
+	cd frontend-v2 && npm run generate:client
+	git diff --exit-code frontend/src/api/openapi.json frontend/src/api/generated.ts frontend-v2/src/api/openapi.json frontend-v2/src/api/generated.ts
 
 worker:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m infra.workflows.worker

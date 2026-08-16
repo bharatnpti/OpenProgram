@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 
+from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
 from core.application.proof_links import pull_request_evidence
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
@@ -77,12 +78,16 @@ class RiskService:
         graph_repository: GraphRepository,
         time_series_repository: TimeSeriesRepository,
         status_repository: StatusRepository,
+        blocker_resolution: BlockerResolutionService,
         provider_config: RiskProviderConfig | None = None,
         rollup_repository: RollupRepository | None = None,
     ) -> None:
         self._graph_repository = graph_repository
         self._time_series_repository = time_series_repository
         self._status_repository = status_repository
+        # Scopes "does the owner have blockers?" to the work item at hand so a
+        # disclosed blocker on an unrelated item no longer masks a watermelon.
+        self._blocker_resolution = blocker_resolution
         self._provider_config = provider_config or RiskProviderConfig()
         # Optional: only needed for the ``green_over_red`` drift check, which
         # reads rollup RAG. Absent in signal-only risk-assessment callers.
@@ -166,6 +171,7 @@ class RiskService:
         ]
 
         owner_cache: dict[str, DeveloperStatus | None] = {}
+        blocker_cache: dict[str, tuple[ResolvedBlocker, ...]] = {}
         thresholds_by_workstream_id: dict[str | None, RiskThresholds] = {
             None: self._default_thresholds()
         }
@@ -187,7 +193,7 @@ class RiskService:
             ]
             findings.extend(
                 await self._work_item_findings(
-                    tenant_id, workstream, work_items, thresholds, as_of, owner_cache
+                    tenant_id, workstream, work_items, thresholds, as_of, owner_cache, blocker_cache
                 )
             )
             for item in work_items:
@@ -205,6 +211,7 @@ class RiskService:
                 thresholds_by_workstream_id,
                 as_of,
                 owner_cache,
+                blocker_cache,
             )
         )
         return findings
@@ -217,6 +224,7 @@ class RiskService:
         thresholds: RiskThresholds,
         as_of: date,
         owner_cache: dict[str, DeveloperStatus | None],
+        blocker_cache: dict[str, tuple[ResolvedBlocker, ...]],
     ) -> list[RiskFinding]:
         findings: list[RiskFinding] = []
         for item in work_items:
@@ -250,6 +258,7 @@ class RiskService:
                         owner_id=owner_id,
                         as_of=as_of,
                         owner_cache=owner_cache,
+                        blocker_cache=blocker_cache,
                     )
                 )
             if age_days >= thresholds.stale_days:
@@ -266,6 +275,7 @@ class RiskService:
                         owner_id=owner_id,
                         as_of=as_of,
                         owner_cache=owner_cache,
+                        blocker_cache=blocker_cache,
                     )
                 )
         return findings
@@ -280,6 +290,7 @@ class RiskService:
         thresholds_by_workstream_id: Mapping[str | None, RiskThresholds],
         as_of: date,
         owner_cache: dict[str, DeveloperStatus | None],
+        blocker_cache: dict[str, tuple[ResolvedBlocker, ...]],
     ) -> list[RiskFinding]:
         if not repo_scope:
             return []
@@ -332,6 +343,7 @@ class RiskService:
                     owner_id=owner_id,
                     as_of=as_of,
                     owner_cache=owner_cache,
+                    blocker_cache=blocker_cache,
                 )
             )
         return findings
@@ -350,8 +362,12 @@ class RiskService:
         owner_id: str | None,
         as_of: date,
         owner_cache: dict[str, DeveloperStatus | None],
+        blocker_cache: dict[str, tuple[ResolvedBlocker, ...]],
     ) -> RiskFinding:
         owner_status = await self._owner_status(tenant_id, owner_id, as_of, owner_cache)
+        has_relevant_blockers = await self._owner_has_relevant_blockers(
+            tenant_id, owner_id, entity_ref.id, as_of, blocker_cache
+        )
         return RiskFinding(
             tenant_id=tenant_id,
             rule_id=rule_id,
@@ -367,9 +383,7 @@ class RiskService:
             owner_status_summary=owner_status.summary if owner_status is not None else None,
             owner_status_source=owner_status.source if owner_status is not None else None,
             owner_status_as_of=owner_status.as_of if owner_status is not None else None,
-            owner_status_has_blockers=(
-                bool(owner_status.blockers) if owner_status is not None else False
-            ),
+            owner_status_has_blockers=has_relevant_blockers,
         )
 
     async def _owner_status(
@@ -386,6 +400,43 @@ class RiskService:
                 tenant_id, owner_id, as_of
             )
         return owner_cache[owner_id]
+
+    async def _owner_open_blockers(
+        self,
+        tenant_id: str,
+        owner_id: str,
+        as_of: date,
+        blocker_cache: dict[str, tuple[ResolvedBlocker, ...]],
+    ) -> tuple[ResolvedBlocker, ...]:
+        if owner_id not in blocker_cache:
+            blocker_cache[owner_id] = await self._blocker_resolution.open_blockers_for_developer(
+                tenant_id, owner_id, as_of
+            )
+        return blocker_cache[owner_id]
+
+    async def _owner_has_relevant_blockers(
+        self,
+        tenant_id: str,
+        owner_id: str | None,
+        work_item_id: str,
+        as_of: date,
+        blocker_cache: dict[str, tuple[ResolvedBlocker, ...]],
+    ) -> bool:
+        """True iff an open blocker of the owner can explain THIS work item.
+
+        Relevant means unattributed (it could be about anything, so the owner
+        keeps the benefit of the doubt) or attributed to the work item at
+        hand. A blocker attributed to a different work item no longer vouches
+        for this one.
+        """
+        if owner_id is None:
+            return False
+        blockers = await self._owner_open_blockers(tenant_id, owner_id, as_of, blocker_cache)
+        return any(
+            blocker.unattributed
+            or (blocker.work_item_ref is not None and blocker.work_item_ref.id == work_item_id)
+            for blocker in blockers
+        )
 
     def _default_thresholds(self) -> RiskThresholds:
         return RiskThresholds(
@@ -445,6 +496,7 @@ class RiskService:
         activity_by_repo = await self._repo_activity(tenant_id, repo_scope)
         rag_by_entity = await self._node_status_rag(tenant_id, as_of)
         owner_cache: dict[str, DeveloperStatus | None] = {}
+        blocker_cache: dict[str, tuple[ResolvedBlocker, ...]] = {}
         findings: list[DriftFinding] = []
         for workstream_id in workstream_ids:
             workstream = nodes_by_id.get(workstream_id)
@@ -465,6 +517,7 @@ class RiskService:
                     rag_by_entity,
                     as_of,
                     owner_cache,
+                    blocker_cache,
                 )
                 findings.extend(item_findings)
                 if item_is_red and red_child is None:
@@ -502,6 +555,7 @@ class RiskService:
         rag_by_entity: Mapping[str, Rag],
         as_of: date,
         owner_cache: dict[str, DeveloperStatus | None],
+        blocker_cache: dict[str, tuple[ResolvedBlocker, ...]],
     ) -> tuple[list[DriftFinding], bool]:
         findings: list[DriftFinding] = []
         state = (_string_metadata(item, "state") or "proposed").lower()
@@ -535,7 +589,9 @@ class RiskService:
             and not pr_id
             and owner_status is not None
             and owner_status.source in _GREEN_STATUS_SOURCES
-            and not owner_status.blockers
+            and not await self._owner_has_relevant_blockers(
+                tenant_id, owner_id, item.id, as_of, blocker_cache
+            )
             and not self._has_recent_activity(repo, activity_by_repo, as_of)
             and age_days >= no_activity_days
         ):
@@ -664,24 +720,39 @@ class RiskService:
         A ``said_done_no_pr`` / ``claimed_progress_no_activity`` finding means
         the developer's own status is contradicted by hard signals, so a status
         presented as green (confirmed/inferred) must not stay green: it is
-        recorded as ``partial`` (unconfirmed). ``green_over_red`` is structural,
-        not a personal-claim contradiction, so it never downgrades a person.
+        recorded as ``partial`` (unconfirmed). The downgrade is deliberately
+        person-global: a status is one person-level claim, so one contradicted
+        item taints the whole claim. It is skipped when every contradicted
+        work item already carries an open blocker attributed to it -- the
+        developer disclosed the problem, so the claim was honest.
+        ``green_over_red`` is structural, not a personal-claim contradiction,
+        so it never downgrades a person.
         """
         contradiction_kinds = {
             DriftFindingKind.SAID_DONE_NO_PR,
             DriftFindingKind.CLAIMED_PROGRESS_NO_ACTIVITY,
         }
-        owner_ids = {
-            finding.owner_id
-            for finding in findings
-            if finding.owner_id is not None and finding.kind in contradiction_kinds
-        }
+        contradicted_items_by_owner: dict[str, set[str]] = {}
+        for finding in findings:
+            if finding.owner_id is not None and finding.kind in contradiction_kinds:
+                contradicted_items_by_owner.setdefault(finding.owner_id, set()).add(
+                    finding.entity_ref.id
+                )
+        blocker_cache: dict[str, tuple[ResolvedBlocker, ...]] = {}
         downgraded = 0
-        for owner_id in sorted(owner_ids):
+        for owner_id, item_ids in sorted(contradicted_items_by_owner.items()):
             status = await self._status_repository.latest_developer_status(
                 tenant_id, owner_id, as_of
             )
             if status is None or status.source not in _GREEN_STATUS_SOURCES:
+                continue
+            blockers = await self._owner_open_blockers(tenant_id, owner_id, as_of, blocker_cache)
+            disclosed_items = {
+                blocker.work_item_ref.id
+                for blocker in blockers
+                if blocker.work_item_ref is not None
+            }
+            if item_ids <= disclosed_items:
                 continue
             await self._status_repository.record_developer_status(
                 replace(status, source=StatusSource.PARTIAL, developer_confirmed=False)
@@ -795,11 +866,14 @@ class RiskService:
             latest_by_key[key] = fact
 
         owner_cache: dict[str, DeveloperStatus | None] = {}
+        blocker_cache: dict[str, tuple[ResolvedBlocker, ...]] = {}
         findings: list[RiskFinding] = []
         for fact in latest_by_key.values():
             if _payload_str(fact.payload, "transition") != "opened":
                 continue
-            finding = await self._finding_from_fact(tenant_id, fact, as_of, owner_cache)
+            finding = await self._finding_from_fact(
+                tenant_id, fact, as_of, owner_cache, blocker_cache
+            )
             if finding is not None:
                 findings.append(finding)
         return sorted(
@@ -813,6 +887,7 @@ class RiskService:
         fact: FactEvent,
         as_of: date,
         owner_cache: dict[str, DeveloperStatus | None],
+        blocker_cache: dict[str, tuple[ResolvedBlocker, ...]],
     ) -> RiskFinding | None:
         rule_id_value = _payload_str(fact.payload, "rule_id")
         entity_kind_value = _payload_str(fact.payload, "entity_kind")
@@ -831,6 +906,9 @@ class RiskService:
         detected_at = _optional_datetime(detected_at_value) or fact.observed_at
         owner_id = _payload_str(fact.payload, "owner_id")
         owner_status = await self._owner_status(tenant_id, owner_id, as_of, owner_cache)
+        has_relevant_blockers = await self._owner_has_relevant_blockers(
+            tenant_id, owner_id, entity_id, as_of, blocker_cache
+        )
         current_age_days = max(0, (as_of - detected_at.date()).days) + (
             _payload_int(fact.payload, "age_days") or 0
         )
@@ -855,9 +933,7 @@ class RiskService:
             owner_status_summary=owner_status.summary if owner_status is not None else None,
             owner_status_source=owner_status.source if owner_status is not None else None,
             owner_status_as_of=owner_status.as_of if owner_status is not None else None,
-            owner_status_has_blockers=(
-                bool(owner_status.blockers) if owner_status is not None else False
-            ),
+            owner_status_has_blockers=has_relevant_blockers,
         )
 
     async def _ensure_project(self, tenant_id: str, project_id: str) -> GraphNode:

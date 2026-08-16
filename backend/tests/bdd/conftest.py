@@ -4,6 +4,7 @@ import pytest
 
 from tests.bdd import (
     fixtures,
+    steps_blocker_lifecycle,
     steps_common,
     steps_cross_person_requests,
     steps_redis_persistence,
@@ -22,6 +23,7 @@ from tests.bdd import (
 # picks up the leading-underscore step function names used throughout.
 for _module in (
     fixtures,
+    steps_blocker_lifecycle,
     steps_common,
     steps_cross_person_requests,
     steps_reliability,
@@ -50,4 +52,12 @@ def pytest_configure(config: pytest.Config) -> None:
     )
     config.addinivalue_line(
         "markers", "plan01_retry_finalizes: Plan 01 failed-reply-retried-without-loss scenario"
+    )
+    config.addinivalue_line(
+        "markers",
+        "blocker_lifecycle_attribution: multi-pod blocker attribution clarification scenario",
+    )
+    config.addinivalue_line(
+        "markers",
+        "blocker_lifecycle_stale_carry: non-response leaves blocker lifecycle untouched scenario",
     )

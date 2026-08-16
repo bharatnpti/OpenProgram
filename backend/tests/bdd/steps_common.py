@@ -16,7 +16,12 @@ from infra.adapters.integrations.fake import (
     FakeIssueTracker,
     FakeVcsProvider,
 )
-from tests.bdd.fixtures import World, mock_slack_settings
+from tests.bdd.fixtures import (
+    NON_LOCAL_SETTINGS,
+    World,
+    authenticate_as_admin,
+    mock_slack_settings,
+)
 
 # ---------------------------------------------------------------------------
 # Given
@@ -44,7 +49,12 @@ def _given_simulator_disabled(world: World) -> None:
 
 @given("the backend environment is not local")
 def _given_non_local_environment(world: World) -> None:
-    world.start_app(environment="staging")
+    # The §4f boot guard refuses dev auth and the default Fernet key outside
+    # `local`, so a staging app can only be constructed with real OIDC config.
+    # Authenticate as admin so the simulator's own environment guard (404) is
+    # what the scenario observes, rather than the BFF's 401 for no session.
+    world.start_app(environment="staging", **NON_LOCAL_SETTINGS)
+    authenticate_as_admin(world)
 
 
 @given("the caller is a non-admin principal")
@@ -330,6 +340,21 @@ def _then_bot_message_recorded(world: World, member_id: str) -> None:
     assert message["direction"] == "bot"
 
 
+@then(parsers.parse('a bot ack message should be recorded for member "{member_id}"'))
+def _then_bot_ack_recorded(world: World, member_id: str) -> None:
+    assert world.client is not None
+    chat_id = world.stash.get("chat_ids", {}).get(member_id, member_id)
+    items = world.client.get("/test/chat-simulator/messages").json()["items"]
+    acks = [
+        item
+        for item in items
+        if item["direction"] == "bot"
+        and item["user_id"] == chat_id
+        and item["purpose"] == "status_ack"
+    ]
+    assert acks, f"no status_ack message found for {member_id} ({chat_id})"
+
+
 @then(parsers.parse("the simulator message count is {count:d}"))
 def _then_simulator_message_count(world: World, count: int) -> None:
     assert world.client is not None
@@ -504,6 +529,7 @@ def _dispatch_checkin(
     checkin_date: str | None = None,
 ) -> object:
     assert world.client is not None
+    _pin_checkin_time_to_start_of_day(world, member_id)
     chat_ids = world.stash.get("chat_ids", {})
     payload = {
         "tenant_id": "demo",
@@ -514,6 +540,31 @@ def _dispatch_checkin(
     if checkin_date is not None:
         payload["checkin_date"] = checkin_date
     return world.client.post("/admin/workflows/checkin/dispatch", json=payload)
+
+
+def _pin_checkin_time_to_start_of_day(world: World, member_id: str) -> None:
+    """Make the dispatched check-in's ``asked_at`` land in the past.
+
+    ``asked_at`` is derived from the developer's check-in preference
+    ``local_time``, which defaults to 09:30 -- not from the wall clock. Reply
+    resolution requires ``asked_at <= received_at`` (status_collector
+    ``_local_date_matches``), so a suite run before 09:30 UTC would produce a
+    check-in "asked" in the future and any reply routed by thread/user instead
+    of by explicit correlation id would resolve to nothing and be ignored.
+    Pinning the preference to 00:00 keeps these scenarios independent of the
+    time of day the suite happens to run.
+    """
+    assert world.client is not None
+    response = world.client.put(
+        f"/config/members/{member_id}/checkin-preference",
+        json={"local_time": "00:00:00"},
+    )
+    # 404 means the member does not exist -- that is the subject of the
+    # unknown-member scenarios, which assert on the dispatch failing. Leave the
+    # failure to the dispatch itself rather than masking it here.
+    if response.status_code == 404:
+        return
+    assert response.status_code == 200, response.text
 
 
 def _stash_latest_bot_message(world: World, member_id: str) -> None:
