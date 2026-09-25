@@ -289,10 +289,15 @@ class CrossPersonRequestService:
             kind=NodeKind.DEVELOPER,
             id=request.counterpart_id or request.requester_id,
         )
+        # Both names go on the fact so the feed can read like a sentence about
+        # people. The counterpart's was already here; without the requester's,
+        # the portfolio feed rendered raw ids -- "U1007 needs U1003 for ...".
+        reporter = await self.directory_repository.get(request.tenant_id, request.requester_id)
         payload: dict[str, JsonScalar] = {
             "request_id": request.id,
             "source_checkin_id": request.source_correlation_id,
             "reporter_id": request.requester_id,
+            "reporter_name": reporter.display_name if reporter is not None else None,
             "referenced_person_id": request.counterpart_id,
             "referenced_person_name": request.counterpart_display_name,
             "dependency_kind": _fact_kind(request),
