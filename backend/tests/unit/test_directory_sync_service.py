@@ -212,17 +212,24 @@ async def test_directory_sync_service_with_mock_slack_http_client_is_idempotent(
     first = await service.sync("demo")
     second = await service.sync("demo")
 
+    # Counts follow the mock roster, which is demo data; the invariants under
+    # test are that a re-sync changes nothing and the stale user is retired once.
+    roster = await MockSlackHttpClient(
+        tenant_id="demo", store=InMemoryMockSlackStore()
+    ).list_users()
+    expected_count = len(roster["members"])
+
     assert first.tenant_id == "demo"
-    assert first.synced_count == 3
+    assert first.synced_count == expected_count
     assert first.deactivated_count == 1
     assert second.tenant_id == "demo"
-    assert second.synced_count == 3
+    assert second.synced_count == expected_count
     assert second.deactivated_count == 0
-    assert [user.external_id for user in await repository.search("demo", "", 10)] == [
-        "U1001",
-        "U1002",
-        "U1003",
-    ]
+    # The repository orders by display name, so compare membership, not order.
+    synced_ids = {
+        user.external_id for user in await repository.search("demo", "", expected_count + 5)
+    }
+    assert synced_ids == {member["id"] for member in roster["members"]}
 
 
 async def test_postgres_directory_repository_batches_large_upserts() -> None:

@@ -3,17 +3,21 @@ import { useNavigate } from "react-router-dom";
 import { Check } from "lucide-react";
 
 import { useRole } from "../../app/role";
-import { appRoles, roleLabels, type AppRole } from "../../app/role";
+import { appRoles, initialsFor, roleLabels, type AppRole } from "../../app/role";
 import { cn } from "../../lib/utils";
 
-function initialsFor(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "");
-  return initials.join("") || "OP";
-}
-
 export function AvatarMenu() {
-  const { role, setRole, roleLabel, isDevMode, canAccessAdmin, user } = useRole();
+  const {
+    role,
+    setRole,
+    roleLabel,
+    roles,
+    isDevMode,
+    canAccessAdmin,
+    canAccessRole,
+    actingAs,
+    displayName,
+  } = useRole();
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -29,8 +33,11 @@ export function AvatarMenu() {
     return () => document.removeEventListener("mousedown", onClick);
   }, [open]);
 
-  const displayName = user?.name ?? user?.username ?? roleLabel;
   const initials = initialsFor(displayName);
+  // A person can only be viewed through a lens they actually hold, so the
+  // picker lists their own roles; without a selected person every role is open,
+  // which keeps the plain dev-principal setup working.
+  const selectableRoles: AppRole[] = actingAs ? roles : appRoles;
 
   return (
     <div className="relative" ref={containerRef}>
@@ -39,38 +46,54 @@ export function AvatarMenu() {
         aria-label="Account menu"
         onClick={() => setOpen((current) => !current)}
         className={cn(
-          "grid h-12 w-12 place-items-center rounded-full bg-ink text-[15px] font-bold text-white ring-2",
+          "grid h-12 w-12 shrink-0 place-items-center rounded-full bg-ink text-[15px] font-bold text-white ring-2",
           open ? "ring-magenta" : "ring-white",
         )}
       >
         {initials}
       </button>
       {open ? (
-        <div className="animate-op-pop absolute right-0 top-14 w-[280px] rounded-2xl border border-grey-border bg-white p-2 shadow-op-menu">
+        <div className="animate-op-pop absolute right-0 top-14 z-50 w-[280px] rounded-2xl border border-grey-border bg-white p-2 shadow-op-menu">
           <div className="border-b border-grey-fill px-3.5 py-3">
             <div className="font-bold">{displayName}</div>
-            <div className="text-[13px] text-grey-secondary">{roleLabel} · demo tenant</div>
+            <div className="text-[13px] text-grey-secondary">
+              {actingAs?.title ?? roleLabel} · demo tenant
+            </div>
           </div>
-          <div className="px-3.5 pb-1 pt-2.5 text-xs font-bold uppercase tracking-wide text-grey-secondary">
-            View as
-          </div>
-          {appRoles.map((item) => (
+          {selectableRoles.length > 1 ? (
+            <>
+              <div className="px-3.5 pb-1 pt-2.5 text-xs font-bold uppercase tracking-wide text-grey-secondary">
+                View as
+              </div>
+              {selectableRoles.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  disabled={!isDevMode || !canAccessRole(item)}
+                  onClick={() => setRole(item)}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-lg px-3.5 py-2.5 text-left text-sm hover:bg-grey-fill disabled:cursor-default disabled:hover:bg-transparent",
+                    item === role ? "font-bold text-magenta" : "text-ink",
+                  )}
+                >
+                  {roleLabels[item]}
+                  {item === role ? <Check size={16} /> : null}
+                </button>
+              ))}
+            </>
+          ) : null}
+          <div className="mt-1.5 border-t border-grey-fill pt-1.5">
             <button
-              key={item}
               type="button"
-              disabled={!isDevMode}
-              onClick={() => setRole(item)}
-              className={cn(
-                "flex w-full items-center justify-between rounded-lg px-3.5 py-2.5 text-left text-sm hover:bg-grey-fill disabled:cursor-default disabled:hover:bg-transparent",
-                item === role ? "font-bold text-magenta" : "text-ink",
-              )}
+              onClick={() => {
+                navigate("/chat");
+                setOpen(false);
+              }}
+              className="flex w-full items-center rounded-lg px-3.5 py-2.5 text-left text-sm hover:bg-grey-fill"
             >
-              {roleLabelFor(item)}
-              {item === role ? <Check size={16} /> : null}
+              Check-in chat
             </button>
-          ))}
-          {canAccessAdmin ? (
-            <div className="mt-1.5 border-t border-grey-fill pt-1.5">
+            {canAccessAdmin ? (
               <button
                 type="button"
                 onClick={() => {
@@ -81,24 +104,10 @@ export function AvatarMenu() {
               >
                 Admin configuration
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  navigate("/sim");
-                  setOpen(false);
-                }}
-                className="flex w-full items-center rounded-lg px-3.5 py-2.5 text-left text-sm hover:bg-grey-fill"
-              >
-                Chat simulator
-              </button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>
   );
-}
-
-function roleLabelFor(role: AppRole): string {
-  return roleLabels[role];
 }

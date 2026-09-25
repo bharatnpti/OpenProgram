@@ -52,6 +52,26 @@
         }
       }
     },
+    "/api/v1/auth/dev-users": {
+      "get": {
+        "tags": ["auth"],
+        "summary": "Dev Users",
+        "description": "People the local demo console can act as.\n\nEmpty unless ``demo_mode`` is on, so the frontend picker simply disappears\nby default and anywhere but a local dev-auth tenant. Roles come from the\ndeveloper node's own ``app_roles`` metadata; pod names are resolved through\nmembership edges.",
+        "operationId": "dev_users_api_v1_auth_dev_users_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevUsersResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/login": {
       "get": {
         "tags": ["auth"],
@@ -6192,8 +6212,25 @@
       "get": {
         "tags": ["test-support"],
         "summary": "Chat Simulator Messages",
+        "description": "Simulator transcript, optionally narrowed to one person's own thread.",
         "operationId": "chat_simulator_messages_test_chat_simulator_messages_get",
         "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -6218,6 +6255,73 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ChatSimulatorMessagesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/test/chat-simulator/users/{user_id}/messages": {
+      "post": {
+        "tags": ["test-support"],
+        "summary": "Chat Simulator User Message",
+        "description": "Send a message as one person and let it land in the rollup.\n\nUnlike the reply endpoint this does not need an outstanding bot question:\nif the person speaks first, the check-in is opened for them and the text\nbecomes its reply.",
+        "operationId": "chat_simulator_user_message_test_chat_simulator_users__user_id__messages_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatSimulatorUserMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSimulatorUserMessageResponse"
                 }
               }
             }
@@ -6479,6 +6583,16 @@
                 "type": "null"
               }
             ]
+          },
+          "demo_mode": {
+            "type": "boolean",
+            "title": "Demo Mode",
+            "default": false
+          },
+          "chat_enabled": {
+            "type": "boolean",
+            "title": "Chat Enabled",
+            "default": false
           }
         },
         "type": "object",
@@ -6983,6 +7097,76 @@
         "type": "object",
         "required": ["enabled", "tenant_id", "provider", "message_count"],
         "title": "ChatSimulatorStatusResponse"
+      },
+      "ChatSimulatorUserMessageRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text"
+          },
+          "received_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Received At"
+          },
+          "developer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Developer Id"
+          },
+          "developer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Developer Name"
+          }
+        },
+        "type": "object",
+        "required": ["text"],
+        "title": "ChatSimulatorUserMessageRequest"
+      },
+      "ChatSimulatorUserMessageResponse": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "title": "Message Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "processed_message_id": {
+            "type": "string",
+            "title": "Processed Message Id"
+          },
+          "started_checkin": {
+            "type": "boolean",
+            "title": "Started Checkin",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["message_id", "status", "processed_message_id"],
+        "title": "ChatSimulatorUserMessageResponse"
       },
       "ChatWebhookResponse": {
         "properties": {
@@ -7849,6 +8033,72 @@
         "type": "object",
         "required": ["dead_letters"],
         "title": "DeadLettersResponse"
+      },
+      "DevUserResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Roles"
+          },
+          "pods": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pods"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "roles"],
+        "title": "DevUserResponse",
+        "description": "One switchable person for the local demo persona picker."
+      },
+      "DevUsersResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DevUserResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["items"],
+        "title": "DevUsersResponse"
       },
       "DirectoryItemResponse": {
         "properties": {

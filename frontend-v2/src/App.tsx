@@ -20,12 +20,9 @@ const CoordinationPage = lazy(() =>
 const AdminPage = lazy(() =>
   import("./pages/AdminPage").then((module) => ({ default: module.AdminPage })),
 );
-const SimPage = lazy(() =>
-  import("./pages/SimPage").then((module) => ({ default: module.SimPage })),
+const ChatPage = lazy(() =>
+  import("./pages/ChatPage").then((module) => ({ default: module.ChatPage })),
 );
-
-const chatSimulatorFrontendEnabled =
-  import.meta.env.DEV || import.meta.env.VITE_ENABLE_CHAT_SIMULATOR === "true";
 
 export function App() {
   return (
@@ -56,13 +53,14 @@ export function App() {
                 }
               />
               <Route
-                path="/sim"
+                path="/chat"
                 element={
-                  <RequireChatSimulatorAccess>
-                    <SimPage />
-                  </RequireChatSimulatorAccess>
+                  <RequireChatAccess>
+                    <ChatPage />
+                  </RequireChatAccess>
                 }
               />
+              <Route path="/sim" element={<Navigate to="/chat" replace />} />
               <Route path="*" element={<RootRedirect />} />
             </Route>
           </Routes>
@@ -73,8 +71,10 @@ export function App() {
 }
 
 function RequireAuthenticated({ children }: { children: ReactNode }) {
-  const { authenticated, authLoading, isDevMode, signIn } = useRole();
-  if (authLoading) {
+  const { authenticated, authLoading, isDevMode, peopleLoading, signIn } = useRole();
+  // In dev mode the acting-as person decides the role set, so routes must wait
+  // for the roster rather than briefly deciding access from a stale role.
+  if (authLoading || (isDevMode && peopleLoading)) {
     return <RouteFallback />;
   }
   if (!isDevMode && !authenticated) {
@@ -105,13 +105,13 @@ function RequireAdminAccess({ children }: { children: ReactNode }) {
   return canAccessAdmin ? children : <Navigate to="/today" replace />;
 }
 
-function RequireChatSimulatorAccess({ children }: { children: ReactNode }) {
-  const { canAccessAdmin } = useRole();
-  return canAccessAdmin && chatSimulatorFrontendEnabled ? (
-    children
-  ) : (
-    <Navigate to="/today" replace />
-  );
+/** Chat is everyone's own conversation, so any signed-in role may open it.
+ *
+ * Availability comes from the backend: it is only served on a local tenant
+ * running the built-in chat provider. */
+function RequireChatAccess({ children }: { children: ReactNode }) {
+  const { chatEnabled } = useRole();
+  return chatEnabled ? children : <Navigate to="/today" replace />;
 }
 
 function LoggedOutPage() {

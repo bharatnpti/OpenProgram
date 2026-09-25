@@ -39,6 +39,8 @@ def test_dev_auth_status_returns_configured_principal() -> None:
             "roles": ["admin", "dev"],
             "scopes": ["dev-mode"],
         },
+        "demo_mode": False,
+        "chat_enabled": False,
     }
 
 

@@ -3,12 +3,16 @@ Feature: Mock Slack simulator access control
   automated scenarios.
 
   @ms_e2e_009
-  Scenario: Non-admin cannot use simulator API
+  Scenario: Non-admin is confined to their own conversation
     Given the mock Slack simulator stack is running with a non-admin caller
     When I request the simulator status
-    Then the simulator status response has status code 403
+    Then the simulator status response has status code 200
     When I request the simulator messages
     Then the simulator messages response has status code 403
+    When I request the simulator messages for my own thread
+    Then the response status code should be 200
+    When I request the simulator messages for another person's thread
+    Then the response status code should be 403
     When I reset the simulator
     Then the response status code should be 403
 

@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, date, datetime
 
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from api.main import create_app
 from config.settings import Settings
@@ -26,21 +28,92 @@ def test_chat_simulator_routes_return_404_when_disabled(settings: Settings) -> N
     assert response.status_code == 404
 
 
-def test_chat_simulator_routes_are_admin_only(settings: Settings) -> None:
-    app = create_app(
-        settings=settings.model_copy(
-            update={
-                "chat_provider": "mock_slack",
-                "chat_simulator_enabled": True,
-                "dev_principal_roles": "dev",
-            }
+def test_persona_switching_is_off_unless_demo_mode_is_on(settings: Settings) -> None:
+    """The acting-as headers are inert by default.
+
+    Without ``demo_mode`` the roster is empty and the impersonation headers are
+    ignored, so a request is served as the configured dev principal and never as
+    whoever the caller named.
+    """
+    base = settings.model_copy(update={"dev_principal_subject": "U1001"})
+    headers = {"x-openprogram-dev-user": "U1002", "x-openprogram-dev-roles": "dev"}
+
+    with TestClient(create_app(settings=base)) as client:
+        off_users = client.get("/api/v1/auth/dev-users")
+        off_status = client.get("/api/v1/auth/status", headers=headers)
+
+    assert off_users.json() == {"items": []}
+    assert off_status.json()["demo_mode"] is False
+    assert off_status.json()["user"]["subject"] == "U1001", "header must be ignored"
+
+    with TestClient(create_app(settings=base.model_copy(update={"demo_mode": True}))) as client:
+        on_status = client.get("/api/v1/auth/status", headers=headers)
+
+    assert on_status.json()["demo_mode"] is True
+    assert on_status.json()["user"]["subject"] == "U1002"
+
+
+def test_demo_mode_is_refused_outside_a_local_dev_auth_tenant(settings: Settings) -> None:
+    with pytest.raises(ValidationError):
+        settings.model_copy(update={"demo_mode": True}).model_validate(
+            {**settings.model_dump(), "demo_mode": True, "environment": "staging"}
         )
+
+
+def test_chat_simulator_scopes_a_developer_to_their_own_thread(settings: Settings) -> None:
+    """A developer answers their own check-in; everything wider stays admin-only.
+
+    The simulator stands in for the chat workspace, so a person must be able to
+    read and reply in their own conversation. Reading the whole tenant
+    transcript, speaking as someone else, or clearing history are config acts.
+    """
+    configured = settings.model_copy(
+        update={
+            "chat_provider": "mock_slack",
+            "issue_tracker_provider": "fake",
+            "llm_provider": "fake",
+            "chat_simulator_enabled": True,
+            "dev_principal_roles": "dev",
+            "dev_principal_subject": "U1001",
+        }
     )
+    app = create_app(settings=configured)
 
     with TestClient(app) as client:
-        response = client.get("/test/chat-simulator/status")
+        # Whether the simulator exists at all is a feature flag, not a secret.
+        assert client.get("/test/chat-simulator/status").status_code == 200
 
-    assert response.status_code == 403
+        assert client.get("/test/chat-simulator/messages").status_code == 403
+        assert (
+            client.get("/test/chat-simulator/messages", params={"user_id": "U1002"}).status_code
+            == 403
+        )
+        assert (
+            client.get("/test/chat-simulator/messages", params={"user_id": "U1001"}).status_code
+            == 200
+        )
+
+        assert (
+            client.post(
+                "/test/chat-simulator/users/U1002/messages",
+                json={"text": "speaking for someone else"},
+            ).status_code
+            == 403
+        )
+        own_post = client.post(
+            "/test/chat-simulator/users/U1001/messages",
+            json={"text": "Shipped the API shell; no blockers."},
+        )
+        assert own_post.status_code != 403, own_post.text
+
+        assert client.delete("/test/chat-simulator/state").status_code == 403
+        assert (
+            client.post(
+                "/test/chat-simulator/messages/1.000001/reply",
+                json={"text": "replying as the tenant admin would"},
+            ).status_code
+            == 403
+        )
 
 
 def test_chat_simulator_reply_processes_checkin(settings: Settings) -> None:

@@ -11,6 +11,11 @@ from core.domain.auth import Principal, Role
 class AuthCredentials:
     authorization: str | None = None
     session_id: str | None = None
+    # Local-demo persona switching. Carried only by the dev auth provider, which
+    # is itself refused outside environment='local'; every other provider
+    # ignores these fields.
+    impersonate_subject: str | None = None
+    impersonate_roles: frozenset[Role] | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
