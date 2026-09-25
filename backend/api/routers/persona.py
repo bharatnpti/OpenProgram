@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from enum import StrEnum
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -227,6 +228,14 @@ async def writeback_adoption(
     return WriteBackAdoptionResponse.from_domain(adoption)
 
 
+class MyRequestRelation(StrEnum):
+    """Which side of one's own cross-person requests to return."""
+
+    WAITING = "waiting"
+    RAISED = "raised"
+    BOTH = "both"
+
+
 @router.get("/portfolio/cross-person-requests", response_model=CrossPersonRequestsResponse)
 async def portfolio_cross_person_requests(
     principal: Annotated[Principal, Depends(get_current_principal)],
@@ -248,15 +257,29 @@ async def portfolio_cross_person_requests(
 async def my_cross_person_requests(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[CrossPersonRequestService, Depends(get_cross_person_request_service)],
+    relation: Annotated[MyRequestRelation, Query()] = MyRequestRelation.WAITING,
 ) -> CrossPersonRequestsResponse:
+    """One's own cross-person requests, as counterpart and/or as requester.
+
+    ``waiting`` is the inbox and stays the default. ``raised`` answers "did my
+    ask land?", which had no endpoint at all, and ``both`` serves a screen that
+    shows the two together.
+    """
     _ensure(principal, Capability.READ_OWN_WORK)
-    requests = await service.list_inbox(
-        principal.tenant_id,
-        principal.subject,
-        statuses=(CrossPersonRequestStatus.OPEN, CrossPersonRequestStatus.ACKNOWLEDGED),
-    )
+    active = (CrossPersonRequestStatus.OPEN, CrossPersonRequestStatus.ACKNOWLEDGED)
+    requests: list[CrossPersonRequest] = []
+    if relation in {MyRequestRelation.WAITING, MyRequestRelation.BOTH}:
+        requests.extend(
+            await service.list_inbox(principal.tenant_id, principal.subject, statuses=active)
+        )
+    if relation in {MyRequestRelation.RAISED, MyRequestRelation.BOTH}:
+        requests.extend(
+            await service.list_raised(principal.tenant_id, principal.subject, statuses=active)
+        )
+    # A request one raised on oneself would otherwise appear twice under `both`.
+    unique = list({request.id: request for request in requests}.values())
     return CrossPersonRequestsResponse(
-        requests=[CrossPersonRequestResponse.from_domain(request) for request in requests],
+        requests=[CrossPersonRequestResponse.from_domain(request) for request in unique],
     )
 
 
