@@ -10,7 +10,7 @@ import { firstItemId } from "../lib/selection";
 import { greetingFor, todayIso, todayKicker } from "../lib/today";
 
 export function TodayPage() {
-  const { role, roleLabel, user } = useRole();
+  const { role, displayName } = useRole();
   const asOf = todayIso();
 
   const programs = useQuery({
@@ -19,8 +19,6 @@ export function TodayPage() {
   });
   const programId = firstItemId(programs.data ?? []);
   const program = programs.data?.find((item) => item.id === programId);
-
-  const displayName = user?.name ?? user?.username ?? roleLabel;
 
   return (
     <div className="flex flex-col gap-6">
