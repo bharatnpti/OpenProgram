@@ -30,8 +30,12 @@ function findItem(kind: DeliveryKind, id: string, lists: Lists): DirectoryItemRe
 
 function relatedPills(item: DirectoryItemResponse | undefined, lists: Lists) {
   if (!item) return [];
-  const pills: { kind: DeliveryKind; id: string; name: string; rag: DirectoryItemResponse["rag"] }[] =
-    [];
+  const pills: {
+    kind: DeliveryKind;
+    id: string;
+    name: string;
+    rag: DirectoryItemResponse["rag"];
+  }[] = [];
   item.program_ids.forEach((id) => {
     const match = lists.programs.find((p) => p.id === id);
     if (match) pills.push({ kind: "program", id, name: match.name, rag: match.rag });
@@ -94,20 +98,23 @@ export function DeliveryDetail({
   }
 
   const progress = selection.kind === "project" ? projectProgress.data : workstreamProgress.data;
-  const rag = selection.kind === "pod" ? item.rag : progress?.rag ?? item.rag;
+  const rag = selection.kind === "pod" ? item.rag : (progress?.rag ?? item.rag);
   const tone = toneForRag(rag);
   const percent =
     selection.kind === "pod"
       ? podCheckins.data && podCheckins.data.developers.length > 0
         ? (podCheckins.data.confirmed / podCheckins.data.developers.length) * 100
         : 0
-      : progress?.percent_complete ?? null;
+      : (progress?.percent_complete ?? null);
 
   const tasks = progress?.tasks ?? [];
   const pills = relatedPills(item, lists);
 
   return (
-    <div key={`${selection.kind}-${selection.id}`} className="animate-op-fade-up flex flex-col gap-6">
+    <div
+      key={`${selection.kind}-${selection.id}`}
+      className="animate-op-fade-up flex flex-col gap-6"
+    >
       <Card padding="p-7">
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-[1fr_132px]">
           <div>
@@ -118,7 +125,9 @@ export function DeliveryDetail({
             <p className="mt-1.5 text-[15px] text-grey-secondary">
               {selection.kind} · {item.id}
             </p>
-            <p className="mt-3 text-[16px] text-grey-body">{explanationFor(selection.kind, item)}</p>
+            <p className="mt-3 text-[16px] text-grey-body">
+              {explanationFor(selection.kind, item, lists)}
+            </p>
             {pills.length > 0 ? (
               <div className="mt-5 flex flex-wrap gap-2">
                 {pills.map((pill) => (
@@ -173,7 +182,7 @@ export function DeliveryDetail({
         <Card variant="grey" padding="p-6" className={cn(tasks.length === 0 && "lg:col-span-2")}>
           <h3 className="text-[18px] font-bold">Details</h3>
           <dl className="mt-3 flex flex-col gap-2.5">
-            {detailRows(selection.kind, item, {
+            {detailRows(selection.kind, item, lists, {
               progress,
               checkins: podCheckins.data,
               blockers: podBlockers.data,
@@ -190,30 +199,60 @@ export function DeliveryDetail({
   );
 }
 
-function explanationFor(kind: DeliveryKind, item: DirectoryItemResponse): string {
+function rollupCounts(
+  item: DirectoryItemResponse,
+  lists: Lists,
+): { projects: number; workstreams: number; pods: number } {
+  const projects = lists.projects.filter((project) => item.project_ids.includes(project.id));
+  const workstreams = new Set<string>(item.workstream_ids);
+  const pods = new Set<string>(item.pod_ids);
+  projects.forEach((project) => {
+    project.workstream_ids.forEach((id) => workstreams.add(id));
+    project.pod_ids.forEach((id) => pods.add(id));
+  });
+  return { projects: item.project_ids.length, workstreams: workstreams.size, pods: pods.size };
+}
+
+function explanationFor(kind: DeliveryKind, item: DirectoryItemResponse, lists: Lists): string {
   if (kind === "program") {
-    return `${item.project_ids.length} projects · ${item.workstream_ids.length} workstreams · ${item.pod_ids.length} pods roll up into this program.`;
+    const counts = rollupCounts(item, lists);
+    return `${counts.projects} projects · ${counts.workstreams} workstreams · ${counts.pods} pods roll up into this program.`;
   }
-  if (item.rag === "red") return "Status is blocked based on the latest confirmed or inferred signal.";
-  if (item.rag === "amber") return "Status is at risk based on the latest confirmed or inferred signal.";
-  if (item.rag === "green") return "Status is on track based on the latest confirmed or inferred signal.";
+  if (item.rag === "red")
+    return "Status is blocked based on the latest confirmed or inferred signal.";
+  if (item.rag === "amber")
+    return "Status is at risk based on the latest confirmed or inferred signal.";
+  if (item.rag === "green")
+    return "Status is on track based on the latest confirmed or inferred signal.";
   return "No confirmed or inferred status is available yet.";
 }
 
 function detailRows(
   kind: DeliveryKind,
   item: DirectoryItemResponse,
+  lists: Lists,
   data: {
-    progress?: { total_tasks: number; green_tasks: number; amber_tasks: number; red_tasks: number; unknown_tasks: number; confidence: number | null; source: string } | undefined;
+    progress?:
+      | {
+          total_tasks: number;
+          green_tasks: number;
+          amber_tasks: number;
+          red_tasks: number;
+          unknown_tasks: number;
+          confidence: number | null;
+          source: string;
+        }
+      | undefined;
     checkins: { confirmed: number; developers: unknown[] } | undefined;
     blockers: { blockers: unknown[] } | undefined;
   },
 ): [string, string][] {
   if (kind === "program") {
+    const counts = rollupCounts(item, lists);
     return [
-      ["Projects", String(item.project_ids.length)],
-      ["Workstreams", String(item.workstream_ids.length)],
-      ["Pods", String(item.pod_ids.length)],
+      ["Projects", String(counts.projects)],
+      ["Workstreams", String(counts.workstreams)],
+      ["Pods", String(counts.pods)],
     ];
   }
   if (kind === "pod") {
