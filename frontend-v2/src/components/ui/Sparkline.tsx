@@ -25,7 +25,9 @@ export function Sparkline({
     y: height - ((p.score - min) / range) * height,
     rag: p.rag,
   }));
-  const path = coords.map((c, i) => `${i === 0 ? "M" : "L"}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(" ");
+  const path = coords
+    .map((c, i) => `${i === 0 ? "M" : "L"}${c.x.toFixed(1)},${c.y.toFixed(1)}`)
+    .join(" ");
 
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
@@ -41,13 +43,7 @@ export function Sparkline({
         className="animate-op-draw"
       />
       {coords.map((c, i) => (
-        <circle
-          key={i}
-          cx={c.x}
-          cy={c.y}
-          r={3.5}
-          fill={toneHex[toneForRag(c.rag)]}
-        />
+        <circle key={i} cx={c.x} cy={c.y} r={3.5} fill={toneHex[toneForRag(c.rag)]} />
       ))}
     </svg>
   );

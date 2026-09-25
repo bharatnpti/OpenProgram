@@ -72,11 +72,14 @@ export function RelationshipsPanel({
             )
           }
           onUnlink={() =>
-            confirmUnlink(setConfirm, "Unlink project from program?", () =>
-              void run(
-                () => apiClient.unlinkProjectProgram(projectId, programId),
-                "Unlinked project from program.",
-              ),
+            confirmUnlink(
+              setConfirm,
+              "Unlink project from program?",
+              () =>
+                void run(
+                  () => apiClient.unlinkProjectProgram(projectId, programId),
+                  "Unlinked project from program.",
+                ),
             )
           }
         >
@@ -101,11 +104,14 @@ export function RelationshipsPanel({
             void run(() => apiClient.linkPodProject(podId, linkProjectId), "Linked pod to project.")
           }
           onUnlink={() =>
-            confirmUnlink(setConfirm, "Unlink pod from project?", () =>
-              void run(
-                () => apiClient.unlinkPodProject(podId, linkProjectId),
-                "Unlinked pod from project.",
-              ),
+            confirmUnlink(
+              setConfirm,
+              "Unlink pod from project?",
+              () =>
+                void run(
+                  () => apiClient.unlinkPodProject(podId, linkProjectId),
+                  "Unlinked pod from project.",
+                ),
             )
           }
         >
@@ -128,11 +134,14 @@ export function RelationshipsPanel({
             )
           }
           onUnlink={() =>
-            confirmUnlink(setConfirm, "Unlink workstream from project?", () =>
-              void run(
-                () => apiClient.unlinkProjectWorkstream(workstreamProjectId, projectWorkstreamId),
-                "Unlinked workstream from project.",
-              ),
+            confirmUnlink(
+              setConfirm,
+              "Unlink workstream from project?",
+              () =>
+                void run(
+                  () => apiClient.unlinkProjectWorkstream(workstreamProjectId, projectWorkstreamId),
+                  "Unlinked workstream from project.",
+                ),
             )
           }
         >
@@ -160,11 +169,14 @@ export function RelationshipsPanel({
             )
           }
           onUnlink={() =>
-            confirmUnlink(setConfirm, "Unlink pod from workstream?", () =>
-              void run(
-                () => apiClient.unlinkPodWorkstream(workstreamPodId, podWorkstreamId),
-                "Unlinked pod from workstream.",
-              ),
+            confirmUnlink(
+              setConfirm,
+              "Unlink pod from workstream?",
+              () =>
+                void run(
+                  () => apiClient.unlinkPodWorkstream(workstreamPodId, podWorkstreamId),
+                  "Unlinked pod from workstream.",
+                ),
             )
           }
         >
@@ -192,8 +204,14 @@ export function RelationshipsPanel({
             )
           }
           onUnlink={() =>
-            confirmUnlink(setConfirm, "Unlink member from pod?", () =>
-              void run(() => apiClient.unlinkPodMember(podId, memberId), "Unlinked member from pod."),
+            confirmUnlink(
+              setConfirm,
+              "Unlink member from pod?",
+              () =>
+                void run(
+                  () => apiClient.unlinkPodMember(podId, memberId),
+                  "Unlinked member from pod.",
+                ),
             )
           }
         >
@@ -221,11 +239,14 @@ export function RelationshipsPanel({
             )
           }
           onUnlink={() =>
-            confirmUnlink(setConfirm, "Unlink task from workstream?", () =>
-              void run(
-                () => apiClient.unlinkWorkstreamTask(taskWorkstreamId, workstreamTaskId),
-                "Unlinked task from workstream.",
-              ),
+            confirmUnlink(
+              setConfirm,
+              "Unlink task from workstream?",
+              () =>
+                void run(
+                  () => apiClient.unlinkWorkstreamTask(taskWorkstreamId, workstreamTaskId),
+                  "Unlinked task from workstream.",
+                ),
             )
           }
         >
@@ -252,11 +273,14 @@ export function RelationshipsPanel({
             )
           }
           onUnlink={() =>
-            confirmUnlink(setConfirm, "Unassign task from member?", () =>
-              void run(
-                () => apiClient.unassignMemberTask(taskMemberId, taskId),
-                "Unassigned task from member.",
-              ),
+            confirmUnlink(
+              setConfirm,
+              "Unassign task from member?",
+              () =>
+                void run(
+                  () => apiClient.unassignMemberTask(taskMemberId, taskId),
+                  "Unassigned task from member.",
+                ),
             )
           }
         >
@@ -274,7 +298,10 @@ export function RelationshipsPanel({
         </LinkForm>
       </div>
 
-      <ConfirmDialog state={confirm} onOpenChange={(open) => !open && setConfirm({ open: false })} />
+      <ConfirmDialog
+        state={confirm}
+        onOpenChange={(open) => !open && setConfirm({ open: false })}
+      />
     </div>
   );
 }
