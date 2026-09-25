@@ -252,7 +252,18 @@ async def _seed_hierarchy(context: SeedContext) -> None:
         await graph.upsert_node(PodNode(tenant_id=tenant_id, id=pod.id, name=pod.name, metadata={}))
         await _edge(graph, tenant_id, pod.project_id, pod.id, valid_from=window_start)
         for workstream_id in pod.workstream_ids:
-            await _edge(graph, tenant_id, pod.id, workstream_id, valid_from=window_start)
+            # ASSIGNED_TO, matching what `assign_pod_workstream` writes. A
+            # CONTAINS edge here is invisible to `pods_for_task`, so a blocker
+            # carrying only a work item resolves to no pod and is reported
+            # "unattributed" even though the graph does know whose it is.
+            await _edge(
+                graph,
+                tenant_id,
+                pod.id,
+                workstream_id,
+                kind=EdgeKind.ASSIGNED_TO,
+                valid_from=window_start,
+            )
 
 
 async def _seed_people(context: SeedContext) -> None:
