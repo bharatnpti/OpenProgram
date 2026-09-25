@@ -25,28 +25,57 @@ class RuntimeSyncWorkflowResult:
     workflow_ids: list[str]
 
 
+@dataclass(frozen=True, kw_only=True)
+class RuntimeSyncPlan:
+    """Which syncs runtime config asks for, resolved but not yet dispatched."""
+
+    connector: str | None
+    dispatches: tuple[SyncDispatchInput, ...]
+
+
 async def run_runtime_config_sync_activity(payload: RuntimeSyncInput) -> RuntimeSyncWorkflowResult:
     registry = _service_registry()
     try:
-        connector = _connector_filter(payload.connector)
-        resolver = RuntimeSyncTargetResolver(registry.graph_repository())
-        targets = await resolver.resolve(payload.tenant_id)
-        dispatches = _runtime_or_legacy_dispatches(
-            registry.settings,
-            payload.tenant_id,
-            targets,
-            connector,
-        )
+        plan = await _resolve_plan(registry, payload)
         scheduler = registry.workflow_scheduler()
-        workflow_ids = [await scheduler.dispatch_sync(dispatch) for dispatch in dispatches]
+        workflow_ids = [await scheduler.dispatch_sync(dispatch) for dispatch in plan.dispatches]
         return RuntimeSyncWorkflowResult(
             tenant_id=payload.tenant_id,
-            connector=connector,
+            connector=plan.connector,
             dispatched=len(workflow_ids),
             workflow_ids=workflow_ids,
         )
     finally:
         await registry.close()
+
+
+async def resolve_runtime_sync_plan(payload: RuntimeSyncInput) -> RuntimeSyncPlan:
+    """Resolve the targets without dispatching them.
+
+    An orchestrator that cannot start child workflows from wherever it resolves
+    targets calls this and fans out itself. A DBOS step is one such place, so
+    the fan-out lives in the workflow that wraps the step.
+    """
+    registry = _service_registry()
+    try:
+        return await _resolve_plan(registry, payload)
+    finally:
+        await registry.close()
+
+
+async def _resolve_plan(registry: ServiceRegistry, payload: RuntimeSyncInput) -> RuntimeSyncPlan:
+    connector = _connector_filter(payload.connector)
+    resolver = RuntimeSyncTargetResolver(registry.graph_repository())
+    targets = await resolver.resolve(payload.tenant_id)
+    return RuntimeSyncPlan(
+        connector=connector,
+        dispatches=_runtime_or_legacy_dispatches(
+            registry.settings,
+            payload.tenant_id,
+            targets,
+            connector,
+        ),
+    )
 
 
 def _runtime_or_legacy_dispatches(
