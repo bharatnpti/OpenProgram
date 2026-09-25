@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from core.domain.errors import ProviderUnavailable
 from core.domain.graph import JsonScalar
 from core.domain.integrations import Issue, UserRef
 from core.ports.issue_tracker import IssueTracker
@@ -44,19 +45,30 @@ class IssueTrackerTool:
     parameters: Mapping[str, object] = field(default_factory=_parameters_schema)
 
     async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
+        """Read-only issue context, or a plain sentence saying why there is none.
+
+        This tool must never raise: it runs inside the check-in parse, and a
+        tracker that is unreachable, unauthorized, or simply does not hold the
+        key the model asked about would otherwise abort a check-in the
+        developer already answered. ``ProviderUnavailable`` is what every
+        adapter raises for a missing or unfetchable issue.
+        """
         issue_key = _clean_string(arguments.get("issue_key"))
         if issue_key is not None:
             try:
                 return _format_issues(
                     [await self.issue_tracker.get_issue(self.tenant_id, issue_key)]
                 )
-            except KeyError:
+            except (ProviderUnavailable, KeyError):
                 return f"Issue {issue_key} could not be fetched."
 
         limit = _bounded_positive_int(arguments.get("limit"), default=DEFAULT_ACTIVE_ISSUE_LIMIT)
-        issues = await self.issue_tracker.list_active_for(
-            UserRef(tenant_id=self.tenant_id, external_id=self.developer_id)
-        )
+        try:
+            issues = await self.issue_tracker.list_active_for(
+                UserRef(tenant_id=self.tenant_id, external_id=self.developer_id)
+            )
+        except (ProviderUnavailable, KeyError):
+            return "Active issues could not be fetched."
         return _format_issues(issues[:limit])
 
 
