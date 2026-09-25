@@ -302,6 +302,7 @@ class RecentFactsTool:
 class WorkstreamFlowTool:
     tenant_id: str
     service: FlowMetricsService
+    as_of: date
 
     name: str = "workstream_flow"
     description: str = "Fetch TPM/SM flow metrics for a single workstream."
@@ -319,7 +320,7 @@ class WorkstreamFlowTool:
 
     async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
         workstream_id = _required_string(arguments.get("workstream_id"), "workstream_id")
-        as_of = _optional_date(arguments.get("as_of")) or date.today()
+        as_of = _optional_date(arguments.get("as_of")) or self.as_of
         view = await self.service.workstream_flow(self.tenant_id, workstream_id, as_of)
         return json.dumps(_workstream_flow_payload(view), ensure_ascii=False)
 
@@ -328,6 +329,7 @@ class WorkstreamFlowTool:
 class PortfolioFlowTool:
     tenant_id: str
     service: FlowMetricsService
+    as_of: date
 
     name: str = "portfolio_flow"
     description: str = "Fetch portfolio-wide flow metrics grouped by workstream."
@@ -342,7 +344,7 @@ class PortfolioFlowTool:
     )
 
     async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
-        as_of = _optional_date(arguments.get("as_of")) or date.today()
+        as_of = _optional_date(arguments.get("as_of")) or self.as_of
         view = await self.service.portfolio_flow(self.tenant_id, as_of)
         return json.dumps(_portfolio_flow_payload(view), ensure_ascii=False)
 
@@ -351,6 +353,7 @@ class PortfolioFlowTool:
 class WorkstreamProgressTool:
     tenant_id: str
     service: PersonaViewService
+    as_of: date
 
     name: str = "workstream_progress"
     description: str = "Fetch the current progress snapshot for a workstream."
@@ -368,7 +371,7 @@ class WorkstreamProgressTool:
 
     async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
         workstream_id = _required_string(arguments.get("workstream_id"), "workstream_id")
-        as_of = _optional_date(arguments.get("as_of")) or date.today()
+        as_of = _optional_date(arguments.get("as_of")) or self.as_of
         view = await self.service.workstream_progress(self.tenant_id, workstream_id, as_of)
         return json.dumps(_workstream_progress_payload(view), ensure_ascii=False)
 
@@ -377,6 +380,7 @@ class WorkstreamProgressTool:
 class PortfolioHeatmapTool:
     tenant_id: str
     service: PersonaViewService
+    as_of: date
 
     name: str = "portfolio_heatmap"
     description: str = "Fetch the portfolio heatmap for the current tenant."
@@ -392,7 +396,7 @@ class PortfolioHeatmapTool:
     )
 
     async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
-        as_of = _optional_date(arguments.get("as_of")) or date.today()
+        as_of = _optional_date(arguments.get("as_of")) or self.as_of
         program_root_id = _string_argument(arguments.get("program_root_id"))
         view = await self.service.portfolio_heatmap(self.tenant_id, as_of, program_root_id)
         return json.dumps(_portfolio_heatmap_payload(view), ensure_ascii=False)
@@ -425,9 +429,10 @@ class AskService:
         correlation_id: str,
         as_of: date | None = None,
     ) -> AskResponseView:
+        asked_for = as_of or date.today()
         request = LlmRequest(
             tenant_id=tenant_id,
-            prompt=_prompt(question),
+            prompt=_prompt(question, asked_for),
             model=self._model,
             correlation_id=correlation_id,
             system=ASK_SYSTEM_PROMPT,
@@ -440,10 +445,10 @@ class AskService:
             metadata={
                 "agent": "ask_service",
                 "purpose": "graph_question",
-                "as_of": (as_of or date.today()).isoformat(),
+                "as_of": asked_for.isoformat(),
             },
         )
-        tools = self._tools(tenant_id, as_of or date.today())
+        tools = self._tools(tenant_id, asked_for)
         response = await self._tool_agent.run(request, tools)
         parsed = _parse_answer(response.text)
         return AskResponseView(
@@ -462,16 +467,27 @@ class AskService:
                 as_of=as_of,
             ),
             RecentFactsTool(tenant_id=tenant_id, repository=self._time_series_repository),
-            WorkstreamFlowTool(tenant_id=tenant_id, service=self._flow_metrics_service),
-            PortfolioFlowTool(tenant_id=tenant_id, service=self._flow_metrics_service),
-            WorkstreamProgressTool(tenant_id=tenant_id, service=self._persona_view_service),
-            PortfolioHeatmapTool(tenant_id=tenant_id, service=self._persona_view_service),
+            WorkstreamFlowTool(
+                tenant_id=tenant_id, service=self._flow_metrics_service, as_of=as_of
+            ),
+            PortfolioFlowTool(tenant_id=tenant_id, service=self._flow_metrics_service, as_of=as_of),
+            WorkstreamProgressTool(
+                tenant_id=tenant_id, service=self._persona_view_service, as_of=as_of
+            ),
+            PortfolioHeatmapTool(
+                tenant_id=tenant_id, service=self._persona_view_service, as_of=as_of
+            ),
         )
 
 
-def _prompt(question: str) -> str:
+def _prompt(question: str, as_of: date) -> str:
     return (
+        f"Today is {as_of.isoformat()}. "
         "Answer the user's question using the tools when needed. "
+        "Resolve any relative period -- today, this week, lately -- against that "
+        "date. Leave a tool's as_of unset to use it, and never guess a date: a "
+        "tool asked about the wrong period comes back empty, and empty is not "
+        "the same as nothing being wrong. "
         "Keep the answer concise and specific, naming the people and items "
         "involved, and list the id of each one in references. "
         f"Question: {question}"
