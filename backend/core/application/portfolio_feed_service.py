@@ -150,9 +150,16 @@ def _risk_summary(fact: FactEvent) -> str:
 def _cross_person_summary(fact: FactEvent) -> str:
     kind = _cross_person_kind_label(fact.payload)
     transition = _payload_string(fact.payload, "transition") or "opened"
-    requester = _payload_string_any(fact.payload, ("reporter_id", "requester_id")) or "someone"
+    # Names first, ids only as a fallback so facts recorded before the names
+    # were captured still render. The check-in summary above does the same.
+    requester = (
+        _payload_string_any(fact.payload, ("reporter_name", "requester_name"))
+        or _payload_string_any(fact.payload, ("reporter_id", "requester_id"))
+        or "someone"
+    )
     counterpart = (
-        _payload_string_any(fact.payload, ("referenced_person_id", "counterpart_id"))
+        _payload_string_any(fact.payload, ("referenced_person_name", "counterpart_display_name"))
+        or _payload_string_any(fact.payload, ("referenced_person_id", "counterpart_id"))
         or "unresolved counterpart"
     )
     summary = _payload_string_any(fact.payload, ("summary", "note")) or "follow-up needed"
