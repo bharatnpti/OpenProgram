@@ -17,7 +17,7 @@ from core.application.persona_views import (
     WorkstreamProgressView,
 )
 from core.application.portfolio_feed_service import PortfolioFeedService
-from core.domain.graph import GraphNode, JsonScalar, NodeKind
+from core.domain.graph import EdgeKind, GraphEdge, GraphNode, JsonScalar, NodeKind
 from core.domain.llm import LlmMessage, LlmRequest
 from core.ports.llm import LlmProvider
 from core.ports.repositories import GraphRepository, TimeSeriesRepository
@@ -25,9 +25,16 @@ from core.ports.tools import AgentTool
 
 ASK_SYSTEM_PROMPT = (
     "You answer program-management questions over a delivery graph. "
-    "Use the provided tools to inspect nodes, flow metrics, portfolio heatmaps, and recent facts. "
+    "Use the provided tools to inspect nodes, how those nodes connect, flow "
+    "metrics, portfolio heatmaps, and recent facts. Relationships -- who is "
+    "assigned to what, who belongs to which pod, what contains what -- live on "
+    "edges, so call graph_neighbors before reporting that something has none, and "
+    "never tell the user their data is missing or needs updating when you have "
+    "not traversed its edges. "
     "Never mention raw DM/reply content. "
-    "Return a single JSON object with keys answer, references, and tools_used."
+    "Reply with a single JSON object and nothing else: answer holds the prose, "
+    "references an array of the node ids it rests on, tools_used an array of the "
+    "tool names you called. Do not restate references or tools_used inside answer."
 )
 
 
@@ -107,6 +114,125 @@ class SearchGraphNodesTool:
             for node in nodes[:limit]
         ]
         return json.dumps(matches, ensure_ascii=False)
+
+
+@dataclass(frozen=True, kw_only=True)
+class GraphNeighborsTool:
+    """Edge traversal, without which no relationship question is answerable.
+
+    `search_graph_nodes` finds a node but says nothing about what it connects
+    to, so questions like "which tasks is this developer on" used to come back
+    as "no tasks found in the current graph" -- blaming correct data for a
+    missing tool.
+    """
+
+    tenant_id: str
+    repository: GraphRepository
+    as_of: date
+
+    name: str = "graph_neighbors"
+    description: str = (
+        "List the edges touching one graph node, with the node at the other end "
+        "resolved to its kind and name. Use this for any question about how things "
+        "relate: which tasks or work items a developer is assigned to, who belongs "
+        "to a pod, which pod or workstream holds an item, or what a project "
+        "contains. Edge kinds are 'contains' (parent to child, including pod to "
+        "member), 'assigned_to' (developer to task, pod to workstream) and "
+        "'depends_on'. Call search_graph_nodes first if you only know a name."
+    )
+    parameters: Mapping[str, object] = field(
+        default_factory=lambda: {
+            "type": "object",
+            "properties": {
+                "node_id": {
+                    "type": "string",
+                    "description": (
+                        "Node whose edges to list, e.g. a developer id like U1004, "
+                        "a pod id, or a work item key."
+                    ),
+                },
+                "direction": {
+                    "type": "string",
+                    "enum": ["out", "in", "both"],
+                    "description": (
+                        "'out' for edges leaving the node (a developer's "
+                        "assignments), 'in' for edges arriving at it (the pod that "
+                        "contains a developer). Defaults to 'both'."
+                    ),
+                },
+                "kinds": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional edge kinds to keep, e.g. ['assigned_to'].",
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "description": "Maximum number of edges to return.",
+                },
+            },
+            "required": ["node_id"],
+            "additionalProperties": False,
+        }
+    )
+
+    def _wanted(self, edge: GraphEdge, kinds: set[EdgeKind]) -> bool:
+        """Active on the asked-for date, and of a kind the caller wants."""
+        return edge.is_active_on(self.as_of) and (not kinds or edge.kind in kinds)
+
+    async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
+        node_id = _string_argument(arguments.get("node_id"))
+        if node_id is None:
+            return json.dumps({"error": "node_id is required"})
+        direction = _string_argument(arguments.get("direction")) or "both"
+        if direction not in {"out", "in", "both"}:
+            direction = "both"
+        kinds = set(_edge_kinds_argument(arguments.get("kinds")))
+        limit = _bounded_int(arguments.get("limit"), default=25, maximum=50)
+
+        found: list[tuple[str, str, str]] = []
+        if direction in {"out", "both"}:
+            for edge in await self.repository.list_edges(self.tenant_id, from_node_id=node_id):
+                if self._wanted(edge, kinds):
+                    found.append(("out", edge.kind.value, edge.to_node_id))
+        if direction in {"in", "both"}:
+            for edge in await self.repository.list_edges(self.tenant_id, to_node_id=node_id):
+                if self._wanted(edge, kinds):
+                    found.append(("in", edge.kind.value, edge.from_node_id))
+
+        found = found[:limit]
+        names = {
+            node.id: node
+            for node in await self.repository.list_nodes(self.tenant_id)
+            if node.id in {neighbor for _, _, neighbor in found}
+        }
+        node = await self.repository.get_node(self.tenant_id, node_id)
+        return json.dumps(
+            {
+                "node": (
+                    {"id": node.id, "kind": node.kind.value, "name": node.name}
+                    if node is not None
+                    else {"id": node_id}
+                ),
+                "as_of": self.as_of.isoformat(),
+                "edges": [
+                    {
+                        "direction": edge_direction,
+                        "edge_kind": edge_kind,
+                        "neighbor_id": neighbor_id,
+                        "neighbor_kind": (
+                            names[neighbor_id].kind.value if neighbor_id in names else None
+                        ),
+                        "neighbor_name": (
+                            names[neighbor_id].name if neighbor_id in names else None
+                        ),
+                    }
+                    for edge_direction, edge_kind, neighbor_id in found
+                ],
+            },
+            ensure_ascii=False,
+        )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -317,7 +443,7 @@ class AskService:
                 "as_of": (as_of or date.today()).isoformat(),
             },
         )
-        tools = self._tools(tenant_id)
+        tools = self._tools(tenant_id, as_of or date.today())
         response = await self._tool_agent.run(request, tools)
         parsed = _parse_answer(response.text)
         return AskResponseView(
@@ -327,9 +453,14 @@ class AskService:
             trace_id=response.trace_id,
         )
 
-    def _tools(self, tenant_id: str) -> tuple[AgentTool, ...]:
+    def _tools(self, tenant_id: str, as_of: date) -> tuple[AgentTool, ...]:
         return (
             SearchGraphNodesTool(tenant_id=tenant_id, repository=self._graph_repository),
+            GraphNeighborsTool(
+                tenant_id=tenant_id,
+                repository=self._graph_repository,
+                as_of=as_of,
+            ),
             RecentFactsTool(tenant_id=tenant_id, repository=self._time_series_repository),
             WorkstreamFlowTool(tenant_id=tenant_id, service=self._flow_metrics_service),
             PortfolioFlowTool(tenant_id=tenant_id, service=self._flow_metrics_service),
@@ -341,7 +472,8 @@ class AskService:
 def _prompt(question: str) -> str:
     return (
         "Answer the user's question using the tools when needed. "
-        "Prefer concise, specific answers with references to node ids and workstream ids. "
+        "Keep the answer concise and specific, naming the people and items "
+        "involved, and list the id of each one in references. "
         f"Question: {question}"
     )
 
@@ -487,6 +619,17 @@ def _string_list_argument(value: JsonScalar) -> list[str]:
 
 def _kinds_argument(value: JsonScalar) -> list[str]:
     return _string_list_argument(value)
+
+
+def _edge_kinds_argument(value: JsonScalar) -> list[EdgeKind]:
+    """Parse requested edge kinds, ignoring any the graph does not have."""
+    kinds: list[EdgeKind] = []
+    for item in _string_list_argument(value):
+        try:
+            kinds.append(EdgeKind(item.strip().lower()))
+        except ValueError:
+            continue
+    return kinds
 
 
 def _optional_date(value: JsonScalar) -> date | None:
