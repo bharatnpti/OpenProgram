@@ -67,7 +67,11 @@ from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import EscalationStepInput, NudgeInput, NudgeResult
 from infra.workflows.risk_assessment import RiskAssessmentInput, RiskAssessmentWorkflowResult
-from infra.workflows.runtime_sync import RuntimeSyncInput, RuntimeSyncWorkflowResult
+from infra.workflows.runtime_sync import (
+    RuntimeSyncInput,
+    RuntimeSyncPlan,
+    RuntimeSyncWorkflowResult,
+)
 
 SyncWorkflowResult = (
     ReadSyncWorkflowResult
@@ -242,16 +246,43 @@ async def dbos_directory_sync_workflow(
     return await dbos_sync_directory_step(payload)
 
 
-@DBOS.step(name="openprogram_runtime_config_sync", retries_allowed=True)
-async def dbos_runtime_config_sync_step(payload: RuntimeSyncInput) -> RuntimeSyncWorkflowResult:
-    return await runtime_sync.run_runtime_config_sync_activity(payload)
+@DBOS.step(name="openprogram_resolve_runtime_sync", retries_allowed=True)
+async def dbos_resolve_runtime_sync_step(payload: RuntimeSyncInput) -> RuntimeSyncPlan:
+    return await runtime_sync.resolve_runtime_sync_plan(payload)
 
 
 @DBOS.workflow(name="openprogram_runtime_config_sync")
 async def dbos_runtime_config_sync_workflow(
     payload: RuntimeSyncInput,
 ) -> RuntimeSyncWorkflowResult:
-    return await dbos_runtime_config_sync_step(payload)
+    return await _fan_out_runtime_sync(payload)
+
+
+async def _fan_out_runtime_sync(payload: RuntimeSyncInput) -> RuntimeSyncWorkflowResult:
+    """Resolve what runtime config asks to sync, then start one child per target.
+
+    Resolving and dispatching are deliberately split: DBOS refuses to start a
+    child workflow from inside a step, so the fan-out has to run here, in
+    workflow context. Child ids are derived from this workflow's own id rather
+    than a fresh uuid so a replay re-dispatches nothing.
+    """
+    plan = await dbos_resolve_runtime_sync_step(payload)
+    parent_id = DBOS.workflow_id or f"runtime-sync-{payload.tenant_id}"
+    workflow_ids = [
+        await _start_sync_child_workflow(
+            dispatch,
+            workflow_id=safe_workflow_id(
+                f"{parent_id}-{index}-{sync_workflow_name(dispatch)}-{dispatch.scope}"
+            ),
+        )
+        for index, dispatch in enumerate(plan.dispatches)
+    ]
+    return RuntimeSyncWorkflowResult(
+        tenant_id=payload.tenant_id,
+        connector=plan.connector,
+        dispatched=len(workflow_ids),
+        workflow_ids=workflow_ids,
+    )
 
 
 @DBOS.step(name="openprogram_run_risk_assessment", retries_allowed=True)
@@ -516,7 +547,7 @@ async def _run_sync_dispatch(
     if isinstance(workflow_input, DirectorySyncInput):
         return await dbos_sync_directory_step(workflow_input)
     if isinstance(workflow_input, RuntimeSyncInput):
-        return await dbos_runtime_config_sync_step(workflow_input)
+        return await _fan_out_runtime_sync(workflow_input)
     if isinstance(workflow_input, RiskAssessmentInput):
         return await dbos_run_risk_assessment_step(workflow_input)
     if isinstance(workflow_input, DriftScanInput):
@@ -524,6 +555,31 @@ async def _run_sync_dispatch(
     if isinstance(workflow_input, BriefGenerationInput):
         return await dbos_run_brief_generation_step(workflow_input)
     raise ValueError(f"unsupported sync connector: {input.connector}")
+
+
+async def _start_sync_child_workflow(input: SyncDispatchInput, *, workflow_id: str) -> str:
+    """Start the workflow that serves one sync dispatch, under a chosen id."""
+    workflow_input = sync_workflow_input(input)
+    with SetWorkflowID(workflow_id):
+        if isinstance(workflow_input, JiraSyncInput):
+            await DBOS.start_workflow_async(dbos_jira_sync_workflow, workflow_input)
+        elif isinstance(workflow_input, GitSyncInput):
+            await DBOS.start_workflow_async(dbos_git_sync_workflow, workflow_input)
+        elif isinstance(workflow_input, CalendarSyncInput):
+            await DBOS.start_workflow_async(dbos_calendar_sync_workflow, workflow_input)
+        elif isinstance(workflow_input, DirectorySyncInput):
+            await DBOS.start_workflow_async(dbos_directory_sync_workflow, workflow_input)
+        elif isinstance(workflow_input, RuntimeSyncInput):
+            await DBOS.start_workflow_async(dbos_runtime_config_sync_workflow, workflow_input)
+        elif isinstance(workflow_input, RiskAssessmentInput):
+            await DBOS.start_workflow_async(dbos_risk_assessment_workflow, workflow_input)
+        elif isinstance(workflow_input, DriftScanInput):
+            await DBOS.start_workflow_async(dbos_drift_scan_workflow, workflow_input)
+        elif isinstance(workflow_input, BriefGenerationInput):
+            await DBOS.start_workflow_async(dbos_brief_generation_workflow, workflow_input)
+        else:
+            raise ValueError(f"unsupported sync connector: {input.connector}")
+    return workflow_id
 
 
 @dataclass(frozen=True)
@@ -673,7 +729,6 @@ class DbosWorkflowScheduler:
         return await _start_daily_checkin_workflow(input)
 
     async def dispatch_sync(self, input: SyncDispatchInput) -> str:
-        workflow_input = sync_workflow_input(input)
         workflow_name = sync_workflow_name(input)
         workflow_id = safe_workflow_id(
             f"sync-{workflow_name}-{input.tenant_id}-{input.scope}-{uuid4()}"
@@ -684,24 +739,7 @@ class DbosWorkflowScheduler:
                 system_database_url=self.system_database_url,
             )
         )
-        with SetWorkflowID(workflow_id):
-            if isinstance(workflow_input, JiraSyncInput):
-                await DBOS.start_workflow_async(dbos_jira_sync_workflow, workflow_input)
-            elif isinstance(workflow_input, GitSyncInput):
-                await DBOS.start_workflow_async(dbos_git_sync_workflow, workflow_input)
-            elif isinstance(workflow_input, CalendarSyncInput):
-                await DBOS.start_workflow_async(dbos_calendar_sync_workflow, workflow_input)
-            elif isinstance(workflow_input, RuntimeSyncInput):
-                await DBOS.start_workflow_async(dbos_runtime_config_sync_workflow, workflow_input)
-            elif isinstance(workflow_input, RiskAssessmentInput):
-                await DBOS.start_workflow_async(dbos_risk_assessment_workflow, workflow_input)
-            elif isinstance(workflow_input, DriftScanInput):
-                await DBOS.start_workflow_async(dbos_drift_scan_workflow, workflow_input)
-            elif isinstance(workflow_input, BriefGenerationInput):
-                await DBOS.start_workflow_async(dbos_brief_generation_workflow, workflow_input)
-            else:
-                raise ValueError(f"unsupported sync connector: {input.connector}")
-        return workflow_id
+        return await _start_sync_child_workflow(input, workflow_id=workflow_id)
 
 
 @dataclass(frozen=True)
