@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { apiClient, setActingAs } from "../api/client";
 import type { AuthStatusResponse, DevUserResponse } from "../api/schema";
@@ -53,18 +53,6 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   // Identity is installed on the shared client during render, not in an effect,
   // so the first request a newly mounted screen makes already carries it.
   setActingAs(actingAsPerson ? { id: actingAsPerson.id, roles: [activeRole] } : null);
-
-  // Every cached response belongs to whoever was being acted as when it was
-  // fetched, so switching person drops the cache rather than showing one
-  // person's day under another person's name.
-  const previousIdentity = useRef<string | null>(null);
-  useEffect(() => {
-    const identity = actingAsPerson ? `${actingAsPerson.id}:${activeRole}` : null;
-    if (previousIdentity.current !== null && previousIdentity.current !== identity) {
-      queryClient.clear();
-    }
-    previousIdentity.current = identity;
-  }, [actingAsPerson, activeRole, queryClient]);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,6 +131,20 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     };
   }, [authLoading, demoMode]);
 
+  // Every cached response belongs to whoever was being acted as when it was
+  // fetched, so changing person or lens drops the cache rather than showing one
+  // person's day under another person's name.
+  //
+  // This has to happen here, in the handler, and not in an effect: an effect
+  // runs only after the screens have re-rendered and already started fetching
+  // as the new identity, and clearing at that point throws those in-flight
+  // results away -- which left the new person looking at empty panels until a
+  // manual reload. Identity cannot change without one of these handlers, since
+  // routes wait on `peopleLoading` before any screen renders.
+  const dropCachedIdentity = useCallback(() => {
+    queryClient.clear();
+  }, [queryClient]);
+
   const value = useMemo<RoleContextValue>(() => {
     const provider = authStatus?.provider ?? "dev";
     const isDevMode = provider === "dev";
@@ -152,8 +154,16 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     const activeRoles = isDevMode ? (personRoles.length > 0 ? personRoles : [role]) : oidcRoles;
     const selectedRole = isDevMode ? activeRole : highestRole(activeRoles);
     const authenticated = isDevMode || authStatus?.authenticated === true;
-    const roleSet = new Set(activeRoles);
-    const hasAdmin = roleSet.has("admin");
+    // Two different role sets, and conflating them was a bug. `heldRoles` is
+    // what the person is, and decides which lenses they may switch to. The
+    // capability flags must instead follow the single role the backend is
+    // actually told (see `setActingAs` above): a person who is both manager and
+    // admin, viewing as manager, is a manager to the API, so keeping admin-only
+    // screens on offer only leads to a screen of dashes and a 403.
+    const heldRoles = activeRoles;
+    const heldSet = new Set(heldRoles);
+    const lensSet = new Set(isDevMode ? [selectedRole] : heldRoles);
+    const hasAdmin = lensSet.has("admin");
 
     return {
       role: selectedRole,
@@ -161,11 +171,12 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         if (!isDevMode) {
           return;
         }
+        dropCachedIdentity();
         setRoleState(nextRole);
         localStorage.setItem(STORAGE_KEY, nextRole);
       },
       roleLabel: roleLabels[selectedRole],
-      roles: activeRoles,
+      roles: heldRoles,
       provider,
       authenticated,
       authLoading,
@@ -174,16 +185,18 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       isDevMode,
       demoMode: authStatus?.demo_mode === true,
       chatEnabled: authStatus?.chat_enabled === true,
-      canAccessPortfolio: hasAdmin || roleSet.has("mgr") || roleSet.has("exec"),
+      canAccessPortfolio: hasAdmin || lensSet.has("mgr") || lensSet.has("exec"),
       canReadAggregate:
         hasAdmin ||
-        roleSet.has("exec") ||
-        roleSet.has("mgr") ||
-        roleSet.has("po") ||
-        roleSet.has("sm"),
+        lensSet.has("exec") ||
+        lensSet.has("mgr") ||
+        lensSet.has("po") ||
+        lensSet.has("sm"),
       canAccessAdmin: hasAdmin,
+      // Which lenses are on offer is about who the person is, not the lens they
+      // happen to be wearing, so this one reads the held set.
       canAccessRole: (nextRole: AppRole) =>
-        isDevMode ? roleSet.has(nextRole) : hasAdmin || roleSet.has(nextRole),
+        isDevMode ? heldSet.has(nextRole) : heldSet.has("admin") || heldSet.has(nextRole),
       defaultRoute: routeByRole[selectedRole],
       signIn: () => {
         window.location.assign(authStatus?.login_url ?? "/api/v1/auth/login?return_url=/");
@@ -197,6 +210,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       peopleLoading,
       actingAs: actingAsPerson,
       setActingAsId: (id) => {
+        dropCachedIdentity();
         setActingAsIdState(id);
         localStorage.setItem(USER_STORAGE_KEY, id);
         // A different person means a different lens, so any stored override is
@@ -216,6 +230,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     activeRole,
     authLoading,
     authStatus,
+    dropCachedIdentity,
     people,
     peopleLoading,
     personRoles,
