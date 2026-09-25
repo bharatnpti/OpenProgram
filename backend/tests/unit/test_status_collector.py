@@ -764,6 +764,69 @@ async def test_status_collector_sends_clarification_and_keeps_checkin_open() -> 
     assert [turn.role for turn in turns] == [ConversationRole.USER, ConversationRole.AGENT]
 
 
+async def test_status_collector_keeps_signals_from_a_clarified_reply() -> None:
+    """A reply that earns a clarification must not read as no reply at all."""
+    store = InMemoryGraphStore()
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-1",
+            asked_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    chat = FakeChatProvider()
+    llm = SequenceLlmProvider(
+        texts=[
+            '{"sufficient":false,"question":"Which Jira issue is that?",'
+            '"signals":{"progress_note":"Wired the step-up flow",'
+            '"blockers":["sandbox credentials still missing"],'
+            '"eta_change_days":2,"blockers_answered":true,"eta_answered":true}}'
+        ]
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=llm,
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    outcome = await collector.handle_reply(
+        InboundMessage(
+            tenant_id="demo",
+            user=ChatUserRef(tenant_id="demo", external_id="U123"),
+            text="Wired the step-up flow. Sandbox credentials still missing. ETA slips 2 days.",
+            thread_id="thread-1",
+            message_id="msg-1",
+            correlation_id="corr-1",
+            received_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
+        )
+    )
+
+    assert outcome.kind == "clarifying"
+    # What the reply already said is held as a partial status, not discarded.
+    assert outcome.status is not None
+    assert outcome.status.source is StatusSource.PARTIAL
+    assert outcome.status.eta_change_days == 2
+    assert list(outcome.status.blockers) == ["sandbox credentials still missing"]
+    persisted = await store.latest_developer_status("demo", "dev-1", date(2026, 1, 10))
+    assert persisted is not None
+    assert persisted.source is StatusSource.PARTIAL
+    assert list(persisted.blockers) == ["sandbox credentials still missing"]
+
+    # The clarification still went out, and the check-in stays open so the
+    # clarification loop (and its timeout finalizer) still owns the turn.
+    assert chat.sent[0].text == "Which Jira issue is that?"
+    checkin = await store.checkin_by_correlation("demo", "corr-1")
+    assert checkin is not None
+    assert checkin.replied_at is None
+
+
 async def test_status_collector_finalizes_when_clarification_cap_reached() -> None:
     store = InMemoryGraphStore()
     await store.record_checkin(
