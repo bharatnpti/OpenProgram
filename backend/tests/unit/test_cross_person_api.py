@@ -36,6 +36,28 @@ def test_portfolio_cross_person_requests_visible_to_aggregate_roles(settings: Se
     assert "notify_correlation_id" not in request
 
 
+def test_portfolio_cross_person_requests_without_status_returns_every_active(
+    settings: Settings,
+) -> None:
+    """No filter means all active, not just open.
+
+    The three-column board asks for every active request in one call, so a
+    default of OPEN left its Acknowledged and Needs-resolution columns unable
+    to fill, and acknowledging a card made it vanish instead of move.
+    """
+    store = InMemoryGraphStore()
+    asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.ACKNOWLEDGED))
+    app = _app_for_role(settings, "exec", "exec-user", store)
+
+    with TestClient(app) as client:
+        response = client.get("/portfolio/cross-person-requests")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [request["id"] for request in body["requests"]] == ["xreq-1"]
+    assert body["requests"][0]["status"] == "acknowledged"
+
+
 def test_my_cross_person_requests_returns_counterpart_inbox(settings: Settings) -> None:
     store = InMemoryGraphStore()
     asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.ACKNOWLEDGED))
