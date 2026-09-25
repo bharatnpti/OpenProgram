@@ -72,6 +72,32 @@ def test_my_cross_person_requests_returns_counterpart_inbox(settings: Settings) 
     assert body["requests"][0]["status"] == "acknowledged"
 
 
+def test_my_cross_person_requests_relation_filter(settings: Settings) -> None:
+    """A requester needs to see whether their own ask landed.
+
+    The board's columns are an inbox, so a request one raised appeared nowhere
+    at all. `waiting` stays the default so the inbox behaviour is unchanged.
+    """
+    store = InMemoryGraphStore()
+    asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.OPEN))
+
+    # dev-1 raised it; U-alice is the counterpart.
+    requester = _app_for_role(settings, "dev", "dev-1", store)
+    with TestClient(requester) as client:
+        assert client.get("/me/cross-person-requests").json()["requests"] == []
+        raised = client.get("/me/cross-person-requests?relation=raised").json()
+        both = client.get("/me/cross-person-requests?relation=both").json()
+    assert [request["id"] for request in raised["requests"]] == ["xreq-1"]
+    assert [request["id"] for request in both["requests"]] == ["xreq-1"]
+
+    counterpart = _app_for_role(settings, "dev", "U-alice", store)
+    with TestClient(counterpart) as client:
+        waiting = client.get("/me/cross-person-requests").json()
+        raised_none = client.get("/me/cross-person-requests?relation=raised").json()
+    assert [request["id"] for request in waiting["requests"]] == ["xreq-1"]
+    assert raised_none["requests"] == []
+
+
 def test_update_cross_person_request_status(settings: Settings) -> None:
     store = InMemoryGraphStore()
     asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.OPEN))

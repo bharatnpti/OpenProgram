@@ -62,6 +62,7 @@ export type PortfolioRisksResponse = components["schemas"]["PortfolioRisksRespon
 export type CrossPersonRequestResponse = components["schemas"]["CrossPersonRequestResponse"];
 export type CrossPersonRequestsResponse = components["schemas"]["CrossPersonRequestsResponse"];
 export type CrossPersonRequestStatus = components["schemas"]["CrossPersonRequestStatus"];
+export type MyRequestRelation = components["schemas"]["MyRequestRelation"];
 export type CrossPersonRequestStatusUpdateRequest =
   components["schemas"]["CrossPersonRequestStatusUpdateRequest"];
 export type EscalationContactDto = components["schemas"]["EscalationContactDto"];

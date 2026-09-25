@@ -180,6 +180,24 @@ class CrossPersonRequestService:
             statuses=status_tuple,
         )
 
+    async def list_raised(
+        self,
+        tenant_id: str,
+        requester_id: str,
+        statuses: Iterable[CrossPersonRequestStatus] | None = None,
+    ) -> list[CrossPersonRequest]:
+        """The requests this person asked of others.
+
+        The mirror of ``list_inbox``: without it a requester had no way to see
+        whether their own ask had landed, been acknowledged or resolved.
+        """
+        status_tuple = tuple(statuses) if statuses is not None else None
+        return await self.repository.list_for_requester(
+            tenant_id,
+            requester_id,
+            statuses=status_tuple,
+        )
+
     async def open_request_for_counterpart_reply(
         self,
         message: InboundMessage,
