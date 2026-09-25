@@ -43,6 +43,9 @@ class ResolvedBlocker:
     developer_id: str
     first_seen_on: date
     work_item_ref: EntityRef | None
+    #: The work item's name when the graph knows it, so views can label a
+    #: blocker's attribution without a second lookup.
+    work_item_name: str | None
     explicit_pod_ref: EntityRef | None
     pod_ids: tuple[str, ...]
     unattributed: bool
@@ -74,6 +77,7 @@ class BlockerResolutionService:
         self, tenant_id: str, blocker: DeveloperBlocker, as_of: date
     ) -> ResolvedBlocker:
         work_item_ref: EntityRef | None = None
+        work_item_name: str | None = None
         explicit_pod_ref: EntityRef | None = None
         critical = False
         if blocker.pod_id is not None:
@@ -81,11 +85,11 @@ class BlockerResolutionService:
             unattributed = False
             explicit_pod_ref = EntityRef(tenant_id=tenant_id, kind=NodeKind.POD, id=blocker.pod_id)
             if blocker.work_item_id is not None:
-                work_item_ref, critical = await self._work_item_details(
+                work_item_ref, work_item_name, critical = await self._work_item_details(
                     tenant_id, blocker.developer_id, blocker.work_item_id
                 )
         elif blocker.work_item_id is not None:
-            work_item_ref, critical = await self._work_item_details(
+            work_item_ref, work_item_name, critical = await self._work_item_details(
                 tenant_id, blocker.developer_id, blocker.work_item_id
             )
             pods = await self._graph_repository.pods_for_task(
@@ -106,6 +110,7 @@ class BlockerResolutionService:
             developer_id=blocker.developer_id,
             first_seen_on=blocker.first_seen_on,
             work_item_ref=work_item_ref,
+            work_item_name=work_item_name,
             explicit_pod_ref=explicit_pod_ref,
             pod_ids=pod_ids,
             unattributed=unattributed,
@@ -115,16 +120,19 @@ class BlockerResolutionService:
 
     async def _work_item_details(
         self, tenant_id: str, developer_id: str, work_item_id: str
-    ) -> tuple[EntityRef | None, bool]:
+    ) -> tuple[EntityRef | None, str | None, bool]:
         """Fail-soft node lookup: an unknown issue key keeps a TASK-kind ref.
 
         ``critical`` honors ``critical_path`` on the work-item node or on the
         developer's assignment edge to it (matching the legacy rollup rule).
+        The name comes back too: the node is already in hand here, and every
+        caller that wants to label the attribution would otherwise re-fetch it.
         """
         node = await self._graph_repository.get_node(tenant_id, work_item_id)
         if node is None:
             return (
                 EntityRef(tenant_id=tenant_id, kind=NodeKind.TASK, id=work_item_id),
+                None,
                 False,
             )
         critical = _truthy(node.metadata.get("critical_path"))
@@ -136,7 +144,7 @@ class BlockerResolutionService:
                 kind=EdgeKind.ASSIGNED_TO,
             )
             critical = any(_truthy(edge.metadata.get("critical_path")) for edge in edges)
-        return node.ref, critical
+        return node.ref, node.name, critical
 
     async def _developer_pod_ids(
         self, tenant_id: str, developer_id: str, as_of: date
@@ -168,6 +176,7 @@ class BlockerResolutionService:
                 developer_id=developer_id,
                 first_seen_on=status.as_of,
                 work_item_ref=None,
+                work_item_name=None,
                 explicit_pod_ref=None,
                 pod_ids=pod_ids,
                 unattributed=True,
