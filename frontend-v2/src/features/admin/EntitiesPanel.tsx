@@ -165,7 +165,10 @@ export function EntitiesPanel({
       <IdentityLinkDialog member={identityMember} onClose={() => setIdentityMember(null)} />
       <WritebackConsentDialog member={consentMember} onClose={() => setConsentMember(null)} />
 
-      <ConfirmDialog state={confirm} onOpenChange={(open) => !open && setConfirm({ open: false })} />
+      <ConfirmDialog
+        state={confirm}
+        onOpenChange={(open) => !open && setConfirm({ open: false })}
+      />
     </div>
   );
 }

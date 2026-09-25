@@ -46,9 +46,7 @@ export function AdminTable({
             <div className="min-w-0">
               <div className="truncate text-[15px] font-bold">{node.name}</div>
               {node.description ? (
-                <div className="truncate text-[13px] text-grey-secondary">
-                  {node.description}
-                </div>
+                <div className="truncate text-[13px] text-grey-secondary">{node.description}</div>
               ) : null}
             </div>
             <div className="flex flex-wrap gap-1">

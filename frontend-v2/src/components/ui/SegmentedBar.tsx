@@ -8,10 +8,7 @@ export function SegmentedBar({
   const total = segments.reduce((sum, s) => sum + s.value, 0) || 1;
 
   return (
-    <div
-      className="flex w-full overflow-hidden rounded-full bg-grey-border"
-      style={{ height }}
-    >
+    <div className="flex w-full overflow-hidden rounded-full bg-grey-border" style={{ height }}>
       {segments
         .filter((s) => s.value > 0)
         .map((segment, index) => (

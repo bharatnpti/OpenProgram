@@ -8,7 +8,10 @@ export function FlowStrip({ flow }: { flow: PortfolioFlowResponse | undefined })
     ["Features in flight", flow.features_in_flight],
     ["Stale · 7d+", flow.stale_count, "text-rag-amber"],
     ["Abandoned · 21d+", flow.abandoned_count, "text-rag-red"],
-    ["Avg cycle time", flow.avg_cycle_time_days != null ? `${flow.avg_cycle_time_days.toFixed(1)}d` : "—"],
+    [
+      "Avg cycle time",
+      flow.avg_cycle_time_days != null ? `${flow.avg_cycle_time_days.toFixed(1)}d` : "—",
+    ],
     ["Avg PR age", flow.avg_pr_age_days != null ? `${flow.avg_pr_age_days.toFixed(1)}d` : "—"],
   ];
 
