@@ -1307,7 +1307,14 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** My Cross Person Requests */
+    /**
+     * My Cross Person Requests
+     * @description One's own cross-person requests, as counterpart and/or as requester.
+     *
+     *     ``waiting`` is the inbox and stays the default. ``raised`` answers "did my
+     *     ask land?", which had no endpoint at all, and ``both`` serves a screen that
+     *     shows the two together.
+     */
     get: operations["my_cross_person_requests_me_cross_person_requests_get"];
     put?: never;
     post?: never;
@@ -2316,6 +2323,12 @@ export interface components {
       /** Task Id */
       task_id: string;
     };
+    /**
+     * MyRequestRelation
+     * @description Which side of one's own cross-person requests to return.
+     * @enum {string}
+     */
+    MyRequestRelation: "waiting" | "raised" | "both";
     /** MyStatusResponse */
     MyStatusResponse: {
       source: components["schemas"]["StatusSource"];
@@ -6455,7 +6468,9 @@ export interface operations {
   };
   my_cross_person_requests_me_cross_person_requests_get: {
     parameters: {
-      query?: never;
+      query?: {
+        relation?: components["schemas"]["MyRequestRelation"];
+      };
       header?: {
         authorization?: string | null;
       };
