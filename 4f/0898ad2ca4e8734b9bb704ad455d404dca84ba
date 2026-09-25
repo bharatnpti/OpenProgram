@@ -1,0 +1,19 @@
+frontend-v2/src/components/shell/CommandPalette.tsx
+  s_db98bf649daf00::t_1192f308fbdb5c 2,33-36,84-117,127,147,151-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4f0898ad2ca4e8734b9bb704ad455d404dca84ba",
+  "prompts": {},
+  "sessions": {
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
