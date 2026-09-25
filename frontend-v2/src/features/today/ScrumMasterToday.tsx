@@ -1,10 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 
 import { apiClient } from "../../api/client";
 import { Card } from "../../components/ui/Card";
 import { RagChip } from "../../components/ui/RagChip";
 import { SegmentedBar } from "../../components/ui/SegmentedBar";
-import { firstItemId } from "../../lib/selection";
+import { useRole } from "../../app/role";
+import { resolveSelection } from "../../lib/selection";
 import { todayIso } from "../../lib/today";
 
 const STATE_TONE = {
@@ -16,13 +18,28 @@ const STATE_TONE = {
 
 export function ScrumMasterToday() {
   const asOf = todayIso();
+  const { actingAs } = useRole();
+  const [chosenPodId, setChosenPodId] = useState("");
 
   const pods = useQuery({
     queryKey: ["directory", "pods", asOf],
     queryFn: () => apiClient.pods(asOf),
   });
-  const podId = firstItemId(pods.data ?? []);
-  const pod = pods.data?.find((item) => item.id === podId);
+
+  // A scrum master runs their own pods, so default to one of those rather than
+  // whichever pod happens to sort first. Falling back to every pod keeps this
+  // working when nobody is being acted as (any real auth provider).
+  const myPods = useMemo(() => {
+    const all = pods.data ?? [];
+    if (!actingAs) {
+      return all;
+    }
+    const mine = all.filter((item) => item.member_ids.includes(actingAs.id));
+    return mine.length > 0 ? mine : all;
+  }, [actingAs, pods.data]);
+
+  const podId = resolveSelection(chosenPodId, myPods);
+  const pod = myPods.find((item) => item.id === podId);
 
   const checkins = useQuery({
     queryKey: ["persona", "checkins", podId, asOf],
@@ -45,8 +62,24 @@ export function ScrumMasterToday() {
   return (
     <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1.5fr_1fr]">
       <Card padding="p-0" animateDelay={70}>
-        <div className="flex items-center justify-between gap-4 px-6 pt-6">
-          <h2 className="text-[20px] font-bold">{pod?.name ?? "Pod"} check-ins</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 pt-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <h2 className="truncate text-[20px] font-bold">{pod?.name ?? "Pod"} check-ins</h2>
+            {myPods.length > 1 ? (
+              <select
+                aria-label="Pod"
+                value={podId}
+                onChange={(event) => setChosenPodId(event.target.value)}
+                className="h-9 rounded-full border border-grey-border bg-white px-3 text-[13px] font-medium text-ink outline-none focus:border-magenta"
+              >
+                {myPods.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+          </div>
           {checkins.data ? (
             <RagChip tone="warning">
               {checkins.data.confirmed} of {total} confirmed
@@ -82,9 +115,7 @@ export function ScrumMasterToday() {
               <div>
                 <div className="text-[15px] font-bold">{developer.developer_name}</div>
                 {developer.summary ? (
-                  <div className="mt-0.5 text-[13px] text-grey-secondary">
-                    {developer.summary}
-                  </div>
+                  <div className="mt-0.5 text-[13px] text-grey-secondary">{developer.summary}</div>
                 ) : null}
               </div>
               <RagChip tone={STATE_TONE[developer.state]}>{developer.state}</RagChip>
