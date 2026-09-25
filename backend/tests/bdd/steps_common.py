@@ -7,10 +7,13 @@ traceable to its ``MS-E2E-XXX`` row (see the matching ``@ms_e2e_xxx`` tag).
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from pydantic import ValidationError
 from pytest_bdd import given, parsers, then, when
 
+from infra.adapters.directory.mock_slack import MockSlackDirectoryProvider
 from infra.adapters.integrations.fake import (
     FakeCalendarProvider,
     FakeIssueTracker,
@@ -62,9 +65,13 @@ def _given_non_admin_principal(world: World) -> None:
     world.start_app(dev_principal_roles="dev")
 
 
+NON_ADMIN_SUBJECT = "U1001"
+OTHER_PERSON_SUBJECT = "U1002"
+
+
 @given("the mock Slack simulator stack is running with a non-admin caller")
 def _given_stack_running_non_admin(world: World) -> None:
-    world.start_app(dev_principal_roles="dev")
+    world.start_app(dev_principal_roles="dev", dev_principal_subject=NON_ADMIN_SUBJECT)
 
 
 @given(parsers.parse('a configured member "{member_id}" named "{name}"'))
@@ -151,6 +158,22 @@ def _when_dispatch_checkin_on_date(world: World, member_id: str, checkin_date: s
 @when(parsers.parse('I dispatch a check-in for unknown developer "{member_id}"'))
 def _when_dispatch_unknown_checkin(world: World, member_id: str) -> None:
     world.response = _dispatch_checkin(world, member_id)
+
+
+@when("I request the simulator messages for my own thread")
+def _when_request_own_thread(world: World) -> None:
+    assert world.client is not None
+    world.response = world.client.get(
+        "/test/chat-simulator/messages", params={"user_id": NON_ADMIN_SUBJECT}
+    )
+
+
+@when("I request the simulator messages for another person's thread")
+def _when_request_other_thread(world: World) -> None:
+    assert world.client is not None
+    world.response = world.client.get(
+        "/test/chat-simulator/messages", params={"user_id": OTHER_PERSON_SUBJECT}
+    )
 
 
 @when("I reset the simulator")
@@ -471,11 +494,29 @@ def _then_response_status_code(world: World, code: int) -> None:
     assert world.response.status_code == code, world.response.text
 
 
+def _mock_roster_size() -> int:
+    """How many people the mock chat workspace publishes.
+
+    Read from the adapter rather than written as a literal: the roster is demo
+    data that grows with the local demo tenant, while what these scenarios
+    assert -- that a sync is complete and that repeating it changes nothing --
+    does not depend on its size.
+    """
+    return len(asyncio.run(MockSlackDirectoryProvider().fetch_users("demo")))
+
+
 @then(parsers.parse("the directory sync reports {count:d} synced users"))
 def _then_directory_sync_reports(world: World, count: int) -> None:
     assert world.response is not None
     body = world.response.json()
     assert body["synced_count"] == count, body
+
+
+@then("the directory sync reports the whole mock roster")
+def _then_directory_sync_reports_roster(world: World) -> None:
+    assert world.response is not None
+    body = world.response.json()
+    assert body["synced_count"] == _mock_roster_size(), body
 
 
 @then(
@@ -492,12 +533,34 @@ def _then_both_directory_syncs(world: World, count: int, deactivated: int) -> No
         assert body["deactivated_count"] == deactivated, body
 
 
+@then(
+    parsers.parse(
+        "both directory syncs reported the whole mock roster and {deactivated:d} deactivated"
+    )
+)
+def _then_both_directory_syncs_roster(world: World, deactivated: int) -> None:
+    responses = world.stash["sync_responses"]
+    assert len(responses) == 2
+    for response in responses:
+        body = response.json()
+        assert body["synced_count"] == _mock_roster_size(), body
+        assert body["deactivated_count"] == deactivated, body
+
+
 @then(parsers.parse("the config directory has {count:d} total users"))
 def _then_config_directory_total(world: World, count: int) -> None:
     assert world.client is not None
     response = world.client.get("/config/directory/users")
     assert response.status_code == 200, response.text
     assert response.json()["total"] == count, response.json()
+
+
+@then("the config directory has the whole mock roster")
+def _then_config_directory_total_roster(world: World) -> None:
+    assert world.client is not None
+    response = world.client.get("/config/directory/users")
+    assert response.status_code == 200, response.text
+    assert response.json()["total"] == _mock_roster_size(), response.json()
 
 
 @then(parsers.parse('the response status should be "{status}"'))

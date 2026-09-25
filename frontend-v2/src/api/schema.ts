@@ -5,6 +5,8 @@ export type EdgeKind = components["schemas"]["EdgeKind"];
 export type HealthResponse = components["schemas"]["HealthResponse"];
 export type ReadyResponse = components["schemas"]["ReadyResponse"];
 export type AuthStatusResponse = components["schemas"]["AuthStatusResponse"];
+export type DevUserResponse = components["schemas"]["DevUserResponse"];
+export type DevUsersResponse = components["schemas"]["DevUsersResponse"];
 export type LogoutResponse = components["schemas"]["LogoutResponse"];
 export type GraphNodeDto = components["schemas"]["GraphNodeDto"];
 export type GraphEdgeDto = components["schemas"]["GraphEdgeDto"];
@@ -23,6 +25,10 @@ export type ChatSimulatorMessagesResponse = components["schemas"]["ChatSimulator
 export type ChatSimulatorReplyRequest = components["schemas"]["ChatSimulatorReplyRequest"];
 export type ChatSimulatorReplyResponse = components["schemas"]["ChatSimulatorReplyResponse"];
 export type ChatSimulatorStatusResponse = components["schemas"]["ChatSimulatorStatusResponse"];
+export type ChatSimulatorUserMessageRequest =
+  components["schemas"]["ChatSimulatorUserMessageRequest"];
+export type ChatSimulatorUserMessageResponse =
+  components["schemas"]["ChatSimulatorUserMessageResponse"];
 export type StatusSource = components["schemas"]["StatusSource"];
 export type Rag = components["schemas"]["Rag"];
 export type EntityRefDto = components["schemas"]["EntityRefDto"];

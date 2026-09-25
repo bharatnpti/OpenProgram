@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     jira_writeback_enabled: bool = False
     directory_provider: str = "slack"
     chat_simulator_enabled: bool = False
+    # Master switch for the local demo affordances -- today just persona
+    # switching, which lets one browser act as any seeded person. Off by
+    # default and refused outside a local dev-auth tenant, so it can never be
+    # the reason a deployed console impersonates someone.
+    demo_mode: bool = False
     directory_sync_cron: str = "0 */6 * * *"
     directory_sync_schedule_id: str = "openprogram-directory-sync"
     risk_assessment_cron: str = "*/30 * * * *"
@@ -563,6 +568,11 @@ class Settings(BaseSettings):
 
     def _guard_shared_deployment(self) -> None:
         """Fail startup when a non-local environment uses local-only credentials."""
+        if self.demo_mode and not self.demo_mode_available:
+            raise ValueError(
+                "demo_mode enables acting as another person without authenticating and "
+                "is refused unless environment='local' and auth_provider='dev'"
+            )
         if self.environment == "local":
             return
         if self.auth_provider == "dev":
@@ -580,6 +590,15 @@ class Settings(BaseSettings):
     def slack_socket_mode(self) -> bool:
         """Whether real Slack events arrive over Socket Mode instead of the webhook."""
         return self.chat_provider == "slack" and self.slack_inbound_transport == "socket"
+
+    @property
+    def demo_mode_available(self) -> bool:
+        """Whether the demo affordances may be served at all.
+
+        Requires the flag *and* a local dev-auth tenant: the dev provider is
+        what makes an unauthenticated principal possible in the first place.
+        """
+        return self.demo_mode and self.environment == "local" and self.auth_provider == "dev"
 
     @property
     def dev_roles(self) -> frozenset[Role]:

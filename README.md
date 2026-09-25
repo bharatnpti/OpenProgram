@@ -15,18 +15,29 @@ Three principles run through the whole system:
 - Engineering architecture and standards → [Architecture.md](Architecture.md)
 - Low-level designs → [docs/lld/](docs/lld/)
 - Slack setup → [docs/ops/slack-setup.md](docs/ops/slack-setup.md)
+- Local demo with a populated tenant → [docs/ops/local-demo.md](docs/ops/local-demo.md)
 
 ---
 
 ## Screens
 
-The console lives in [`frontend-v2/`](frontend-v2) — four top-level destinations plus admin and a chat simulator, all wired to the real backend. Screenshots below are from a local stack with a near-empty demo tenant, so most indicators read `unknown`; that is the honest "no data yet" state, not a rendering bug.
+The console lives in [`frontend-v2/`](frontend-v2) — five top-level destinations plus admin, all wired to the real backend. Screenshots below are from a local stack running the seeded demo tenant ([docs/ops/local-demo.md](docs/ops/local-demo.md)); on a fresh, empty tenant most indicators read `unknown`, which is the honest "no data yet" state rather than a rendering bug.
 
 ### Today — persona home
 
 Every role lands here. Developers get their check-in to confirm or correct plus a ranked focus list; managers and executives get a portfolio-wide read on health, momentum, and what changed.
 
 ![Today, executive persona](docs/images/today-exec.png)
+
+The same screen for a developer: the check-in to confirm or correct, the
+blocker carried forward with its real age, and a focus list ranked by urgency.
+
+![Today, developer persona](docs/images/today-dev.png)
+
+And for a scrum master: who has checked in across their own pods, and how long
+each blocker has been open.
+
+![Today, scrum master persona](docs/images/today-sm.png)
 
 ### Delivery — graph explorer
 
@@ -46,6 +57,23 @@ Cross-person requests board, scheduled narrative briefs, and a natural-language 
 
 ![Coordination](docs/images/coordination.png)
 
+### Chat — the check-in conversation
+
+Stands in for the chat workspace when no Slack is connected: one thread per
+person, the bot's daily question, and a composer whose reply is parsed into
+structured status. Everyone sees their own thread; a config manager also gets
+the roster and can open anyone's.
+
+![Check-in chat](docs/images/chat.png)
+
+### Acting as another person
+
+On a local dev-auth tenant the header carries a person picker. Selecting someone
+re-issues every request as them, so each role's own screens are one click apart
+without a login per person — see [docs/ops/local-demo.md](docs/ops/local-demo.md).
+The picker is absent under any real auth provider, and role scoping still applies
+to whoever you are acting as.
+
 ### Admin — runtime configuration
 
 Full CRUD over the hierarchy, directory onboarding, graph links, assignments, identity links, escalation contacts, write-back consent, and per-developer check-in timing.
@@ -58,7 +86,7 @@ Full CRUD over the hierarchy, directory onboarding, graph links, assignments, id
 
 ![Command palette](docs/images/command-palette.png)
 
-> There are **two** frontends in this repo. [`frontend/`](frontend) is the original console (dev server on **5173**) and remains the reference implementation CI builds: per-persona dashboard routes (`/me`, `/sm`, `/po`, `/mgr`, `/exec`) plus separate pages for pods, projects, workstreams, flow, portfolio, risks, cross-person requests, admin, and the mock-Slack simulator. [`frontend-v2/`](frontend-v2) is the IA redesign shown above (dev server on **5174**), collapsing all of that into `/today`, `/delivery`, `/signals`, `/coordination`, plus `/admin` and `/sim` behind the avatar menu.
+> There are **two** frontends in this repo. [`frontend/`](frontend) is the original console (dev server on **5173**) and remains the reference implementation CI builds: per-persona dashboard routes (`/me`, `/sm`, `/po`, `/mgr`, `/exec`) plus separate pages for pods, projects, workstreams, flow, portfolio, risks, cross-person requests, admin, and the mock-Slack simulator. [`frontend-v2/`](frontend-v2) is the IA redesign shown above (dev server on **5174**), collapsing all of that into `/today`, `/delivery`, `/signals`, `/coordination`, plus `/chat` in the nav and `/admin` behind the avatar menu (`/sim` redirects to `/chat`).
 
 ---
 
@@ -156,7 +184,7 @@ To run the API on the host instead of in a container, use `make api` (uvicorn wi
 
 ### Driving the check-in loop without Slack
 
-Point chat and directory at the simulator and restart the backend:
+Point chat and directory at the built-in chat and restart the backend:
 
 ```bash
 OPENPROGRAM_CHAT_PROVIDER=mock_slack
@@ -164,7 +192,28 @@ OPENPROGRAM_DIRECTORY_PROVIDER=mock_slack
 OPENPROGRAM_CHAT_SIMULATOR_ENABLED=true
 ```
 
-Then use the `/sim` screen (or the `/test/chat-simulator/*` endpoints) to dispatch a check-in DM, reply as the developer, and watch the parsed status land in the rollup — replies travel the same webhook correlation path as real chat. Details in [mock-slack.md](mock-slack.md); for real Slack, follow [docs/ops/slack-setup.md](docs/ops/slack-setup.md).
+The `/chat` screen is then the chat workspace: one thread per person, the bot's
+check-in question, and a composer that files a reply against it — replies travel
+the same webhook correlation path as real chat, so the parsed status lands in the
+rollup. Anyone may read and answer their own thread; the roster sidebar, the
+tenant-wide transcript and history reset need `manage_config`. The
+`/test/chat-simulator/*` endpoints are the same surface for scripts. Details in
+[mock-slack.md](mock-slack.md); for real Slack, follow
+[docs/ops/slack-setup.md](docs/ops/slack-setup.md).
+
+### Demoing the whole product on one machine
+
+For a populated tenant — 14 people, a month of check-ins, blockers, risks and
+briefs, plus an acting-as picker that switches the console between people — see
+**[docs/ops/local-demo.md](docs/ops/local-demo.md)**. Short version:
+
+```bash
+docker compose exec -w /app backend python -m scripts.seed_demo_history --reset
+```
+
+The seed invents only the raw inputs (check-ins, blocker lifecycles, Jira/Git
+facts); every status dot, risk finding and brief on screen is then derived by the
+real rollup, risk and brief services.
 
 ---
 

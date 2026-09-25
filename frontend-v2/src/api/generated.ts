@@ -21,6 +21,31 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/auth/dev-users": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Dev Users
+     * @description People the local demo console can act as.
+     *
+     *     Empty unless ``demo_mode`` is on, so the frontend picker simply disappears
+     *     by default and anywhere but a local dev-auth tenant. Roles come from the
+     *     developer node's own ``app_roles`` metadata; pod names are resolved through
+     *     membership edges.
+     */
+    get: operations["dev_users_api_v1_auth_dev_users_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/auth/login": {
     parameters: {
       query?: never;
@@ -1367,10 +1392,37 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Chat Simulator Messages */
+    /**
+     * Chat Simulator Messages
+     * @description Simulator transcript, optionally narrowed to one person's own thread.
+     */
     get: operations["chat_simulator_messages_test_chat_simulator_messages_get"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/test/chat-simulator/users/{user_id}/messages": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Chat Simulator User Message
+     * @description Send a message as one person and let it land in the rollup.
+     *
+     *     Unlike the reply endpoint this does not need an outstanding bot question:
+     *     if the person speaks first, the check-in is opened for them and the text
+     *     becomes its reply.
+     */
+    post: operations["chat_simulator_user_message_test_chat_simulator_users__user_id__messages_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1464,6 +1516,16 @@ export interface components {
       /** Message */
       message?: string | null;
       user?: components["schemas"]["AuthUserResponse"] | null;
+      /**
+       * Demo Mode
+       * @default false
+       */
+      demo_mode: boolean;
+      /**
+       * Chat Enabled
+       * @default false
+       */
+      chat_enabled: boolean;
     };
     /** AuthUserResponse */
     AuthUserResponse: {
@@ -1640,6 +1702,31 @@ export interface components {
       provider: string;
       /** Message Count */
       message_count: number;
+    };
+    /** ChatSimulatorUserMessageRequest */
+    ChatSimulatorUserMessageRequest: {
+      /** Text */
+      text: string;
+      /** Received At */
+      received_at?: string | null;
+      /** Developer Id */
+      developer_id?: string | null;
+      /** Developer Name */
+      developer_name?: string | null;
+    };
+    /** ChatSimulatorUserMessageResponse */
+    ChatSimulatorUserMessageResponse: {
+      /** Message Id */
+      message_id: string;
+      /** Status */
+      status: string;
+      /** Processed Message Id */
+      processed_message_id: string;
+      /**
+       * Started Checkin
+       * @default false
+       */
+      started_checkin: boolean;
     };
     /** ChatWebhookResponse */
     ChatWebhookResponse: {
@@ -1889,6 +1976,29 @@ export interface components {
     DeadLettersResponse: {
       /** Dead Letters */
       dead_letters: components["schemas"]["DeadLetterResponse"][];
+    };
+    /**
+     * DevUserResponse
+     * @description One switchable person for the local demo persona picker.
+     */
+    DevUserResponse: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Title */
+      title?: string | null;
+      /** Email */
+      email?: string | null;
+      /** Roles */
+      roles: string[];
+      /** Pods */
+      pods?: string[];
+    };
+    /** DevUsersResponse */
+    DevUsersResponse: {
+      /** Items */
+      items: components["schemas"]["DevUserResponse"][];
     };
     /** DirectoryItemResponse */
     DirectoryItemResponse: {
@@ -2936,6 +3046,26 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  dev_users_api_v1_auth_dev_users_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DevUsersResponse"];
         };
       };
     };
@@ -6488,7 +6618,9 @@ export interface operations {
   };
   chat_simulator_messages_test_chat_simulator_messages_get: {
     parameters: {
-      query?: never;
+      query?: {
+        user_id?: string | null;
+      };
       header?: {
         authorization?: string | null;
       };
@@ -6504,6 +6636,43 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ChatSimulatorMessagesResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  chat_simulator_user_message_test_chat_simulator_users__user_id__messages_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        user_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChatSimulatorUserMessageRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ChatSimulatorUserMessageResponse"];
         };
       };
       /** @description Validation Error */

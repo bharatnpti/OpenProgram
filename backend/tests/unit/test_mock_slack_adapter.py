@@ -85,4 +85,12 @@ async def test_mock_slack_http_client_lists_local_users() -> None:
     assert payload["ok"] is True
     members = payload["members"]
     assert isinstance(members, list)
-    assert [member["id"] for member in members] == ["U1001", "U1002", "U1003"]
+    ids = [member["id"] for member in members]
+    # The roster is demo data that grows; what matters is that it is a stable,
+    # unique, well-formed set every caller sees the same way.
+    assert ids == sorted(ids)
+    assert len(ids) == len(set(ids))
+    assert all(isinstance(member_id, str) and member_id.startswith("U") for member_id in ids)
+    assert ids[:3] == ["U1001", "U1002", "U1003"]
+    assert all(member["profile"]["real_name"] for member in members)
+    assert all(member["deleted"] is False for member in members)
