@@ -7,6 +7,7 @@ import { Card } from "../../components/ui/Card";
 import { ProgressRing } from "../../components/ui/ProgressRing";
 import { RagChip } from "../../components/ui/RagChip";
 import { SegmentedBar } from "../../components/ui/SegmentedBar";
+import { WaitingOnYou } from "./WaitingOnYou";
 import { resolveSelection } from "../../lib/selection";
 import { toneForRag, toneHex } from "../../lib/status";
 import { todayIso } from "../../lib/today";
@@ -116,28 +117,32 @@ export function ProductOwnerToday() {
         ) : null}
       </Card>
 
-      <Card padding="p-0" animateDelay={140}>
-        <div className="px-6 pt-6 pb-2">
-          <h2 className="text-[18px] font-bold">Needs your attention</h2>
-        </div>
-        {atRisk.map((task) => (
-          <div
-            key={task.id}
-            className="flex items-center justify-between gap-4 border-t border-grey-fill px-6 py-4 first:border-t-0"
-          >
-            <div className="min-w-0">
-              <div className="truncate text-[15px] font-bold">{task.name}</div>
-              <div className="mt-0.5 text-[13px] text-grey-secondary">
-                {task.id} · {task.source}
-              </div>
-            </div>
-            <RagChip tone={toneForRag(task.rag)}>{task.rag}</RagChip>
+      <div className="flex flex-col gap-6">
+        <Card padding="p-0" animateDelay={140}>
+          <div className="px-6 pt-6 pb-2">
+            <h2 className="text-[18px] font-bold">Needs your attention</h2>
           </div>
-        ))}
-        {progress.data && atRisk.length === 0 ? (
-          <div className="px-6 py-6 text-sm text-grey-secondary">Everything is on track.</div>
-        ) : null}
-      </Card>
+          {atRisk.map((task) => (
+            <div
+              key={task.id}
+              className="flex items-center justify-between gap-4 border-t border-grey-fill px-6 py-4 first:border-t-0"
+            >
+              <div className="min-w-0">
+                <div className="truncate text-[15px] font-bold">{task.name}</div>
+                <div className="mt-0.5 text-[13px] text-grey-secondary">
+                  {task.id} · {task.source}
+                </div>
+              </div>
+              <RagChip tone={toneForRag(task.rag)}>{task.rag}</RagChip>
+            </div>
+          ))}
+          {progress.data && atRisk.length === 0 ? (
+            <div className="px-6 py-6 text-sm text-grey-secondary">Everything is on track.</div>
+          ) : null}
+        </Card>
+
+        <WaitingOnYou animateDelay={280} />
+      </div>
     </div>
   );
 }
