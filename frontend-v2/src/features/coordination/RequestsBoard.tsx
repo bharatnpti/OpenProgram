@@ -59,7 +59,7 @@ export function RequestsBoard() {
     <div className="flex flex-col gap-3">
       {canReadAggregate ? null : (
         <p className="text-[13px] text-grey-secondary">
-          Showing requests you raised or that are waiting on you. The portfolio-wide board needs a
+          Showing the requests waiting on you. The portfolio-wide board needs a
           team or executive role.
         </p>
       )}
