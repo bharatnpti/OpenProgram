@@ -17,6 +17,7 @@ from infra.workflows.drift_scan import DriftScanInput
 from infra.workflows.git_sync import GitSyncInput
 from infra.workflows.jira_sync import JiraSyncInput
 from infra.workflows.risk_assessment import RiskAssessmentInput
+from infra.workflows.rollup import RollupInput
 from infra.workflows.runtime_sync import RuntimeSyncInput
 
 type SyncWorkflowInput = (
@@ -28,6 +29,7 @@ type SyncWorkflowInput = (
     | RiskAssessmentInput
     | DriftScanInput
     | BriefGenerationInput
+    | RollupInput
 )
 
 
@@ -102,11 +104,28 @@ def sync_workflow_input(input: SyncDispatchInput) -> SyncWorkflowInput:
             tenant_id=input.tenant_id,
             connector=_optional_str(input.payload, "connector"),
         )
+    derived = _derived_workflow_input(connector, input)
+    if derived is not None:
+        return derived
+    raise ValueError(f"unsupported sync connector: {input.connector}")
+
+
+def _derived_workflow_input(
+    connector: str,
+    input: SyncDispatchInput,
+) -> SyncWorkflowInput | None:
+    """The connectors that derive from what is already stored, not from a provider."""
     if connector == "risk":
         return RiskAssessmentInput(
             tenant_id=input.tenant_id,
             project_id=_optional_str(input.payload, "project_id"),
             observed_at=_optional_str(input.payload, "observed_at"),
+        )
+    if connector == "rollup":
+        return RollupInput(
+            tenant_id=input.tenant_id,
+            as_of=_optional_str(input.payload, "as_of"),
+            backfill_days=_optional_int(input.payload, "backfill_days"),
         )
     if connector == "drift":
         return DriftScanInput(
@@ -120,7 +139,7 @@ def sync_workflow_input(input: SyncDispatchInput) -> SyncWorkflowInput:
             kind=_required_str(input.payload, "kind"),
             observed_at=_optional_str(input.payload, "observed_at"),
         )
-    raise ValueError(f"unsupported sync connector: {input.connector}")
+    return None
 
 
 def sync_workflow_name(input: SyncDispatchInput) -> str:
@@ -137,6 +156,8 @@ def sync_workflow_name(input: SyncDispatchInput) -> str:
         return "runtime"
     if connector == "risk":
         return "risk"
+    if connector == "rollup":
+        return "rollup"
     if connector == "drift":
         return "drift"
     if connector == "brief":
@@ -163,6 +184,8 @@ def _connector(value: str) -> str:
         return "runtime"
     if normalized in {"risk", "risk_assessment"}:
         return "risk"
+    if normalized in {"rollup", "node_rollup", "rollup_statuses"}:
+        return "rollup"
     if normalized in {"drift", "drift_scan"}:
         return "drift"
     if normalized in {"brief", "brief_generation", "narrative_brief"}:
@@ -175,6 +198,13 @@ def _required_str(payload: Mapping[str, object], key: str) -> str:
     if isinstance(value, str) and value.strip():
         return value
     raise ValueError(f"sync payload field {key} must be a non-empty string")
+
+
+def _optional_int(payload: Mapping[str, object], key: str) -> int | None:
+    value = payload.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
 
 
 def _optional_str(payload: Mapping[str, object], key: str) -> str | None:

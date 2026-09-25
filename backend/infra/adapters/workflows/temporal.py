@@ -47,6 +47,7 @@ from infra.workflows import (
     jira_sync,
     nudge,
     risk_assessment,
+    rollup,
     runtime_sync,
 )
 from infra.workflows.brief_generation import BriefGenerationInput, BriefGenerationResult
@@ -64,6 +65,7 @@ from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import EscalationStepInput, NudgeInput, NudgeResult
 from infra.workflows.risk_assessment import RiskAssessmentInput, RiskAssessmentWorkflowResult
+from infra.workflows.rollup import RollupInput, RollupWorkflowResult
 from infra.workflows.runtime_sync import RuntimeSyncInput, RuntimeSyncWorkflowResult
 
 SyncWorkflowResult = (
@@ -73,6 +75,7 @@ SyncWorkflowResult = (
     | DirectorySyncResult
     | RuntimeSyncWorkflowResult
     | RiskAssessmentWorkflowResult
+    | RollupWorkflowResult
     | DriftScanWorkflowResult
     | BriefGenerationResult
 )
@@ -273,6 +276,22 @@ async def run_risk_assessment_activity(
     payload: RiskAssessmentInput,
 ) -> RiskAssessmentWorkflowResult:
     return await risk_assessment.run_risk_assessment_activity(payload)
+
+
+@activity.defn
+async def run_rollup_activity(payload: RollupInput) -> RollupWorkflowResult:
+    return await rollup.run_rollup_activity(payload)
+
+
+@workflow.defn
+class RollupWorkflow:
+    @workflow.run
+    async def run(self, payload: RollupInput) -> RollupWorkflowResult:
+        return await workflow.execute_activity(
+            run_rollup_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=10),
+        )
 
 
 @workflow.defn
@@ -500,7 +519,8 @@ async def _execute_sync_activity(
     | RuntimeSyncInput
     | RiskAssessmentInput
     | DriftScanInput
-    | BriefGenerationInput,
+    | BriefGenerationInput
+    | RollupInput,
 ) -> SyncWorkflowResult:
     if isinstance(payload, JiraSyncInput):
         return await workflow.execute_activity(
@@ -531,6 +551,12 @@ async def _execute_sync_activity(
             run_runtime_config_sync_activity,
             payload,
             start_to_close_timeout=timedelta(minutes=5),
+        )
+    if isinstance(payload, RollupInput):
+        return await workflow.execute_activity(
+            run_rollup_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=10),
         )
     if isinstance(payload, RiskAssessmentInput):
         return await workflow.execute_activity(
@@ -793,6 +819,13 @@ class TemporalWorkflowScheduler:
                 id=workflow_id,
                 task_queue=self.task_queue,
             )
+        elif isinstance(workflow_input, RollupInput):
+            await client.start_workflow(
+                RollupWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
         elif isinstance(workflow_input, RiskAssessmentInput):
             await client.start_workflow(
                 RiskAssessmentWorkflow.run,
@@ -844,6 +877,7 @@ class TemporalWorkflowWorker:
                 DirectorySyncWorkflow,
                 RuntimeSyncWorkflow,
                 RiskAssessmentWorkflow,
+                RollupWorkflow,
                 DriftScanWorkflow,
                 BriefGenerationWorkflow,
                 ScheduledSyncWorkflow,
@@ -863,6 +897,7 @@ class TemporalWorkflowWorker:
                 sync_directory_activity,
                 run_runtime_config_sync_activity,
                 run_risk_assessment_activity,
+                run_rollup_activity,
                 run_drift_scan_activity,
                 run_brief_generation_activity,
                 start_daily_checkin_activity,

@@ -443,6 +443,7 @@ def test_schedule_configs_ignore_calendar_read_sync_targets() -> None:
         ("runtime", "vcs", {"connector": "vcs"}),
         ("directory", "directory", {}),
         ("risk", "assessment", {}),
+        ("rollup", "statuses", {}),
         ("drift", "scan", {}),
     ]
     assert [config.cron for config in sync_configs] == [
@@ -450,6 +451,7 @@ def test_schedule_configs_ignore_calendar_read_sync_targets() -> None:
         settings.github_sync_cron,
         settings.directory_sync_cron,
         settings.risk_assessment_cron,
+        settings.rollup_cron,
         settings.drift_scan_cron,
     ]
 
@@ -498,6 +500,7 @@ def test_schedule_configs_include_runtime_fanout_and_directory_when_targets_are_
         ("runtime", "vcs", {"connector": "vcs"}),
         ("directory", "directory", {}),
         ("risk", "assessment", {}),
+        ("rollup", "statuses", {}),
         ("drift", "scan", {}),
     ]
 
@@ -528,6 +531,7 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
         ("runtime", "vcs"),
         ("directory", "directory"),
         ("risk", "assessment"),
+        ("rollup", "statuses"),
         ("drift", "scan"),
         ("brief", "daily_pod"),
         ("brief", "weekly_project"),
