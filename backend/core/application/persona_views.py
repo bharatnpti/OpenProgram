@@ -699,8 +699,11 @@ def _blocker_details(
             blocker_id=blocker.blocker_id,
             description=blocker.description,
             work_item_id=blocker.work_item_ref.id if blocker.work_item_ref is not None else None,
+            # The resolver knows the name because it fetched the node; the
+            # node_names map only covers the developer's own tasks, so a blocker
+            # attributed to a work item fell back to None.
             work_item_name=(
-                node_names.get(blocker.work_item_ref.id)
+                blocker.work_item_name or node_names.get(blocker.work_item_ref.id)
                 if blocker.work_item_ref is not None
                 else None
             ),

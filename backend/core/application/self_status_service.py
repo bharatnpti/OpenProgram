@@ -63,7 +63,7 @@ class SelfStatusService:
                 blocker_id=blocker.blocker_id,
                 description=blocker.description,
                 work_item_id=blocker.work_item_ref.id if blocker.work_item_ref else None,
-                work_item_name=None,
+                work_item_name=blocker.work_item_name,
                 pod_id=blocker.explicit_pod_ref.id if blocker.explicit_pod_ref else None,
                 unattributed=blocker.unattributed,
                 first_seen_on=blocker.first_seen_on,
