@@ -7,6 +7,7 @@ import { RagChip } from "../../components/ui/RagChip";
 import { SegmentedBar } from "../../components/ui/SegmentedBar";
 import { useRole } from "../../app/role";
 import { resolveSelection } from "../../lib/selection";
+import { WaitingOnYou } from "./WaitingOnYou";
 import { todayIso } from "../../lib/today";
 
 const STATE_TONE = {
@@ -124,60 +125,64 @@ export function ScrumMasterToday() {
         </div>
       </Card>
 
-      <Card variant="grey" padding="p-0" animateDelay={140}>
-        <div className="px-6 pt-6 pb-2">
-          <h2 className="text-[18px] font-bold">Blocker aging</h2>
-        </div>
-        {(blockers.data?.blockers ?? []).map((blocker) => {
-          const fillColor =
-            blocker.age_days >= 5
-              ? "var(--op-red)"
-              : blocker.age_days >= 2
-                ? "var(--op-amber)"
-                : "var(--op-info)";
-          return (
-            <div key={blocker.id} className="px-6 py-3.5">
-              <div className="flex items-center justify-between gap-4">
-                <div className="text-[15px] font-bold">{blocker.description}</div>
-                <div className="shrink-0 text-[13px] font-bold text-grey-secondary">
-                  {blocker.age_days}d
+      <div className="flex flex-col gap-6">
+        <Card variant="grey" padding="p-0" animateDelay={140}>
+          <div className="px-6 pt-6 pb-2">
+            <h2 className="text-[18px] font-bold">Blocker aging</h2>
+          </div>
+          {(blockers.data?.blockers ?? []).map((blocker) => {
+            const fillColor =
+              blocker.age_days >= 5
+                ? "var(--op-red)"
+                : blocker.age_days >= 2
+                  ? "var(--op-amber)"
+                  : "var(--op-info)";
+            return (
+              <div key={blocker.id} className="px-6 py-3.5">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="text-[15px] font-bold">{blocker.description}</div>
+                  <div className="shrink-0 text-[13px] font-bold text-grey-secondary">
+                    {blocker.age_days}d
+                  </div>
+                </div>
+                <div className="mt-1 text-[13px] text-grey-secondary">{blocker.owner_name}</div>
+                {(blocker.work_item_ref ?? blocker.pod_ref) || blocker.unattributed ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {blocker.work_item_ref ? (
+                      <RagChip tone="neutral" className="h-6 px-2.5 text-[12px]">
+                        {blocker.work_item_ref.id}
+                      </RagChip>
+                    ) : blocker.pod_ref ? (
+                      <RagChip tone="neutral" className="h-6 px-2.5 text-[12px]">
+                        {blocker.pod_ref.id}
+                      </RagChip>
+                    ) : null}
+                    {blocker.unattributed ? (
+                      <RagChip tone="warning" className="h-6 px-2.5 text-[12px]">
+                        unattributed
+                      </RagChip>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-grey-border">
+                  <div
+                    className="animate-op-bar h-full rounded-full"
+                    style={{
+                      width: `${Math.min(100, blocker.age_days * 16)}%`,
+                      backgroundColor: fillColor,
+                    }}
+                  />
                 </div>
               </div>
-              <div className="mt-1 text-[13px] text-grey-secondary">{blocker.owner_name}</div>
-              {(blocker.work_item_ref ?? blocker.pod_ref) || blocker.unattributed ? (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  {blocker.work_item_ref ? (
-                    <RagChip tone="neutral" className="h-6 px-2.5 text-[12px]">
-                      {blocker.work_item_ref.id}
-                    </RagChip>
-                  ) : blocker.pod_ref ? (
-                    <RagChip tone="neutral" className="h-6 px-2.5 text-[12px]">
-                      {blocker.pod_ref.id}
-                    </RagChip>
-                  ) : null}
-                  {blocker.unattributed ? (
-                    <RagChip tone="warning" className="h-6 px-2.5 text-[12px]">
-                      unattributed
-                    </RagChip>
-                  ) : null}
-                </div>
-              ) : null}
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-grey-border">
-                <div
-                  className="animate-op-bar h-full rounded-full"
-                  style={{
-                    width: `${Math.min(100, blocker.age_days * 16)}%`,
-                    backgroundColor: fillColor,
-                  }}
-                />
-              </div>
-            </div>
-          );
-        })}
-        {blockers.data && blockers.data.blockers.length === 0 ? (
-          <div className="px-6 py-6 text-sm text-grey-secondary">No open blockers.</div>
-        ) : null}
-      </Card>
+            );
+          })}
+          {blockers.data && blockers.data.blockers.length === 0 ? (
+            <div className="px-6 py-6 text-sm text-grey-secondary">No open blockers.</div>
+          ) : null}
+        </Card>
+
+        <WaitingOnYou animateDelay={280} />
+      </div>
     </div>
   );
 }
