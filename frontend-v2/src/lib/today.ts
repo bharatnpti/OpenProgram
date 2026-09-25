@@ -13,7 +13,12 @@ export function todayKicker(programName: string | null): string {
 export function greetingFor(name: string): string {
   const hour = new Date().getHours();
   const part = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
-  return `${part}, ${name}`;
+  return `${part}, ${firstNameOf(name)}`;
+}
+
+/** A greeting uses the given name; the header carries the full one. */
+function firstNameOf(name: string): string {
+  return name.trim().split(/\s+/)[0] || name;
 }
 
 export function todayIso(): string {
