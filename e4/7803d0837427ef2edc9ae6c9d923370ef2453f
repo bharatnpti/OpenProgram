@@ -1,0 +1,19 @@
+frontend-v2/src/components/ui/Pill.tsx
+  s_db98bf649daf00::t_30d4998ca86e35 14-19,21-24,41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e47803d0837427ef2edc9ae6c9d923370ef2453f",
+  "prompts": {},
+  "sessions": {
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
