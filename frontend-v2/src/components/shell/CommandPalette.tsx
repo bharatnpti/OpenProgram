@@ -5,12 +5,18 @@ import { Search } from "lucide-react";
 
 import { apiClient } from "../../api/client";
 import type { DirectoryItemResponse, NodeKind } from "../../api/schema";
+import { useRole } from "../../app/role";
 import { cn } from "../../lib/utils";
 
-const NAV_DESTINATIONS = [
+const NAV_DESTINATIONS: {
+  label: string;
+  hint: string;
+  to: string;
+  needsAggregate?: boolean;
+}[] = [
   { label: "Today", hint: "Persona home", to: "/today" },
   { label: "Delivery", hint: "Graph explorer", to: "/delivery" },
-  { label: "Signals", hint: "Risks, drift & flow", to: "/signals" },
+  { label: "Signals", hint: "Risks, drift & flow", to: "/signals", needsAggregate: true },
   { label: "Coordination", hint: "Requests & briefs", to: "/coordination" },
 ];
 
@@ -25,6 +31,7 @@ type PaletteRow = {
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
+  const { canReadAggregate } = useRole();
   const inputRef = useRef<HTMLInputElement>(null);
 
   const programs = useQuery({
@@ -49,7 +56,9 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   });
 
   const rows = useMemo<PaletteRow[]>(() => {
-    const screenRows: PaletteRow[] = NAV_DESTINATIONS.map((item) => ({
+    const screenRows: PaletteRow[] = NAV_DESTINATIONS.filter(
+      (item) => !item.needsAggregate || canReadAggregate,
+    ).map((item) => ({
       key: `nav-${item.to}`,
       label: item.label,
       hint: item.hint,
@@ -66,7 +75,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     const needle = query.trim().toLowerCase();
     const filtered = needle ? all.filter((row) => row.label.toLowerCase().includes(needle)) : all;
     return filtered.slice(0, 9);
-  }, [query, programs.data, projects.data, workstreams.data, pods.data]);
+  }, [canReadAggregate, query, programs.data, projects.data, workstreams.data, pods.data]);
 
   if (!open) {
     return null;

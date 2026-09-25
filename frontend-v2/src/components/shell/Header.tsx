@@ -6,17 +6,23 @@ import { cn } from "../../lib/utils";
 import { AvatarMenu } from "./AvatarMenu";
 import { PersonPicker } from "./PersonPicker";
 
-const NAV_ITEMS = [
+type NavItem = { label: string; to: string; needsAggregate?: boolean };
+
+const NAV_ITEMS: NavItem[] = [
   { label: "Today", to: "/today" },
   { label: "Delivery", to: "/delivery" },
-  { label: "Signals", to: "/signals" },
+  { label: "Signals", to: "/signals", needsAggregate: true },
   { label: "Coordination", to: "/coordination" },
 ];
 
 export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {
-  const { chatEnabled } = useRole();
-  // Chat is only listed when the backend actually serves it.
-  const navItems = chatEnabled ? [...NAV_ITEMS, { label: "Chat", to: "/chat" }] : NAV_ITEMS;
+  const { chatEnabled, canReadAggregate } = useRole();
+  // Signals reads the whole portfolio, which a developer is not authorized for;
+  // listing it would only lead to a screen of zeros. Chat is listed when served.
+  const navItems: NavItem[] = [
+    ...NAV_ITEMS.filter((item) => !item.needsAggregate || canReadAggregate),
+    ...(chatEnabled ? [{ label: "Chat", to: "/chat" }] : []),
+  ];
   return (
     <header className="sticky top-0 z-40 flex h-[72px] items-center gap-4 border-b border-grey-border bg-white/94 px-6 backdrop-blur-sm">
       <div className="flex shrink-0 items-center gap-3">
