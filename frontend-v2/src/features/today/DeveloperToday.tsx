@@ -17,6 +17,7 @@ import { toneForRag } from "../../lib/status";
 interface BlockerRow {
   blocker_id: string | null;
   description: string;
+  work_item_name?: string | null;
   work_item_id: string | null;
   resolved: boolean;
 }
@@ -47,12 +48,14 @@ export function DeveloperToday() {
               blocker_id: detail.blocker_id,
               description: detail.description,
               work_item_id: detail.work_item_id,
+              work_item_name: detail.work_item_name,
               resolved: false,
             }))
           : myStatus.data.blockers.map((description) => ({
               blocker_id: null,
               description,
               work_item_id: null,
+              work_item_name: null,
               resolved: false,
             })),
       );
@@ -105,6 +108,7 @@ export function DeveloperToday() {
   const checkinProvenance = provenanceLabel(
     myStatus.data?.source ?? focus.data?.status_source,
     myStatus.data?.confirmed_at ?? null,
+    confirmed,
   );
 
   return (
@@ -289,6 +293,17 @@ export function DeveloperToday() {
                       }
                     >
                       <option value="">No work item</option>
+                      {/* A blocker is attributed to a work item key (CHK-102)
+                          while focus lists task ids (task-chk-102), so the
+                          current attribution is usually not among the options
+                          and the select fell back to "No work item" -- telling
+                          a developer their blocker had none when it did. */}
+                      {row.work_item_id &&
+                      !(focus.data?.tasks ?? []).some((task) => task.id === row.work_item_id) ? (
+                        <option value={row.work_item_id}>
+                          {row.work_item_name ?? row.work_item_id}
+                        </option>
+                      ) : null}
                       {(focus.data?.tasks ?? []).map((task) => (
                         <option key={task.id} value={task.id}>
                           {task.name}
@@ -359,19 +374,27 @@ export function DeveloperToday() {
 /**
  * Where this check-in came from, in the person's own words.
  *
- * The source is the honest signal: a confirmed status was answered in chat, an
- * inferred one was derived from delivery signals, and an unknown one means the
- * question went unanswered.
+ * The source is the honest signal: an inferred status was derived from delivery
+ * signals and an unknown one means the question went unanswered. A confirmed
+ * one needs `developerConfirmed` to say *how*: the console's Confirm and
+ * Correct actions set it, a parsed chat reply does not. Reporting both as
+ * "answered in chat" misattributed every correction made right here.
  */
-function provenanceLabel(source: StatusSource | undefined, confirmedAt: string | null): string {
+function provenanceLabel(
+  source: StatusSource | undefined,
+  confirmedAt: string | null,
+  developerConfirmed: boolean,
+): string {
   const when = confirmedAt
     ? new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(
         new Date(confirmedAt),
       )
     : null;
   switch (source) {
-    case "confirmed":
-      return when ? `answered in chat · ${when}` : "answered in chat";
+    case "confirmed": {
+      const how = developerConfirmed ? "confirmed by you" : "answered in chat";
+      return when ? `${how} · ${when}` : how;
+    }
     case "partial":
       return when ? `partly answered · ${when}` : "partly answered";
     case "inferred":

@@ -230,6 +230,7 @@ def _legacy_status_blockers(
             developer_id=node.id,
             first_seen_on=status.as_of,
             work_item_ref=None,
+            work_item_name=None,
             explicit_pod_ref=None,
             pod_ids=(),
             unattributed=True,
