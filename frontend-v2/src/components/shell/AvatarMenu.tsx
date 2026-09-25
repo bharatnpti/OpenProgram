@@ -15,6 +15,7 @@ export function AvatarMenu() {
     isDevMode,
     canAccessAdmin,
     canAccessRole,
+    chatEnabled,
     actingAs,
     displayName,
   } = useRole();
@@ -83,16 +84,20 @@ export function AvatarMenu() {
             </>
           ) : null}
           <div className="mt-1.5 border-t border-grey-fill pt-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                navigate("/chat");
-                setOpen(false);
-              }}
-              className="flex w-full items-center rounded-lg px-3.5 py-2.5 text-left text-sm hover:bg-grey-fill"
-            >
-              Check-in chat
-            </button>
+            {/* Only when the backend serves chat, as the header nav already
+                does -- otherwise the route bounces straight back to /today. */}
+            {chatEnabled ? (
+              <button
+                type="button"
+                onClick={() => {
+                  navigate("/chat");
+                  setOpen(false);
+                }}
+                className="flex w-full items-center rounded-lg px-3.5 py-2.5 text-left text-sm hover:bg-grey-fill"
+              >
+                Check-in chat
+              </button>
+            ) : null}
             {canAccessAdmin ? (
               <button
                 type="button"
