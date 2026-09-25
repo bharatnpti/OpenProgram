@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from typing import cast
 
 import pytest
 
@@ -12,9 +13,11 @@ from core.application.tools.conversation_history import ConversationHistoryTool
 from core.application.tools.git_activity import GitActivityTool
 from core.application.tools.issue_tracker import IssueTrackerTool
 from core.domain.conversation import ConversationRole, ConversationTurn
+from core.domain.errors import ProviderUnavailable
 from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
+from core.ports.issue_tracker import IssueTracker
 from tests.contract.fakes import (
     FakeConversationRepository,
     FakeIssueTracker,
@@ -118,6 +121,31 @@ async def test_issue_tracker_tool_fetches_active_and_exact_issue() -> None:
 
     assert "PO-1: Build graph sync | state=blocked" in active
     assert "PO-2: Unassigned work | state=todo" in exact
+
+
+async def test_issue_tracker_tool_degrades_when_the_tracker_cannot_answer() -> None:
+    """An unfetchable issue must not abort the check-in that mentioned it.
+
+    The tool runs inside the reply parse, so a tracker that is unreachable,
+    unauthorized, or simply does not hold the key the model asked about has to
+    come back as a sentence rather than an exception.
+    """
+
+    class UnavailableTracker:
+        async def get_issue(self, tenant_id: str, key: str) -> Issue:
+            raise ProviderUnavailable(f"issue {key} not found")
+
+        async def list_active_for(self, user: UserRef) -> list[Issue]:
+            raise ProviderUnavailable("tracker unreachable")
+
+    tool = IssueTrackerTool(
+        tenant_id="demo",
+        developer_id="dev-1",
+        issue_tracker=cast(IssueTracker, UnavailableTracker()),
+    )
+
+    assert await tool.run({"issue_key": "CHK-103"}) == "Issue CHK-103 could not be fetched."
+    assert await tool.run({}) == "Active issues could not be fetched."
 
 
 async def test_git_activity_tool_filters_recent_developer_facts_by_issue_key() -> None:
