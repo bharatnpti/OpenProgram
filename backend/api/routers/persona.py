@@ -231,7 +231,11 @@ async def writeback_adoption(
 async def portfolio_cross_person_requests(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[CrossPersonRequestService, Depends(get_cross_person_request_service)],
-    status: Annotated[CrossPersonRequestStatus | None, Query()] = CrossPersonRequestStatus.OPEN,
+    # No filter means every active request, matching `list_portfolio` itself.
+    # Defaulting to OPEN quietly narrowed two callers that ask for all of them:
+    # the three-column board, whose Acknowledged and Needs-resolution columns
+    # could therefore never fill, and the older console's "All active" filter.
+    status: Annotated[CrossPersonRequestStatus | None, Query()] = None,
 ) -> CrossPersonRequestsResponse:
     _ensure_aggregate(principal)
     requests = await service.list_portfolio(principal.tenant_id, status)
