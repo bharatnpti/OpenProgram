@@ -146,7 +146,38 @@ async def test_litellm_json_mode_sends_response_format_and_deterministic_setting
     body = json.loads(route.calls[0].request.content)
     assert body["response_format"] == {"type": "json_object"}
     assert body["temperature"] == 0.0
-    assert body["max_tokens"] > 0
+    assert body["max_completion_tokens"] > 0
+    assert "max_tokens" not in body
+
+
+@respx.mock
+async def test_litellm_sends_no_top_level_metadata() -> None:
+    """A plain OpenAI-compatible endpoint refuses `metadata` without `store`.
+
+    Tenant and correlation are carried on the span and the trace instead, so
+    the adapter works against a provider directly and not only through a
+    gateway that tolerates extra fields.
+    """
+    route = respx.post("https://litellm.test/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "trace-llm",
+                "model": "test-model",
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            },
+        )
+    )
+    provider = LiteLlmProvider(base_url="https://litellm.test", trace_sink=NoopTraceSink())
+
+    await provider.complete(
+        LlmRequest(tenant_id="demo", prompt="hi", model="test-model", correlation_id="corr-1")
+    )
+
+    body = json.loads(route.calls[0].request.content)
+    assert "metadata" not in body
+    assert set(body) == {"model", "messages"}
 
 
 @respx.mock
@@ -172,6 +203,7 @@ async def test_litellm_omits_json_mode_settings_by_default() -> None:
     assert "response_format" not in body
     assert "temperature" not in body
     assert "max_tokens" not in body
+    assert "max_completion_tokens" not in body
 
 
 @respx.mock
