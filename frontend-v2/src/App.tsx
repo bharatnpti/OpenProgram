@@ -42,7 +42,14 @@ export function App() {
               <Route path="/today" element={<TodayPage />} />
               <Route path="/delivery" element={<DeliveryPage />} />
               <Route path="/delivery/:kind/:id" element={<DeliveryPage />} />
-              <Route path="/signals" element={<SignalsPage />} />
+              <Route
+                path="/signals"
+                element={
+                  <RequireAggregateAccess>
+                    <SignalsPage />
+                  </RequireAggregateAccess>
+                }
+              />
               <Route path="/coordination" element={<CoordinationPage />} />
               <Route
                 path="/admin"
@@ -103,6 +110,13 @@ function RootRedirect() {
 function RequireAdminAccess({ children }: { children: ReactNode }) {
   const { canAccessAdmin } = useRole();
   return canAccessAdmin ? children : <Navigate to="/today" replace />;
+}
+
+/** Signals is portfolio-wide, and a developer holds neither aggregate-read
+ * capability, so every query behind the screen would 403. */
+function RequireAggregateAccess({ children }: { children: ReactNode }) {
+  const { canReadAggregate } = useRole();
+  return canReadAggregate ? children : <Navigate to="/today" replace />;
 }
 
 /** Chat is everyone's own conversation, so any signed-in role may open it.
