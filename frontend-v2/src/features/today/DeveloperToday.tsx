@@ -5,11 +5,13 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
+import type { StatusSource } from "../../api/schema";
 import { Card } from "../../components/ui/Card";
 import { TextArea, TextInput } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
+import { useRole } from "../../app/role";
 import { todayIso } from "../../lib/today";
 import { toneForRag } from "../../lib/status";
 
@@ -24,6 +26,7 @@ export function DeveloperToday() {
   const asOf = todayIso();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { people } = useRole();
   const [correctOpen, setCorrectOpen] = useState(false);
   const [summary, setSummary] = useState("");
   const [blockerRows, setBlockerRows] = useState<BlockerRow[]>([]);
@@ -61,7 +64,9 @@ export function DeveloperToday() {
               resolved: false,
             })),
       );
-      setEtaChange(myStatus.data.eta_change_days != null ? String(myStatus.data.eta_change_days) : "");
+      setEtaChange(
+        myStatus.data.eta_change_days != null ? String(myStatus.data.eta_change_days) : "",
+      );
     }
   }, [myStatus.data]);
 
@@ -105,6 +110,10 @@ export function DeveloperToday() {
   const blockerDetails = myStatus.data?.blocker_details ?? [];
   const blockerList = myStatus.data?.blockers ?? focus.data?.blockers ?? [];
   const etaDays = myStatus.data?.eta_change_days ?? null;
+  const checkinProvenance = provenanceLabel(
+    myStatus.data?.source ?? focus.data?.status_source,
+    myStatus.data?.confirmed_at ?? null,
+  );
 
   return (
     <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1.5fr_1fr]">
@@ -112,7 +121,7 @@ export function DeveloperToday() {
         <Card variant="grey" padding="p-7" animateDelay={70}>
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-[22px] font-bold">Your check-in</h2>
-            <span className="text-[13px] text-grey-secondary">drafted from Slack · 09:12</span>
+            <span className="text-[13px] text-grey-secondary">{checkinProvenance}</span>
           </div>
           <p className="mt-3.5 text-[17px] leading-snug">
             {focus.data?.summary ?? myStatus.data?.summary ?? "No check-in on record yet."}
@@ -245,7 +254,10 @@ export function DeveloperToday() {
             <div key={request.source_correlation_id} className="px-5 py-3.5">
               <div className="text-[15px] font-bold">{request.note}</div>
               <div className="mt-0.5 text-[13px] text-grey-secondary">
-                from {request.counterpart_display_name ?? request.raw_name ?? request.requester_id}
+                {/* These are requests where *you* are the counterpart, so the
+                    person to name is the requester -- not the counterpart
+                    display name, which is your own. */}
+                from {requesterName(request.requester_id, people)}
               </div>
             </div>
           ))}
@@ -257,9 +269,9 @@ export function DeveloperToday() {
         <Card padding="p-6" animateDelay={350}>
           <h2 className="text-[18px] font-bold">Why this matters</h2>
           <p className="mt-3 text-[14px] leading-relaxed text-grey-body">
-            Your check-in feeds every rollup above you — pod, project, and program. Silence is
-            never read as green: an unconfirmed status stays visible as stale until you confirm or
-            correct it, so leaders always see what's real.
+            Your check-in feeds every rollup above you — pod, project, and program. Silence is never
+            read as green: an unconfirmed status stays visible as stale until you confirm or correct
+            it, so leaders always see what's real.
           </p>
         </Card>
       </div>
@@ -375,4 +387,36 @@ export function DeveloperToday() {
       </Modal>
     </div>
   );
+}
+
+/**
+ * Where this check-in came from, in the person's own words.
+ *
+ * The source is the honest signal: a confirmed status was answered in chat, an
+ * inferred one was derived from delivery signals, and an unknown one means the
+ * question went unanswered.
+ */
+function provenanceLabel(source: StatusSource | undefined, confirmedAt: string | null): string {
+  const when = confirmedAt
+    ? new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(
+        new Date(confirmedAt),
+      )
+    : null;
+  switch (source) {
+    case "confirmed":
+      return when ? `answered in chat · ${when}` : "answered in chat";
+    case "partial":
+      return when ? `partly answered · ${when}` : "partly answered";
+    case "inferred":
+      return "inferred from delivery signals";
+    case "stale":
+      return "stale · no recent reply";
+    default:
+      return "no reply yet";
+  }
+}
+
+/** Name of whoever raised a request, falling back to their id. */
+function requesterName(requesterId: string, people: { id: string; name: string }[]): string {
+  return people.find((person) => person.id === requesterId)?.name ?? requesterId;
 }
