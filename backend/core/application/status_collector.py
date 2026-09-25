@@ -17,7 +17,11 @@ from core.application.blocker_lifecycle import (
     reconciliation_with_updates,
 )
 from core.application.conversation_history import llm_messages_from_turns
-from core.application.status_parsing import ClarificationEvaluator, StatusParser
+from core.application.status_parsing import (
+    ClarificationDecision,
+    ClarificationEvaluator,
+    StatusParser,
+)
 from core.application.tools.conversation_history import MAX_HISTORY_LIMIT, ConversationHistoryTool
 from core.application.tools.git_activity import GitActivityTool
 from core.application.tools.issue_tracker import IssueTrackerTool
@@ -271,23 +275,20 @@ class StatusCollector:
             checkin.tenant_id,
             checkin.correlation_id,
         )
-        if (
-            not decision.sufficient
-            and decision.question is not None
-            and clarification_count < self._checkin_max_clarifications
-        ):
-            await self._send_clarification(
-                checkin=checkin,
-                message=message,
-                question=decision.question,
-                clarification_number=clarification_count + 1,
-            )
+        insufficient_outcome = await self._maybe_insufficient_reply_clarification(
+            checkin=checkin,
+            message=message,
+            decision=decision,
+            prior_blockers=prior_blockers,
+            clarification_count=clarification_count,
+        )
+        if insufficient_outcome is not None:
             span.set_attribute("openprogram.reply_classification", "clarifying")
             span.set_attribute(
                 "openprogram.has_blocker",
                 bool(decision.signals and decision.signals.blockers),
             )
-            return ReplyOutcome(kind="clarifying")
+            return insufficient_outcome
 
         signals = decision.signals or await self._parser.parse_reply(
             tenant_id=message.tenant_id,
@@ -331,6 +332,14 @@ class StatusCollector:
             clarification_count=clarification_count,
         )
         if person_resolution.clarification_question is not None:
+            # Same reasoning as the clarification branch above: hold the reply's
+            # own signals rather than letting the day read as no reply at all.
+            person_partial_status = await self._record_partial_checkin_status(
+                checkin=checkin,
+                as_of_at=message.received_at,
+                signals=signals,
+                reconciliation=reconciliation,
+            )
             await self._send_clarification(
                 checkin=checkin,
                 message=message,
@@ -339,7 +348,7 @@ class StatusCollector:
             )
             span.set_attribute("openprogram.reply_classification", "needs_person_resolution")
             span.set_attribute("openprogram.has_blocker", bool(signals.blockers))
-            return ReplyOutcome(kind="clarifying")
+            return ReplyOutcome(kind="clarifying", status=person_partial_status)
         attribution_outcome, reconciliation = await self._maybe_attribution_clarification(
             checkin=checkin,
             message=message,
@@ -425,6 +434,54 @@ class StatusCollector:
             source=BlockerSource.CHECKIN,
             source_correlation_id=checkin.correlation_id,
         )
+
+    async def _maybe_insufficient_reply_clarification(
+        self,
+        *,
+        checkin: CheckIn,
+        message: InboundMessage,
+        decision: ClarificationDecision,
+        prior_blockers: tuple[DeveloperBlocker, ...],
+        clarification_count: int,
+    ) -> ReplyOutcome | None:
+        """Ask for what the reply left out, keeping hold of what it did say.
+
+        A reply that earns a clarification is still a reply, so whatever it
+        already told us is recorded as a partial status. Leaving it unrecorded
+        read the day as silence: the developer's own screen still said "no reply
+        yet", a blocker they had just restated kept its old last-seen date, the
+        reported ETA change was dropped, and an end-of-day reconcile could
+        finalize the day as unknown -- counting them as a non-replier in every
+        rollup above them. ``replied_at`` stays unset, so the clarification loop
+        and its timeout finalizer still own the turn.
+        """
+        if (
+            decision.sufficient
+            or decision.question is None
+            or clarification_count >= self._checkin_max_clarifications
+        ):
+            return None
+        partial_status: DeveloperStatus | None = None
+        if decision.signals is not None:
+            partial_status = await self._record_partial_checkin_status(
+                checkin=checkin,
+                as_of_at=message.received_at,
+                signals=decision.signals,
+                reconciliation=await self._reconcile_reply_blockers(
+                    checkin=checkin,
+                    at=message.received_at,
+                    prior=prior_blockers,
+                    signals=decision.signals,
+                    raw_reply=message.text,
+                ),
+            )
+        await self._send_clarification(
+            checkin=checkin,
+            message=message,
+            question=decision.question,
+            clarification_number=clarification_count + 1,
+        )
+        return ReplyOutcome(kind="clarifying", status=partial_status)
 
     async def _maybe_required_details_clarification(
         self,
