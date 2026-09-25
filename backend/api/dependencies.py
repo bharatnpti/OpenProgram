@@ -18,7 +18,7 @@ from core.application.portfolio_feed_service import PortfolioFeedService
 from core.application.risk_service import RiskService
 from core.application.self_status_service import SelfStatusService
 from core.application.writeback_service import WriteBackService
-from core.domain.auth import Principal
+from core.domain.auth import Principal, Role
 from core.domain.errors import (
     AuthenticationRequired,
     ProviderConfigurationError,
@@ -38,16 +38,64 @@ def get_registry(request: Request) -> ServiceRegistry:
     return cast(ServiceRegistry, request.app.state.registry)
 
 
+DEV_USER_HEADER = "x-openprogram-dev-user"
+DEV_ROLES_HEADER = "x-openprogram-dev-roles"
+
+
+def credentials_from_request(request: Request, authorization: str | None) -> AuthCredentials:
+    settings = get_settings_from_request(request)
+    return AuthCredentials(
+        authorization=authorization,
+        session_id=request.cookies.get(settings.auth_cookie_name),
+        impersonate_subject=_impersonated_subject(request, settings),
+        impersonate_roles=_impersonated_roles(request, settings),
+    )
+
+
+def _dev_switching_allowed(settings: Settings) -> bool:
+    """Persona switching is an opt-in local-demo affordance, not an auth bypass.
+
+    Requires ``demo_mode``, which settings refuse outside a local dev-auth
+    tenant. Off by default, so the headers are inert unless someone turned the
+    demo on deliberately.
+    """
+    return settings.demo_mode_available
+
+
+def _impersonated_subject(request: Request, settings: Settings) -> str | None:
+    if not _dev_switching_allowed(settings):
+        return None
+    value = (request.headers.get(DEV_USER_HEADER) or "").strip()
+    return value or None
+
+
+def _impersonated_roles(request: Request, settings: Settings) -> frozenset[Role] | None:
+    if not _dev_switching_allowed(settings):
+        return None
+    raw = (request.headers.get(DEV_ROLES_HEADER) or "").strip()
+    if not raw:
+        return None
+    roles: set[Role] = set()
+    for item in raw.split(","):
+        candidate = item.strip().lower()
+        if not candidate:
+            continue
+        try:
+            roles.add(Role(candidate))
+        except ValueError:
+            # An unknown role name falls back to the configured dev roles rather
+            # than 400-ing a demo click.
+            continue
+    return frozenset(roles) or None
+
+
 async def get_current_principal(
     request: Request,
     authorization: Annotated[str | None, Header()] = None,
 ) -> Principal:
     registry = get_registry(request)
     settings = get_settings_from_request(request)
-    credentials = AuthCredentials(
-        authorization=authorization,
-        session_id=request.cookies.get(settings.auth_cookie_name),
-    )
+    credentials = credentials_from_request(request, authorization)
     try:
         return await registry.current_principal(credentials).get()
     except AuthenticationRequired as exc:

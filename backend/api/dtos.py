@@ -146,6 +146,29 @@ class AuthStatusResponse(BaseModel):
     login_url: str | None = None
     message: str | None = None
     user: AuthUserResponse | None = None
+    # Which optional local surfaces this tenant serves, so the console shows
+    # only what the backend will actually answer. Both default off.
+    demo_mode: bool = False
+    chat_enabled: bool = False
+
+
+class DevUserResponse(BaseModel):
+    """One switchable person for the local demo persona picker."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    name: str
+    title: str | None = None
+    email: str | None = None
+    roles: list[str]
+    pods: list[str] = Field(default_factory=list)
+
+
+class DevUsersResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    items: list[DevUserResponse]
 
 
 class LogoutResponse(BaseModel):
@@ -523,6 +546,25 @@ class ChatSimulatorReplyResponse(BaseModel):
     message_id: str
     status: str
     processed_message_id: str
+
+
+class ChatSimulatorUserMessageRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    text: str = Field(min_length=1)
+    received_at: datetime | None = None
+    # Defaults to the chat user id, which is how the demo tenant is wired.
+    developer_id: str | None = None
+    developer_name: str | None = None
+
+
+class ChatSimulatorUserMessageResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    message_id: str
+    status: str
+    processed_message_id: str
+    started_checkin: bool = False
 
 
 class EntityRefDto(BaseModel):

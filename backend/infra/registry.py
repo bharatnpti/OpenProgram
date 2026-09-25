@@ -26,6 +26,7 @@ from core.application.sync_services import (
     VcsReadSyncService,
 )
 from core.application.writeback_service import WriteBackService
+from core.domain.errors import ProviderUnavailable
 from core.domain.inbound import InboundChatEvent, conversation_key
 from core.domain.messaging import InboundMessage
 from core.domain.workflows import InboundSweeperResult
@@ -99,6 +100,16 @@ from infra.persistence.postgres_status import (
 from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
 
 _CHAT_SIMULATOR_PROVIDER = "mock_slack"
+# Outbound purposes that put a question to the developer and so leave the
+# check-in open for a reply. Everything else the bot sends (acks, consent
+# prompts, escalation notices) does not.
+_CHAT_QUESTION_PURPOSES = frozenset(
+    {
+        "status_checkin",
+        "status_clarification",
+        "status_nudge",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -632,9 +643,79 @@ class ServiceRegistry:
             "message_count": len(messages),
         }
 
-    async def chat_simulator_messages(self) -> list[Mapping[str, object]]:
+    async def chat_simulator_messages(
+        self, user_id: str | None = None
+    ) -> list[Mapping[str, object]]:
         messages = await self._chat_simulator_store().list_messages(self.settings.tenant_id)
+        if user_id is not None:
+            messages = [message for message in messages if message.user_id == user_id]
         return [message.to_dict() for message in messages]
+
+    async def open_chat_simulator_question(self, user_id: str) -> str | None:
+        """Message id of the bot question this person has not answered yet.
+
+        The simulator keeps one channel per person, so "unanswered" is the last
+        bot message that actually asks something with no user message after it.
+        Acknowledgements and consent prompts are bot messages too, and treating
+        one as an open question would attach the next reply to a check-in that
+        is already closed.
+        """
+        store = self._chat_simulator_store()
+        channel_id = await store.open_channel(self.settings.tenant_id, user_id)
+        messages = [
+            message
+            for message in await store.list_messages(self.settings.tenant_id)
+            if message.channel_id == channel_id
+        ]
+        messages.sort(key=lambda message: (message.created_at, message.message_id))
+        for message in reversed(messages):
+            if message.direction == "user":
+                return None
+            if (
+                message.direction == "bot"
+                and message.correlation_id
+                and message.purpose in _CHAT_QUESTION_PURPOSES
+            ):
+                return message.message_id
+        return None
+
+    async def send_chat_simulator_user_message(
+        self,
+        *,
+        user_id: str,
+        developer_id: str,
+        developer_name: str | None,
+        text: str,
+        received_at: datetime | None,
+        correlation_id: str,
+    ) -> Mapping[str, object]:
+        """Post a message as a person, asking them for status first if needed.
+
+        A reply only carries meaning against an open check-in, so when the
+        person speaks unprompted the bot's question is issued synchronously
+        first -- the same ``start_checkin`` path the scheduled fan-out uses --
+        and the text then lands as its reply.
+        """
+        question_id = await self.open_chat_simulator_question(user_id)
+        started_checkin = False
+        if question_id is None:
+            await self.status_collector().start_checkin(
+                tenant_id=self.settings.tenant_id,
+                developer_id=developer_id,
+                developer_name=developer_name,
+                chat_external_id=user_id,
+            )
+            question_id = await self.open_chat_simulator_question(user_id)
+            started_checkin = True
+        if question_id is None:
+            raise ProviderUnavailable("simulator could not open a check-in for this person")
+        result = await self.inject_chat_simulator_reply(
+            message_id=question_id,
+            text=text,
+            received_at=received_at,
+            correlation_id=correlation_id,
+        )
+        return {**result, "started_checkin": started_checkin}
 
     async def reset_chat_simulator(self) -> None:
         await self._chat_simulator_store().reset(self.settings.tenant_id)

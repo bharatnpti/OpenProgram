@@ -1,8 +1,10 @@
 import { NavLink } from "react-router-dom";
 import { Search } from "lucide-react";
 
+import { useRole } from "../../app/role";
 import { cn } from "../../lib/utils";
 import { AvatarMenu } from "./AvatarMenu";
+import { PersonPicker } from "./PersonPicker";
 
 const NAV_ITEMS = [
   { label: "Today", to: "/today" },
@@ -12,6 +14,9 @@ const NAV_ITEMS = [
 ];
 
 export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {
+  const { chatEnabled } = useRole();
+  // Chat is only listed when the backend actually serves it.
+  const navItems = chatEnabled ? [...NAV_ITEMS, { label: "Chat", to: "/chat" }] : NAV_ITEMS;
   return (
     <header className="sticky top-0 z-40 flex h-[72px] items-center gap-4 border-b border-grey-border bg-white/94 px-6 backdrop-blur-sm">
       <div className="flex shrink-0 items-center gap-3">
@@ -25,7 +30,7 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {
       </div>
 
       <nav aria-label="Primary" className="flex h-full items-center gap-2">
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -55,7 +60,7 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {
         <button
           type="button"
           onClick={onOpenPalette}
-          className="flex h-12 min-w-0 flex-[0_1_260px] items-center gap-2.5 rounded-full border border-grey-border bg-grey-fill px-1 pl-[18px] text-sm text-grey-secondary hover:border-grey-disabled"
+          className="hidden h-12 min-w-0 flex-[0_1_200px] items-center gap-2.5 rounded-full border border-grey-border bg-grey-fill px-1 pl-[18px] text-sm text-grey-secondary hover:border-grey-disabled xl:flex"
         >
           <Search size={16} />
           <span className="flex-1 truncate text-left">Search or jump to…</span>
@@ -63,6 +68,7 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {
             ⌘K
           </span>
         </button>
+        <PersonPicker />
         <AvatarMenu />
       </div>
     </header>
