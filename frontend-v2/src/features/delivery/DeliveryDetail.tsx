@@ -7,6 +7,7 @@ import { RagChip } from "../../components/ui/RagChip";
 import type { DirectoryItemResponse } from "../../api/schema";
 import { toneForRag, toneHex } from "../../lib/status";
 import type { DeliveryKind } from "../../lib/useDeliverySelection";
+import { useRole } from "../../app/role";
 import { cn } from "../../lib/utils";
 
 type Lists = {
@@ -67,26 +68,38 @@ export function DeliveryDetail({
   onSelect: (kind: DeliveryKind, id: string) => void;
 }) {
   const item = findItem(selection.kind, selection.id, lists);
+  const { canReadProjectProgress, canReadPodDetail } = useRole();
+  // The navigator lists every node, because the directory is readable by every
+  // role. The detail behind a node is not: progress needs READ_PROJECT_PROGRESS
+  // and a pod needs the pod capabilities. Asking anyway returned a 403 that the
+  // panel rendered as em-dashes and, for a pod, a 0% ring -- a denial dressed up
+  // as data.
+  const mayReadDetail =
+    selection.kind === "pod"
+      ? canReadPodDetail
+      : selection.kind === "program"
+        ? true
+        : canReadProjectProgress;
 
   const projectProgress = useQuery({
     queryKey: ["persona", "progress", selection.id, asOf],
     queryFn: () => apiClient.projectProgress(selection.id, asOf),
-    enabled: selection.kind === "project" && Boolean(selection.id),
+    enabled: selection.kind === "project" && Boolean(selection.id) && mayReadDetail,
   });
   const workstreamProgress = useQuery({
     queryKey: ["persona", "workstream-progress", selection.id, asOf],
     queryFn: () => apiClient.workstreamProgress(selection.id, asOf),
-    enabled: selection.kind === "workstream" && Boolean(selection.id),
+    enabled: selection.kind === "workstream" && Boolean(selection.id) && mayReadDetail,
   });
   const podCheckins = useQuery({
     queryKey: ["persona", "checkins", selection.id, asOf],
     queryFn: () => apiClient.podCheckins(selection.id, asOf),
-    enabled: selection.kind === "pod" && Boolean(selection.id),
+    enabled: selection.kind === "pod" && Boolean(selection.id) && mayReadDetail,
   });
   const podBlockers = useQuery({
     queryKey: ["persona", "blockers", selection.id, asOf],
     queryFn: () => apiClient.podBlockers(selection.id, asOf),
-    enabled: selection.kind === "pod" && Boolean(selection.id),
+    enabled: selection.kind === "pod" && Boolean(selection.id) && mayReadDetail,
   });
 
   if (!item) {
@@ -100,11 +113,13 @@ export function DeliveryDetail({
   const progress = selection.kind === "project" ? projectProgress.data : workstreamProgress.data;
   const rag = selection.kind === "pod" ? item.rag : (progress?.rag ?? item.rag);
   const tone = toneForRag(rag);
+  // No ring at all rather than a 0% one: 0% confirmed and "not yours to read"
+  // are very different things and must not look the same.
   const percent =
     selection.kind === "pod"
       ? podCheckins.data && podCheckins.data.developers.length > 0
         ? (podCheckins.data.confirmed / podCheckins.data.developers.length) * 100
-        : 0
+        : null
       : (progress?.percent_complete ?? null);
 
   const tasks = progress?.tasks ?? [];
@@ -181,6 +196,9 @@ export function DeliveryDetail({
 
         <Card variant="grey" padding="p-6" className={cn(tasks.length === 0 && "lg:col-span-2")}>
           <h3 className="text-[18px] font-bold">Details</h3>
+          {mayReadDetail ? null : (
+            <p className="mt-3 text-sm text-grey-secondary">{detailDeniedNote(selection.kind)}</p>
+          )}
           <dl className="mt-3 flex flex-col gap-2.5">
             {detailRows(selection.kind, item, lists, {
               progress,
@@ -295,4 +313,12 @@ function detailRows(
 
 function stringMeta(value: unknown): string {
   return typeof value === "string" && value ? value : "—";
+}
+
+/** Which role opens this kind of node, for the panel to say so plainly. */
+function detailDeniedNote(kind: DeliveryKind): string {
+  if (kind === "pod") {
+    return "Pod check-ins and blockers need a scrum-master role.";
+  }
+  return `${kind === "project" ? "Project" : "Workstream"} progress needs a product-owner or manager role.`;
 }
