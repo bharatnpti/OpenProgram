@@ -121,7 +121,9 @@ def _summary_for_fact(fact: FactEvent) -> str:
         title = _payload_string(payload, "title") or key
         return f"Issue {key} moved to {state}: {title}"
     if fact.source == "checkin":
-        developer = fact.entity_ref.id
+        # Prefer the name the collector recorded; fall back to the id so older
+        # facts still render.
+        developer = _payload_string(payload, "developer_name") or fact.entity_ref.id
         status_source = _payload_string(payload, "status_source") or "confirmed"
         blocker_count = _payload_int(payload, "blocker_count") or 0
         eta_change_days = _payload_int(payload, "eta_change_days")
