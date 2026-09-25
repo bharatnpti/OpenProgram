@@ -6,6 +6,7 @@ import { Card } from "../../components/ui/Card";
 import { Sparkline } from "../../components/ui/Sparkline";
 import { cn } from "../../lib/utils";
 import { firstItemId } from "../../lib/selection";
+import { latestBriefPerScopePerDay } from "../../lib/briefs";
 import { toneForRag, toneHex } from "../../lib/status";
 import { todayIso } from "../../lib/today";
 import type { DirectoryItemResponse, Rag } from "../../api/schema";
@@ -82,14 +83,38 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
     [...(projects.data ?? []), ...(workstreams.data ?? []), ...(pods.data ?? [])].map((i) => i.rag),
   );
   const heroTone = toneForRag(worstRag);
-  const heroLabel =
-    worstRag === "red" ? "is at risk" : worstRag === "amber" ? "needs attention" : "is on track";
+  // `worstOf` returns "unknown" when nothing is red, amber or green -- which is
+  // also what it returns while the directory is loading, empty, or failed. Only
+  // an actual green reading may be reported as on track; silence is never green.
+  const heatLoading = projects.isLoading || workstreams.isLoading || pods.isLoading;
+  const heatFailed = projects.isError || workstreams.isError || pods.isError;
+  const heroLabel = heatFailed
+    ? "status could not be loaded"
+    : heatLoading
+      ? "status is loading"
+      : worstRag === "red"
+        ? "is at risk"
+        : worstRag === "amber"
+          ? "needs attention"
+          : worstRag === "green"
+            ? "is on track"
+            : "has no confirmed status";
 
   const momentum = momentumLabel(trend.data?.points);
   const topRisks = [...(risks.data?.risks ?? [])]
     .sort((a, b) => b.age_days - a.age_days)
     .slice(0, 3);
-  const topBriefs = (briefs.data?.briefs ?? []).slice(0, 3);
+  const topBriefs = latestBriefPerScopePerDay(briefs.data?.briefs ?? []).slice(0, 3);
+  // "No material risks detected" is only true once the risk query has come back
+  // with none of them.
+  const heroDetail = risks.isError
+    ? "Risks could not be loaded, so this is not an all-clear."
+    : (topRisks[0]?.reason ??
+      (risks.isLoading
+        ? "Checking for open risks\u2026"
+        : heatFailed || heatLoading || worstRag === "unknown"
+          ? "Nothing has reported a status yet."
+          : "No material risks detected across projects, workstreams, or pods right now."));
 
   return (
     <div className="flex flex-col gap-6">
@@ -109,8 +134,7 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
               </h2>
             </div>
             <p className={cn("mt-3 max-w-[560px] text-[16px]", HERO_TEXT[heroTone])}>
-              {topRisks[0]?.reason ??
-                "No material risks detected across projects, workstreams, or pods right now."}
+              {heroDetail}
             </p>
           </div>
           {role === "mgr" ? (
