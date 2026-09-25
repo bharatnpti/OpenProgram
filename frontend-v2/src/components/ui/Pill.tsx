@@ -19,10 +19,13 @@ const variantClasses: Record<PillVariant, string> = {
   success: "bg-rag-green-bg text-rag-green cursor-default",
 };
 
-export const Pill = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: PillVariant;
-  size?: PillSize;
-}>(function Pill({ variant = "primary", size = "lg", className, children, ...rest }, ref) {
+export const Pill = forwardRef<
+  HTMLButtonElement,
+  ButtonHTMLAttributes<HTMLButtonElement> & {
+    variant?: PillVariant;
+    size?: PillSize;
+  }
+>(function Pill({ variant = "primary", size = "lg", className, children, ...rest }, ref) {
   return (
     <button
       ref={ref}

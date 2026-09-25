@@ -70,8 +70,8 @@ export function EscalationContactsDialog({
       title={pod ? `Escalation contacts — ${pod.name}` : "Escalation contacts"}
     >
       <p className="mb-4 text-[13px] text-grey-secondary">
-        Scrum master and manager targets for this pod's check-in escalation ladder. Clear a chat
-        ID to remove that contact.
+        Scrum master and manager targets for this pod's check-in escalation ladder. Clear a chat ID
+        to remove that contact.
       </p>
       {contacts.isLoading ? (
         <p className="text-[14px] text-grey-secondary">Loading…</p>

@@ -46,14 +46,24 @@ export function ProductOwnerToday() {
                   { value: progress.data.green_tasks, color: "var(--op-green)", label: "On track" },
                   { value: progress.data.amber_tasks, color: "var(--op-amber)", label: "At risk" },
                   { value: progress.data.red_tasks, color: "var(--op-red)", label: "Blocked" },
-                  { value: progress.data.unknown_tasks, color: "var(--op-unknown)", label: "Unknown" },
+                  {
+                    value: progress.data.unknown_tasks,
+                    color: "var(--op-unknown)",
+                    label: "Unknown",
+                  },
                 ]}
               />
               <div className="mt-3 flex flex-wrap gap-4 text-[13px] text-grey-secondary">
-                <LegendDot color="var(--op-green)" label={`${progress.data.green_tasks} on track`} />
+                <LegendDot
+                  color="var(--op-green)"
+                  label={`${progress.data.green_tasks} on track`}
+                />
                 <LegendDot color="var(--op-amber)" label={`${progress.data.amber_tasks} at risk`} />
                 <LegendDot color="var(--op-red)" label={`${progress.data.red_tasks} blocked`} />
-                <LegendDot color="var(--op-unknown)" label={`${progress.data.unknown_tasks} unknown`} />
+                <LegendDot
+                  color="var(--op-unknown)"
+                  label={`${progress.data.unknown_tasks} unknown`}
+                />
               </div>
             </div>
           </>
