@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 
@@ -30,6 +30,10 @@ type PaletteRow = {
 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [query, setQuery] = useState("");
+  // A palette opened with a keyboard shortcut and typed into has to be
+  // completable with the keyboard: the rows were click-only, so choosing one
+  // meant reaching for the mouse.
+  const [activeIndex, setActiveIndex] = useState(0);
   const navigate = useNavigate();
   const { canReadAggregate } = useRole();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -77,6 +81,40 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     return filtered.slice(0, 9);
   }, [canReadAggregate, query, programs.data, projects.data, workstreams.data, pods.data]);
 
+  // Typing changes the list under the cursor, so the highlight returns to the
+  // top rather than pointing at whatever now sits at the old position.
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query, open]);
+
+  const go = useCallback(
+    (row: PaletteRow | undefined) => {
+      if (!row) {
+        return;
+      }
+      navigate(row.to);
+      onClose();
+      setQuery("");
+    },
+    [navigate, onClose],
+  );
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (rows.length === 0) {
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveIndex((current) => (current + 1) % rows.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveIndex((current) => (current - 1 + rows.length) % rows.length);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      go(rows[activeIndex]);
+    }
+  };
+
   if (!open) {
     return null;
   }
@@ -86,6 +124,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       <div
         className="h-fit w-[620px] max-w-[90vw] animate-op-pop rounded-3xl bg-white shadow-op-palette"
         onClick={(event) => event.stopPropagation()}
+        onKeyDown={onKeyDown}
       >
         <div className="flex items-center gap-3 border-b border-grey-border px-6 py-4">
           <Search size={18} className="text-grey-secondary" />
@@ -105,16 +144,17 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
           {rows.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-grey-secondary">No matches</div>
           ) : (
-            rows.map((row) => (
+            rows.map((row, index) => (
               <button
                 key={row.key}
                 type="button"
-                onClick={() => {
-                  navigate(row.to);
-                  onClose();
-                  setQuery("");
-                }}
-                className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left hover:bg-grey-fill"
+                onClick={() => go(row)}
+                onMouseEnter={() => setActiveIndex(index)}
+                aria-selected={index === activeIndex}
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left hover:bg-grey-fill",
+                  index === activeIndex && "bg-grey-fill",
+                )}
               >
                 <span className={cn("inline-block h-2.5 w-2.5 shrink-0", row.dotClass)} />
                 <span className="flex-1 font-bold">{row.label}</span>
