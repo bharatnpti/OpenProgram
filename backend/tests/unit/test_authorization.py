@@ -48,6 +48,28 @@ def test_persona_capabilities_follow_role_scope() -> None:
     assert policy.can(mgr, Capability.READ_PORTFOLIO_HEATMAP)
 
 
+def test_every_role_can_read_its_own_work() -> None:
+    """Own check-in and own directory lookup are not developer privileges.
+
+    A scrum master, product owner, manager or executive is also asked for a
+    check-in; the endpoints behind these capabilities resolve the caller's own
+    subject, so granting them per role would only lock people out of their own
+    status.
+    """
+    policy = AuthorizationPolicy()
+    for role in Role:
+        principal = Principal(tenant_id="demo", subject=role.value, roles=frozenset({role}))
+        assert policy.can(principal, Capability.READ_OWN_WORK), role
+        assert policy.can(principal, Capability.READ_DIRECTORY), role
+
+
+def test_a_principal_with_no_role_can_read_nothing() -> None:
+    policy = AuthorizationPolicy()
+    principal = Principal(tenant_id="demo", subject="nobody", roles=frozenset())
+    for capability in Capability:
+        assert not policy.can(principal, capability), capability
+
+
 def test_raw_dm_content_has_no_capability_or_sensitive_field_for_any_role() -> None:
     assert "READ_RAW_DM" not in Capability.__members__
     assert "RAW_DM_CONTENT" not in SensitiveField.__members__

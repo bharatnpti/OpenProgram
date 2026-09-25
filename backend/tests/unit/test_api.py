@@ -783,17 +783,26 @@ def test_dev_can_view_confirm_and_correct_own_status(settings: Settings) -> None
     assert focus_response.json()["summary"] == "API shell is corrected and ready."
 
 
-def test_self_status_requires_own_work_capability(settings: Settings) -> None:
-    app = create_app(
-        settings=settings.model_copy(
-            update={"dev_principal_roles": "sm", "dev_principal_subject": "scrum-master"}
-        )
-    )
-    with TestClient(app) as client:
-        _populate_graph_fixture(app, settings)
-        response = client.get("/me/status?as_of=2026-06-15")
+def test_self_status_is_self_scoped_for_every_role(settings: Settings) -> None:
+    """Own status is readable by any role, and only ever the caller's own.
 
-    assert response.status_code == 403
+    A scrum master is asked for a check-in like anyone else, so /me/status is
+    not developer-only; what it must never do is resolve a different subject.
+    """
+    for roles, subject in (("sm", "dev-liam"), ("po", "dev-liam"), ("exec", "dev-liam")):
+        app = create_app(
+            settings=settings.model_copy(
+                update={"dev_principal_roles": roles, "dev_principal_subject": subject}
+            )
+        )
+        with TestClient(app) as client:
+            _populate_graph_fixture(app, settings)
+            response = client.get("/me/status?as_of=2026-06-15")
+
+        assert response.status_code == 200, (roles, response.text)
+        # The route reads the principal's subject; there is no way to ask for
+        # someone else's, so the fixture developer's own status comes back.
+        assert response.json()["summary"], (roles, response.json())
 
 
 def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
