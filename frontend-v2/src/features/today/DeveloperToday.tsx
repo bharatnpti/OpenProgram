@@ -1,7 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
@@ -11,7 +10,7 @@ import { TextArea, TextInput } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
-import { useRole } from "../../app/role";
+import { WaitingOnYou } from "./WaitingOnYou";
 import { todayIso } from "../../lib/today";
 import { toneForRag } from "../../lib/status";
 
@@ -25,8 +24,6 @@ interface BlockerRow {
 export function DeveloperToday() {
   const asOf = todayIso();
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const { people } = useRole();
   const [correctOpen, setCorrectOpen] = useState(false);
   const [summary, setSummary] = useState("");
   const [blockerRows, setBlockerRows] = useState<BlockerRow[]>([]);
@@ -40,11 +37,6 @@ export function DeveloperToday() {
     queryKey: ["persona", "my-status", asOf],
     queryFn: () => apiClient.myStatus(asOf),
   });
-  const myRequests = useQuery({
-    queryKey: ["persona", "my-cross-person-requests"],
-    queryFn: () => apiClient.myCrossPersonRequests(),
-  });
-
   useEffect(() => {
     if (myStatus.data) {
       setSummary(myStatus.data.summary);
@@ -239,32 +231,7 @@ export function DeveloperToday() {
       </div>
 
       <div className="flex flex-col gap-6">
-        <Card variant="grey" padding="p-0" animateDelay={280}>
-          <div className="flex items-center justify-between px-5 pt-5 pb-2">
-            <h2 className="text-[18px] font-bold">Waiting on you</h2>
-            <button
-              type="button"
-              onClick={() => navigate("/coordination")}
-              className="text-[14px] font-bold text-magenta"
-            >
-              All requests
-            </button>
-          </div>
-          {(myRequests.data?.requests ?? []).map((request) => (
-            <div key={request.source_correlation_id} className="px-5 py-3.5">
-              <div className="text-[15px] font-bold">{request.note}</div>
-              <div className="mt-0.5 text-[13px] text-grey-secondary">
-                {/* These are requests where *you* are the counterpart, so the
-                    person to name is the requester -- not the counterpart
-                    display name, which is your own. */}
-                from {requesterName(request.requester_id, people)}
-              </div>
-            </div>
-          ))}
-          {myRequests.data && myRequests.data.requests.length === 0 ? (
-            <div className="px-5 py-6 text-sm text-grey-secondary">Nothing waiting on you.</div>
-          ) : null}
-        </Card>
+        <WaitingOnYou animateDelay={280} />
 
         <Card padding="p-6" animateDelay={350}>
           <h2 className="text-[18px] font-bold">Why this matters</h2>
@@ -417,6 +384,3 @@ function provenanceLabel(source: StatusSource | undefined, confirmedAt: string |
 }
 
 /** Name of whoever raised a request, falling back to their id. */
-function requesterName(requesterId: string, people: { id: string; name: string }[]): string {
-  return people.find((person) => person.id === requesterId)?.name ?? requesterId;
-}
