@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime
 from typing import cast
@@ -849,6 +850,37 @@ async def test_dbos_checkin_reconcile_starts_children_from_workflow_context(
 def test_temporal_nudge_child_uses_abandon_parent_close_policy() -> None:
     source = temporal_workflows.DailyCheckinWorkflow.run.__code__.co_names
     assert "ParentClosePolicy" in source
+
+
+def test_dbos_runtime_sync_fans_out_from_workflow_not_step() -> None:
+    fan_out = dbos_workflows._fan_out_runtime_sync.__code__.co_names
+
+    assert "dbos_resolve_runtime_sync_step" in fan_out
+    assert "_start_sync_child_workflow" in fan_out
+    # DBOS asserts it is in workflow context before starting a child workflow,
+    # so the activity that dispatches its own children cannot be a DBOS step.
+    assert "run_runtime_config_sync_activity" not in inspect.getsource(dbos_workflows)
+
+
+def test_dbos_resolve_runtime_sync_does_not_dispatch() -> None:
+    assert "dispatch_sync" not in runtime_sync.resolve_runtime_sync_plan.__code__.co_names
+    assert "dispatch_sync" not in runtime_sync._resolve_plan.__code__.co_names
+
+
+def test_dbos_dispatch_sync_starts_a_workflow_for_every_connector() -> None:
+    started = dbos_workflows._start_sync_child_workflow.__code__.co_names
+
+    for workflow_name in (
+        "dbos_jira_sync_workflow",
+        "dbos_git_sync_workflow",
+        "dbos_calendar_sync_workflow",
+        "dbos_directory_sync_workflow",
+        "dbos_runtime_config_sync_workflow",
+        "dbos_risk_assessment_workflow",
+        "dbos_drift_scan_workflow",
+        "dbos_brief_generation_workflow",
+    ):
+        assert workflow_name in started, workflow_name
 
 
 def test_temporal_runtime_sync_workflow_is_registered() -> None:
