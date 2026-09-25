@@ -1,0 +1,30 @@
+frontend-v2/src/features/coordination/BriefsColumn.tsx
+  s_db98bf649daf00::t_c149615292d5f4 4,14-18,23,29-39
+frontend-v2/src/features/coordination/AskTheGraph.tsx
+  s_db98bf649daf00::t_c149615292d5f4 6,14,21-32
+  s_db98bf649daf00::t_1b26b62f37aa0f 33
+frontend-v2/src/components/shell/Header.tsx
+  s_db98bf649daf00::t_af157030357995 9-11,14,19-25
+frontend-v2/src/App.tsx
+  s_db98bf649daf00::t_af157030357995 45-52,115-119
+  s_db98bf649daf00::t_4050499fab764f 120-121
+frontend-v2/src/components/shell/CommandPalette.tsx
+  s_db98bf649daf00::t_af157030357995 8,11-16,19,34,59-61
+  s_db98bf649daf00::t_b6b3921c055018 78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e4f48f6b30762bb9fe281be976f091feaeb86032",
+  "prompts": {},
+  "sessions": {
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
