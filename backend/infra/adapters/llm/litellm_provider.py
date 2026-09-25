@@ -21,9 +21,17 @@ _tracer = trace.get_tracer("openprogram.adapters.llm.litellm")
 
 # Deterministic decoding settings applied to JSON-mode (structured parse/clarify)
 # calls so a garbled reply cannot depend on sampling temperature or run unbounded.
+# Note this rules out reasoning models for JSON mode: they accept only their
+# default temperature, which would make a status parse non-reproducible.
 _JSON_MODE_TEMPERATURE = 0.0
 _JSON_MODE_MAX_TOKENS = 1024
 _RESPONSE_COST_HEADER = "x-litellm-response-cost"
+
+# Trace-export failures are almost always one standing condition (the sink is
+# not running, or credentials are wrong), so the same warning would otherwise
+# repeat once per LLM call. Report each distinct cause once per process and
+# count the rest, which keeps the signal without burying real output.
+_reported_trace_failures: set[tuple[str, str]] = set()
 
 
 class LlmTraceSink(Protocol):
@@ -109,12 +117,21 @@ class LangfuseTraceSink:
                     )
                     result.raise_for_status()
             except Exception as exc:
-                _logger.warning(
-                    "langfuse_trace_record_failed",
-                    error_type=type(exc).__name__,
-                    trace_id=trace_id,
-                    exc_info=True,
-                )
+                # Trace export is best effort: losing a trace must never fail
+                # the LLM call. Reported without a stack -- the traceback is
+                # always the same transport chain -- and only the first time
+                # each cause is seen.
+                cause = (self.host, f"{type(exc).__name__}: {exc}")
+                if cause not in _reported_trace_failures:
+                    _reported_trace_failures.add(cause)
+                    _logger.warning(
+                        "langfuse_trace_record_failed",
+                        error_type=type(exc).__name__,
+                        error=str(exc),
+                        host=self.host,
+                        trace_id=trace_id,
+                        note="further failures with this cause are not logged",
+                    )
             return trace_id
 
 
@@ -131,20 +148,23 @@ class LiteLlmProvider:
             started = perf_counter()
             headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
             async with httpx.AsyncClient(base_url=self.base_url, timeout=30.0) as client:
+                # Tenant and correlation travel on the OTel span and the
+                # Langfuse trace, not in the request body: OpenAI rejects a
+                # top-level `metadata` unless `store` is enabled, and storing
+                # completions would leave check-in text with the provider --
+                # a retention decision that is not this adapter's to make.
                 body: dict[str, object] = {
                     "model": request.model,
                     "messages": _chat_messages(request),
-                    "metadata": {
-                        "tenant_id": request.tenant_id,
-                        "correlation_id": request.correlation_id,
-                    },
                 }
                 if request.tools:
                     body["tools"] = [_tool_payload(tool) for tool in request.tools]
                 if request.json_mode:
                     body["response_format"] = {"type": "json_object"}
                     body["temperature"] = _JSON_MODE_TEMPERATURE
-                    body["max_tokens"] = _JSON_MODE_MAX_TOKENS
+                    # `max_completion_tokens` is the field current chat models
+                    # accept; `max_tokens` is refused outright by newer ones.
+                    body["max_completion_tokens"] = _JSON_MODE_MAX_TOKENS
                 http_response = await client.post(
                     "/v1/chat/completions",
                     headers=headers,
