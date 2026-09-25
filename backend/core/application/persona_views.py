@@ -522,6 +522,15 @@ class PersonaViewService:
         as_of: date,
         program_root_id: str | None = None,
     ) -> PortfolioHeatmapView:
+        """Heat for one day, computed on the fly when nothing is stored yet.
+
+        Reads never record. They used to: a missing rollup was computed *and
+        persisted*, which meant any caller could write a row of derived history
+        for whatever ``as_of`` it asked about -- one /ask question about a date
+        the model invented left a rollup behind -- and made stored history
+        depend on who happened to open which screen. The rollup schedule
+        (``connector="rollup"``) owns that write now.
+        """
         statuses = await self._rollup_repository.list_node_statuses(tenant_id, as_of)
         if program_root_id is not None:
             if not statuses:
@@ -531,7 +540,7 @@ class PersonaViewService:
                     )
                 except GraphNotFound:
                     return PortfolioHeatmapView(as_of=as_of, rows=(), columns=(), cells=())
-                statuses = list(await self._rollup_service.compute_and_record(tree, as_of))
+                statuses = list(await self._rollup_service.compute(tree, as_of))
         else:
             resolved_root_id = await self._first_program_id(tenant_id)
             if resolved_root_id is None:
@@ -545,7 +554,7 @@ class PersonaViewService:
             tree_ids = {node.id for node in tree.nodes}
             statuses = [status for status in statuses if status.entity_ref.id in tree_ids]
             if not statuses:
-                statuses = list(await self._rollup_service.compute_and_record(tree, as_of))
+                statuses = list(await self._rollup_service.compute(tree, as_of))
         cells = tuple(_heatmap_cell(status) for status in statuses)
         rows = tuple(dict.fromkeys(cell.row for cell in cells))
         columns = tuple(dict.fromkeys(cell.column for cell in cells))
@@ -600,7 +609,7 @@ class PersonaViewService:
             if status is not None:
                 statuses[(node.kind, node.id)] = status
         if len(statuses) < len(rollup_nodes):
-            computed = await self._rollup_service.compute_and_record(tree, as_of)
+            computed = await self._rollup_service.compute(tree, as_of)
             for status in computed:
                 statuses.setdefault(
                     (status.entity_ref.kind, status.entity_ref.id),

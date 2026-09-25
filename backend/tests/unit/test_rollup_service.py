@@ -112,7 +112,15 @@ async def test_rollup_treats_partial_status_as_amber() -> None:
     assert by_id["program-1"].source is StatusSource.PARTIAL
 
 
-async def test_persona_heatmap_fallback_rollup_persists_computed_statuses() -> None:
+async def test_persona_heatmap_fallback_rollup_computes_without_persisting() -> None:
+    """A read shows heat for a day with no stored rollup, and stores nothing.
+
+    This deliberately inverts the previous contract. Persisting from the read
+    let any caller write a row of derived history for whatever `as_of` it asked
+    about -- one /ask question about a date the model had invented left a rollup
+    behind -- and made stored history depend on who opened which screen. The
+    scheduled rollup (`connector="rollup"`) owns that write now.
+    """
     as_of = date(2026, 1, 10)
     tree = _program_tree(critical_task=True)
     status_repository = FakeStatusRepository()
@@ -136,13 +144,15 @@ async def test_persona_heatmap_fallback_rollup_persists_computed_statuses() -> N
 
     view = await service.portfolio_heatmap("demo", as_of, "program-1")
 
-    assert view.cells
-    assert {status.entity_ref.id for status in rollup_repository.node_statuses} >= {
+    # Heat is still shown for the day...
+    assert {cell.entity_ref.id for cell in view.cells} >= {
         "dev-1",
         "pod-1",
         "project-1",
         "program-1",
     }
+    # ...but nothing was written to get it there.
+    assert rollup_repository.node_statuses == []
 
 
 async def test_persona_heatmap_only_swallows_missing_graph() -> None:
