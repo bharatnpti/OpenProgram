@@ -5,6 +5,8 @@ import type {
   ChatSimulatorReplyRequest,
   ChatSimulatorReplyResponse,
   ChatSimulatorStatusResponse,
+  ChatSimulatorUserMessageRequest,
+  ChatSimulatorUserMessageResponse,
   CheckinDispatchRequest,
   ConfigEdgeResponse,
   ConfigNodeCreateRequest,
@@ -17,6 +19,7 @@ import type {
   AskRequest,
   AskResponse,
   AuthStatusResponse,
+  DevUsersResponse,
   BriefKind,
   NarrativeBriefsResponse,
   WriteBackAdoptionResponse,
@@ -61,6 +64,34 @@ import type {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const CSRF_COOKIE_NAME = import.meta.env.VITE_AUTH_CSRF_COOKIE_NAME ?? "openprogram_csrf";
 const CSRF_HEADER_NAME = import.meta.env.VITE_AUTH_CSRF_HEADER_NAME ?? "x-csrf-token";
+const DEV_USER_HEADER = "x-openprogram-dev-user";
+const DEV_ROLES_HEADER = "x-openprogram-dev-roles";
+
+/**
+ * Who the console is acting as, for local demo tenants only.
+ *
+ * The backend honours these headers exclusively under the dev auth provider in
+ * a local environment; anywhere else they are ignored, so sending them always
+ * is safe and keeps the request path uniform.
+ */
+type ActingAs = { id: string; roles: string[] } | null;
+
+let actingAs: ActingAs = null;
+
+export function setActingAs(next: ActingAs): void {
+  actingAs = next;
+}
+
+function actingAsHeaders(): Record<string, string> {
+  if (!actingAs) {
+    return {};
+  }
+  const headers: Record<string, string> = { [DEV_USER_HEADER]: actingAs.id };
+  if (actingAs.roles.length > 0) {
+    headers[DEV_ROLES_HEADER] = actingAs.roles.join(",");
+  }
+  return headers;
+}
 
 export class ApiError extends Error {
   status: number;
@@ -84,6 +115,7 @@ async function requestJson<T>(
     headers: {
       ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
       ...csrfHeader(options.method),
+      ...actingAsHeaders(),
       "x-correlation-id": crypto.randomUUID(),
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -100,6 +132,7 @@ async function requestJson<T>(
 
 export const apiClient = {
   authStatus: () => requestJson<AuthStatusResponse>("/api/v1/auth/status"),
+  devUsers: () => requestJson<DevUsersResponse>("/api/v1/auth/dev-users"),
   logout: () => requestJson<LogoutResponse>("/api/v1/auth/logout", { method: "POST" }),
   health: () => requestJson<HealthResponse>("/health"),
   ready: () => requestJson<ReadyResponse>("/ready"),
@@ -203,8 +236,15 @@ export const apiClient = {
     }),
   chatSimulatorStatus: () =>
     requestJson<ChatSimulatorStatusResponse>("/test/chat-simulator/status"),
-  chatSimulatorMessages: () =>
-    requestJson<ChatSimulatorMessagesResponse>("/test/chat-simulator/messages"),
+  chatSimulatorMessages: (userId?: string) =>
+    requestJson<ChatSimulatorMessagesResponse>(
+      withQuery("/test/chat-simulator/messages", { user_id: userId }),
+    ),
+  sendChatSimulatorUserMessage: (userId: string, input: ChatSimulatorUserMessageRequest) =>
+    requestJson<ChatSimulatorUserMessageResponse>(
+      `/test/chat-simulator/users/${encodeURIComponent(userId)}/messages`,
+      { method: "POST", body: input },
+    ),
   replyChatSimulatorMessage: (messageId: string, input: ChatSimulatorReplyRequest) =>
     requestJson<ChatSimulatorReplyResponse>(`/test/chat-simulator/messages/${messageId}/reply`, {
       method: "POST",

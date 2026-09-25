@@ -7,12 +7,12 @@ Feature: Mock Slack directory sync
     Given the mock Slack simulator stack is running
     When I sync the directory
     Then the response status code should be 200
-    And the directory sync reports 3 synced users
+    And the directory sync reports the whole mock roster
 
   @ms_e2e_045
   Scenario: Directory sync is idempotent when run repeatedly
     Given the mock Slack simulator stack is running
     When I sync the directory
     And I sync the directory
-    Then both directory syncs reported 3 synced users and 0 deactivated
-    And the config directory has 3 total users
+    Then both directory syncs reported the whole mock roster and 0 deactivated
+    And the config directory has the whole mock roster

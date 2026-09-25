@@ -6,5 +6,10 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5174,
+    // Fail loudly if 5174 is taken instead of drifting to the next free port.
+    // The backend's CORS allowlist names specific ports, so a drifted server is
+    // served fine but every API call is blocked -- which reads as "sign in to
+    // continue" rather than as a port clash.
+    strictPort: true,
   },
 });

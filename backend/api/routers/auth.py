@@ -5,11 +5,23 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 
-from api.dependencies import auth_login_url_for_request, get_registry, get_settings_from_request
-from api.dtos import AuthStatusResponse, AuthUserResponse, LogoutResponse
+from api.dependencies import (
+    auth_login_url_for_request,
+    credentials_from_request,
+    get_registry,
+    get_settings_from_request,
+)
+from api.dtos import (
+    AuthStatusResponse,
+    AuthUserResponse,
+    DevUserResponse,
+    DevUsersResponse,
+    LogoutResponse,
+)
 from config.settings import Settings
 from core.domain.errors import AuthenticationRequired, ProviderConfigurationError
-from core.ports.auth import AuthCredentials, AuthenticatedUser
+from core.domain.graph import NodeKind
+from core.ports.auth import AuthenticatedUser
 from infra.registry import ServiceRegistry
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -24,9 +36,16 @@ async def auth_status(
     authorization: Annotated[str | None, Header()] = None,
 ) -> AuthStatusResponse:
     _no_store(response)
-    credentials = AuthCredentials(
-        authorization=authorization,
-        session_id=request.cookies.get(settings.auth_cookie_name),
+    credentials = credentials_from_request(request, authorization)
+    # Optional local surfaces, reported once at boot so the console never offers
+    # a screen the backend would refuse.
+    demo_mode = settings.demo_mode_available
+    # Asked of the registry rather than compared against a provider name: the
+    # api layer stays provider-neutral by design.
+    chat_enabled = (
+        settings.chat_simulator_enabled
+        and settings.environment == "local"
+        and registry.chat_simulator_available()
     )
     if settings.auth_provider == "dev":
         principal = await registry.current_principal(credentials).get()
@@ -40,6 +59,8 @@ async def auth_status(
             authenticated=True,
             provider=settings.auth_provider,
             user=AuthUserResponse.from_user(user),
+            demo_mode=demo_mode,
+            chat_enabled=chat_enabled,
         )
 
     session = await registry.auth_session(credentials.session_id)
@@ -49,12 +70,57 @@ async def auth_status(
             provider=settings.auth_provider,
             login_url=auth_login_url_for_request(request, settings),
             message="authentication required",
+            demo_mode=demo_mode,
+            chat_enabled=chat_enabled,
         )
     return AuthStatusResponse(
         authenticated=True,
         provider=settings.auth_provider,
         user=AuthUserResponse.from_user(session.user),
+        demo_mode=demo_mode,
+        chat_enabled=chat_enabled,
     )
+
+
+@router.get("/dev-users", response_model=DevUsersResponse)
+async def dev_users(
+    response: Response,
+    settings: Annotated[Settings, Depends(get_settings_from_request)],
+    registry: Annotated[ServiceRegistry, Depends(get_registry)],
+) -> DevUsersResponse:
+    """People the local demo console can act as.
+
+    Empty unless ``demo_mode`` is on, so the frontend picker simply disappears
+    by default and anywhere but a local dev-auth tenant. Roles come from the
+    developer node's own ``app_roles`` metadata; pod names are resolved through
+    membership edges.
+    """
+    _no_store(response)
+    if not settings.demo_mode_available:
+        return DevUsersResponse(items=[])
+
+    graph = registry.graph_repository()
+    tenant_id = settings.tenant_id
+    developers = await graph.list_nodes(tenant_id, NodeKind.DEVELOPER)
+    pods = {pod.id: pod.name for pod in await graph.list_nodes(tenant_id, NodeKind.POD)}
+    pod_names: dict[str, list[str]] = {}
+    for edge in await graph.list_edges(tenant_id):
+        if edge.from_node_id in pods and edge.to_node_id in {dev.id for dev in developers}:
+            pod_names.setdefault(edge.to_node_id, []).append(pods[edge.from_node_id])
+
+    items = [
+        DevUserResponse(
+            id=node.id,
+            name=node.name,
+            title=_metadata_text(node.metadata.get("title")),
+            email=_metadata_text(node.metadata.get("email")),
+            roles=_metadata_roles(node.metadata.get("app_roles")),
+            pods=sorted(dict.fromkeys(pod_names.get(node.id, []))),
+        )
+        for node in developers
+    ]
+    items.sort(key=lambda item: (_role_rank(item.roles), item.name))
+    return DevUsersResponse(items=items)
 
 
 @router.get("/login")
@@ -161,3 +227,22 @@ def _expire_auth_cookies(response: Response, settings: Settings) -> None:
             samesite=settings.auth_cookie_samesite,
             path="/",
         )
+
+
+_ROLE_ORDER = ("exec", "mgr", "admin", "po", "sm", "dev")
+
+
+def _metadata_text(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _metadata_roles(value: object) -> list[str]:
+    if not isinstance(value, str):
+        return ["dev"]
+    roles = [item.strip().lower() for item in value.split(",") if item.strip()]
+    return roles or ["dev"]
+
+
+def _role_rank(roles: list[str]) -> int:
+    ranks = [_ROLE_ORDER.index(role) for role in roles if role in _ROLE_ORDER]
+    return min(ranks) if ranks else len(_ROLE_ORDER)
