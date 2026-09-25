@@ -68,23 +68,22 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
     staleTime: 5 * 60_000,
   });
 
-  const heatRows: { label: string; kind: "project" | "workstream" | "pod"; items: DirectoryItemResponse[] }[] =
-    [
-      { label: "Projects", kind: "project", items: (projects.data ?? []).slice(0, 4) },
-      { label: "Workstreams", kind: "workstream", items: (workstreams.data ?? []).slice(0, 4) },
-      { label: "Pods", kind: "pod", items: (pods.data ?? []).slice(0, 4) },
-    ];
+  const heatRows: {
+    label: string;
+    kind: "project" | "workstream" | "pod";
+    items: DirectoryItemResponse[];
+  }[] = [
+    { label: "Projects", kind: "project", items: (projects.data ?? []).slice(0, 4) },
+    { label: "Workstreams", kind: "workstream", items: (workstreams.data ?? []).slice(0, 4) },
+    { label: "Pods", kind: "pod", items: (pods.data ?? []).slice(0, 4) },
+  ];
 
   const worstRag = worstOf(
     [...(projects.data ?? []), ...(workstreams.data ?? []), ...(pods.data ?? [])].map((i) => i.rag),
   );
   const heroTone = toneForRag(worstRag);
   const heroLabel =
-    worstRag === "red"
-      ? "is at risk"
-      : worstRag === "amber"
-        ? "needs attention"
-        : "is on track";
+    worstRag === "red" ? "is at risk" : worstRag === "amber" ? "needs attention" : "is on track";
 
   const momentum = momentumLabel(trend.data?.points);
   const topRisks = [...(risks.data?.risks ?? [])]
@@ -94,11 +93,7 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <Card
-        padding="p-7"
-        className={cn(HERO_BG[heroTone], "border-none")}
-        animateDelay={70}
-      >
+      <Card padding="p-7" className={cn(HERO_BG[heroTone], "border-none")} animateDelay={70}>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
           <div>
             <div className="flex items-center gap-3">
@@ -135,7 +130,10 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
         <h2 className="text-[18px] font-bold">Portfolio heat</h2>
         <div className="mt-4 flex flex-col gap-2.5">
           {heatRows.map((row) => (
-            <div key={row.kind} className="grid grid-cols-[110px_repeat(4,1fr)] items-center gap-2.5">
+            <div
+              key={row.kind}
+              className="grid grid-cols-[110px_repeat(4,1fr)] items-center gap-2.5"
+            >
               <div className="text-[13px] font-bold text-grey-secondary">{row.label}</div>
               {row.items.map((item, index) => {
                 const tone = toneForRag(item.rag);
@@ -202,7 +200,11 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         {topBriefs.map((brief) => (
-          <Card key={`${brief.kind}-${brief.scope_id}-${brief.generated_at}`} padding="p-6" animateDelay={280}>
+          <Card
+            key={`${brief.kind}-${brief.scope_id}-${brief.generated_at}`}
+            padding="p-6"
+            animateDelay={280}
+          >
             <div className="text-xs font-bold uppercase tracking-wide text-magenta">
               {briefKindLabel(brief.kind)}
             </div>

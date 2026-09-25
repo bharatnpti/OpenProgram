@@ -173,11 +173,7 @@ function DirectoryUserAvatar({ user }: { user: DirectoryUserResponse }) {
     .join("");
   if (user.avatar_url) {
     return (
-      <img
-        src={user.avatar_url}
-        alt=""
-        className="h-10 w-10 shrink-0 rounded-full object-cover"
-      />
+      <img src={user.avatar_url} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
     );
   }
   return (

@@ -73,10 +73,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex justify-center bg-black/40 pt-[12vh]"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex justify-center bg-black/40 pt-[12vh]" onClick={onClose}>
       <div
         className="h-fit w-[620px] max-w-[90vw] animate-op-pop rounded-3xl bg-white shadow-op-palette"
         onClick={(event) => event.stopPropagation()}
