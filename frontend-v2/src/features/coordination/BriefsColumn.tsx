@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../api/client";
 import { useRole } from "../../app/role";
 import { Card } from "../../components/ui/Card";
+import { latestBriefPerScopePerDay } from "../../lib/briefs";
 
 const KIND_LABEL: Record<string, string> = {
   daily_pod: "Daily pod",
@@ -37,7 +38,7 @@ export function BriefsColumn() {
           {briefs.error instanceof Error ? briefs.error.message : "unknown error"}
         </p>
       ) : null}
-      {(briefs.data?.briefs ?? []).map((brief) => (
+      {latestBriefPerScopePerDay(briefs.data?.briefs ?? []).map((brief) => (
         <Card key={`${brief.kind}-${brief.scope_id}-${brief.generated_at}`} padding="p-6">
           <div className="text-xs font-bold uppercase tracking-wide text-magenta">
             {KIND_LABEL[brief.kind] ?? brief.kind}
