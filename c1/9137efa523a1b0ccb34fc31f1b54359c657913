@@ -1,0 +1,19 @@
+scripts/seed_demo_history.py
+  s_db98bf649daf00::t_46211208c92b95 255-266
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c19137efa523a1b0ccb34fc31f1b54359c657913",
+  "prompts": {},
+  "sessions": {
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
