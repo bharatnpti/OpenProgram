@@ -1,0 +1,24 @@
+backend/core/application/ask_service.py
+  s_db98bf649daf00::t_08f82a876cbf99 20,180-183,191,197-198,201-202
+  s_db98bf649daf00::t_6921955859a365 28-33,35-37,475-476
+  s_db98bf649daf00::t_8d5e5b61a75310 120-179,184-190,192-196,199-200,203-237,446,456,459-463,624-632
+  s_db98bf649daf00::t_e675f93d7d53c5 119,633-634
+backend/tests/unit/test_ask_service.py
+  s_db98bf649daf00::t_19a561119e2a15 5-8,58-170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c7adbd425b1b8fb9d34b118fe1734867c0e14575",
+  "prompts": {},
+  "sessions": {
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
