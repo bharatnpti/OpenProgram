@@ -73,7 +73,12 @@ export function ChatPage() {
         text: draft.trim(),
         developer_id: threadId,
         developer_name: threadPerson?.name ?? null,
-        received_at: new Date().toISOString(),
+        // No received_at: the server stamps it. Sending the browser's clock put
+        // a live reply *before* the bot question it answers -- the transcript is
+        // ordered by that value, and opening a check-in for an unprompted update
+        // takes a few seconds -- so the thread read as the bot asking after
+        // being told. The field stays optional for seeding and tests, which do
+        // need to place a reply at a chosen historical time.
       });
     },
     onSuccess: async (result) => {
