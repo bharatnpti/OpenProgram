@@ -50,6 +50,7 @@ from infra.workflows import (
     jira_sync,
     nudge,
     risk_assessment,
+    rollup,
     runtime_sync,
 )
 from infra.workflows.brief_generation import BriefGenerationInput, BriefGenerationResult
@@ -67,6 +68,7 @@ from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import EscalationStepInput, NudgeInput, NudgeResult
 from infra.workflows.risk_assessment import RiskAssessmentInput, RiskAssessmentWorkflowResult
+from infra.workflows.rollup import RollupInput, RollupWorkflowResult
 from infra.workflows.runtime_sync import (
     RuntimeSyncInput,
     RuntimeSyncPlan,
@@ -78,6 +80,7 @@ SyncWorkflowResult = (
     | GitSyncWorkflowResult
     | CalendarSyncWorkflowResult
     | DirectorySyncResult
+    | RollupWorkflowResult
     | RuntimeSyncWorkflowResult
     | RiskAssessmentWorkflowResult
     | DriftScanWorkflowResult
@@ -297,6 +300,16 @@ async def dbos_risk_assessment_workflow(
     payload: RiskAssessmentInput,
 ) -> RiskAssessmentWorkflowResult:
     return await dbos_run_risk_assessment_step(payload)
+
+
+@DBOS.step(name="openprogram_run_rollup", retries_allowed=True)
+async def dbos_run_rollup_step(payload: RollupInput) -> RollupWorkflowResult:
+    return await rollup.run_rollup_activity(payload)
+
+
+@DBOS.workflow(name="openprogram_rollup")
+async def dbos_rollup_workflow(payload: RollupInput) -> RollupWorkflowResult:
+    return await dbos_run_rollup_step(payload)
 
 
 @DBOS.step(name="openprogram_run_drift_scan", retries_allowed=True)
@@ -550,6 +563,8 @@ async def _run_sync_dispatch(
         return await _fan_out_runtime_sync(workflow_input)
     if isinstance(workflow_input, RiskAssessmentInput):
         return await dbos_run_risk_assessment_step(workflow_input)
+    if isinstance(workflow_input, RollupInput):
+        return await dbos_run_rollup_step(workflow_input)
     if isinstance(workflow_input, DriftScanInput):
         return await dbos_run_drift_scan_step(workflow_input)
     if isinstance(workflow_input, BriefGenerationInput):
@@ -573,6 +588,8 @@ async def _start_sync_child_workflow(input: SyncDispatchInput, *, workflow_id: s
             await DBOS.start_workflow_async(dbos_runtime_config_sync_workflow, workflow_input)
         elif isinstance(workflow_input, RiskAssessmentInput):
             await DBOS.start_workflow_async(dbos_risk_assessment_workflow, workflow_input)
+        elif isinstance(workflow_input, RollupInput):
+            await DBOS.start_workflow_async(dbos_rollup_workflow, workflow_input)
         elif isinstance(workflow_input, DriftScanInput):
             await DBOS.start_workflow_async(dbos_drift_scan_workflow, workflow_input)
         elif isinstance(workflow_input, BriefGenerationInput):
