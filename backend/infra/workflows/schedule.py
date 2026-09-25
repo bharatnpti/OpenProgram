@@ -126,6 +126,14 @@ def sync_schedule_configs(settings: Settings) -> tuple[SyncScheduleConfig, ...]:
             cron=settings.risk_assessment_cron,
         ),
         SyncScheduleConfig(
+            schedule_id="openprogram-runtime-rollup",
+            tenant_id=settings.tenant_id,
+            connector="rollup",
+            scope="statuses",
+            payload={},
+            cron=settings.rollup_cron,
+        ),
+        SyncScheduleConfig(
             schedule_id="openprogram-runtime-drift-scan",
             tenant_id=settings.tenant_id,
             connector="drift",

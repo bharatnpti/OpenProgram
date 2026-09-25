@@ -92,6 +92,10 @@ class Settings(BaseSettings):
     risk_default_stale_days: int = 7
     risk_run_default_local_time: str = "18:00"
     drift_scan_cron: str = "*/30 * * * *"
+    # Rollups are the stored delivery history. Owning the write on a schedule
+    # keeps the read paths read-only and stops history depending on who looked.
+    rollup_cron: str = "15 * * * *"
+    rollup_backfill_days: int = 14
     drift_no_activity_days: int = 3
     narrative_brief_enabled: bool = True
     # Chat delivery of briefs is explicitly out of scope for this pass; the flag
@@ -371,6 +375,7 @@ class Settings(BaseSettings):
         "risk_assessment_cron",
         "risk_run_default_local_time",
         "drift_scan_cron",
+        "rollup_cron",
         "narrative_brief_daily_cron",
         "narrative_brief_weekly_cron",
         "narrative_brief_exec_cron",
