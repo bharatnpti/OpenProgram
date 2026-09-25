@@ -240,7 +240,10 @@ def _parser_prompt(raw_reply: str, *, prior_text: str = "") -> str:
         "blocker is resolved, add its bracketed id to resolved_blocker_ids; never mark a "
         "blocker resolved otherwise. When the reply gives a pod or work item for a previously "
         "open blocker, add a blocker_details item repeating that blocker's description with "
-        f"the stated issue_key or pod.{prior_text}\n\n"
+        "the stated issue_key or pod. When the reply restates a previously open blocker in "
+        "different words, reuse that blocker's description verbatim rather than writing a new "
+        "one, so the same obstacle is not tracked twice and keeps its original age."
+        f"{prior_text}\n\n"
         f"Reply:\n{raw_reply}"
     )
 
@@ -264,7 +267,10 @@ def _clarification_prompt(raw_reply: str, *, prior_text: str = "") -> str:
         "says a previously open blocker is resolved, add its bracketed id to "
         "resolved_blocker_ids; never mark a blocker resolved otherwise. When the reply gives "
         "a pod or work item for a previously open blocker, add a blocker_details item "
-        "repeating that blocker's description with the stated issue_key or pod. "
+        "repeating that blocker's description with the stated issue_key or pod. When the "
+        "reply restates a previously open blocker in different words, reuse that blocker's "
+        "description verbatim rather than writing a new one, so the same obstacle is not "
+        "tracked twice and keeps its original age. "
         "If the latest reply answers a question about which pod or work item a previously "
         "open blocker belongs to, treat it as a status update, set sufficient true, and "
         "record the attribution in blocker_details. "
