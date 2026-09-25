@@ -27,13 +27,17 @@ class SensitiveField(StrEnum):
 
 
 class AuthorizationPolicy:
+    # Everyone is a person with their own work: every role is asked for a
+    # check-in and must be able to read and answer it. The capability is
+    # self-scoped by definition -- the endpoints behind it resolve the caller's
+    # own subject -- so access to anyone else's data is granted separately.
+    _SELF_CAPABILITIES = frozenset({Capability.READ_OWN_WORK, Capability.READ_DIRECTORY})
+
     def can(self, principal: Principal, capability: Capability) -> bool:
         allowed = {
             Role.ADMIN: frozenset({Capability.DISPATCH_WORKFLOWS, Capability.MANAGE_CONFIG}),
             Role.DEV: frozenset(
                 {
-                    Capability.READ_OWN_WORK,
-                    Capability.READ_DIRECTORY,
                     # Developers may write back only to their own issues; ownership is
                     # enforced by WriteBackService (claims come from the developer's
                     # own finalized check-in). Admin is short-circuited above.
@@ -42,14 +46,12 @@ class AuthorizationPolicy:
             ),
             Role.PO: frozenset(
                 {
-                    Capability.READ_DIRECTORY,
                     Capability.READ_TEAM_AGGREGATE,
                     Capability.READ_PROJECT_PROGRESS,
                 }
             ),
             Role.SM: frozenset(
                 {
-                    Capability.READ_DIRECTORY,
                     Capability.READ_TEAM_AGGREGATE,
                     Capability.READ_POD_BLOCKERS,
                     Capability.READ_POD_CHECKINS,
@@ -57,7 +59,6 @@ class AuthorizationPolicy:
             ),
             Role.MGR: frozenset(
                 {
-                    Capability.READ_DIRECTORY,
                     Capability.READ_TEAM_AGGREGATE,
                     Capability.READ_EXEC_AGGREGATE,
                     Capability.READ_PROJECT_PROGRESS,
@@ -67,7 +68,6 @@ class AuthorizationPolicy:
             ),
             Role.EXEC: frozenset(
                 {
-                    Capability.READ_DIRECTORY,
                     Capability.READ_EXEC_AGGREGATE,
                     Capability.READ_PROGRAM_ROLLUP,
                     Capability.READ_PORTFOLIO_HEATMAP,
@@ -75,6 +75,8 @@ class AuthorizationPolicy:
             ),
         }
         if principal.has_role(Role.ADMIN):
+            return True
+        if capability in self._SELF_CAPABILITIES and principal.roles:
             return True
         return any(capability in allowed.get(role, frozenset()) for role in principal.roles)
 
