@@ -160,6 +160,7 @@ class StatusCollector:
         self._write_back_service = write_back_service
         # Without a graph repository the attribution machinery degrades
         # cleanly: no pods resolve, so no attribution question is ever asked.
+        self._graph_repository = graph_repository
         self._blockers = BlockerLifecycleService(status_repository, graph_repository)
         self._conversation_repository = conversation_repository
         self._model = model
@@ -1624,6 +1625,11 @@ class StatusCollector:
             "blocker_count": len(status.blockers),
             "has_eta_change": signals.eta_change_days is not None if signals else False,
             "eta_change_days": signals.eta_change_days if signals else None,
+            # Readable name for the activity feed, which would otherwise render
+            # the raw developer id. Falls back to the id when unknown.
+            "developer_name": await self._developer_display_name(
+                checkin.tenant_id, checkin.developer_id
+            ),
         }
         if reconciliation is not None:
             payload["new_blocker_count"] = len(reconciliation.minted)
@@ -1645,6 +1651,23 @@ class StatusCollector:
                 correlation_id=checkin.correlation_id,
             )
         )
+
+    async def _developer_display_name(self, tenant_id: str, developer_id: str) -> str:
+        """Best-effort display name for a developer id.
+
+        Tries the chat directory, where the developer id doubles as the chat
+        external id in single-workspace tenants, then the graph node, and
+        finally returns the id unchanged.
+        """
+        if self._directory_repository is not None:
+            user = await self._directory_repository.get(tenant_id, developer_id)
+            if user is not None and user.display_name:
+                return user.display_name
+        if self._graph_repository is not None:
+            node = await self._graph_repository.get_node(tenant_id, developer_id)
+            if node is not None and node.name:
+                return node.name
+        return developer_id
 
     async def _append_blocker_resolved_facts(
         self,

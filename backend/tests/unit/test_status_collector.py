@@ -477,6 +477,9 @@ async def test_status_collector_handles_reply_by_correlation(
         "new_blocker_count": 1,
         "resolved_blocker_count": 0,
         "unattributed_blocker_count": 1,
+        # With no directory or graph entry to resolve, the name falls back to
+        # the developer id so the activity feed still renders something.
+        "developer_name": "dev-1",
     }
     turns = await store.list_turns_for_day("demo", "dev-1", date(2026, 1, 10))
     assert turns[-1].role is ConversationRole.USER
