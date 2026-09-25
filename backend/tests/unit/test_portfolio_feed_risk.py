@@ -86,6 +86,46 @@ async def test_feed_renders_risk_cleared_fact_descriptively() -> None:
     assert "Risk cleared" in feed.items[0].summary
 
 
+async def test_feed_names_people_in_a_cross_person_request() -> None:
+    """The feed should read like a sentence about people, not about ids.
+
+    The check-in summary had already been fixed to prefer a recorded name; this
+    sibling path had not, so the portfolio feed rendered "U1007 needs U1003 for
+    Confirm the refund rounding rules" next to "Check-in updated for Kai
+    Thompson".
+    """
+    store = InMemoryGraphStore()
+    await store.append_fact_once(
+        FactEvent(
+            tenant_id=TENANT,
+            source="cross_person_request",
+            entity_ref=EntityRef(tenant_id=TENANT, kind=NodeKind.DEVELOPER, id="U1003"),
+            payload={
+                "request_id": "xreq-2",
+                "reporter_id": "U1007",
+                "reporter_name": "Kai Thompson",
+                "referenced_person_id": "U1003",
+                "referenced_person_name": "Mina Patel",
+                "dependency_kind": "needs_input",
+                "dependency_status": "open",
+                "transition": "opened",
+                "summary": "Confirm the refund rounding rules.",
+                "needs_resolution": False,
+            },
+            observed_at=datetime.now(tz=UTC),
+            correlation_id="cross-person:xreq-2:opened",
+        )
+    )
+    service = PortfolioFeedService(store)
+
+    feed = await service.feed(TENANT, sources=("cross_person_request",))
+
+    assert feed.items[0].summary == (
+        "Cross-person input opened: Kai Thompson needs Mina Patel for "
+        "Confirm the refund rounding rules."
+    )
+
+
 async def test_feed_renders_cross_person_request_fact_descriptively() -> None:
     store = InMemoryGraphStore()
     await store.append_fact_once(
