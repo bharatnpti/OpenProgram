@@ -16,6 +16,7 @@ import type {
   CrossPersonRequestResponse,
   CrossPersonRequestStatus,
   CrossPersonRequestStatusUpdateRequest,
+  MyRequestRelation,
   AskRequest,
   AskResponse,
   AuthStatusResponse,
@@ -208,8 +209,8 @@ export const apiClient = {
         status: status ?? undefined,
       }),
     ),
-  myCrossPersonRequests: () =>
-    requestJson<CrossPersonRequestsResponse>("/me/cross-person-requests"),
+  myCrossPersonRequests: (relation?: MyRequestRelation) =>
+    requestJson<CrossPersonRequestsResponse>(withQuery("/me/cross-person-requests", { relation })),
   updateCrossPersonRequestStatus: (
     requestId: string,
     input: CrossPersonRequestStatusUpdateRequest,

@@ -32,6 +32,13 @@ export function RequestsBoard() {
         : apiClient.myCrossPersonRequests(),
   });
 
+  // "Did my ask land?" -- the board's three columns are an inbox, so a request
+  // one raised appears nowhere in them.
+  const raised = useQuery({
+    queryKey: ["persona", "my-cross-person-requests", "raised"],
+    queryFn: () => apiClient.myCrossPersonRequests("raised"),
+  });
+
   const updateStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: CrossPersonRequestStatus }) =>
       apiClient.updateCrossPersonRequestStatus(id, { status }),
@@ -104,8 +111,53 @@ export function RequestsBoard() {
           );
         })}
       </div>
+
+      <RaisedByYou requests={raised.data?.requests ?? []} />
     </div>
   );
+}
+
+/** The requests this person asked of others, and where each one has got to. */
+function RaisedByYou({ requests }: { requests: CrossPersonRequestResponse[] }) {
+  const { people } = useRole();
+  if (requests.length === 0) {
+    return null;
+  }
+  return (
+    <div className="flex flex-col gap-2.5">
+      <h3 className="text-[15px] font-bold">Raised by you</h3>
+      <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
+        {requests.map((request) => (
+          <div key={request.id} className="rounded-2xl border border-grey-border bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs font-bold uppercase tracking-wide text-magenta">
+                {request.kind}
+              </div>
+              <div className="text-[12px] font-bold text-grey-secondary">{request.status}</div>
+            </div>
+            <div className="mt-1.5 text-[15px] font-bold">{request.note}</div>
+            <div className="mt-1.5 text-[13px] text-grey-secondary">
+              {/* You raised it, so the person to name is the counterpart. */}
+              waiting on{" "}
+              {request.counterpart_display_name ??
+                request.raw_name ??
+                counterpartName(request.counterpart_id, people)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function counterpartName(
+  counterpartId: string | null,
+  people: { id: string; name: string }[],
+): string {
+  if (counterpartId === null) {
+    return "unmatched";
+  }
+  return people.find((person) => person.id === counterpartId)?.name ?? counterpartId;
 }
 
 function RequestCard({

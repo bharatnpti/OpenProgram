@@ -5928,8 +5928,18 @@
       "get": {
         "tags": ["personas"],
         "summary": "My Cross Person Requests",
+        "description": "One's own cross-person requests, as counterpart and/or as requester.\n\n``waiting`` is the inbox and stays the default. ``raised`` answers \"did my\nask land?\", which had no endpoint at all, and ``both`` serves a screen that\nshows the two together.",
         "operationId": "my_cross_person_requests_me_cross_person_requests_get",
         "parameters": [
+          {
+            "name": "relation",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/MyRequestRelation",
+              "default": "waiting"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -9119,6 +9129,12 @@
         "type": "object",
         "required": ["task_id"],
         "title": "MemberTaskAssignmentRequest"
+      },
+      "MyRequestRelation": {
+        "type": "string",
+        "enum": ["waiting", "raised", "both"],
+        "title": "MyRequestRelation",
+        "description": "Which side of one's own cross-person requests to return."
       },
       "MyStatusResponse": {
         "properties": {
