@@ -59,8 +59,8 @@ export function RequestsBoard() {
     <div className="flex flex-col gap-3">
       {canReadAggregate ? null : (
         <p className="text-[13px] text-grey-secondary">
-          Showing the requests waiting on you. The portfolio-wide board needs a
-          team or executive role.
+          Showing the requests waiting on you. The portfolio-wide board needs a team or executive
+          role.
         </p>
       )}
       <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
@@ -81,17 +81,19 @@ export function RequestsBoard() {
               <div className="flex flex-col gap-2.5">
                 {items.map((request) => (
                   <RequestCard
-                    key={request.source_correlation_id}
+                    // The request's own id, not its source correlation id:
+                    // /cross-person-requests/{id}/status keys on the former,
+                    // and one check-in reply can mint several requests that
+                    // all share the latter.
+                    key={request.id}
                     request={request}
                     onAcknowledge={() =>
                       updateStatus.mutate({
-                        id: request.source_correlation_id,
+                        id: request.id,
                         status: "acknowledged",
                       })
                     }
-                    onResolve={() =>
-                      updateStatus.mutate({ id: request.source_correlation_id, status: "resolved" })
-                    }
+                    onResolve={() => updateStatus.mutate({ id: request.id, status: "resolved" })}
                   />
                 ))}
                 {items.length === 0 ? (
