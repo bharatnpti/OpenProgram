@@ -592,7 +592,7 @@ def _dispatch_checkin(
     checkin_date: str | None = None,
 ) -> object:
     assert world.client is not None
-    _pin_checkin_time_to_start_of_day(world, member_id)
+    _pin_checkin_schedule_to_every_day(world, member_id)
     chat_ids = world.stash.get("chat_ids", {})
     payload = {
         "tenant_id": "demo",
@@ -605,8 +605,8 @@ def _dispatch_checkin(
     return world.client.post("/admin/workflows/checkin/dispatch", json=payload)
 
 
-def _pin_checkin_time_to_start_of_day(world: World, member_id: str) -> None:
-    """Make the dispatched check-in's ``asked_at`` land in the past.
+def _pin_checkin_schedule_to_every_day(world: World, member_id: str) -> None:
+    """Make the dispatched check-in land, whatever day and time the suite runs.
 
     ``asked_at`` is derived from the developer's check-in preference
     ``local_time``, which defaults to 09:30 -- not from the wall clock. Reply
@@ -616,11 +616,17 @@ def _pin_checkin_time_to_start_of_day(world: World, member_id: str) -> None:
     of by explicit correlation id would resolve to nothing and be ignored.
     Pinning the preference to 00:00 keeps these scenarios independent of the
     time of day the suite happens to run.
+
+    The weekday matters just as much. ``weekdays`` defaults to Monday-Friday and
+    ``daily_checkin`` records ``skipped_weekend`` and sends nothing for any day
+    outside it, so every scenario whose Given step needs a bot message failed on
+    a Saturday or Sunday -- 27 of them, for no code reason. Allowing all seven
+    days makes the suite independent of the day it runs too.
     """
     assert world.client is not None
     response = world.client.put(
         f"/config/members/{member_id}/checkin-preference",
-        json={"local_time": "00:00:00"},
+        json={"local_time": "00:00:00", "weekdays": [0, 1, 2, 3, 4, 5, 6]},
     )
     # 404 means the member does not exist -- that is the subject of the
     # unknown-member scenarios, which assert on the dispatch failing. Leave the
