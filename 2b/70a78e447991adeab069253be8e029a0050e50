@@ -1,0 +1,22 @@
+frontend-v2/src/features/today/DeveloperToday.tsx
+  s_db98bf649daf00::t_0d80e17eb074cd 104-113,120-122,398-399,401-404,426-433
+  s_db98bf649daf00::t_c70d544d79de3f 434-435
+backend/core/application/self_status_service.py
+  s_db98bf649daf00::t_0d80e17eb074cd 90,94-98,102,140,147,164,171,182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2b70a78e447991adeab069253be8e029a0050e50",
+  "prompts": {},
+  "sessions": {
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
