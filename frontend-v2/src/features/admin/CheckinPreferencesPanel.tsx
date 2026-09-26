@@ -164,9 +164,15 @@ export function CheckinPreferencesPanel({
                   key={pref.developer_id}
                   className={cn("px-4 py-3", index === 0 ? "" : "border-t border-grey-fill")}
                 >
-                  <div className="text-[14px] font-bold">{pref.developer_id}</div>
+                  {/* The member picker beside this list already shows names and
+                      the weekday chips already have labels, so an admin was
+                      reading "U1001 / 0,1,2,3,4" next to "Asha Rao" and
+                      "Mon Tue Wed Thu Fri". */}
+                  <div className="text-[14px] font-bold">
+                    {memberName(pref.developer_id, members)}
+                  </div>
                   <div className="mt-0.5 text-[13px] text-grey-secondary">
-                    {pref.local_time} / {pref.timezone ?? "UTC"} / {pref.weekdays.join(",")}
+                    {pref.local_time} / {pref.timezone ?? "UTC"} / {weekdayLabels(pref.weekdays)}
                   </div>
                   <div className="mt-1.5">
                     <RagChip tone="info">{pref.reply_wait_seconds}s wait</RagChip>
@@ -179,4 +185,20 @@ export function CheckinPreferencesPanel({
       </div>
     </div>
   );
+}
+
+/** A member's name, falling back to the id before the directory has loaded. */
+function memberName(developerId: string, members: ConfigNodeResponse[]): string {
+  return members.find((member) => member.id === developerId)?.name ?? developerId;
+}
+
+/** Weekdays as the short labels the chips above already use. */
+function weekdayLabels(weekdays: number[]): string {
+  if (weekdays.length === 0) {
+    return "no days";
+  }
+  return weekdayOptions
+    .filter((option) => weekdays.includes(option.value))
+    .map((option) => option.label)
+    .join(" ");
 }
