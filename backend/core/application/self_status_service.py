@@ -87,13 +87,19 @@ class SelfStatusService:
             tenant_id,
             developer_id,
             existing,
+            as_of=as_of,
             reports=(),
             mode=ReconcileMode.CONFIRM_ALL,
         )
+        # The day being acted on, not the day the carried-forward status came
+        # from. `my_status` answers with the latest status at or before `as_of`,
+        # so on a day with no reply yet `existing.as_of` is an earlier day --
+        # and writing there confirmed *that* day instead, leaving today with no
+        # status at all while restamping history as confirmed just now.
         confirmed = DeveloperStatus(
             tenant_id=existing.tenant_id,
             developer_id=existing.developer_id,
-            as_of=existing.as_of,
+            as_of=as_of,
             source=StatusSource.CONFIRMED,
             blockers=blocker_descriptions(reconciliation.open_after) or existing.blockers,
             summary=existing.summary,
@@ -131,13 +137,14 @@ class SelfStatusService:
             tenant_id,
             developer_id,
             existing,
+            as_of=as_of,
             reports=reports,
             mode=ReconcileMode.AUTHORITATIVE_SET,
         )
         corrected = DeveloperStatus(
             tenant_id=existing.tenant_id,
             developer_id=existing.developer_id,
-            as_of=existing.as_of,
+            as_of=as_of,
             source=StatusSource.CONFIRMED,
             blockers=blocker_descriptions(reconciliation.open_after),
             summary=summary,
@@ -154,13 +161,14 @@ class SelfStatusService:
         developer_id: str,
         existing: DeveloperStatus,
         *,
+        as_of: date,
         reports: tuple[BlockerReport, ...],
         mode: ReconcileMode,
     ) -> BlockerReconciliation:
         prior = await self._blockers.open_blockers(
             tenant_id,
             developer_id,
-            existing.as_of,
+            as_of,
             legacy_status=existing,
         )
         signals = CheckInSignals(
@@ -171,7 +179,7 @@ class SelfStatusService:
         return await self._blockers.reconcile(
             tenant_id=tenant_id,
             developer_id=developer_id,
-            as_of=existing.as_of,
+            as_of=as_of,
             prior=prior,
             signals=signals,
             mode=mode,
