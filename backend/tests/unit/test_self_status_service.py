@@ -48,6 +48,75 @@ async def test_self_status_service_confirms_latest_status() -> None:
     assert await service.my_status("demo", "dev-1", date(2026, 1, 10)) == confirmed
 
 
+async def test_self_status_confirm_writes_the_day_being_confirmed() -> None:
+    """Confirming on a day with no reply must record *that* day.
+
+    `my_status` answers with the most recent status at or before the day asked
+    for, so on an unanswered day it returns an earlier one carried forward.
+    Building the confirmation with `existing.as_of` rewrote that earlier day --
+    leaving today with no status for any rollup to count, and restamping
+    yesterday's record as confirmed just now.
+    """
+    store = InMemoryGraphStore()
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-1",
+            as_of=date(2026, 1, 9),
+            source=StatusSource.CONFIRMED,
+            blockers=(),
+            summary="Friday's answer.",
+            developer_confirmed=True,
+            confirmed_at=datetime(2026, 1, 9, 9, tzinfo=UTC),
+        )
+    )
+    service = SelfStatusService(store)
+
+    confirmed = await service.confirm(
+        "demo", "dev-1", date(2026, 1, 10), datetime(2026, 1, 10, 10, tzinfo=UTC)
+    )
+
+    assert confirmed is not None
+    assert confirmed.as_of == date(2026, 1, 10)
+    # The earlier day is left exactly as it was.
+    earlier = await service.my_status("demo", "dev-1", date(2026, 1, 9))
+    assert earlier is not None
+    assert earlier.as_of == date(2026, 1, 9)
+    assert earlier.confirmed_at == datetime(2026, 1, 9, 9, tzinfo=UTC)
+
+
+async def test_self_status_correct_writes_the_day_being_corrected() -> None:
+    store = InMemoryGraphStore()
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-1",
+            as_of=date(2026, 1, 9),
+            source=StatusSource.CONFIRMED,
+            blockers=(),
+            summary="Friday's answer.",
+        )
+    )
+    service = SelfStatusService(store)
+
+    corrected = await service.correct(
+        "demo",
+        "dev-1",
+        date(2026, 1, 10),
+        summary="Today's answer.",
+        blockers=(),
+        eta_change_days=None,
+        confirmed_at=datetime(2026, 1, 10, 10, tzinfo=UTC),
+    )
+
+    assert corrected is not None
+    assert corrected.as_of == date(2026, 1, 10)
+    assert corrected.summary == "Today's answer."
+    earlier = await service.my_status("demo", "dev-1", date(2026, 1, 9))
+    assert earlier is not None
+    assert earlier.summary == "Friday's answer."
+
+
 async def test_self_status_service_corrects_structured_fields() -> None:
     store = InMemoryGraphStore()
     await store.record_developer_status(
