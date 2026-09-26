@@ -1,0 +1,19 @@
+backend/tests/unit/test_self_status_service.py
+  s_db98bf649daf00::t_5eecc5423f3bf5 51-119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "74a943d52ad0ef4b11b5b5ec579b1b9ee85b612d",
+  "prompts": {},
+  "sessions": {
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
