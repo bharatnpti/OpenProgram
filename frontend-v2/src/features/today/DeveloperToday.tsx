@@ -101,14 +101,25 @@ export function DeveloperToday() {
     onError: (error) => toast.error(error instanceof Error ? error.message : "Save failed"),
   });
 
-  const confirmed = myStatus.data?.developer_confirmed ?? false;
+  // `latest_developer_status` answers with the most recent status *at or
+  // before* the day asked for, so an unanswered day shows the previous one
+  // carried forward. The backend's own `_checkin_state` only calls a status
+  // today's when its as_of matches, and the pod board applies that -- so on a
+  // day with no reply a scrum master saw "stale" while this card said
+  // "confirmed by you" and showed the green tick. Same moment, two answers,
+  // on the screen that says silence is never read as green.
+  const statusAsOf = myStatus.data?.status_as_of ?? focus.data?.status_as_of ?? null;
+  const answeredToday = statusAsOf === asOf;
+  const confirmed = answeredToday && (myStatus.data?.developer_confirmed ?? false);
   const blockerDetails = myStatus.data?.blocker_details ?? [];
   const blockerList = myStatus.data?.blockers ?? focus.data?.blockers ?? [];
   const etaDays = myStatus.data?.eta_change_days ?? null;
   const checkinProvenance = provenanceLabel(
     myStatus.data?.source ?? focus.data?.status_source,
     myStatus.data?.confirmed_at ?? null,
-    confirmed,
+    myStatus.data?.developer_confirmed ?? false,
+    statusAsOf,
+    asOf,
   );
 
   return (
@@ -384,7 +395,13 @@ function provenanceLabel(
   source: StatusSource | undefined,
   confirmedAt: string | null,
   developerConfirmed: boolean,
+  statusAsOf: string | null,
+  today: string,
 ): string {
+  // Anything older than today is carried forward, not answered today.
+  if (statusAsOf !== null && statusAsOf !== today) {
+    return `no reply today · last answered ${formatDay(statusAsOf)}`;
+  }
   const when = confirmedAt
     ? new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(
         new Date(confirmedAt),
@@ -404,6 +421,16 @@ function provenanceLabel(
     default:
       return "no reply yet";
   }
+}
+
+/** A carried-forward status names the day it came from, not just a time. */
+function formatDay(isoDate: string): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(year, month - 1, day));
 }
 
 /** Name of whoever raised a request, falling back to their id. */
