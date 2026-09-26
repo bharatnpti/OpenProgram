@@ -1,0 +1,19 @@
+frontend-v2/src/features/admin/CheckinPreferencesPanel.tsx
+  s_db98bf649daf00::t_82fdf703209972 167-173,175,189-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e3de22907145b36b6db5232e9f45235ca895b40f",
+  "prompts": {},
+  "sessions": {
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
