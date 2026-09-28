@@ -10,6 +10,20 @@ export function toneForRag(rag: Rag | null | undefined): BadgeTone {
   return "neutral";
 }
 
+/**
+ * Triage rank for a RAG reading: worst first. `unknown` ranks *above* `green`
+ * because an unreported status is not a clean bill of health -- the same rule
+ * `worstOf` applies to the portfolio hero. Use it wherever a fixed-width row
+ * has to choose which items to show, so truncation can never hide a worse
+ * reading behind a better one.
+ */
+export function ragSeverity(rag: Rag | null | undefined): number {
+  if (rag === "red") return 3;
+  if (rag === "amber") return 2;
+  if (rag === "green") return 0;
+  return 1;
+}
+
 export function toneForSource(source: StatusSource | undefined): BadgeTone {
   if (source === "confirmed") return "success";
   if (source === "partial") return "info";
