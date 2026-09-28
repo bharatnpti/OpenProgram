@@ -400,11 +400,9 @@ class PersonaViewService:
         tree = await self._graph_repository.get_program_tree(tenant_id, project_id, as_of)
         statuses = await self._node_statuses_for_tree(tree, as_of)
         root_status = statuses.get((tree.root.kind, tree.root.id))
-        task_list: list[TaskProgressView] = []
-        for node in _sorted_nodes(tree.nodes):
-            if node.kind is NodeKind.TASK:
-                task_list.append(await self._task_progress(node, as_of))
-        tasks = tuple(task_list)
+        tasks = tuple(
+            [await self._task_progress(node, as_of) for node in _owned_tasks(tree)],
+        )
         counts = _task_counts(tasks)
         return ProjectProgressView(
             project_id=tree.root.id,
@@ -432,11 +430,9 @@ class PersonaViewService:
         tree = await self._graph_repository.get_program_tree(tenant_id, workstream_id, as_of)
         statuses = await self._node_statuses_for_tree(tree, as_of)
         root_status = statuses.get((tree.root.kind, tree.root.id))
-        task_list: list[TaskProgressView] = []
-        for node in _sorted_nodes(tree.nodes):
-            if node.kind is NodeKind.TASK:
-                task_list.append(await self._task_progress(node, as_of))
-        tasks = tuple(task_list)
+        tasks = tuple(
+            [await self._task_progress(node, as_of) for node in _owned_tasks(tree)],
+        )
         counts = _task_counts(tasks)
         fallback_rag = _workstream_task_rag(tree.root, tasks, as_of)
         rag = _dominant_rag(root_status.rag if root_status else Rag.UNKNOWN, fallback_rag)
@@ -660,6 +656,100 @@ def _developers(tree: GraphTree) -> tuple[GraphNode, ...]:
 
 def _sorted_nodes(nodes: tuple[GraphNode, ...]) -> tuple[GraphNode, ...]:
     return tuple(sorted(nodes, key=lambda node: (node.kind.value, node.name, node.id)))
+
+
+# The delivery hierarchy, as node kinds rather than edge kinds. `project
+# --contains--> pod` is the *same* edge kind as `project --contains-->
+# workstream` and only the second is ownership, so ownership cannot be matched
+# on `EdgeKind` alone. Used only to find the workstream(s) a root directly
+# owns -- `_owned_workstream_ids` below -- not to walk all the way to tasks:
+# a task with no workstream ancestor at all (assigned straight to a developer,
+# with no work item in between) is legitimately unclaimed rather than foreign,
+# and stays counted.
+_OWNED_WORKSTREAM_DESCENT: dict[NodeKind, frozenset[NodeKind]] = {
+    NodeKind.PROGRAM: frozenset({NodeKind.PROJECT}),
+    NodeKind.PROJECT: frozenset({NodeKind.WORKSTREAM}),
+}
+
+
+def _owned_workstream_ids(tree: GraphTree) -> frozenset[str]:
+    """The workstream(s) the tree's root itself owns, by `contains` alone."""
+    if tree.root.kind is NodeKind.WORKSTREAM:
+        return frozenset({tree.root.id})
+    nodes = {node.id: node for node in tree.nodes}
+    owned: set[str] = set()
+    seen: set[str] = {tree.root.id}
+    queue: list[GraphNode] = [tree.root]
+    while queue:
+        node = queue.pop()
+        allowed = _OWNED_WORKSTREAM_DESCENT.get(node.kind, frozenset())
+        for edge in tree.edges:
+            if edge.kind is not EdgeKind.CONTAINS or edge.from_node_id != node.id:
+                continue
+            child = nodes.get(edge.to_node_id)
+            if child is None or child.kind not in allowed or child.id in seen:
+                continue
+            seen.add(child.id)
+            if child.kind is NodeKind.WORKSTREAM:
+                owned.add(child.id)
+            else:
+                queue.append(child)
+    return frozenset(owned)
+
+
+def _owned_tasks(tree: GraphTree) -> tuple[GraphNode, ...]:
+    """The tasks that belong to the root, not to some other project sharing a pod.
+
+    `get_program_tree` is an untyped transitive closure over `contains` and
+    `assigned_to`: it returns everything reachable from the root by either.
+    That is exactly right for a developer's focus, whose tasks arrive over
+    `developer --assigned_to--> task` -- but a pod is also a `contains` child
+    of its project *and* carries `assigned_to` edges to every workstream it
+    serves, so a pod working across two projects let one project's tree reach
+    the other's tasks:
+
+        project-insights > pod-data > ws-cart > CHK-201 > task-chk-201
+
+    Scanning that tree flat for `NodeKind.TASK` counted those four foreign
+    tasks, so Customer Insights reported 83% over six tasks while owning two --
+    and it skewed *optimistic*, absorbing another project's green work. Shared
+    pods are a legitimate structure the product advertises ("pods: teams
+    working across the hierarchy"), so a task is now excluded only when it
+    resolves to a workstream ancestor that is *not* one of the root's own --
+    `task-chk-201`'s ancestor is `ws-cart`, owned by Checkout, not Insights. A
+    task with no workstream ancestor at all keeps counting exactly as before:
+    that is how a project with work assigned straight to its people, and no
+    workstream underneath it yet, has always been read.
+    """
+    nodes = {node.id: node for node in tree.nodes}
+    contains_parent: dict[str, GraphNode] = {}
+    for edge in tree.edges:
+        if edge.kind is EdgeKind.CONTAINS:
+            parent = nodes.get(edge.from_node_id)
+            child = nodes.get(edge.to_node_id)
+            if parent is not None and child is not None:
+                contains_parent[child.id] = parent
+
+    def owning_workstream_id(task_id: str) -> str | None:
+        current = task_id
+        visited: set[str] = set()
+        while True:
+            parent = contains_parent.get(current)
+            if parent is None or parent.id in visited:
+                return None
+            if parent.kind is NodeKind.WORKSTREAM:
+                return parent.id
+            visited.add(parent.id)
+            current = parent.id
+
+    owned_workstreams = _owned_workstream_ids(tree)
+    tasks = [
+        node
+        for node in tree.nodes
+        if node.kind is NodeKind.TASK
+        and ((ws_id := owning_workstream_id(node.id)) is None or ws_id in owned_workstreams)
+    ]
+    return _sorted_nodes(tuple(tasks))
 
 
 def _since_for_as_of(as_of: date) -> datetime:
