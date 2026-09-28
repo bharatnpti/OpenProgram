@@ -215,8 +215,10 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
                 {risk.entity_ref.kind} · {risk.entity_ref.id}
               </div>
             </div>
+            {/* "open Nd" -- see SignalsPage: this is the age now, while the
+                reason beside it states the age at detection. */}
             <div className="shrink-0 text-[13px] font-bold text-grey-secondary">
-              {risk.age_days}d
+              open {risk.age_days}d
             </div>
           </div>
         ))}
