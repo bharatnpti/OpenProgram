@@ -246,7 +246,7 @@ class RiskService:
                     await self._build_finding(
                         tenant_id=tenant_id,
                         rule_id=RiskRuleId.FEATURE_NO_PR,
-                        severity=_severity_for_age(age_days, thresholds.feature_no_pr_days),
+                        threshold_days=thresholds.feature_no_pr_days,
                         entity_ref=item.ref,
                         workstream_id=workstream.id if workstream is not None else None,
                         reason=(
@@ -266,7 +266,7 @@ class RiskService:
                     await self._build_finding(
                         tenant_id=tenant_id,
                         rule_id=RiskRuleId.STALE_WORK_ITEM,
-                        severity=_severity_for_age(age_days, thresholds.stale_days),
+                        threshold_days=thresholds.stale_days,
                         entity_ref=item.ref,
                         workstream_id=workstream.id if workstream is not None else None,
                         reason=f"{item.name} has had no state change in {age_days} day(s).",
@@ -329,7 +329,7 @@ class RiskService:
                 await self._build_finding(
                     tenant_id=tenant_id,
                     rule_id=RiskRuleId.PR_AGE,
-                    severity=_severity_for_age(age_days, thresholds.pr_age_days),
+                    threshold_days=thresholds.pr_age_days,
                     entity_ref=entity_ref,
                     workstream_id=workstream.id if workstream is not None else None,
                     reason=f"Pull request '{title}' in {repo} has been open for {age_days} day(s).",
@@ -353,7 +353,7 @@ class RiskService:
         *,
         tenant_id: str,
         rule_id: RiskRuleId,
-        severity: Rag,
+        threshold_days: int,
         entity_ref: EntityRef,
         workstream_id: str | None,
         reason: str,
@@ -371,12 +371,13 @@ class RiskService:
         return RiskFinding(
             tenant_id=tenant_id,
             rule_id=rule_id,
-            severity=severity,
+            severity=_severity_for_age(age_days, threshold_days),
             entity_ref=entity_ref,
             workstream_id=workstream_id,
             reason=reason,
             evidence=evidence,
             age_days=age_days,
+            threshold_days=threshold_days,
             detected_at=datetime.now(tz=UTC),
             status=RiskFindingStatus.OPEN,
             owner_id=owner_id,
@@ -829,6 +830,7 @@ class RiskService:
             "evidence_url": finding.evidence.url,
             "evidence_url_is_user_supplied": finding.evidence.url_is_user_supplied,
             "age_days": finding.age_days,
+            "threshold_days": finding.threshold_days,
             "owner_id": finding.owner_id,
             "detected_at": finding.detected_at.isoformat(),
             "transition": transition,
@@ -902,7 +904,6 @@ class RiskService:
             entity_kind = NodeKind(entity_kind_value)
         except ValueError:
             return None
-        severity = _rag_from_payload(_payload_str(fact.payload, "severity"))
         detected_at = _optional_datetime(detected_at_value) or fact.observed_at
         owner_id = _payload_str(fact.payload, "owner_id")
         owner_status = await self._owner_status(tenant_id, owner_id, as_of, owner_cache)
@@ -911,6 +912,17 @@ class RiskService:
         )
         current_age_days = max(0, (as_of - detected_at.date()).days) + (
             _payload_int(fact.payload, "age_days") or 0
+        )
+        # An open finding keeps ageing, so judge it against the age it has now
+        # rather than the age it had when the rule first fired — otherwise a
+        # card can read "open 21d" while still showing the amber it was born
+        # with. Facts recorded before the threshold was stored have nothing to
+        # re-derive from, so those keep their recorded severity.
+        threshold_days = _payload_int(fact.payload, "threshold_days")
+        severity = (
+            _severity_for_age(current_age_days, threshold_days)
+            if threshold_days is not None
+            else _rag_from_payload(_payload_str(fact.payload, "severity"))
         )
         return RiskFinding(
             tenant_id=tenant_id,
@@ -927,6 +939,7 @@ class RiskService:
                 ),
             ),
             age_days=current_age_days,
+            threshold_days=threshold_days,
             detected_at=detected_at,
             status=RiskFindingStatus.OPEN,
             owner_id=owner_id,
