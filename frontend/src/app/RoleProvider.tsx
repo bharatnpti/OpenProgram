@@ -43,6 +43,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
             authenticated: false,
             provider: "oidc_bff",
             login_url: "/api/v1/auth/login?return_url=/",
+            demo_mode: false,
+            chat_enabled: false,
           });
         }
       })
