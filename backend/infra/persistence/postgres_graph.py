@@ -555,7 +555,7 @@ class PostgresGraphRepository:
                 SELECT COUNT(*)::int AS applied_count
                 FROM writeback_audit
                 WHERE tenant_id = %s AND status = %s
-                      AND (%s IS NULL OR created_at >= %s)
+                      AND (%s::timestamptz IS NULL OR created_at >= %s::timestamptz)
                 """,
                 (tenant_id, WriteBackStatus.APPLIED.value, since, since),
             )
@@ -572,7 +572,7 @@ class PostgresGraphRepository:
                        source, created_at
                 FROM writeback_audit
                 WHERE tenant_id = %s AND status = %s
-                      AND (%s IS NULL OR created_at >= %s)
+                      AND (%s::timestamptz IS NULL OR created_at >= %s::timestamptz)
                 ORDER BY created_at DESC
                 LIMIT %s
                 """,
