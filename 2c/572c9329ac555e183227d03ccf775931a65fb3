@@ -1,0 +1,21 @@
+backend/tests/contract/contracts.py
+  s_4dea2fe3f5c791::t_aa2c63fe0c2dab 593-620
+backend/infra/persistence/postgres_graph.py
+  s_4dea2fe3f5c791::t_aa2c63fe0c2dab 130-149,152,157-169,171,173-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2c572c9329ac555e183227d03ccf775931a65fb3",
+  "prompts": {},
+  "sessions": {
+    "s_4dea2fe3f5c791": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "60af7a42-09e4-42a8-b3ea-7084c97cbced",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
