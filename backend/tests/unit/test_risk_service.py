@@ -437,11 +437,12 @@ async def test_open_finding_stays_amber_until_it_reaches_double_threshold() -> N
     assert [(finding.age_days, finding.severity) for finding in later] == [(5, Rag.AMBER)]
 
 
-async def test_finding_recorded_without_a_threshold_keeps_its_recorded_severity() -> None:
-    store = InMemoryGraphStore()
-    project_id, _ = await _setup_project_with_workstream(store)
-    # A fact in the shape written before the threshold was persisted: there is
-    # nothing to re-derive a severity from, so the recorded one stands.
+async def _append_legacy_risk_fact(store: InMemoryGraphStore, project_id: str) -> None:
+    """A risk fact in the shape written before the threshold was persisted.
+
+    A finding is only re-recorded when it *opens*, so one already open when
+    this landed would keep its original payload for the rest of its life.
+    """
     await store.append_fact_once(
         FactEvent(
             tenant_id=TENANT,
@@ -465,8 +466,29 @@ async def test_finding_recorded_without_a_threshold_keeps_its_recorded_severity(
             correlation_id="risk:demo:legacy:opened",
         )
     )
+
+
+async def test_finding_recorded_without_a_threshold_is_judged_against_configured_one() -> None:
+    store = InMemoryGraphStore()
+    project_id, _ = await _setup_project_with_workstream(store)
+    await _append_legacy_risk_fact(store, project_id)
     service = _service(store, default_no_pr_days=3, default_stale_days=30)
 
     later = await service.project_risks(TENANT, project_id, AS_OF + timedelta(days=30))
 
+    # 34 days against a 3-day threshold: red, not the amber it was recorded at.
+    assert [(finding.age_days, finding.severity) for finding in later] == [(34, Rag.RED)]
+
+
+async def test_workstream_threshold_override_applies_when_re_deriving_severity() -> None:
+    store = InMemoryGraphStore()
+    project_id, _ = await _setup_project_with_workstream(
+        store, workstream_metadata={"risk_no_pr_days": 30}
+    )
+    await _append_legacy_risk_fact(store, project_id)
+    service = _service(store, default_no_pr_days=3, default_stale_days=90)
+
+    later = await service.project_risks(TENANT, project_id, AS_OF + timedelta(days=30))
+
+    # The workstream allows 30 days, so 34 is over but nowhere near double it.
     assert [(finding.age_days, finding.severity) for finding in later] == [(34, Rag.AMBER)]
