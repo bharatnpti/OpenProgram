@@ -7,7 +7,7 @@ import { Sparkline } from "../../components/ui/Sparkline";
 import { cn } from "../../lib/utils";
 import { firstItemId } from "../../lib/selection";
 import { latestBriefPerScopePerDay } from "../../lib/briefs";
-import { toneForRag, toneHex } from "../../lib/status";
+import { ragSeverity, toneForRag, toneHex } from "../../lib/status";
 import { todayIso } from "../../lib/today";
 import type { DirectoryItemResponse, Rag } from "../../api/schema";
 
@@ -69,14 +69,16 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
     staleTime: 5 * 60_000,
   });
 
-  const heatRows: {
-    label: string;
-    kind: "project" | "workstream" | "pod";
-    items: DirectoryItemResponse[];
-  }[] = [
-    { label: "Projects", kind: "project", items: (projects.data ?? []).slice(0, 4) },
-    { label: "Workstreams", kind: "workstream", items: (workstreams.data ?? []).slice(0, 4) },
-    { label: "Pods", kind: "pod", items: (pods.data ?? []).slice(0, 4) },
+  // Each row is a fixed four columns, so a tenant with more than four of a
+  // kind cannot show them all. Order worst-first before truncating: taking the
+  // first four in directory order (which is alphabetical) hid the tenant's
+  // only red workstream -- "Payments API" -- behind three ambers, so the row
+  // read as "nothing red here" while the hero, computed over *every* item,
+  // said the program was at risk. The count names what is left out.
+  const heatRows = [
+    heatRow("Projects", "project", projects.data),
+    heatRow("Workstreams", "workstream", workstreams.data),
+    heatRow("Pods", "pod", pods.data),
   ];
 
   const worstRag = worstOf(
@@ -100,7 +102,13 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
             ? "is on track"
             : "has no confirmed status";
 
-  const momentum = momentumLabel(trend.data?.points);
+  // A momentum reading is a claim about the data, so loading and failure get
+  // said out loud rather than folded into a direction.
+  const momentum = trend.isError
+    ? "could not be loaded"
+    : trend.isLoading
+      ? "loading…"
+      : momentumLabel(trend.data?.points);
   const topRisks = [...(risks.data?.risks ?? [])]
     .sort((a, b) => b.age_days - a.age_days)
     .slice(0, 3);
@@ -158,7 +166,14 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
               key={row.kind}
               className="grid grid-cols-[110px_repeat(4,1fr)] items-center gap-2.5"
             >
-              <div className="text-[13px] font-bold text-grey-secondary">{row.label}</div>
+              <div className="text-[13px] font-bold text-grey-secondary">
+                {row.label}
+                {row.total > row.items.length ? (
+                  <span className="block text-[11px] font-bold uppercase tracking-wide">
+                    worst {row.items.length} of {row.total}
+                  </span>
+                ) : null}
+              </div>
               {row.items.map((item, index) => {
                 const tone = toneForRag(item.rag);
                 return (
@@ -253,10 +268,44 @@ function worstOf(rags: (Rag | null | undefined)[]): Rag {
   return "unknown";
 }
 
-function momentumLabel(points: { score: number }[] | undefined): string {
-  if (!points || points.length < 2) return "steady";
-  const first = points[0].score;
-  const last = points[points.length - 1].score;
+const HEAT_COLUMNS = 4;
+
+type HeatRow = {
+  label: string;
+  kind: "project" | "workstream" | "pod";
+  items: DirectoryItemResponse[];
+  total: number;
+};
+
+function heatRow(
+  label: string,
+  kind: "project" | "workstream" | "pod",
+  data: DirectoryItemResponse[] | undefined,
+): HeatRow {
+  const all = data ?? [];
+  const ranked = [...all].sort(
+    (a, b) => ragSeverity(b.rag) - ragSeverity(a.rag) || a.name.localeCompare(b.name),
+  );
+  return { label, kind, items: ranked.slice(0, HEAT_COLUMNS), total: all.length };
+}
+
+/**
+ * Direction of travel across the window.
+ *
+ * A point whose status is `unknown` carries score 0 -- *below* `red` -- so it
+ * is not a value on the health scale, and comparing it as one manufactures a
+ * direction. The seeded program opens `unknown` and ends `red` after
+ * seventeen straight red weekdays; first-vs-last on the raw score read that
+ * as "improving", printed beside a hero saying "is at risk". So momentum is
+ * measured only over days that actually reported a status, and says so when
+ * there are not two of them rather than defaulting to "steady".
+ */
+function momentumLabel(points: { score: number; rag: Rag }[] | undefined): string {
+  if (points === undefined) return "not available";
+  const reported = points.filter((point) => point.rag !== "unknown");
+  if (reported.length < 2) return "not enough reported days";
+  const first = reported[0].score;
+  const last = reported[reported.length - 1].score;
   if (last > first + 0.05) return "improving";
   if (last < first - 0.05) return "sliding";
   return "steady";
