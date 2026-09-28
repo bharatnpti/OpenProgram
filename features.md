@@ -307,6 +307,26 @@ Functional requirements:
 - The frontend shall hide Admin Config navigation unless the active UI role is admin.
 - The frontend shall provide reusable UI primitives for buttons, badges, dialogs, fields, inputs, selects, sliders, textareas, and role-aware layouts.
 
+### 4.19 Risk and Drift Detection
+
+**Business requirement:** The system shall surface delivery risk from hard signals, independently of what an owner says, and shall keep a risk's severity honest as it ages.
+
+Functional requirements:
+
+- The system shall detect a feature that has been active past a threshold with no linked pull request.
+- The system shall detect a work item with no state change past a staleness threshold.
+- The system shall detect a pull request open past an age threshold, scoped to the project's repositories.
+- The system shall resolve each threshold per workstream, falling back to a global default when the workstream does not set one.
+- The system shall rate a finding amber at its threshold and red at double it.
+- The system shall present a finding's age as the age it has on the date being read, not the age it had when the rule fired.
+- The system shall re-derive a finding's severity from that current age, so an open finding escalates as it ages without needing to be re-detected.
+- The system shall keep a finding's stored reason as a statement about detection time, since it describes the evidence that opened the finding.
+- The system shall record a fact when a finding opens and when it clears, and shall not duplicate a finding that is already open.
+- The system shall show the owner's own narrative beside the signal that contradicts it.
+- The system shall detect drift such as work reported done with no pull request, and claimed progress with no activity.
+- The system shall detect watermelon risk where a green parent hides a red child.
+- The system shall order open findings by severity, so the most severe reach a reader first.
+
 ## 5. Key Business Data Flows
 
 ### 5.1 Read Sync Flow
@@ -389,8 +409,8 @@ Planned requirements:
 
 - Compare developer-stated status against Jira, Git, PR, and CI/CD facts.
 - Produce richer confidence scores for human-confirmed versus inferred status.
-- Detect drift such as "said done, but no PR merged."
-- Detect watermelon risk where high-level green hides lower-level red.
+- ~~Detect drift such as "said done, but no PR merged."~~ Implemented — see 4.19.
+- ~~Detect watermelon risk where high-level green hides lower-level red.~~ Implemented — see 4.19.
 - Write approved comments, transitions, or estimates back to Jira.
 - Keep every external write auditable and reversible.
 
