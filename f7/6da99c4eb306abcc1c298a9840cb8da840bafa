@@ -1,0 +1,19 @@
+frontend/src/app/RoleProvider.tsx
+  s_4dea2fe3f5c791::t_eb02e1714796b3 46-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f76da99c4eb306abcc1c298a9840cb8da840bafa",
+  "prompts": {},
+  "sessions": {
+    "s_4dea2fe3f5c791": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "60af7a42-09e4-42a8-b3ea-7084c97cbced",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
