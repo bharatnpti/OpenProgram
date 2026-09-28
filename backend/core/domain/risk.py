@@ -58,6 +58,10 @@ class RiskFinding:
     reason: str
     evidence: RiskEvidence
     age_days: int
+    #: The rule's threshold in days, kept so severity can be re-derived against
+    #: the finding's *current* age on read. ``None`` on findings recorded before
+    #: it was stored, which keep the severity they were detected with.
+    threshold_days: int | None
     detected_at: datetime
     status: RiskFindingStatus
     owner_id: str | None = None
