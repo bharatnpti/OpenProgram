@@ -386,3 +386,87 @@ async def test_severity_escalates_to_red_at_double_threshold() -> None:
     delta = await service.assess_and_persist_project(TENANT, project_id, AS_OF)
 
     assert delta.newly_opened[0].severity is Rag.RED
+
+
+async def _persist_amber_feature_no_pr(store: InMemoryGraphStore, detected_on: date) -> RiskService:
+    """Record a 4-day-old feature-without-PR finding against a 3-day threshold.
+
+    4 days is over the threshold but under double it, so the finding is
+    recorded amber — which leaves room for it to escalate as it ages.
+    """
+    project_id, workstream_id = await _setup_project_with_workstream(store)
+    await _add_work_item(
+        store,
+        workstream_id,
+        item_id="wi-1",
+        metadata={
+            "item_type": "feature",
+            "state": "in_progress",
+            "created_at": _iso_days_ago(detected_on, 4),
+        },
+    )
+    service = _service(store, default_no_pr_days=3, default_stale_days=30)
+    delta = await service.assess_and_persist_project(TENANT, project_id, detected_on)
+    assert [(finding.age_days, finding.severity) for finding in delta.newly_opened] == [
+        (4, Rag.AMBER)
+    ]
+    return service
+
+
+async def test_open_finding_escalates_to_red_as_it_ages_on_read() -> None:
+    store = InMemoryGraphStore()
+    # An open finding ages against the wall clock it was detected on, so this
+    # walks forward from today rather than from the suite's fixed AS_OF.
+    today = datetime.now(tz=UTC).date()
+    service = await _persist_amber_feature_no_pr(store, today)
+
+    # Two days on, the same open finding is 6 days old — double the three-day
+    # threshold — so reading it back must report red, not the recorded amber.
+    later = await service.project_risks(TENANT, "proj-1", today + timedelta(days=2))
+
+    assert [(finding.age_days, finding.severity) for finding in later] == [(6, Rag.RED)]
+
+
+async def test_open_finding_stays_amber_until_it_reaches_double_threshold() -> None:
+    store = InMemoryGraphStore()
+    today = datetime.now(tz=UTC).date()
+    service = await _persist_amber_feature_no_pr(store, today)
+
+    later = await service.project_risks(TENANT, "proj-1", today + timedelta(days=1))
+
+    assert [(finding.age_days, finding.severity) for finding in later] == [(5, Rag.AMBER)]
+
+
+async def test_finding_recorded_without_a_threshold_keeps_its_recorded_severity() -> None:
+    store = InMemoryGraphStore()
+    project_id, _ = await _setup_project_with_workstream(store)
+    # A fact in the shape written before the threshold was persisted: there is
+    # nothing to re-derive a severity from, so the recorded one stands.
+    await store.append_fact_once(
+        FactEvent(
+            tenant_id=TENANT,
+            source="risk",
+            entity_ref=EntityRef(tenant_id=TENANT, kind=NodeKind.WORK_ITEM, id="wi-1"),
+            payload={
+                "risk_key": "feature_no_pr:work_item:wi-1",
+                "rule_id": RiskRuleId.FEATURE_NO_PR.value,
+                "severity": Rag.AMBER.value,
+                "entity_kind": NodeKind.WORK_ITEM.value,
+                "entity_id": "wi-1",
+                "workstream_id": "ws-1",
+                "project_id": project_id,
+                "reason": "Legacy finding.",
+                "evidence_identifier": "wi-1",
+                "age_days": 4,
+                "detected_at": _iso_days_ago(AS_OF, 0),
+                "transition": "opened",
+            },
+            observed_at=datetime.combine(AS_OF, datetime.min.time(), tzinfo=UTC),
+            correlation_id="risk:demo:legacy:opened",
+        )
+    )
+    service = _service(store, default_no_pr_days=3, default_stale_days=30)
+
+    later = await service.project_risks(TENANT, project_id, AS_OF + timedelta(days=30))
+
+    assert [(finding.age_days, finding.severity) for finding in later] == [(34, Rag.AMBER)]
