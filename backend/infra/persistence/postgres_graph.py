@@ -127,25 +127,51 @@ class PostgresGraphRepository:
                 await self._sync_age_delete_node(transaction, tenant_id, id)
 
     async def add_edge(self, edge: GraphEdge) -> None:
+        """Store the edge unless an identical one is already there.
+
+        Adding the same edge twice must be a no-op: the in-memory repository
+        has always behaved that way (``if edge not in self._edges``) and every
+        connector sync depends on it, because they re-link the same containers
+        on every poll. A plain INSERT appended a row per tick instead, and
+        `graph_edges` has a surrogate primary key, so no constraint caught it.
+
+        Matching on all seven columns mirrors ``remove_edge``, so an edge with
+        a different validity window or metadata is still a distinct edge.
+        """
+        identity = (
+            edge.tenant_id,
+            edge.from_node_id,
+            edge.to_node_id,
+            edge.kind.value,
+            edge.valid_from,
+            edge.valid_to,
+            dict(edge.metadata),
+        )
         with _tracer.start_as_current_span("postgres.graph.add_edge"):
             async with self._executor.transaction() as transaction:
-                await transaction.execute(
+                inserted = await transaction.fetch(
                     """
                     INSERT INTO graph_edges (
                         tenant_id, from_node_id, to_node_id, kind, valid_from, valid_to, metadata
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    SELECT %s::text, %s::text, %s::text, %s::text, %s::date, %s::date, %s::jsonb
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM graph_edges
+                        WHERE tenant_id = %s
+                          AND from_node_id = %s
+                          AND to_node_id = %s
+                          AND kind = %s
+                          AND valid_from IS NOT DISTINCT FROM %s
+                          AND valid_to IS NOT DISTINCT FROM %s
+                          AND metadata = %s
+                    )
+                    RETURNING 1
                     """,
-                    (
-                        edge.tenant_id,
-                        edge.from_node_id,
-                        edge.to_node_id,
-                        edge.kind.value,
-                        edge.valid_from,
-                        edge.valid_to,
-                        dict(edge.metadata),
-                    ),
+                    (*identity, *identity),
                 )
+                if not inserted:
+                    return
                 await self._sync_age_edge(transaction, edge)
 
     async def list_edges(
