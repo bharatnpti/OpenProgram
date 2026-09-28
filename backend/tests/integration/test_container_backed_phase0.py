@@ -38,6 +38,7 @@ from tests.contract.contracts import (
     assert_graph_repository_contract,
     assert_inbound_chat_event_repository_contract,
     assert_status_repository_contract,
+    assert_writeback_audit_repository_contract,
 )
 from tests.fixtures.demo_graph import populate_demo_graph
 
@@ -345,6 +346,13 @@ async def test_developer_blockers_migration_backfill_and_round_trip(
             # (LOAD 'age' + search_path), the same construction the fixture
             # test above uses, so a plain executor is sufficient.
             await assert_graph_repository_contract(PostgresGraphRepository(executor))
+            # The write-back audit contract had only ever run against the fakes
+            # and the in-memory store, so an unbounded count -- `since=None`,
+            # which is the default and the only way to ask "how many ever" --
+            # was never executed as SQL. It failed there with
+            # IndeterminateDatatype, taking /persona/writeback-adoption and the
+            # writeback_applied gauge with it.
+            await assert_writeback_audit_repository_contract(PostgresGraphRepository(executor))
         finally:
             await executor.close()
 
