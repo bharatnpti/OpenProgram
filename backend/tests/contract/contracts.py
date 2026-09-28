@@ -590,6 +590,34 @@ async def assert_graph_repository_contract(repository: GraphRepository) -> None:
     assert await repository.pods_for_task("demo", "task-unknown", as_of) == []
     assert await repository.pods_for_task("other", "task-1", as_of) == []
 
+    # Adding an identical edge again is a no-op. Every connector sync re-links
+    # the same containers on each poll, so a duplicate row per tick grows
+    # `graph_edges` without bound and crowds a node's real neighbours out of
+    # any limited edge listing.
+    stored = await repository.list_edges("demo", from_node_id="pod-b", to_node_id="dev-1")
+    assert len(stored) == 1
+    await repository.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id="pod-b",
+            to_node_id="dev-1",
+            kind=EdgeKind.CONTAINS,
+        )
+    )
+    assert await repository.list_edges("demo", from_node_id="pod-b", to_node_id="dev-1") == stored
+
+    # An edge differing only by its validity window is still a distinct edge.
+    await repository.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id="pod-b",
+            to_node_id="dev-1",
+            kind=EdgeKind.CONTAINS,
+            valid_from=date(2026, 4, 1),
+        )
+    )
+    assert len(await repository.list_edges("demo", from_node_id="pod-b", to_node_id="dev-1")) == 2
+
 
 async def assert_identity_link_repository_contract(
     repository: IdentityLinkRepository,
