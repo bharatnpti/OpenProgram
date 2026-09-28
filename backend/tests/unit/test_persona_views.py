@@ -10,12 +10,14 @@ from core.domain.graph import (
     EntityRef,
     FactEvent,
     GraphEdge,
+    GraphNode,
     GraphTree,
     NodeKind,
     Pod,
     Program,
     Project,
     Task,
+    WorkItem,
     Workstream,
 )
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
@@ -136,6 +138,11 @@ async def test_focus_uses_latest_task_fact_and_metadata_fallbacks() -> None:
 async def test_project_progress_aggregates_tasks_when_no_rollup_status_exists() -> None:
     store = InMemoryGraphStore()
     as_of = date(2026, 1, 10)
+    # project -> workstream -> work item -> task, the chain the seeder builds
+    # and the only shape `ConfigService`'s owning links can produce.
+    project = Project(tenant_id="demo", id="project-1", name="Checkout")
+    workstream = Workstream(tenant_id="demo", id="ws-1", name="Payments")
+    work_item = WorkItem(tenant_id="demo", id="WI-1", name="Refunds")
     task_green = Task(
         tenant_id="demo",
         id="task-green",
@@ -152,23 +159,98 @@ async def test_project_progress_aggregates_tasks_when_no_rollup_status_exists() 
         await store.upsert_node(task)
     service = PersonaViewService(
         graph_repository=_StaticGraphRepository(
-            root=task_green,
-            nodes=(task_green, task_amber),
-            edges=(),
+            root=project,
+            nodes=(project, workstream, work_item, task_green, task_amber),
+            edges=(
+                _contains(project.id, workstream.id),
+                _contains(workstream.id, work_item.id),
+                _contains(work_item.id, task_green.id),
+                _contains(work_item.id, task_amber.id),
+            ),
         ),
         status_repository=store,
         rollup_repository=store,
         time_series_repository=store,
     )
 
-    view = await service.project_progress("demo", "task-green", as_of)
+    view = await service.project_progress("demo", project.id, as_of)
 
     assert view.rag is Rag.AMBER
-    assert view.source is StatusSource.UNKNOWN
     assert view.percent_complete == 50.0
     assert view.total_tasks == 2
     assert view.green_tasks == 1
     assert view.amber_tasks == 1
+    # Nothing is stored, so `_node_statuses_for_tree` computes the project's
+    # rollup from its children and the view reports that provenance. Derived
+    # is not the same as unknown: we did work out a status here.
+    assert view.source is StatusSource.INFERRED
+
+
+async def test_project_progress_excludes_tasks_reached_through_a_shared_pod() -> None:
+    """A pod serving two projects must not lend one project the other's tasks.
+
+    `get_program_tree` is an untyped closure over `contains`/`assigned_to`, so
+    `project-ours > pod-shared > ws-theirs > WI-theirs > task-theirs` is
+    reachable and a flat scan for task nodes counted it. That made one project
+    report progress over another's work, skewing optimistic when the borrowed
+    tasks were green -- which is exactly what a shared platform pod produces.
+    """
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    ours = Project(tenant_id="demo", id="project-ours", name="Ours")
+    our_ws = Workstream(tenant_id="demo", id="ws-ours", name="Our stream")
+    our_wi = WorkItem(tenant_id="demo", id="WI-ours", name="Our item")
+    our_task = Task(
+        tenant_id="demo",
+        id="task-ours",
+        name="Our task",
+        metadata={"status": "at-risk"},
+    )
+    # The shared pod hangs off our project, but the workstream it is assigned
+    # to -- and everything under it -- belongs to another project.
+    shared_pod = Pod(tenant_id="demo", id="pod-shared", name="Platform Pod")
+    their_ws = Workstream(tenant_id="demo", id="ws-theirs", name="Their stream")
+    their_wi = WorkItem(tenant_id="demo", id="WI-theirs", name="Their item")
+    their_task = Task(
+        tenant_id="demo",
+        id="task-theirs",
+        name="Their task",
+        metadata={"status": "done"},
+    )
+    for task in (our_task, their_task):
+        await store.upsert_node(task)
+    service = PersonaViewService(
+        graph_repository=_StaticGraphRepository(
+            root=ours,
+            nodes=(ours, our_ws, our_wi, our_task, shared_pod, their_ws, their_wi, their_task),
+            edges=(
+                _contains(ours.id, our_ws.id),
+                _contains(our_ws.id, our_wi.id),
+                _contains(our_wi.id, our_task.id),
+                _contains(ours.id, shared_pod.id),
+                GraphEdge(
+                    tenant_id="demo",
+                    from_node_id=shared_pod.id,
+                    to_node_id=their_ws.id,
+                    kind=EdgeKind.ASSIGNED_TO,
+                ),
+                _contains(their_ws.id, their_wi.id),
+                _contains(their_wi.id, their_task.id),
+            ),
+        ),
+        status_repository=store,
+        rollup_repository=store,
+        time_series_repository=store,
+    )
+
+    view = await service.project_progress("demo", ours.id, as_of)
+
+    assert [task.id for task in view.tasks] == ["task-ours"]
+    assert view.total_tasks == 1
+    assert view.green_tasks == 0
+    assert view.amber_tasks == 1
+    # The borrowed task was green; counting it would have read 50%, not 0%.
+    assert view.percent_complete == 0.0
 
 
 async def test_workstream_progress_uses_latest_task_facts_for_rollup() -> None:
@@ -693,12 +775,21 @@ async def _populate_developer_task_tree(store: InMemoryGraphStore) -> Program:
     return program
 
 
+def _contains(from_id: str, to_id: str) -> GraphEdge:
+    return GraphEdge(
+        tenant_id="demo",
+        from_node_id=from_id,
+        to_node_id=to_id,
+        kind=EdgeKind.CONTAINS,
+    )
+
+
 class _StaticGraphRepository:
     def __init__(
         self,
         *,
-        root: Task,
-        nodes: tuple[Task, ...],
+        root: GraphNode,
+        nodes: tuple[GraphNode, ...],
         edges: tuple[GraphEdge, ...],
     ) -> None:
         self._root = root
