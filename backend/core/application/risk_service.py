@@ -446,6 +446,21 @@ class RiskService:
             stale_days=self._provider_config.default_stale_days,
         )
 
+    async def _cached_thresholds(
+        self,
+        tenant_id: str,
+        workstream_id: str | None,
+        cache: dict[str | None, RiskThresholds],
+    ) -> RiskThresholds:
+        if workstream_id not in cache:
+            workstream = (
+                await self._graph_repository.get_node(tenant_id, workstream_id)
+                if workstream_id is not None
+                else None
+            )
+            cache[workstream_id] = self._thresholds_for_workstream(workstream)
+        return cache[workstream_id]
+
     def _thresholds_for_workstream(self, workstream: GraphNode | None) -> RiskThresholds:
         if workstream is None:
             return self._default_thresholds()
@@ -869,12 +884,13 @@ class RiskService:
 
         owner_cache: dict[str, DeveloperStatus | None] = {}
         blocker_cache: dict[str, tuple[ResolvedBlocker, ...]] = {}
+        threshold_cache: dict[str | None, RiskThresholds] = {}
         findings: list[RiskFinding] = []
         for fact in latest_by_key.values():
             if _payload_str(fact.payload, "transition") != "opened":
                 continue
             finding = await self._finding_from_fact(
-                tenant_id, fact, as_of, owner_cache, blocker_cache
+                tenant_id, fact, as_of, owner_cache, blocker_cache, threshold_cache
             )
             if finding is not None:
                 findings.append(finding)
@@ -890,6 +906,7 @@ class RiskService:
         as_of: date,
         owner_cache: dict[str, DeveloperStatus | None],
         blocker_cache: dict[str, tuple[ResolvedBlocker, ...]],
+        threshold_cache: dict[str | None, RiskThresholds],
     ) -> RiskFinding | None:
         rule_id_value = _payload_str(fact.payload, "rule_id")
         entity_kind_value = _payload_str(fact.payload, "entity_kind")
@@ -916,20 +933,21 @@ class RiskService:
         # An open finding keeps ageing, so judge it against the age it has now
         # rather than the age it had when the rule first fired — otherwise a
         # card can read "open 21d" while still showing the amber it was born
-        # with. Facts recorded before the threshold was stored have nothing to
-        # re-derive from, so those keep their recorded severity.
+        # with. A finding is only re-recorded when it opens, so a fact written
+        # before the threshold was persisted would otherwise stay frozen for
+        # its whole life; resolve the rule's threshold from config for those.
+        workstream_id = _payload_str(fact.payload, "workstream_id")
         threshold_days = _payload_int(fact.payload, "threshold_days")
-        severity = (
-            _severity_for_age(current_age_days, threshold_days)
-            if threshold_days is not None
-            else _rag_from_payload(_payload_str(fact.payload, "severity"))
-        )
+        if threshold_days is None:
+            thresholds = await self._cached_thresholds(tenant_id, workstream_id, threshold_cache)
+            threshold_days = _threshold_for_rule(thresholds, rule_id)
+        severity = _severity_for_age(current_age_days, threshold_days)
         return RiskFinding(
             tenant_id=tenant_id,
             rule_id=rule_id,
             severity=severity,
             entity_ref=EntityRef(tenant_id=tenant_id, kind=entity_kind, id=entity_id),
-            workstream_id=_payload_str(fact.payload, "workstream_id"),
+            workstream_id=workstream_id,
             reason=reason,
             evidence=RiskEvidence(
                 identifier=identifier,
@@ -971,6 +989,14 @@ def _drift_key(finding: DriftFinding, project_id: str, as_of: date) -> str:
         f"drift:{finding.kind.value}:{project_id}:{finding.entity_ref.id}:"
         f"{child}:{as_of.isoformat()}"
     )
+
+
+def _threshold_for_rule(thresholds: RiskThresholds, rule_id: RiskRuleId) -> int:
+    if rule_id is RiskRuleId.FEATURE_NO_PR:
+        return thresholds.feature_no_pr_days
+    if rule_id is RiskRuleId.PR_AGE:
+        return thresholds.pr_age_days
+    return thresholds.stale_days
 
 
 def _severity_for_age(age_days: int, threshold_days: int) -> Rag:
