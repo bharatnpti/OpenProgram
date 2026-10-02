@@ -51,3 +51,23 @@ class WriteBackAdoption:
 
     applied_count: int
     recent: tuple[WriteBackAudit, ...] = field(default_factory=tuple)
+
+
+class WriteBackGateSource(StrEnum):
+    """Where the tenant-wide write-back switch takes its value from."""
+
+    TENANT = "tenant"
+    DEFAULT = "default"
+
+
+@dataclass(frozen=True, kw_only=True)
+class WriteBackGate:
+    """The effective tenant-wide write-back switch.
+
+    ``source`` is ``tenant`` when the tenant has a persisted override and
+    ``default`` when the deployment-wide default applies. Per-developer consent
+    only matters while ``enabled`` is true.
+    """
+
+    enabled: bool
+    source: WriteBackGateSource

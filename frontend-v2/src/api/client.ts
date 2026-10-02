@@ -32,6 +32,7 @@ import type {
   UnmappedMemberResponse,
   WritebackConsentResponse,
   WritebackConsentUpdateRequest,
+  TenantWritebackResponse,
   DirectoryItemResponse,
   DirectorySearchResponse,
   DirectorySyncResponse,
@@ -383,6 +384,7 @@ export const apiClient = {
       method: "PUT",
       body,
     }),
+  configTenantWriteback: () => requestJson<TenantWritebackResponse>("/config/tenant/writeback"),
   configMemberIdentityLink: (memberId: string) =>
     requestJson<IdentityLinkResponse>(`/config/members/${memberId}/identity-link`),
   updateConfigMemberIdentityLink: (memberId: string, body: IdentityLinkUpdateRequest) =>

@@ -81,6 +81,8 @@ export type WriteBackAdoptionResponse = components["schemas"]["WriteBackAdoption
 export type WriteBackConsent = components["schemas"]["WriteBackConsent"];
 export type WritebackConsentResponse = components["schemas"]["WritebackConsentResponse"];
 export type WritebackConsentUpdateRequest = components["schemas"]["WritebackConsentUpdateRequest"];
+export type TenantWritebackResponse = components["schemas"]["TenantWritebackResponse"];
+export type WriteBackGateSource = components["schemas"]["WriteBackGateSource"];
 
 export interface WorkItemFlowResponse {
   id: string;

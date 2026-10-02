@@ -23,6 +23,7 @@ from core.domain.graph import (
 from core.domain.identity import IdentityLink
 from core.domain.rollup import Rag
 from core.domain.status import CheckInPreference, StatusSource
+from core.domain.writeback import WriteBackGate, WriteBackGateSource
 from core.ports.directory import DirectoryUserRepository
 from core.ports.repositories import (
     GraphRepository,
@@ -580,15 +581,18 @@ class ConfigService:
             )
         return unmapped
 
-    async def get_tenant_writeback_enabled(self, tenant_id: str, default: bool) -> bool:
+    async def get_tenant_writeback(self, tenant_id: str, default: bool) -> WriteBackGate:
         """Resolve the system gate: persisted tenant override, else the fallback."""
         repository = self._writeback_config_repository_or_raise()
         override = await repository.get_writeback_enabled(tenant_id)
-        return default if override is None else override
+        if override is None:
+            return WriteBackGate(enabled=default, source=WriteBackGateSource.DEFAULT)
+        return WriteBackGate(enabled=override, source=WriteBackGateSource.TENANT)
 
-    async def set_tenant_writeback_enabled(self, tenant_id: str, enabled: bool) -> None:
+    async def set_tenant_writeback_enabled(self, tenant_id: str, enabled: bool) -> WriteBackGate:
         repository = self._writeback_config_repository_or_raise()
         await repository.set_writeback_enabled(tenant_id, enabled)
+        return WriteBackGate(enabled=enabled, source=WriteBackGateSource.TENANT)
 
     async def get_pod_escalation_contacts(
         self, tenant_id: str, pod_id: str
