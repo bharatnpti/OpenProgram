@@ -91,6 +91,7 @@ Functional requirements:
 - Admins shall view check-in preferences for all configured members.
 - Admins shall update a member's timezone.
 - Admins shall choose active weekdays for check-ins.
+- The system shall refuse an empty list of check-in days, from an admin or from the member, because it would stop that member's check-ins without saying so.
 - Admins shall configure reply wait and final reply wait windows as an amount and a unit, with presets, so a stored value is shown exactly and saving a member without changes leaves their windows as they were.
 - The system shall reject a negative reply window, or one too large to store.
 - Admins shall be able to record a member's local check-in time. The scheduler does not use it: check-ins are sent on the single tenant-wide schedule.

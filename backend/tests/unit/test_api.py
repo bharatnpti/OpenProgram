@@ -1326,6 +1326,45 @@ def test_checkin_preference_partial_save_keeps_the_other_stored_values(
     )
 
 
+def test_checkin_preference_refuses_an_empty_list_of_days(settings: Settings) -> None:
+    # With no days the bot never asks that person again, so an empty list is a
+    # 422 on both endpoints rather than a silent stop to their check-ins.
+    app = create_app(
+        settings=settings.model_copy(
+            update={"dev_principal_roles": "admin,dev", "dev_principal_subject": "dev-noah"}
+        )
+    )
+    stored = CheckInPreference(
+        tenant_id=settings.tenant_id,
+        developer_id="dev-noah",
+        timezone="Europe/Berlin",
+        weekdays=(0, 2, 4),
+    )
+    with TestClient(app) as client:
+        registry = app.state.registry
+        asyncio.run(
+            registry.graph_repository().upsert_node(
+                Developer(tenant_id=settings.tenant_id, id="dev-noah", name="Noah")
+            )
+        )
+        asyncio.run(registry.status_repository().record_checkin_preference(stored))
+        own = client.put("/me/checkin-preference", json={"weekdays": []})
+        admin = client.put("/config/members/dev-noah/checkin-preference", json={"weekdays": []})
+        admin_with_zone = client.put(
+            "/config/members/dev-noah/checkin-preference",
+            json={"weekdays": [], "timezone": "Asia/Kolkata"},
+        )
+        after = asyncio.run(
+            registry.status_repository().checkin_preference_for(settings.tenant_id, "dev-noah")
+        )
+
+    for response in (own, admin, admin_with_zone):
+        assert response.status_code == 422
+        assert "weekdays needs at least one day" in response.json()["detail"][0]["msg"]
+    # Nothing was stored, not even the valid time zone sent beside the days.
+    assert after == stored
+
+
 def test_portfolio_heatmap_accepts_program_root_id(settings: Settings) -> None:
     app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "exec"}))
     with TestClient(app) as client:
