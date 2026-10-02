@@ -1,0 +1,93 @@
+frontend-v2/src/api/generated.ts
+  s_386bf853700fa5::t_a4c351a925dad8 2018-2023,2055
+backend/tests/unit/test_workflow_import_safety.py
+  s_386bf853700fa5::t_ef8c345253f0a6 21
+backend/infra/persistence/migrations/versions/0032_cross_person_notify_attempts.py
+  s_386bf853700fa5::t_2882d394fd2f12 1-52
+backend/infra/adapters/workflows/fake.py
+  s_386bf853700fa5::t_434b32d2210721 10,45-48
+  s_386bf853700fa5::t_a827c42cb63ef0 49
+backend/core/domain/cross_person.py
+  s_386bf853700fa5::t_6ba7f305275352 25-32,53-87
+backend/core/domain/workflows.py
+  s_386bf853700fa5::t_434b32d2210721 9,187-208
+  s_386bf853700fa5::t_4a75a8de909cb9 209-210
+backend/infra/adapters/workflows/temporal.py
+  s_386bf853700fa5::t_deef4af683ec5c 22-24,45,518-541,748-772,941,963
+frontend-v2/src/features/coordination/RequestsBoard.tsx
+  s_386bf853700fa5::t_5f5fb3c6a3be5f 164-168,176-178,180-184,186-190,225
+  s_386bf853700fa5::t_3955e9388fc288 185
+  s_386bf853700fa5::t_a66056b1386c9a 156,169-175,179
+backend/infra/persistence/postgres_cross_person.py
+  s_386bf853700fa5::t_4c7aa5cf4711eb 41-42,48,106,115-188,313-315,340-342,362-370
+backend/infra/workflows/schedule.py
+  s_386bf853700fa5::t_434b32d2210721 10,52-58,102-106
+  s_386bf853700fa5::t_e97ed368edd89f 107-109
+backend/infra/registry.py
+  s_386bf853700fa5::t_338ffbeedddb07 950-951
+frontend/src/api/generated.ts
+  s_386bf853700fa5::t_1f749943681e7d 2022-2027,2059
+backend/tests/unit/test_agent_and_workflow.py
+  s_386bf853700fa5::t_ef8c345253f0a6 37,537-539,557,594-638,1454,1485-1488
+  s_386bf853700fa5::t_14f107ecc34e1f 1489-1490
+backend/core/ports/repositories.py
+  s_386bf853700fa5::t_3246b6d007d81c 116-144
+.env.example
+  s_386bf853700fa5::t_338ffbeedddb07 33-41
+frontend/src/api/openapi.json
+  s_386bf853700fa5::t_aff0e623bb0df0 8155-8156,8158-8160,8239-8248,8264-8265
+  s_386bf853700fa5::t_45b0e3d59cffb3 8157
+backend/tests/unit/test_settings.py
+  s_386bf853700fa5::t_ef8c345253f0a6 146-180
+backend/infra/persistence/in_memory_graph.py
+  s_386bf853700fa5::t_07621c55cf34a2 286,302-303,307,312-328,331-362
+  s_386bf853700fa5::t_32f114c008cdb8 329
+  s_386bf853700fa5::t_76279bd354c2b0 330
+  s_386bf853700fa5::t_3001b9de58b595 363
+features.md
+  s_386bf853700fa5::t_5adb031f3025e4 425-426
+backend/tests/unit/test_cross_person_notify_retry.py
+  s_386bf853700fa5::t_13756c59be0288 1-245,248-267,291-489,493-813
+  s_386bf853700fa5::t_4c04fad9dfc02a 268-290
+  s_386bf853700fa5::t_0296a005f23ede 246-247,490-492
+backend/config/settings.py
+  s_386bf853700fa5::t_338ffbeedddb07 82-93,390-391,516,532
+backend/core/application/cross_person_service.py
+  s_386bf853700fa5::t_4588e5edca90e7 5,7,13,29-36,47-51,93-94,99,104-109,112,115-120,122-189,192-219,221,224,230-232,252
+backend/infra/adapters/workflows/dbos.py
+  s_386bf853700fa5::t_deef4af683ec5c 25-27,48,554-574,722-737,951-962
+  s_386bf853700fa5::t_af6d8d14ad134f 963-967
+backend/infra/workflows/cross_person_notify_retry.py
+  s_386bf853700fa5::t_86b28ef3fd6502 1-34,36-49,57,59,62-68
+  s_386bf853700fa5::t_fd443f0ad85c67 50-56,58,60-61
+  s_386bf853700fa5::t_2c23c7f0018ecf 35
+backend/tests/unit/test_cross_person_api.py
+  s_386bf853700fa5::t_9617da9923e1d6 35,38-56,170-195
+  s_386bf853700fa5::t_53cbc22c3eb63c 196-197
+frontend-v2/src/api/openapi.json
+  s_386bf853700fa5::t_a4c351a925dad8 8155-8160,8239-8248,8264-8265
+backend/api/dtos.py
+  s_386bf853700fa5::t_f46de73bf4f117 52-56,1574-1577,1594
+backend/core/ports/workflows.py
+  s_386bf853700fa5::t_434b32d2210721 10,38-39
+  s_386bf853700fa5::t_2867330861630c 40-41
+docs/ops/slack-setup.md
+  s_386bf853700fa5::t_6862e00762ac4b 128-129
+  s_386bf853700fa5::t_5adb031f3025e4 111-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "48dfb4d3e1a45ae0c295bfc742a2224842e04419",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
