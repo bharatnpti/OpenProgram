@@ -1,0 +1,29 @@
+frontend/src/pages/WorkstreamDetailPage.tsx
+  s_386bf853700fa5::t_1b603ad4081ee8 129-131
+  s_386bf853700fa5::t_45e815d69f298e 309,314-321
+  s_51495ccc67ba04::t_68b6f55bc3da57 322-323
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ac61f1e768ca95454a8cea3d6e903e6cc2204f3d",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_51495ccc67ba04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98259e94-8aa1-45f5-b5cc-46cac669b27d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
