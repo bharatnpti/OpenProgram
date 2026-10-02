@@ -1,0 +1,23 @@
+backend/core/application/portfolio_feed_service.py
+  s_386bf853700fa5::t_7cbb0e372d4546 124-126
+backend/core/application/status_collector.py
+  s_386bf853700fa5::t_616f7171d0e10e 163,1628-1632,1655-1671
+backend/tests/unit/test_status_collector.py
+  s_386bf853700fa5::t_23c341a9c02069 480-482
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "78da3b80d45925c5bbb6536a6204d17c4b87d46a",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
