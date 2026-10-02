@@ -1448,11 +1448,6 @@ class RiskFindingResponse(BaseModel):
 
     @classmethod
     def from_domain(cls, finding: RiskFinding) -> RiskFindingResponse:
-        watermelon = (
-            finding.owner_status_source in (StatusSource.CONFIRMED, StatusSource.INFERRED)
-            and not finding.owner_status_has_blockers
-            and finding.owner_status_summary is not None
-        )
         return cls(
             rule_id=finding.rule_id.value,
             severity=finding.severity,
@@ -1476,7 +1471,7 @@ class RiskFindingResponse(BaseModel):
             owner_status_source=finding.owner_status_source,
             owner_status_as_of=finding.owner_status_as_of,
             owner_status_has_blockers=finding.owner_status_has_blockers,
-            is_watermelon=watermelon,
+            is_watermelon=finding.is_watermelon,
         )
 
 

@@ -70,6 +70,15 @@ class RiskFinding:
     owner_status_as_of: date | None = None
     owner_status_has_blockers: bool = False
 
+    @property
+    def is_watermelon(self) -> bool:
+        """The owner's own status reads fine, with no relevant blocker, while a signal fires."""
+        return (
+            self.owner_status_source in (StatusSource.CONFIRMED, StatusSource.INFERRED)
+            and not self.owner_status_has_blockers
+            and self.owner_status_summary is not None
+        )
+
 
 @dataclass(frozen=True, kw_only=True)
 class DriftFinding:
