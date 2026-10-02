@@ -41,6 +41,8 @@ export type BlockerCorrectionItemDto = components["schemas"]["BlockerCorrectionI
 export type CheckinPreferenceResponse = components["schemas"]["CheckinPreferenceResponse"];
 export type CheckinPreferenceUpdateRequest =
   components["schemas"]["CheckinPreferenceUpdateRequest"];
+export type SelfCheckinPreferenceUpdateRequest =
+  components["schemas"]["SelfCheckinPreferenceUpdateRequest"];
 export type PodMemberLinkRequest = components["schemas"]["PodMemberLinkRequest"];
 export type ProgramProjectLinkRequest = components["schemas"]["ProgramProjectLinkRequest"];
 export type MemberTaskAssignmentRequest = components["schemas"]["MemberTaskAssignmentRequest"];
