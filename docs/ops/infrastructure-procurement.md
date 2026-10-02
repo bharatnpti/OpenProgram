@@ -16,8 +16,8 @@ data residency is treated as a hard constraint throughout.
 
 | # | Component | Why it is needed | AWS options | Recommendation |
 |---|---|---|---|---|
-| C1 | **Backend API** — FastAPI/uvicorn container, port 8000 | `backend/Dockerfile`; serves the SPA API + the public Slack webhook `/webhooks/slack` | ECS Fargate service · EKS deployment · App Runner · EC2 ASG | **ECS Fargate** — one container image, no cluster to run, scales to 2+ tasks behind an ALB |
-| C2 | **Worker** — `python -m infra.workflows.worker` container | DBOS durable workflows + all cron schedules (check-in fan-out, reconcile, Jira/GitHub/calendar sync, risk scan, drift scan, narrative briefs, conversation purge, inbound-event sweeper) | ECS Fargate service (no ingress) · EKS deployment | **ECS Fargate**, separate service from C1. Start at 1 task; DBOS serialises schedules via Postgres so >1 task is safe but not needed initially |
+| C1 | **Backend API** — FastAPI/uvicorn container, port 8000 | `backend/Dockerfile`; serves the SPA API; also the Slack webhook `/webhooks/chat/slack`, but only when `slack_inbound_transport=http` | ECS Fargate service · EKS deployment · App Runner · EC2 ASG | **ECS Fargate** — one container image, no cluster to run, scales to 2+ tasks behind an ALB |
+| C2 | **Worker** — `python -m infra.workflows.worker` container | DBOS durable workflows + all cron schedules (check-in fan-out, reconcile, Jira/GitHub/calendar sync, risk scan, drift scan, narrative briefs, conversation purge, inbound-event sweeper), and the outbound Slack Socket Mode connection that receives DM replies | ECS Fargate service (no ingress) · EKS deployment | **ECS Fargate**, separate service from C1. Run **2 tasks** so a rolling deploy never leaves Slack without an open socket; DBOS serialises schedules via Postgres, so more than one task is safe |
 | C3 | **Frontend SPA** — React/Vite static build | `frontend/` and `frontend-v2/`; `npm run build` emits static assets only | S3 + CloudFront + ACM · Amplify Hosting | **S3 + CloudFront**. Two origins/paths if both `frontend` and `frontend-v2` must be served |
 | C4 | **LiteLLM proxy** — `ghcr.io/berriai/litellm` | `OPENPROGRAM_LLM_PROVIDER=litellm`; the only egress path to the model provider, holds the master key | ECS Fargate service (internal only) · EKS | **ECS Fargate**, internal ALB or service-discovery only. Never publicly exposed |
 
@@ -71,11 +71,11 @@ data residency is treated as a hard constraint throughout.
 | # | Component | Why it is needed | AWS options | Recommendation |
 |---|---|---|---|---|
 | N1 | **VPC** — 2–3 AZs, public + private subnets | Standard isolation; DB and Redis private-only | VPC | Required |
-| N2 | **NAT Gateway** | Egress to Slack, Jira, GitHub/GitLab, Google Calendar, and the model provider | NAT Gateway · NAT instance | **NAT Gateway**, 1 per AZ in prod |
-| N3 | **Public ALB + target group** | Slack **must** reach `POST /webhooks/slack` over public HTTPS; health check on `/health`, readiness on `/ready` | ALB · API Gateway HTTP API + VPC Link | **ALB** — simplest with the existing container |
+| N2 | **NAT Gateway** | Egress to Slack (Web API, plus the Socket Mode WebSocket to `*.slack.com`), Jira, GitHub/GitLab, Google Calendar, and the model provider | NAT Gateway · NAT instance | **NAT Gateway**, 1 per AZ in prod |
+| N3 | **ALB + target group** | Fronts the API; health check on `/health`, readiness on `/ready`. With the default Slack Socket Mode nothing outside the corporate network has to reach the API, so the ALB can be **internal**. It must be public only for `slack_inbound_transport=http`, where Slack POSTs to `/webhooks/chat/slack` | ALB · API Gateway HTTP API + VPC Link | **Internal ALB**, unless users reach the console from outside the corporate network |
 | N4 | **TLS certificates** | HTTPS for the API and the SPA domain | **ACM** (free, auto-renew) | **ACM** |
 | N5 | **DNS** | API + SPA hostnames per environment | **Route 53** · existing corporate DNS | Either; Route 53 if the zone can be delegated |
-| N6 | **WAF** | `/webhooks/*` is CSRF-exempt and internet-facing ([api/main.py:170](../../backend/api/main.py#L170)); signature verification is in-app but rate limiting is not | **AWS WAF** on the ALB + CloudFront | **AWS WAF** with rate-based rules on `/webhooks/*` |
+| N6 | **WAF** | `/webhooks/*` is CSRF-exempt ([api/main.py:170](../../backend/api/main.py#L170)); signature verification is in-app but rate limiting is not. It matters only if that path is internet-facing (`slack_inbound_transport=http`) | **AWS WAF** on the ALB + CloudFront | **AWS WAF** on CloudFront; add rate-based rules on `/webhooks/*` only with `http` |
 | N7 | **CloudFront** | SPA delivery + TLS + caching | CloudFront | Required with C3 |
 | N8 | **VPC endpoints** | Private access to ECR, S3, Secrets Manager, CloudWatch, Bedrock — cuts NAT cost and keeps traffic off the internet | Gateway + Interface endpoints | Recommended |
 
@@ -83,7 +83,7 @@ data residency is treated as a hard constraint throughout.
 
 | # | Component | Why it is needed | AWS options | Recommendation |
 |---|---|---|---|---|
-| S1 | **Secrets store** | Slack bot token + signing secret, Jira token, GitHub/GitLab token, Google Calendar token, OIDC client secret, LiteLLM master key, Langfuse keys, DB credentials, and `OPENPROGRAM_SECRET_KEY` | **Secrets Manager** (rotation, ECS-native injection) · SSM Parameter Store SecureString (cheaper) | **Secrets Manager** for credentials, Parameter Store for non-secret config |
+| S1 | **Secrets store** | Slack bot token + app-level token (Socket Mode) or signing secret (`http`), Jira token, GitHub/GitLab token, Google Calendar token, OIDC client secret, LiteLLM master key, Langfuse keys, DB credentials, and `OPENPROGRAM_SECRET_KEY` | **Secrets Manager** (rotation, ECS-native injection) · SSM Parameter Store SecureString (cheaper) | **Secrets Manager** for credentials, Parameter Store for non-secret config |
 | S2 | **KMS CMK** | The app stores **raw DM content** in Postgres; encryption at rest for RDS/EBS, S3, Secrets Manager, CloudWatch | **KMS** customer-managed key | **One CMK per environment** |
 | S3 | **`OPENPROGRAM_SECRET_KEY` (Fernet)** | Application-level encryption for stored tokens and session material ([adapters/secrets/encrypted.py](../../backend/infra/adapters/secrets/encrypted.py)). Boot **refuses** the committed default when `environment != local` ([settings.py:559](../../backend/config/settings.py#L559)) | Generate a unique 44-char Fernet key per env, store in S1 | Required — one per environment, never reused |
 | S4 | **OIDC identity provider** | `auth_provider` **must** be `oidc_bff` outside local ([settings.py:557](../../backend/config/settings.py#L557)); needs issuer URL, client ID, client secret, and a role-claim mapping to `DEV/PO/SM/MGR/EXEC/ADMIN` | **Corporate IdP (Entra ID / Okta)** · Amazon Cognito user pool | **Corporate IdP** — roles should come from existing groups. Cognito only if that is unavailable |
@@ -103,7 +103,7 @@ data residency is treated as a hard constraint throughout.
 
 | # | Component | What is needed | Owner |
 |---|---|---|---|
-| X1 | **Slack app** | Bot token, signing secret, scopes (DM send/read, users:read for directory sync), public Request URL pointing at N3. See [docs/ops/slack-setup.md](slack-setup.md) | Workspace admin |
+| X1 | **Slack app** | Bot token with scopes `chat:write`, `im:write`, `im:history`, `users:read`; Socket Mode enabled with an app-level token (`connections:write`), so no Request URL is needed. See [docs/ops/slack-setup.md](slack-setup.md) | Workspace admin |
 | X2 | **Jira Cloud** | Service account + API token, base URL, project keys for `OPENPROGRAM_JIRA_SYNC_PROJECTS`. Write-back is off by default (`jira_writeback_enabled=false`) | Jira admin |
 | X3 | **GitHub _or_ GitLab** | PAT/app token + owner/namespace. Config supports both — `.env.example` defaults to GitLab, compose defaults to GitHub; **pick one per environment** | VCS admin |
 | X4 | **Google Calendar** | API token + calendar ID for availability/PTO. `calendar_provider` also accepts `fake` for non-prod | Workspace admin |
@@ -186,7 +186,8 @@ whole document.
 >
 > **Hard constraints**
 > - EU data residency: the service stores raw chat/DM content and calls an LLM provider.
-> - The backend requires a **public HTTPS endpoint** for Slack webhooks.
+> - Slack replies arrive over an **outbound** Socket Mode WebSocket from the worker, so no public
+>   inbound endpoint is needed for Slack. Egress to `*.slack.com` (HTTPS/WSS) must be allowed.
 > - The backend **refuses to boot** outside `local` without an OIDC provider and a unique Fernet key.
 >
 > **Out of scope:** standalone vector database, standalone graph database, Temporal, Kafka/MSK,
@@ -253,7 +254,7 @@ whole document.
 - **Scope:** One customer-managed KMS key per environment (RDS/EBS, S3, Secrets Manager, CloudWatch).
   Secrets Manager entries for: `OPENPROGRAM_SECRET_KEY` (unique 44-char Fernet key per environment —
   the value committed to `.env.example` is **refused at boot** outside `local`), DB credentials, Slack
-  bot token + signing secret, Jira API token, GitHub/GitLab token, Google Calendar token, OIDC client
+  bot token + app-level token, Jira API token, GitHub/GitLab token, Google Calendar token, OIDC client
   secret, LiteLLM master key, Langfuse public + secret keys. Non-secret config goes to SSM Parameter
   Store.
 - **Acceptance criteria:** all secrets created (empty placeholders acceptable pending OPS-16..19); ECS
@@ -282,17 +283,20 @@ whole document.
 
 #### OPS-10 — Provision the ECS cluster, ALB, TLS and DNS
 - **Type:** Task · **Priority:** Highest · **Depends on:** OPS-4, OPS-5
-- **Scope:** ECS cluster (Fargate); public ALB; ACM certificate; Route 53 (or corporate DNS) records
-  per environment. Target group health check `GET /health`; deployment gate on `GET /ready`.
+- **Scope:** ECS cluster (Fargate); ALB (internal by default, since Slack uses Socket Mode and needs
+  no inbound path; public only if users reach the console from outside the corporate network or the
+  environment uses `slack_inbound_transport=http`); ACM certificate; Route 53 (or corporate DNS)
+  records per environment. Target group health check `GET /health`; deployment gate on `GET /ready`.
   HTTP→HTTPS redirect.
-- **Acceptance criteria:** `https://<api-host>/health` returns 200 from the internet; TLS grade
-  acceptable to security; certificate auto-renewal confirmed.
+- **Acceptance criteria:** `https://<api-host>/health` returns 200 from wherever users reach the
+  console; TLS grade acceptable to security; certificate auto-renewal confirmed.
 
 #### OPS-11 — Deploy the backend API and worker services
 - **Type:** Task · **Priority:** Highest · **Depends on:** OPS-8, OPS-9, OPS-10, OPS-7
 - **Scope:** Two Fargate services from the **same image**:
   - `backend` — `uvicorn api.main:create_app --factory --port 8000`, behind the ALB, min 2 tasks in prod.
-  - `worker` — `python -m infra.workflows.worker`, no ingress, 1 task to start. Owns all cron
+  - `worker` — `python -m infra.workflows.worker`, no ingress, 2 tasks (each holds a Slack Socket
+    Mode connection, so a rolling deploy never drops inbound replies). Owns all cron
     schedules (check-in fan-out `30 9 * * 1-5`, reconcile `*/15 * * * 1-5`, Jira sync hourly, GitHub
     sync `*/15`, calendar sync daily, risk + drift scans `*/30`, narrative briefs, conversation purge
     `0 3 * * *`, inbound-event sweeper `*/5`).
@@ -358,15 +362,19 @@ whole document.
 - **Acceptance criteria:** login succeeds end-to-end from the SPA; a test user in each group resolves
   to the expected role; the backend boots with `OPENPROGRAM_AUTH_PROVIDER=oidc_bff`.
 
-#### OPS-18 — Provision the Slack app and webhook path
-- **Type:** Task · **Priority:** Highest · **Depends on:** OPS-10, OPS-11
-- **Scope:** Slack app per environment with a bot token and signing secret; Event Subscriptions
-  Request URL pointing at `https://<api-host>/webhooks/slack`; scopes for DM send/read and
-  `users:read` (directory sync). Add a **WAF rate-based rule on `/webhooks/*`** — that path is
-  CSRF-exempt by design and internet-facing (signature verification is in-app). See
-  `docs/ops/slack-setup.md`.
-- **Acceptance criteria:** Slack URL verification passes; a DM reply reaches the backend and is
-  recorded; an invalid signature is rejected with 401.
+#### OPS-18 — Provision the Slack app (Socket Mode)
+- **Type:** Task · **Priority:** Highest · **Depends on:** OPS-7, OPS-11
+- **Scope:** Slack app per environment with Socket Mode enabled: a bot token (`chat:write`,
+  `im:write`, `im:history`, `users:read`), an app-level token with `connections:write`, the
+  `message.im` bot event, and the App Home messages tab enabled. Both tokens go in Secrets Manager
+  (`OPENPROGRAM_SLACK_BOT_TOKEN`, `OPENPROGRAM_SLACK_APP_TOKEN`). The worker needs egress to
+  `*.slack.com`; no public URL, Request URL or WAF rule is involved. See `docs/ops/slack-setup.md`.
+  Only if the environment uses `OPENPROGRAM_SLACK_INBOUND_TRANSPORT=http` instead: a signing
+  secret, a public Request URL `https://<api-host>/webhooks/chat/slack`, and a WAF rate-based rule
+  on `/webhooks/*`.
+- **Acceptance criteria:** the worker logs `slack.socket.connected` and `/ready` reports
+  `slack_socket: true`; a DM reply reaches the backend and is recorded; restarting one worker task
+  loses no replies.
 
 #### OPS-19 — Procure integration credentials (Jira, VCS, Calendar)
 - **Type:** Task · **Priority:** High · **Depends on:** OPS-7
