@@ -38,12 +38,14 @@ class PostgresCrossPersonRequestRepository:
                     tenant_id, id, requester_id, requester_chat_ref, counterpart_id,
                     kind, note, task_kind, task_id, source_correlation_id, status,
                     created_at, updated_at, raw_name, email, counterpart_display_name,
-                    counterpart_email, notify_message_id, notify_correlation_id
+                    counterpart_email, notify_message_id, notify_correlation_id,
+                    notify_attempts, notify_last_attempt_at, notify_next_attempt_at
                 )
                 VALUES (
                     %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
+                    %s, %s, %s,
                     %s, %s, %s
                 )
                 ON CONFLICT (tenant_id, id)
@@ -101,6 +103,7 @@ class PostgresCrossPersonRequestRepository:
                 UPDATE cross_person_requests
                 SET notify_message_id = %s,
                     notify_correlation_id = %s,
+                    notify_next_attempt_at = NULL,
                     updated_at = %s
                 WHERE tenant_id = %s AND id = %s
                 RETURNING *
@@ -108,6 +111,80 @@ class PostgresCrossPersonRequestRepository:
                 (notify_message_id, notify_correlation_id, updated_at, tenant_id, request_id),
             )
         return _request_from_row(rows[0]) if rows else None
+
+    async def claim_notification_attempt(
+        self,
+        tenant_id: str,
+        request_id: str,
+        *,
+        expected_attempts: int,
+        attempted_at: datetime,
+        next_attempt_at: datetime | None,
+    ) -> CrossPersonRequest | None:
+        # One conditional UPDATE is the claim. A second sender that read the
+        # same row blocks on the row lock, then re-checks the WHERE against the
+        # committed row: the attempt count has moved on (or a notification has
+        # been recorded), so it updates nothing and sends nothing.
+        with _tracer.start_as_current_span("postgres.cross_person.claim_notification_attempt"):
+            rows = await self._executor.fetch(
+                """
+                UPDATE cross_person_requests
+                SET notify_attempts = notify_attempts + 1,
+                    notify_last_attempt_at = %s,
+                    notify_next_attempt_at = %s
+                WHERE tenant_id = %s AND id = %s
+                  AND status = %s
+                  AND counterpart_id IS NOT NULL
+                  AND notify_message_id IS NULL
+                  AND notify_correlation_id IS NULL
+                  AND notify_attempts = %s
+                RETURNING *
+                """,
+                (
+                    attempted_at,
+                    next_attempt_at,
+                    tenant_id,
+                    request_id,
+                    CrossPersonRequestStatus.OPEN.value,
+                    expected_attempts,
+                ),
+            )
+        return _request_from_row(rows[0]) if rows else None
+
+    async def list_notification_retries_due(
+        self,
+        tenant_id: str,
+        *,
+        due_at: datetime,
+        max_attempts: int,
+        limit: int,
+    ) -> list[CrossPersonRequest]:
+        with _tracer.start_as_current_span("postgres.cross_person.list_notification_retries_due"):
+            rows = await self._executor.fetch(
+                """
+                SELECT *
+                FROM cross_person_requests
+                WHERE tenant_id = %s
+                  AND status = %s
+                  AND counterpart_id IS NOT NULL
+                  AND notify_message_id IS NULL
+                  AND notify_correlation_id IS NULL
+                  AND notify_attempts > 0
+                  AND notify_attempts < %s
+                  AND notify_next_attempt_at IS NOT NULL
+                  AND notify_next_attempt_at <= %s
+                ORDER BY notify_next_attempt_at ASC, id ASC
+                LIMIT %s
+                """,
+                (
+                    tenant_id,
+                    CrossPersonRequestStatus.OPEN.value,
+                    max_attempts,
+                    due_at,
+                    max(0, limit),
+                ),
+            )
+        return [_request_from_row(row) for row in rows]
 
     async def list_for_counterpart(
         self,
@@ -233,6 +310,9 @@ def _request_params(request: CrossPersonRequest) -> tuple[object, ...]:
         request.counterpart_email,
         request.notify_message_id,
         request.notify_correlation_id,
+        request.notify_attempts,
+        request.notify_last_attempt_at,
+        request.notify_next_attempt_at,
     )
 
 
@@ -257,6 +337,9 @@ def _request_from_row(row: Mapping[str, object]) -> CrossPersonRequest:
         counterpart_email=_optional_string(row.get("counterpart_email")),
         notify_message_id=_optional_string(row.get("notify_message_id")),
         notify_correlation_id=_optional_string(row.get("notify_correlation_id")),
+        notify_attempts=_int_field(row.get("notify_attempts")),
+        notify_last_attempt_at=_optional_datetime(row.get("notify_last_attempt_at")),
+        notify_next_attempt_at=_optional_datetime(row.get("notify_next_attempt_at")),
     )
 
 
@@ -276,3 +359,12 @@ def _datetime_field(value: object, field_name: str) -> datetime:
 
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _optional_datetime(value: object) -> datetime | None:
+    return value if isinstance(value, datetime) else None
+
+
+def _int_field(value: object) -> int:
+    # A row read before the attempts column existed has no value: no attempts.
+    return value if isinstance(value, int) else 0

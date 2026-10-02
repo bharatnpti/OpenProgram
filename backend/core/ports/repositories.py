@@ -113,6 +113,35 @@ class CrossPersonRequestRepository(Protocol):
         updated_at: datetime,
     ) -> CrossPersonRequest | None: ...
 
+    async def claim_notification_attempt(
+        self,
+        tenant_id: str,
+        request_id: str,
+        *,
+        expected_attempts: int,
+        attempted_at: datetime,
+        next_attempt_at: datetime | None,
+    ) -> CrossPersonRequest | None:
+        """Count one counterpart DM attempt, atomically, before it is sent.
+
+        Succeeds only while the request is open, has a counterpart, has no
+        notification recorded and still has ``expected_attempts`` attempts, so
+        of two senders that read the same row only one can claim the attempt.
+        Returns the claimed request, or None when the claim lost.
+        """
+        ...
+
+    async def list_notification_retries_due(
+        self,
+        tenant_id: str,
+        *,
+        due_at: datetime,
+        max_attempts: int,
+        limit: int,
+    ) -> list[CrossPersonRequest]:
+        """Open requests whose counterpart DM failed and whose next attempt is due."""
+        ...
+
     async def list_for_counterpart(
         self,
         tenant_id: str,

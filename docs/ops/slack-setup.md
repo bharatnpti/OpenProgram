@@ -108,7 +108,13 @@ thread acknowledges the request, or resolves it, in which case the developer is
 told; a reply after that changes nothing. A person who cannot be found, is
 ambiguous, or is the developer themselves gets no DM, and the request stays
 visible to the developer who asked. If Slack fails to deliver the DM the request
-is still recorded; it just has not been sent.
+is still recorded, and the worker retries the same DM every few minutes: five
+attempts in all by default, waiting 5 minutes after the first failure and twice
+as long after each later one. After that the developer who asked sees "DM not
+delivered" on the request under "Raised by you". The limits are
+`OPENPROGRAM_CROSS_PERSON_NOTIFY_MAX_ATTEMPTS` and
+`OPENPROGRAM_CROSS_PERSON_NOTIFY_RETRY_BACKOFF_SECONDS`;
+`OPENPROGRAM_CROSS_PERSON_NOTIFY_RETRY_ENABLED=false` turns the retry off.
 
 This needs no extra Slack scope: it uses the same `chat:write` and `im:write`
 the check-ins use, and `im:history` to read the reply. To record these requests
@@ -119,4 +125,5 @@ OPENPROGRAM_CROSS_PERSON_AUTO_NOTIFY=false
 ```
 
 on the API and the worker (both route replies). Existing requests are
-unaffected; the board and the "Raised by you" list work the same either way.
+unaffected, except that DMs still waiting for a retry are not sent; the board
+and the "Raised by you" list work the same either way.
