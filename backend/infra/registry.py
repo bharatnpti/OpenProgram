@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 
@@ -43,6 +43,7 @@ from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.directory import DirectoryProvider, DirectoryUserRepository
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
+from core.ports.readiness import ReadinessProbe, ReadinessReport, ReportingReadinessProbe
 from core.ports.reply_processing import ReplyProcessingOutcome
 from core.ports.repositories import (
     ConversationRepository,
@@ -100,6 +101,8 @@ from infra.persistence.postgres_status import (
 from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
 
 _CHAT_SIMULATOR_PROVIDER = "mock_slack"
+# Upper bound on any one readiness probe, so a hung dependency cannot stall /ready.
+_READINESS_TIMEOUT_SECONDS = 3.0
 # Outbound purposes that put a question to the developer and so leave the
 # check-in open for a reply. Everything else the bot sends (acks, consent
 # prompts, escalation notices) does not.
@@ -895,20 +898,22 @@ class ServiceRegistry:
         )
 
     async def readiness(self) -> dict[str, bool]:
+        reports = await self.readiness_report()
+        return {name: report.ready for name, report in reports.items()}
+
+    async def readiness_report(self) -> dict[str, ReadinessReport]:
+        """Every dependency's readiness, with a reason wherever a probe has one."""
         probes = catalog.build_readiness_probes(
             self.settings,
             self._executor,
             self._redis_client,
             workflow_backlog_count=self._open_dead_letter_count,
         )
-        checks: dict[str, Callable[[], Awaitable[bool]]] = {
-            name: probe.check for name, probe in probes.items()
-        }
         results = await asyncio.gather(
-            *(self._bounded_check(check) for check in checks.values()),
+            *(self._bounded_report(probe) for probe in probes.values()),
             return_exceptions=False,
         )
-        return dict(zip(checks.keys(), results, strict=True))
+        return dict(zip(probes.keys(), results, strict=True))
 
     async def close(self) -> None:
         if self._postgres_executor is not None:
@@ -952,11 +957,22 @@ class ServiceRegistry:
     async def _open_dead_letter_count(self) -> int:
         return await self.dead_letter_repository().count_open_dead_letters(self.settings.tenant_id)
 
-    async def _bounded_check(self, check: Callable[[], Awaitable[bool]]) -> bool:
+    async def _bounded_report(self, probe: ReadinessProbe) -> ReadinessReport:
         try:
-            return await asyncio.wait_for(check(), timeout=3.0)
-        except Exception:
-            return False
+            if isinstance(probe, ReportingReadinessProbe):
+                return await asyncio.wait_for(probe.report(), timeout=_READINESS_TIMEOUT_SECONDS)
+            ready = await asyncio.wait_for(probe.check(), timeout=_READINESS_TIMEOUT_SECONDS)
+            return ReadinessReport(ready=ready)
+        except TimeoutError:
+            return ReadinessReport(
+                ready=False,
+                detail=f"timeout: the check did not finish within {_READINESS_TIMEOUT_SECONDS:g}s",
+            )
+        except Exception as exc:
+            # The type only: a driver error message can carry a DSN or credential.
+            return ReadinessReport(
+                ready=False, detail=f"error: the check failed ({type(exc).__name__})"
+            )
 
 
 def _fernet_key(value: str) -> bytes:

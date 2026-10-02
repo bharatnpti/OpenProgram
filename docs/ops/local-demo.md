@@ -172,9 +172,11 @@ named counterparts, plus the generated daily/weekly/exec briefs.
   the check-in question ("Hi Kai, can you share today's progress on the 3-D
   Secure work?") and it asks a genuine follow-up when a reply leaves the ETA
   unanswered, leaving the status `partial` until you answer. Expect a couple of
-  seconds per turn instead of instant, and note `/ready` reports
-  `llm_provider=false`: that probe GETs `{base_url}/health/readiness`, which
-  only a LiteLLM gateway serves.
+  seconds per turn instead of instant. `/ready` keeps reporting
+  `llm_provider=true`: the probe GETs `{base_url}/v1/models` with the same key,
+  which OpenAI, a LiteLLM gateway and the mock all serve, and spends no tokens.
+  When it is `false`, `details.llm_provider` says why -- `unreachable: ...` or
+  `unauthorized: the endpoint rejected the API key (HTTP 401)`.
 
   To go back to the mock, restore the four `OPENPROGRAM_LITELLM_*` lines in
   `.env` (or a backup of it) and recreate `backend` + `worker`.

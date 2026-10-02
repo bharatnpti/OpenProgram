@@ -13,8 +13,12 @@ from infra.registry import ServiceRegistry
 async def main() -> None:
     settings = get_settings()
     registry = ServiceRegistry(settings)
-    readiness = await registry.readiness()
-    failed = [name for name, ok in readiness.items() if not ok]
+    readiness = await registry.readiness_report()
+    failed = [
+        f"{name} ({report.detail})" if report.detail else name
+        for name, report in readiness.items()
+        if not report.ready
+    ]
     if failed:
         _die(f"readiness checks failed: {', '.join(failed)}")
 
