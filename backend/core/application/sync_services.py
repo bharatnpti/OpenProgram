@@ -7,7 +7,6 @@ from datetime import UTC, date, datetime
 
 from core.application.sync_recording import recording_sync_failure, succeeded_cursor
 from core.domain.graph import (
-    Developer,
     EdgeKind,
     EntityRef,
     FactEvent,
@@ -256,12 +255,21 @@ class IssueReadSyncService:
         observed_at: datetime,
         developers: Mapping[str, str],
     ) -> None:
-        metadata = {
+        member_id = (
+            developers.get(issue.assignee.external_id) if issue.assignee is not None else None
+        )
+        metadata: dict[str, JsonScalar] = {
             **_scalar_mapping(issue.metadata),
             "key": issue.key,
             "state": issue.state.value,
             "project_key": _project_key_for_issue(issue, parent.id),
         }
+        if issue.assignee is not None and member_id is None:
+            # Nobody is linked to this tracker account yet. It stays on the issue,
+            # not as a person: a developer node would show up as a persona and be
+            # sent check-in DMs it can never receive.
+            metadata["unlinked_assignee_id"] = issue.assignee.external_id
+            metadata["unlinked_assignee_name"] = issue.assignee.display_name
         await self._graph_repository.upsert_node(
             Task(
                 tenant_id=issue.tenant_id,
@@ -278,17 +286,11 @@ class IssueReadSyncService:
                 kind=EdgeKind.CONTAINS,
             )
         )
-        if issue.assignee is not None:
-            developer_id = developers.get(issue.assignee.external_id)
-            if developer_id is None:
-                # Nobody is linked to this tracker account yet: keep the work
-                # attributable by recording the account as its own developer.
-                await self._upsert_assignee(issue.assignee)
-                developer_id = issue.assignee.external_id
+        if member_id is not None:
             await self._graph_repository.add_edge(
                 GraphEdge(
                     tenant_id=issue.tenant_id,
-                    from_node_id=developer_id,
+                    from_node_id=member_id,
                     to_node_id=issue.key,
                     kind=EdgeKind.ASSIGNED_TO,
                 )
@@ -310,29 +312,22 @@ class IssueReadSyncService:
         )
 
     async def _developers_by_tracker_account(self, tenant_id: str) -> dict[str, str]:
-        """Tracker account id -> member id, from identity links.
+        """Tracker account id -> member id: identity links, else a member with that id.
 
         Members are keyed by their chat id; the tracker only knows its own
         account ids. Without this map every assignee became a second developer
         node beside the real member, and that member's own views never saw the
-        issue.
+        issue. An account that is not in the map is not a member.
         """
-        if self._identity_link_repository is None:
-            return {}
-        return {
-            link.jira_account_id: link.developer_id
-            for link in await self._identity_link_repository.list_identity_links(tenant_id)
-            if link.jira_account_id
+        members = {
+            node.id: node.id
+            for node in await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER)
         }
-
-    async def _upsert_assignee(self, assignee: UserRef) -> None:
-        await self._graph_repository.upsert_node(
-            Developer(
-                tenant_id=assignee.tenant_id,
-                id=assignee.external_id,
-                name=assignee.display_name or assignee.external_id,
-            )
-        )
+        if self._identity_link_repository is not None:
+            for link in await self._identity_link_repository.list_identity_links(tenant_id):
+                if link.jira_account_id:
+                    members[link.jira_account_id] = link.developer_id
+        return members
 
 
 class VcsReadSyncService:
@@ -384,7 +379,9 @@ class VcsReadSyncService:
             for commit in commits:
                 await self._append_commit_fact(commit, repo.ref, members)
             for pull_request in pull_requests:
-                await self._append_pull_request_fact(pull_request, repo_name, observed, members)
+                await self._append_pull_request_fact(
+                    pull_request, repo_name, repo.ref, observed, members
+                )
 
             timestamps = [
                 *(commit.committed_at for commit in commits),
@@ -450,6 +447,7 @@ class VcsReadSyncService:
         """
         members: dict[str, str] = {}
         for node in await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER):
+            members.setdefault(node.id.strip().lower(), node.id)
             email = node.metadata.get("email")
             if isinstance(email, str) and email.strip():
                 members.setdefault(email.strip().lower(), node.id)
@@ -459,34 +457,20 @@ class VcsReadSyncService:
                     members[link.vcs_username.strip().lower()] = link.developer_id
         return members
 
-    async def _member_or_new_developer(
-        self, author: UserRef, members: Mapping[str, str]
-    ) -> UserRef:
-        member_id = members.get(author.external_id.strip().lower())
-        if member_id is not None:
-            return replace(author, external_id=member_id)
-        # Nobody is linked to this author yet: keep the activity attributable by
-        # recording the author as its own developer, as before.
-        await self._upsert_developer(author)
-        return author
-
     async def _append_commit_fact(
         self, commit: Commit, repo_ref: EntityRef, members: Mapping[str, str]
     ) -> None:
-        author = (
-            await self._member_or_new_developer(commit.author, members)
-            if commit.author is not None
-            else None
-        )
+        member = _linked_member(commit.author, members)
         await self._time_series_repository.append_fact_once(
             FactEvent(
                 tenant_id=commit.tenant_id,
                 source="vcs_commit",
-                entity_ref=_author_or_repo_ref(commit.tenant_id, repo_ref, author),
+                entity_ref=_author_or_repo_ref(commit.tenant_id, repo_ref, member),
                 payload={
                     "repo": commit.repo,
                     "sha": commit.sha,
                     "message": commit.message,
+                    **_unlinked_author(commit.author, member),
                 },
                 observed_at=_timestamp(commit.committed_at),
                 correlation_id=f"vcs:commit:{commit.tenant_id}:{commit.repo}:{commit.sha}",
@@ -497,41 +481,30 @@ class VcsReadSyncService:
         self,
         pull_request: PullRequest,
         repo_name: str,
+        repo_ref: EntityRef,
         observed_at: datetime,
         members: Mapping[str, str],
     ) -> None:
-        author = await self._member_or_new_developer(pull_request.author, members)
+        member = _linked_member(pull_request.author, members)
         pull_request_observed_at = _pull_request_updated_at(pull_request, observed_at)
         await self._time_series_repository.append_fact_once(
             FactEvent(
                 tenant_id=pull_request.tenant_id,
                 source="vcs_pull_request",
-                entity_ref=EntityRef(
-                    tenant_id=pull_request.tenant_id,
-                    kind=NodeKind.DEVELOPER,
-                    id=author.external_id,
-                ),
+                entity_ref=_author_or_repo_ref(pull_request.tenant_id, repo_ref, member),
                 payload={
                     "repo": repo_name,
                     "id": pull_request.id,
                     "title": pull_request.title,
                     "merged": pull_request.merged,
                     "opened_at": _datetime_iso(pull_request.opened_at or pull_request.updated_at),
+                    **_unlinked_author(pull_request.author, member),
                 },
                 observed_at=pull_request_observed_at,
                 correlation_id=(
                     f"vcs:pull_request:{pull_request.tenant_id}:{repo_name}:"
                     f"{pull_request.id}:{pull_request_observed_at.isoformat()}"
                 ),
-            )
-        )
-
-    async def _upsert_developer(self, user: UserRef) -> None:
-        await self._graph_repository.upsert_node(
-            Developer(
-                tenant_id=user.tenant_id,
-                id=user.external_id,
-                name=user.display_name or user.external_id,
             )
         )
 
@@ -620,6 +593,26 @@ def _matching_sprint_id(
         if sprint.id == sprint_ref or sprint.name == sprint_ref:
             return sprint.id
     return None
+
+
+def _linked_member(author: UserRef | None, members: Mapping[str, str]) -> UserRef | None:
+    """The member a git author maps to, or None: an unlinked author is not a person.
+
+    Recording an unlinked author as a developer of its own made GitLab's root
+    user, CI bots and service accounts into personas that every check-in fan-out
+    then tried, and failed, to DM.
+    """
+    if author is None:
+        return None
+    member_id = members.get(author.external_id.strip().lower())
+    return replace(author, external_id=member_id) if member_id is not None else None
+
+
+def _unlinked_author(author: UserRef | None, member: UserRef | None) -> dict[str, JsonScalar]:
+    """Who the provider says wrote it, kept on the repo's fact when no member is linked."""
+    if author is None or member is not None:
+        return {}
+    return {"author": author.external_id, "author_name": author.display_name}
 
 
 def _author_or_repo_ref(

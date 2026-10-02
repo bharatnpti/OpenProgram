@@ -217,12 +217,17 @@ Fixed on this branch:
   authors by email. That would have meant up to three "people" per developer.
   `vcs_username` was never read. MR logins now map through `vcs_username` and
   commit emails through the member's directory email.
+- Sync invented people for identities no member is linked to: GitLab's root
+  ("Administrator") from git, and an unlinked Jira assignee from Jira. They
+  became personas, and every check-in fan-out and catch-up tried to DM them,
+  got `user_not_found` from Slack and ended in ERROR. Now an unlinked git
+  author's commits and MRs are recorded on the repo with the author's handle,
+  an unlinked assignee stays on the issue (`unlinked_assignee_id` / `_name`),
+  and one failed check-in no longer fails the fan-out. A node left by the old
+  behaviour is removed with `DELETE /config/members/<id>`.
 
 Open:
 
-- Unknown git authors still become developer nodes, and so personas. GitLab's
-  root, which authored each repo's initial README, shows up as "Administrator";
-  CI bots and service accounts would too.
 - Only default-branch commits are synced, so a branch's commits are invisible
   until it is merged. A branch with no MR is visible only as a missing MR.
 - `CHECKIN_RECONCILE_ENABLED=false` does not remove an existing DBOS schedule

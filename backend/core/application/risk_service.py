@@ -320,9 +320,12 @@ class RiskService:
             )
             if age_days < thresholds.pr_age_days:
                 continue
+            # A pull request whose author is not a linked member is recorded on
+            # the repo; the repo is no one's owner.
+            author_id = fact.entity_ref.id if fact.entity_ref.kind is NodeKind.DEVELOPER else None
             owner_id = (
                 _string_metadata(work_item, "owner_id") if work_item is not None else None
-            ) or fact.entity_ref.id
+            ) or author_id
             title = _payload_str(fact.payload, "title") or f"PR {pr_id}"
             entity_ref = work_item.ref if work_item is not None else fact.entity_ref
             findings.append(

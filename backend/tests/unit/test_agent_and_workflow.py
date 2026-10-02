@@ -13,7 +13,7 @@ from core.application.conversation_history import llm_messages_from_turns
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import SyncRunResult
 from core.domain.conversation import ConversationRole, ConversationTurn
-from core.domain.errors import ProviderConfigurationError
+from core.domain.errors import ProviderConfigurationError, ProviderUnavailable
 from core.domain.escalation import EscalationPolicy
 from core.domain.graph import GraphNode, NodeKind
 from core.domain.integrations import SyncCursor
@@ -823,6 +823,38 @@ async def test_dbos_checkin_fanout_starts_children_from_workflow_context(
         ("start", dispatches[0]),
         ("start", dispatches[1]),
     ]
+
+
+async def test_dbos_checkin_fanout_survives_one_failed_check_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # One recipient the chat provider rejects (the git sync used to invent such
+    # people) must not fail everyone else's run, or leave their DMs unsent.
+    payload = CheckinFanoutInput(tenant_id="demo", checkin_date="2026-01-10")
+    dispatches = [
+        DeveloperCheckinDispatch(tenant_id="demo", developer_id=dev, checkin_date="2026-01-10")
+        for dev in ("dev-1", "gitlab_admin@example.com", "dev-2")
+    ]
+    started: list[str] = []
+
+    async def prepare(input: CheckinFanoutInput) -> list[DeveloperCheckinDispatch]:
+        return dispatches
+
+    async def start(input: DeveloperCheckinDispatch) -> str:
+        started.append(input.developer_id)
+        if "@" in input.developer_id:
+            raise ProviderUnavailable("slack request failed: user_not_found")
+        return f"child-{input.developer_id}"
+
+    monkeypatch.setattr(dbos_workflows, "dbos_prepare_checkin_fanout_step", prepare)
+    monkeypatch.setattr(dbos_workflows, "_start_daily_checkin_workflow", start)
+    monkeypatch.setattr(dbos_workflows, "_checkin_fanout_concurrency", lambda: 1)
+
+    result = await dbos_workflows._run_dbos_checkin_fanout(payload)
+
+    assert started == ["dev-1", "gitlab_admin@example.com", "dev-2"]
+    assert result.dispatched == 2
+    assert result.workflow_ids == ["child-dev-1", "child-dev-2"]
 
 
 def test_dbos_checkin_schedule_inputs_enable_backfill() -> None:
