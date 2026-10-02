@@ -1,0 +1,21 @@
+plans/05-local-demo-status.md
+  s_386bf853700fa5::t_c7c6806dea7ead 184
+docs/ops/local-demo.md
+  s_386bf853700fa5::t_9f18526a6ba317 160-162,165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5ceab53edba457fcb5a235b4d15c80513e80c6d0",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
