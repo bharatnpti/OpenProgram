@@ -1,9 +1,9 @@
 Feature: Cross-person request detection
   Detects named dependencies in check-in replies, resolves them through the
-  directory, notifies the counterpart, and routes counterpart replies back into
-  the request lifecycle.
+  directory, notifies the counterpart (on by default), and routes counterpart
+  replies back into the request lifecycle.
 
-  Scenario: Directory-resolved request notifies the counterpart and records acknowledgement
+  Scenario: Directory-resolved request notifies the counterpart by default and records acknowledgement
     Given the cross-person request stack is running with Liam review extraction
     And a configured member "U1001" named "Asha Rao" with chat id "U1001"
     And the mock Slack directory is synced
@@ -17,7 +17,7 @@ Feature: Cross-person request detection
     And the response status should be "acknowledged"
     And the cross-person request for "U1002" should have status "acknowledged"
 
-  Scenario: Directory-resolved request records without automatic counterpart DM by default
+  Scenario: Directory-resolved request is recorded without a counterpart DM when auto notify is switched off
     Given the cross-person request stack is running with Liam review extraction and auto notify disabled
     And a configured member "U1001" named "Asha Rao" with chat id "U1001"
     And the mock Slack directory is synced
@@ -43,3 +43,58 @@ Feature: Cross-person request detection
     Then the response status code should be 200
     And the response status should be "processed"
     And a cross-person request should notify "U2002" with text containing "schema confirmation"
+
+  Scenario: The counterpart's threaded reply resolves the request and the requester is told
+    Given the cross-person request stack is running with Liam review extraction
+    And a configured member "U1001" named "Asha Rao" with chat id "U1001"
+    And the mock Slack directory is synced
+    And member "U1001" has a bot check-in message
+    When I submit a reply to the bot message for "U1001" with text "Blocked waiting on Liam Chen to review the API schema."
+    Then the response status should be "processed"
+    When member "U1002" replies in the thread of the cross-person request with text "Reviewed and approved"
+    Then the response status code should be 200
+    And the response status should be "resolved"
+    And the cross-person request for "U1002" should have status "resolved"
+    And "U1001" should be told the cross-person request was resolved by "Liam Chen"
+
+  Scenario: A person who cannot be found gets no DM and the request stays with the requester
+    Given the cross-person request stack is running where every reply names "Zed Quinn"
+    And a configured member "U1001" named "Asha Rao" with chat id "U1001"
+    And the mock Slack directory is synced
+    And member "U1001" has a bot check-in message
+    When I submit a reply to the bot message for "U1001" with text "Waiting on Zed Quinn for the API schema."
+    Then the response status should be "clarifying"
+    And the latest bot message for "U1001" should contain "Zed Quinn"
+    When I reply to the latest bot message for "U1001" with text "Zed Quinn, as I said."
+    Then the response status should be "clarifying"
+    When I reply to the latest bot message for "U1001" with text "Still Zed Quinn."
+    Then the response status should be "processed"
+    And the cross-person request raised by "U1001" should have status "needs_resolution"
+    And no cross-person request should notify anyone
+
+  Scenario: An ambiguous name that is never settled gets no DM and the request stays with the requester
+    Given the cross-person request stack is running where every reply names "Alex"
+    And a configured member "U1001" named "Asha Rao" with chat id "U1001"
+    And the directory contains ambiguous Alex users
+    And member "U1001" has a bot check-in message
+    When I submit a reply to the bot message for "U1001" with text "Waiting on Alex for the API schema."
+    Then the response status should be "clarifying"
+    And the latest bot message for "U1001" should contain "alexa.roy@example.com"
+    When I reply to the latest bot message for "U1001" with text "Alex."
+    Then the response status should be "clarifying"
+    When I reply to the latest bot message for "U1001" with text "Just Alex."
+    Then the response status should be "processed"
+    And the cross-person request raised by "U1001" should have status "needs_resolution"
+    And no cross-person request should notify anyone
+
+  Scenario: A redelivered check-in reply does not DM the counterpart twice
+    Given the cross-person request stack is running with Liam review extraction
+    And a configured member "U1001" named "Asha Rao" with chat id "U1001"
+    And the mock Slack directory is synced
+    And member "U1001" has a bot check-in message
+    When Slack delivers the check-in reply event "Ev-1" from "U1001" with text "Blocked waiting on Liam Chen to review the API schema."
+    Then the response status should be "processed"
+    And exactly 1 cross-person request DM should have gone to "U1002"
+    When Slack delivers the check-in reply event "Ev-1" from "U1001" with text "Blocked waiting on Liam Chen to review the API schema."
+    Then the response status should be "duplicate"
+    And exactly 1 cross-person request DM should have gone to "U1002"
