@@ -1,0 +1,46 @@
+backend/tests/unit/test_settings.py
+  s_386bf853700fa5::t_48a3f2c01b6e47 132-143
+backend/core/application/cross_person_service.py
+  s_386bf853700fa5::t_4623c45c5f0d78 36
+backend/tests/unit/test_cross_person_service.py
+  s_386bf853700fa5::t_235ff06b644e82 20,39,74,185
+  s_386bf853700fa5::t_4b579b4873823a 5-6,245-322
+  s_386bf853700fa5::t_f6e54994a5bd0f 14
+  s_386bf853700fa5::t_4abc1b1712743a 323-324
+backend/config/settings.py
+  s_386bf853700fa5::t_802323e0bdfac1 76-78
+  s_386bf853700fa5::t_4623c45c5f0d78 79
+features.md
+  s_386bf853700fa5::t_d19262fd7dd0da 419
+.env.example
+  s_386bf853700fa5::t_802323e0bdfac1 29-30
+  s_386bf853700fa5::t_d19262fd7dd0da 31
+backend/tests/bdd/steps_cross_person_requests.py
+  s_386bf853700fa5::t_8d158a2b5d189d 4,51-72,75,77,87,97-98,101-110,282-288
+  s_386bf853700fa5::t_edbbfa705c8dc9 5,156-196,220-223,225,227-230,232-244,248-254,292-293,296,298-301,306-333
+  s_386bf853700fa5::t_1d80b14d1f898e 99,219,224,226,231,245-247
+  s_386bf853700fa5::t_74b219347745c7 255,334-335
+backend/tests/bdd/features/cross_person_requests.feature
+  s_386bf853700fa5::t_169b4d1744e2dc 3-4,6,20,46-100
+docs/ops/slack-setup.md
+  s_386bf853700fa5::t_d19262fd7dd0da 98-102,107-117
+  s_386bf853700fa5::t_802323e0bdfac1 103-106
+README.md
+  s_386bf853700fa5::t_d19262fd7dd0da 56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fc9fa9c4349cb6dca780b4ba35bd2632cfbb2c51",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
