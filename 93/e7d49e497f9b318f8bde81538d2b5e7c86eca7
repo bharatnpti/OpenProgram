@@ -1,9 +1,12 @@
 frontend-v2/src/features/today/DeveloperToday.tsx
   s_386bf853700fa5::t_ad8038171b32e7 13,15,43,120,122,128-133,178,261
+  s_386bf853700fa5::t_49a55b349b44ef 13,15,43,120,122,128-133,178,261
 frontend-v2/src/features/today/WhereYourStatusGoes.tsx
   s_386bf853700fa5::t_d920d55907f01e 1-75
+  s_386bf853700fa5::t_ff52079063bba3 1-75
 frontend-v2/src/features/today/statusRollups.ts
   s_386bf853700fa5::t_511a75f9961c98 1-112
+  s_386bf853700fa5::t_4af9cf36102afc 1-112
 ---
 {
   "schema_version": "authorship/3.0.0",
