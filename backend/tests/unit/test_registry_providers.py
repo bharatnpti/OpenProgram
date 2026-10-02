@@ -150,7 +150,7 @@ def test_container_slack_chat_provider_requires_bot_token() -> None:
         ("xoxb-test", "signing-secret", True),
     ],
 )
-async def test_container_slack_readiness_requires_bot_token_and_signing_secret(
+async def test_container_slack_http_readiness_requires_bot_token_and_signing_secret(
     slack_bot_token: str | None,
     slack_signing_secret: str | None,
     expected_healthy: bool,
@@ -163,6 +163,7 @@ async def test_container_slack_readiness_requires_bot_token_and_signing_secret(
             directory_provider="fake",
             llm_provider="fake",
             workflow_provider="fake",
+            slack_inbound_transport="http",
             slack_bot_token=slack_bot_token,
             slack_signing_secret=slack_signing_secret,
         ),
@@ -171,6 +172,89 @@ async def test_container_slack_readiness_requires_bot_token_and_signing_secret(
     )
 
     assert await probes["slack_provider"].check() is expected_healthy
+    assert "slack_socket" not in probes
+
+
+@pytest.mark.parametrize(
+    ("slack_bot_token", "slack_app_token", "expected_healthy"),
+    [
+        (None, None, False),
+        ("xoxb-test", None, False),
+        (None, "xapp-test", False),
+        ("xoxb-test", "xapp-test", True),
+    ],
+)
+async def test_container_slack_socket_readiness_requires_bot_token_and_app_token(
+    slack_bot_token: str | None,
+    slack_app_token: str | None,
+    expected_healthy: bool,
+) -> None:
+    # Socket Mode authenticates inbound events with the app token, so a
+    # signing secret is neither needed nor sufficient.
+    probes = catalog.build_readiness_probes(
+        _settings(
+            secret_key=SECRET_KEY,
+            runtime_mode="container",
+            chat_provider="slack",
+            directory_provider="fake",
+            llm_provider="fake",
+            workflow_provider="fake",
+            slack_inbound_transport="socket",
+            slack_bot_token=slack_bot_token,
+            slack_app_token=slack_app_token,
+            slack_signing_secret="signing-secret",
+        ),
+        _FakeReadinessExecutor,
+        _FakeRedis,
+    )
+
+    assert await probes["slack_provider"].check() is expected_healthy
+
+
+@pytest.mark.parametrize(("heartbeat_present", "expected_ready"), [(True, True), (False, False)])
+async def test_container_slack_socket_readiness_follows_worker_heartbeat(
+    heartbeat_present: bool,
+    expected_ready: bool,
+) -> None:
+    redis = _FakeRedis()
+    if heartbeat_present:
+        await redis.set("openprogram:slack:socket:demo:heartbeat", "now", ex=90)
+    probes = catalog.build_readiness_probes(
+        _settings(
+            secret_key=SECRET_KEY,
+            runtime_mode="container",
+            tenant_id="demo",
+            chat_provider="slack",
+            directory_provider="fake",
+            llm_provider="fake",
+            workflow_provider="fake",
+            slack_bot_token="xoxb-test",
+            slack_app_token="xapp-test",
+        ),
+        _FakeReadinessExecutor,
+        lambda: redis,
+    )
+
+    assert await probes["slack_socket"].check() is expected_ready
+
+
+def test_registry_builds_slack_socket_listener_only_for_container_socket_mode() -> None:
+    def registry(**overrides: object) -> ServiceRegistry:
+        base: dict[str, object] = {
+            "secret_key": SECRET_KEY,
+            "runtime_mode": "container",
+            "chat_provider": "slack",
+            "slack_bot_token": "xoxb-test",
+            "slack_app_token": "xapp-test",
+        }
+        return ServiceRegistry(_settings(**(base | overrides)))
+
+    assert registry().slack_socket_listener() is not None
+    assert registry(slack_inbound_transport="http").slack_socket_listener() is None
+    assert registry(chat_provider="mock_slack").slack_socket_listener() is None
+    assert registry(runtime_mode="memory").slack_socket_listener() is None
+    with pytest.raises(ProviderConfigurationError, match="slack_app_token"):
+        registry(slack_app_token=None).slack_socket_listener()
 
 
 @pytest.mark.parametrize(
@@ -297,5 +381,15 @@ class _FakeReadinessExecutor:
 
 
 class _FakeRedis:
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+
     async def ping(self) -> bool:
         return True
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> bool:
+        self.values[key] = value
+        return True
+
+    async def exists(self, key: str) -> int:
+        return int(key in self.values)

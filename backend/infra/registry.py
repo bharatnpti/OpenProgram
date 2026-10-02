@@ -72,6 +72,7 @@ from infra.adapters.auth.session import (
 )
 from infra.adapters.chat.mock_slack import MockSlackStore, slack_event_payload
 from infra.adapters.chat.slack_signing import verify_slack_signature
+from infra.adapters.chat.slack_socket import SlackSocketModeListener
 from infra.adapters.redis_client import RedisClientProvider
 from infra.adapters.secrets.encrypted import (
     FernetSecretStore,
@@ -367,6 +368,33 @@ class ServiceRegistry:
 
     def fast_ack_enabled(self) -> bool:
         return self.settings.slack_fast_ack_enabled
+
+    async def accept_chat_event(
+        self,
+        provider: str,
+        payload: Mapping[str, object],
+        correlation_id: str,
+    ) -> ChatWebhookProcessResult:
+        """Take one already-authenticated provider event into reply processing.
+
+        The HTTP webhook and the Slack Socket Mode listener both enter here, so
+        either transport dedups, coalesces and processes replies identically.
+        """
+        if self.fast_ack_enabled():
+            # Fast intake: dedup + arm; no LLM in the delivery path.
+            return await self.enqueue_inbound_chat_event(provider, payload, correlation_id)
+        return await self.process_chat_webhook(provider, payload, correlation_id)
+
+    def slack_socket_listener(self) -> SlackSocketModeListener | None:
+        """The Socket Mode intake loop, or None when Slack events use another path."""
+        redis_client = None if self.settings.runtime_mode == "memory" else self._redis_client()
+        return catalog.build_slack_socket_listener(
+            self.settings,
+            redis_client,
+            lambda payload, correlation_id: self.accept_chat_event(
+                "slack", payload, correlation_id
+            ),
+        )
 
     async def enqueue_inbound_chat_event(
         self,
