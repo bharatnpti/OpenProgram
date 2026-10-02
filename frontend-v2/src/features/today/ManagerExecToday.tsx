@@ -27,7 +27,12 @@ const HERO_TEXT: Record<string, string> = {
   info: "text-rag-info",
 };
 
-export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
+/**
+ * Today for manager, exec and admin. All three see the same portfolio-wide
+ * screen: every read on it is an aggregate each of them is granted, so nothing
+ * here is held back by role.
+ */
+export function ManagerExecToday() {
   const asOf = todayIso();
   const navigate = useNavigate();
 
@@ -51,10 +56,13 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
     queryFn: () => apiClient.pods(asOf),
   });
 
+  // The exec gets this as well as the manager: the program trend is the same
+  // aggregate the exec already reads as heat, and the direction of travel is
+  // the at-a-glance answer a portfolio owner opens this screen for.
   const trend = useQuery({
     queryKey: ["persona", "trend", programId, asOf],
     queryFn: () => apiClient.nodeTrend("program", programId, { asOf, windowDays: 30 }),
-    enabled: Boolean(programId) && role === "mgr",
+    enabled: Boolean(programId),
     staleTime: 5 * 60_000,
   });
 
@@ -97,12 +105,19 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
             : "has no confirmed status";
 
   // A momentum reading is a claim about the data, so loading and failure get
-  // said out loud rather than folded into a direction.
-  const momentum = trend.isError
-    ? "could not be loaded"
-    : trend.isLoading
-      ? "loading…"
-      : momentumLabel(trend.data?.points);
+  // said out loud rather than folded into a direction. The trend waits on the
+  // program list for its id, so that list's state counts too: without it the
+  // label read "not available" until the programs arrived.
+  const momentum =
+    programs.isError || trend.isError
+      ? "could not be loaded"
+      : programs.isLoading || trend.isLoading
+        ? "loading…"
+        : momentumLabel(trend.data?.points);
+  // The line is drawn over the same days the label is measured over. Plotted
+  // at its score of 0, an `unknown` day sits below red, so a program that
+  // opened unknown and then went red drew that step as a climb.
+  const momentumPoints = reportedDays(trend.data?.points ?? []);
   const topRisks = [...(risks.data?.risks ?? [])]
     .sort((a, b) => b.age_days - a.age_days)
     .slice(0, 3);
@@ -138,16 +153,14 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
               {heroDetail}
             </p>
           </div>
-          {role === "mgr" ? (
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wide text-grey-secondary">
-                30-day momentum · {momentum}
-              </div>
-              <div className="mt-2">
-                <Sparkline points={trend.data?.points ?? []} width={320} height={72} />
-              </div>
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wide text-grey-secondary">
+              30-day momentum · {momentum}
             </div>
-          ) : null}
+            <div className="mt-2">
+              <Sparkline points={momentumPoints} width={320} height={72} />
+            </div>
+          </div>
         </div>
       </Card>
 
@@ -331,6 +344,13 @@ function heatRow(
   return { label, kind, items: ranked.slice(0, HEAT_COLUMNS), total: all.length };
 }
 
+type TrendPoint = { score: number; rag: Rag };
+
+/** The days that reported a status -- the only ones on the health scale. */
+function reportedDays<T extends TrendPoint>(points: T[]): T[] {
+  return points.filter((point) => point.rag !== "unknown");
+}
+
 /**
  * Direction of travel across the window.
  *
@@ -342,9 +362,9 @@ function heatRow(
  * measured only over days that actually reported a status, and says so when
  * there are not two of them rather than defaulting to "steady".
  */
-function momentumLabel(points: { score: number; rag: Rag }[] | undefined): string {
+function momentumLabel(points: TrendPoint[] | undefined): string {
   if (points === undefined) return "not available";
-  const reported = points.filter((point) => point.rag !== "unknown");
+  const reported = reportedDays(points);
   if (reported.length < 2) return "not enough reported days";
   const first = reported[0].score;
   const last = reported[reported.length - 1].score;
