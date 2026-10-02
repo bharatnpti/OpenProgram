@@ -1673,14 +1673,19 @@ class CheckinPreferenceResponse(BaseModel):
         )
 
 
+# Reply windows are stored as a Postgres INTEGER of seconds. A larger value
+# can't be saved, so it is a 422 here instead of a database error.
+MAX_CHECKIN_WAIT_SECONDS = 2_147_483_647
+
+
 class CheckinPreferenceUpdateRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     local_time: time | None = None
     timezone: str | None = None
     weekdays: list[int] | None = None
-    reply_wait_seconds: int | None = Field(default=None, ge=0)
-    final_reply_wait_seconds: int | None = Field(default=None, ge=0)
+    reply_wait_seconds: int | None = Field(default=None, ge=0, le=MAX_CHECKIN_WAIT_SECONDS)
+    final_reply_wait_seconds: int | None = Field(default=None, ge=0, le=MAX_CHECKIN_WAIT_SECONDS)
 
     @field_validator("weekdays")
     @classmethod
