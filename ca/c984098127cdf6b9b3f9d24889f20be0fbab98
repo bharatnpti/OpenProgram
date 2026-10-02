@@ -19,6 +19,7 @@ backend/api/dependencies.py
 backend/core/application/sync_services.py
   s_51495ccc67ba04::t_8e0d207c21aae6 36-41,63,69,257,282-287,291,312-326
   s_51495ccc67ba04::t_dd1009ee02ff23 327
+  s_51495ccc67ba04::t_41b23257d463fd 96,98,139,141
 backend/tests/unit/test_config_service.py
   s_51495ccc67ba04::t_7b91735f39a1b7 673
   s_51495ccc67ba04::t_dcc7dcb41b570c 24,657-672,674-731
