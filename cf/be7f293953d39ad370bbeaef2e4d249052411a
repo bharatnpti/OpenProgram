@@ -1,0 +1,26 @@
+backend/tests/unit/test_persona_views.py
+  s_386bf853700fa5::t_f117d9ed282aab 314-351
+backend/core/application/persona_views.py
+  s_386bf853700fa5::t_b5fbad9203c3d9 580
+  s_386bf853700fa5::t_7e4aa3d4f9de53 555-576
+  s_386bf853700fa5::t_f8d996ac507b44 612
+backend/api/routers/persona.py
+  s_386bf853700fa5::t_2b2541fad4b7c8 152-155
+  s_386bf853700fa5::t_13b4f0f4d3960a 167-170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cfbe7f293953d39ad370bbeaef2e4d249052411a",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
