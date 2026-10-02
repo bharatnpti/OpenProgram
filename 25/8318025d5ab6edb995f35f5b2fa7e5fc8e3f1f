@@ -1,0 +1,19 @@
+backend/tests/unit/test_agent_and_workflow.py
+  s_c8095495eaf879::t_f4f412e4c697e6 749-751,837
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "258318025d5ab6edb995f35f5b2fa7e5fc8e3f1f",
+  "prompts": {},
+  "sessions": {
+    "s_c8095495eaf879": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb2e9460-efa2-4aa7-aac7-a35a97b9dca5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
