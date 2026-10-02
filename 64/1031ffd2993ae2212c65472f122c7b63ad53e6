@@ -1,0 +1,31 @@
+frontend/src/api/openapi.json
+  s_51495ccc67ba04::t_96a28648c7db64 7442,7455
+backend/api/dtos.py
+  s_51495ccc67ba04::t_7bdc4368e03e88 1676-1680,1687-1688
+backend/tests/unit/test_checkin_preference_bounds.py
+  s_51495ccc67ba04::t_df2bcfbd3de980 1-66
+frontend-v2/src/api/openapi.json
+  s_51495ccc67ba04::t_fe5eb737ff1c1f 7442,7455
+frontend-v2/src/features/admin/CheckinPreferencesPanel.tsx
+  s_51495ccc67ba04::t_adde5fbd84064b 9,11-15,17,21-23,37-40,43-48,64,130-133,135-136,138-141,143-144,150-169,201-205,217-255
+frontend-v2/src/features/admin/DurationField.tsx
+  s_51495ccc67ba04::t_4045a65e701351 1,3-23,25,27,30,32-35,37-55,58-102
+frontend-v2/src/lib/duration.ts
+  s_51495ccc67ba04::t_53b7b81fa32eb9 1-56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "641031ffd2993ae2212c65472f122c7b63ad53e6",
+  "prompts": {},
+  "sessions": {
+    "s_51495ccc67ba04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98259e94-8aa1-45f5-b5cc-46cac669b27d",
+        "model": "unknown"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
