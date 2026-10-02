@@ -2309,6 +2309,163 @@ async def test_status_collector_records_inferred_and_unknown_non_response() -> N
     assert unknown.blockers == ("no confirmed reply",)
 
 
+_RECENT = datetime.now(tz=UTC) - timedelta(hours=2)
+_RECENT_DAY = f"{_RECENT:%b} {_RECENT.day}"
+
+
+def _developer_fact(source: str, payload: dict[str, str | int], correlation_id: str) -> FactEvent:
+    return FactEvent(
+        tenant_id="demo",
+        source=source,
+        entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
+        payload=payload,
+        observed_at=_RECENT,
+        correlation_id=correlation_id,
+    )
+
+
+async def test_inferred_non_response_summary_names_issues_not_prompt_context() -> None:
+    """The summary is read by people and returned by persona APIs.
+
+    It used to be the whole LLM prompt context -- every recent fact as
+    ``key=value`` pairs, including a cross-person request's note taken from a
+    reply -- shown verbatim on the developer's Today and as "owner says".
+    """
+    assignee = UserRef(tenant_id="demo", external_id="dev-1")
+    nine_days_ago = datetime.now(tz=UTC) - timedelta(days=9)
+    tracker = FakeIssueTracker(
+        issues={
+            "PO-1": Issue(
+                tenant_id="demo",
+                key="PO-1",
+                title="Payment intent API",
+                state=IssueState.BLOCKED,
+                assignee=assignee,
+            ),
+            "PO-2": Issue(
+                tenant_id="demo",
+                key="PO-2",
+                title="Refund edge cases",
+                state=IssueState.IN_PROGRESS,
+                assignee=assignee,
+                updated_at=nine_days_ago,
+            ),
+            "PO-3": Issue(
+                tenant_id="demo",
+                key="PO-3",
+                title="Passkey enrolment",
+                state=IssueState.IN_PROGRESS,
+                assignee=assignee,
+            ),
+            "PO-4": Issue(
+                tenant_id="demo",
+                key="PO-4",
+                title="Guest checkout banner",
+                state=IssueState.IN_PROGRESS,
+                assignee=assignee,
+            ),
+        }
+    )
+    store = InMemoryGraphStore()
+    reply_note = "ask Liam for the staging password before Friday"
+    for fact in (
+        _developer_fact("cross_person_request", {"note": reply_note}, "fact-request"),
+        _developer_fact("vcs_commit", {"repo": "acme/checkout-api"}, "fact-commit-1"),
+        _developer_fact("vcs_commit", {"repo": "acme/checkout-api"}, "fact-commit-2"),
+        _developer_fact("vcs_pull_request", {"repo": "acme/checkout-api"}, "fact-pr-1"),
+    ):
+        await store.append_fact(fact)
+    collector = StatusCollector(
+        issue_tracker=tracker,
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(texts=[]),
+        status_repository=store,
+        time_series_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    inferred = await collector.record_non_response(
+        tenant_id="demo",
+        developer_id="dev-1",
+        developer_name="Noah",
+        as_of=date(2026, 1, 10),
+    )
+
+    assert inferred.source is StatusSource.INFERRED
+    assert inferred.summary == (
+        "No confirmed check-in after a nudge. Inferred from 4 active issues: "
+        "PO-1 Payment intent API (blocked), PO-2 Refund edge cases (no update for 9 days), "
+        "PO-3 Passkey enrolment and 1 more; "
+        "recent Git activity: 2 commits and 1 pull request."
+    )
+    assert reply_note not in inferred.summary
+    for prompt_marker in ("Developer:", "Recent fact", "source=", "note="):
+        assert prompt_marker not in inferred.summary
+    # The check-in DM is still composed from the full context.
+    context = await collector.build_context(tenant_id="demo", developer_id="dev-1")
+    assert "source=cross_person_request" in context
+
+
+@pytest.mark.parametrize(
+    ("facts", "expected"),
+    [
+        (
+            [_developer_fact("vcs_commit", {"repo": "acme/checkout-api"}, "fact-commit")],
+            "No confirmed check-in after a nudge. Inferred from recent Git activity: 1 commit.",
+        ),
+        (
+            # The demo tenant's shape: the tracker has nothing for the developer,
+            # and their facts are check-ins, risk findings and a request.
+            [
+                _developer_fact("checkin", {"blocker_count": 1}, "fact-checkin"),
+                _developer_fact("risk", {"entity_id": "CHK-102"}, "fact-risk-1"),
+                _developer_fact("risk", {"entity_id": "CHK-102"}, "fact-risk-2"),
+                _developer_fact("risk", {"entity_id": "CHK-103"}, "fact-risk-3"),
+                _developer_fact(
+                    "cross_person_request", {"note": "ask Liam about the cutover"}, "fact-req"
+                ),
+            ],
+            "No confirmed check-in after a nudge. Inferred from last check-in reply on "
+            f"{_RECENT_DAY}, with 1 blocker; risks flagged on CHK-102 and CHK-103.",
+        ),
+        (
+            [
+                _developer_fact(
+                    "cross_person_request", {"note": "ask Liam about the cutover"}, "fact-req"
+                )
+            ],
+            "No confirmed check-in after a nudge. Inferred from recent signals.",
+        ),
+    ],
+)
+async def test_inferred_non_response_summary_without_active_issues(
+    facts: list[FactEvent], expected: str
+) -> None:
+    store = InMemoryGraphStore()
+    for fact in facts:
+        await store.append_fact(fact)
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(texts=[]),
+        status_repository=store,
+        time_series_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    inferred = await collector.record_non_response(
+        tenant_id="demo",
+        developer_id="dev-1",
+        as_of=date(2026, 1, 10),
+    )
+
+    assert inferred.source is StatusSource.INFERRED
+    # An empty tracker is not "no active issues": it may be an unmapped assignee.
+    assert inferred.summary == expected
+
+
 async def _record_open_checkin_with_correlation(store: InMemoryGraphStore) -> None:
     asked_at = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
     await store.record_checkin(
