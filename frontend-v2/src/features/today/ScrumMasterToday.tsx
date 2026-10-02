@@ -8,7 +8,7 @@ import { SegmentedBar } from "../../components/ui/SegmentedBar";
 import { useRole } from "../../app/role";
 import { resolveSelection } from "../../lib/selection";
 import { WaitingOnYou } from "./WaitingOnYou";
-import { todayIso } from "../../lib/today";
+import { useViewingDate } from "../../app/viewingDate";
 
 const STATE_TONE = {
   confirmed: "success",
@@ -18,7 +18,7 @@ const STATE_TONE = {
 } as const;
 
 export function ScrumMasterToday() {
-  const asOf = todayIso();
+  const { asOf } = useViewingDate();
   const { actingAs } = useRole();
   const [chosenPodId, setChosenPodId] = useState("");
 

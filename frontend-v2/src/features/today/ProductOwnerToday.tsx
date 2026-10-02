@@ -10,10 +10,10 @@ import { SegmentedBar } from "../../components/ui/SegmentedBar";
 import { WaitingOnYou } from "./WaitingOnYou";
 import { resolveSelection } from "../../lib/selection";
 import { toneForRag, toneHex } from "../../lib/status";
-import { todayIso } from "../../lib/today";
+import { useViewingDate } from "../../app/viewingDate";
 
 export function ProductOwnerToday() {
-  const asOf = todayIso();
+  const { asOf } = useViewingDate();
   const { actingAs } = useRole();
   const [chosenProjectId, setChosenProjectId] = useState("");
 
