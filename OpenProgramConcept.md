@@ -142,8 +142,6 @@ Same data, five lenses. Each view answers "what do *I* need to act on?"
 - **Confidence overlay**: every status shows how much is human-confirmed vs. inferred — so leaders know how much to trust green.
 - **Trend sparklines** on every card for momentum at a glance.
 
-> Implementation note: I'd build these as an interactive Cursor canvas (live React) when you want to actually see them — just say the word and I'll render a working prototype dashboard.
-
 ---
 
 ## 7. Additional High-Value Functionalities
@@ -195,12 +193,3 @@ Beyond your stated requirements, these make the system genuinely useful:
 2. **Phase 2 — Reconcile:** Add git/CI cross-checking, confidence scoring, drift detection, write-back to Jira.
 3. **Phase 3 — Predict:** Risk model, milestone slip prediction, dependency-stall detection, smart escalations.
 4. **Phase 4 — Coach:** Sentiment/burnout signals, load-balancing suggestions, auto retros, natural-language portfolio queries.
-
----
-
-Want me to go deeper on any piece? I can, for example:
-- **Prototype the dashboard** as an interactive canvas so you can click through the persona views and visualizations, or
-- **Detail the daily check-in agent** (exact conversation flows, prompt design, Jira write-back logic), or
-- **Spec the data model / graph schema** and roll-up rules concretely.
-
-Tell me which direction and I'll build it out.
