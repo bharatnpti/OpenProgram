@@ -16,7 +16,7 @@ data residency is treated as a hard constraint throughout.
 
 | # | Component | Why it is needed | AWS options | Recommendation |
 |---|---|---|---|---|
-| C1 | **Backend API** — FastAPI/uvicorn container, port 8000 | `backend/Dockerfile`; serves the SPA API + the public Slack webhook `/webhooks/chat/slack` | ECS Fargate service · EKS deployment · App Runner · EC2 ASG | **ECS Fargate** — one container image, no cluster to run, scales to 2+ tasks behind an ALB |
+| C1 | **Backend API** — FastAPI/uvicorn container, port 8000 | `backend/Dockerfile`; serves the SPA API + the public Slack webhook `/webhooks/slack` | ECS Fargate service · EKS deployment · App Runner · EC2 ASG | **ECS Fargate** — one container image, no cluster to run, scales to 2+ tasks behind an ALB |
 | C2 | **Worker** — `python -m infra.workflows.worker` container | DBOS durable workflows + all cron schedules (check-in fan-out, reconcile, Jira/GitHub/calendar sync, risk scan, drift scan, narrative briefs, conversation purge, inbound-event sweeper) | ECS Fargate service (no ingress) · EKS deployment | **ECS Fargate**, separate service from C1. Start at 1 task; DBOS serialises schedules via Postgres so >1 task is safe but not needed initially |
 | C3 | **Frontend SPA** — React/Vite static build | `frontend/` and `frontend-v2/`; `npm run build` emits static assets only | S3 + CloudFront + ACM · Amplify Hosting | **S3 + CloudFront**. Two origins/paths if both `frontend` and `frontend-v2` must be served |
 | C4 | **LiteLLM proxy** — `ghcr.io/berriai/litellm` | `OPENPROGRAM_LLM_PROVIDER=litellm`; the only egress path to the model provider, holds the master key | ECS Fargate service (internal only) · EKS | **ECS Fargate**, internal ALB or service-discovery only. Never publicly exposed |
@@ -72,7 +72,7 @@ data residency is treated as a hard constraint throughout.
 |---|---|---|---|---|
 | N1 | **VPC** — 2–3 AZs, public + private subnets | Standard isolation; DB and Redis private-only | VPC | Required |
 | N2 | **NAT Gateway** | Egress to Slack, Jira, GitHub/GitLab, Google Calendar, and the model provider | NAT Gateway · NAT instance | **NAT Gateway**, 1 per AZ in prod |
-| N3 | **Public ALB + target group** | Slack **must** reach `POST /webhooks/chat/slack` over public HTTPS; health check on `/health`, readiness on `/ready` | ALB · API Gateway HTTP API + VPC Link | **ALB** — simplest with the existing container |
+| N3 | **Public ALB + target group** | Slack **must** reach `POST /webhooks/slack` over public HTTPS; health check on `/health`, readiness on `/ready` | ALB · API Gateway HTTP API + VPC Link | **ALB** — simplest with the existing container |
 | N4 | **TLS certificates** | HTTPS for the API and the SPA domain | **ACM** (free, auto-renew) | **ACM** |
 | N5 | **DNS** | API + SPA hostnames per environment | **Route 53** · existing corporate DNS | Either; Route 53 if the zone can be delegated |
 | N6 | **WAF** | `/webhooks/*` is CSRF-exempt and internet-facing ([api/main.py:170](../../backend/api/main.py#L170)); signature verification is in-app but rate limiting is not | **AWS WAF** on the ALB + CloudFront | **AWS WAF** with rate-based rules on `/webhooks/*` |
@@ -361,7 +361,7 @@ whole document.
 #### OPS-18 — Provision the Slack app and webhook path
 - **Type:** Task · **Priority:** Highest · **Depends on:** OPS-10, OPS-11
 - **Scope:** Slack app per environment with a bot token and signing secret; Event Subscriptions
-  Request URL pointing at `https://<api-host>/webhooks/chat/slack`; scopes for DM send/read and
+  Request URL pointing at `https://<api-host>/webhooks/slack`; scopes for DM send/read and
   `users:read` (directory sync). Add a **WAF rate-based rule on `/webhooks/*`** — that path is
   CSRF-exempt by design and internet-facing (signature verification is in-app). See
   `docs/ops/slack-setup.md`.
