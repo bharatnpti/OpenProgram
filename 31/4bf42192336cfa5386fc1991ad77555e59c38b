@@ -1,0 +1,97 @@
+.env.example
+  s_386bf853700fa5::t_4259ba8eaa8a53 84-86
+README.md
+  s_386bf853700fa5::t_05239967ef24fe 18,24,32-41,60-76,89,187,195-216
+backend/api/dependencies.py
+  s_386bf853700fa5::t_d83052be14c680 21,41-91,98
+backend/api/dtos.py
+  s_386bf853700fa5::t_91cdf42c5efda5 149-171,551-569
+backend/api/routers/auth.py
+  s_386bf853700fa5::t_cee7bdb6b941e1 8-20,23-24,39-48,62-63,73-74,80-81,85-125,230-248
+backend/api/routers/test_support.py
+  s_386bf853700fa5::t_8a1ee8c5d2fe52 5,14-15,33,42,44-46,50,55-87,123-142,148-152,154
+backend/config/settings.py
+  s_386bf853700fa5::t_1ed1654967e3f3 82-86,571-575,594-602
+backend/core/ports/auth.py
+  s_386bf853700fa5::t_6e0071f627ced0 14-18
+backend/infra/adapters/auth/dev.py
+  s_386bf853700fa5::t_83ec2c16fe214e 16-27,30-32
+backend/infra/adapters/chat/mock_slack.py
+  s_386bf853700fa5::t_1dd3208e171537 437,448,459,464-584
+backend/infra/adapters/directory/mock_slack.py
+  s_386bf853700fa5::t_ed62e40bf34477 11-17,25,36,47,54-174
+backend/infra/registry.py
+  s_386bf853700fa5::t_bfcf22d78ddb34 29,103-112,646-648,650-651,654-719
+backend/tests/bdd/features/access_control.feature
+  s_386bf853700fa5::t_af00486fed0374 6,9,12-15
+backend/tests/bdd/features/directory_sync.feature
+  s_386bf853700fa5::t_3f2876c0b70ea7 10,17-18
+backend/tests/bdd/steps_common.py
+  s_386bf853700fa5::t_65a50efb4686a2 10-11,16,68-71,74,163-178,497-507,515-521,536-549,558-565
+backend/tests/unit/test_auth_bff.py
+  s_386bf853700fa5::t_a7eda5d5444030 42-43
+backend/tests/unit/test_chat_simulator_api.py
+  s_386bf853700fa5::t_251d8a2b2e3301 6,8,31-59,61-78,80,83-84,86-116
+backend/tests/unit/test_directory_sync_service.py
+  s_386bf853700fa5::t_6987f9374c48cc 215-221,223,226,228-232
+backend/tests/unit/test_mock_slack_adapter.py
+  s_386bf853700fa5::t_27c2d86eb10856 88-96
+docker-compose.yml
+  s_386bf853700fa5::t_12e25eb355a65c 291,349
+docs/ops/local-demo.md
+  s_386bf853700fa5::t_6db2b4c638f4fa 1-222
+frontend-v2/src/App.tsx
+  s_386bf853700fa5::t_ec30c5d6b4b105 23-24,56,58-60,63,74-77,108-114
+frontend-v2/src/api/client.ts
+  s_386bf853700fa5::t_f8a6a4ef1ab2aa 8-9,22,67-94,118,135,239-247
+frontend-v2/src/api/generated.ts
+  s_386bf853700fa5::t_02f57584fb49b7 24-48,1395-1398,1408-1431,1519-1528,1706-1730,1980-2002,3053-3072,6621-6623,6652-6688
+frontend-v2/src/api/openapi.json
+  s_386bf853700fa5::t_4f18b051ba8c06 55-74,6215,6218-6233,6275-6341,6586-6595,7101-7170,8037-8102
+frontend-v2/src/api/schema.ts
+  s_386bf853700fa5::t_d5bc07e99e254e 8-9,28-31
+frontend-v2/src/app/RoleProvider.tsx
+  s_386bf853700fa5::t_a2b8bf7c78d530 1-2,4-5,7-9,11,15,30,34-67,84-85,99-145,150-153,175-186,196-212,214-223
+frontend-v2/src/app/role.ts
+  s_386bf853700fa5::t_ebf1565562b66b 3,9,22-24,36-39,41-46,52-59,69-90
+frontend-v2/src/components/shell/AvatarMenu.tsx
+  s_386bf853700fa5::t_6c7853aeba0bad 6,10-20,37-40,49,56,59-61,63-85,88-92,94,96,107-108
+frontend-v2/src/components/shell/Header.tsx
+  s_386bf853700fa5::t_29aace7be03140 4,7,17-19,33,63,71
+frontend-v2/src/components/shell/PersonPicker.tsx
+  s_386bf853700fa5::t_7052ff184dc7dd 1-189
+frontend-v2/src/pages/ChatPage.tsx
+  s_386bf853700fa5::t_476dd0fc5ba5de 2,7-8,15-22,24-26,30-37,39,41,44,46-48,56,58,60-61,63,67-86,91,93-100,104-105,113,115-116,121-122,125-130,137-141,145,149-160,164-177,179,184,186,188-191,194-207,210-216,219-226,229-239,247,250-252,256-258,260-264,266,272,274-275,281,283-284,297,305-366,370,373-376,379-387,394-414,419-420,423,430,436-451,458-475,477-479
+frontend-v2/vite.config.ts
+  s_386bf853700fa5::t_8010337a75ad69 9-13
+frontend/src/api/generated.ts
+  s_386bf853700fa5::t_a68f0ab38073e1 24-48,1395-1398,1408-1431,1519-1528,1706-1730,1984-2006,3057-3076,6625-6627,6656-6692
+frontend/src/api/openapi.json
+  s_386bf853700fa5::t_2d16e265a4f356 55-74,6215,6218-6233,6275-6341,6586-6595,7101-7170,8037-8102
+scripts/__init__.py
+  s_386bf853700fa5::t_a4f99356da40c2 1
+scripts/demo_roster.py
+  s_386bf853700fa5::t_2cb2eeed2038b9 1-884
+scripts/mock_llm.py
+  s_386bf853700fa5::t_1822081307cf51 1-13,16-17,26-161,168-173,176-188,190,199,209-585
+scripts/seed_demo_history.py
+  s_386bf853700fa5::t_1c9e0cf1fab669 1-1149
+scripts/use-real-llm.sh
+  s_386bf853700fa5::t_b90834250e8c1d 1-90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "314bf42192336cfa5386fc1991ad77555e59c38b",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
