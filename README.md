@@ -86,7 +86,7 @@ Full CRUD over the hierarchy, directory onboarding, graph links, assignments, id
 
 ![Command palette](docs/images/command-palette.png)
 
-> There are **two** frontends in this repo. [`frontend/`](frontend) is the original console (dev server on **5173**) and remains the reference implementation CI builds: per-persona dashboard routes (`/me`, `/sm`, `/po`, `/mgr`, `/exec`) plus separate pages for pods, projects, workstreams, flow, portfolio, risks, cross-person requests, admin, and the mock-Slack simulator. [`frontend-v2/`](frontend-v2) is the IA redesign shown above (dev server on **5174**), collapsing all of that into `/today`, `/delivery`, `/signals`, `/coordination`, plus `/chat` in the nav and `/admin` behind the avatar menu (`/sim` redirects to `/chat`).
+> There are **two** frontends in this repo. [`frontend/`](frontend) is the original console (dev server on **5173**): per-persona dashboard routes (`/me`, `/sm`, `/po`, `/mgr`, `/exec`) plus separate pages for pods, projects, workstreams, flow, portfolio, risks, cross-person requests, admin, and the mock-Slack simulator. [`frontend-v2/`](frontend-v2) is the IA redesign shown above (dev server on **5174**), collapsing all of that into `/today`, `/delivery`, `/signals`, `/coordination`, plus `/chat` in the nav and `/admin` behind the avatar menu (`/sim` redirects to `/chat`). CI and `make verify` lint, typecheck, format-check and build both.
 
 ---
 
@@ -244,7 +244,7 @@ make test          # pytest (unit + contract + bdd)
 make integration   # container-backed integration tests (needs the stack up)
 make phase1-smoke  # phase-1 flow end to end, in memory with fake providers
 make smoke         # phase-0 smoke: readiness + a real LLM trace landing in Langfuse
-make verify        # everything above, plus frontend lint/build and OpenAPI drift
+make verify        # everything above, plus lint/build of both frontends and OpenAPI drift
 ```
 
 `make smoke` asserts a Langfuse trace, so it needs that profile running: `docker compose --profile langfuse up -d`.
@@ -252,17 +252,17 @@ make verify        # everything above, plus frontend lint/build and OpenAPI drif
 Frontend:
 
 ```bash
-make frontend-install frontend-lint frontend-build   # original app
-cd frontend-v2 && npm run lint && npm run typecheck && npm run build
+make frontend-v2-install frontend-v2-lint frontend-v2-build   # the console
+make frontend-install frontend-lint frontend-build            # original app
 ```
 
-**OpenAPI contract:** whenever an API route or DTO changes, regenerate the client — CI has a drift gate (`make openapi-check`).
+**OpenAPI contract:** whenever an API route or DTO changes, regenerate the schema and both clients and commit them — CI runs the same drift gate.
 
 ```bash
-make openapi && cd frontend && ./node_modules/.bin/prettier --write src/api/openapi.json && npm run generate:client
+make openapi-check   # rewrites openapi.json + generated.ts in frontend/ and frontend-v2/, fails while they differ from the index
 ```
 
-Use the **local** prettier binary, not a global `npx prettier` — version differences produce spurious diffs.
+Install both apps first (`make frontend-install frontend-v2-install`) so `npx prettier` resolves to each app's pinned local binary — a global prettier produces spurious diffs.
 
 ### Tests
 
