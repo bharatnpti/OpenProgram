@@ -17,6 +17,7 @@ from core.application.blocker_lifecycle import (
     reconciliation_with_updates,
 )
 from core.application.conversation_history import llm_messages_from_turns
+from core.application.risk_service import RISK_FACT_SOURCE
 from core.application.status_parsing import (
     ClarificationDecision,
     ClarificationEvaluator,
@@ -895,13 +896,13 @@ class StatusCollector:
         as_of: date,
         developer_name: str | None = None,
     ) -> DeveloperStatus | None:
-        context = await self.build_context(
-            tenant_id=tenant_id,
-            developer_id=developer_id,
-            developer_name=developer_name,
-            include_status=False,
-        )
-        if context == _NO_CONTEXT:
+        # Inferred from the same issues and facts the check-in DM is composed
+        # from, but not summarised as that prompt context: the summary is shown to
+        # the developer, their scrum master and "owner says" on Signals, and the
+        # context prints fact payloads, which can quote a reply.
+        reference_at = datetime.now(tz=UTC)
+        issues, facts = await self._context_inputs(tenant_id, developer_id)
+        if not issues and not facts:
             return None
         return DeveloperStatus(
             tenant_id=tenant_id,
@@ -909,7 +910,7 @@ class StatusCollector:
             as_of=as_of,
             source=StatusSource.INFERRED,
             blockers=("no confirmed reply",),
-            summary=f"No confirmed check-in after a nudge. Inferred from context: {context}",
+            summary=_inferred_summary(issues, facts, reference_at),
         )
 
     async def _resolve_issue_tracker_assignee_id(self, tenant_id: str, developer_id: str) -> str:
@@ -936,16 +937,7 @@ class StatusCollector:
         include_status: bool = True,
     ) -> str:
         reference_at = datetime.now(tz=UTC)
-        assignee_external_id = await self._resolve_issue_tracker_assignee_id(
-            tenant_id, developer_id
-        )
-        issues = await self._issue_tracker.list_active_for(
-            UserRef(tenant_id=tenant_id, external_id=assignee_external_id)
-        )
-        prioritized_issues = _prioritize_issues(issues)
-        facts: list[FactEvent] = []
-        if self._time_series_repository is not None:
-            facts = await self._recent_facts(tenant_id, developer_id, prioritized_issues)
+        prioritized_issues, facts = await self._context_inputs(tenant_id, developer_id)
 
         lines: list[str] = []
         if include_status:
@@ -964,6 +956,22 @@ class StatusCollector:
             return _NO_CONTEXT
         heading = f"Developer: {developer_name or developer_id}"
         return "\n".join((heading, *lines))
+
+    async def _context_inputs(
+        self, tenant_id: str, developer_id: str
+    ) -> tuple[list[Issue], list[FactEvent]]:
+        """The developer's active issues, most pressing first, and their recent facts."""
+        assignee_external_id = await self._resolve_issue_tracker_assignee_id(
+            tenant_id, developer_id
+        )
+        issues = await self._issue_tracker.list_active_for(
+            UserRef(tenant_id=tenant_id, external_id=assignee_external_id)
+        )
+        prioritized_issues = _prioritize_issues(issues)
+        facts: list[FactEvent] = []
+        if self._time_series_repository is not None:
+            facts = await self._recent_facts(tenant_id, developer_id, prioritized_issues)
+        return prioritized_issues, facts
 
     async def _build_context_node(self, state: StatusCollectorState) -> StatusCollectorState:
         return {
@@ -2529,6 +2537,95 @@ def _fact_context_lines(facts: Iterable[FactEvent]) -> list[str]:
             f"source={fact.source}, {_format_payload(fact.payload)}"
         )
     return lines
+
+
+_INFERRED_ISSUE_LIMIT = 3
+
+
+def _inferred_summary(
+    issues: list[Issue],
+    facts: Iterable[FactEvent],
+    reference_at: datetime,
+) -> str:
+    """A non-response status summary a person can read.
+
+    Names what it was inferred from: the most pressing active issues, the last
+    check-in reply, items with risks flagged, and a count of recent Git
+    activity. It reads only keyed payload fields and never repeats free text:
+    a fact can carry words taken from a reply, and this summary is returned by
+    persona APIs.
+
+    An empty issue list is not reported as "no active issues": the tracker can
+    come back empty for an unmapped assignee while the developer has work.
+    """
+    facts = sorted(facts, key=lambda fact: fact.observed_at, reverse=True)
+    basis: list[str] = []
+    if issues:
+        named = [
+            _inferred_issue_label(issue, reference_at) for issue in issues[:_INFERRED_ISSUE_LIMIT]
+        ]
+        if len(issues) > len(named):
+            named.append(f"{len(issues) - len(named)} more")
+        noun = "active issue" if len(issues) == 1 else "active issues"
+        basis.append(f"{len(issues)} {noun}: {_joined(named)}")
+    last_checkin = next((fact for fact in facts if fact.source == "checkin"), None)
+    if last_checkin is not None:
+        replied_on = last_checkin.observed_at.date()
+        reply = f"last check-in reply on {replied_on:%b} {replied_on.day}"
+        blocker_count = last_checkin.payload.get("blocker_count")
+        if isinstance(blocker_count, int) and not isinstance(blocker_count, bool) and blocker_count:
+            reply += f", with {_counted(((blocker_count, 'blocker', 'blockers'),))}"
+        basis.append(reply)
+    risky = list(
+        dict.fromkeys(
+            entity_id
+            for fact in facts
+            if fact.source == RISK_FACT_SOURCE
+            and isinstance(entity_id := fact.payload.get("entity_id"), str)
+            and entity_id
+        )
+    )
+    if risky:
+        basis.append(f"risks flagged on {_joined(risky)}")
+    sources = [fact.source for fact in facts]
+    git_activity = _counted(
+        (
+            (sources.count("vcs_commit"), "commit", "commits"),
+            (sources.count("vcs_pull_request"), "pull request", "pull requests"),
+        )
+    )
+    if git_activity:
+        basis.append(f"recent Git activity: {git_activity}")
+
+    if not basis:
+        return "No confirmed check-in after a nudge. Inferred from recent signals."
+    return f"No confirmed check-in after a nudge. Inferred from {'; '.join(basis)}."
+
+
+def _inferred_issue_label(issue: Issue, reference_at: datetime) -> str:
+    label = f"{issue.key} {_truncate_subject(issue.title)}"
+    if issue.state is IssueState.BLOCKED:
+        return f"{label} (blocked)"
+    days_since_update = _days_since(issue.updated_at, reference_at)
+    if days_since_update is not None and days_since_update >= 7:
+        return f"{label} (no update for {days_since_update} days)"
+    return label
+
+
+def _counted(counts: Iterable[tuple[int, str, str]]) -> str:
+    return _joined(
+        [
+            f"{count} {singular if count == 1 else plural}"
+            for count, singular, plural in counts
+            if count
+        ]
+    )
+
+
+def _joined(items: list[str]) -> str:
+    if len(items) <= 1:
+        return "".join(items)
+    return f"{', '.join(items[:-1])} and {items[-1]}"
 
 
 def _days_since(value: datetime | None, reference_at: datetime) -> int | None:
