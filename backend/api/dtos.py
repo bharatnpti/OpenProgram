@@ -33,6 +33,7 @@ from core.application.persona_views import (
     NodeTrendView,
     PodBlockersView,
     PodCheckinsView,
+    PodRollupView,
     PortfolioHeatmapView,
     ProgramTreeView,
     ProjectProgressView,
@@ -860,6 +861,32 @@ class PodCheckinsResponse(BaseModel):
         )
 
 
+class PodRollupResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    pod_id: str
+    pod_name: str
+    as_of: date
+    rag: Rag
+    source: StatusSource
+    factors: list[RollupFactorDto]
+    # Names of the nodes the factors cite, keyed by node id. A cited node
+    # missing here is shown by its id, never guessed.
+    source_names: dict[str, str]
+
+    @classmethod
+    def from_view(cls, view: PodRollupView) -> PodRollupResponse:
+        return cls(
+            pod_id=view.pod_id,
+            pod_name=view.pod_name,
+            as_of=view.as_of,
+            rag=view.rag,
+            source=view.source,
+            factors=[RollupFactorDto.from_domain(factor) for factor in view.factors],
+            source_names=dict(view.source_names),
+        )
+
+
 class TaskProgressDto(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -898,6 +925,9 @@ class ProjectProgressResponse(BaseModel):
     red_tasks: int
     unknown_tasks: int
     factors: list[RollupFactorDto]
+    # Names of the nodes the factors cite, keyed by node id. A cited node
+    # missing here is shown by its id, never guessed.
+    source_names: dict[str, str]
     tasks: list[TaskProgressDto]
 
     @classmethod
@@ -916,6 +946,7 @@ class ProjectProgressResponse(BaseModel):
             red_tasks=view.red_tasks,
             unknown_tasks=view.unknown_tasks,
             factors=[RollupFactorDto.from_domain(factor) for factor in view.factors],
+            source_names=dict(view.source_names),
             tasks=[TaskProgressDto.from_view(task) for task in view.tasks],
         )
 
@@ -936,6 +967,9 @@ class WorkstreamProgressResponse(BaseModel):
     red_tasks: int
     unknown_tasks: int
     factors: list[RollupFactorDto]
+    # Names of the nodes the factors cite, keyed by node id. A cited node
+    # missing here is shown by its id, never guessed.
+    source_names: dict[str, str]
     tasks: list[TaskProgressDto]
 
     @classmethod
@@ -954,6 +988,7 @@ class WorkstreamProgressResponse(BaseModel):
             red_tasks=view.red_tasks,
             unknown_tasks=view.unknown_tasks,
             factors=[RollupFactorDto.from_domain(factor) for factor in view.factors],
+            source_names=dict(view.source_names),
             tasks=[TaskProgressDto.from_view(task) for task in view.tasks],
         )
 

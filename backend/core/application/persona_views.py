@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
@@ -150,6 +150,8 @@ class ProjectProgressView:
     red_tasks: int
     unknown_tasks: int
     factors: tuple[RollupFactor, ...]
+    # Names of the nodes the factors cite, keyed by node id.
+    source_names: Mapping[str, str]
     tasks: tuple[TaskProgressView, ...]
 
 
@@ -168,7 +170,23 @@ class WorkstreamProgressView:
     red_tasks: int
     unknown_tasks: int
     factors: tuple[RollupFactor, ...]
+    # Names of the nodes the factors cite, keyed by node id.
+    source_names: Mapping[str, str]
     tasks: tuple[TaskProgressView, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class PodRollupView:
+    """A pod's rolled-up status and the factors behind it."""
+
+    pod_id: str
+    pod_name: str
+    as_of: date
+    rag: Rag
+    source: StatusSource
+    factors: tuple[RollupFactor, ...]
+    # Names of the nodes the factors cite, keyed by node id.
+    source_names: Mapping[str, str]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -404,6 +422,7 @@ class PersonaViewService:
             [await self._task_progress(node, as_of) for node in _owned_tasks(tree)],
         )
         counts = _task_counts(tasks)
+        factors = root_status.factors if root_status else ()
         return ProjectProgressView(
             project_id=tree.root.id,
             project_name=tree.root.name,
@@ -417,7 +436,8 @@ class PersonaViewService:
             amber_tasks=counts["amber"],
             red_tasks=counts["red"],
             unknown_tasks=counts["unknown"],
-            factors=root_status.factors if root_status else (),
+            factors=factors,
+            source_names=_source_names(tree, factors),
             tasks=tasks,
         )
 
@@ -461,7 +481,33 @@ class PersonaViewService:
             red_tasks=counts["red"],
             unknown_tasks=counts["unknown"],
             factors=factors,
+            source_names=_source_names(tree, factors),
             tasks=tasks,
+        )
+
+    async def pod_rollup(self, tenant_id: str, pod_id: str, as_of: date) -> PodRollupView:
+        """Why a pod has its colour: its rollup status and the factors behind it.
+
+        Read exactly as the project and workstream progress read their own: the
+        stored rollup for ``as_of`` where there is one, computed (never
+        recorded) where there is not. Only a pod is answered -- the tree lookup
+        accepts any node id, and a project's reasons are not a scrum master's
+        to read under the pod capabilities.
+        """
+        tree = await self._graph_repository.get_program_tree(tenant_id, pod_id, as_of)
+        if tree.root.kind is not NodeKind.POD:
+            raise GraphNotFound(f"pod {pod_id} not found for tenant {tenant_id}")
+        statuses = await self._node_statuses_for_tree(tree, as_of)
+        status = statuses.get((tree.root.kind, tree.root.id))
+        factors = status.factors if status else ()
+        return PodRollupView(
+            pod_id=tree.root.id,
+            pod_name=tree.root.name,
+            as_of=as_of,
+            rag=status.rag if status else Rag.UNKNOWN,
+            source=status.source if status else StatusSource.UNKNOWN,
+            factors=factors,
+            source_names=_source_names(tree, factors),
         )
 
     async def program_tree(self, tenant_id: str, program_id: str, as_of: date) -> ProgramTreeView:
@@ -648,6 +694,21 @@ class PersonaViewService:
             confidence=_confidence_from_fact(fact),
             source_ref=node.ref,
         )
+
+
+def _source_names(tree: GraphTree, factors: Iterable[RollupFactor]) -> dict[str, str]:
+    """Names for the nodes these factors cite, so a screen need not show ids.
+
+    Only cited nodes, and only ones in the tree just read: a stored factor
+    citing a node no longer under the root stays unnamed, and the screen shows
+    its id rather than a guess.
+    """
+    names = {node.id: node.name for node in tree.nodes}
+    return {
+        factor.source_ref.id: names[factor.source_ref.id]
+        for factor in factors
+        if factor.source_ref.id in names
+    }
 
 
 def _developers(tree: GraphTree) -> tuple[GraphNode, ...]:
