@@ -124,6 +124,11 @@ class ReadyResponse(BaseModel):
 
     status: str
     dependencies: dict[str, bool]
+    # Why a dependency is (not) ready, keyed like ``dependencies`` and present
+    # only where a probe gave a reason -- e.g. "unauthorized: the endpoint
+    # rejected the API key (HTTP 401)" versus "unreachable: ...". Never carries
+    # credentials, hosts or response bodies: /ready is unauthenticated.
+    details: dict[str, str] = Field(default_factory=dict)
 
 
 class AuthUserResponse(BaseModel):

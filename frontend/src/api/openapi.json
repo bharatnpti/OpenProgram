@@ -10094,6 +10094,13 @@
             },
             "type": "object",
             "title": "Dependencies"
+          },
+          "details": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Details"
           }
         },
         "type": "object",

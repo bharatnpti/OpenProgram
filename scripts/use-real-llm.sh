@@ -86,5 +86,6 @@ until curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; do sleep 2; done
 echo "==> backend up; /ready:"
 curl -s http://127.0.0.1:8000/ready
 echo
-echo "Note: /ready reports llm_provider=false against a real endpoint -- the probe"
-echo "GETs {base_url}/health/readiness, which only the LiteLLM gateway serves."
+echo "Expect llm_provider=true: the probe GETs {base_url}/v1/models with the same key"
+echo "(no tokens spent). If it is false, details.llm_provider in the same response"
+echo "says whether the endpoint was unreachable or rejected the key."
