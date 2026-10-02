@@ -1,0 +1,25 @@
+frontend-v2/src/features/coordination/RequestsBoard.tsx
+  s_386bf853700fa5::t_cb577c28d526dd 5,21,23-26,28-32,49-57,59-100,102-104,118-122,129
+frontend-v2/src/features/delivery/DeliveryDetail.tsx
+  s_386bf853700fa5::t_8558078508872a 33-38,101,108,114-117,128-130,185,202-216,218-219,221-226,233,235-245,251,253-255
+frontend-v2/src/features/today/ScrumMasterToday.tsx
+  s_386bf853700fa5::t_9d2c05b2fc4756 2,8-9,21-22,28-42,65-82,118
+frontend-v2/src/features/today/DeveloperToday.tsx
+  s_386bf853700fa5::t_b112aefdececce 8,14,29,67-69,113-116,124,257-260,272-274,391-422
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4bab42bcb4d1ccc7d187efd3e21dfe7845320c93",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
