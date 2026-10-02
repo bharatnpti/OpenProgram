@@ -1,0 +1,21 @@
+frontend-v2/src/features/today/ManagerExecToday.tsx
+  s_386bf853700fa5::t_cd9b98bbe3d93c 218-219,221
+frontend-v2/src/pages/SignalsPage.tsx
+  s_386bf853700fa5::t_0ed77e38ab2b11 29-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dfe62f97f6dda44e00232d5f9b879951510713bb",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
