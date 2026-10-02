@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
 import { useRole } from "../../app/role";
+import { useViewingDate } from "../../app/viewingDate";
 import { Card } from "../../components/ui/Card";
 import {
   BRIEF_KIND_LABEL,
@@ -21,6 +22,8 @@ const FILTERS: { kind: BriefKind | undefined; label: string }[] = [
 
 export function BriefsColumn() {
   const { canReadAggregate } = useRole();
+  // Briefs take no as_of, so a past day still lists the newest ones.
+  const { isPast } = useViewingDate();
   // The filter lives in the URL so Today's "All briefs" can open on one kind.
   const [searchParams, setSearchParams] = useSearchParams();
   const kind = briefKindParam(searchParams);
@@ -70,6 +73,11 @@ export function BriefsColumn() {
           Pod, project and executive briefs need a team or executive role.
         </p>
       )}
+      {isPast && canReadAggregate ? (
+        <p className="text-[13px] text-grey-secondary">
+          Briefs are listed newest first, whatever day you're viewing.
+        </p>
+      ) : null}
       {briefs.isError ? (
         <p className="text-sm text-grey-secondary">
           Briefs could not be loaded:{" "}

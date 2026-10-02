@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
 import { useRole } from "../../app/role";
+import { useViewingDate } from "../../app/viewingDate";
 import { Pill } from "../../components/ui/Pill";
 import type { CrossPersonRequestResponse, CrossPersonRequestStatus } from "../../api/schema";
 
@@ -19,6 +20,9 @@ const COLUMNS: {
 export function RequestsBoard() {
   const queryClient = useQueryClient();
   const { canReadAggregate } = useRole();
+  // Requests have no as_of: the board is always today's, and a status change
+  // made from it lands today, whatever day the console is showing.
+  const { isPast, label } = useViewingDate();
 
   // A developer has no aggregate scope, so the portfolio endpoint 403s for
   // them. Showing their own requests is both what they are allowed to see and
@@ -70,6 +74,11 @@ export function RequestsBoard() {
           role.
         </p>
       )}
+      {isPast ? (
+        <p className="text-[13px] text-grey-secondary">
+          Requests show current state, not {label}. Go back to today to acknowledge or resolve.
+        </p>
+      ) : null}
       <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
         {COLUMNS.map((column) => {
           const items = byStatus(column.status);
@@ -94,6 +103,7 @@ export function RequestsBoard() {
                     // all share the latter.
                     key={request.id}
                     request={request}
+                    readOnly={isPast}
                     onAcknowledge={() =>
                       updateStatus.mutate({
                         id: request.id,
@@ -162,10 +172,12 @@ function counterpartName(
 
 function RequestCard({
   request,
+  readOnly,
   onAcknowledge,
   onResolve,
 }: {
   request: CrossPersonRequestResponse;
+  readOnly: boolean;
   onAcknowledge: () => void;
   onResolve: () => void;
 }) {
@@ -183,13 +195,14 @@ function RequestCard({
         {requester} → {counterpart}
       </div>
       <div className="mt-3 flex items-center gap-3">
-        <Pill variant="ghost" size="sm" onClick={onAcknowledge}>
+        <Pill variant="ghost" size="sm" onClick={onAcknowledge} disabled={readOnly}>
           Acknowledge
         </Pill>
         <button
           type="button"
           onClick={onResolve}
-          className="text-[13px] font-bold text-grey-secondary hover:text-ink"
+          disabled={readOnly}
+          className="text-[13px] font-bold text-grey-secondary hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-grey-secondary"
         >
           Resolve
         </button>
