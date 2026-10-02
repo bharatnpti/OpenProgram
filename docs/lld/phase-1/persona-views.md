@@ -13,6 +13,7 @@ Raw inbound and outbound DM turns are persisted in the durable conversation stor
 | Dev | `GET /me/focus` | `view_own_focus` | My tasks, blockers, deadlines, and source-tagged status. |
 | SM | `GET /pods/{pod_id}/blockers` | `view_pod_blockers` | Blocker board with owner, age, and source refs. |
 | SM | `GET /pods/{pod_id}/checkins` | `view_pod_checkins` | Check-in completeness and stale developers. |
+| SM | `GET /pods/{pod_id}/tasks` | `view_pod_checkins` and `view_pod_blockers` | Tasks assigned to the pod's members within the pod's own workstreams, blocked first, with the open blockers attributed to each. |
 | PO | `GET /projects/{project_id}/progress` | `view_project_progress` | Feature/epic progress from synced issue data and rollups. |
 | Mgr/Exec | `GET /programs/{program_id}/tree` | `view_program_tree` | Hierarchy tree with RAG and drill refs. |
 | Mgr/Exec | `GET /portfolio/heatmap` | `view_portfolio_heatmap` | Program/project RAG grid with one-line why. |
