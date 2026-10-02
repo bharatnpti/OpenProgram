@@ -79,6 +79,18 @@ class Settings(BaseSettings):
     # On by default; set OPENPROGRAM_CROSS_PERSON_AUTO_NOTIFY=false to record the
     # request for the requester and the board without messaging anyone.
     cross_person_auto_notify: bool = True
+    # A counterpart DM that failed to send is retried by a scheduled pass, a
+    # limited number of times with doubling waits, and then left visibly
+    # un-notified. The schedule is registered only while this and
+    # cross_person_auto_notify are both on; the pass sends nothing if either
+    # has been switched off since.
+    cross_person_notify_retry_enabled: bool = True
+    cross_person_notify_retry_schedule_id: str = "openprogram-cross-person-notify-retry"
+    cross_person_notify_retry_cron: str = "*/5 * * * *"
+    # Attempts in total, the first send included.
+    cross_person_notify_max_attempts: int = 5
+    # Wait after the first failed attempt; each later wait doubles.
+    cross_person_notify_retry_backoff_seconds: int = 300
     # System gate fallback default for issue-tracker write-back (OFF by default).
     # A persisted per-tenant override (admin-controlled) wins when present.
     jira_writeback_enabled: bool = False
@@ -375,6 +387,8 @@ class Settings(BaseSettings):
         "conversation_purge_schedule_id",
         "inbound_events_sweeper_cron",
         "inbound_events_sweeper_schedule_id",
+        "cross_person_notify_retry_cron",
+        "cross_person_notify_retry_schedule_id",
         "directory_sync_cron",
         "directory_sync_schedule_id",
         "risk_assessment_cron",
@@ -499,6 +513,7 @@ class Settings(BaseSettings):
         "checkin_fanout_concurrency",
         "outbound_dm_max_chars",
         "recent_fact_lookback_days",
+        "cross_person_notify_max_attempts",
     )
     @classmethod
     def validate_positive_int(cls, value: int) -> int:
@@ -514,6 +529,7 @@ class Settings(BaseSettings):
         "inbound_events_grace_seconds",
         "inbound_events_dead_letter_seconds",
         "chat_send_once_ttl_seconds",
+        "cross_person_notify_retry_backoff_seconds",
     )
     @classmethod
     def validate_positive_seconds(cls, value: int) -> int:

@@ -6,6 +6,7 @@ from typing import Literal
 
 type WorkflowPayloadValue = str | int | float | bool | None
 type CheckinReconcileStatus = Literal["skipped_early", "no_missing", "dispatched"]
+type CrossPersonNotifyRetryStatus = Literal["ran", "disabled"]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -181,6 +182,30 @@ class InboundSweeperScheduleConfig:
     tenant_id: str
     cron: str
     grace_seconds: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class CrossPersonNotifyRetryScheduleConfig:
+    schedule_id: str
+    tenant_id: str
+    cron: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class CrossPersonNotifyRetryInput:
+    tenant_id: str
+    now: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class CrossPersonNotifyRetryResult:
+    tenant_id: str
+    status: CrossPersonNotifyRetryStatus
+    due: int = 0
+    sent: int = 0
+    failed: int = 0
+    skipped: int = 0
+    given_up: int = 0
 
 
 @dataclass(frozen=True, kw_only=True)

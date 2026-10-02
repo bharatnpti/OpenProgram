@@ -153,11 +153,39 @@ function RaisedByYou({ requests }: { requests: CrossPersonRequestResponse[] }) {
                 request.raw_name ??
                 counterpartName(request.counterpart_id, people)}
             </div>
+            <DeliveryNote delivery={request.delivery} raisedByYou />
           </div>
         ))}
       </div>
     </div>
   );
+}
+
+/**
+ * Says so when the counterpart has not been sent the DM: a failed send is
+ * retried a few times, then the request is left marked not delivered so the
+ * requester knows to ask in person.
+ */
+function DeliveryNote({
+  delivery,
+  raisedByYou = false,
+}: {
+  delivery: CrossPersonRequestResponse["delivery"];
+  raisedByYou?: boolean;
+}) {
+  if (delivery === "not_delivered") {
+    return (
+      <div className="mt-1.5 text-[12px] font-bold text-rag-red">
+        DM not delivered.{raisedByYou ? " Ask them directly." : null}
+      </div>
+    );
+  }
+  if (delivery === "retrying") {
+    return (
+      <div className="mt-1.5 text-[12px] font-bold text-rag-amber">DM not sent yet, retrying.</div>
+    );
+  }
+  return null;
 }
 
 function counterpartName(
@@ -194,6 +222,7 @@ function RequestCard({
       <div className="mt-1.5 text-[13px] text-grey-secondary">
         {requester} → {counterpart}
       </div>
+      <DeliveryNote delivery={request.delivery} />
       <div className="mt-3 flex items-center gap-3">
         <Pill variant="ghost" size="sm" onClick={onAcknowledge} disabled={readOnly}>
           Acknowledge
