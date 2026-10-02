@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 import structlog
 
+from core.application.status_collector import OUTBOUND_DM_MAX_CHARS
 from core.domain.cross_person import (
     CrossPersonRequest,
     CrossPersonRequestResolution,
@@ -64,12 +65,35 @@ class CrossPersonRequestService:
             )
             await self._append_fact(stored, transition=transition)
             if self.auto_notify and stored.status is CrossPersonRequestStatus.OPEN:
-                stored = await self.notify(stored)
+                stored = await self._notify_best_effort(stored)
             created.append(stored)
         return created
 
+    async def _notify_best_effort(self, request: CrossPersonRequest) -> CrossPersonRequest:
+        """Tell the counterpart, but never let a failed DM lose the request.
+
+        By now the check-in reply is final and the request is stored. If the DM
+        raised here, the remaining mentions in the same reply would never be
+        recorded, and the reply's retry would stop at "already processed". The
+        request stays open and visible to its requester instead, with no
+        notification ids, so recording it again retries the DM.
+        """
+        try:
+            return await self.notify(request)
+        except Exception as error:
+            _logger.warning(
+                "cross_person_notify_failed",
+                tenant_id=request.tenant_id,
+                request_id=request.id,
+                error=type(error).__name__,
+            )
+            return request
+
     async def notify(self, request: CrossPersonRequest) -> CrossPersonRequest:
         if request.counterpart_id is None:
+            return request
+        if request.counterpart_id in {request.requester_id, request.requester_chat_ref}:
+            # Matched to oneself ("need <my own name> to review"): nobody to ask.
             return request
         if request.notify_message_id is not None and request.notify_correlation_id is not None:
             return request
@@ -86,7 +110,7 @@ class CrossPersonRequestService:
             chat_user,
             OutboundMessage(
                 tenant_id=request.tenant_id,
-                text=_counterpart_message(request),
+                text=_counterpart_message(request, await self._requester_name(request)),
                 correlation_id=notify_correlation_id,
                 metadata={
                     "purpose": "cross_person_request",
@@ -110,6 +134,10 @@ class CrossPersonRequestService:
         message: InboundMessage,
         request: CrossPersonRequest,
     ) -> CrossPersonRequest:
+        if request.status in _CLOSED_STATUSES:
+            # A thanks or a second "done" after the fact must not reopen the
+            # request or tell the requester again.
+            return request
         next_status = await self._classify_counterpart_reply(message, request)
         updated = await self.repository.update_status(
             request.tenant_id,
@@ -129,6 +157,11 @@ class CrossPersonRequestService:
         request_id: str,
         status: CrossPersonRequestStatus,
     ) -> CrossPersonRequest | None:
+        existing = await self.repository.get(tenant_id, request_id)
+        if existing is not None and existing.status is status:
+            # Resolving twice (a double click, a retried call) is not a second
+            # transition, and must not tell the requester a second time.
+            return existing
         updated = await self.repository.update_status(
             tenant_id,
             request_id,
@@ -270,7 +303,7 @@ class CrossPersonRequestService:
                 tenant_id=request.tenant_id,
                 text=(
                     f"{counterpart} marked your {request.kind.value} "
-                    f"request resolved: {request.note}"
+                    f"request resolved: {_fit_note(request.note, _RESOLVED_NOTE_CHARS)}"
                 ),
                 correlation_id=f"xreq-resolved-{request.id}",
                 metadata={
@@ -280,6 +313,16 @@ class CrossPersonRequestService:
                 },
             ),
         )
+
+    async def _requester_name(self, request: CrossPersonRequest) -> str | None:
+        """The requester's display name, found by member id or by chat id."""
+        for candidate in (request.requester_id, request.requester_chat_ref):
+            if candidate is None:
+                continue
+            user = await self.directory_repository.get(request.tenant_id, candidate)
+            if user is not None and user.display_name.strip():
+                return user.display_name.strip()
+        return None
 
     async def _append_fact(self, request: CrossPersonRequest, *, transition: str) -> None:
         if self.time_series_repository is None:
@@ -345,12 +388,37 @@ def _request_id(
     return f"xreq-{digest}"
 
 
-def _counterpart_message(request: CrossPersonRequest) -> str:
-    requester = request.requester_id
-    return (
-        f"{requester} needs your {request.kind.value}: {request.note}\n"
-        "Reply here with an acknowledgement, or say when it is done."
-    )
+_CLOSED_STATUSES = frozenset(
+    {CrossPersonRequestStatus.RESOLVED, CrossPersonRequestStatus.DISMISSED}
+)
+_RESOLVED_NOTE_CHARS = 200
+_MIN_NOTE_CHARS = 40
+_ASK_LEAD = {
+    "review": "asked for your review",
+    "input": "asked for your input",
+}
+_REPLY_HINT = "\nReply in this thread to acknowledge, or say when it is done."
+
+
+def _counterpart_message(request: CrossPersonRequest, requester_name: str | None) -> str:
+    """What the counterpart is told: who asked, what kind of ask, and the note.
+
+    The note is the short ask the model extracted, never the requester's reply,
+    so it is flattened to one line and fitted under the outbound DM cap in case
+    a model copied more than it should. A requester who cannot be named is
+    "A teammate" rather than an internal id.
+    """
+    lead = _ASK_LEAD.get(request.kind.value, "is waiting on you")
+    head = f"{requester_name or 'A teammate'} {lead}: "
+    room = max(OUTBOUND_DM_MAX_CHARS - len(head) - len(_REPLY_HINT), _MIN_NOTE_CHARS)
+    return f"{head}{_fit_note(request.note, room)}{_REPLY_HINT}"
+
+
+def _fit_note(note: str, limit: int) -> str:
+    flat = " ".join(note.split())
+    if len(flat) <= limit:
+        return flat
+    return f"{flat[: limit - 1].rstrip()}…"
 
 
 def _fact_kind(request: CrossPersonRequest) -> str:

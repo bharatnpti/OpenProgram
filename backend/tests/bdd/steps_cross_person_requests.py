@@ -221,6 +221,12 @@ def _then_nobody_notified(world: World) -> None:
     assert _cross_person_bot_messages(world) == []
 
 
+@then(parsers.parse('the cross-person request DM to "{member_id}" should not contain "{fragment}"'))
+def _then_dm_does_not_contain(world: World, member_id: str, fragment: str) -> None:
+    message = _latest_cross_person_bot_message(world, member_id)
+    assert fragment not in message["text"], message["text"]
+
+
 @then(parsers.parse('exactly {count:d} cross-person request DM should have gone to "{member_id}"'))
 def _then_dm_count(world: World, count: int, member_id: str) -> None:
     sent = [item for item in _cross_person_bot_messages(world) if item["user_id"] == member_id]
