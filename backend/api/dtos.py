@@ -1883,6 +1883,23 @@ class CheckinPreferenceResponse(BaseModel):
         )
 
 
+def _checkin_weekdays(value: list[int] | None) -> list[int] | None:
+    """Check the days someone is asked to check in.
+
+    An empty list is refused: with no days the bot never asks that person
+    again, and nothing on screen would say why their check-ins stopped.
+    """
+    if value is None:
+        return value
+    if not value:
+        raise ValueError(
+            "weekdays needs at least one day: with none, this person is never asked to check in"
+        )
+    if any(day < 0 or day > 6 for day in value):
+        raise ValueError("weekdays must be in the range 0..6")
+    return value
+
+
 # Reply windows are stored as a Postgres INTEGER of seconds. A larger value
 # can't be saved, so it is a 422 here instead of a database error.
 MAX_CHECKIN_WAIT_SECONDS = 2_147_483_647
@@ -1900,11 +1917,7 @@ class CheckinPreferenceUpdateRequest(BaseModel):
     @field_validator("weekdays")
     @classmethod
     def validate_weekdays(cls, value: list[int] | None) -> list[int] | None:
-        if value is None:
-            return value
-        if any(day < 0 or day > 6 for day in value):
-            raise ValueError("weekdays must be in the range 0..6")
-        return value
+        return _checkin_weekdays(value)
 
     @field_validator("timezone")
     @classmethod
@@ -2257,11 +2270,7 @@ class SelfCheckinPreferenceUpdateRequest(BaseModel):
     @field_validator("weekdays")
     @classmethod
     def validate_weekdays(cls, value: list[int] | None) -> list[int] | None:
-        if value is None:
-            return value
-        if any(day < 0 or day > 6 for day in value):
-            raise ValueError("weekdays must be in the range 0..6")
-        return value
+        return _checkin_weekdays(value)
 
     @field_validator("timezone")
     @classmethod

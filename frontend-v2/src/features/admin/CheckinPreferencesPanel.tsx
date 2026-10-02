@@ -38,6 +38,8 @@ export function CheckinPreferencesPanel({
   const [finalReplyWait, setFinalReplyWait] = useState<number | null>(900);
   // What the selected member has stored, so a save sends only what changed.
   const [loaded, setLoaded] = useState<CheckinPreferenceResponse | null>(null);
+  // With no days the bot never asks the member again, and the API refuses it.
+  const noDays = weekdays.length === 0;
 
   const updateMutation = useMutation({
     mutationFn: (changes: CheckinPreferenceUpdateRequest) =>
@@ -108,12 +110,13 @@ export function CheckinPreferencesPanel({
               />
             </FormField>
           </div>
-          <FormField label="Weekdays">
-            <div className="flex flex-wrap gap-2">
+          <FormField label="Weekdays" error={noDays ? "Pick at least one day." : undefined}>
+            <div role="group" aria-label="Weekdays" className="flex flex-wrap gap-2">
               {weekdayOptions.map((day) => (
                 <button
                   key={day.value}
                   type="button"
+                  aria-pressed={weekdays.includes(day.value)}
                   onClick={() => toggleWeekday(day.value)}
                   className={cn(
                     "flex h-9 items-center rounded-full border px-3.5 text-[13px] font-bold",
@@ -149,12 +152,13 @@ export function CheckinPreferencesPanel({
               size="md"
               disabled={
                 !memberId ||
+                noDays ||
                 replyWait === null ||
                 finalReplyWait === null ||
                 updateMutation.isPending
               }
               onClick={() => {
-                if (replyWait === null || finalReplyWait === null) {
+                if (noDays || replyWait === null || finalReplyWait === null) {
                   return;
                 }
                 updateMutation.mutate(
