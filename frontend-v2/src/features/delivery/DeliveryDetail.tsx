@@ -9,6 +9,7 @@ import { toneForRag, toneHex } from "../../lib/status";
 import type { DeliveryKind } from "../../lib/useDeliverySelection";
 import { useRole } from "../../app/role";
 import { cn } from "../../lib/utils";
+import { ProgramDetail } from "./ProgramDetail";
 
 type Lists = {
   programs: DirectoryItemResponse[];
@@ -110,6 +111,10 @@ export function DeliveryDetail({
     );
   }
 
+  if (selection.kind === "program") {
+    return <ProgramDetail key={item.id} program={item} asOf={asOf} onSelect={onSelect} />;
+  }
+
   const progress = selection.kind === "project" ? projectProgress.data : workstreamProgress.data;
   const rag = selection.kind === "pod" ? item.rag : (progress?.rag ?? item.rag);
   const tone = toneForRag(rag);
@@ -140,9 +145,7 @@ export function DeliveryDetail({
             <p className="mt-1.5 text-[15px] text-grey-secondary">
               {selection.kind} · {item.id}
             </p>
-            <p className="mt-3 text-[16px] text-grey-body">
-              {explanationFor(selection.kind, item, lists)}
-            </p>
+            <p className="mt-3 text-[16px] text-grey-body">{explanationFor(item)}</p>
             {pills.length > 0 ? (
               <div className="mt-5 flex flex-wrap gap-2">
                 {pills.map((pill) => (
@@ -217,25 +220,7 @@ export function DeliveryDetail({
   );
 }
 
-function rollupCounts(
-  item: DirectoryItemResponse,
-  lists: Lists,
-): { projects: number; workstreams: number; pods: number } {
-  const projects = lists.projects.filter((project) => item.project_ids.includes(project.id));
-  const workstreams = new Set<string>(item.workstream_ids);
-  const pods = new Set<string>(item.pod_ids);
-  projects.forEach((project) => {
-    project.workstream_ids.forEach((id) => workstreams.add(id));
-    project.pod_ids.forEach((id) => pods.add(id));
-  });
-  return { projects: item.project_ids.length, workstreams: workstreams.size, pods: pods.size };
-}
-
-function explanationFor(kind: DeliveryKind, item: DirectoryItemResponse, lists: Lists): string {
-  if (kind === "program") {
-    const counts = rollupCounts(item, lists);
-    return `${counts.projects} projects · ${counts.workstreams} workstreams · ${counts.pods} pods roll up into this program.`;
-  }
+function explanationFor(item: DirectoryItemResponse): string {
   if (item.rag === "red")
     return "Status is blocked based on the latest confirmed or inferred signal.";
   if (item.rag === "amber")
@@ -265,14 +250,6 @@ function detailRows(
     blockers: { blockers: unknown[] } | undefined;
   },
 ): [string, string][] {
-  if (kind === "program") {
-    const counts = rollupCounts(item, lists);
-    return [
-      ["Projects", String(counts.projects)],
-      ["Workstreams", String(counts.workstreams)],
-      ["Pods", String(counts.pods)],
-    ];
-  }
   if (kind === "pod") {
     return [
       ["Members", String(item.member_ids.length)],
