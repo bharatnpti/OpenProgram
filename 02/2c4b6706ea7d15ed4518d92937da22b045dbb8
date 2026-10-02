@@ -1,0 +1,23 @@
+backend/tests/unit/test_api.py
+  s_51495ccc67ba04::t_49e380f4275a2c 158-190
+frontend-v2/src/features/today/ManagerExecToday.tsx
+  s_51495ccc67ba04::t_5851779259be41 30-35,59-61,65,108-120,156-158,160-163,347-353,365,367
+frontend-v2/src/pages/TodayPage.tsx
+  s_51495ccc67ba04::t_c06ef7209aae9b 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "022c4b6706ea7d15ed4518d92937da22b045dbb8",
+  "prompts": {},
+  "sessions": {
+    "s_51495ccc67ba04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98259e94-8aa1-45f5-b5cc-46cac669b27d",
+        "model": "unknown"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
