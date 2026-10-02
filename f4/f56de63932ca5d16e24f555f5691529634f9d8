@@ -1,7 +1,9 @@
 frontend-v2/src/features/delivery/DeliveryDetail.tsx
   s_386bf853700fa5::t_30f8f0fcf5bf75 12,114-117,148,223
+  s_386bf853700fa5::t_7cc5bf02d57953 12,114-117,148,223
 frontend-v2/src/features/delivery/ProgramDetail.tsx
   s_386bf853700fa5::t_5e0747a8d2bc96 1-386
+  s_386bf853700fa5::t_14ec241f7db2e0 1-386
 ---
 {
   "schema_version": "authorship/3.0.0",
