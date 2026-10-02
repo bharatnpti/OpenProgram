@@ -14,3 +14,6 @@ frontend/dist/
 *.pyc
 __pycache__/
 *.egg-info/
+.idea/
+.claude/
+.codex/
