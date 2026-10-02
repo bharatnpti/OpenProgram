@@ -1501,6 +1501,10 @@ export interface paths {
      *     Unlike the reply endpoint this does not need an outstanding bot question:
      *     if the person speaks first, the check-in is opened for them and the text
      *     becomes its reply.
+     *
+     *     With ``thread_id`` the text is a reply in the thread of that bot message
+     *     instead, and neither opens a check-in nor counts as a status update. A
+     *     thread under a message that is not a request DM is kept but ``ignored``.
      */
     post: operations["chat_simulator_user_message_test_chat_simulator_users__user_id__messages_post"];
     delete?: never;
@@ -1746,6 +1750,8 @@ export interface components {
       purpose?: string | null;
       /** Reply To Message Id */
       reply_to_message_id?: string | null;
+      /** Thread Id */
+      thread_id?: string | null;
       /** Metadata */
       metadata: {
         [key: string]: string | number | boolean | null;
@@ -1793,6 +1799,8 @@ export interface components {
       developer_id?: string | null;
       /** Developer Name */
       developer_name?: string | null;
+      /** Thread Id */
+      thread_id?: string | null;
     };
     /** ChatSimulatorUserMessageResponse */
     ChatSimulatorUserMessageResponse: {

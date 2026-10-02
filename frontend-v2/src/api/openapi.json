@@ -6525,7 +6525,7 @@
       "post": {
         "tags": ["test-support"],
         "summary": "Chat Simulator User Message",
-        "description": "Send a message as one person and let it land in the rollup.\n\nUnlike the reply endpoint this does not need an outstanding bot question:\nif the person speaks first, the check-in is opened for them and the text\nbecomes its reply.",
+        "description": "Send a message as one person and let it land in the rollup.\n\nUnlike the reply endpoint this does not need an outstanding bot question:\nif the person speaks first, the check-in is opened for them and the text\nbecomes its reply.\n\nWith ``thread_id`` the text is a reply in the thread of that bot message\ninstead, and neither opens a check-in nor counts as a status update. A\nthread under a message that is not a request DM is kept but ``ignored``.",
         "operationId": "chat_simulator_user_message_test_chat_simulator_users__user_id__messages_post",
         "parameters": [
           {
@@ -7230,6 +7230,17 @@
             ],
             "title": "Reply To Message Id"
           },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
+          },
           "metadata": {
             "additionalProperties": {
               "anyOf": [
@@ -7387,6 +7398,17 @@
               }
             ],
             "title": "Developer Name"
+          },
+          "thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thread Id"
           }
         },
         "type": "object",
