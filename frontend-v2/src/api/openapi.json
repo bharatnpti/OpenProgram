@@ -8228,6 +8228,13 @@
             },
             "type": "array",
             "title": "Task Ids"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/DirectoryPersonResponse"
+            },
+            "type": "array",
+            "title": "People"
           }
         },
         "type": "object",
@@ -8245,9 +8252,48 @@
           "workstream_ids",
           "pod_ids",
           "member_ids",
-          "task_ids"
+          "task_ids",
+          "people"
         ],
         "title": "DirectoryItemResponse"
+      },
+      "DirectoryPersonResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["key", "id", "member_id", "name"],
+        "title": "DirectoryPersonResponse",
+        "description": "A person named in a node's metadata (``key``, e.g. ``owner_id``).\n\n``member_id`` and ``name`` are null when ``id`` matches no member."
       },
       "DirectorySearchResponse": {
         "properties": {
