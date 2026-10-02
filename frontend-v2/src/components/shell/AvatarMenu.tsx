@@ -4,6 +4,10 @@ import { Check } from "lucide-react";
 
 import { useRole } from "../../app/role";
 import { appRoles, initialsFor, roleLabels, type AppRole } from "../../app/role";
+import {
+  CheckinScheduleDialog,
+  CheckinScheduleMenuItem,
+} from "../../features/checkin/CheckinScheduleDialog";
 import { cn } from "../../lib/utils";
 
 export function AvatarMenu() {
@@ -20,6 +24,7 @@ export function AvatarMenu() {
     displayName,
   } = useRole();
   const [open, setOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -84,6 +89,15 @@ export function AvatarMenu() {
             </>
           ) : null}
           <div className="mt-1.5 border-t border-grey-fill pt-1.5">
+            {/* Here rather than on the developer's Today: anyone with a member
+                record is asked to check in, whichever lens they view through,
+                and this menu is on every screen for every role. */}
+            <CheckinScheduleMenuItem
+              onSelect={() => {
+                setOpen(false);
+                setScheduleOpen(true);
+              }}
+            />
             {/* Only when the backend serves chat, as the header nav already
                 does -- otherwise the route bounces straight back to /today. */}
             {chatEnabled ? (
@@ -113,6 +127,9 @@ export function AvatarMenu() {
           </div>
         </div>
       ) : null}
+      {/* Outside the menu so it stays open after the menu closes, and always
+          mounted so the menu entry knows whether to show before it opens. */}
+      <CheckinScheduleDialog open={scheduleOpen} onOpenChange={setScheduleOpen} />
     </div>
   );
 }
