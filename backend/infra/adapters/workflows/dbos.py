@@ -8,6 +8,7 @@ from typing import Any, cast
 from uuid import uuid4
 
 import psycopg
+import structlog
 from dbos import DBOS, DBOSConfig, ScheduleInput, SetWorkflowID
 
 from core.application.reply_ingestion import run_reply_debounce
@@ -78,6 +79,8 @@ from infra.workflows.runtime_sync import (
     RuntimeSyncPlan,
     RuntimeSyncWorkflowResult,
 )
+
+_logger = structlog.get_logger(__name__)
 
 SyncWorkflowResult = (
     ReadSyncWorkflowResult
@@ -402,8 +405,6 @@ async def _run_dbos_checkin_reconcile(
     if plan.result.status != "dispatched":
         return plan.result
     workflow_ids = await _start_daily_checkins_concurrently(plan.dispatches)
-    if not workflow_ids:
-        return replace(plan.result, status="no_missing", dispatched=0, workflow_ids=[])
     return replace(plan.result, dispatched=len(workflow_ids), workflow_ids=workflow_ids)
 
 
@@ -412,16 +413,31 @@ async def _start_daily_checkins_concurrently(
 ) -> list[str]:
     """Fan out child check-in workflows concurrently, bounded to avoid Slack
     rate-limit spikes. Child workflows start from workflow context (never a
-    retryable step). asyncio.gather preserves dispatch order in the result."""
+    retryable step). asyncio.gather preserves dispatch order in the result.
+
+    One person's check-in failing (a chat id the provider does not know, say)
+    is logged and left out of the result; it must not fail everyone else's run.
+    """
     if not dispatches:
         return []
     semaphore = asyncio.Semaphore(max(1, _checkin_fanout_concurrency()))
 
-    async def start_and_wait(dispatch: DeveloperCheckinDispatch) -> str:
+    async def start_and_wait(dispatch: DeveloperCheckinDispatch) -> str | None:
         async with semaphore:
-            return await _start_daily_checkin_workflow(dispatch)
+            try:
+                return await _start_daily_checkin_workflow(dispatch)
+            except Exception as exc:  # noqa: BLE001 - isolate each person's check-in
+                _logger.warning(
+                    "checkin_child_failed",
+                    tenant_id=dispatch.tenant_id,
+                    developer_id=dispatch.developer_id,
+                    checkin_date=dispatch.checkin_date,
+                    error_type=type(exc).__name__,
+                )
+                return None
 
-    return list(await asyncio.gather(*(start_and_wait(dispatch) for dispatch in dispatches)))
+    results = await asyncio.gather(*(start_and_wait(dispatch) for dispatch in dispatches))
+    return [workflow_id for workflow_id in results if workflow_id is not None]
 
 
 async def _start_daily_checkin_workflow(input: DeveloperCheckinDispatch) -> str:

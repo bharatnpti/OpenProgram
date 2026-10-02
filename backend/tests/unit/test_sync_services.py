@@ -7,7 +7,16 @@ from core.application.sync_services import (
     IssueReadSyncService,
     VcsReadSyncService,
 )
-from core.domain.graph import EdgeKind, EntityRef, GraphEdge, GraphNode, NodeKind, Pod, Program
+from core.domain.graph import (
+    Developer,
+    EdgeKind,
+    EntityRef,
+    GraphEdge,
+    GraphNode,
+    NodeKind,
+    Pod,
+    Program,
+)
 from core.domain.identity import IdentityLink
 from core.domain.integrations import (
     CalendarEvent,
@@ -51,6 +60,8 @@ async def test_issue_read_sync_creates_task_edges_facts_and_cursor() -> None:
             kind=EdgeKind.CONTAINS,
         )
     )
+    # The assignee is a member whose id is the tracker's account id.
+    await store.upsert_node(Developer(tenant_id="demo", id="dev-1", name="Asha"))
     assignee = UserRef(tenant_id="demo", external_id="dev-1", display_name="Asha")
     updated_at = datetime(2026, 1, 10, 8, 30, tzinfo=UTC)
     tracker = FakeIssueTracker(
@@ -191,7 +202,8 @@ async def test_issue_read_sync_query_attaches_tasks_to_configured_target() -> No
 async def test_issue_read_sync_attributes_linked_assignees_to_the_member() -> None:
     # Members are keyed by chat id; Jira only knows accountIds. A linked assignee
     # must land on the member, not on a second developer node named after the
-    # account. An assignee nobody is linked to keeps the old behaviour.
+    # account. An assignee nobody is linked to is not made a person: it would
+    # become a persona that every check-in fan-out tries to DM.
     store = InMemoryGraphStore()
     await store.upsert_node(
         GraphNode(tenant_id="demo", id="U1001", kind=NodeKind.DEVELOPER, name="Liam Chen")
@@ -239,14 +251,20 @@ async def test_issue_read_sync_attributes_linked_assignees_to_the_member() -> No
         for edge in await store.list_edges("demo", kind=EdgeKind.ASSIGNED_TO)
     }
     developers = {node.id for node in await store.list_nodes("demo", NodeKind.DEVELOPER)}
-    assert ("U1001", "PO-1") in assigned
-    assert ("acct-2", "PO-2") in assigned
-    assert "acct-1" not in developers
-    assert developers == {"U1001", "acct-2"}
+    unlinked = await store.get_node("demo", "PO-2")
+    assert assigned == {("U1001", "PO-1")}
+    assert developers == {"U1001"}
+    assert unlinked is not None
+    assert unlinked.metadata["unlinked_assignee_id"] == "acct-2"
+    assert unlinked.metadata["unlinked_assignee_name"] == "Jira name"
+    linked = await store.get_node("demo", "PO-1")
+    assert linked is not None
+    assert "unlinked_assignee_id" not in linked.metadata
 
 
 async def test_vcs_read_sync_appends_commit_and_pull_request_facts_and_cursor() -> None:
     store = InMemoryGraphStore()
+    await store.upsert_node(Developer(tenant_id="demo", id="dev-1", name="Dev One"))
     author = UserRef(tenant_id="demo", external_id="dev-1")
     commit_time = datetime(2026, 1, 10, 8, 0, tzinfo=UTC)
     pull_request_time = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
@@ -405,13 +423,22 @@ async def test_vcs_read_sync_attributes_git_authors_to_the_member() -> None:
     liam = await store.list_facts(
         "demo", EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="U1001")
     )
+    repo = await store.list_facts(
+        "demo", EntityRef(tenant_id="demo", kind=NodeKind.REPO, id="repo-1")
+    )
     developers = {node.id for node in await store.list_nodes("demo", NodeKind.DEVELOPER)}
     assert {(fact.source, fact.correlation_id) for fact in liam} == {
         ("vcs_commit", "vcs:commit:demo:repo-1:a1"),
         ("vcs_pull_request", "vcs:pull_request:demo:repo-1:7:2026-01-10T08:00:00+00:00"),
     }
-    # Nobody is linked to the contractor: they keep their own node, as before.
-    assert developers == {"U1001", "contractor@example.com"}
+    assert all("author" not in fact.payload for fact in liam)
+    # Nobody is linked to the contractor: the commit stays on the repo, with who
+    # wrote it, and no person is invented for them.
+    assert developers == {"U1001"}
+    assert [(fact.correlation_id, fact.payload["author"]) for fact in repo] == [
+        ("vcs:commit:demo:repo-1:b2", "contractor@example.com")
+    ]
+    assert repo[0].payload["author_name"] == "git name"
 
 
 async def test_vcs_read_sync_links_repo_to_configured_containers() -> None:
@@ -556,6 +583,7 @@ async def test_issue_sync_uses_fallback_project_and_sprint_name_matching() -> No
 
 async def test_vcs_sync_matches_repo_id_and_normalizes_fallback_timestamps() -> None:
     store = InMemoryGraphStore()
+    await store.upsert_node(Developer(tenant_id="demo", id="dev-1", name="Dev One"))
     observed_at = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
     author = UserRef(tenant_id="demo", external_id="dev-1")
     provider = FakeVcsProvider(
