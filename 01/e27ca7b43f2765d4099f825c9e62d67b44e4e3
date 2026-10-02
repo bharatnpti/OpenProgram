@@ -1,0 +1,21 @@
+backend/infra/adapters/llm/litellm_provider.py
+  s_386bf853700fa5::t_cbecad5562d184 24-25,30-35,120-134,151-155,165-167
+backend/tests/unit/test_litellm_provider.py
+  s_386bf853700fa5::t_4932685025fe4a 149-180,206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "01e27ca7b43f2765d4099f825c9e62d67b44e4e3",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
