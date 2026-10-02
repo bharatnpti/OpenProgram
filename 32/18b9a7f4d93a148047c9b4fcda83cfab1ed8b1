@@ -1,0 +1,54 @@
+infra/slack/app-manifest.yaml
+  s_51495ccc67ba04::t_e8053bc2149c14 1-37
+.gitignore
+  s_51495ccc67ba04::t_b71d883e8f2976 3-4
+scripts/qa_org/seed_jira.py
+  s_51495ccc67ba04::t_682cbd6bf657f9 1-15,31-102,161-187,190-294,296-306,308-330,334-337,339-356,358-398,411-414
+  s_51495ccc67ba04::t_3837021bd84e93 16-30,116,126-131,136-160
+  s_51495ccc67ba04::t_f655a9b06f589a 103-115,117-125,132-135,295,307
+  s_51495ccc67ba04::t_cf1c9a851bcd69 188-189,331-333,338,357
+  s_51495ccc67ba04::t_2ef5f6961987c3 399-410
+docker-compose.qa.yml
+  s_51495ccc67ba04::t_7ffc0dafc19e8e 1-18
+scripts/qa_org/__init__.py
+  s_51495ccc67ba04::t_c62e25dc1e568e 1
+docs/ops/real-integrations.md
+  s_51495ccc67ba04::t_2145f6960f0bf4 1-90,92-97,105-107,120,125-146,148-154
+  s_51495ccc67ba04::t_eb4d6e8a1b7a33 121-124
+  s_51495ccc67ba04::t_53ced37052c2ce 91,98-104,108-119,147,156-179
+  s_51495ccc67ba04::t_2f4f2483cfeefe 155
+scripts/qa_org/webhook_gate.py
+  s_51495ccc67ba04::t_29d195f3936cfc 44-46
+  s_51495ccc67ba04::t_4858c4c353f171 8,15,20-22,38,68
+  s_51495ccc67ba04::t_efc11d790b54b4 1-7,9-14,16-19,23-37,39-43,47-67,69-73
+scripts/qa_org/env.py
+  s_51495ccc67ba04::t_26664785b283c0 1-42
+scripts/qa_org/check_tokens.py
+  s_51495ccc67ba04::t_da5361fe8767fe 1-106
+scripts/qa_org/use_real.py
+  s_51495ccc67ba04::t_17f7b4a68bf484 2,5,7,10,17,20-31,34-61,69-84,87-91,95-98,104,113-116
+  s_51495ccc67ba04::t_438ad6f9987a8c 3,65,99
+  s_51495ccc67ba04::t_e5e8821de8f308 4,66-68,100-102
+  s_51495ccc67ba04::t_afab4e51e12675 1,6,8-9,11-16,18-19,32-33,62-64,85-86,92-94,103,105-112
+scripts/qa_org/roster.py
+  s_51495ccc67ba04::t_f642ae4e01f8b3 1-565
+scripts/qa_org/seed_openprogram.py
+  s_51495ccc67ba04::t_dc4b91af9f9e78 1-52,56-206
+  s_51495ccc67ba04::t_3c3ff4cd176a8e 53-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3218b9a7f4d93a148047c9b4fcda83cfab1ed8b1",
+  "prompts": {},
+  "sessions": {
+    "s_51495ccc67ba04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98259e94-8aa1-45f5-b5cc-46cac669b27d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
