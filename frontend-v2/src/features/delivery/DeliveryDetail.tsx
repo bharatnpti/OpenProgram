@@ -10,6 +10,9 @@ import type { DeliveryKind } from "../../lib/useDeliverySelection";
 import { useRole } from "../../app/role";
 import { cn } from "../../lib/utils";
 import { ProgramDetail } from "./ProgramDetail";
+import { RollupReasonsCard } from "./RollupReasonsCard";
+import { leadReason, reasonsAddToLead } from "./rollupReasons";
+import { useNodeReasons } from "./useNodeReasons";
 
 type Lists = {
   programs: DirectoryItemResponse[];
@@ -102,6 +105,13 @@ export function DeliveryDetail({
     queryFn: () => apiClient.podBlockers(selection.id, asOf),
     enabled: selection.kind === "pod" && Boolean(selection.id) && mayReadDetail,
   });
+  const reasons = useNodeReasons({
+    kind: selection.kind,
+    id: selection.id,
+    asOf,
+    mayRead: mayReadDetail,
+    progress: selection.kind === "project" ? projectProgress : workstreamProgress,
+  });
 
   if (!item) {
     return (
@@ -116,7 +126,8 @@ export function DeliveryDetail({
   }
 
   const progress = selection.kind === "project" ? projectProgress.data : workstreamProgress.data;
-  const rag = selection.kind === "pod" ? item.rag : (progress?.rag ?? item.rag);
+  // The rag read beside the reasons, so the chip and its reasons agree.
+  const rag = reasons.rag ?? item.rag;
   const tone = toneForRag(rag);
   // No ring at all rather than a 0% one: 0% confirmed and "not yours to read"
   // are very different things and must not look the same.
@@ -145,7 +156,15 @@ export function DeliveryDetail({
             <p className="mt-1.5 text-[15px] text-grey-secondary">
               {selection.kind} · {item.id}
             </p>
-            <p className="mt-3 text-[16px] text-grey-body">{explanationFor(item)}</p>
+            <p className="mt-3 text-[16px] text-grey-body">
+              {leadReason({
+                noun: selection.kind,
+                selfId: item.id,
+                rag: rag ?? "unknown",
+                state: reasons.state,
+                deniedRole: deniedRoleFor(selection.kind),
+              })}
+            </p>
             {pills.length > 0 ? (
               <div className="mt-5 flex flex-wrap gap-2">
                 {pills.map((pill) => (
@@ -172,6 +191,11 @@ export function DeliveryDetail({
           ) : null}
         </div>
       </Card>
+
+      {reasons.state.status === "ready" &&
+      reasonsAddToLead(rag ?? "unknown", reasons.state.reasons) ? (
+        <RollupReasonsCard rag={rag ?? "unknown"} noun={selection.kind} state={reasons.state} />
+      ) : null}
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1.4fr_1fr]">
         {tasks.length > 0 ? (
@@ -218,16 +242,6 @@ export function DeliveryDetail({
       </div>
     </div>
   );
-}
-
-function explanationFor(item: DirectoryItemResponse): string {
-  if (item.rag === "red")
-    return "Status is blocked based on the latest confirmed or inferred signal.";
-  if (item.rag === "amber")
-    return "Status is at risk based on the latest confirmed or inferred signal.";
-  if (item.rag === "green")
-    return "Status is on track based on the latest confirmed or inferred signal.";
-  return "No confirmed or inferred status is available yet.";
 }
 
 function detailRows(
@@ -309,4 +323,9 @@ function detailDeniedNote(kind: DeliveryKind): string {
     return "Pod check-ins and blockers need a scrum-master role.";
   }
   return `${kind === "project" ? "Project" : "Workstream"} progress needs a product-owner or manager role.`;
+}
+
+/** The role that reads why this kind of node has its colour. */
+function deniedRoleFor(kind: DeliveryKind): string {
+  return kind === "pod" ? "a scrum-master role" : "a product-owner or manager role";
 }

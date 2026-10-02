@@ -1,32 +1,15 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../../api/client";
 import { Card } from "../../components/ui/Card";
 import { RagChip } from "../../components/ui/RagChip";
-import type {
-  DirectoryItemResponse,
-  ProgramTreeResponse,
-  Rag,
-  RollupFactorDto,
-} from "../../api/schema";
+import type { DirectoryItemResponse, Rag } from "../../api/schema";
 import { useRole } from "../../app/role";
 import { ragSeverity, toneForRag, toneHex } from "../../lib/status";
 import type { DeliveryKind } from "../../lib/useDeliverySelection";
 import { cn } from "../../lib/utils";
-
-type TreeNode = ProgramTreeResponse["nodes"][number];
-
-/** Factors that say the same thing, gathered so each reason is one line. */
-type Reason = {
-  key: string;
-  description: string;
-  contributes: Rag;
-  sources: { kind: string; name: string }[];
-};
-
-/** Reasons shown before the list is expanded. */
-const REASONS_SHOWN = 5;
+import { RollupReasonsCard } from "./RollupReasonsCard";
+import { joinNames, rollupReasons, type ReasonsState } from "./rollupReasons";
 
 /**
  * The program panel: how the program is doing, and why.
@@ -49,7 +32,6 @@ export function ProgramDetail({
   // READ_PROGRAM_ROLLUP, which the program tree needs. Every other role still
   // gets the status of everything under the program from the directory.
   const { canAccessPortfolio: canReadRollup } = useRole();
-  const [showAllReasons, setShowAllReasons] = useState(false);
 
   // Same keys as DeliveryPage, so nothing is fetched twice. Read here for
   // their loading and error states: an empty list while projects are still on
@@ -80,6 +62,7 @@ export function ProgramDetail({
   // it when nothing is stored yet. Prefer it where it was read, so the
   // statuses on this panel always agree with the reasons beside them.
   const treeNodes = new Map((tree.data?.nodes ?? []).map((node) => [node.id, node]));
+  const nameOf = (id: string) => treeNodes.get(id)?.name;
   const ragOf = (item: DirectoryItemResponse): Rag =>
     treeNodes.get(item.id)?.rag ?? item.rag ?? "unknown";
 
@@ -106,9 +89,15 @@ export function ProgramDetail({
   const counts =
     directoryFailed || directoryLoading ? null : rollupCounts(program, projects.data ?? []);
 
-  const rootReasons = reasonsFor(treeNodes.get(program.id), treeNodes);
-  const visibleReasons = showAllReasons ? rootReasons : rootReasons.slice(0, REASONS_SHOWN);
-  const hiddenReasons = rootReasons.length - REASONS_SHOWN;
+  const rootState: ReasonsState =
+    tree.isError && !tree.data
+      ? { status: "failed" }
+      : !tree.data
+        ? { status: "loading" }
+        : {
+            status: "ready",
+            reasons: rollupReasons(treeNodes.get(program.id)?.factors ?? [], nameOf),
+          };
 
   return (
     <div className="animate-op-fade-up flex flex-col gap-6">
@@ -164,7 +153,9 @@ export function ProgramDetail({
               ];
               // A green row needs no reason; any other one says what set it.
               const projectReasons =
-                projectRag === "green" ? [] : reasonsFor(treeNodes.get(project.id), treeNodes);
+                projectRag === "green"
+                  ? []
+                  : rollupReasons(treeNodes.get(project.id)?.factors ?? [], nameOf);
               return (
                 <div key={project.id} className="border-t border-grey-fill px-6 py-4">
                   <div className="flex items-start justify-between gap-4">
@@ -214,48 +205,7 @@ export function ProgramDetail({
           )}
         </Card>
 
-        {canReadRollup ? (
-          <Card variant="grey" padding="p-6">
-            <h3 className="text-[18px] font-bold">{whyTitle(rag)}</h3>
-            {tree.isError && !tree.data ? (
-              <p className="mt-3 text-sm text-grey-secondary">
-                The reasons behind this status could not be loaded.
-              </p>
-            ) : !tree.data ? (
-              <p className="mt-3 text-sm text-grey-secondary">Loading the reasons…</p>
-            ) : rootReasons.length === 0 ? (
-              <p className="mt-3 text-sm text-grey-secondary">
-                No reasons are recorded for this program yet.
-              </p>
-            ) : (
-              <ul className="mt-3 flex flex-col gap-3">
-                {visibleReasons.map((reason) => (
-                  <li key={reason.key} className="flex gap-3">
-                    <span
-                      className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: toneHex[toneForRag(reason.contributes)] }}
-                    />
-                    <div className="min-w-0">
-                      <div className="text-[14px] font-bold">{reason.description}</div>
-                      <div className="mt-0.5 text-[13px] text-grey-secondary">
-                        {sourcesLabel(reason.sources)}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {tree.data && hiddenReasons > 0 ? (
-              <button
-                type="button"
-                onClick={() => setShowAllReasons((value) => !value)}
-                className="mt-4 text-[14px] font-bold text-magenta"
-              >
-                {showAllReasons ? "Show fewer" : `Show ${hiddenReasons} more`}
-              </button>
-            ) : null}
-          </Card>
-        ) : null}
+        {canReadRollup ? <RollupReasonsCard rag={rag} noun="program" state={rootState} /> : null}
       </div>
     </div>
   );
@@ -299,56 +249,6 @@ function programReason(
     return `${joinNames(matching)} ${matching.length === 1 ? "has" : "have"} no status yet, so the program has none either.`;
   }
   return "No status is recorded for this program yet.";
-}
-
-/**
- * A node's rollup reasons, worst first, green ones only when nothing is worse.
- * The rollup keeps one factor per source, so six people with no status are six
- * factors; they read as one reason naming the six.
- */
-function reasonsFor(node: TreeNode | undefined, nodes: Map<string, TreeNode>): Reason[] {
-  const factors = node?.factors ?? [];
-  const notGreen = factors.filter((factor) => factor.contributes !== "green");
-  const ranked = [...(notGreen.length > 0 ? notGreen : factors)].sort(
-    (a, b) => ragSeverity(b.contributes) - ragSeverity(a.contributes),
-  );
-  const reasons = new Map<string, Reason>();
-  ranked.forEach((factor: RollupFactorDto) => {
-    const key = `${factor.contributes}:${factor.description}`;
-    const source = {
-      kind: factor.source_ref.kind.replace(/_/g, " "),
-      name: nodes.get(factor.source_ref.id)?.name ?? factor.source_ref.id,
-    };
-    const reason = reasons.get(key);
-    if (reason) {
-      reason.sources.push(source);
-    } else {
-      reasons.set(key, {
-        key,
-        description: factor.description,
-        contributes: factor.contributes,
-        sources: [source],
-      });
-    }
-  });
-  return [...reasons.values()];
-}
-
-function sourcesLabel(sources: Reason["sources"]): string {
-  const names = joinNames(sources.map((source) => source.name));
-  const kinds = new Set(sources.map((source) => source.kind));
-  if (kinds.size > 1) return names;
-  const kind = sources[0]?.kind ?? "";
-  return sources.length === 1 ? `${kind} · ${names}` : `${sources.length} ${kind}s · ${names}`;
-}
-
-function whyTitle(rag: Rag): string {
-  return rag === "unknown" ? "Why it has no status" : `Why it's ${rag}`;
-}
-
-function joinNames(names: string[]): string {
-  if (names.length <= 2) return names.join(" and ");
-  return `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
 }
 
 function tally(rags: Rag[]): string {
