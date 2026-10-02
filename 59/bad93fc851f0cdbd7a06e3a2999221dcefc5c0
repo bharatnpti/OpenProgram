@@ -1,13 +1,21 @@
 frontend-v2/src/App.tsx
   s_386bf853700fa5::t_213e018c05cc6c 45-52,115-121
+  s_db98bf649daf00::t_af157030357995 45-52,115-119
+  s_db98bf649daf00::t_4050499fab764f 120-121
 frontend-v2/src/components/shell/CommandPalette.tsx
   s_386bf853700fa5::t_bec1cda61a5dee 8,11-16,19,34,59-61,78
+  s_db98bf649daf00::t_af157030357995 8,11-16,19,34,59-61
+  s_db98bf649daf00::t_b6b3921c055018 78
 frontend-v2/src/components/shell/Header.tsx
   s_386bf853700fa5::t_51ecc957e87e5e 9-11,14,19-25
+  s_db98bf649daf00::t_af157030357995 9-11,14,19-25
 frontend-v2/src/features/coordination/AskTheGraph.tsx
   s_386bf853700fa5::t_2079eb0149359e 6,14,21-33
+  s_db98bf649daf00::t_c149615292d5f4 6,14,21-32
+  s_db98bf649daf00::t_1b26b62f37aa0f 33
 frontend-v2/src/features/coordination/BriefsColumn.tsx
   s_386bf853700fa5::t_e6c05b3fa8545f 4,14-18,23,29-39
+  s_db98bf649daf00::t_c149615292d5f4 4,14-18,23,29-39
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -22,6 +30,14 @@ frontend-v2/src/features/coordination/BriefsColumn.tsx
         "model": "claude-opus-5-5"
       },
       "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
     }
   }
 }
