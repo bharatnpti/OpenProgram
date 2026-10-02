@@ -1,7 +1,12 @@
 backend/core/application/ask_service.py
   s_386bf853700fa5::t_176d3d09148479 20,28-33,35-37,119-237,446,456,459-463,475-476,624-634
+  s_db98bf649daf00::t_08f82a876cbf99 20,180-183,191,197-198,201-202
+  s_db98bf649daf00::t_6921955859a365 28-33,35-37,475-476
+  s_db98bf649daf00::t_8d5e5b61a75310 120-179,184-190,192-196,199-200,203-237,446,456,459-463,624-632
+  s_db98bf649daf00::t_e675f93d7d53c5 119,633-634
 backend/tests/unit/test_ask_service.py
   s_386bf853700fa5::t_f2258d919d0c3a 5-8,58-170
+  s_db98bf649daf00::t_19a561119e2a15 5-8,58-170
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -16,6 +21,14 @@ backend/tests/unit/test_ask_service.py
         "model": "claude-opus-5-5"
       },
       "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
     }
   }
 }
