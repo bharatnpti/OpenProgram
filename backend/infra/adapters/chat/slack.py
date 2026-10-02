@@ -19,11 +19,13 @@ from infra.adapters.chat.send_once import InMemorySendOnceStore, SendOnceStore
 _tracer = trace.get_tracer("openprogram.adapters.chat.slack")
 
 _SLACK_CONFIGURATION_ERRORS = frozenset(
-    {"invalid_auth", "missing_scope", "not_authed", "token_revoked"}
+    {"invalid_auth", "missing_scope", "not_allowed_token_type", "not_authed", "token_revoked"}
 )
 _SLACK_SCOPE_HINTS = {
     "/users.list": "users:read",
+    "/apps.connections.open": "connections:write",
 }
+_SOCKET_MODE_OPEN_PATH = "/apps.connections.open"
 
 
 class SlackHttpClient(Protocol):
@@ -230,6 +232,16 @@ class HttpSlackClient:
                 params["cursor"] = cursor
             return await self._get("/users.list", params=params)
 
+    async def open_socket_connection(self) -> str:
+        """Return a fresh Socket Mode WebSocket URL.
+
+        Only an app-level (xapp-) token may call this, so the client must be
+        built with that token rather than the bot token. Each URL is single-use.
+        """
+        with _tracer.start_as_current_span("slack.http.open_socket_connection"):
+            payload = await self._request("POST", _SOCKET_MODE_OPEN_PATH)
+            return _string_field(payload, "url")
+
     async def _post(self, path: str, json: Mapping[str, object]) -> Mapping[str, object]:
         return await self._request("POST", path, json=json)
 
@@ -301,18 +313,22 @@ def _string_field(payload: Mapping[str, object], key: str, default: str | None =
 
 def _slack_configuration_error(path: str, error: str, payload: Mapping[str, object]) -> str:
     method = path.removeprefix("/")
+    if path == _SOCKET_MODE_OPEN_PATH:
+        token, setting = "app-level token", "slack_app_token"
+    else:
+        token, setting = "bot token", "slack_bot_token"
     if error == "missing_scope":
         needed = _optional_string(payload, "needed") or _SLACK_SCOPE_HINTS.get(path)
         if needed:
             return (
-                f"slack bot token is missing required OAuth scope(s) for {method}: {needed}. "
-                "Reinstall the Slack app after adding the scope and update slack_bot_token."
+                f"slack {token} is missing required OAuth scope(s) for {method}: {needed}. "
+                f"Reinstall the Slack app after adding the scope and update {setting}."
             )
         return (
-            f"slack bot token is missing required OAuth scope(s) for {method}. "
-            "Reinstall the Slack app after adding the scope and update slack_bot_token."
+            f"slack {token} is missing required OAuth scope(s) for {method}. "
+            f"Reinstall the Slack app after adding the scope and update {setting}."
         )
-    return f"slack bot token is not authorized for {method}: {error}"
+    return f"slack {token} is not authorized for {method}: {error}"
 
 
 def _optional_string(payload: Mapping[str, object], key: str) -> str | None:

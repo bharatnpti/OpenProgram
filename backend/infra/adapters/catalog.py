@@ -36,6 +36,12 @@ from infra.adapters.chat.slack import (
     RedisConversationCache,
     SlackChatAdapter,
 )
+from infra.adapters.chat.slack_socket import (
+    ChatEventSink,
+    RedisSocketHeartbeat,
+    SlackSocketModeListener,
+    SocketHeartbeatReadinessProbe,
+)
 from infra.adapters.directory.fake import FakeDirectoryProvider
 from infra.adapters.directory.mock_slack import MockSlackDirectoryProvider
 from infra.adapters.directory.slack import SlackDirectoryProvider
@@ -130,6 +136,31 @@ def build_chat_webhook_mapper(settings: Settings, provider: str) -> ChatWebhookM
 
         return SlackChatWebhookMapper(tenant_id=settings.tenant_id)
     return None
+
+
+def build_slack_socket_listener(
+    settings: Settings,
+    redis_client: Redis | None,
+    sink: ChatEventSink,
+) -> SlackSocketModeListener | None:
+    """Socket Mode intake for real Slack, or None when events arrive another way."""
+    if not settings.slack_socket_mode or settings.runtime_mode != "container":
+        return None
+    if not settings.slack_app_token or not settings.slack_app_token.strip():
+        raise ProviderConfigurationError(
+            "slack_app_token (xapp-, scope connections:write) is required when "
+            "slack_inbound_transport=socket"
+        )
+    return SlackSocketModeListener(
+        url_opener=HttpSlackClient(
+            bot_token=settings.slack_app_token,
+            base_url=settings.slack_api_base_url,
+            retry_attempts=settings.slack_retry_attempts,
+            retry_backoff_seconds=settings.slack_retry_backoff_seconds,
+        ),
+        sink=sink,
+        heartbeat=_slack_socket_heartbeat(settings, _required_redis(redis_client)),
+    )
 
 
 def build_mock_slack_store(
@@ -277,7 +308,7 @@ def build_readiness_probes(
             "workflow_provider": StaticReadinessProbe(),
             "workflow_backlog": backlog_probe,
         }
-    return {
+    probes: dict[str, ReadinessProbe] = {
         "database": DatabaseReadinessProbe(executor_factory()),
         "database_extensions": DatabaseExtensionsReadinessProbe(executor_factory()),
         "redis": RedisReadinessProbe(redis_client_factory()),
@@ -287,17 +318,33 @@ def build_readiness_probes(
         "llm_provider": _llm_readiness_probe(settings),
         "llm_trace": _llm_trace_readiness_probe(settings),
     }
+    if settings.slack_socket_mode:
+        probes["slack_socket"] = SocketHeartbeatReadinessProbe(
+            _slack_socket_heartbeat(settings, redis_client_factory())
+        )
+    return probes
 
 
 def _slack_provider_readiness_probe(settings: Settings) -> ReadinessProbe:
     slack_selected = settings.chat_provider == "slack" or settings.directory_provider == "slack"
+    # The bot token sends DMs either way; the second credential authenticates
+    # inbound events and so follows the transport.
+    inbound_credential = (
+        settings.slack_app_token
+        if settings.slack_inbound_transport == "socket"
+        else settings.slack_signing_secret
+    )
     slack_credentials_present = bool(
         settings.slack_bot_token
         and settings.slack_bot_token.strip()
-        and settings.slack_signing_secret
-        and settings.slack_signing_secret.strip()
+        and inbound_credential
+        and inbound_credential.strip()
     )
     return StaticReadinessProbe(healthy=not slack_selected or slack_credentials_present)
+
+
+def _slack_socket_heartbeat(settings: Settings, redis_client: Redis) -> RedisSocketHeartbeat:
+    return RedisSocketHeartbeat(tenant_id=settings.tenant_id, client=redis_client)
 
 
 def _llm_readiness_probe(settings: Settings) -> ReadinessProbe:

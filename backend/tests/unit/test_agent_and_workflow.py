@@ -12,6 +12,7 @@ from core.application.conversation_history import llm_messages_from_turns
 from core.application.status_collector import StatusCollector
 from core.application.sync_services import SyncRunResult
 from core.domain.conversation import ConversationRole, ConversationTurn
+from core.domain.errors import ProviderConfigurationError
 from core.domain.escalation import EscalationPolicy
 from core.domain.graph import GraphNode, NodeKind
 from core.domain.integrations import SyncCursor
@@ -588,6 +589,58 @@ async def test_worker_bootstraps_schedules_before_running_worker(
         assert value is registry
         events.append("ensure")
         return [ScheduleBootstrapResult(schedule_id="heartbeat-test", status="ready")]
+
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+    monkeypatch.setattr(worker, "ServiceRegistry", lambda value: registry)
+    monkeypatch.setattr(worker, "ensure_workflow_schedules", ensure_schedules)
+
+    await worker.main()
+
+    assert events == ["ensure", "worker", "run", "close"]
+
+
+async def test_worker_runs_slack_socket_listener_alongside_workflow_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+    )
+    events: list[str] = []
+    registry = _WorkerStartupRegistry(settings, events, listener=_OneShotSocketListener(events))
+
+    async def ensure_schedules(value: _WorkerStartupRegistry) -> list[ScheduleBootstrapResult]:
+        events.append("ensure")
+        return []
+
+    monkeypatch.setattr(worker, "get_settings", lambda: settings)
+    monkeypatch.setattr(worker, "ServiceRegistry", lambda value: registry)
+    monkeypatch.setattr(worker, "ensure_workflow_schedules", ensure_schedules)
+
+    await worker.main()
+
+    assert events == ["ensure", "worker", "run", "listen", "close"]
+
+
+async def test_worker_keeps_running_workflows_when_slack_socket_is_misconfigured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+    )
+    events: list[str] = []
+    registry = _WorkerStartupRegistry(
+        settings,
+        events,
+        listener_error=ProviderConfigurationError("slack_app_token is required"),
+    )
+
+    async def ensure_schedules(value: _WorkerStartupRegistry) -> list[ScheduleBootstrapResult]:
+        events.append("ensure")
+        return []
 
     monkeypatch.setattr(worker, "get_settings", lambda: settings)
     monkeypatch.setattr(worker, "ServiceRegistry", lambda value: registry)
@@ -1319,13 +1372,26 @@ class _ScheduleBootstrapRegistry:
 
 
 class _WorkerStartupRegistry:
-    def __init__(self, settings: Settings, events: list[str]) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        events: list[str],
+        listener: _OneShotSocketListener | None = None,
+        listener_error: Exception | None = None,
+    ) -> None:
         self.settings = settings
         self.events = events
+        self.listener = listener
+        self.listener_error = listener_error
 
     def workflow_worker(self) -> _OneShotWorkflowWorker:
         self.events.append("worker")
         return _OneShotWorkflowWorker(self.events)
+
+    def slack_socket_listener(self) -> _OneShotSocketListener | None:
+        if self.listener_error is not None:
+            raise self.listener_error
+        return self.listener
 
     async def close(self) -> None:
         self.events.append("close")
@@ -1337,6 +1403,14 @@ class _OneShotWorkflowWorker:
 
     async def run(self) -> None:
         self.events.append("run")
+
+
+class _OneShotSocketListener:
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+
+    async def run(self) -> None:
+        self.events.append("listen")
 
 
 class _StubRegistry:

@@ -9,7 +9,7 @@
 - `/health`: process liveness.
 - `/ready`: settings and dependency readiness.
 - `/graph/programs/{program_id}/tree`: sample graph read through `GraphRepository`.
-- `/webhooks/chat/{provider}`: provider-neutral webhook intake route; `/webhooks/chat/slack` remains the Slack path.
+- `/webhooks/chat/{provider}`: provider-neutral webhook intake route; `/webhooks/chat/slack` is the Slack path when `slack_inbound_transport=http`. With the default `socket`, Slack events arrive through the worker's Socket Mode listener instead, into the same `ServiceRegistry.accept_chat_event` intake.
 
 ## DTO Rule
 
