@@ -1,0 +1,23 @@
+backend/core/application/sync_services.py
+  s_51495ccc67ba04::t_aaf780f4010f73 4,328,334,353,355,357,408-447,452,468,470,479
+backend/infra/registry.py
+  s_51495ccc67ba04::t_b061b114bc164a 805
+backend/tests/unit/test_sync_services.py
+  s_51495ccc67ba04::t_fbcedebf7cc6cc 353-416
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "70332cbf9f365202cf94bcb94f748c29a716fb9f",
+  "prompts": {},
+  "sessions": {
+    "s_51495ccc67ba04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98259e94-8aa1-45f5-b5cc-46cac669b27d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
