@@ -1,13 +1,21 @@
 backend/core/application/blocker_resolution.py
   s_386bf853700fa5::t_0a56c5b01ba7c8 46-48,80,88,92,113,123,128-129,135,147,179
+  s_db98bf649daf00::t_112aa4a4416ce0 179
+  s_db98bf649daf00::t_29555237657753 46-48,80,88,92,113,123,128-129,135,147
 backend/core/application/persona_views.py
   s_386bf853700fa5::t_dae5f5d2c93ffd 702-704,706
+  s_db98bf649daf00::t_912a478ec58383 702-704,706
 backend/core/application/rollup_service.py
   s_386bf853700fa5::t_2b179d2babe436 233
+  s_db98bf649daf00::t_112aa4a4416ce0 233
 backend/core/application/self_status_service.py
   s_386bf853700fa5::t_ff5f06502a1886 66
+  s_db98bf649daf00::t_912a478ec58383 66
 frontend-v2/src/features/today/DeveloperToday.tsx
   s_386bf853700fa5::t_cf8a44779c2dab 20,51,58,111,296-306,377-381,383-387,394-397
+  s_db98bf649daf00::t_9ef2b9a35e3b3d 20,51,58,296-306
+  s_db98bf649daf00::t_fa305342e7117b 377-381,383-387,394-397
+  s_db98bf649daf00::t_7eb5c8e04a7b59 111
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -22,6 +30,14 @@ frontend-v2/src/features/today/DeveloperToday.tsx
         "model": "claude-opus-5-5"
       },
       "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
     }
   }
 }
