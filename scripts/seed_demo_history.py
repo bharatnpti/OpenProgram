@@ -22,7 +22,7 @@ import random
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from config.settings import get_settings
 from core.application.blocker_resolution import BlockerResolutionService
@@ -298,15 +298,13 @@ async def _seed_people(context: SeedContext) -> None:
                 valid_from=window_start,
                 metadata={"role": person.pod_role},
             )
+        # Only each person's own time zone is set; the time, days and reply
+        # windows follow the team defaults, as they would for a real member.
         await context.registry.status_repository().record_checkin_preference(
             CheckInPreference(
                 tenant_id=tenant_id,
                 developer_id=person.id,
-                local_time=time(9, 30),
                 timezone=person.timezone,
-                weekdays=(0, 1, 2, 3, 4),
-                reply_wait_seconds=14400,
-                final_reply_wait_seconds=28800,
             )
         )
         # Without an identity link a member cannot be DM'd, and admin reports

@@ -30,14 +30,22 @@ export function isNoCheckin(error: unknown): boolean {
   return error instanceof ApiError && (error.status === 404 || error.status === 403);
 }
 
-/** The parts of a preference a person may change for themselves. */
+/**
+ * The parts of a preference a person may change for themselves. A `null`
+ * time zone follows the team's, and changes when the team's does.
+ */
 export interface ScheduleDraft {
   weekdays: number[];
   timezone: string | null;
 }
 
 export function draftFrom(preference: CheckinPreferenceResponse): ScheduleDraft {
-  return { weekdays: sortedDays(preference.weekdays), timezone: preference.timezone };
+  // The response gives the zone that applies; `inherited` says it is the team's.
+  const followsTeam = preference.inherited.includes("timezone");
+  return {
+    weekdays: sortedDays(preference.weekdays),
+    timezone: followsTeam ? null : preference.timezone,
+  };
 }
 
 /**

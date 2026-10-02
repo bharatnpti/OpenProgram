@@ -298,7 +298,13 @@ class PostgresStatusRepository:
                     preference.developer_id,
                     preference.local_time,
                     preference.timezone,
-                    _int_tuple_to_json(preference.weekdays),
+                    # NULL, not the defaults, for anything not set for the member,
+                    # so it keeps following the team default.
+                    (
+                        _int_tuple_to_json(preference.weekdays)
+                        if preference.weekdays is not None
+                        else None
+                    ),
                     preference.reply_wait_seconds,
                     preference.final_reply_wait_seconds,
                     preference.write_back_consent.value,
@@ -1177,17 +1183,25 @@ def _checkin_correlation_from_row(row: Mapping[str, object]) -> CheckInCorrelati
 
 
 def _checkin_preference_from_row(row: Mapping[str, object]) -> CheckInPreference:
+    """A stored preference; a NULL column was never set and follows the team default."""
     timezone = row.get("timezone")
+    local_time = row.get("local_time")
+    weekdays = row.get("weekdays")
+    reply_wait = row.get("reply_wait_seconds")
+    final_reply_wait = row.get("final_reply_wait_seconds")
     return CheckInPreference(
         tenant_id=str(row["tenant_id"]),
         developer_id=str(row["developer_id"]),
-        local_time=_time_field(row["local_time"], "local_time"),
+        local_time=_time_field(local_time, "local_time") if local_time is not None else None,
         timezone=timezone if isinstance(timezone, str) and timezone else None,
-        weekdays=_int_tuple_from_json(row.get("weekdays")),
-        reply_wait_seconds=_int_field(row["reply_wait_seconds"], "reply_wait_seconds"),
-        final_reply_wait_seconds=_int_field(
-            row["final_reply_wait_seconds"],
-            "final_reply_wait_seconds",
+        weekdays=_int_tuple_from_json(weekdays) if weekdays is not None else None,
+        reply_wait_seconds=(
+            _int_field(reply_wait, "reply_wait_seconds") if reply_wait is not None else None
+        ),
+        final_reply_wait_seconds=(
+            _int_field(final_reply_wait, "final_reply_wait_seconds")
+            if final_reply_wait is not None
+            else None
         ),
         write_back_consent=_write_back_consent_from_row(row.get("write_back_consent")),
     )

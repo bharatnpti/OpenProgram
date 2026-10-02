@@ -22,7 +22,7 @@ from core.domain.graph import Developer, EntityRef, NodeKind, Task
 from core.domain.integrations import Issue, IssueState
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 from core.domain.rollup import NodeStatus, Rag
-from core.domain.status import CheckInPreference, StatusSource
+from core.domain.status import CheckInPreference, StatusSource, WriteBackConsent
 from core.domain.workflows import (
     CheckinScheduleConfig,
     ConversationPurgeScheduleConfig,
@@ -1130,15 +1130,31 @@ def test_checkin_preference_routes_merge_and_validate(settings: Settings) -> Non
             "/me/checkin-preference",
             json={"timezone": "Mars/Olympus_Mons"},
         )
+        stored = asyncio.run(
+            app.state.registry.status_repository().checkin_preference_for(
+                settings.tenant_id, "dev-asha"
+            )
+        )
 
-    assert default_response.status_code == 200
-    assert default_response.json() == {
-        "developer_id": "dev-asha",
+    defaults = {
         "local_time": "09:30:00",
         "timezone": "Asia/Kolkata",
         "weekdays": [0, 1, 2, 3, 4],
         "reply_wait_seconds": 60,
         "final_reply_wait_seconds": 120,
+    }
+    assert default_response.status_code == 200
+    assert default_response.json() == {
+        "developer_id": "dev-asha",
+        **defaults,
+        "inherited": [
+            "local_time",
+            "timezone",
+            "weekdays",
+            "reply_wait_seconds",
+            "final_reply_wait_seconds",
+        ],
+        "defaults": defaults,
     }
     assert updated_response.status_code == 200
     assert updated_response.json() == {
@@ -1148,7 +1164,16 @@ def test_checkin_preference_routes_merge_and_validate(settings: Settings) -> Non
         "weekdays": [0, 2, 4],
         "reply_wait_seconds": 60,
         "final_reply_wait_seconds": 120,
+        "inherited": ["local_time", "reply_wait_seconds", "final_reply_wait_seconds"],
+        "defaults": defaults,
     }
+    # Only what the member set is stored; the rest still follows the defaults.
+    assert stored == CheckInPreference(
+        tenant_id=settings.tenant_id,
+        developer_id="dev-asha",
+        timezone="Europe/Berlin",
+        weekdays=(0, 2, 4),
+    )
     assert invalid_weekday.status_code == 422
     assert invalid_timezone.status_code == 422
 
@@ -1312,6 +1337,14 @@ def test_checkin_preference_partial_save_keeps_the_other_stored_values(
         "weekdays": [4, 0, 1],
         "reply_wait_seconds": 14400,
         "final_reply_wait_seconds": 28800,
+        "inherited": [],
+        "defaults": {
+            "local_time": "09:30:00",
+            "timezone": settings.tenant_default_timezone,
+            "weekdays": [0, 1, 2, 3, 4],
+            "reply_wait_seconds": settings.checkin_reply_wait_seconds,
+            "final_reply_wait_seconds": settings.checkin_final_reply_wait_seconds,
+        },
     }
     assert days_only.status_code == 200
     assert zone_only.status_code == 200
@@ -1323,6 +1356,138 @@ def test_checkin_preference_partial_save_keeps_the_other_stored_values(
         weekdays=(0, 1, 2, 3),
         reply_wait_seconds=14400,
         final_reply_wait_seconds=28800,
+    )
+
+
+def test_first_checkin_preference_save_stores_only_what_was_set(settings: Settings) -> None:
+    # A first save used to copy the team defaults into the member's row, so a
+    # later change to the defaults never reached them. Each path -- the
+    # member's own, the admin's, and write-back consent -- now stores only
+    # what it was given.
+    app = create_app(
+        settings=settings.model_copy(
+            update={"dev_principal_roles": "admin,dev", "dev_principal_subject": "dev-asha"}
+        )
+    )
+    with TestClient(app) as client:
+        for member_id, name in (("dev-asha", "Asha"), ("dev-ada", "Ada"), ("dev-lin", "Lin")):
+            client.post("/config/members", json={"id": member_id, "name": name})
+        own = client.put("/me/checkin-preference", json={"weekdays": [0, 2, 4]})
+        admin = client.put(
+            "/config/members/dev-ada/checkin-preference",
+            json={"reply_wait_seconds": 3600},
+        )
+        consent = client.put(
+            "/config/members/dev-lin/writeback-consent",
+            json={"consent": "never"},
+        )
+        repository = app.state.registry.status_repository()
+        stored = {
+            member_id: asyncio.run(repository.checkin_preference_for(settings.tenant_id, member_id))
+            for member_id in ("dev-asha", "dev-ada", "dev-lin")
+        }
+        lin = client.get("/config/members/dev-lin/checkin-preference")
+
+    assert own.status_code == 200
+    assert admin.status_code == 200
+    assert consent.status_code == 200
+    assert stored["dev-asha"] == CheckInPreference(
+        tenant_id=settings.tenant_id, developer_id="dev-asha", weekdays=(0, 2, 4)
+    )
+    assert stored["dev-ada"] == CheckInPreference(
+        tenant_id=settings.tenant_id, developer_id="dev-ada", reply_wait_seconds=3600
+    )
+    assert stored["dev-lin"] == CheckInPreference(
+        tenant_id=settings.tenant_id,
+        developer_id="dev-lin",
+        write_back_consent=WriteBackConsent.NEVER,
+    )
+    assert admin.json()["inherited"] == [
+        "local_time",
+        "timezone",
+        "weekdays",
+        "final_reply_wait_seconds",
+    ]
+    assert len(lin.json()["inherited"]) == 5
+
+
+def test_checkin_preference_follows_later_changes_to_the_defaults(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    path = "/config/members/dev-ada/checkin-preference"
+    with TestClient(app) as client:
+        client.post("/config/members", json={"id": "dev-ada", "name": "Ada"})
+        client.put(path, json={"timezone": "Europe/Berlin", "reply_wait_seconds": 3600})
+        # The deployment's defaults change after the member's first save.
+        app.state.settings = settings.model_copy(
+            update={
+                "tenant_default_timezone": "Asia/Kolkata",
+                "checkin_reply_wait_seconds": 600,
+                "checkin_final_reply_wait_seconds": 1200,
+            }
+        )
+        member = client.get(path)
+        listed = client.get("/config/checkin-preferences")
+
+    assert member.status_code == 200
+    body = member.json()
+    # What was set for the member stays; everything else is the new default.
+    assert body["timezone"] == "Europe/Berlin"
+    assert body["reply_wait_seconds"] == 3600
+    assert body["final_reply_wait_seconds"] == 1200
+    assert body["inherited"] == ["local_time", "weekdays", "final_reply_wait_seconds"]
+    assert body["defaults"]["timezone"] == "Asia/Kolkata"
+    assert body["defaults"]["reply_wait_seconds"] == 600
+    assert next(item for item in listed.json() if item["developer_id"] == "dev-ada") == body
+
+
+def test_checkin_preference_field_sent_as_null_goes_back_to_the_default(
+    settings: Settings,
+) -> None:
+    app = create_app(
+        settings=settings.model_copy(
+            update={"dev_principal_roles": "admin,dev", "dev_principal_subject": "dev-noah"}
+        )
+    )
+    stored = CheckInPreference(
+        tenant_id=settings.tenant_id,
+        developer_id="dev-noah",
+        local_time=time_of_day(8, 5),
+        timezone="Europe/Berlin",
+        weekdays=(4, 0, 1),
+        reply_wait_seconds=60,
+        final_reply_wait_seconds=120,
+        write_back_consent=WriteBackConsent.AUTO_APPLY,
+    )
+    with TestClient(app) as client:
+        registry = app.state.registry
+        asyncio.run(
+            registry.graph_repository().upsert_node(
+                Developer(tenant_id=settings.tenant_id, id="dev-noah", name="Noah")
+            )
+        )
+        asyncio.run(registry.status_repository().record_checkin_preference(stored))
+        admin = client.put(
+            "/config/members/dev-noah/checkin-preference",
+            json={"reply_wait_seconds": None, "local_time": None},
+        )
+        own = client.put("/me/checkin-preference", json={"timezone": None, "weekdays": None})
+        after = asyncio.run(
+            registry.status_repository().checkin_preference_for(settings.tenant_id, "dev-noah")
+        )
+
+    assert admin.status_code == 200
+    assert admin.json()["reply_wait_seconds"] == settings.checkin_reply_wait_seconds
+    assert admin.json()["inherited"] == ["local_time", "reply_wait_seconds"]
+    assert own.status_code == 200
+    assert own.json()["timezone"] == settings.tenant_default_timezone
+    assert own.json()["weekdays"] == [0, 1, 2, 3, 4]
+    assert own.json()["inherited"] == ["local_time", "timezone", "weekdays", "reply_wait_seconds"]
+    # Only the cleared fields changed; the final wait and consent are kept.
+    assert after == CheckInPreference(
+        tenant_id=settings.tenant_id,
+        developer_id="dev-noah",
+        final_reply_wait_seconds=120,
+        write_back_consent=WriteBackConsent.AUTO_APPLY,
     )
 
 

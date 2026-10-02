@@ -9,6 +9,8 @@ import { RagChip } from "../../components/ui/RagChip";
 import { formatDuration } from "../../lib/duration";
 import { cn } from "../../lib/utils";
 import type {
+  CheckInPreferenceField,
+  CheckinDefaultsResponse,
   CheckinPreferenceResponse,
   CheckinPreferenceUpdateRequest,
   ConfigNodeResponse,
@@ -31,15 +33,12 @@ export function CheckinPreferencesPanel({
   onChanged: () => Promise<void>;
 }) {
   const [memberId, setMemberId] = useState("");
-  const [localTime, setLocalTime] = useState("09:00");
-  const [timezone, setTimezone] = useState("UTC");
-  const [weekdays, setWeekdays] = useState<number[]>([0, 1, 2, 3, 4]);
-  const [replyWait, setReplyWait] = useState<number | null>(300);
-  const [finalReplyWait, setFinalReplyWait] = useState<number | null>(900);
+  const [form, setForm] = useState<PreferenceForm>(emptyForm);
   // What the selected member has stored, so a save sends only what changed.
   const [loaded, setLoaded] = useState<CheckinPreferenceResponse | null>(null);
   // With no days the bot never asks the member again, and the API refuses it.
-  const noDays = weekdays.length === 0;
+  const noDays = form.weekdays.length === 0;
+  const noZone = form.timezone.trim() === "";
 
   const updateMutation = useMutation({
     mutationFn: (changes: CheckinPreferenceUpdateRequest) =>
@@ -54,9 +53,38 @@ export function CheckinPreferencesPanel({
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  /**
+   * An edit sets the field for this member, unless it puts back the team
+   * default on a field that was following it: that stays inherited, so a
+   * change and undo doesn't pin today's default.
+   */
+  function edit<F extends PrefField>(field: F, value: FieldValues[F]) {
+    setForm((current) => {
+      const next = { ...current, [field]: value };
+      const followsDefault =
+        loaded !== null &&
+        loaded.inherited.includes(field) &&
+        sameValue(field, value, defaultValue(loaded.defaults, field));
+      return { ...next, inherited: withInherited(current.inherited, field, followsDefault) };
+    });
+  }
+
+  /** Back to the team default: the save clears the member's own value. */
+  function resetToDefault(field: PrefField) {
+    if (!loaded) return;
+    setForm((current) => ({
+      ...current,
+      [field]: defaultValue(loaded.defaults, field),
+      inherited: withInherited(current.inherited, field, true),
+    }));
+  }
+
   function toggleWeekday(day: number) {
-    setWeekdays((current) =>
-      current.includes(day) ? current.filter((item) => item !== day) : [...current, day].sort(),
+    edit(
+      "weekdays",
+      form.weekdays.includes(day)
+        ? form.weekdays.filter((item) => item !== day)
+        : [...form.weekdays, day].sort(),
     );
   }
 
@@ -65,12 +93,20 @@ export function CheckinPreferencesPanel({
     const pref = preferences.find((item) => item.developer_id === nextMember);
     setLoaded(pref ?? null);
     if (pref) {
-      setLocalTime(pref.local_time.slice(0, 5));
-      setTimezone(pref.timezone ?? "UTC");
-      setWeekdays(pref.weekdays);
-      setReplyWait(pref.reply_wait_seconds);
-      setFinalReplyWait(pref.final_reply_wait_seconds);
+      setForm(formFrom(pref));
     }
+  }
+
+  /** Where a field's value comes from, with a way back to the team default. */
+  function source(field: PrefField) {
+    if (!loaded) return null;
+    return (
+      <InheritNote
+        inherited={form.inherited.includes(field)}
+        defaultLabel={valueLabel(field, defaultValue(loaded.defaults, field))}
+        onUseDefault={() => resetToDefault(field)}
+      />
+    );
   }
 
   return (
@@ -78,7 +114,8 @@ export function CheckinPreferencesPanel({
       <div>
         <h2 className="text-[18px] font-bold">Check-in preferences</h2>
         <p className="mt-1 text-[13px] text-grey-secondary">
-          Set local check-in timing, weekdays, and reply windows per member.
+          Set local check-in timing, weekdays, and reply windows per member. Anything not set for a
+          member follows the team default, and changes when the default does.
         </p>
       </div>
 
@@ -94,57 +131,72 @@ export function CheckinPreferencesPanel({
             />
           </FormField>
           <div className="grid gap-3 md:grid-cols-2">
-            <FormField label="Local time" htmlFor="checkin-time">
-              <TextInput
-                id="checkin-time"
-                type="time"
-                value={localTime}
-                onChange={(event) => setLocalTime(event.target.value)}
-              />
-            </FormField>
-            <FormField label="Timezone" htmlFor="checkin-timezone">
-              <TextInput
-                id="checkin-timezone"
-                value={timezone}
-                onChange={(event) => setTimezone(event.target.value)}
-              />
-            </FormField>
-          </div>
-          <FormField label="Weekdays" error={noDays ? "Pick at least one day." : undefined}>
-            <div role="group" aria-label="Weekdays" className="flex flex-wrap gap-2">
-              {weekdayOptions.map((day) => (
-                <button
-                  key={day.value}
-                  type="button"
-                  aria-pressed={weekdays.includes(day.value)}
-                  onClick={() => toggleWeekday(day.value)}
-                  className={cn(
-                    "flex h-9 items-center rounded-full border px-3.5 text-[13px] font-bold",
-                    weekdays.includes(day.value)
-                      ? "border-magenta bg-magenta text-white"
-                      : "border-grey-border text-grey-secondary hover:bg-grey-fill",
-                  )}
-                >
-                  {day.label}
-                </button>
-              ))}
+            <div>
+              <FormField label="Local time" htmlFor="checkin-time">
+                <TextInput
+                  id="checkin-time"
+                  type="time"
+                  value={form.local_time}
+                  onChange={(event) => edit("local_time", event.target.value)}
+                />
+              </FormField>
+              {source("local_time")}
             </div>
-          </FormField>
+            <div>
+              <FormField
+                label="Timezone"
+                htmlFor="checkin-timezone"
+                error={noZone ? "Enter a time zone, or use the team default." : undefined}
+              >
+                <TextInput
+                  id="checkin-timezone"
+                  value={form.timezone}
+                  onChange={(event) => edit("timezone", event.target.value)}
+                />
+              </FormField>
+              {source("timezone")}
+            </div>
+          </div>
+          <div>
+            <FormField label="Weekdays" error={noDays ? "Pick at least one day." : undefined}>
+              <div role="group" aria-label="Weekdays" className="flex flex-wrap gap-2">
+                {weekdayOptions.map((day) => (
+                  <button
+                    key={day.value}
+                    type="button"
+                    aria-pressed={form.weekdays.includes(day.value)}
+                    onClick={() => toggleWeekday(day.value)}
+                    className={cn(
+                      "flex h-9 items-center rounded-full border px-3.5 text-[13px] font-bold",
+                      form.weekdays.includes(day.value)
+                        ? "border-magenta bg-magenta text-white"
+                        : "border-grey-border text-grey-secondary hover:bg-grey-fill",
+                    )}
+                  >
+                    {day.label}
+                  </button>
+                ))}
+              </div>
+            </FormField>
+            {source("weekdays")}
+          </div>
           <DurationField
             id="checkin-reply-wait"
             label="Reply wait"
             hint="How long to wait for a reply before the first nudge."
-            value={replyWait}
+            note={source("reply_wait_seconds")}
+            value={form.reply_wait_seconds}
             presets={waitPresets}
-            onChange={setReplyWait}
+            onChange={(seconds) => edit("reply_wait_seconds", seconds)}
           />
           <DurationField
             id="checkin-final-reply-wait"
             label="Final reply wait"
             hint="How long to wait after the last escalation before the check-in closes as unanswered."
-            value={finalReplyWait}
+            note={source("final_reply_wait_seconds")}
+            value={form.final_reply_wait_seconds}
             presets={waitPresets}
-            onChange={setFinalReplyWait}
+            onChange={(seconds) => edit("final_reply_wait_seconds", seconds)}
           />
           <div>
             <Pill
@@ -152,24 +204,18 @@ export function CheckinPreferencesPanel({
               size="md"
               disabled={
                 !memberId ||
+                !loaded ||
                 noDays ||
-                replyWait === null ||
-                finalReplyWait === null ||
+                noZone ||
+                form.reply_wait_seconds === null ||
+                form.final_reply_wait_seconds === null ||
                 updateMutation.isPending
               }
               onClick={() => {
-                if (noDays || replyWait === null || finalReplyWait === null) {
+                if (!loaded || noDays || noZone) {
                   return;
                 }
-                updateMutation.mutate(
-                  preferenceChanges(loaded, {
-                    local_time: localTime,
-                    timezone,
-                    weekdays,
-                    reply_wait_seconds: replyWait,
-                    final_reply_wait_seconds: finalReplyWait,
-                  }),
-                );
+                updateMutation.mutate(preferenceChanges(loaded, form));
               }}
             >
               {updateMutation.isPending ? "Saving…" : "Save preference"}
@@ -200,13 +246,17 @@ export function CheckinPreferencesPanel({
                     {memberName(pref.developer_id, members)}
                   </div>
                   <div className="mt-0.5 text-[13px] text-grey-secondary">
-                    {pref.local_time} / {pref.timezone ?? "UTC"} / {weekdayLabels(pref.weekdays)}
+                    {pref.local_time} / {pref.timezone ?? pref.defaults.timezone} /{" "}
+                    {weekdayLabels(pref.weekdays)}
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     <RagChip tone="info">{formatDuration(pref.reply_wait_seconds)} wait</RagChip>
                     <RagChip tone="neutral">
                       {formatDuration(pref.final_reply_wait_seconds)} final wait
                     </RagChip>
+                  </div>
+                  <div className="mt-1.5 text-[12px] text-grey-secondary">
+                    {inheritedSummary(pref.inherited)}
                   </div>
                 </div>
               ))}
@@ -218,43 +268,150 @@ export function CheckinPreferencesPanel({
   );
 }
 
-type PreferenceForm = {
+/** "Team default · 4 h", or "Set for this member" with a way back to the default. */
+function InheritNote({
+  inherited,
+  defaultLabel,
+  onUseDefault,
+}: {
+  inherited: boolean;
+  defaultLabel: string;
+  onUseDefault: () => void;
+}) {
+  return (
+    <p className="mt-1.5 text-[12px] text-grey-secondary">
+      {inherited ? (
+        <>Team default · {defaultLabel}</>
+      ) : (
+        <>
+          Set for this member. The team default is {defaultLabel}.{" "}
+          <button type="button" onClick={onUseDefault} className="font-bold text-magenta">
+            Use team default
+          </button>
+        </>
+      )}
+    </p>
+  );
+}
+
+type PrefField = CheckInPreferenceField;
+
+/** What the form shows for each field; a wait is `null` while it can't be saved. */
+type FieldValues = {
   local_time: string;
   timezone: string;
   weekdays: number[];
-  reply_wait_seconds: number;
-  final_reply_wait_seconds: number;
+  reply_wait_seconds: number | null;
+  final_reply_wait_seconds: number | null;
 };
 
+type PreferenceForm = FieldValues & {
+  /** The fields that follow the team default. */
+  inherited: PrefField[];
+};
+
+const formFields: PrefField[] = [
+  "local_time",
+  "timezone",
+  "weekdays",
+  "reply_wait_seconds",
+  "final_reply_wait_seconds",
+];
+
+/** Shown before a member is picked; Save stays off until one is. */
+const emptyForm: PreferenceForm = {
+  local_time: "09:30",
+  timezone: "UTC",
+  weekdays: [0, 1, 2, 3, 4],
+  reply_wait_seconds: 14400,
+  final_reply_wait_seconds: 28800,
+  inherited: formFields,
+};
+
+function formFrom(pref: CheckinPreferenceResponse): PreferenceForm {
+  return {
+    local_time: pref.local_time.slice(0, 5),
+    timezone: pref.timezone ?? pref.defaults.timezone,
+    weekdays: pref.weekdays,
+    reply_wait_seconds: pref.reply_wait_seconds,
+    final_reply_wait_seconds: pref.final_reply_wait_seconds,
+    inherited: pref.inherited,
+  };
+}
+
+function defaultValue<F extends PrefField>(
+  defaults: CheckinDefaultsResponse,
+  field: F,
+): FieldValues[F] {
+  const values: FieldValues = {
+    local_time: defaults.local_time.slice(0, 5),
+    timezone: defaults.timezone,
+    weekdays: defaults.weekdays,
+    reply_wait_seconds: defaults.reply_wait_seconds,
+    final_reply_wait_seconds: defaults.final_reply_wait_seconds,
+  };
+  return values[field];
+}
+
+function sameValue(field: PrefField, left: unknown, right: unknown): boolean {
+  if (field === "weekdays") {
+    return [...(left as number[])].sort().join() === [...(right as number[])].sort().join();
+  }
+  return left === right;
+}
+
+function withInherited(inherited: PrefField[], field: PrefField, follows: boolean): PrefField[] {
+  const others = inherited.filter((item) => item !== field);
+  return follows ? formFields.filter((item) => item === field || others.includes(item)) : others;
+}
+
 /**
- * The fields that differ from what is stored. The PUT keeps anything left out,
- * so a save never rewrites a value the form only displays: a reply window, a
- * time stored with seconds, or a timezone left to the workspace default.
+ * The fields to send. A field going back to the team default is sent as
+ * `null`, a field set for the member is sent when it changed or was following
+ * the default before, and anything else is left out, so the PUT keeps it: a
+ * save never rewrites a value the form only displays, and never copies a team
+ * default in.
  */
 function preferenceChanges(
-  loaded: CheckinPreferenceResponse | null,
+  loaded: CheckinPreferenceResponse,
   form: PreferenceForm,
 ): CheckinPreferenceUpdateRequest {
-  if (!loaded) {
-    return form;
-  }
+  const stored = formFrom(loaded);
   const changes: CheckinPreferenceUpdateRequest = {};
-  if (form.local_time !== loaded.local_time.slice(0, 5)) {
-    changes.local_time = form.local_time;
-  }
-  if (form.timezone !== (loaded.timezone ?? "UTC")) {
-    changes.timezone = form.timezone;
-  }
-  if ([...form.weekdays].sort().join() !== [...loaded.weekdays].sort().join()) {
-    changes.weekdays = form.weekdays;
-  }
-  if (form.reply_wait_seconds !== loaded.reply_wait_seconds) {
-    changes.reply_wait_seconds = form.reply_wait_seconds;
-  }
-  if (form.final_reply_wait_seconds !== loaded.final_reply_wait_seconds) {
-    changes.final_reply_wait_seconds = form.final_reply_wait_seconds;
+  for (const field of formFields) {
+    const inheritedNow = form.inherited.includes(field);
+    const inheritedBefore = stored.inherited.includes(field);
+    if (inheritedNow) {
+      if (!inheritedBefore) Object.assign(changes, { [field]: null });
+    } else if (inheritedBefore || !sameValue(field, form[field], stored[field])) {
+      Object.assign(changes, { [field]: form[field] });
+    }
   }
   return changes;
+}
+
+/** A value as the form shows it: "09:30", "UTC", "Mon–Fri", "4 h". */
+function valueLabel(field: PrefField, value: unknown): string {
+  if (field === "weekdays") return weekdayLabels(value as number[]);
+  if (field === "reply_wait_seconds" || field === "final_reply_wait_seconds") {
+    return formatDuration(value as number);
+  }
+  return String(value);
+}
+
+const fieldNames: Record<PrefField, string> = {
+  local_time: "time",
+  timezone: "time zone",
+  weekdays: "days",
+  reply_wait_seconds: "reply wait",
+  final_reply_wait_seconds: "final wait",
+};
+
+/** Which of a member's values are the team's: "Team default: days, final wait". */
+function inheritedSummary(inherited: PrefField[]): string {
+  if (inherited.length === 0) return "All set for this member";
+  if (inherited.length === formFields.length) return "All team defaults";
+  return `Team default: ${inherited.map((field) => fieldNames[field]).join(", ")}`;
 }
 
 /** A member's name, falling back to the id before the directory has loaded. */

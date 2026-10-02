@@ -9,7 +9,6 @@ from pydantic import ValidationError
 from api.dtos import CheckinPreferenceUpdateRequest
 from core.domain.status import (
     CheckIn,
-    CheckInPreference,
     CheckInSignals,
     local_date,
     resolve_timezone,
@@ -40,19 +39,15 @@ def test_local_date_treats_naive_as_utc() -> None:
     assert local_date(naive, ZoneInfo("Asia/Kolkata")) == date(2026, 1, 11)
 
 
-def _preference(local_time: time) -> CheckInPreference:
-    return CheckInPreference(tenant_id="demo", developer_id="dev-1", local_time=local_time)
-
-
 def test_scheduled_at_converts_local_wall_time_to_utc() -> None:
-    scheduled = _scheduled_at(date(2026, 1, 10), _preference(time(9, 30)), "Asia/Kolkata")
+    scheduled = _scheduled_at(date(2026, 1, 10), time(9, 30), "Asia/Kolkata")
     # 09:30 IST (UTC+5:30) == 04:00 UTC.
     assert scheduled == datetime(2026, 1, 10, 4, 0, tzinfo=UTC)
 
 
 def test_scheduled_at_advances_past_spring_forward_gap() -> None:
     # 2026-03-08 02:30 America/New_York does not exist (clocks jump 02:00->03:00).
-    scheduled = _scheduled_at(date(2026, 3, 8), _preference(time(2, 30)), "America/New_York")
+    scheduled = _scheduled_at(date(2026, 3, 8), time(2, 30), "America/New_York")
     local = scheduled.astimezone(ZoneInfo("America/New_York"))
     # The non-existent wall time is advanced past the transition, not left at 02:30.
     assert local.hour == 3
@@ -60,7 +55,7 @@ def test_scheduled_at_advances_past_spring_forward_gap() -> None:
 
 
 def test_scheduled_at_falls_back_to_utc_for_unknown_zone() -> None:
-    scheduled = _scheduled_at(date(2026, 1, 10), _preference(time(9, 30)), "Not/AZone")
+    scheduled = _scheduled_at(date(2026, 1, 10), time(9, 30), "Not/AZone")
     assert scheduled == datetime(2026, 1, 10, 9, 30, tzinfo=UTC)
 
 

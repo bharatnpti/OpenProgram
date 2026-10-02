@@ -12,6 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.domain.auth import Role
 from core.domain.escalation import EscalationPolicy, default_escalation_policy
+from core.domain.status import CheckInDefaults
 
 # The Fernet key committed to `.env.example`/`docker-compose.yml` for local bring-up.
 # It is public, so it must never protect a shared (non-local) deployment.
@@ -691,6 +692,14 @@ class Settings(BaseSettings):
     @property
     def default_llm_model(self) -> str:
         return self.litellm_model
+
+    def checkin_defaults(self) -> CheckInDefaults:
+        """The team defaults a member's check-in follows for anything not set for them."""
+        return CheckInDefaults(
+            timezone=self.tenant_default_timezone,
+            reply_wait_seconds=self.checkin_reply_wait_seconds,
+            final_reply_wait_seconds=self.checkin_final_reply_wait_seconds,
+        )
 
     def escalation_policy(self) -> EscalationPolicy:
         """Resolve the tenant-default escalation ladder from settings."""
