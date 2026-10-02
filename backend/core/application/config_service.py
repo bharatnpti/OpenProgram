@@ -7,9 +7,12 @@ from datetime import UTC, date, datetime
 from core.domain.directory import DirectoryUser
 from core.domain.errors import GraphNotFound, OpenProgramError
 from core.domain.escalation import (
+    EscalationContact,
+    EscalationTarget,
     PodEscalationContacts,
     apply_escalation_contacts_to_metadata,
     escalation_contacts_from_metadata,
+    with_member_identity,
 )
 from core.domain.graph import (
     EdgeKind,
@@ -99,6 +102,44 @@ class UnmappedMember:
     id: str
     name: str
     missing: tuple[str, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class EscalationContactChoice:
+    """One escalation rung as an admin set it.
+
+    Normally a member, whose linked chat id and name are then stored. A bare chat
+    id is accepted when it belongs to a member, or when it is the one already
+    stored, so a contact saved before members could be picked survives an
+    unrelated edit.
+    """
+
+    member_id: str | None = None
+    chat_external_id: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class PodEscalationContactChoices:
+    scrum_master: EscalationContactChoice | None = None
+    manager: EscalationContactChoice | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class EscalationCandidate:
+    """A member an admin can pick as a pod escalation contact."""
+
+    member_id: str
+    name: str
+    chat_user_id: str | None
+    in_pod: bool
+    pod_role: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class _MemberIdentity:
+    id: str
+    name: str
+    chat_user_id: str | None
 
 
 class ConfigService:
@@ -597,17 +638,67 @@ class ConfigService:
     async def get_pod_escalation_contacts(
         self, tenant_id: str, pod_id: str
     ) -> PodEscalationContacts:
+        """Stored contacts, each resolved to the member it reaches now.
+
+        ``member_id`` on a returned contact is None when its chat id belongs to
+        no member. Reading never rewrites what is stored.
+        """
         node = await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
-        return escalation_contacts_from_metadata(node.metadata)
+        members = await self._member_identities(tenant_id)
+        return _current_contacts(escalation_contacts_from_metadata(node.metadata), members)
 
     async def set_pod_escalation_contacts(
-        self, tenant_id: str, pod_id: str, contacts: PodEscalationContacts
+        self, tenant_id: str, pod_id: str, choices: PodEscalationContactChoices
     ) -> PodEscalationContacts:
         node = await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
+        stored = escalation_contacts_from_metadata(node.metadata)
+        members = await self._member_identities(tenant_id)
+        contacts = PodEscalationContacts(
+            scrum_master=_chosen_contact(
+                EscalationTarget.SCRUM_MASTER,
+                choices.scrum_master,
+                stored.scrum_master,
+                members,
+            ),
+            manager=_chosen_contact(
+                EscalationTarget.MANAGER, choices.manager, stored.manager, members
+            ),
+        )
         metadata = dict(node.metadata)
         apply_escalation_contacts_to_metadata(metadata, contacts)
         await self._graph_repository.upsert_node(replace(node, metadata=metadata))
-        return contacts
+        return _current_contacts(contacts, members)
+
+    async def list_escalation_candidates(
+        self, tenant_id: str, pod_id: str, as_of: date
+    ) -> list[EscalationCandidate]:
+        """Every member, the pod's own first, with the chat id their link holds."""
+        await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
+        members = await self._member_identities(tenant_id)
+        roles: dict[str, str | None] = {}
+        for edge in await self._graph_repository.list_edges(
+            tenant_id, from_node_id=pod_id, kind=EdgeKind.CONTAINS
+        ):
+            if edge.to_node_id in members and edge.is_active_on(as_of):
+                roles[edge.to_node_id] = _clean_optional(edge.metadata.get("role"))
+        candidates = [
+            EscalationCandidate(
+                member_id=member.id,
+                name=member.name,
+                chat_user_id=member.chat_user_id,
+                in_pod=member.id in roles,
+                pod_role=roles.get(member.id),
+            )
+            for member in members.values()
+        ]
+        return sorted(
+            candidates,
+            key=lambda candidate: (
+                not candidate.in_pod,
+                candidate.name.lower(),
+                candidate.member_id,
+            ),
+        )
 
     async def search_directory(
         self,
@@ -757,6 +848,25 @@ class ConfigService:
         if self._identity_link_repository is None:
             raise ConfigValidationError("identity link repository is not configured")
         return self._identity_link_repository
+
+    async def _member_identities(self, tenant_id: str) -> dict[str, _MemberIdentity]:
+        """Every configured member with the chat id its identity link holds."""
+        links: dict[str, IdentityLink] = {}
+        if self._identity_link_repository is not None:
+            links = {
+                link.developer_id: link
+                for link in await self._identity_link_repository.list_identity_links(tenant_id)
+            }
+        members = await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER)
+        identities: dict[str, _MemberIdentity] = {}
+        for member in sorted(members, key=lambda node: node.id):
+            link = links.get(member.id)
+            identities[member.id] = _MemberIdentity(
+                id=member.id,
+                name=member.name,
+                chat_user_id=_clean_optional(link.chat_user_id if link else None),
+            )
+        return identities
 
     def _writeback_config_repository_or_raise(self) -> WriteBackConfigRepository:
         if self._writeback_config_repository is None:
@@ -1007,6 +1117,86 @@ def _target_ids(
         if node is not None and node.kind is kind and node.id not in ids:
             ids.append(node.id)
     return tuple(sorted(ids))
+
+
+def _member_with_chat_id(
+    members: Mapping[str, _MemberIdentity], chat_external_id: str
+) -> _MemberIdentity | None:
+    for member in members.values():
+        if member.chat_user_id == chat_external_id:
+            return member
+    return None
+
+
+def _current_contact(
+    contact: EscalationContact | None, members: Mapping[str, _MemberIdentity]
+) -> EscalationContact | None:
+    """Resolve a stored contact to the member it reaches now, if any."""
+    if contact is None:
+        return None
+    member = members.get(contact.member_id) if contact.member_id is not None else None
+    if member is None or member.chat_user_id is None:
+        member = _member_with_chat_id(members, contact.chat_external_id)
+    if member is None:
+        return replace(contact, member_id=None)
+    return with_member_identity(
+        replace(contact, member_id=member.id),
+        member_name=member.name,
+        chat_user_id=member.chat_user_id,
+    )
+
+
+def _current_contacts(
+    contacts: PodEscalationContacts, members: Mapping[str, _MemberIdentity]
+) -> PodEscalationContacts:
+    return PodEscalationContacts(
+        scrum_master=_current_contact(contacts.scrum_master, members),
+        manager=_current_contact(contacts.manager, members),
+    )
+
+
+def _chosen_contact(
+    target: EscalationTarget,
+    choice: EscalationContactChoice | None,
+    stored: EscalationContact | None,
+    members: Mapping[str, _MemberIdentity],
+) -> EscalationContact | None:
+    if choice is None:
+        return None
+    member_id = _clean_optional(choice.member_id)
+    if member_id is not None:
+        member = members.get(member_id)
+        if member is None:
+            raise GraphNotFound(f"member {member_id} was not found")
+        if member.chat_user_id is None:
+            raise ConfigValidationError(f"{member.name} has no chat ID linked")
+        return EscalationContact(
+            target=target,
+            chat_external_id=member.chat_user_id,
+            display_name=member.name,
+            member_id=member.id,
+        )
+    chat_external_id = _clean_optional(choice.chat_external_id)
+    if chat_external_id is None:
+        raise ConfigValidationError("an escalation contact needs a member")
+    member = _member_with_chat_id(members, chat_external_id)
+    if member is not None:
+        return EscalationContact(
+            target=target,
+            chat_external_id=chat_external_id,
+            display_name=member.name,
+            member_id=member.id,
+        )
+    if stored is not None and stored.chat_external_id == chat_external_id:
+        # Saved before contacts were picked from members: keep it as it was.
+        return stored
+    raise ConfigValidationError(f"chat ID {chat_external_id} is not linked to any member")
+
+
+def _clean_optional(value: object) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
 
 
 def _missing_identity_fields(link: IdentityLink | None) -> tuple[str, ...]:

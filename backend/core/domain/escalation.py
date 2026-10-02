@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 
@@ -15,9 +15,19 @@ class EscalationTarget(StrEnum):
 
 @dataclass(frozen=True, kw_only=True)
 class EscalationContact:
+    """A pod's human escalation target.
+
+    ``member_id`` points at the configured member the contact was picked from.
+    The stored ``chat_external_id`` and ``display_name`` are a snapshot of that
+    member taken on save; ``with_member_identity`` follows the member's current
+    identity link. Contacts saved before members could be picked carry only the
+    chat id.
+    """
+
     target: EscalationTarget
     chat_external_id: str
     display_name: str | None = None
+    member_id: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -97,8 +107,21 @@ ESCALATION_METADATA_KEYS: dict[EscalationTarget, tuple[str, str]] = {
     ),
 }
 
+# Scalar pod-node metadata key for the member each contact was picked from.
+ESCALATION_MEMBER_METADATA_KEYS: dict[EscalationTarget, str] = {
+    EscalationTarget.SCRUM_MASTER: "escalation_sm_member_id",
+    EscalationTarget.MANAGER: "escalation_manager_member_id",
+}
+
 # Metadata values are JSON scalars; only strings are meaningful here.
 type _MetaValue = str | int | float | bool | None
+
+
+def _metadata_string(metadata: Mapping[str, _MetaValue], key: str) -> str | None:
+    value = metadata.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
 
 
 def escalation_contact_from_metadata(
@@ -108,16 +131,14 @@ def escalation_contact_from_metadata(
     if keys is None:
         return None
     chat_key, name_key = keys
-    chat_external_id = metadata.get(chat_key)
-    if not isinstance(chat_external_id, str) or not chat_external_id.strip():
+    chat_external_id = _metadata_string(metadata, chat_key)
+    if chat_external_id is None:
         return None
-    display_name = metadata.get(name_key)
     return EscalationContact(
         target=target,
-        chat_external_id=chat_external_id.strip(),
-        display_name=display_name.strip()
-        if isinstance(display_name, str) and display_name.strip()
-        else None,
+        chat_external_id=chat_external_id,
+        display_name=_metadata_string(metadata, name_key),
+        member_id=_metadata_string(metadata, ESCALATION_MEMBER_METADATA_KEYS[target]),
     )
 
 
@@ -135,10 +156,32 @@ def apply_escalation_contacts_to_metadata(
 ) -> None:
     for target in (EscalationTarget.SCRUM_MASTER, EscalationTarget.MANAGER):
         chat_key, name_key = ESCALATION_METADATA_KEYS[target]
+        member_key = ESCALATION_MEMBER_METADATA_KEYS[target]
         contact = contacts.contact_for(target)
         if contact is None:
             metadata[chat_key] = None
             metadata[name_key] = None
+            metadata[member_key] = None
         else:
             metadata[chat_key] = contact.chat_external_id
             metadata[name_key] = contact.display_name
+            metadata[member_key] = contact.member_id
+
+
+def with_member_identity(
+    contact: EscalationContact,
+    *,
+    member_name: str | None,
+    chat_user_id: str | None,
+) -> EscalationContact:
+    """Follow a member-backed contact to the member's current chat id and name.
+
+    The identity link is the source of truth for a member's chat id, so a
+    contact picked from a member is delivered wherever that link points now.
+    ``member_name`` is None when the member no longer exists. A contact with no
+    member, or whose member is gone or has no chat id linked any more, keeps
+    the chat id stored when it was saved.
+    """
+    if contact.member_id is None or member_name is None or not chat_user_id:
+        return contact
+    return replace(contact, chat_external_id=chat_user_id, display_name=member_name)

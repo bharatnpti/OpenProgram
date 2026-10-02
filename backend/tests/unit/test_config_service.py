@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, time
 
 import pytest
@@ -7,13 +8,15 @@ import pytest
 from core.application.config_service import (
     ConfigConflict,
     ConfigService,
+    ConfigValidationError,
     DirectoryPersonView,
     DirectoryService,
+    EscalationContactChoice,
+    PodEscalationContactChoices,
 )
 from core.domain.directory import DirectoryUser
 from core.domain.errors import GraphNotFound
-from core.domain.escalation import EscalationContact, EscalationTarget, PodEscalationContacts
-from core.domain.graph import EdgeKind, EntityRef, NodeKind
+from core.domain.graph import EdgeKind, EntityRef, GraphEdge, NodeKind
 from core.domain.identity import IdentityLink
 from core.domain.rollup import NodeStatus, Rag
 from core.domain.status import CheckInPreference, StatusSource
@@ -375,10 +378,29 @@ async def test_add_member_from_directory_rejects_wrong_kind_conflict() -> None:
         await service.add_member_from_directory("demo", "U1001")
 
 
-async def test_pod_escalation_contacts_round_trip_and_clear() -> None:
+async def _escalation_service() -> tuple[InMemoryGraphStore, ConfigService]:
+    """A pod with a scrum master in it, a manager outside it, and one unlinked member."""
     store = InMemoryGraphStore()
-    service = ConfigService(store, store)
+    service = ConfigService(store, store, identity_link_repository=store)
     await service.create_node("demo", NodeKind.POD, "pod-1", "Pod")
+    for member_id, name in (("sam", "Sam SM"), ("mia", "Mia Manager"), ("nolink", "No Link")):
+        await service.create_node("demo", NodeKind.DEVELOPER, member_id, name)
+    await service.link_pod_member("demo", "pod-1", "sam", "scrum_master", date(2026, 1, 1))
+    await service.set_identity_link(
+        IdentityLink(tenant_id="demo", developer_id="sam", chat_user_id="U-SM")
+    )
+    await service.set_identity_link(
+        IdentityLink(tenant_id="demo", developer_id="mia", chat_user_id="U-MGR")
+    )
+    return store, service
+
+
+def _member(member_id: str) -> EscalationContactChoice:
+    return EscalationContactChoice(member_id=member_id)
+
+
+async def test_pod_escalation_contacts_picked_from_members_round_trip_and_clear() -> None:
+    store, service = await _escalation_service()
 
     empty = await service.get_pod_escalation_contacts("demo", "pod-1")
     assert empty.scrum_master is None
@@ -387,19 +409,18 @@ async def test_pod_escalation_contacts_round_trip_and_clear() -> None:
     saved = await service.set_pod_escalation_contacts(
         "demo",
         "pod-1",
-        PodEscalationContacts(
-            scrum_master=EscalationContact(
-                target=EscalationTarget.SCRUM_MASTER,
-                chat_external_id="U-SM",
-                display_name="Sam SM",
-            ),
-            manager=EscalationContact(
-                target=EscalationTarget.MANAGER,
-                chat_external_id="U-MGR",
-            ),
-        ),
+        PodEscalationContactChoices(scrum_master=_member("sam"), manager=_member("mia")),
     )
     assert saved.scrum_master is not None
+    assert saved.scrum_master.member_id == "sam"
+
+    pod = await store.get_node("demo", "pod-1")
+    assert pod is not None
+    # The chat id and name come from the member and its identity link, never typed.
+    assert pod.metadata["escalation_sm_member_id"] == "sam"
+    assert pod.metadata["escalation_sm_chat_external_id"] == "U-SM"
+    assert pod.metadata["escalation_sm_display_name"] == "Sam SM"
+    assert pod.metadata["escalation_manager_member_id"] == "mia"
 
     reloaded = await service.get_pod_escalation_contacts("demo", "pod-1")
     assert reloaded.scrum_master is not None
@@ -407,13 +428,135 @@ async def test_pod_escalation_contacts_round_trip_and_clear() -> None:
     assert reloaded.scrum_master.display_name == "Sam SM"
     assert reloaded.manager is not None
     assert reloaded.manager.chat_external_id == "U-MGR"
-    assert reloaded.manager.display_name is None
+    assert reloaded.manager.member_id == "mia"
 
-    cleared = await service.set_pod_escalation_contacts("demo", "pod-1", PodEscalationContacts())
+    cleared = await service.set_pod_escalation_contacts(
+        "demo", "pod-1", PodEscalationContactChoices()
+    )
     assert cleared.scrum_master is None
     reloaded_after_clear = await service.get_pod_escalation_contacts("demo", "pod-1")
     assert reloaded_after_clear.scrum_master is None
     assert reloaded_after_clear.manager is None
+    pod = await store.get_node("demo", "pod-1")
+    assert pod is not None
+    assert pod.metadata["escalation_sm_member_id"] is None
+
+
+async def test_pod_escalation_contacts_follow_the_members_identity_link() -> None:
+    _, service = await _escalation_service()
+    await service.set_pod_escalation_contacts(
+        "demo", "pod-1", PodEscalationContactChoices(scrum_master=_member("sam"))
+    )
+
+    await service.set_identity_link(
+        IdentityLink(tenant_id="demo", developer_id="sam", chat_user_id="U-SM-NEW")
+    )
+    await service.update_node("demo", "sam", NodeKind.DEVELOPER, name="Sam Renamed")
+
+    reloaded = await service.get_pod_escalation_contacts("demo", "pod-1")
+    assert reloaded.scrum_master is not None
+    assert reloaded.scrum_master.member_id == "sam"
+    assert reloaded.scrum_master.chat_external_id == "U-SM-NEW"
+    assert reloaded.scrum_master.display_name == "Sam Renamed"
+
+
+async def test_pod_escalation_contacts_reject_unlinked_or_unknown_members() -> None:
+    _, service = await _escalation_service()
+
+    with pytest.raises(ConfigValidationError, match="No Link has no chat ID linked"):
+        await service.set_pod_escalation_contacts(
+            "demo", "pod-1", PodEscalationContactChoices(scrum_master=_member("nolink"))
+        )
+    with pytest.raises(GraphNotFound, match="member ghost was not found"):
+        await service.set_pod_escalation_contacts(
+            "demo", "pod-1", PodEscalationContactChoices(manager=_member("ghost"))
+        )
+    with pytest.raises(ConfigValidationError, match="U-NOBODY is not linked to any member"):
+        await service.set_pod_escalation_contacts(
+            "demo",
+            "pod-1",
+            PodEscalationContactChoices(
+                manager=EscalationContactChoice(chat_external_id="U-NOBODY")
+            ),
+        )
+
+
+async def test_pod_escalation_contacts_keep_a_legacy_chat_id_contact() -> None:
+    store, service = await _escalation_service()
+    pod = await store.get_node("demo", "pod-1")
+    assert pod is not None
+    # Saved by hand before contacts were picked from members.
+    await store.upsert_node(
+        replace(
+            pod,
+            metadata={
+                **pod.metadata,
+                "escalation_sm_chat_external_id": "U-OLD",
+                "escalation_sm_display_name": "Old SM",
+                "escalation_manager_chat_external_id": "U-MGR",
+                "escalation_manager_display_name": "Typed Name",
+            },
+        )
+    )
+
+    opened = await service.get_pod_escalation_contacts("demo", "pod-1")
+    assert opened.scrum_master is not None
+    assert opened.scrum_master.chat_external_id == "U-OLD"
+    assert opened.scrum_master.display_name == "Old SM"
+    assert opened.scrum_master.member_id is None
+    # A typed chat id that is a member's linked one resolves to that member.
+    assert opened.manager is not None
+    assert opened.manager.member_id == "mia"
+    assert opened.manager.display_name == "Mia Manager"
+    pod = await store.get_node("demo", "pod-1")
+    assert pod is not None
+    assert pod.metadata.get("escalation_manager_member_id") is None  # reading never rewrites
+
+    saved = await service.set_pod_escalation_contacts(
+        "demo",
+        "pod-1",
+        PodEscalationContactChoices(
+            scrum_master=EscalationContactChoice(chat_external_id="U-OLD"),
+            manager=EscalationContactChoice(chat_external_id="U-MGR"),
+        ),
+    )
+    assert saved.scrum_master is not None
+    assert saved.scrum_master.chat_external_id == "U-OLD"
+    assert saved.scrum_master.display_name == "Old SM"
+    assert saved.scrum_master.member_id is None
+    pod = await store.get_node("demo", "pod-1")
+    assert pod is not None
+    assert pod.metadata["escalation_sm_chat_external_id"] == "U-OLD"
+    assert pod.metadata["escalation_sm_member_id"] is None
+    assert pod.metadata["escalation_manager_member_id"] == "mia"
+
+
+async def test_escalation_candidates_list_pod_members_first() -> None:
+    store, service = await _escalation_service()
+    await service.create_node("demo", NodeKind.DEVELOPER, "aaron", "Aaron Former")
+    await store.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id="pod-1",
+            to_node_id="aaron",
+            kind=EdgeKind.CONTAINS,
+            valid_from=date(2025, 1, 1),
+            valid_to=date(2026, 1, 15),
+            metadata={"role": "scrum_master"},
+        )
+    )
+    await service.link_pod_member("demo", "pod-1", "nolink", "developer", date(2026, 1, 1))
+
+    candidates = await service.list_escalation_candidates("demo", "pod-1", date(2026, 2, 1))
+
+    assert [(c.member_id, c.in_pod, c.pod_role, c.chat_user_id) for c in candidates] == [
+        ("nolink", True, "developer", None),
+        ("sam", True, "scrum_master", "U-SM"),
+        ("aaron", False, None, None),
+        ("mia", False, None, "U-MGR"),
+    ]
+    with pytest.raises(GraphNotFound):
+        await service.list_escalation_candidates("demo", "missing-pod", date(2026, 2, 1))
 
 
 async def test_pod_escalation_contacts_requires_pod_node() -> None:

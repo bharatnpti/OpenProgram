@@ -10,7 +10,10 @@ from core.application.ask_service import AskResponseView
 from core.application.config_service import (
     DirectoryItemView,
     DirectoryPersonView,
+    EscalationCandidate,
+    EscalationContactChoice,
     IdentityAutoMatchResult,
+    PodEscalationContactChoices,
     UnmappedMember,
 )
 from core.application.flow_metrics_service import (
@@ -44,7 +47,7 @@ from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
 from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.directory import DirectoryUser
-from core.domain.escalation import EscalationContact, EscalationTarget, PodEscalationContacts
+from core.domain.escalation import EscalationContact, PodEscalationContacts
 from core.domain.graph import EdgeKind, EntityRef, GraphEdge, GraphNode, GraphTree, NodeKind
 from core.domain.identity import IdentityLink
 from core.domain.risk import DriftFinding, RiskFinding
@@ -1768,6 +1771,44 @@ class EscalationContactDto(BaseModel):
 
     chat_external_id: str = Field(min_length=1)
     display_name: str | None = None
+    # The member this contact reaches; None when its chat id belongs to no member.
+    member_id: str | None = None
+
+
+class EscalationContactUpdateDto(BaseModel):
+    """Pick a member. A bare chat id is kept only if it is a member's or already stored."""
+
+    model_config = ConfigDict(frozen=True)
+
+    member_id: str | None = Field(default=None, min_length=1)
+    chat_external_id: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def require_member_or_chat_id(self) -> EscalationContactUpdateDto:
+        if self.member_id is None and self.chat_external_id is None:
+            raise ValueError("member_id or chat_external_id is required")
+        return self
+
+
+class EscalationCandidateResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    member_id: str
+    name: str
+    # None when the member has no chat id linked, so cannot be messaged.
+    chat_user_id: str | None
+    in_pod: bool
+    pod_role: str | None
+
+    @classmethod
+    def from_domain(cls, candidate: EscalationCandidate) -> EscalationCandidateResponse:
+        return cls(
+            member_id=candidate.member_id,
+            name=candidate.name,
+            chat_user_id=candidate.chat_user_id,
+            in_pod=candidate.in_pod,
+            pod_role=candidate.pod_role,
+        )
 
 
 class PodEscalationContactsResponse(BaseModel):
@@ -1791,15 +1832,13 @@ class PodEscalationContactsResponse(BaseModel):
 class PodEscalationContactsUpdateRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    scrum_master: EscalationContactDto | None = None
-    manager: EscalationContactDto | None = None
+    scrum_master: EscalationContactUpdateDto | None = None
+    manager: EscalationContactUpdateDto | None = None
 
-    def to_domain(self) -> PodEscalationContacts:
-        return PodEscalationContacts(
-            scrum_master=_escalation_contact_domain(
-                self.scrum_master, EscalationTarget.SCRUM_MASTER
-            ),
-            manager=_escalation_contact_domain(self.manager, EscalationTarget.MANAGER),
+    def to_choices(self) -> PodEscalationContactChoices:
+        return PodEscalationContactChoices(
+            scrum_master=_escalation_contact_choice(self.scrum_master),
+            manager=_escalation_contact_choice(self.manager),
         )
 
 
@@ -1809,19 +1848,16 @@ def _escalation_contact_dto(contact: EscalationContact | None) -> EscalationCont
     return EscalationContactDto(
         chat_external_id=contact.chat_external_id,
         display_name=contact.display_name,
+        member_id=contact.member_id,
     )
 
 
-def _escalation_contact_domain(
-    dto: EscalationContactDto | None, target: EscalationTarget
-) -> EscalationContact | None:
+def _escalation_contact_choice(
+    dto: EscalationContactUpdateDto | None,
+) -> EscalationContactChoice | None:
     if dto is None:
         return None
-    return EscalationContact(
-        target=target,
-        chat_external_id=dto.chat_external_id,
-        display_name=dto.display_name,
-    )
+    return EscalationContactChoice(member_id=dto.member_id, chat_external_id=dto.chat_external_id)
 
 
 class TenantWritebackResponse(BaseModel):

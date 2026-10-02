@@ -66,6 +66,8 @@ export type MyRequestRelation = components["schemas"]["MyRequestRelation"];
 export type CrossPersonRequestStatusUpdateRequest =
   components["schemas"]["CrossPersonRequestStatusUpdateRequest"];
 export type EscalationContactDto = components["schemas"]["EscalationContactDto"];
+export type EscalationContactUpdateDto = components["schemas"]["EscalationContactUpdateDto"];
+export type EscalationCandidateResponse = components["schemas"]["EscalationCandidateResponse"];
 export type PodEscalationContactsResponse = components["schemas"]["PodEscalationContactsResponse"];
 export type PodEscalationContactsUpdateRequest =
   components["schemas"]["PodEscalationContactsUpdateRequest"];
