@@ -37,7 +37,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = REPO_ROOT.parent / "openprogram-qa"
 TENANT = "qa"
 POSTGRES = ("docker", "exec", "-i", "openprogram-postgres-1", "psql", "-U", "openprogram")
-JIRA_KEY = re.compile(r"\b(CHK|IDP|INS)-\d+\b")
+JIRA_KEY = re.compile(r"\b(?:CHK|IDP|INS)-\d+\b")
 DONE = "done"
 
 
@@ -290,8 +290,7 @@ def section_gitlab(
                 notes.append(f"merged: GitLab {mr['state']}, OpenProgram {fact.get('merged')}")
             if want_dev and fact["developer"] != want_dev:
                 notes.append(f"author on {names.get(fact['developer'], fact['developer'])}")
-            if state in {"draft", "closed"}:
-                notes.append(f"{state} is stored as an open MR")
+            notes += _state_notes(mr, fact)
         if not keys:
             notes.append("no Jira key in branch or title")
         for note in notes:
@@ -308,6 +307,25 @@ def section_gitlab(
         )
     header = ["MR", "GitLab state", "Author", "Jira", "OpenProgram", "Check"]
     return ["## GitLab ↔ OpenProgram", "", *table(header, rows), ""], by_key
+
+
+def _state_notes(mr: dict[str, Any], fact: dict[str, Any]) -> list[str]:
+    """How the stored state differs from GitLab's: state, draft flag, branch."""
+    want_state = {"opened": "open", "locked": "open"}.get(mr["state"], mr["state"])
+    want_draft = bool(mr.get("draft"))
+    if "state" not in fact:
+        # Recorded before MR state was stored; refreshed when the MR next changes.
+        if want_state == "closed" or want_draft:
+            return [f"{'draft' if want_draft else want_state} stored without state (old fact)"]
+        return []
+    notes = []
+    if fact["state"] != want_state:
+        notes.append(f"state: GitLab {want_state}, OpenProgram {fact['state']}")
+    if bool(fact.get("draft")) != want_draft:
+        notes.append(f"draft: GitLab {want_draft}, OpenProgram {bool(fact.get('draft'))}")
+    if fact.get("source_branch") not in {None, mr["source_branch"]}:
+        notes.append(f"branch: GitLab {mr['source_branch']}, OpenProgram {fact['source_branch']}")
+    return notes
 
 
 def section_reconcile(
