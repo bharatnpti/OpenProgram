@@ -228,6 +228,7 @@ async def test_container_slack_socket_readiness_follows_worker_heartbeat(
             directory_provider="fake",
             llm_provider="fake",
             workflow_provider="fake",
+            slack_inbound_transport="socket",
             slack_bot_token="xoxb-test",
             slack_app_token="xapp-test",
         ),
@@ -244,6 +245,7 @@ def test_registry_builds_slack_socket_listener_only_for_container_socket_mode() 
             "secret_key": SECRET_KEY,
             "runtime_mode": "container",
             "chat_provider": "slack",
+            "slack_inbound_transport": "socket",
             "slack_bot_token": "xoxb-test",
             "slack_app_token": "xapp-test",
         }
