@@ -1,0 +1,56 @@
+frontend-v2/src/features/admin/DataSourcesPanel.tsx
+  s_386bf853700fa5::t_e7770012b266cc 336-338
+backend/core/application/sync_status_service.py
+  s_386bf853700fa5::t_e0d1ce9efd1a0c 165
+  s_386bf853700fa5::t_6e9eb0ad667406 311,324,327-331,334,339-346
+  s_386bf853700fa5::t_44162c3c150f13 122
+  s_386bf853700fa5::t_4ffcf586ab44dc 140
+  s_386bf853700fa5::t_eea3b58028879c 13-16
+backend/api/dtos.py
+  s_386bf853700fa5::t_eee67453561733 1748
+  s_386bf853700fa5::t_d03a9c78dcdf39 1729
+backend/tests/unit/test_sync_status.py
+  s_386bf853700fa5::t_0eecf60febef66 559-561
+  s_386bf853700fa5::t_1ac5ca895dda9e 15,36,39,302-333,516-558,562-612,670-714
+  s_386bf853700fa5::t_5c4255f29b4b56 715-716
+features.md
+  s_386bf853700fa5::t_03d04e42401fe1 174
+frontend/src/api/openapi.json
+  s_386bf853700fa5::t_620c1842a19c56 10885-10894
+  s_386bf853700fa5::t_e6d399daa0c049 10895
+backend/core/domain/sync_status.py
+  s_386bf853700fa5::t_30ec825ab6d4e0 103-105
+  s_386bf853700fa5::t_6fa2817b396a90 119
+  s_386bf853700fa5::t_a94fcf9d0f5317 11
+  s_386bf853700fa5::t_c358cf65757753 151-152
+  s_386bf853700fa5::t_2d35e1c58e9947 77-86
+backend/infra/registry.py
+  s_386bf853700fa5::t_0eecf60febef66 23
+  s_386bf853700fa5::t_51238bfbb58339 34,844,848-870
+  s_386bf853700fa5::t_1cd117c8239ef1 871
+frontend/src/api/generated.ts
+  s_386bf853700fa5::t_8b55506a9f21ab 2990-2991
+frontend-v2/src/api/generated.ts
+  s_386bf853700fa5::t_32de3ce16b3b7f 2986-2987
+backend/core/application/sync_recording.py
+  s_386bf853700fa5::t_a863f7e6ebe312 49-62
+  s_386bf853700fa5::t_4bb50b5f952a8a 26-27
+frontend-v2/src/api/openapi.json
+  s_386bf853700fa5::t_06aadac4fddb99 10885-10895
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b1d8177233d147ae98ca269b3dbd1f36aadb5f88",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
