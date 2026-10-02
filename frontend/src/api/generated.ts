@@ -2884,6 +2884,23 @@ export interface components {
       /** Applies To Pod Ids */
       applies_to_pod_ids: string[];
     };
+    /**
+     * SelfCheckinPreferenceUpdateRequest
+     * @description The part of their own check-in preference a person may change.
+     *
+     *     Only the days they are asked and their time zone. The reply windows stay
+     *     with an admin (``PUT /config/members/{id}/checkin-preference``) because they
+     *     decide when a missed check-in reaches the scrum master and manager. The
+     *     check-in time is left out because check-ins go out at one tenant-wide time,
+     *     so a personal time would change nothing. A request carrying any other field
+     *     is rejected, never silently ignored.
+     */
+    SelfCheckinPreferenceUpdateRequest: {
+      /** Timezone */
+      timezone?: string | null;
+      /** Weekdays */
+      weekdays?: number[] | null;
+    };
     /** StatusCorrectionRequest */
     StatusCorrectionRequest: {
       /** Summary */
@@ -6181,7 +6198,7 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["CheckinPreferenceUpdateRequest"];
+        "application/json": components["schemas"]["SelfCheckinPreferenceUpdateRequest"];
       };
     };
     responses: {
