@@ -1,0 +1,24 @@
+backend/infra/adapters/llm/litellm_provider.py
+  s_01f7ef64da2d25::t_15bade587423f8 30-34,121-134
+  s_01f7ef64da2d25::t_6efad24d48d642 24-25,151-155,165-167
+  s_01f7ef64da2d25::t_4ba0018db16ffe 120
+  s_01f7ef64da2d25::t_1eb77ed81ae809 35
+backend/tests/unit/test_litellm_provider.py
+  s_01f7ef64da2d25::t_6efad24d48d642 149-180,206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "97c7576503fa3a1acb1f8cd632b3e1a03c481837",
+  "prompts": {},
+  "sessions": {
+    "s_01f7ef64da2d25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2e3b65a-bb8b-4a19-85f1-b33d77807471",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}

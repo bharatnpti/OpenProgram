@@ -1,0 +1,37 @@
+backend/api/dependencies.py
+  s_386bf853700fa5::t_ffd99069538b66 209
+backend/tests/unit/test_config_service.py
+  s_386bf853700fa5::t_27310d18e568d9 7-12,192-263
+frontend-v2/src/features/delivery/DeliveryDetail.tsx
+  s_386bf853700fa5::t_f154fffdcedc9e 268-270,295-305
+backend/api/dtos.py
+  s_386bf853700fa5::t_79e190fd087ab5 12,412-429,447,466
+backend/core/application/config_service.py
+  s_386bf853700fa5::t_0faeafdb731743 45-63,80,773,777,830,905,910-941,956-981
+backend/tests/unit/test_api.py
+  s_386bf853700fa5::t_2ecc11ddf54a27 1168-1213
+frontend-v2/src/api/generated.ts
+  s_386bf853700fa5::t_bf4954bf29701c 2039-2056
+frontend-v2/src/api/openapi.json
+  s_386bf853700fa5::t_9afff96e4e5c9d 8231-8237,8255-8256,8260-8297
+frontend/src/api/generated.ts
+  s_386bf853700fa5::t_bf1d8b551b9bc2 2043-2060
+frontend/src/api/openapi.json
+  s_386bf853700fa5::t_75b6d8d71a380a 8231-8237,8255-8256,8260-8297
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2d486f64e0a9635cadcea5f0f093e941780e5bbd",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}

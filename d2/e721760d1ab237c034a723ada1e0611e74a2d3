@@ -1,0 +1,31 @@
+backend/core/application/persona_views.py
+  s_3c921e7a3f5001::t_58929f5d39e899 664-669,675-699,701,705-709,717-722,725,727-751
+  s_faafef13df0102::t_0dbb44f0ebd497 403-405,433-435,661-663,670-674,700,702-704,710-716,723-724,726,752
+  s_faafef13df0102::t_df7070508ca421 753-754
+backend/tests/unit/test_persona_views.py
+  s_faafef13df0102::t_0dbb44f0ebd497 13,20,141-145,162-169,176,183-253,778-786,791-792
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d2e721760d1ab237c034a723ada1e0611e74a2d3",
+  "prompts": {},
+  "sessions": {
+    "s_3c921e7a3f5001": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "396c1021-babe-4d13-ad49-4f006a262f02",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    },
+    "s_faafef13df0102": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4b68406f-83dc-4b20-bc08-414732a151ca",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+backend/tests/unit/test_graph_api.py
+  s_cf6265cb994e26::t_f6262912a2ebc6 1-40
+backend/tests/integration/test_container_backed_phase0.py
+  s_cf6265cb994e26::t_3bc5002e495bd7 41,349-355
+backend/api/routers/graph.py
+  s_cf6265cb994e26::t_993a562938e201 6,13,25-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e9e12e38838cb6e099b89946cf1bd67dfe7c49a5",
+  "prompts": {},
+  "sessions": {
+    "s_cf6265cb994e26": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e787ee6b-2d24-470e-8e2c-33a810fc06d4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}

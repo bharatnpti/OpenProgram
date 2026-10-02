@@ -1,0 +1,25 @@
+frontend-v2/src/features/today/ProductOwnerToday.tsx
+  s_db98bf649daf00::t_2502349f8f4e9a 10,120-134,136,138-145
+frontend-v2/src/features/today/ScrumMasterToday.tsx
+  s_db98bf649daf00::t_5613a2b02e84b5 10,128-146,148-174,177-185
+frontend-v2/src/features/today/DeveloperToday.tsx
+  s_db98bf649daf00::t_daeb8f13fa3d26 13,234
+frontend-v2/src/features/today/WaitingOnYou.tsx
+  s_db98bf649daf00::t_daeb8f13fa3d26 1-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6e64acf7aaab70999175024ce340a9954f3e0525",
+  "prompts": {},
+  "sessions": {
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}

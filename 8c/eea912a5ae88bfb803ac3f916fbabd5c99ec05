@@ -1,0 +1,40 @@
+frontend-v2/src/features/today/ScrumMasterToday.tsx
+  s_01f7ef64da2d25::t_435d89f5de6c8a 2,8-9,21-22,28-42,65-82
+  s_01f7ef64da2d25::t_b00380baef74ba 118
+frontend-v2/src/features/coordination/RequestsBoard.tsx
+  s_01f7ef64da2d25::t_a482362b1b5fbd 5,118-122,129
+  s_e3c35ff5a3ad90::t_0105e99d699b53 21,23-26,28-32,49-57,59-100,102-104
+frontend-v2/src/features/today/DeveloperToday.tsx
+  s_e3c35ff5a3ad90::t_1095cfaf063ffd 29
+  s_01f7ef64da2d25::t_b00380baef74ba 67-69,272-274
+  s_e3c35ff5a3ad90::t_68fbe60d9bb0d3 14,257-260,417-422
+  s_01f7ef64da2d25::t_6a142fde18d341 8
+  s_01f7ef64da2d25::t_7570ca80d15d13 113-116,124,391-416
+frontend-v2/src/features/delivery/DeliveryDetail.tsx
+  s_01f7ef64da2d25::t_75577ef322d9d6 129,185,202-216,218-219,233,251,253-255
+  s_01f7ef64da2d25::t_b00380baef74ba 33-38,101,108,114-117,128,130,221-226,235-245
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8ceea912a5ae88bfb803ac3f916fbabd5c99ec05",
+  "prompts": {},
+  "sessions": {
+    "s_01f7ef64da2d25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2e3b65a-bb8b-4a19-85f1-b33d77807471",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    },
+    "s_e3c35ff5a3ad90": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99d1d5d1-7de9-44f3-bd50-c1e127bf1ad9",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}

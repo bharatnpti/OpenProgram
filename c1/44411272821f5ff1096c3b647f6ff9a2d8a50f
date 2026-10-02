@@ -1,0 +1,23 @@
+backend/core/application/cross_person_service.py
+  s_db98bf649daf00::t_fa20292f04d336 292-295,300
+backend/tests/unit/test_portfolio_feed_risk.py
+  s_db98bf649daf00::t_28c23bfb843dac 89-128
+backend/core/application/portfolio_feed_service.py
+  s_db98bf649daf00::t_fa20292f04d336 153-159,161-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c144411272821f5ff1096c3b647f6ff9a2d8a50f",
+  "prompts": {},
+  "sessions": {
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}

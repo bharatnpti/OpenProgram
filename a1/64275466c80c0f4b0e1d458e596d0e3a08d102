@@ -1,0 +1,25 @@
+backend/core/application/status_collector.py
+  s_01f7ef64da2d25::t_5aad5255a0d7e4 1628-1632,1655-1665,1668-1670
+  s_01f7ef64da2d25::t_5236b77fd319fb 163,1666-1667
+  s_01f7ef64da2d25::t_9e7ee55bc3b9fa 1671
+backend/core/application/portfolio_feed_service.py
+  s_01f7ef64da2d25::t_2909226843c9c6 124-126
+backend/tests/unit/test_status_collector.py
+  s_01f7ef64da2d25::t_ca03928f863ddd 480-482
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a164275466c80c0f4b0e1d458e596d0e3a08d102",
+  "prompts": {},
+  "sessions": {
+    "s_01f7ef64da2d25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2e3b65a-bb8b-4a19-85f1-b33d77807471",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}

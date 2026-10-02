@@ -1,0 +1,43 @@
+frontend-v2/src/features/coordination/RequestsBoard.tsx
+  s_db98bf649daf00::t_03be215e5327a7 35-41,114-115,120-161
+  s_db98bf649daf00::t_896b83f57b7cfa 162
+frontend/src/api/generated.ts
+  s_db98bf649daf00::t_cb168c27a4ecf0 1310-1317,2326-2331,6471-6473
+backend/tests/unit/test_cross_person_api.py
+  s_db98bf649daf00::t_96b9b0bf718790 75-100
+backend/core/application/cross_person_service.py
+  s_db98bf649daf00::t_73e3230babf64c 183-200
+frontend-v2/src/api/schema.ts
+  s_db98bf649daf00::t_ebe45574a20517 65
+frontend-v2/src/api/generated.ts
+  s_db98bf649daf00::t_cb168c27a4ecf0 1310-1317,2322-2327,6467-6469
+frontend-v2/src/api/openapi.json
+  s_db98bf649daf00::t_cb168c27a4ecf0 5931,5934-5942,9133-9137
+  s_db98bf649daf00::t_f9bc14de1ca20f 9138
+frontend-v2/src/api/client.ts
+  s_db98bf649daf00::t_ebe45574a20517 19,213
+  s_db98bf649daf00::t_d4d8cd0e96f612 212
+frontend/src/api/openapi.json
+  s_db98bf649daf00::t_cb168c27a4ecf0 9135
+  s_db98bf649daf00::t_5699776649a3d7 5931,5934-5942,9133-9134,9136-9137
+  s_db98bf649daf00::t_1d073919c4e6be 9138
+backend/api/routers/persona.py
+  s_db98bf649daf00::t_b7d3f7a111f44f 231-238,260,262-267,269-280,282
+  s_db98bf649daf00::t_1251cf736ab3a9 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ed3b800568f62780db6818de048fe4eb3aad6977",
+  "prompts": {},
+  "sessions": {
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+backend/core/application/status_collector.py
+  s_386bf853700fa5::t_ed8ab132316bbf 20,899-905,913,940,960-975,2542-2630
+backend/tests/unit/test_status_collector.py
+  s_386bf853700fa5::t_720957d4305e51 2312-2468
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8bd6183eab6e3acb9d74ff1e031d61424a17d633",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}

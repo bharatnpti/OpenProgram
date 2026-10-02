@@ -1,0 +1,20 @@
+plans/06-demo-qa-findings.md
+  s_4d2c603f9ae4cc::t_e3250144773d24 74-75
+  s_4d2c603f9ae4cc::t_baac8f855ee497 518-681
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6546be447252dd1046f0ab1c40a66747a9172450",
+  "prompts": {},
+  "sessions": {
+    "s_4d2c603f9ae4cc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "824f918d-1b2a-4c0d-8ce3-8997774f4ff6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}

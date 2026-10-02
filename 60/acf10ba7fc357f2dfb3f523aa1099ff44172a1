@@ -1,0 +1,23 @@
+frontend-v2/src/features/coordination/BriefsColumn.tsx
+  s_386bf853700fa5::t_dfb22965cfc489 2,7-15,17-20,24-26,31-34,36-37,42-45,49-68,82,92-96
+frontend-v2/src/features/today/ManagerExecToday.tsx
+  s_386bf853700fa5::t_150caa3eded07a 9,12,154-156,199,236-238,240-271,275-283,285-302
+frontend-v2/src/lib/briefs.ts
+  s_386bf853700fa5::t_e11ca22cb5464e 1-38,47-50,59-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "60acf10ba7fc357f2dfb3f523aa1099ff44172a1",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}

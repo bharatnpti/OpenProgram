@@ -1,0 +1,20 @@
+frontend-v2/src/components/shell/AvatarMenu.tsx
+  s_db98bf649daf00::t_e52042886b73e5 18
+  s_db98bf649daf00::t_691d86cf6fba3b 87-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2b5cc3526921adfecca7d1495923c3e67e81ddaf",
+  "prompts": {},
+  "sessions": {
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}

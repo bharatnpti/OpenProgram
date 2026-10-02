@@ -1,0 +1,20 @@
+backend/core/application/status_parsing.py
+  s_01f7ef64da2d25::t_65ae62fabf00e1 270-273
+  s_01f7ef64da2d25::t_40d6852ba70a7d 243-246
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ba27082502a916c33314d41a58845ebbcefb5f8f",
+  "prompts": {},
+  "sessions": {
+    "s_01f7ef64da2d25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2e3b65a-bb8b-4a19-85f1-b33d77807471",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}

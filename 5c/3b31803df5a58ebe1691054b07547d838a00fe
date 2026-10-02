@@ -1,0 +1,20 @@
+backend/infra/persistence/postgres_graph.py
+  s_cf6265cb994e26::t_7383dbaadc6bcc 575
+  s_cf6265cb994e26::t_a83d8e9f3ac41b 558
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5c3b31803df5a58ebe1691054b07547d838a00fe",
+  "prompts": {},
+  "sessions": {
+    "s_cf6265cb994e26": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e787ee6b-2d24-470e-8e2c-33a810fc06d4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
