@@ -1,0 +1,21 @@
+backend/core/application/tools/issue_tracker.py
+  s_386bf853700fa5::t_05005a14509fc4 6,48-55,62,66-71
+backend/tests/unit/test_tool_loop.py
+  s_386bf853700fa5::t_38decb514488f3 6,16,20,126-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c38979befef88523a7d515eb685396cbd6eaa3ec",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
