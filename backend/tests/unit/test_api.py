@@ -8,6 +8,7 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from datetime import time as time_of_day
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -17,11 +18,11 @@ from api.main import create_app
 from config.settings import Settings
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.errors import ProviderConfigurationError
-from core.domain.graph import EntityRef, NodeKind, Task
+from core.domain.graph import Developer, EntityRef, NodeKind, Task
 from core.domain.integrations import Issue, IssueState
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 from core.domain.rollup import NodeStatus, Rag
-from core.domain.status import StatusSource
+from core.domain.status import CheckInPreference, StatusSource
 from core.domain.workflows import (
     CheckinScheduleConfig,
     ConversationPurgeScheduleConfig,
@@ -1111,22 +1112,23 @@ def test_checkin_preference_routes_merge_and_validate(settings: Settings) -> Non
         )
     )
     with TestClient(app) as client:
+        asyncio.run(
+            app.state.registry.graph_repository().upsert_node(
+                Developer(tenant_id=settings.tenant_id, id="dev-asha", name="Asha")
+            )
+        )
         default_response = client.get("/me/checkin-preference")
         updated_response = client.put(
             "/me/checkin-preference",
-            json={
-                "local_time": "10:15:00",
-                "weekdays": [0, 2, 4],
-                "reply_wait_seconds": 30,
-            },
+            json={"timezone": "Europe/Berlin", "weekdays": [0, 2, 4]},
         )
         invalid_weekday = client.put(
             "/me/checkin-preference",
             json={"weekdays": [7]},
         )
-        invalid_wait = client.put(
+        invalid_timezone = client.put(
             "/me/checkin-preference",
-            json={"reply_wait_seconds": -1},
+            json={"timezone": "Mars/Olympus_Mons"},
         )
 
     assert default_response.status_code == 200
@@ -1141,14 +1143,187 @@ def test_checkin_preference_routes_merge_and_validate(settings: Settings) -> Non
     assert updated_response.status_code == 200
     assert updated_response.json() == {
         "developer_id": "dev-asha",
-        "local_time": "10:15:00",
-        "timezone": "Asia/Kolkata",
+        "local_time": "09:30:00",
+        "timezone": "Europe/Berlin",
         "weekdays": [0, 2, 4],
-        "reply_wait_seconds": 30,
+        "reply_wait_seconds": 60,
         "final_reply_wait_seconds": 120,
     }
     assert invalid_weekday.status_code == 422
-    assert invalid_wait.status_code == 422
+    assert invalid_timezone.status_code == 422
+
+
+def test_self_checkin_preference_refuses_reply_windows_and_time(settings: Settings) -> None:
+    # The reply windows decide when the scrum master and manager hear about a
+    # missed check-in, so a person can't stretch their own; and check-ins go
+    # out at one team time, so a personal time is refused rather than ignored.
+    app = create_app(
+        settings=settings.model_copy(
+            update={"dev_principal_roles": "dev", "dev_principal_subject": "dev-noah"}
+        )
+    )
+    stored = CheckInPreference(
+        tenant_id=settings.tenant_id,
+        developer_id="dev-noah",
+        timezone="Europe/Berlin",
+        weekdays=(0, 1, 2, 3, 4),
+        reply_wait_seconds=14400,
+        final_reply_wait_seconds=28800,
+    )
+    with TestClient(app) as client:
+        registry = app.state.registry
+        asyncio.run(
+            registry.graph_repository().upsert_node(
+                Developer(tenant_id=settings.tenant_id, id="dev-noah", name="Noah")
+            )
+        )
+        asyncio.run(registry.status_repository().record_checkin_preference(stored))
+        reply_wait = client.put("/me/checkin-preference", json={"reply_wait_seconds": 999999})
+        with_days = client.put(
+            "/me/checkin-preference",
+            json={"weekdays": [0], "final_reply_wait_seconds": 60},
+        )
+        local_time = client.put("/me/checkin-preference", json={"local_time": "07:00:00"})
+        unknown = client.put("/me/checkin-preference", json={"escalate": False})
+        after = asyncio.run(
+            registry.status_repository().checkin_preference_for(settings.tenant_id, "dev-noah")
+        )
+
+    assert reply_wait.status_code == 422
+    assert "reply_wait_seconds is set by an admin" in reply_wait.json()["detail"][0]["msg"]
+    assert with_days.status_code == 422
+    assert "final_reply_wait_seconds is set by an admin" in with_days.json()["detail"][0]["msg"]
+    assert local_time.status_code == 422
+    assert "local_time is not set per person" in local_time.json()["detail"][0]["msg"]
+    assert unknown.status_code == 422
+    # Nothing was stored, not even the valid days sent beside a window.
+    assert after == stored
+
+
+def test_self_checkin_preference_refused_save_writes_no_row(settings: Settings) -> None:
+    app = create_app(
+        settings=settings.model_copy(
+            update={"dev_principal_roles": "dev", "dev_principal_subject": "dev-asha"}
+        )
+    )
+    with TestClient(app) as client:
+        registry = app.state.registry
+        asyncio.run(
+            registry.graph_repository().upsert_node(
+                Developer(tenant_id=settings.tenant_id, id="dev-asha", name="Asha")
+            )
+        )
+        refused = client.put(
+            "/me/checkin-preference",
+            json={"reply_wait_seconds": 60, "final_reply_wait_seconds": 60},
+        )
+        stored = asyncio.run(
+            registry.status_repository().checkin_preference_for(settings.tenant_id, "dev-asha")
+        )
+
+    assert refused.status_code == 422
+    assert stored is None
+
+
+def test_admin_checkin_preference_still_sets_reply_windows(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        member = client.post("/config/members", json={"id": "dev-ada", "name": "Ada"})
+        saved = client.put(
+            "/config/members/dev-ada/checkin-preference",
+            json={"reply_wait_seconds": 7200, "final_reply_wait_seconds": 21600},
+        )
+        stored = asyncio.run(
+            app.state.registry.status_repository().checkin_preference_for(
+                settings.tenant_id, "dev-ada"
+            )
+        )
+
+    assert member.status_code == 201
+    assert saved.status_code == 200
+    assert saved.json()["reply_wait_seconds"] == 7200
+    assert saved.json()["final_reply_wait_seconds"] == 21600
+    assert stored is not None
+    assert stored.reply_wait_seconds == 7200
+    assert stored.final_reply_wait_seconds == 21600
+
+
+def test_checkin_preference_needs_a_member_record(settings: Settings) -> None:
+    # Check-ins go only to member nodes, so a person with none has no
+    # preference to read, and a save must not write a row nothing reads.
+    app = create_app(
+        settings=settings.model_copy(
+            update={"dev_principal_roles": "admin", "dev_principal_subject": "admin-only"}
+        )
+    )
+    with TestClient(app) as client:
+        read = client.get("/me/checkin-preference")
+        save = client.put("/me/checkin-preference", json={"weekdays": [0, 1]})
+        stored = asyncio.run(
+            app.state.registry.status_repository().checkin_preference_for(
+                settings.tenant_id, "admin-only"
+            )
+        )
+
+    assert read.status_code == 404
+    assert save.status_code == 404
+    assert stored is None
+
+
+def test_checkin_preference_partial_save_keeps_the_other_stored_values(
+    settings: Settings,
+) -> None:
+    # The console sends only the fields a developer changed, so a save must
+    # leave every other stored value exactly as it was -- the admin sliders
+    # once cut stored 4 h / 8 h reply windows to 1 h / 2 h on an unchanged save.
+    app = create_app(
+        settings=settings.model_copy(
+            update={"dev_principal_roles": "dev", "dev_principal_subject": "dev-noah"}
+        )
+    )
+    stored = CheckInPreference(
+        tenant_id=settings.tenant_id,
+        developer_id="dev-noah",
+        local_time=time_of_day(8, 5),
+        timezone="Europe/Berlin",
+        weekdays=(4, 0, 1),
+        reply_wait_seconds=14400,
+        final_reply_wait_seconds=28800,
+    )
+    with TestClient(app) as client:
+        registry = app.state.registry
+        asyncio.run(
+            registry.graph_repository().upsert_node(
+                Developer(tenant_id=settings.tenant_id, id="dev-noah", name="Noah")
+            )
+        )
+        asyncio.run(registry.status_repository().record_checkin_preference(stored))
+        before = client.get("/me/checkin-preference")
+        days_only = client.put("/me/checkin-preference", json={"weekdays": [0, 1, 2, 3]})
+        zone_only = client.put("/me/checkin-preference", json={"timezone": "Asia/Kolkata"})
+        after = asyncio.run(
+            registry.status_repository().checkin_preference_for(settings.tenant_id, "dev-noah")
+        )
+
+    assert before.json() == {
+        "developer_id": "dev-noah",
+        "local_time": "08:05:00",
+        "timezone": "Europe/Berlin",
+        "weekdays": [4, 0, 1],
+        "reply_wait_seconds": 14400,
+        "final_reply_wait_seconds": 28800,
+    }
+    assert days_only.status_code == 200
+    assert zone_only.status_code == 200
+    assert after == CheckInPreference(
+        tenant_id=settings.tenant_id,
+        developer_id="dev-noah",
+        local_time=time_of_day(8, 5),
+        timezone="Asia/Kolkata",
+        weekdays=(0, 1, 2, 3),
+        reply_wait_seconds=14400,
+        final_reply_wait_seconds=28800,
+    )
 
 
 def test_portfolio_heatmap_accepts_program_root_id(settings: Settings) -> None:

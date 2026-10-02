@@ -60,6 +60,7 @@ import type {
   ReadyResponse,
   LogoutResponse,
   MyStatusResponse,
+  SelfCheckinPreferenceUpdateRequest,
   StatusCorrectionRequest,
   WorkstreamFlowResponse,
   WorkstreamProgressResponse,
@@ -256,7 +257,7 @@ export const apiClient = {
       body: input,
     }),
   checkinPreference: () => requestJson<CheckinPreferenceResponse>("/me/checkin-preference"),
-  updateCheckinPreference: (input: CheckinPreferenceUpdateRequest) =>
+  updateCheckinPreference: (input: SelfCheckinPreferenceUpdateRequest) =>
     requestJson<CheckinPreferenceResponse>("/me/checkin-preference", {
       method: "PUT",
       body: input,

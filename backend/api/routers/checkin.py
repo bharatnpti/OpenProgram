@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from typing import Annotated
 
@@ -13,8 +14,8 @@ from api.dependencies import (
 )
 from api.dtos import (
     CheckinPreferenceResponse,
-    CheckinPreferenceUpdateRequest,
     MyStatusResponse,
+    SelfCheckinPreferenceUpdateRequest,
     StatusCorrectionRequest,
 )
 from config.settings import Settings
@@ -23,6 +24,7 @@ from core.application.self_status_service import SelfStatusService
 from core.domain.auth import Principal
 from core.domain.blockers import BlockerReport
 from core.domain.errors import AuthorizationDenied
+from core.domain.graph import NodeKind
 from core.domain.status import CheckInPreference
 from infra.registry import ServiceRegistry
 
@@ -109,47 +111,33 @@ async def get_checkin_preference(
     settings: Annotated[Settings, Depends(get_settings_from_request)],
 ) -> CheckinPreferenceResponse:
     _ensure_own_work(principal)
+    await _ensure_member(registry, principal)
     preference = await _preference_for(registry, settings, principal)
     return CheckinPreferenceResponse.from_domain(preference)
 
 
 @router.put("/me/checkin-preference", response_model=CheckinPreferenceResponse)
 async def update_checkin_preference(
-    request: CheckinPreferenceUpdateRequest,
+    request: SelfCheckinPreferenceUpdateRequest,
     principal: Annotated[Principal, Depends(get_current_principal)],
     registry: Annotated[ServiceRegistry, Depends(get_registry)],
     settings: Annotated[Settings, Depends(get_settings_from_request)],
 ) -> CheckinPreferenceResponse:
     _ensure_own_work(principal)
+    await _ensure_member(registry, principal)
     existing = await _preference_for(registry, settings, principal)
     fields = request.model_fields_set
-    local_time = (
-        request.local_time
-        if "local_time" in fields and request.local_time is not None
-        else existing.local_time
-    )
-    weekdays = (
-        tuple(request.weekdays)
-        if "weekdays" in fields and request.weekdays is not None
-        else existing.weekdays
-    )
-    updated = CheckInPreference(
-        tenant_id=principal.tenant_id,
-        developer_id=principal.subject,
-        local_time=local_time,
+    # Only days and time zone are the person's to change. Everything else --
+    # check-in time, reply windows, write-back consent -- is carried over as
+    # stored; the request model refuses those fields outright.
+    updated = replace(
+        existing,
         timezone=request.timezone if "timezone" in fields else existing.timezone,
-        weekdays=weekdays,
-        reply_wait_seconds=(
-            request.reply_wait_seconds
-            if "reply_wait_seconds" in fields and request.reply_wait_seconds is not None
-            else existing.reply_wait_seconds
+        weekdays=(
+            tuple(request.weekdays)
+            if "weekdays" in fields and request.weekdays is not None
+            else existing.weekdays
         ),
-        final_reply_wait_seconds=(
-            request.final_reply_wait_seconds
-            if "final_reply_wait_seconds" in fields and request.final_reply_wait_seconds is not None
-            else existing.final_reply_wait_seconds
-        ),
-        write_back_consent=existing.write_back_consent,
     )
     await registry.status_repository().record_checkin_preference(updated)
     return CheckinPreferenceResponse.from_domain(updated)
@@ -173,6 +161,21 @@ async def _preference_for(
         reply_wait_seconds=settings.checkin_reply_wait_seconds,
         final_reply_wait_seconds=settings.checkin_final_reply_wait_seconds,
     )
+
+
+async def _ensure_member(registry: ServiceRegistry, principal: Principal) -> None:
+    """Only a configured member is asked to check in, so only one has a preference.
+
+    Check-ins go to member (developer) nodes, so a preference saved for anyone
+    else is never read: answering with tenant defaults told them they had a
+    schedule, and a save wrote a row nothing uses.
+    """
+    node = await registry.graph_repository().get_node(principal.tenant_id, principal.subject)
+    if node is None or node.kind is not NodeKind.DEVELOPER:
+        raise HTTPException(
+            status_code=404,
+            detail="check-in preference is not available: no member record for this person",
+        )
 
 
 def _ensure_own_work(principal: Principal) -> None:

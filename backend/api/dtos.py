@@ -2107,3 +2107,68 @@ class StatusCorrectionRequest(BaseModel):
         if value is not None and len(value) > 20:
             raise ValueError("blocker_items must contain at most 20 items")
         return value
+
+
+# Fields a person may not set on their own check-in preference, with the reason
+# the self endpoint gives when a request carries one.
+_NOT_SELF_SET_CHECKIN_FIELDS = {
+    "reply_wait_seconds": (
+        "is set by an admin: the reply windows decide when the scrum master and "
+        "manager hear about a missed check-in"
+    ),
+    "final_reply_wait_seconds": (
+        "is set by an admin: the reply windows decide when the scrum master and "
+        "manager hear about a missed check-in"
+    ),
+    "local_time": "is not set per person: check-ins go out at one time for the whole team",
+}
+
+
+class SelfCheckinPreferenceUpdateRequest(BaseModel):
+    """The part of their own check-in preference a person may change.
+
+    Only the days they are asked and their time zone. The reply windows stay
+    with an admin (``PUT /config/members/{id}/checkin-preference``) because they
+    decide when a missed check-in reaches the scrum master and manager. The
+    check-in time is left out because check-ins go out at one tenant-wide time,
+    so a personal time would change nothing. A request carrying any other field
+    is rejected, never silently ignored.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    timezone: str | None = None
+    weekdays: list[int] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_fields_not_set_by_self(cls, data: object) -> object:
+        if isinstance(data, dict):
+            refused = [
+                f"{name} {reason}"
+                for name, reason in _NOT_SELF_SET_CHECKIN_FIELDS.items()
+                if name in data
+            ]
+            if refused:
+                raise ValueError("; ".join(refused))
+        return data
+
+    @field_validator("weekdays")
+    @classmethod
+    def validate_weekdays(cls, value: list[int] | None) -> list[int] | None:
+        if value is None:
+            return value
+        if any(day < 0 or day > 6 for day in value):
+            raise ValueError("weekdays must be in the range 0..6")
+        return value
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("timezone must be a valid IANA timezone") from exc
+        return value

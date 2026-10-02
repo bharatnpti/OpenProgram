@@ -5007,7 +5007,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CheckinPreferenceUpdateRequest"
+                "$ref": "#/components/schemas/SelfCheckinPreferenceUpdateRequest"
               }
             }
           }
@@ -10631,6 +10631,39 @@
           "applies_to_pod_ids"
         ],
         "title": "RollupFactorDto"
+      },
+      "SelfCheckinPreferenceUpdateRequest": {
+        "properties": {
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "weekdays": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekdays"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SelfCheckinPreferenceUpdateRequest",
+        "description": "The part of their own check-in preference a person may change.\n\nOnly the days they are asked and their time zone. The reply windows stay\nwith an admin (``PUT /config/members/{id}/checkin-preference``) because they\ndecide when a missed check-in reaches the scrum master and manager. The\ncheck-in time is left out because check-ins go out at one tenant-wide time,\nso a personal time would change nothing. A request carrying any other field\nis rejected, never silently ignored."
       },
       "StatusCorrectionRequest": {
         "properties": {
