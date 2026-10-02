@@ -100,10 +100,15 @@ with 401.
 
 When a developer's check-in reply asks something of another person ("need Liam
 to review the PR"), OpenProgram resolves that person in the directory and DMs
-them once about the request. Their reply in that DM thread acknowledges the
-request, or resolves it, in which case the developer is told. A person who
-cannot be found, or is ambiguous, gets no DM and the request stays visible to
-the developer who asked.
+them once about the request. The DM names who asked, what kind of ask it is
+(review, input or dependency) and a short note, for example "Dana Ortiz asked
+for your review: API schema review". It never quotes the developer's reply, and
+the note is cut to fit the 320-character outbound DM cap. Their reply in that DM
+thread acknowledges the request, or resolves it, in which case the developer is
+told; a reply after that changes nothing. A person who cannot be found, is
+ambiguous, or is the developer themselves gets no DM, and the request stays
+visible to the developer who asked. If Slack fails to deliver the DM the request
+is still recorded; it just has not been sent.
 
 This needs no extra Slack scope: it uses the same `chat:write` and `im:write`
 the check-ins use, and `im:history` to read the reply. To record these requests

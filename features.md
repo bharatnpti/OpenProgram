@@ -416,8 +416,9 @@ Functional requirements:
 
 - The system shall detect asks of other people in check-in replies (a dependency, a review, or input) and record each as a cross-person request with its requester, note, and source check-in.
 - The system shall match the named person to a directory user, and shall mark a request whose person cannot be matched as needing resolution.
-- When counterpart notification is on (it is by default; an operator can switch it off with `OPENPROGRAM_CROSS_PERSON_AUTO_NOTIFY=false`), the system shall send the counterpart one DM about the request, and shall send nobody a DM about a request whose person was not matched.
-- The counterpart's reply shall acknowledge or resolve the request, and the requester shall be told when it is resolved.
+- When counterpart notification is on (it is by default; an operator can switch it off with `OPENPROGRAM_CROSS_PERSON_AUTO_NOTIFY=false`), the system shall send the counterpart one DM about the request. The DM shall name who asked, the kind of ask (review, input, or dependency) and a short note, kept under the outbound DM length cap, and shall never quote the requester's reply.
+- The system shall send no DM about a request whose person was not matched or is the requester. Such a request stays visible to the requester, and a DM that fails to send shall not lose the request.
+- The counterpart's reply shall acknowledge or resolve the request, and the requester shall be told when it is resolved. A reply after the request is resolved shall change nothing.
 - The system shall record each status change as a fact, so requests appear in the activity feed.
 - Coordination shall show requests in Open, Acknowledged, and Needs resolution columns, naming requester and counterpart, with Acknowledge and Resolve actions on each card.
 - Team and executive readers shall see the portfolio-wide board; a developer shall see the requests waiting on them.

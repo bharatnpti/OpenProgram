@@ -6,10 +6,16 @@ import pytest
 
 from config.settings import Settings
 from core.application.cross_person_service import CrossPersonRequestService
-from core.domain.cross_person import CrossPersonRequestResolution, CrossPersonRequestStatus
+from core.application.status_collector import OUTBOUND_DM_MAX_CHARS
+from core.domain.cross_person import (
+    CrossPersonRequest,
+    CrossPersonRequestResolution,
+    CrossPersonRequestStatus,
+)
 from core.domain.directory import DirectoryUser
+from core.domain.errors import ProviderUnavailable
 from core.domain.graph import EntityRef, NodeKind
-from core.domain.messaging import ChatUserRef, InboundMessage
+from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from core.domain.status import CrossPersonMention
 from core.ports.chat import ChatProvider
 from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
@@ -322,17 +328,252 @@ async def test_registry_wires_the_auto_notify_setting_into_the_service(
     assert created[0].status is CrossPersonRequestStatus.OPEN
 
 
-def _resolution() -> CrossPersonRequestResolution:
+_REQUESTER = DirectoryUser(
+    tenant_id="demo",
+    external_id="U-dev",
+    display_name="Dana Ortiz",
+    email="dana@example.com",
+)
+_ALICE = DirectoryUser(
+    tenant_id="demo",
+    external_id="U-alice",
+    display_name="Alice Chen",
+    email="alice@example.com",
+)
+
+
+async def _service_with(
+    *users: DirectoryUser, chat: ChatProvider | None = None
+) -> tuple[CrossPersonRequestService, InMemoryGraphStore, FakeChatProvider]:
+    store = InMemoryGraphStore()
+    directory = InMemoryDirectoryUserRepository(store)
+    await directory.upsert_users(list(users))
+    fake = FakeChatProvider()
+    service = CrossPersonRequestService(
+        repository=store,
+        chat_provider=chat or fake,
+        directory_repository=directory,
+        time_series_repository=store,
+    )
+    return service, store, fake
+
+
+async def _record(
+    service: CrossPersonRequestService,
+    *resolutions: CrossPersonRequestResolution,
+    requester_id: str = "dev-1",
+    requester_chat_ref: str | None = "U-dev",
+    source: str = "corr-1",
+) -> list[CrossPersonRequest]:
+    return await service.record_from_checkin(
+        tenant_id="demo",
+        requester_id=requester_id,
+        requester_chat_ref=requester_chat_ref,
+        source_correlation_id=source,
+        resolutions=resolutions,
+        observed_at=datetime(2026, 1, 10, 9, 10, tzinfo=UTC),
+    )
+
+
+async def test_counterpart_dm_names_the_requester_and_carries_only_the_extracted_ask() -> None:
+    service, _, chat = await _service_with(_ALICE, _REQUESTER)
+
+    await _record(service, _resolution())
+
+    assert [message.text for message in chat.sent] == [
+        "Dana Ortiz asked for your review: API schema review\n"
+        "Reply in this thread to acknowledge, or say when it is done."
+    ]
+    # Neither the requester's internal id nor their chat id is what the reader sees.
+    assert "dev-1" not in chat.sent[0].text
+    assert "U-dev" not in chat.sent[0].text
+
+
+@pytest.mark.parametrize(
+    ("kind", "lead"),
+    [
+        ("review", "asked for your review"),
+        ("input", "asked for your input"),
+        ("dependency", "is waiting on you"),
+    ],
+)
+async def test_counterpart_dm_words_each_kind_of_ask(kind: str, lead: str) -> None:
+    service, _, chat = await _service_with(_ALICE, _REQUESTER)
+
+    await _record(service, _resolution(kind=kind, note="the deploy key"))
+
+    assert chat.sent[0].text.startswith(f"Dana Ortiz {lead}: the deploy key\n")
+
+
+async def test_counterpart_dm_finds_the_requester_by_chat_id_when_member_id_differs() -> None:
+    service, _, chat = await _service_with(_ALICE, _REQUESTER)
+
+    await _record(service, _resolution(), requester_id="member-17", requester_chat_ref="U-dev")
+
+    assert chat.sent[0].text.startswith("Dana Ortiz asked for your review")
+
+
+async def test_counterpart_dm_does_not_show_an_unknown_requester_as_an_id() -> None:
+    service, _, chat = await _service_with(_ALICE)
+
+    await _record(service, _resolution(), requester_id="member-17", requester_chat_ref="U-ghost")
+
+    assert chat.sent[0].text.startswith("A teammate asked for your review: API schema review\n")
+    assert "member-17" not in chat.sent[0].text
+    assert "U-ghost" not in chat.sent[0].text
+
+
+async def test_counterpart_dm_keeps_a_runaway_note_short() -> None:
+    service, _, chat = await _service_with(_ALICE, _REQUESTER)
+    pasted_reply = "Blocked until the schema is reviewed, " + "and so on " * 200
+
+    await _record(service, _resolution(note=pasted_reply))
+
+    text = chat.sent[0].text
+    assert len(text) <= OUTBOUND_DM_MAX_CHARS
+    assert "…\n" in text
+    assert "and so on " * 20 not in text
+    assert text.count("\n") == 1
+
+
+async def test_counterpart_dm_flattens_a_multiline_note_onto_one_line() -> None:
+    service, _, chat = await _service_with(_ALICE, _REQUESTER)
+
+    await _record(service, _resolution(note="API schema\n\n  review   please"))
+
+    assert chat.sent[0].text.splitlines()[0] == (
+        "Dana Ortiz asked for your review: API schema review please"
+    )
+
+
+@pytest.mark.parametrize(
+    ("requester_id", "requester_chat_ref"),
+    [("U-alice", "U-x"), ("dev-1", "U-alice")],
+    ids=["same-member-id", "same-chat-id"],
+)
+async def test_asking_yourself_sends_no_dm_but_the_request_is_kept(
+    requester_id: str, requester_chat_ref: str
+) -> None:
+    service, store, chat = await _service_with(_ALICE)
+
+    created = await _record(
+        service, _resolution(), requester_id=requester_id, requester_chat_ref=requester_chat_ref
+    )
+
+    assert chat.sent == []
+    assert created[0].status is CrossPersonRequestStatus.OPEN
+    assert created[0].notify_message_id is None
+    assert await store.get("demo", created[0].id) == created[0]
+
+
+class _FailingChat:
+    """A chat provider that cannot deliver to some people."""
+
+    def __init__(self, unreachable: set[str]) -> None:
+        self.unreachable = unreachable
+        self.sent: list[tuple[str, str]] = []
+
+    async def send_dm(self, user: ChatUserRef, message: OutboundMessage) -> str:
+        if user.external_id in self.unreachable:
+            raise ProviderUnavailable("slack is down for this person")
+        self.sent.append((user.external_id, message.text))
+        return f"msg-{user.external_id}"
+
+    async def open_thread(self, user: ChatUserRef) -> str:
+        return f"thread-{user.external_id}"
+
+    async def fetch_reply(self, thread_id: str) -> InboundMessage | None:
+        return None
+
+
+async def test_a_failed_dm_does_not_lose_the_request_or_the_ones_after_it() -> None:
+    bob = DirectoryUser(tenant_id="demo", external_id="U-bob", display_name="Bob Lee")
+    chat = _FailingChat(unreachable={"U-alice"})
+    service, store, _ = await _service_with(_ALICE, bob, _REQUESTER, chat=chat)
+
+    created = await _record(
+        service,
+        _resolution(),
+        _resolution(name="Bob Lee", counterpart_id="U-bob", note="deploy key"),
+    )
+
+    assert [request.counterpart_id for request in created] == ["U-alice", "U-bob"]
+    assert [request.status for request in created] == [CrossPersonRequestStatus.OPEN] * 2
+    # Alice could not be reached, so nothing claims she was told; Bob was.
+    assert created[0].notify_message_id is None
+    assert created[1].notify_message_id == "msg-U-bob"
+    assert [user for user, _ in chat.sent] == ["U-bob"]
+    assert {r.id for r in await store.list_for_requester("demo", "dev-1")} == {
+        request.id for request in created
+    }
+
+
+async def test_a_dm_that_failed_is_sent_when_the_request_is_recorded_again() -> None:
+    chat = _FailingChat(unreachable={"U-alice"})
+    service, _, _ = await _service_with(_ALICE, chat=chat)
+    first = await _record(service, _resolution())
+    assert first[0].notify_message_id is None
+
+    chat.unreachable.clear()
+    second = await _record(service, _resolution())
+
+    assert second[0].id == first[0].id
+    assert second[0].notify_message_id == "msg-U-alice"
+    assert len(chat.sent) == 1
+
+
+async def test_a_late_reply_does_not_reopen_or_renotify_a_resolved_request() -> None:
+    service, store, chat = await _service_with(_ALICE, _REQUESTER)
+    request = (await _record(service, _resolution()))[0]
+    resolved = await service.handle_counterpart_reply(
+        _counterpart_reply(request.notify_correlation_id or "", "done and approved"), request
+    )
+    assert resolved.status is CrossPersonRequestStatus.RESOLVED
+    dms_after_resolution = len(chat.sent)
+
+    for text in ("thanks!", "done, merged it too", "on it"):
+        again = await service.handle_counterpart_reply(
+            _counterpart_reply(request.notify_correlation_id or "", text), resolved
+        )
+        assert again.status is CrossPersonRequestStatus.RESOLVED
+
+    stored = await store.get("demo", request.id)
+    assert stored is not None
+    assert stored.status is CrossPersonRequestStatus.RESOLVED
+    assert len(chat.sent) == dms_after_resolution
+
+
+async def test_resolving_twice_from_the_console_tells_the_requester_once() -> None:
+    service, _, chat = await _service_with(_ALICE, _REQUESTER)
+    request = (await _record(service, _resolution()))[0]
+
+    first = await service.update_status("demo", request.id, CrossPersonRequestStatus.RESOLVED)
+    second = await service.update_status("demo", request.id, CrossPersonRequestStatus.RESOLVED)
+
+    assert first is not None
+    assert second is not None
+    assert second.status is CrossPersonRequestStatus.RESOLVED
+    told = [m for m in chat.sent if m.metadata.get("purpose") == "cross_person_request_resolved"]
+    assert len(told) == 1
+
+
+def _resolution(
+    *,
+    name: str = "Alice Chen",
+    counterpart_id: str = "U-alice",
+    kind: str = "review",
+    note: str = "API schema review",
+) -> CrossPersonRequestResolution:
     return CrossPersonRequestResolution(
         mention=CrossPersonMention(
-            raw_name="Alice Chen",
-            kind="review",
-            note="API schema review",
+            raw_name=name,
+            kind=kind,
+            note=note,
             email="alice@example.com",
         ),
         status=CrossPersonRequestStatus.OPEN,
-        counterpart_id="U-alice",
-        counterpart_display_name="Alice Chen",
+        counterpart_id=counterpart_id,
+        counterpart_display_name=name,
         counterpart_email="alice@example.com",
     )
 
