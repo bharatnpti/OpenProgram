@@ -42,7 +42,6 @@ import { Dialog } from "../components/ui/dialog";
 import { Field } from "../components/ui/field";
 import { Input } from "../components/ui/input";
 import { Select } from "../components/ui/select";
-import { Slider } from "../components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Textarea } from "../components/ui/textarea";
 
@@ -1085,22 +1084,69 @@ function CheckinPreferencesPanel({
   onChanged: () => Promise<void>;
 }) {
   const [memberId, setMemberId] = useState("");
-  const [localTime, setLocalTime] = useState("09:00");
   const [timezone, setTimezone] = useState("UTC");
   const [weekdays, setWeekdays] = useState<number[]>([0, 1, 2, 3, 4]);
-  const [replyWait, setReplyWait] = useState(300);
-  const [finalReplyWait, setFinalReplyWait] = useState(900);
+  const [replyWaitAmount, setReplyWaitAmount] = useState("5");
+  const [replyWaitUnit, setReplyWaitUnit] = useState<"s" | "min" | "h">("min");
+  const [finalReplyWaitAmount, setFinalReplyWaitAmount] = useState("15");
+  const [finalReplyWaitUnit, setFinalReplyWaitUnit] = useState<"s" | "min" | "h">("min");
+  const [loaded, setLoaded] = useState<CheckinPreferenceResponse | null>(null);
+
+  const durationUnits: ReadonlyArray<{ unit: "s" | "min" | "h"; seconds: number }> = [
+    { unit: "h", seconds: 3600 },
+    { unit: "min", seconds: 60 },
+    { unit: "s", seconds: 1 },
+  ];
+
+  const splitDuration = (seconds: number) => {
+    if (seconds > 0) {
+      const fit = durationUnits.find((option) => seconds % option.seconds === 0);
+      if (fit) {
+        return { amount: String(seconds / fit.seconds), unit: fit.unit };
+      }
+    }
+    return { amount: String(seconds), unit: "s" as const };
+  };
+
+  const parseDuration = (parts: { amount: string; unit: "s" | "min" | "h" }) => {
+    const amount = parts.amount.trim();
+    if (!/^\d+$/.test(amount)) return null;
+    const unitSeconds = durationUnits.find((option) => option.unit === parts.unit)?.seconds ?? 1;
+    return Number(amount) * unitSeconds;
+  };
 
   const updateMutation = useMutation({
-    mutationFn: () =>
-      apiClient.updateConfigMemberCheckinPreference(memberId, {
-        local_time: localTime,
-        timezone,
-        weekdays,
-        reply_wait_seconds: replyWait,
-        final_reply_wait_seconds: finalReplyWait,
-      }),
-    onSuccess: async () => {
+    mutationFn: () => {
+      const replyWait = parseDuration({ amount: replyWaitAmount, unit: replyWaitUnit });
+      const finalReplyWait = parseDuration({
+        amount: finalReplyWaitAmount,
+        unit: finalReplyWaitUnit,
+      });
+      if (replyWait === null || finalReplyWait === null) {
+        return Promise.reject(new Error("Invalid duration"));
+      }
+      // Compare against what the form started from -- the stored preference, or
+      // the form's own starting values for a member with none -- so a field left
+      // alone is never sent and keeps following the team default.
+      const baseline = loaded ?? {
+        timezone: "UTC",
+        weekdays: [0, 1, 2, 3, 4],
+        reply_wait_seconds: 300,
+        final_reply_wait_seconds: 900,
+      };
+      const sameDays = (a: number[], b: number[]) =>
+        [...a].sort((x, y) => x - y).join() === [...b].sort((x, y) => x - y).join();
+      const changes: Record<string, unknown> = {};
+      if (timezone !== (baseline.timezone ?? "UTC")) changes.timezone = timezone;
+      if (!sameDays(weekdays, baseline.weekdays)) changes.weekdays = weekdays;
+      if (replyWait !== baseline.reply_wait_seconds) changes.reply_wait_seconds = replyWait;
+      if (finalReplyWait !== baseline.final_reply_wait_seconds) {
+        changes.final_reply_wait_seconds = finalReplyWait;
+      }
+      return apiClient.updateConfigMemberCheckinPreference(memberId, changes);
+    },
+    onSuccess: async (saved) => {
+      setLoaded(saved);
       await onChanged();
       toast.success("Check-in preference saved.");
     },
@@ -1110,7 +1156,7 @@ function CheckinPreferencesPanel({
   return (
     <DataPanel
       title="Check-in Preferences"
-      description="Set local check-in timing, weekdays, and reply windows per member."
+      description="Set weekdays and reply windows per member."
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-4">
@@ -1122,34 +1168,30 @@ function CheckinPreferencesPanel({
                 setMemberId(nextMember);
                 const pref = preferences.find((item) => item.developer_id === nextMember);
                 if (pref) {
-                  setLocalTime(pref.local_time.slice(0, 5));
+                  setLoaded(pref);
                   setTimezone(pref.timezone ?? "UTC");
                   setWeekdays(pref.weekdays);
-                  setReplyWait(pref.reply_wait_seconds);
-                  setFinalReplyWait(pref.final_reply_wait_seconds);
+                  const replyWaitParts = splitDuration(pref.reply_wait_seconds);
+                  setReplyWaitAmount(replyWaitParts.amount);
+                  setReplyWaitUnit(replyWaitParts.unit);
+                  const finalWaitParts = splitDuration(pref.final_reply_wait_seconds);
+                  setFinalReplyWaitAmount(finalWaitParts.amount);
+                  setFinalReplyWaitUnit(finalWaitParts.unit);
+                } else {
+                  setLoaded(null);
                 }
               }}
               items={members}
               placeholder="Select member"
             />
           </Field>
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Local time" htmlFor="checkin-time">
-              <Input
-                id="checkin-time"
-                type="time"
-                value={localTime}
-                onChange={(event) => setLocalTime(event.target.value)}
-              />
-            </Field>
-            <Field label="Timezone" htmlFor="checkin-timezone">
-              <Input
-                id="checkin-timezone"
-                value={timezone}
-                onChange={(event) => setTimezone(event.target.value)}
-              />
-            </Field>
-          </div>
+          <Field label="Timezone" htmlFor="checkin-timezone">
+            <Input
+              id="checkin-timezone"
+              value={timezone}
+              onChange={(event) => setTimezone(event.target.value)}
+            />
+          </Field>
           <Field label="Weekdays">
             <div className="flex flex-wrap gap-2">
               {weekdayOptions.map((day) => (
@@ -1168,24 +1210,50 @@ function CheckinPreferencesPanel({
               ))}
             </div>
           </Field>
-          <Slider
-            label="Reply wait (seconds)"
-            min={60}
-            max={3600}
-            step={60}
-            value={replyWait}
-            valueLabel={`${replyWait}s`}
-            onChange={(event) => setReplyWait(Number(event.target.value))}
-          />
-          <Slider
-            label="Final reply wait (seconds)"
-            min={60}
-            max={7200}
-            step={60}
-            value={finalReplyWait}
-            valueLabel={`${finalReplyWait}s`}
-            onChange={(event) => setFinalReplyWait(Number(event.target.value))}
-          />
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium text-foreground">Reply wait</label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  value={replyWaitAmount}
+                  onChange={(event) => setReplyWaitAmount(event.target.value)}
+                  className="flex-1"
+                  min="0"
+                />
+                <Select
+                  value={replyWaitUnit}
+                  onChange={(event) => setReplyWaitUnit(event.target.value as "s" | "min" | "h")}
+                >
+                  <option value="s">seconds</option>
+                  <option value="min">minutes</option>
+                  <option value="h">hours</option>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-foreground">Final reply wait</label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  value={finalReplyWaitAmount}
+                  onChange={(event) => setFinalReplyWaitAmount(event.target.value)}
+                  className="flex-1"
+                  min="0"
+                />
+                <Select
+                  value={finalReplyWaitUnit}
+                  onChange={(event) =>
+                    setFinalReplyWaitUnit(event.target.value as "s" | "min" | "h")
+                  }
+                >
+                  <option value="s">seconds</option>
+                  <option value="min">minutes</option>
+                  <option value="h">hours</option>
+                </Select>
+              </div>
+            </div>
+          </div>
           <Button
             type="button"
             variant="primary"
@@ -1203,15 +1271,24 @@ function CheckinPreferencesPanel({
             <EmptyState title="No preferences yet" />
           ) : (
             <div className="max-h-[32rem] divide-y divide-border overflow-y-auto rounded-md border border-border scrollbar-thin">
-              {preferences.map((pref) => (
-                <div key={pref.developer_id} className="px-3 py-2 text-sm">
-                  <div className="font-medium">{pref.developer_id}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {pref.local_time} / {pref.timezone ?? "UTC"} / {pref.weekdays.join(",")}
+              {preferences.map((pref) => {
+                const replyWaitDisplay = splitDuration(pref.reply_wait_seconds);
+                const finalWaitDisplay = splitDuration(pref.final_reply_wait_seconds);
+                return (
+                  <div key={pref.developer_id} className="px-3 py-2 text-sm">
+                    <div className="font-medium">{pref.developer_id}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {pref.timezone ?? "UTC"} / {pref.weekdays.join(",")}
+                    </div>
+                    <Badge tone="info">
+                      {replyWaitDisplay.amount} {replyWaitDisplay.unit} wait
+                    </Badge>
+                    <Badge tone="info">
+                      {finalWaitDisplay.amount} {finalWaitDisplay.unit} final
+                    </Badge>
                   </div>
-                  <Badge tone="info">{pref.reply_wait_seconds}s wait</Badge>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
