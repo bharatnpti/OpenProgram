@@ -1,31 +1,45 @@
 backend/api/dtos.py
   s_386bf853700fa5::t_6ff30b87c94e0c 58-64,1831-1835
+  s_9b3db2e266ac33::t_37ab486b7b178c 58-64,1831-1835
 backend/api/routers/config.py
   s_386bf853700fa5::t_f2214272603118 1093,1098,1109,1112
+  s_9b3db2e266ac33::t_9de1a2068486b5 1093,1098,1109,1112
 backend/core/application/config_service.py
   s_386bf853700fa5::t_54cdcf49d372c8 26,584,588-590,592,595
+  s_9b3db2e266ac33::t_d034b59e5787d8 26,584,588-590,592,595
 backend/core/domain/writeback.py
   s_386bf853700fa5::t_fcb1d7855fba45 54-73
+  s_9b3db2e266ac33::t_44b72853e0ae0b 54-73
 backend/tests/unit/test_api.py
   s_386bf853700fa5::t_4b906ff8791ae9 278-317
+  s_9b3db2e266ac33::t_f82133fbe65d01 278-317
 frontend-v2/src/api/client.ts
   s_386bf853700fa5::t_0d5b71139dd201 35,387
+  s_9b3db2e266ac33::t_2190d79dabfee4 35,387
 frontend-v2/src/api/generated.ts
   s_386bf853700fa5::t_f59b8f18815ab8 2761,3017-3022
+  s_9b3db2e266ac33::t_33578f5a0a867d 2761,3017-3022
 frontend-v2/src/api/openapi.json
   s_386bf853700fa5::t_9d24e260a94fb0 10264-10266,10270,11008-11013
+  s_9b3db2e266ac33::t_32064e5e464ff5 10264-10266,10270,11008-11013
 frontend-v2/src/api/schema.ts
   s_386bf853700fa5::t_9971578a42ffb8 84-85
+  s_9b3db2e266ac33::t_75251ec083302e 84-85
 frontend-v2/src/features/admin/AdminTable.tsx
   s_386bf853700fa5::t_b529839c715896 1,7,73
+  s_9b3db2e266ac33::t_27da638f78a3a0 1,7,73
 frontend-v2/src/features/admin/WritebackConsentDialog.tsx
   s_386bf853700fa5::t_0bbf4e0604188e 2-3,10-14,18,36,67,69-71,109-185
+  s_9b3db2e266ac33::t_8fa5f7ddce8cae 2-3,10-14,18,36,67,69-71,109-185
 frontend-v2/src/features/admin/useTenantWriteback.ts
   s_386bf853700fa5::t_24a8108a685af3 1-13
+  s_9b3db2e266ac33::t_0765fe8c864f24 1-13
 frontend/src/api/generated.ts
   s_386bf853700fa5::t_9a18d4bc34685b 2765,3021-3026
+  s_9b3db2e266ac33::t_19b39cd6c318ba 2765,3021-3026
 frontend/src/api/openapi.json
   s_386bf853700fa5::t_d286946f0c5661 10264-10266,10270,11008-11013
+  s_9b3db2e266ac33::t_ee9945a7e80005 10264-10266,10270,11008-11013
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -40,6 +54,14 @@ frontend/src/api/openapi.json
         "model": "claude-opus-5-5"
       },
       "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_9b3db2e266ac33": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a7fbb7a3-27d0-44c6-ba8a-fdf2b7bfadb9",
+        "model": "unknown"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
     }
   }
 }
