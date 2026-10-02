@@ -8,12 +8,14 @@ from core.domain.escalation import (
     EscalationContact,
     EscalationTarget,
     escalation_contacts_from_metadata,
+    with_member_identity,
 )
 from core.domain.graph import NodeKind
 from core.domain.integrations import UserRef
 from core.domain.status import StatusSource
 
 if TYPE_CHECKING:
+    from core.ports.repositories import GraphRepository
     from infra.registry import ServiceRegistry
 
 
@@ -253,8 +255,28 @@ async def _resolve_pod_contact(
             continue
         contact = escalation_contacts_from_metadata(node.metadata).contact_for(target)
         if contact is not None:
-            return contact
+            return await _member_backed_contact(registry, graph, tenant_id, contact)
     return None
+
+
+async def _member_backed_contact(
+    registry: ServiceRegistry,
+    graph: GraphRepository,
+    tenant_id: str,
+    contact: EscalationContact,
+) -> EscalationContact:
+    """Deliver to the picked member's current chat id, not the one saved with it."""
+    if contact.member_id is None:
+        return contact
+    member = await graph.get_node(tenant_id, contact.member_id)
+    if member is None or member.kind is not NodeKind.DEVELOPER:
+        return contact
+    link = await registry.identity_link_repository().get_identity_link(tenant_id, contact.member_id)
+    return with_member_identity(
+        contact,
+        member_name=member.name,
+        chat_user_id=link.chat_user_id.strip() if link and link.chat_user_id else None,
+    )
 
 
 async def close_checkin_non_response_activity(payload: NudgeInput) -> NudgeResult:

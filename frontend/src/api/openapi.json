@@ -4133,6 +4133,66 @@
         }
       }
     },
+    "/config/pods/{pod_id}/escalation-candidates": {
+      "get": {
+        "tags": ["config"],
+        "summary": "List Config Pod Escalation Candidates",
+        "operationId": "list_config_pod_escalation_candidates_config_pods__pod_id__escalation_candidates_get",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EscalationCandidateResponse"
+                  },
+                  "title": "Response List Config Pod Escalation Candidates Config Pods  Pod Id  Escalation Candidates Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/tenant/writeback": {
       "get": {
         "tags": ["config"],
@@ -8545,6 +8605,47 @@
         "required": ["tenant_id", "kind", "id"],
         "title": "EntityRefDto"
       },
+      "EscalationCandidateResponse": {
+        "properties": {
+          "member_id": {
+            "type": "string",
+            "title": "Member Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "chat_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat User Id"
+          },
+          "in_pod": {
+            "type": "boolean",
+            "title": "In Pod"
+          },
+          "pod_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Role"
+          }
+        },
+        "type": "object",
+        "required": ["member_id", "name", "chat_user_id", "in_pod", "pod_role"],
+        "title": "EscalationCandidateResponse"
+      },
       "EscalationContactDto": {
         "properties": {
           "chat_external_id": {
@@ -8562,11 +8663,53 @@
               }
             ],
             "title": "Display Name"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
           }
         },
         "type": "object",
         "required": ["chat_external_id"],
         "title": "EscalationContactDto"
+      },
+      "EscalationContactUpdateDto": {
+        "properties": {
+          "member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "chat_external_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat External Id"
+          }
+        },
+        "type": "object",
+        "title": "EscalationContactUpdateDto",
+        "description": "Pick a member. A bare chat id is kept only if it is a member's or already stored."
       },
       "FocusItemDto": {
         "properties": {
@@ -9533,7 +9676,7 @@
           "scrum_master": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/EscalationContactDto"
+                "$ref": "#/components/schemas/EscalationContactUpdateDto"
               },
               {
                 "type": "null"
@@ -9543,7 +9686,7 @@
           "manager": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/EscalationContactDto"
+                "$ref": "#/components/schemas/EscalationContactUpdateDto"
               },
               {
                 "type": "null"

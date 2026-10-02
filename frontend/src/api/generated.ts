@@ -856,6 +856,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/config/pods/{pod_id}/escalation-candidates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Config Pod Escalation Candidates */
+    get: operations["list_config_pod_escalation_candidates_config_pods__pod_id__escalation_candidates_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/tenant/writeback": {
     parameters: {
       query?: never;
@@ -2138,12 +2155,37 @@ export interface components {
       /** Id */
       id: string;
     };
+    /** EscalationCandidateResponse */
+    EscalationCandidateResponse: {
+      /** Member Id */
+      member_id: string;
+      /** Name */
+      name: string;
+      /** Chat User Id */
+      chat_user_id: string | null;
+      /** In Pod */
+      in_pod: boolean;
+      /** Pod Role */
+      pod_role: string | null;
+    };
     /** EscalationContactDto */
     EscalationContactDto: {
       /** Chat External Id */
       chat_external_id: string;
       /** Display Name */
       display_name?: string | null;
+      /** Member Id */
+      member_id?: string | null;
+    };
+    /**
+     * EscalationContactUpdateDto
+     * @description Pick a member. A bare chat id is kept only if it is a member's or already stored.
+     */
+    EscalationContactUpdateDto: {
+      /** Member Id */
+      member_id?: string | null;
+      /** Chat External Id */
+      chat_external_id?: string | null;
     };
     /** FocusItemDto */
     FocusItemDto: {
@@ -2489,8 +2531,8 @@ export interface components {
     };
     /** PodEscalationContactsUpdateRequest */
     PodEscalationContactsUpdateRequest: {
-      scrum_master?: components["schemas"]["EscalationContactDto"] | null;
-      manager?: components["schemas"]["EscalationContactDto"] | null;
+      scrum_master?: components["schemas"]["EscalationContactUpdateDto"] | null;
+      manager?: components["schemas"]["EscalationContactUpdateDto"] | null;
     };
     /** PodMemberLinkRequest */
     PodMemberLinkRequest: {
@@ -5525,6 +5567,39 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PodEscalationContactsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_config_pod_escalation_candidates_config_pods__pod_id__escalation_candidates_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EscalationCandidateResponse"][];
         };
       };
       /** @description Validation Error */

@@ -24,6 +24,7 @@ from api.dtos import (
     DirectorySearchResponse,
     DirectorySyncResponse,
     DirectoryUserResponse,
+    EscalationCandidateResponse,
     IdentityAutoMatchResponse,
     IdentityLinkResponse,
     IdentityLinkUpdateRequest,
@@ -1075,11 +1076,30 @@ async def update_config_pod_escalation_contacts(
     _ensure(principal, Capability.MANAGE_CONFIG)
     try:
         updated = await service.set_pod_escalation_contacts(
-            principal.tenant_id, pod_id, request.to_domain()
+            principal.tenant_id, pod_id, request.to_choices()
         )
     except (ConfigValidationError, GraphNotFound) as exc:
         raise _http_error(exc) from exc
     return PodEscalationContactsResponse.from_domain(pod_id, updated)
+
+
+@router.get(
+    "/config/pods/{pod_id}/escalation-candidates",
+    response_model=list[EscalationCandidateResponse],
+)
+async def list_config_pod_escalation_candidates(
+    pod_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ConfigService, Depends(get_config_service)],
+) -> list[EscalationCandidateResponse]:
+    _ensure(principal, Capability.MANAGE_CONFIG)
+    try:
+        candidates = await service.list_escalation_candidates(
+            principal.tenant_id, pod_id, date.today()
+        )
+    except (ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
+    return [EscalationCandidateResponse.from_domain(candidate) for candidate in candidates]
 
 
 @router.get("/config/tenant/writeback", response_model=TenantWritebackResponse)
