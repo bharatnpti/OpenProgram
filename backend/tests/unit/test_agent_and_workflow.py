@@ -34,6 +34,7 @@ from core.domain.workflows import (
     CheckinScheduleConfig,
     ConversationPurgeInput,
     ConversationPurgeScheduleConfig,
+    CrossPersonNotifyRetryScheduleConfig,
     DeveloperCheckinDispatch,
     HeartbeatInput,
     InboundSweeperScheduleConfig,
@@ -533,6 +534,9 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
     ]
     assert registry.scheduler.purge_configs == [schedule.conversation_purge_config(settings)]
     assert registry.scheduler.sweeper_configs == [schedule.inbound_sweeper_config(settings)]
+    assert registry.scheduler.notify_retry_configs == [
+        schedule.cross_person_notify_retry_config(settings)
+    ]
     assert [(config.connector, config.scope) for config in registry.scheduler.sync_configs] == [
         ("runtime", "issue"),
         ("runtime", "vcs"),
@@ -550,6 +554,7 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
         settings.checkin_reconcile_schedule_id,
         settings.conversation_purge_schedule_id,
         settings.inbound_events_sweeper_schedule_id,
+        settings.cross_person_notify_retry_schedule_id,
         *(config.schedule_id for config in registry.scheduler.sync_configs),
     ]
 
@@ -584,6 +589,51 @@ async def test_ensure_workflow_schedules_skips_checkin_reconcile_when_disabled()
 
     assert registry.scheduler.checkin_reconcile_configs == []
     assert settings.checkin_reconcile_schedule_id not in [result.schedule_id for result in results]
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        pytest.param({"cross_person_notify_retry_enabled": False}, id="retry-off"),
+        pytest.param({"cross_person_auto_notify": False}, id="auto-notify-off"),
+    ],
+)
+async def test_ensure_workflow_schedules_skips_cross_person_notify_retry_when_off(
+    overrides: dict[str, object],
+) -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        heartbeat_schedule_id="heartbeat-test",
+        **overrides,
+    )
+    registry = _ScheduleBootstrapRegistry(settings)
+
+    results = await schedule.ensure_workflow_schedules(registry)
+
+    assert registry.scheduler.notify_retry_configs == []
+    assert settings.cross_person_notify_retry_schedule_id not in [
+        result.schedule_id for result in results
+    ]
+
+
+def test_cross_person_notify_retry_config_comes_from_settings() -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        cross_person_notify_retry_schedule_id="xreq-retry",
+        cross_person_notify_retry_cron="*/10 * * * *",
+    )
+
+    assert schedule.cross_person_notify_retry_config(settings) == (
+        CrossPersonNotifyRetryScheduleConfig(
+            schedule_id="xreq-retry",
+            tenant_id="demo",
+            cron="*/10 * * * *",
+        )
+    )
 
 
 async def test_worker_bootstraps_schedules_before_running_worker(
@@ -1401,6 +1451,7 @@ class _RecordingWorkflowScheduler:
         self.checkin_reconcile_configs: list[CheckinReconcileScheduleConfig] = []
         self.purge_configs: list[ConversationPurgeScheduleConfig] = []
         self.sweeper_configs: list[InboundSweeperScheduleConfig] = []
+        self.notify_retry_configs: list[CrossPersonNotifyRetryScheduleConfig] = []
         self.sync_configs: list[SyncScheduleConfig] = []
 
     async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
@@ -1429,6 +1480,12 @@ class _RecordingWorkflowScheduler:
         self, config: InboundSweeperScheduleConfig
     ) -> ScheduleBootstrapResult:
         self.sweeper_configs.append(config)
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
+
+    async def ensure_cross_person_notify_retry_schedule(
+        self, config: CrossPersonNotifyRetryScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        self.notify_retry_configs.append(config)
         return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
 
     async def ensure_sync_schedules(

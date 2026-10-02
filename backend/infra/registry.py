@@ -947,6 +947,8 @@ class ServiceRegistry:
             llm_provider=self.llm_provider(),
             model=self.settings.litellm_model,
             auto_notify=self.settings.cross_person_auto_notify,
+            notify_max_attempts=self.settings.cross_person_notify_max_attempts,
+            notify_retry_backoff_seconds=self.settings.cross_person_notify_retry_backoff_seconds,
         )
 
     def availability_service(self) -> AvailabilityService:

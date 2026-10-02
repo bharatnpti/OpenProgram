@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import structlog
 
 from core.application.status_collector import OUTBOUND_DM_MAX_CHARS
 from core.domain.cross_person import (
+    CrossPersonNotifyRetrySummary,
     CrossPersonRequest,
     CrossPersonRequestResolution,
     CrossPersonRequestStatus,
@@ -25,6 +26,14 @@ from core.ports.repositories import CrossPersonRequestRepository, TimeSeriesRepo
 
 _logger = structlog.get_logger(__name__)
 
+DEFAULT_NOTIFY_MAX_ATTEMPTS = 5
+DEFAULT_NOTIFY_RETRY_BACKOFF_SECONDS = 300
+DEFAULT_NOTIFY_RETRY_BATCH = 50
+
+
+def _utc_now() -> datetime:
+    return datetime.now(tz=UTC)
+
 
 @dataclass(frozen=True, kw_only=True)
 class CrossPersonRequestService:
@@ -35,6 +44,11 @@ class CrossPersonRequestService:
     llm_provider: LlmProvider | None = None
     model: str = "test-model"
     auto_notify: bool = True
+    # Every counterpart DM attempt, the first one included, counts towards the
+    # limit. After attempt n the next one waits backoff * 2^(n-1).
+    notify_max_attempts: int = DEFAULT_NOTIFY_MAX_ATTEMPTS
+    notify_retry_backoff_seconds: int = DEFAULT_NOTIFY_RETRY_BACKOFF_SECONDS
+    clock: Callable[[], datetime] = _utc_now
 
     async def record_from_checkin(
         self,
@@ -76,36 +90,146 @@ class CrossPersonRequestService:
         raised here, the remaining mentions in the same reply would never be
         recorded, and the reply's retry would stop at "already processed". The
         request stays open and visible to its requester instead, with no
-        notification ids, so recording it again retries the DM.
+        notification ids and the attempt counted, so the retry pass (or
+        recording it again) sends the same DM later.
         """
         try:
             return await self.notify(request)
         except Exception as error:
+            stored = await self.repository.get(request.tenant_id, request.id)
             _logger.warning(
                 "cross_person_notify_failed",
                 tenant_id=request.tenant_id,
                 request_id=request.id,
+                attempt=stored.notify_attempts if stored is not None else None,
+                retry_due=(
+                    stored.notify_next_attempt_at.isoformat()
+                    if stored is not None and stored.notify_next_attempt_at is not None
+                    else None
+                ),
                 error=type(error).__name__,
             )
-            return request
+            return stored or request
 
     async def notify(self, request: CrossPersonRequest) -> CrossPersonRequest:
-        if request.counterpart_id is None:
+        """Send the counterpart DM once, claiming the attempt before sending.
+
+        A send that raises leaves the attempt counted and the next one
+        scheduled, and the error propagates to the caller.
+        """
+        if not self._should_notify(request):
             return request
+        claimed = await self._claim_attempt(request, self.clock())
+        if claimed is None:
+            # Another sender holds this attempt, the DM has been recorded since
+            # the request was read, or the request is no longer open.
+            return await self.repository.get(request.tenant_id, request.id) or request
+        return await self._send_counterpart_dm(claimed)
+
+    async def retry_failed_notifications(
+        self,
+        tenant_id: str,
+        *,
+        now: datetime | None = None,
+        limit: int = DEFAULT_NOTIFY_RETRY_BATCH,
+    ) -> CrossPersonNotifyRetrySummary:
+        """Re-send counterpart DMs that failed, once each attempt is due.
+
+        Nothing is sent while notification is off. Each request is claimed
+        before its DM goes out, so a request that gained notification ids
+        since it was listed, or that a concurrent pass claimed first, is
+        skipped rather than sent twice. The DM is built from the stored fields
+        exactly as the first attempt was.
+        """
+        if not self.auto_notify:
+            return CrossPersonNotifyRetrySummary()
+        reference = now or self.clock()
+        due = await self.repository.list_notification_retries_due(
+            tenant_id,
+            due_at=reference,
+            max_attempts=self.notify_max_attempts,
+            limit=limit,
+        )
+        sent = failed = skipped = given_up = 0
+        for request in due:
+            if not self._should_notify(request):
+                skipped += 1
+                continue
+            claimed = await self._claim_attempt(request, reference)
+            if claimed is None:
+                skipped += 1
+                continue
+            try:
+                await self._send_counterpart_dm(claimed)
+            except Exception as error:
+                failed += 1
+                final = claimed.notify_next_attempt_at is None
+                if final:
+                    given_up += 1
+                _logger.warning(
+                    "cross_person_notify_retry_failed",
+                    tenant_id=tenant_id,
+                    request_id=claimed.id,
+                    attempt=claimed.notify_attempts,
+                    gave_up=final,
+                    error=type(error).__name__,
+                )
+                continue
+            sent += 1
+        return CrossPersonNotifyRetrySummary(
+            due=len(due),
+            sent=sent,
+            failed=failed,
+            skipped=skipped,
+            given_up=given_up,
+        )
+
+    def _should_notify(self, request: CrossPersonRequest) -> bool:
+        if request.counterpart_id is None:
+            return False
         if request.counterpart_id in {request.requester_id, request.requester_chat_ref}:
             # Matched to oneself ("need <my own name> to review"): nobody to ask.
+            return False
+        if request.notified:
+            return False
+        return request.notify_attempts < self.notify_max_attempts
+
+    async def _claim_attempt(
+        self,
+        request: CrossPersonRequest,
+        attempted_at: datetime,
+    ) -> CrossPersonRequest | None:
+        return await self.repository.claim_notification_attempt(
+            request.tenant_id,
+            request.id,
+            expected_attempts=request.notify_attempts,
+            attempted_at=attempted_at,
+            next_attempt_at=self._next_attempt_at(request.notify_attempts + 1, attempted_at),
+        )
+
+    def _next_attempt_at(self, attempt: int, attempted_at: datetime) -> datetime | None:
+        """When the attempt after ``attempt`` is due; None when that was the last."""
+        if attempt >= self.notify_max_attempts:
+            return None
+        delay = self.notify_retry_backoff_seconds * 2 ** (attempt - 1)
+        return attempted_at + timedelta(seconds=delay)
+
+    async def _send_counterpart_dm(self, request: CrossPersonRequest) -> CrossPersonRequest:
+        counterpart_id = request.counterpart_id
+        if counterpart_id is None:
             return request
-        if request.notify_message_id is not None and request.notify_correlation_id is not None:
-            return request
-        user = await self.directory_repository.get(request.tenant_id, request.counterpart_id)
+        user = await self.directory_repository.get(request.tenant_id, counterpart_id)
         chat_user = ChatUserRef(
             tenant_id=request.tenant_id,
-            external_id=request.counterpart_id,
+            external_id=counterpart_id,
             display_name=(
                 user.display_name if user is not None else request.counterpart_display_name
             ),
         )
         notify_correlation_id = f"xreq-{request.id}"
+        # The same correlation id and idempotency key on every attempt: a chat
+        # adapter that dedupes sends returns the first message instead of
+        # posting a second one if an earlier attempt did reach the person.
         message_id = await self.chat_provider.send_dm(
             chat_user,
             OutboundMessage(
@@ -125,7 +249,7 @@ class CrossPersonRequestService:
             request.id,
             notify_message_id=message_id,
             notify_correlation_id=notify_correlation_id,
-            updated_at=datetime.now(tz=UTC),
+            updated_at=self.clock(),
         )
         return updated or request
 

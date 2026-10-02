@@ -7,6 +7,7 @@ from core.domain.workflows import (
     CheckinReconcileScheduleConfig,
     CheckinScheduleConfig,
     ConversationPurgeScheduleConfig,
+    CrossPersonNotifyRetryScheduleConfig,
     DeveloperCheckinDispatch,
     InboundSweeperScheduleConfig,
     ScheduleBootstrapResult,
@@ -32,6 +33,10 @@ class WorkflowScheduler(Protocol):
 
     async def ensure_inbound_sweeper_schedule(
         self, config: InboundSweeperScheduleConfig
+    ) -> ScheduleBootstrapResult: ...
+
+    async def ensure_cross_person_notify_retry_schedule(
+        self, config: CrossPersonNotifyRetryScheduleConfig
     ) -> ScheduleBootstrapResult: ...
 
     async def ensure_sync_schedules(

@@ -8152,6 +8152,12 @@
         "type": "object",
         "title": "ConfigNodeUpdateRequest"
       },
+      "CrossPersonDelivery": {
+        "type": "string",
+        "enum": ["sent", "retrying", "not_delivered"],
+        "title": "CrossPersonDelivery",
+        "description": "Whether the counterpart has been sent the DM about a request."
+      },
       "CrossPersonRequestResponse": {
         "properties": {
           "id": {
@@ -8230,6 +8236,16 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CrossPersonDelivery"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -8245,7 +8261,8 @@
           "raw_name",
           "source_correlation_id",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "delivery"
         ],
         "title": "CrossPersonRequestResponse"
       },

@@ -143,6 +143,41 @@ def test_settings_cross_person_auto_notify_can_be_switched_off(
     assert _settings(secret_key=SECRET_KEY).cross_person_auto_notify is False
 
 
+def test_settings_default_cross_person_notify_retry() -> None:
+    settings = _settings(secret_key=SECRET_KEY)
+
+    assert settings.cross_person_notify_retry_enabled is True
+    assert settings.cross_person_notify_retry_schedule_id == (
+        "openprogram-cross-person-notify-retry"
+    )
+    assert settings.cross_person_notify_retry_cron == "*/5 * * * *"
+    assert settings.cross_person_notify_max_attempts == 5
+    assert settings.cross_person_notify_retry_backoff_seconds == 300
+
+
+def test_settings_cross_person_notify_retry_comes_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENPROGRAM_CROSS_PERSON_NOTIFY_RETRY_ENABLED", "false")
+    monkeypatch.setenv("OPENPROGRAM_CROSS_PERSON_NOTIFY_MAX_ATTEMPTS", "3")
+    monkeypatch.setenv("OPENPROGRAM_CROSS_PERSON_NOTIFY_RETRY_BACKOFF_SECONDS", "60")
+
+    settings = _settings(secret_key=SECRET_KEY)
+
+    assert settings.cross_person_notify_retry_enabled is False
+    assert settings.cross_person_notify_max_attempts == 3
+    assert settings.cross_person_notify_retry_backoff_seconds == 60
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["cross_person_notify_max_attempts", "cross_person_notify_retry_backoff_seconds"],
+)
+def test_settings_rejects_a_non_positive_cross_person_notify_retry_bound(field: str) -> None:
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, **{field: 0})
+
+
 def test_settings_resolves_configured_heartbeat_schedule_id() -> None:
     settings = _settings(
         secret_key=SECRET_KEY,
