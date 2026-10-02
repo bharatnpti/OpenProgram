@@ -14,8 +14,7 @@ Three principles run through the whole system:
 - Business requirements / implemented feature set → [features.md](features.md)
 - Engineering architecture and standards → [Architecture.md](Architecture.md)
 - Low-level designs → [docs/lld/](docs/lld/)
-- Ops runbooks (Slack setup, UAT) → [docs/ops/](docs/ops/)
-- Hardening plans and current status → [plans/IMPLEMENTATION-STATUS.md](plans/IMPLEMENTATION-STATUS.md)
+- Slack setup → [docs/ops/slack-setup.md](docs/ops/slack-setup.md)
 
 ---
 
@@ -240,7 +239,6 @@ CI (`.github/workflows/ci.yml`) runs backend lint+types+tests, integration, and 
 | [infra/](infra) | container, Prometheus, Grafana, OTel, and LiteLLM configuration |
 | [scripts/](scripts) | mock LLM and local helper scripts |
 | [docs/lld/](docs/lld) | low-level designs per seam |
-| [docs/ops/](docs/ops) | Slack setup, UAT runbook, procurement |
-| [plans/](plans) | reliability / correctness / features / helpfulness workstreams |
+| [docs/ops/](docs/ops) | Slack setup |
 | [docker-compose.yml](docker-compose.yml) | full local stack with opt-in profiles |
 | [Makefile](Makefile) | every task above |
