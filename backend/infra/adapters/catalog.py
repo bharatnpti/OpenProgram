@@ -55,6 +55,7 @@ from infra.adapters.integrations.fake import (
 from infra.adapters.jira.jira_adapter import JiraIssueTrackerAdapter
 from infra.adapters.llm.fake import FakeLlmProvider
 from infra.adapters.llm.litellm_provider import LangfuseTraceSink, LiteLlmProvider, NoopTraceSink
+from infra.adapters.llm.readiness import LlmEndpointReadinessProbe
 from infra.adapters.readiness import (
     AsyncReadinessExecutor,
     DatabaseExtensionsReadinessProbe,
@@ -350,7 +351,12 @@ def _slack_socket_heartbeat(settings: Settings, redis_client: Redis) -> RedisSoc
 def _llm_readiness_probe(settings: Settings) -> ReadinessProbe:
     if settings.llm_provider == "fake":
         return StaticReadinessProbe()
-    return HttpReadinessProbe(settings.litellm_base_url, "/health/readiness")
+    # Same base URL and key the adapter sends completions with, so the probe
+    # answers for whatever sits there: a LiteLLM gateway, OpenAI, or the mock.
+    return LlmEndpointReadinessProbe(
+        base_url=settings.litellm_base_url,
+        api_key=settings.litellm_api_key,
+    )
 
 
 def _llm_trace_readiness_probe(settings: Settings) -> ReadinessProbe:

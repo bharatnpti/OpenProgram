@@ -167,8 +167,23 @@ async def health() -> dict[str, str]:
 
 @app.get("/health/readiness")
 async def readiness() -> dict[str, str]:
-    """Mirrors the LiteLLM gateway path the backend readiness probe calls."""
+    """Mirrors the LiteLLM gateway's readiness route (the probe's fallback)."""
     return {"status": "ok"}
+
+
+@app.get("/v1/models")
+async def models() -> dict[str, Any]:
+    """The OpenAI model list: what the backend's LLM readiness probe GETs.
+
+    The mock answers any model name, so this lists only the conventional one;
+    no key is checked, matching ``/v1/chat/completions``.
+    """
+    return {
+        "object": "list",
+        "data": [
+            {"id": "local-gpt", "object": "model", "created": 0, "owned_by": "openprogram-mock"}
+        ],
+    }
 
 
 @app.post("/v1/chat/completions")

@@ -2707,6 +2707,10 @@ export interface components {
       dependencies: {
         [key: string]: boolean;
       };
+      /** Details */
+      details?: {
+        [key: string]: string;
+      };
     };
     /** RiskEvidenceDto */
     RiskEvidenceDto: {

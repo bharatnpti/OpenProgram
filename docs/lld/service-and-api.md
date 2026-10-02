@@ -7,7 +7,7 @@
 ## Routers
 
 - `/health`: process liveness.
-- `/ready`: settings and dependency readiness.
+- `/ready`: settings and dependency readiness. `dependencies` maps each one to a boolean; `details` adds a short reason wherever a probe has one (for `llm_provider`, whether `GET {base_url}/v1/models` was unreachable or rejected the key).
 - `/graph/programs/{program_id}/tree`: sample graph read through `GraphRepository`.
 - `/webhooks/chat/{provider}`: provider-neutral webhook intake route; `/webhooks/chat/slack` is the Slack path under the default `slack_inbound_transport=http`. With `socket`, Slack events arrive through the worker's Socket Mode listener instead, into the same `ServiceRegistry.accept_chat_event` intake.
 
