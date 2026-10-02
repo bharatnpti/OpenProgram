@@ -126,9 +126,9 @@ export function WorkstreamDetailPage() {
             <div className="space-y-2 text-sm">
               <MetadataRow label="Type" value={metadataText(item, "type")} />
               <MetadataRow label="Phase" value={metadataText(item, "phase")} />
-              <MetadataRow label="Owner" value={metadataText(item, "owner_id")} />
-              <MetadataRow label="TPM" value={metadataText(item, "tpm_id")} />
-              <MetadataRow label="SM" value={metadataText(item, "sm_id")} />
+              <MetadataRow label="Owner" value={personMeta(item, "owner_id")} />
+              <MetadataRow label="TPM" value={personMeta(item, "tpm_id")} />
+              <MetadataRow label="SM" value={personMeta(item, "sm_id")} />
               <MetadataRow label="Target" value={metadataText(item, "target_date")} />
             </div>
           </DataPanel>
@@ -306,9 +306,19 @@ function MetadataRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value || "-"}</span>
+      <span className="font-medium">{value || "—"}</span>
     </div>
   );
+}
+
+function personMeta(item: DirectoryItemResponse | undefined, key: string): string {
+  if (!item) return "—";
+  const person = item.people?.find((entry) => entry.key === key);
+  if (!person) {
+    const value = item.metadata[key];
+    return typeof value === "string" ? value : "";
+  }
+  return person.name ?? `${person.id} · not a member`;
 }
 
 function metadataText(item: DirectoryItemResponse | undefined, key: string) {
