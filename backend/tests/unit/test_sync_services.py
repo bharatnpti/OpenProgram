@@ -350,6 +350,70 @@ async def test_vcs_read_sync_appends_commit_and_pull_request_facts_and_cursor() 
     )
 
 
+async def test_vcs_read_sync_attributes_git_authors_to_the_member() -> None:
+    # Members are keyed by chat id. A merge request names its author by login,
+    # a commit by the email on it; both must land on the member, not on new
+    # developer nodes named after the login or the address.
+    store = InMemoryGraphStore()
+    await store.upsert_node(
+        GraphNode(
+            tenant_id="demo",
+            id="U1001",
+            kind=NodeKind.DEVELOPER,
+            name="Liam Chen",
+            metadata={"email": "liam@example.com"},
+        )
+    )
+    await store.upsert_identity_link(
+        IdentityLink(tenant_id="demo", developer_id="U1001", vcs_username="lchen")
+    )
+    at = datetime(2026, 1, 10, 8, 0, tzinfo=UTC)
+
+    def commit(sha: str, email: str) -> Commit:
+        author = UserRef(tenant_id="demo", external_id=email, display_name="git name")
+        return Commit(
+            tenant_id="demo", repo="repo-1", sha=sha, message="m", author=author, committed_at=at
+        )
+
+    provider = FakeVcsProvider(
+        repos=[Repo(tenant_id="demo", id="r-1", name="repo-1", default_branch="main")],
+        commits=[commit("a1", "Liam@Example.com"), commit("b2", "contractor@example.com")],
+        pull_requests=[
+            PullRequest(
+                tenant_id="demo",
+                id="7",
+                title="CHK-3 Payment intent API",
+                author=UserRef(tenant_id="demo", external_id="lchen", display_name="Liam"),
+                merged=False,
+                metadata={"repo": "repo-1"},
+                updated_at=at,
+            )
+        ],
+    )
+    service = VcsReadSyncService(
+        vcs_provider=provider,
+        graph_repository=store,
+        time_series_repository=store,
+        cursor_repository=store,
+        identity_link_repository=store,
+    )
+
+    await service.sync_repo(
+        tenant_id="demo", repo_name="repo-1", observed_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
+    )
+
+    liam = await store.list_facts(
+        "demo", EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="U1001")
+    )
+    developers = {node.id for node in await store.list_nodes("demo", NodeKind.DEVELOPER)}
+    assert {(fact.source, fact.correlation_id) for fact in liam} == {
+        ("vcs_commit", "vcs:commit:demo:repo-1:a1"),
+        ("vcs_pull_request", "vcs:pull_request:demo:repo-1:7:2026-01-10T08:00:00+00:00"),
+    }
+    # Nobody is linked to the contractor: they keep their own node, as before.
+    assert developers == {"U1001", "contractor@example.com"}
+
+
 async def test_vcs_read_sync_links_repo_to_configured_containers() -> None:
     store = InMemoryGraphStore()
     await store.upsert_node(
