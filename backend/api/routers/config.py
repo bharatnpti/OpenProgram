@@ -1090,12 +1090,12 @@ async def get_config_tenant_writeback(
 ) -> TenantWritebackResponse:
     _ensure(principal, Capability.MANAGE_CONFIG)
     try:
-        enabled = await service.get_tenant_writeback_enabled(
+        gate = await service.get_tenant_writeback(
             principal.tenant_id, settings.jira_writeback_enabled
         )
     except ConfigValidationError as exc:
         raise _http_error(exc) from exc
-    return TenantWritebackResponse(enabled=enabled)
+    return TenantWritebackResponse.from_domain(gate)
 
 
 @router.put("/config/tenant/writeback", response_model=TenantWritebackResponse)
@@ -1106,10 +1106,10 @@ async def update_config_tenant_writeback(
 ) -> TenantWritebackResponse:
     _ensure(principal, Capability.MANAGE_CONFIG)
     try:
-        await service.set_tenant_writeback_enabled(principal.tenant_id, request.enabled)
+        gate = await service.set_tenant_writeback_enabled(principal.tenant_id, request.enabled)
     except ConfigValidationError as exc:
         raise _http_error(exc) from exc
-    return TenantWritebackResponse(enabled=request.enabled)
+    return TenantWritebackResponse.from_domain(gate)
 
 
 @router.get("/programs", response_model=list[DirectoryItemResponse])

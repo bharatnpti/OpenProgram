@@ -1,9 +1,10 @@
-import { IdCard, PenLine, ShieldAlert, Trash2 } from "lucide-react";
+import { IdCard, ShieldAlert, Trash2 } from "lucide-react";
 
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import type { ConfigNodeResponse } from "../../api/schema";
 import type { EntityKind } from "./adminTypes";
+import { WritebackConsentButton } from "./WritebackConsentDialog";
 
 export function AdminTable({
   activeEntity,
@@ -69,10 +70,7 @@ export function AdminTable({
                 </Pill>
               )}
               {activeEntity === "members" && (
-                <Pill variant="ghost" size="sm" onClick={() => onConsent(node)}>
-                  <PenLine size={14} />
-                  Write-back
-                </Pill>
+                <WritebackConsentButton onClick={() => onConsent(node)} />
               )}
               <Pill
                 variant="ghost"
