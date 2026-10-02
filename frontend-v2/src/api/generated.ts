@@ -2758,6 +2758,7 @@ export interface components {
     TenantWritebackResponse: {
       /** Enabled */
       enabled: boolean;
+      source: components["schemas"]["WriteBackGateSource"];
     };
     /** TenantWritebackUpdateRequest */
     TenantWritebackUpdateRequest: {
@@ -3013,6 +3014,12 @@ export interface components {
      * @enum {string}
      */
     WriteBackConsent: "always_ask" | "auto_apply" | "never";
+    /**
+     * WriteBackGateSource
+     * @description Where the tenant-wide write-back switch takes its value from.
+     * @enum {string}
+     */
+    WriteBackGateSource: "tenant" | "default";
     /** WriteBackRevertResponse */
     WriteBackRevertResponse: {
       /** Audit Id */

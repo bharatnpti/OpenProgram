@@ -10261,10 +10261,13 @@
           "enabled": {
             "type": "boolean",
             "title": "Enabled"
+          },
+          "source": {
+            "$ref": "#/components/schemas/WriteBackGateSource"
           }
         },
         "type": "object",
-        "required": ["enabled"],
+        "required": ["enabled", "source"],
         "title": "TenantWritebackResponse"
       },
       "TenantWritebackUpdateRequest": {
@@ -11001,6 +11004,12 @@
         "enum": ["always_ask", "auto_apply", "never"],
         "title": "WriteBackConsent",
         "description": "Per-developer standing consent for automated issue-tracker write-back.\n\n``always_ask`` (the safe default) never writes automatically; ``auto_apply``\ngrants standing consent; ``never`` opts out entirely."
+      },
+      "WriteBackGateSource": {
+        "type": "string",
+        "enum": ["tenant", "default"],
+        "title": "WriteBackGateSource",
+        "description": "Where the tenant-wide write-back switch takes its value from."
       },
       "WriteBackRevertResponse": {
         "properties": {

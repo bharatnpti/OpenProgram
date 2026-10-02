@@ -275,6 +275,46 @@ def test_writeback_consent_requires_manage_config(settings: Settings) -> None:
     assert put_resp.status_code == 403
 
 
+def test_tenant_writeback_reports_the_default_until_a_tenant_override(
+    settings: Settings,
+) -> None:
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        default = client.get("/config/tenant/writeback")
+        switched_on = client.put("/config/tenant/writeback", json={"enabled": True})
+        after_on = client.get("/config/tenant/writeback")
+        switched_off = client.put("/config/tenant/writeback", json={"enabled": False})
+        after_off = client.get("/config/tenant/writeback")
+
+    assert default.status_code == 200
+    # Off unless switched on, and the console can tell it is the deployment default.
+    assert default.json() == {"enabled": False, "source": "default"}
+    assert switched_on.json() == {"enabled": True, "source": "tenant"}
+    assert after_on.json() == {"enabled": True, "source": "tenant"}
+    assert switched_off.json() == {"enabled": False, "source": "tenant"}
+    assert after_off.json() == {"enabled": False, "source": "tenant"}
+
+
+def test_tenant_writeback_override_beats_the_environment_default(settings: Settings) -> None:
+    app = create_app(settings=settings.model_copy(update={"jira_writeback_enabled": True}))
+    with TestClient(app) as client:
+        default = client.get("/config/tenant/writeback")
+        client.put("/config/tenant/writeback", json={"enabled": False})
+        overridden = client.get("/config/tenant/writeback")
+
+    assert default.json() == {"enabled": True, "source": "default"}
+    assert overridden.json() == {"enabled": False, "source": "tenant"}
+
+
+def test_tenant_writeback_requires_manage_config(settings: Settings) -> None:
+    app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "dev"}))
+    with TestClient(app, raise_server_exceptions=False) as client:
+        get_resp = client.get("/config/tenant/writeback")
+        put_resp = client.put("/config/tenant/writeback", json={"enabled": True})
+    assert get_resp.status_code == 403
+    assert put_resp.status_code == 403
+
+
 def test_admin_directory_search_and_member_add_flow(settings: Settings) -> None:
     app = create_app(settings=settings)
     with TestClient(app) as client:

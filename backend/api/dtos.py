@@ -55,7 +55,13 @@ from core.domain.status import (
     StatusSource,
     WriteBackConsent,
 )
-from core.domain.writeback import WriteBackAdoption, WriteBackAudit, WriteBackStatus
+from core.domain.writeback import (
+    WriteBackAdoption,
+    WriteBackAudit,
+    WriteBackGate,
+    WriteBackGateSource,
+    WriteBackStatus,
+)
 from core.ports.auth import AuthenticatedUser
 
 
@@ -1822,6 +1828,11 @@ class TenantWritebackResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     enabled: bool
+    source: WriteBackGateSource
+
+    @classmethod
+    def from_domain(cls, gate: WriteBackGate) -> TenantWritebackResponse:
+        return cls(enabled=gate.enabled, source=gate.source)
 
 
 class TenantWritebackUpdateRequest(BaseModel):
