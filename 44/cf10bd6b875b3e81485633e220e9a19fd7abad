@@ -1,0 +1,19 @@
+.gitignore
+  s_c8095495eaf879::t_1c7b452a717758 17-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "44cf10bd6b875b3e81485633e220e9a19fd7abad",
+  "prompts": {},
+  "sessions": {
+    "s_c8095495eaf879": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb2e9460-efa2-4aa7-aac7-a35a97b9dca5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
