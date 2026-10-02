@@ -1,0 +1,21 @@
+frontend/src/lib/duration.ts
+  s_386bf853700fa5::t_2d5be23f73ed4d 1-56
+frontend/src/pages/AdminConfigPage.tsx
+  s_386bf853700fa5::t_b2b017edfa7b20 1089-1116,1119-1149,1159,1171,1174-1181,1188-1194,1213-1256,1274-1288,1290-1291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e66faa46d289ec926d6748e965fac3049aefb4fd",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
