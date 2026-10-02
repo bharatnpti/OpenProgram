@@ -1,15 +1,15 @@
 # Real-integration QA org
 
 The [local demo](local-demo.md) runs on mocks. This runbook points the same local
-stack at a **real Slack workspace, a real Jira Cloud site and (later) a
-self-hosted GitLab**, populated with an enterprise-shaped org, so behaviour the
+stack at a **real Slack workspace, a real Jira Cloud site and a self-hosted
+GitLab**, populated with an enterprise-shaped org, so behaviour the
 mocks hid shows up.
 
 | Piece | Here | Notes |
 |---|---|---|
 | Chat + directory | Slack Free workspace, bot from [`infra/slack/app-manifest.yaml`](../../infra/slack/app-manifest.yaml) | Replies arrive over a tunnel, see §4 |
 | Issue tracker | Jira Cloud Free (10-user cap) | Company-managed scrum projects |
-| VCS | `fake` for now; self-hosted GitLab CE next | `vcs_provider=gitlab` adapter already exists |
+| VCS | GitLab CE in docker (`docker-compose.qa.yml`), http://localhost:8929 | ~3 GB RAM; synced read-only by `openprogram-bot` |
 | LLM | whatever `.env` already uses | unchanged by the switch |
 | Tenant | `qa` | the seeded `demo` tenant is left untouched |
 
@@ -44,6 +44,14 @@ cases a single-pod-per-person demo never does:
 
 Also seeded: unassigned issues, a backlog outside the sprint, one active
 two-week sprint per project.
+
+GitLab group `acme` holds six repositories (`platform-libs` is shared by both
+Checkout and Identity). Seven people have accounts, with logins that differ
+from their Slack handles. `GIT_WORK` in the roster has 14 pieces of work, one
+per signal: MRs that are open, draft or merged; a merged fix whose Jira issue
+still says In Progress; a branch with commits and no MR; Payments-pod work in
+the Storefront pod's repo; and a direct push to `main` by an SRE with maintainer
+rights. Branches and MR titles carry the Jira key.
 
 ## 1. Accounts (manual, once)
 
@@ -81,7 +89,33 @@ go to `~/.config/oneai/openprogram-qa-state.json`. Atlassian throttles
 after about six; the seeder waits, then skips the rest and still creates
 everything else. Invited users are assignable before they accept.
 
-## 3. Switch the stack and load the org
+## 3. Start and fill GitLab
+
+`use_real` (§4) needs three generated values in the secrets file first:
+`OPENPROGRAM_QA_GITLAB_ROOT_PASSWORD`, `OPENPROGRAM_QA_GITLAB_ADMIN_TOKEN` and
+`OPENPROGRAM_GITLAB_TOKEN` (any strong values; the tokens start `glpat-`).
+
+```bash
+uv run python -m scripts.qa_org.use_real
+```
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.qa.yml --env-file .env.qa up -d gitlab
+```
+
+```bash
+uv run python -m scripts.qa_org.seed_gitlab
+```
+
+Boot takes a few minutes (wait until http://localhost:8929/users/sign_in
+answers). The seeder installs both tokens with `gitlab-rails runner`, since the
+API cannot create a token with a chosen value. The admin token (root, `api` +
+`sudo`) seeds, and `Sudo` makes each commit and MR appear as its author.
+OpenProgram syncs with the other token: `openprogram-bot`, Reporter on the
+group, `read_api` only, so writes are refused. It is idempotent like the Jira
+seeder. Sign in to the UI as `root` with the generated password.
+
+## 4. Switch the stack and load the org
 
 ```bash
 uv run python -m scripts.qa_org.use_real
@@ -96,15 +130,16 @@ uv run python -m scripts.qa_org.seed_openprogram
 ```
 
 `use_real` writes `.env.qa` (gitignored): the shared `.env` plus tenant `qa`,
-real Slack and Jira, and the dev principal set to Asha's real Slack id. It
+real Slack and Jira, GitLab once its tokens exist, and the dev principal set to Asha's real Slack id. It
 **never edits `.env`**: anything else that reads `.env` at startup — a host
 `uvicorn` run from this checkout, the test suite — must keep getting the mock
 demo. (An earlier version edited `.env` in place and moved a parallel session's
 host backend onto the real tenant.) `docker-compose.qa.yml` points only the
 docker backend and worker at `.env.qa`.
 
-`seed_openprogram` goes through the `/config/*` API only. Raj's Jira account is
-left unlinked on purpose; `--link-raj` links it.
+`seed_openprogram` goes through the `/config/*` API only and links each
+person's Slack id, Jira account and GitLab login. Raj's Jira account is left
+unlinked on purpose; `--link-raj` links it.
 
 **Check-in catch-up.** `use_real` sets `CHECKIN_RECONCILE_ENABLED=false`, but
 under DBOS that only stops the schedule being *created*: one that already exists
@@ -122,7 +157,7 @@ active.
 it on by default; it DMs whoever a check-in asks something of).
 `--live-checkins` turns both on.
 
-## 4. Inbound replies
+## 5. Inbound replies
 
 Slack posts replies to `/webhooks/chat/slack`, which must be public HTTPS.
 Under dev auth every other route is an unauthenticated admin, so never tunnel
@@ -152,7 +187,7 @@ docker compose up -d --no-deps --force-recreate backend worker
 
 ## Found while setting up
 
-Fixed in `fix(identity): find a member's Jira work from their email...`:
+Fixed on this branch:
 
 - Nobody's Jira work was found. Jira indexes assignments by `accountId`; the
   identity link's `jira_email` was never read, lookups fell back to the Slack id
@@ -167,11 +202,18 @@ Fixed in `fix(identity): find a member's Jira work from their email...`:
 - `/config/members/unmapped` ignored members with no Jira account. With a real
   tracker configured it now flags them; the admin page says which link is
   missing.
+- Git sync made every author a new developer node: MR authors by login, commit
+  authors by email. That would have meant up to three "people" per developer.
+  `vcs_username` was never read. MR logins now map through `vcs_username` and
+  commit emails through the member's directory email.
 
 Open:
 
-- `vcs_username` is still never read; PR and commit authors are matched by the
-  developer id. Matters as soon as GitLab is connected.
+- Unknown git authors still become developer nodes, and so personas. GitLab's
+  root, which authored each repo's initial README, shows up as "Administrator";
+  CI bots and service accounts would too.
+- Only default-branch commits are synced, so a branch's commits are invisible
+  until it is merged. A branch with no MR is visible only as a missing MR.
 - `CHECKIN_RECONCILE_ENABLED=false` does not remove an existing DBOS schedule
   (above).
 - `test_cross_person_service.py::test_registry_routes_slack_thread_reply_by_notify_message_id_first`
