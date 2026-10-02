@@ -23,7 +23,9 @@ def test_exec_cannot_read_raw_dm_but_can_read_budget_field() -> None:
     assert policy.can(principal, Capability.READ_EXEC_AGGREGATE)
     assert policy.can(principal, Capability.READ_PROGRAM_ROLLUP)
     assert policy.can(principal, Capability.READ_PORTFOLIO_HEATMAP)
-    assert not policy.can(principal, Capability.READ_PROJECT_PROGRESS)
+    assert policy.can(principal, Capability.READ_PROJECT_PROGRESS)
+    assert not policy.can(principal, Capability.READ_POD_CHECKINS)
+    assert not policy.can(principal, Capability.READ_POD_BLOCKERS)
     assert policy.can_read_field(principal, SensitiveField.BUDGET)
 
 
@@ -46,6 +48,50 @@ def test_persona_capabilities_follow_role_scope() -> None:
     assert not policy.can(po, Capability.READ_POD_CHECKINS)
     assert policy.can(mgr, Capability.READ_PROGRAM_ROLLUP)
     assert policy.can(mgr, Capability.READ_PORTFOLIO_HEATMAP)
+    assert policy.can(mgr, Capability.READ_POD_BLOCKERS)
+    assert policy.can(mgr, Capability.READ_POD_CHECKINS)
+
+
+# Who may open which kind of Delivery detail. Project and workstream progress is
+# aggregate, so the executive reads it alongside the product owner and manager.
+# Pod check-ins and blockers are per-person: the scrum master runs the pod, and
+# the manager is the last step of the non-response escalation, so both read it;
+# the executive does not.
+_DETAIL_READERS: dict[Capability, frozenset[Role]] = {
+    Capability.READ_PROJECT_PROGRESS: frozenset({Role.PO, Role.MGR, Role.EXEC, Role.ADMIN}),
+    Capability.READ_POD_CHECKINS: frozenset({Role.SM, Role.MGR, Role.ADMIN}),
+    Capability.READ_POD_BLOCKERS: frozenset({Role.SM, Role.MGR, Role.ADMIN}),
+}
+
+# Writes are unchanged by any read grant: a developer writes back to their own
+# issues, and everything else is admin-only.
+_WRITERS: dict[Capability, frozenset[Role]] = {
+    Capability.WRITE_ISSUE_TRACKER: frozenset({Role.DEV, Role.ADMIN}),
+    Capability.WRITE_CONNECTOR_SECRET: frozenset({Role.ADMIN}),
+    Capability.DISPATCH_WORKFLOWS: frozenset({Role.ADMIN}),
+    Capability.MANAGE_CONFIG: frozenset({Role.ADMIN}),
+}
+
+
+def _roles_allowed(capability: Capability) -> frozenset[Role]:
+    policy = AuthorizationPolicy()
+    return frozenset(
+        role
+        for role in Role
+        if policy.can(
+            Principal(tenant_id="demo", subject=role.value, roles=frozenset({role})), capability
+        )
+    )
+
+
+@pytest.mark.parametrize("capability", list(_DETAIL_READERS))
+def test_delivery_detail_capabilities_follow_the_role_matrix(capability: Capability) -> None:
+    assert _roles_allowed(capability) == _DETAIL_READERS[capability]
+
+
+@pytest.mark.parametrize("capability", list(_WRITERS))
+def test_write_capabilities_are_not_widened_by_read_grants(capability: Capability) -> None:
+    assert _roles_allowed(capability) == _WRITERS[capability]
 
 
 def test_every_role_can_read_its_own_work() -> None:

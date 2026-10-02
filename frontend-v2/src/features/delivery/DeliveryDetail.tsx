@@ -318,12 +318,14 @@ function personMeta(item: DirectoryItemResponse, key: string): string {
 /** Which role opens this kind of node, for the panel to say so plainly. */
 function detailDeniedNote(kind: DeliveryKind): string {
   if (kind === "pod") {
-    return "Pod check-ins and blockers need a scrum-master role.";
+    return "Pod check-ins and blockers need a scrum-master or manager role.";
   }
-  return `${kind === "project" ? "Project" : "Workstream"} progress needs a product-owner or manager role.`;
+  return `${kind === "project" ? "Project" : "Workstream"} progress needs a product-owner, manager or executive role.`;
 }
 
 /** The role that reads why this kind of node has its colour. */
 function deniedRoleFor(kind: DeliveryKind): string {
-  return kind === "pod" ? "a scrum-master role" : "a product-owner or manager role";
+  return kind === "pod"
+    ? "a scrum-master or manager role"
+    : "a product-owner, manager or executive role";
 }

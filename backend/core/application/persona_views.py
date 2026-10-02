@@ -397,7 +397,7 @@ class PersonaViewService:
         )
 
     async def pod_blockers(self, tenant_id: str, pod_id: str, as_of: date) -> PodBlockersView:
-        tree = await self._graph_repository.get_program_tree(tenant_id, pod_id, as_of)
+        tree = await self._pod_tree(tenant_id, pod_id, as_of)
         developers = _developers(tree)
         blockers: list[BlockerView] = []
         for developer in developers:
@@ -420,7 +420,7 @@ class PersonaViewService:
         )
 
     async def pod_checkins(self, tenant_id: str, pod_id: str, as_of: date) -> PodCheckinsView:
-        tree = await self._graph_repository.get_program_tree(tenant_id, pod_id, as_of)
+        tree = await self._pod_tree(tenant_id, pod_id, as_of)
         developers: list[CheckinDeveloperView] = []
         for developer in _developers(tree):
             status = await self._status_repository.latest_developer_status(
@@ -539,6 +539,18 @@ class PersonaViewService:
             )
         tasks.sort(key=lambda task: (not task.blocked, _TRIAGE_RANK[task.rag], task.name, task.id))
         return PodTasksView(pod_id=pod.id, pod_name=pod.name, as_of=as_of, tasks=tuple(tasks))
+
+    async def _pod_tree(self, tenant_id: str, pod_id: str, as_of: date) -> GraphTree:
+        """The subtree under a pod, or GraphNotFound if `pod_id` is not a pod.
+
+        The tree walk starts from any node, so without this a project or program
+        id would return check-ins and blockers for everyone beneath it to a role
+        that was granted them for one pod.
+        """
+        tree = await self._graph_repository.get_program_tree(tenant_id, pod_id, as_of)
+        if tree.root.kind is not NodeKind.POD:
+            raise GraphNotFound(f"pod {pod_id} not found for tenant {tenant_id}")
+        return tree
 
     async def project_progress(
         self, tenant_id: str, project_id: str, as_of: date

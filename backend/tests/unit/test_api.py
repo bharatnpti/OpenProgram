@@ -942,12 +942,69 @@ def test_persona_aggregate_routes_are_role_scoped(settings: Settings) -> None:
         _populate_graph_fixture(exec_app, settings)
         tree = client.get("/programs/program-platform/tree?as_of=2026-06-15")
         heatmap = client.get("/portfolio/heatmap?as_of=2026-06-15")
-        project_denied = client.get("/projects/project-foundations/progress?as_of=2026-06-15")
+        project = client.get("/projects/project-foundations/progress?as_of=2026-06-15")
+        workstream = client.get(
+            "/workstreams/workstream-runtime-config-admin/progress?as_of=2026-06-15"
+        )
+        blockers_denied = client.get("/pods/pod-runtime/blockers?as_of=2026-06-15")
+        checkins_denied = client.get("/pods/pod-runtime/checkins?as_of=2026-06-15")
 
     assert tree.status_code == 200
     assert tree.json()["root_id"] == "program-platform"
     assert heatmap.status_code == 200
-    assert project_denied.status_code == 403
+    # An exec's heat tile opens the project it names: progress is aggregate, and
+    # its factors are the ones the program tree already gives the exec.
+    assert project.status_code == 200
+    assert project.json()["total_tasks"] == 4
+    tree_project = next(
+        node for node in tree.json()["nodes"] if node["id"] == "project-foundations"
+    )
+    assert project.json()["factors"]
+    assert project.json()["factors"] == tree_project["factors"]
+    assert workstream.status_code == 200
+    assert workstream.json()["workstream_id"] == "workstream-runtime-config-admin"
+    # Pod check-ins and blockers are per-person and stay with SM and manager.
+    assert blockers_denied.status_code == 403
+    assert checkins_denied.status_code == 403
+
+    mgr_app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "mgr"}))
+    with TestClient(mgr_app) as client:
+        _populate_graph_fixture(mgr_app, settings)
+        blockers = client.get("/pods/pod-runtime/blockers?as_of=2026-06-15")
+        checkins = client.get("/pods/pod-runtime/checkins?as_of=2026-06-15")
+        project = client.get("/projects/project-foundations/progress?as_of=2026-06-15")
+
+    # The manager is the last step of the non-response escalation, so they can
+    # open the pod they are escalated about.
+    assert blockers.status_code == 200
+    assert blockers.json()["blockers"][0]["owner_id"] == "dev-liam"
+    assert checkins.status_code == 200
+    assert checkins.json()["stale"] >= 1
+    assert project.status_code == 200
+
+
+def test_pod_routes_answer_only_for_a_pod(settings: Settings) -> None:
+    """Pod check-ins and blockers are granted for a pod, not for whatever id is passed.
+
+    The tree walk starts from any node, so a project id used to return the
+    check-ins and blockers of everyone in that project. A non-pod id is a 404,
+    the same as an id that does not exist.
+    """
+    for role in ("sm", "mgr", "admin"):
+        app = create_app(settings=settings.model_copy(update={"dev_principal_roles": role}))
+        with TestClient(app) as client:
+            _populate_graph_fixture(app, settings)
+            for route in ("checkins", "blockers"):
+                pod = client.get(f"/pods/pod-runtime/{route}?as_of=2026-06-15")
+                project = client.get(f"/pods/project-foundations/{route}?as_of=2026-06-15")
+                program = client.get(f"/pods/program-platform/{route}?as_of=2026-06-15")
+                unknown = client.get(f"/pods/pod-does-not-exist/{route}?as_of=2026-06-15")
+
+                assert pod.status_code == 200, (role, route, pod.text)
+                assert pod.json()["pod_id"] == "pod-runtime", (role, route)
+                assert project.status_code == 404, (role, route, project.text)
+                assert program.status_code == 404, (role, route, program.text)
+                assert unknown.status_code == 404, (role, route, unknown.text)
 
 
 def test_admin_workflow_dispatch_routes_are_admin_only(settings: Settings) -> None:

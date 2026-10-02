@@ -64,6 +64,11 @@ class AuthorizationPolicy:
                     Capability.READ_PROJECT_PROGRESS,
                     Capability.READ_PROGRAM_ROLLUP,
                     Capability.READ_PORTFOLIO_HEATMAP,
+                    # The manager is the last step of the non-response escalation
+                    # (developer -> scrum master -> manager), so they must be able
+                    # to open the pod they are escalated about.
+                    Capability.READ_POD_BLOCKERS,
+                    Capability.READ_POD_CHECKINS,
                 }
             ),
             Role.EXEC: frozenset(
@@ -71,6 +76,11 @@ class AuthorizationPolicy:
                     Capability.READ_EXEC_AGGREGATE,
                     Capability.READ_PROGRAM_ROLLUP,
                     Capability.READ_PORTFOLIO_HEATMAP,
+                    # Project and workstream progress is aggregate: the same
+                    # colours, factors and task health the program tree already
+                    # gives an executive. Pod check-ins and blockers are
+                    # per-person, so they stay with the scrum master and manager.
+                    Capability.READ_PROJECT_PROGRESS,
                 }
             ),
         }
