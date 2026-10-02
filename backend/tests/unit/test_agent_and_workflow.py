@@ -751,6 +751,9 @@ async def test_dbos_checkin_fanout_starts_children_from_workflow_context(
 
     monkeypatch.setattr(dbos_workflows, "dbos_prepare_checkin_fanout_step", prepare)
     monkeypatch.setattr(dbos_workflows, "_start_daily_checkin_workflow", start)
+    # The concurrency bound comes from get_settings(), which reads the process
+    # environment; pin it so the test doesn't depend on a local .env.
+    monkeypatch.setattr(dbos_workflows, "_checkin_fanout_concurrency", lambda: 2)
 
     result = await dbos_workflows._run_dbos_checkin_fanout(payload)
 
@@ -836,6 +839,7 @@ async def test_dbos_checkin_reconcile_starts_children_from_workflow_context(
 
     monkeypatch.setattr(dbos_workflows, "dbos_prepare_checkin_reconcile_step", prepare)
     monkeypatch.setattr(dbos_workflows, "_start_daily_checkin_workflow", start)
+    monkeypatch.setattr(dbos_workflows, "_checkin_fanout_concurrency", lambda: 2)
 
     result = await dbos_workflows._run_dbos_checkin_reconcile(payload)
 
