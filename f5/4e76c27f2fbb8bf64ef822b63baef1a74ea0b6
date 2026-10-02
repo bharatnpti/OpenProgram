@@ -1,0 +1,19 @@
+frontend-v2/src/components/shell/CommandPalette.tsx
+  s_386bf853700fa5::t_62972b8f194871 2,33-36,84-117,127,147,151-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f54e76c27f2fbb8bf64ef822b63baef1a74ea0b6",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
