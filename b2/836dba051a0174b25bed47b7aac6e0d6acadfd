@@ -1,0 +1,48 @@
+backend/core/application/status_parsing.py
+  s_386bf853700fa5::t_300ae05d70666b 235
+  s_386bf853700fa5::t_5fab4a79273c05 287
+  s_386bf853700fa5::t_afdf51a660a37e 32-38
+backend/tests/bdd/steps_cross_person_requests.py
+  s_386bf853700fa5::t_922013cc88d20c 224
+  s_386bf853700fa5::t_5deaeb77e669b3 225-229
+.env.example
+  s_386bf853700fa5::t_b93ee6f389a304 29-31
+backend/core/application/cross_person_service.py
+  s_386bf853700fa5::t_6a20d473e6e323 97,137-140
+  s_386bf853700fa5::t_fafe07e36dde6f 306
+  s_386bf853700fa5::t_b58414bff3aaf5 11
+  s_386bf853700fa5::t_8c98e29456dde1 317-326
+  s_386bf853700fa5::t_56246c22e8394c 160-164
+  s_386bf853700fa5::t_0d28bd42358db1 113
+  s_386bf853700fa5::t_209be143a15115 68,72-91,95-96
+  s_386bf853700fa5::t_8e20573b8109af 391-421
+docs/ops/slack-setup.md
+  s_386bf853700fa5::t_0e69c88d83b11c 103-111
+backend/tests/bdd/features/cross_person_requests.feature
+  s_386bf853700fa5::t_922013cc88d20c 104-127
+  s_386bf853700fa5::t_1d907213488fab 15-17
+backend/tests/unit/test_cross_person_service.py
+  s_386bf853700fa5::t_759513493c93cb 9-14,16,18,331-566,569-571,575-576
+backend/tests/unit/test_status_parsing.py
+  s_386bf853700fa5::t_03016ff3254ed3 196-213
+features.md
+  s_386bf853700fa5::t_ec3ab393b22e43 418-420
+backend/config/settings.py
+  s_386bf853700fa5::t_aedd1885b93808 77-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b2836dba051a0174b25bed47b7aac6e0d6acadfd",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
