@@ -9,6 +9,8 @@ from core.domain.directory import DirectoryUser
 from core.domain.errors import ProviderUnavailable
 from infra.adapters.chat.slack import SlackHttpClient
 
+_SLACKBOT_ID = "USLACKBOT"
+
 
 @dataclass
 class SlackDirectoryProvider:
@@ -35,6 +37,10 @@ def _map_user(tenant_id: str, payload: object, synced_at: datetime) -> Directory
     if not isinstance(payload, Mapping):
         return None
     if payload.get("deleted") is True or payload.get("is_bot") is True:
+        return None
+    # Slackbot is in every workspace's users.list with is_bot false; it is not
+    # a person anyone can add as a member or DM a check-in to.
+    if payload.get("id") == _SLACKBOT_ID:
         return None
     external_id = _string_field(payload, "id")
     raw_profile = payload.get("profile")

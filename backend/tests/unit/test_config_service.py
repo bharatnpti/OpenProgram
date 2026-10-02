@@ -21,7 +21,7 @@ from core.domain.identity import IdentityLink
 from core.domain.rollup import NodeStatus, Rag
 from core.domain.status import CheckInPreference, StatusSource
 from infra.persistence.in_memory_graph import InMemoryGraphStore
-from tests.contract.fakes import FakeDirectoryUserRepository
+from tests.contract.fakes import FakeDirectoryUserRepository, FakeIssueTracker
 
 
 async def test_config_service_crud_links_assignments_and_preferences() -> None:
@@ -654,3 +654,78 @@ async def test_list_unmapped_members_flags_members_without_chat_id() -> None:
     assert [member.id for member in unmapped] == ["U1002"]
     assert "chat_user_id" in unmapped[0].missing
     assert "jira_email" not in unmapped[0].missing
+
+
+async def test_auto_match_resolves_jira_account_ids_from_email() -> None:
+    # Jira finds issues by accountId only. Auto-match fills the email from the
+    # directory and must also resolve it, or the member's work is never found.
+    # An admin-entered Jira email (Raj's differs from his Slack one) resolves too.
+    store = InMemoryGraphStore()
+    directory = FakeDirectoryUserRepository()
+    tracker = FakeIssueTracker(
+        user_emails={"asha@example.com": "acct-asha", "r.iyer@corp.example": "acct-raj"}
+    )
+    service = ConfigService(
+        store, store, directory, identity_link_repository=store, issue_tracker=tracker
+    )
+    await directory.upsert_users(
+        [
+            DirectoryUser(tenant_id="demo", external_id=external_id, display_name=name, email=email)
+            for external_id, name, email in (
+                ("U1001", "Asha Rao", "asha@example.com"),
+                ("U1002", "Raj Iyer", "raj@example.com"),
+                ("U1003", "Elena Fischer", "elena@example.com"),
+            )
+        ]
+    )
+    for member_id in ("U1001", "U1002", "U1003"):
+        await service.add_member_from_directory("demo", member_id)
+    await service.set_identity_link(
+        IdentityLink(tenant_id="demo", developer_id="U1002", jira_email="r.iyer@corp.example")
+    )
+
+    result = await service.auto_match_identity_links("demo")
+
+    filled = {member.id: set(member.filled) for member in result.members}
+    assert filled["U1001"] == {"chat_user_id", "jira_email", "jira_account_id"}
+    assert filled["U1002"] == {"chat_user_id", "jira_account_id"}
+    # Elena has no tracker account: email filled, nothing invented.
+    assert filled["U1003"] == {"chat_user_id", "jira_email"}
+    asha = await service.get_identity_link("demo", "U1001")
+    raj = await service.get_identity_link("demo", "U1002")
+    elena = await service.get_identity_link("demo", "U1003")
+    assert asha is not None and asha.jira_account_id == "acct-asha"
+    assert raj is not None and raj.jira_account_id == "acct-raj"
+    assert raj.jira_email == "r.iyer@corp.example"
+    assert elena is not None and elena.jira_account_id is None
+
+
+async def test_list_unmapped_members_flags_missing_tracker_link_when_required() -> None:
+    store = InMemoryGraphStore()
+    directory = FakeDirectoryUserRepository()
+    service = ConfigService(
+        store, store, directory, identity_link_repository=store, require_issue_tracker_link=True
+    )
+    await directory.upsert_users(
+        [
+            DirectoryUser(tenant_id="demo", external_id="U1001", display_name="Asha Rao"),
+            DirectoryUser(tenant_id="demo", external_id="U1002", display_name="Omar Haddad"),
+        ]
+    )
+    await service.add_member_from_directory("demo", "U1001")
+    await service.add_member_from_directory("demo", "U1002")
+    await service.set_identity_link(
+        IdentityLink(
+            tenant_id="demo", developer_id="U1001", chat_user_id="U1001", jira_account_id="a-1"
+        )
+    )
+    # Reachable on chat, but the tracker cannot attribute anything to him.
+    await service.set_identity_link(
+        IdentityLink(tenant_id="demo", developer_id="U1002", chat_user_id="U1002")
+    )
+
+    unmapped = await service.list_unmapped_members("demo")
+
+    assert [member.id for member in unmapped] == ["U1002"]
+    assert "jira_account_id" in unmapped[0].missing
+    assert "chat_user_id" not in unmapped[0].missing

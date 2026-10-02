@@ -4,7 +4,7 @@ import { Cable, DatabaseZap, Link2, ShieldAlert, Settings2, UserPlus } from "luc
 import { useState, type ReactNode } from "react";
 
 import { apiClient } from "../api/client";
-import type { ConfigNodeResponse } from "../api/schema";
+import type { ConfigNodeResponse, UnmappedMemberResponse } from "../api/schema";
 import { CheckinPreferencesPanel } from "../features/admin/CheckinPreferencesPanel";
 import { DataSourcesPanel } from "../features/admin/DataSourcesPanel";
 import { DirectoryPanel } from "../features/admin/DirectoryPanel";
@@ -86,7 +86,7 @@ export function AdminPage() {
           tone={unmappedCount > 0 ? "text-rag-amber" : undefined}
           detail={
             unmappedCount > 0
-              ? `${unmappedCount} unmapped (no chat ID)`
+              ? unmappedDetail(unmapped.data ?? [])
               : members.data
                 ? "all mapped"
                 : undefined
@@ -180,4 +180,19 @@ function Stat({
       {detail ? <div className="mt-0.5 text-[12px] text-grey-secondary">{detail}</div> : null}
     </div>
   );
+}
+
+/**
+ * Why members are unmapped. No chat ID means no check-in DM can reach them; with
+ * a real tracker configured, no Jira account means none of their issues can be
+ * attributed to them. The backend reports both through `missing`.
+ */
+function unmappedDetail(items: UnmappedMemberResponse[]): string {
+  const noChat = items.filter((item) => item.missing.includes("chat_user_id")).length;
+  const noTracker = items.length - noChat;
+  const reasons = [
+    noChat > 0 ? `${noChat} no chat ID` : null,
+    noTracker > 0 ? `${noTracker} no Jira account` : null,
+  ].filter((reason): reason is string => reason !== null);
+  return `${items.length} unmapped (${reasons.join(", ")})`;
 }

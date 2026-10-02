@@ -8,6 +8,7 @@ from core.application.sync_services import (
     VcsReadSyncService,
 )
 from core.domain.graph import EdgeKind, EntityRef, GraphEdge, GraphNode, NodeKind, Pod, Program
+from core.domain.identity import IdentityLink
 from core.domain.integrations import (
     CalendarEvent,
     Commit,
@@ -185,6 +186,63 @@ async def test_issue_read_sync_query_attaches_tasks_to_configured_target() -> No
     assert not any(edge.from_node_id == "PO" and edge.to_node_id == "PO-1" for edge in edges)
     assert facts[0].payload["project_key"] == "PO"
     assert cursor.updated_at == updated_at
+
+
+async def test_issue_read_sync_attributes_linked_assignees_to_the_member() -> None:
+    # Members are keyed by chat id; Jira only knows accountIds. A linked assignee
+    # must land on the member, not on a second developer node named after the
+    # account. An assignee nobody is linked to keeps the old behaviour.
+    store = InMemoryGraphStore()
+    await store.upsert_node(
+        GraphNode(tenant_id="demo", id="U1001", kind=NodeKind.DEVELOPER, name="Liam Chen")
+    )
+    await store.upsert_identity_link(
+        IdentityLink(
+            tenant_id="demo", developer_id="U1001", chat_user_id="U1001", jira_account_id="acct-1"
+        )
+    )
+    updated_at = datetime(2026, 1, 10, 8, 30, tzinfo=UTC)
+
+    def issue(key: str, account: str) -> Issue:
+        return Issue(
+            tenant_id="demo",
+            key=key,
+            title=f"Issue {key}",
+            state=IssueState.IN_PROGRESS,
+            assignee=UserRef(tenant_id="demo", external_id=account, display_name="Jira name"),
+            metadata={"project_key": "PO"},
+            updated_at=updated_at,
+        )
+
+    tracker = FakeIssueTracker(
+        issues={"PO-1": issue("PO-1", "acct-1"), "PO-2": issue("PO-2", "acct-2")}
+    )
+    service = IssueReadSyncService(
+        issue_tracker=tracker,
+        graph_repository=store,
+        time_series_repository=store,
+        cursor_repository=store,
+        identity_link_repository=store,
+    )
+
+    await service.sync_query(
+        tenant_id="demo",
+        jql='project = "PO"',
+        target_node_id="pod-runtime",
+        target_node_kind=NodeKind.POD,
+        cursor_scope="query:pod:pod-runtime:hash",
+        observed_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
+    )
+
+    assigned = {
+        (edge.from_node_id, edge.to_node_id)
+        for edge in await store.list_edges("demo", kind=EdgeKind.ASSIGNED_TO)
+    }
+    developers = {node.id for node in await store.list_nodes("demo", NodeKind.DEVELOPER)}
+    assert ("U1001", "PO-1") in assigned
+    assert ("acct-2", "PO-2") in assigned
+    assert "acct-1" not in developers
+    assert developers == {"U1001", "acct-2"}
 
 
 async def test_vcs_read_sync_appends_commit_and_pull_request_facts_and_cursor() -> None:
