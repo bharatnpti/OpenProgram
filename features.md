@@ -134,6 +134,7 @@ Functional requirements:
 - The system shall escalate a still-unanswered check-in to the pod's scrum master and then its manager, each after a tenant-wide wait, using the pod's escalation contacts; a step with no contact shall send nothing.
 - Each escalation step shall be switchable off in tenant settings.
 - The system shall record stale or unknown status when the developer does not respond within configured windows.
+- A stale status shall name the last confirmed, partly answered, or inferred status once, with its date, however many days in a row the developer has not answered.
 - The system shall be able to infer limited status from recent facts when no human confirmation exists.
 - The system shall mark inferred or missing status with reduced confidence/source quality.
 
