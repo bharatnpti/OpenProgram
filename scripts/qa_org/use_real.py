@@ -27,7 +27,7 @@ from pathlib import Path
 import httpx
 
 from scripts.qa_org import env
-from scripts.qa_org.roster import PEOPLE
+from scripts.qa_org.roster import GITLAB_GROUP, PEOPLE
 
 BASE_ENV = Path(".env")
 QA_ENV = Path(".env.qa")
@@ -73,12 +73,30 @@ def managed_values(*, live_checkins: bool) -> dict[str, str]:
         # Keep the acting-as picker: still local + dev auth, now over real people.
         "OPENPROGRAM_DEMO_MODE": "true",
         "OPENPROGRAM_ISSUE_TRACKER_PROVIDER": "jira",
-        # GitLab comes later; until then VCS stays the fake adapter.
-        "OPENPROGRAM_VCS_PROVIDER": "fake",
         "OPENPROGRAM_CALENDAR_PROVIDER": "fake",
         "OPENPROGRAM_DEV_PRINCIPAL_SUBJECT": admin_slack_id(secrets["OPENPROGRAM_SLACK_BOT_TOKEN"]),
         "OPENPROGRAM_DEV_PRINCIPAL_ROLES": "admin",
         **secrets,
+        **gitlab_values(),
+    }
+
+
+def gitlab_values() -> dict[str, str]:
+    """Self-hosted GitLab, once its credentials exist; the fake VCS until then.
+
+    The root password is only read by compose (docker-compose.qa.yml) on the
+    container's first boot; the token is the read-only one OpenProgram syncs with.
+    """
+    root_password = env.get("OPENPROGRAM_QA_GITLAB_ROOT_PASSWORD")
+    token = env.get("OPENPROGRAM_GITLAB_TOKEN")
+    if root_password is None or token is None:
+        return {"OPENPROGRAM_VCS_PROVIDER": "fake"}
+    return {
+        "OPENPROGRAM_QA_GITLAB_ROOT_PASSWORD": root_password,
+        "OPENPROGRAM_VCS_PROVIDER": "gitlab",
+        "OPENPROGRAM_GITLAB_BASE_URL": "http://gitlab:8929/api/v4",
+        "OPENPROGRAM_GITLAB_TOKEN": token,
+        "OPENPROGRAM_GITLAB_NAMESPACE_ID": GITLAB_GROUP,
     }
 
 

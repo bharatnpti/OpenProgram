@@ -169,8 +169,12 @@ def add_members(
         link: dict[str, str | None] = {"chat_user_id": slack_id}
         if jira_id:
             link["jira_account_id"] = jira_id
+        if person.gitlab_username:
+            link["vcs_username"] = person.gitlab_username
         api.ok("PUT", f"/config/members/{slack_id}/identity-link", link)
-        print(f"  {person.name:<16} {slack_id}  Jira {jira_id or '-':<46} {_pods(person)}")
+        jira = jira_id or "-"
+        git = person.gitlab_username or "-"
+        print(f"  {person.name:<16} {slack_id}  Jira {jira:<46} Git {git:<11} {_pods(person)}")
 
 
 def jira_link(person: Person, accounts: dict[str, str], *, link_raj: bool) -> str | None:

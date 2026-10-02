@@ -1,8 +1,10 @@
 # Real-integration QA stack: the same backend and worker, configured from .env.qa
-# (written by `python -m scripts.qa_org.use_real`) instead of the shared .env.
+# (written by `python -m scripts.qa_org.use_real`) instead of the shared .env,
+# plus a self-hosted GitLab for the org's repositories.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.qa.yml --env-file .env.qa \
 #     up -d --no-deps --force-recreate backend worker
+#   docker compose -f docker-compose.yml -f docker-compose.qa.yml --env-file .env.qa up -d gitlab
 #
 # --env-file feeds the ${...} interpolation in docker-compose.yml; the override
 # below replaces each service's env_file. Both are needed: the shared .env stays
@@ -16,3 +18,36 @@ services:
     env_file: !override
       - path: .env.qa
         required: true
+
+  # GitLab CE, tuned for a laptop (~3 GB). The backend reaches it on the compose
+  # network as http://gitlab:8929; a browser uses http://localhost:8929. Root's
+  # password only takes effect on the first boot of an empty gitlab-config volume.
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+    hostname: gitlab
+    shm_size: 256m
+    environment:
+      GITLAB_ROOT_PASSWORD: ${OPENPROGRAM_QA_GITLAB_ROOT_PASSWORD:?run scripts.qa_org.use_real}
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://localhost:8929'
+        nginx['listen_port'] = 8929
+        gitlab_rails['gitlab_shell_ssh_port'] = 2224
+        puma['worker_processes'] = 0
+        sidekiq['concurrency'] = 5
+        prometheus_monitoring['enable'] = false
+        gitlab_kas['enable'] = false
+        registry['enable'] = false
+        gitlab_rails['usage_ping_enabled'] = false
+        letsencrypt['enable'] = false
+    ports:
+      - "8929:8929"
+      - "2224:22"
+    volumes:
+      - gitlab-config:/etc/gitlab
+      - gitlab-logs:/var/log/gitlab
+      - gitlab-data:/var/opt/gitlab
+
+volumes:
+  gitlab-config:
+  gitlab-logs:
+  gitlab-data:

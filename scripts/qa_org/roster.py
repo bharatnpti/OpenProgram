@@ -103,6 +103,18 @@ class Issue:
     in_sprint: bool = True
 
 
+@dataclass(frozen=True, kw_only=True)
+class GitWork:
+    """Commits one person pushed for one issue, and what became of them."""
+
+    repo: str  # repository name inside GITLAB_GROUP
+    author: str  # Person.tag
+    issue: str  # Issue.summary; its Jira key names the branch and the MR
+    commits: tuple[str, ...]  # one commit (adding one file) per message
+    mr: str | None = "open"  # open | draft | merged | None: pushed, never opened
+    to_main: bool = False  # committed straight to the default branch, no branch at all
+
+
 def mail(tag: str) -> str:
     base = env.require("OPENPROGRAM_QA_MAIL_BASE")["OPENPROGRAM_QA_MAIL_BASE"]
     local, _, domain = base.partition("@")
@@ -235,6 +247,7 @@ PEOPLE: tuple[Person, ...] = (
             Membership(pod_id="pod-identity", role="manager"),
             Membership(pod_id="pod-platform", role="manager"),
         ),
+        gitlab_username="arao",
         scenario="owns the Slack workspace and Jira site; manages four pods across two projects",
     ),
     Person(
@@ -554,6 +567,108 @@ ISSUES: tuple[Issue, ...] = (
         type="Task",
         labels=("spike",),
         in_sprint=False,
+    ),
+)
+
+
+# Git activity, shaped so each kind of signal has a case. Branches and MR titles
+# carry the Jira key, the convention the work-item linking relies on.
+GIT_WORK: tuple[GitWork, ...] = (
+    GitWork(
+        repo="checkout-api",
+        author="liam",
+        issue="Payment intent API",
+        commits=("Add payment intent model", "Expose POST /payment-intents"),
+    ),
+    GitWork(
+        repo="checkout-api",
+        author="liam",
+        issue="Payment provider sandbox credentials",
+        commits=("Read sandbox credentials from the secret store",),
+        mr="merged",
+    ),
+    GitWork(
+        repo="checkout-api",
+        author="noah",
+        issue="Refund edge cases",
+        commits=("Round partial refunds half-even",),
+        mr="draft",
+    ),
+    # Payments-pod work in the Storefront pod's repository.
+    GitWork(
+        repo="storefront-web",
+        author="zoe",
+        issue="Payment form validation UI",
+        commits=("Validate card fields inline",),
+    ),
+    GitWork(
+        repo="storefront-web",
+        author="zoe",
+        issue="Cart price breakdown",
+        commits=("Show tax and shipping lines", "Fix rounding in cart totals"),
+    ),
+    GitWork(
+        repo="storefront-web",
+        author="zoe",
+        issue="Storefront performance budget",
+        commits=("Add a bundle size budget",),
+        mr="merged",
+    ),
+    GitWork(
+        repo="storefront-web",
+        author="sofia",
+        issue="Test plan: guest checkout",
+        commits=("Add guest checkout end-to-end scenarios",),
+    ),
+    GitWork(
+        repo="identity-service",
+        author="noah",
+        issue="Passkey enrolment",
+        commits=("Add WebAuthn registration endpoint",),
+    ),
+    # Merged while Jira still says In Progress: the record and the code disagree.
+    GitWork(
+        repo="identity-service",
+        author="noah",
+        issue="Login loop on expired refresh token",
+        commits=("Clear the stale refresh cookie on 401",),
+        mr="merged",
+    ),
+    # In progress in Jira with commits but no merge request.
+    GitWork(
+        repo="sso-gateway",
+        author="omar",
+        issue="SAML metadata refresh",
+        commits=("Schedule IdP metadata refresh", "Cache IdP metadata by ETag"),
+        mr=None,
+    ),
+    GitWork(
+        repo="platform-libs",
+        author="omar",
+        issue="Upgrade shared HTTP client library",
+        commits=("Bump the shared HTTP client to 3.x",),
+    ),
+    GitWork(
+        repo="insights-pipeline",
+        author="raj",
+        issue="Event ingest backfill",
+        commits=("Add the Q3 event backfill job",),
+    ),
+    GitWork(
+        repo="insights-pipeline",
+        author="raj",
+        issue="Duplicate events in hourly rollup",
+        commits=("Deduplicate by event id before the hourly rollup",),
+        mr="merged",
+    ),
+    # An SRE with maintainer rights pushing straight to the default branch.
+    GitWork(
+        repo="insights-pipeline",
+        author="omar",
+        issue="Data lake retention policy",
+        commits=("Apply 400-day retention to the raw zone",),
+        mr=None,
+        to_main=True,
     ),
 )
 
