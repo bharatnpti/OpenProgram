@@ -28,6 +28,7 @@ from api.dtos import (
     PodBlockersResponse,
     PodCheckinsResponse,
     PodRollupResponse,
+    PodTasksResponse,
     PortfolioFeedResponse,
     PortfolioFlowResponse,
     PortfolioHeatmapResponse,
@@ -113,6 +114,25 @@ async def pod_rollup(
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return PodRollupResponse.from_view(view)
+
+
+@router.get("/pods/{pod_id}/tasks", response_model=PodTasksResponse)
+async def pod_tasks(
+    pod_id: str,
+    as_of: Annotated[date, Query(default_factory=date.today)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+) -> PodTasksResponse:
+    # Each task carries its members' status and the pod's blockers attributed
+    # to it, so the list needs both pod capabilities: it never shows a role
+    # what the pod's check-ins or blockers would refuse it.
+    _ensure(principal, Capability.READ_POD_CHECKINS)
+    _ensure(principal, Capability.READ_POD_BLOCKERS)
+    try:
+        view = await persona_service.pod_tasks(principal.tenant_id, pod_id, as_of)
+    except GraphNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return PodTasksResponse.from_view(view)
 
 
 @router.get("/projects/{project_id}/progress", response_model=ProjectProgressResponse)

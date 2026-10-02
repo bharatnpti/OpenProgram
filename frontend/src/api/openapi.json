@@ -5291,6 +5291,72 @@
         }
       }
     },
+    "/pods/{pod_id}/tasks": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Pod Tasks",
+        "operationId": "pod_tasks_pods__pod_id__tasks_get",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodTasksResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/projects/{project_id}/progress": {
       "get": {
         "tags": ["personas"],
@@ -9816,6 +9882,144 @@
         "type": "object",
         "required": ["pod_id", "pod_name", "as_of", "rag", "source", "factors", "source_names"],
         "title": "PodRollupResponse"
+      },
+      "PodTaskBlockerDto": {
+        "properties": {
+          "blocker_id": {
+            "type": "string",
+            "title": "Blocker Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "first_seen_on": {
+            "type": "string",
+            "format": "date",
+            "title": "First Seen On"
+          },
+          "age_days": {
+            "type": "integer",
+            "title": "Age Days"
+          }
+        },
+        "type": "object",
+        "required": ["blocker_id", "description", "first_seen_on", "age_days"],
+        "title": "PodTaskBlockerDto"
+      },
+      "PodTaskDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "rag": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "source": {
+            "$ref": "#/components/schemas/StatusSource"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "owners": {
+            "items": {
+              "$ref": "#/components/schemas/PodTaskOwnerDto"
+            },
+            "type": "array",
+            "title": "Owners"
+          },
+          "blocked": {
+            "type": "boolean",
+            "title": "Blocked"
+          },
+          "open_blockers": {
+            "items": {
+              "$ref": "#/components/schemas/PodTaskBlockerDto"
+            },
+            "type": "array",
+            "title": "Open Blockers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "rag",
+          "source",
+          "confidence",
+          "deadline",
+          "owners",
+          "blocked",
+          "open_blockers"
+        ],
+        "title": "PodTaskDto"
+      },
+      "PodTaskOwnerDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name"],
+        "title": "PodTaskOwnerDto"
+      },
+      "PodTasksResponse": {
+        "properties": {
+          "pod_id": {
+            "type": "string",
+            "title": "Pod Id"
+          },
+          "pod_name": {
+            "type": "string",
+            "title": "Pod Name"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/PodTaskDto"
+            },
+            "type": "array",
+            "title": "Tasks"
+          }
+        },
+        "type": "object",
+        "required": ["pod_id", "pod_name", "as_of", "tasks"],
+        "title": "PodTasksResponse"
       },
       "PortfolioFeedItemResponse": {
         "properties": {
