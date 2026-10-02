@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, RefreshCw, Send, Trash2 } from "lucide-react";
+import { Bell, RefreshCw, Reply, Send, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -19,6 +19,12 @@ import { cn } from "../lib/utils";
  * Everyone can read and answer their own thread. A config manager also gets the
  * roster on the left and can open anyone's conversation, which is what makes a
  * whole team's check-in day demonstrable from one browser.
+ *
+ * A message asking someone for a review or input ends "Reply in this thread",
+ * and a plain send here would open a check-in and file the answer as their own
+ * status. So those messages carry a Reply action: it sends the text as a reply
+ * in that message's thread, which is how the request gets acknowledged or
+ * resolved, and the reply is drawn under the message it answers.
  */
 export function ChatPage() {
   const queryClient = useQueryClient();
@@ -28,8 +34,10 @@ export function ChatPage() {
   const { isPast, label } = useViewingDate();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [replyToId, setReplyToId] = useState<string | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Without config rights the only readable thread is your own.
   const threadId = canAccessAdmin ? (selectedId ?? actingAs?.id ?? null) : (actingAs?.id ?? null);
@@ -54,6 +62,13 @@ export function ChatPage() {
   });
 
   const items = useMemo(() => sortByCreatedAt(messages.data?.items ?? []), [messages.data?.items]);
+  const { topLevel, repliesByParent } = useMemo(() => splitThreads(items), [items]);
+  // Looked up in the open conversation rather than held as a copy, so switching
+  // conversations or clearing history drops the reply target by itself.
+  const replyTo = useMemo(
+    () => (replyToId === null ? null : (items.find((m) => m.message_id === replyToId) ?? null)),
+    [items, replyToId],
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -68,8 +83,11 @@ export function ChatPage() {
     ]);
   };
 
+  // The variable is the message being answered in its thread, or null for an
+  // ordinary send; it travels with the call so the result is read against the
+  // right target even if the reply target changes while it is in flight.
   const sendMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (parentId: string | null) => {
       if (!threadId) {
         throw new Error("No conversation is selected.");
       }
@@ -77,6 +95,9 @@ export function ChatPage() {
         text: draft.trim(),
         developer_id: threadId,
         developer_name: threadPerson?.name ?? null,
+        // Set only when answering a request message: the reply then goes into
+        // that message's thread and never opens a check-in.
+        thread_id: parentId,
         // No received_at: the server stamps it. Sending the browser's clock put
         // a live reply *before* the bot question it answers -- the transcript is
         // ordered by that value, and opening a check-in for an unprompted update
@@ -85,9 +106,14 @@ export function ChatPage() {
         // need to place a reply at a chosen historical time.
       });
     },
-    onSuccess: async (result) => {
+    onSuccess: async (result, parentId) => {
       setDraft("");
+      setReplyToId(null);
       await refresh();
+      if (parentId !== null) {
+        toast.success(threadReplyToast(result.status));
+        return;
+      }
       toast.success(
         result.started_checkin
           ? "Check-in opened and your update was filed against it."
@@ -181,7 +207,10 @@ export function ChatPage() {
             people={people}
             selectedId={threadId}
             ownId={actingAs?.id ?? null}
-            onSelect={setSelectedId}
+            onSelect={(id) => {
+              setSelectedId(id);
+              setReplyToId(null);
+            }}
           />
         ) : null}
 
@@ -235,14 +264,21 @@ export function ChatPage() {
               />
             ) : (
               <div className="flex min-h-full flex-col justify-end gap-3">
-                {groupByDay(items).map(([day, dayItems]) => (
+                {groupByDay(topLevel).map(([day, dayItems]) => (
                   <div key={day} className="flex flex-col gap-3">
                     <DayDivider day={day} />
                     {dayItems.map((message) => (
-                      <MessageBubble
+                      <MessageWithThread
                         key={message.message_id}
                         message={message}
+                        replies={repliesByParent.get(message.message_id) ?? []}
                         authorName={threadPerson?.name ?? threadId}
+                        isReplyTarget={message.message_id === replyTo?.message_id}
+                        replyDisabled={isPast || sendMutation.isPending}
+                        onReply={() => {
+                          setReplyToId(message.message_id);
+                          inputRef.current?.focus();
+                        }}
                       />
                     ))}
                   </div>
@@ -252,40 +288,51 @@ export function ChatPage() {
             )}
           </div>
 
-          <form
-            className="flex items-center gap-3 border-t border-grey-fill px-6 py-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (threadId && draft.trim() && !isPast) {
-                sendMutation.mutate();
-              }
-            }}
-          >
-            <input
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              disabled={!threadId || sendMutation.isPending || isPast}
-              placeholder={
-                isPast
-                  ? `Read-only while you view ${label}. Go back to today to reply.`
-                  : threadId
-                    ? isOwnThread
-                      ? "Share your status… e.g. “Shipped the capture path. Blocked on sandbox creds. ETA slips 2 days.”"
-                      : `Write as ${threadPerson?.name ?? threadId}…`
-                    : "Select a conversation…"
-              }
-              className="h-12 min-w-0 flex-1 rounded-full border border-grey-border bg-white px-5 text-[15px] outline-none focus:border-magenta disabled:bg-grey-fill disabled:text-grey-secondary"
-            />
-            <Pill
-              type="submit"
-              variant="dark"
-              size="lg"
-              disabled={!threadId || !draft.trim() || sendMutation.isPending || isPast}
+          <div className="border-t border-grey-fill">
+            {replyTo ? <ReplyBanner message={replyTo} onCancel={() => setReplyToId(null)} /> : null}
+            <form
+              className="flex items-center gap-3 px-6 py-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (threadId && draft.trim() && !isPast) {
+                  sendMutation.mutate(replyTo?.message_id ?? null);
+                }
+              }}
             >
-              <Send size={14} />
-              {sendMutation.isPending ? "Sending…" : "Send"}
-            </Pill>
-          </form>
+              <input
+                ref={inputRef}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape" && replyTo) {
+                    setReplyToId(null);
+                  }
+                }}
+                disabled={!threadId || sendMutation.isPending || isPast}
+                placeholder={
+                  isPast
+                    ? `Read-only while you view ${label}. Go back to today to reply.`
+                    : replyTo
+                      ? "Reply in the thread… e.g. “On it”, or “Done — reviewed and approved.”"
+                      : threadId
+                        ? isOwnThread
+                          ? "Share your status… e.g. “Shipped the capture path. Blocked on sandbox creds. ETA slips 2 days.”"
+                          : `Write as ${threadPerson?.name ?? threadId}…`
+                        : "Select a conversation…"
+                }
+                className="h-12 min-w-0 flex-1 rounded-full border border-grey-border bg-white px-5 text-[15px] outline-none focus:border-magenta disabled:bg-grey-fill disabled:text-grey-secondary"
+              />
+              <Pill
+                type="submit"
+                variant="dark"
+                size="lg"
+                disabled={!threadId || !draft.trim() || sendMutation.isPending || isPast}
+              >
+                <Send size={14} />
+                {sendMutation.isPending ? "Sending…" : replyTo ? "Reply" : "Send"}
+              </Pill>
+            </form>
+          </div>
         </Card>
       </div>
 
@@ -368,6 +415,95 @@ function Roster({
   );
 }
 
+/**
+ * A message and, under it, the replies sent in its thread.
+ *
+ * Only a message asking this person for something (a review or input request)
+ * offers Reply: that is the one place a plain send would be misread, as the
+ * person's own status update, and the one place the backend routes a thread
+ * reply anywhere.
+ */
+function MessageWithThread({
+  message,
+  replies,
+  authorName,
+  isReplyTarget,
+  replyDisabled,
+  onReply,
+}: {
+  message: ChatSimulatorMessageResponse;
+  replies: ChatSimulatorMessageResponse[];
+  authorName: string;
+  isReplyTarget: boolean;
+  replyDisabled: boolean;
+  onReply: () => void;
+}) {
+  const canReply = isRequestMessage(message);
+  return (
+    <div className="flex flex-col gap-2">
+      <MessageBubble message={message} authorName={authorName} />
+      {replies.length > 0 ? (
+        <div
+          className="ml-6 flex flex-col gap-2 border-l-2 border-grey-border pl-4"
+          aria-label={`${replies.length} ${replies.length === 1 ? "reply" : "replies"} in thread`}
+        >
+          <div className="text-[11px] font-bold uppercase tracking-wide text-grey-secondary">
+            {replies.length === 1 ? "1 reply" : `${replies.length} replies`}
+          </div>
+          {replies.map((reply) => (
+            <MessageBubble key={reply.message_id} message={reply} authorName={authorName} />
+          ))}
+        </div>
+      ) : null}
+      {canReply ? (
+        <div className="ml-6">
+          <button
+            type="button"
+            onClick={onReply}
+            disabled={replyDisabled}
+            aria-pressed={isReplyTarget}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+              isReplyTarget
+                ? "bg-magenta/10 text-magenta"
+                : "text-grey-secondary hover:bg-grey-fill hover:text-ink",
+            )}
+          >
+            <Reply size={13} />
+            {isReplyTarget ? "Replying…" : "Reply"}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ReplyBanner({
+  message,
+  onCancel,
+}: {
+  message: ChatSimulatorMessageResponse;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 border-b border-grey-fill bg-grey-fill/50 px-6 py-2">
+      <Reply size={14} className="shrink-0 text-magenta" />
+      <p className="min-w-0 flex-1 truncate text-[12px] text-grey-secondary">
+        Replying in the thread of{" "}
+        <span className="font-bold text-ink">{firstLine(message.text)}</span>
+      </p>
+      <button
+        type="button"
+        onClick={onCancel}
+        aria-label="Cancel reply"
+        className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-grey-secondary hover:bg-grey-border hover:text-ink"
+      >
+        <X size={14} />
+      </button>
+    </div>
+  );
+}
+
 function MessageBubble({
   message,
   authorName,
@@ -396,6 +532,7 @@ function MessageBubble({
           )}
         >
           {isUser ? authorName : "OpenProgram"} · {formatTime(message.created_at)}
+          {message.thread_id ? " · reply in thread" : ""}
         </div>
       </div>
     </div>
@@ -442,6 +579,56 @@ function sortByCreatedAt(messages: ChatSimulatorMessageResponse[]): ChatSimulato
   return [...messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   );
+}
+
+/** The purpose the backend gives a DM that asks a person for a review or input. */
+const REQUEST_PURPOSE = "cross_person_request";
+
+function isRequestMessage(message: ChatSimulatorMessageResponse): boolean {
+  return message.direction === "bot" && message.purpose === REQUEST_PURPOSE;
+}
+
+/**
+ * Pull thread replies out of the flat transcript and file them under the message
+ * they answer. A reply whose parent is not in the list (history cleared, say)
+ * stays in the main flow rather than vanishing.
+ */
+function splitThreads(messages: ChatSimulatorMessageResponse[]): {
+  topLevel: ChatSimulatorMessageResponse[];
+  repliesByParent: Map<string, ChatSimulatorMessageResponse[]>;
+} {
+  const ids = new Set(messages.map((message) => message.message_id));
+  const topLevel: ChatSimulatorMessageResponse[] = [];
+  const repliesByParent = new Map<string, ChatSimulatorMessageResponse[]>();
+  for (const message of messages) {
+    const parentId = message.thread_id;
+    if (parentId && ids.has(parentId)) {
+      const bucket = repliesByParent.get(parentId);
+      if (bucket) {
+        bucket.push(message);
+      } else {
+        repliesByParent.set(parentId, [message]);
+      }
+    } else {
+      topLevel.push(message);
+    }
+  }
+  return { topLevel, repliesByParent };
+}
+
+function threadReplyToast(status: string): string {
+  if (status === "resolved") {
+    return "Reply sent — the request is marked resolved and the requester was told.";
+  }
+  if (status === "acknowledged") {
+    return "Reply sent — the request is acknowledged.";
+  }
+  return "Reply sent.";
+}
+
+function firstLine(text: string): string {
+  const line = text.split("\n", 1)[0] ?? text;
+  return line.length > 120 ? `${line.slice(0, 119).trimEnd()}…` : line;
 }
 
 function groupByDay(
