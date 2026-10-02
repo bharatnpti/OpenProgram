@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import secrets
 import subprocess
 import time
@@ -33,7 +32,15 @@ from urllib.parse import quote
 import httpx
 
 from scripts.qa_org import env
-from scripts.qa_org.roster import GIT_WORK, GITLAB_GROUP, ISSUES, PEOPLE, PROJECTS, GitWork
+from scripts.qa_org.roster import (
+    GIT_WORK,
+    GITLAB_GROUP,
+    ISSUES,
+    PEOPLE,
+    PROJECTS,
+    GitWork,
+    git_branch,
+)
 
 API = "http://localhost:8929/api/v4"
 CONTAINER = "openprogram-gitlab-1"
@@ -219,7 +226,7 @@ def push_work(
         project_id = projects[work.repo]
         if work.to_main:
             _ensure_project_maintainer(gl, project_id, author)
-        branch = "main" if work.to_main else f"{key}-{_slug(work.issue)}"
+        branch = git_branch(work, key)
         pushed = _push_commits(gl, project_id, branch, author, key, work)
         mr_iid = _ensure_mr(gl, project_id, branch, author, key, work) if work.mr else None
         if mr_iid is not None:
@@ -334,10 +341,6 @@ def _username(tag: str) -> str:
     if person.gitlab_username is None:
         raise SystemExit(f"{person.name} has no gitlab_username in the roster")
     return person.gitlab_username
-
-
-def _slug(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:32].rstrip("-")
 
 
 def load_state() -> dict[str, Any]:
