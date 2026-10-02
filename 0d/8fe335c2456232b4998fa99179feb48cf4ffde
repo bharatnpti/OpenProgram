@@ -1,0 +1,41 @@
+backend/api/dtos.py
+  s_51495ccc67ba04::t_f6caf0c94e3961 2110-2174
+backend/api/routers/checkin.py
+  s_51495ccc67ba04::t_a91cb1e765410e 3,18,27,114,121,127,130-134,136-139,166-180
+backend/tests/unit/test_api.py
+  s_51495ccc67ba04::t_1596852935ab11 11,21,25,1115-1119,1123,1129,1131,1146-1147,1149,1153-1326
+frontend-v2/src/api/client.ts
+  s_51495ccc67ba04::t_2bab00c0be72af 63,260
+frontend-v2/src/api/generated.ts
+  s_51495ccc67ba04::t_6a9f7a58963591 2883-2899,6197
+frontend-v2/src/api/openapi.json
+  s_51495ccc67ba04::t_e440e694b346f0 5010,10635-10667
+frontend-v2/src/api/schema.ts
+  s_51495ccc67ba04::t_47c58db55cfd0d 44-45
+frontend-v2/src/components/shell/AvatarMenu.tsx
+  s_51495ccc67ba04::t_0536d2d6672299 7-10,27,92-100,130-132
+frontend-v2/src/features/checkin/CheckinScheduleDialog.tsx
+  s_51495ccc67ba04::t_4848a12bd50e2f 1-248
+frontend-v2/src/features/checkin/myCheckinPreference.ts
+  s_51495ccc67ba04::t_32c9f8982f90ad 1-126
+frontend/src/api/generated.ts
+  s_51495ccc67ba04::t_74a1c5c09d455d 2887-2903,6201
+frontend/src/api/openapi.json
+  s_51495ccc67ba04::t_3153aea1f96ebb 5010,10635-10667
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0d8fe335c2456232b4998fa99179feb48cf4ffde",
+  "prompts": {},
+  "sessions": {
+    "s_51495ccc67ba04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98259e94-8aa1-45f5-b5cc-46cac669b27d",
+        "model": "unknown"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
