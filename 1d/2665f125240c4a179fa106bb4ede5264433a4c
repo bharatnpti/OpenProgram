@@ -1,0 +1,41 @@
+frontend-v2/src/components/ui/Pill.tsx
+  s_386bf853700fa5::t_c22dc99093b7f4 22-28
+frontend-v2/src/components/ui/SegmentedBar.tsx
+  s_386bf853700fa5::t_f789a81c9a38f4 11
+frontend-v2/src/components/ui/Sparkline.tsx
+  s_386bf853700fa5::t_cf0e42a7d3e34d 28-30,46
+frontend-v2/src/features/admin/AdminTable.tsx
+  s_386bf853700fa5::t_c66660b13b9d17 49
+frontend-v2/src/features/admin/DirectoryPanel.tsx
+  s_386bf853700fa5::t_e14288c8508107 176
+frontend-v2/src/features/admin/EntitiesPanel.tsx
+  s_386bf853700fa5::t_e8c61749324163 168-171
+frontend-v2/src/features/admin/EscalationContactsDialog.tsx
+  s_386bf853700fa5::t_dbcd533ef328ab 73-74
+frontend-v2/src/features/admin/RelationshipsPanel.tsx
+  s_386bf853700fa5::t_4a00203cd18937 75-82,107-114,137-144,172-179,207-214,242-249,276-283,301-304
+frontend-v2/src/features/signals/FlowStrip.tsx
+  s_386bf853700fa5::t_05e63d31a5c0d8 11-14
+frontend-v2/src/features/today/ProductOwnerToday.tsx
+  s_386bf853700fa5::t_597c61ee02c2e0 49-53,57-60,63-66
+frontend-v2/src/components/shell/CommandPalette.tsx
+  s_386bf853700fa5::t_59d3593b7c042e 76
+frontend-v2/src/features/today/ManagerExecToday.tsx
+  s_386bf853700fa5::t_e534a4b348b7f9 71-79,86,96,133-136,203-207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1d2665f125240c4a179fa106bb4ede5264433a4c",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
