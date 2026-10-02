@@ -1,0 +1,18 @@
+# Real-integration QA stack: the same backend and worker, configured from .env.qa
+# (written by `python -m scripts.qa_org.use_real`) instead of the shared .env.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.qa.yml --env-file .env.qa \
+#     up -d --no-deps --force-recreate backend worker
+#
+# --env-file feeds the ${...} interpolation in docker-compose.yml; the override
+# below replaces each service's env_file. Both are needed: the shared .env stays
+# the mock demo for anything else (a host uvicorn, the test suite) that reads it.
+services:
+  backend:
+    env_file: !override
+      - path: .env.qa
+        required: true
+  worker:
+    env_file: !override
+      - path: .env.qa
+        required: true
