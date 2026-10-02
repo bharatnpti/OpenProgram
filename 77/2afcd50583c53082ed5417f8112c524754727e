@@ -1,0 +1,21 @@
+backend/core/application/status_collector.py
+  s_386bf853700fa5::t_6d2c0e566d77f4 20,899-905,913,940,960-975,2542-2630
+backend/tests/unit/test_status_collector.py
+  s_386bf853700fa5::t_9894aed1e4cf01 2312-2468
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "772afcd50583c53082ed5417f8112c524754727e",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
