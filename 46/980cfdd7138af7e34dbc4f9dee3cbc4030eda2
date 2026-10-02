@@ -1,9 +1,12 @@
 frontend-v2/src/features/coordination/BriefsColumn.tsx
   s_386bf853700fa5::t_c7821c67d7103f 2,7-15,17-20,24-26,31-34,36-37,42-45,49-68,82,92-96
+  s_386bf853700fa5::t_dfb22965cfc489 2,7-15,17-20,24-26,31-34,36-37,42-45,49-68,82,92-96
 frontend-v2/src/features/today/ManagerExecToday.tsx
   s_386bf853700fa5::t_4b097dc63c888c 9,12,154-156,199,236-238,240-271,275-283,285-302
+  s_386bf853700fa5::t_150caa3eded07a 9,12,154-156,199,236-238,240-271,275-283,285-302
 frontend-v2/src/lib/briefs.ts
   s_386bf853700fa5::t_80bd94ad9c086a 1-38,47-50,59-60
+  s_386bf853700fa5::t_e11ca22cb5464e 1-38,47-50,59-60
 ---
 {
   "schema_version": "authorship/3.0.0",
