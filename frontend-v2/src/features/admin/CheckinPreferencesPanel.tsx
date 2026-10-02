@@ -6,12 +6,20 @@ import { apiClient } from "../../api/client";
 import { TextInput } from "../../components/ui/Field";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
+import { formatDuration } from "../../lib/duration";
 import { cn } from "../../lib/utils";
-import type { CheckinPreferenceResponse, ConfigNodeResponse } from "../../api/schema";
+import type {
+  CheckinPreferenceResponse,
+  CheckinPreferenceUpdateRequest,
+  ConfigNodeResponse,
+} from "../../api/schema";
 import { NodeSelect } from "./AdminSelect";
+import { DurationField } from "./DurationField";
 import { FormField } from "./FormField";
-import { RangeSlider } from "./RangeSlider";
 import { errorMessage, weekdayOptions } from "./adminTypes";
+
+/** One click each for the live-nudge demo (1 min) and the 4 h / 8 h defaults. */
+const waitPresets = [60, 900, 3600, 14400, 28800];
 
 export function CheckinPreferencesPanel({
   members,
@@ -26,19 +34,18 @@ export function CheckinPreferencesPanel({
   const [localTime, setLocalTime] = useState("09:00");
   const [timezone, setTimezone] = useState("UTC");
   const [weekdays, setWeekdays] = useState<number[]>([0, 1, 2, 3, 4]);
-  const [replyWait, setReplyWait] = useState(300);
-  const [finalReplyWait, setFinalReplyWait] = useState(900);
+  const [replyWait, setReplyWait] = useState<number | null>(300);
+  const [finalReplyWait, setFinalReplyWait] = useState<number | null>(900);
+  // What the selected member has stored, so a save sends only what changed.
+  const [loaded, setLoaded] = useState<CheckinPreferenceResponse | null>(null);
 
   const updateMutation = useMutation({
-    mutationFn: () =>
-      apiClient.updateConfigMemberCheckinPreference(memberId, {
-        local_time: localTime,
-        timezone,
-        weekdays,
-        reply_wait_seconds: replyWait,
-        final_reply_wait_seconds: finalReplyWait,
-      }),
-    onSuccess: async () => {
+    mutationFn: (changes: CheckinPreferenceUpdateRequest) =>
+      apiClient.updateConfigMemberCheckinPreference(memberId, changes),
+    onSuccess: async (saved) => {
+      // The next save compares against what is stored now, unless the admin
+      // has moved on to another member meanwhile.
+      setLoaded((current) => (current?.developer_id === saved.developer_id ? saved : current));
       await onChanged();
       toast.success("Check-in preference saved.");
     },
@@ -54,6 +61,7 @@ export function CheckinPreferencesPanel({
   function selectMember(nextMember: string) {
     setMemberId(nextMember);
     const pref = preferences.find((item) => item.developer_id === nextMember);
+    setLoaded(pref ?? null);
     if (pref) {
       setLocalTime(pref.local_time.slice(0, 5));
       setTimezone(pref.timezone ?? "UTC");
@@ -119,30 +127,46 @@ export function CheckinPreferencesPanel({
               ))}
             </div>
           </FormField>
-          <RangeSlider
-            label="Reply wait (seconds)"
-            min={60}
-            max={3600}
-            step={60}
+          <DurationField
+            id="checkin-reply-wait"
+            label="Reply wait"
+            hint="How long to wait for a reply before the first nudge."
             value={replyWait}
-            valueLabel={`${replyWait}s`}
-            onChange={(event) => setReplyWait(Number(event.target.value))}
+            presets={waitPresets}
+            onChange={setReplyWait}
           />
-          <RangeSlider
-            label="Final reply wait (seconds)"
-            min={60}
-            max={7200}
-            step={60}
+          <DurationField
+            id="checkin-final-reply-wait"
+            label="Final reply wait"
+            hint="How long to wait after the last escalation before the check-in closes as unanswered."
             value={finalReplyWait}
-            valueLabel={`${finalReplyWait}s`}
-            onChange={(event) => setFinalReplyWait(Number(event.target.value))}
+            presets={waitPresets}
+            onChange={setFinalReplyWait}
           />
           <div>
             <Pill
               variant="primary"
               size="md"
-              disabled={!memberId || updateMutation.isPending}
-              onClick={() => updateMutation.mutate()}
+              disabled={
+                !memberId ||
+                replyWait === null ||
+                finalReplyWait === null ||
+                updateMutation.isPending
+              }
+              onClick={() => {
+                if (replyWait === null || finalReplyWait === null) {
+                  return;
+                }
+                updateMutation.mutate(
+                  preferenceChanges(loaded, {
+                    local_time: localTime,
+                    timezone,
+                    weekdays,
+                    reply_wait_seconds: replyWait,
+                    final_reply_wait_seconds: finalReplyWait,
+                  }),
+                );
+              }}
             >
               {updateMutation.isPending ? "Saving…" : "Save preference"}
             </Pill>
@@ -174,8 +198,11 @@ export function CheckinPreferencesPanel({
                   <div className="mt-0.5 text-[13px] text-grey-secondary">
                     {pref.local_time} / {pref.timezone ?? "UTC"} / {weekdayLabels(pref.weekdays)}
                   </div>
-                  <div className="mt-1.5">
-                    <RagChip tone="info">{pref.reply_wait_seconds}s wait</RagChip>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <RagChip tone="info">{formatDuration(pref.reply_wait_seconds)} wait</RagChip>
+                    <RagChip tone="neutral">
+                      {formatDuration(pref.final_reply_wait_seconds)} final wait
+                    </RagChip>
                   </div>
                 </div>
               ))}
@@ -185,6 +212,45 @@ export function CheckinPreferencesPanel({
       </div>
     </div>
   );
+}
+
+type PreferenceForm = {
+  local_time: string;
+  timezone: string;
+  weekdays: number[];
+  reply_wait_seconds: number;
+  final_reply_wait_seconds: number;
+};
+
+/**
+ * The fields that differ from what is stored. The PUT keeps anything left out,
+ * so a save never rewrites a value the form only displays: a reply window, a
+ * time stored with seconds, or a timezone left to the workspace default.
+ */
+function preferenceChanges(
+  loaded: CheckinPreferenceResponse | null,
+  form: PreferenceForm,
+): CheckinPreferenceUpdateRequest {
+  if (!loaded) {
+    return form;
+  }
+  const changes: CheckinPreferenceUpdateRequest = {};
+  if (form.local_time !== loaded.local_time.slice(0, 5)) {
+    changes.local_time = form.local_time;
+  }
+  if (form.timezone !== (loaded.timezone ?? "UTC")) {
+    changes.timezone = form.timezone;
+  }
+  if ([...form.weekdays].sort().join() !== [...loaded.weekdays].sort().join()) {
+    changes.weekdays = form.weekdays;
+  }
+  if (form.reply_wait_seconds !== loaded.reply_wait_seconds) {
+    changes.reply_wait_seconds = form.reply_wait_seconds;
+  }
+  if (form.final_reply_wait_seconds !== loaded.final_reply_wait_seconds) {
+    changes.final_reply_wait_seconds = form.final_reply_wait_seconds;
+  }
+  return changes;
 }
 
 /** A member's name, falling back to the id before the directory has loaded. */
