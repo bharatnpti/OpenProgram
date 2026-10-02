@@ -33,7 +33,7 @@ class CrossPersonRequestService:
     time_series_repository: TimeSeriesRepository | None = None
     llm_provider: LlmProvider | None = None
     model: str = "test-model"
-    auto_notify: bool = False
+    auto_notify: bool = True
 
     async def record_from_checkin(
         self,

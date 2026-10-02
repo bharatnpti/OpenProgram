@@ -53,7 +53,7 @@ Merges portfolio risks, flow metrics, and the activity feed into one ranked stre
 
 ### Coordination — requests, briefs, and ask-the-graph
 
-Cross-person requests board, scheduled narrative briefs, and a natural-language query box that answers from the graph rather than from a free-form LLM guess.
+Cross-person requests board (the person a check-in asks something of is sent a DM by default; `OPENPROGRAM_CROSS_PERSON_AUTO_NOTIFY=false` turns that off), scheduled narrative briefs, and a natural-language query box that answers from the graph rather than from a free-form LLM guess.
 
 ![Coordination](docs/images/coordination.png)
 
