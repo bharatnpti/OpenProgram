@@ -201,6 +201,7 @@ Functional requirements:
 - The console shall open every role on Today, showing the view for the role being viewed as.
 - The developer view shall show today's check-in summary and open blockers, where the status came from (answered in chat, confirmed in the console, partly answered, inferred from delivery signals, stale, or carried forward from an earlier day), a focus list ranked by urgency, and assigned tasks with RAG, status source, and confidence.
 - A developer shall confirm the day's status, or correct its summary, blockers, and ETA change, from the console. A correction is a full statement, so a blocker left out of it is resolved.
+- Confirming a status the developer didn't give that day (inferred, stale, unknown, or carried forward from an earlier day) shall record what was confirmed: the earlier day's status with its date, or what the inference was drawn from. It shall not keep the "no confirmed check-in" wording or the no-reply placeholder blocker.
 - The developer view shall show the pods, projects, and programs the developer's check-in rolls up into, each with its current colour, and shall say so plainly when the developer is in no pod.
 - The scrum master view shall default to the pods the person belongs to, and shall show each member as confirmed, partial, stale, or missing, plus open blockers with owner, source, and age.
 - The product owner view shall default to the projects of the person's pods, and shall show project progress, task counts by RAG, and the tasks that need attention.
