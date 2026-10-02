@@ -111,7 +111,6 @@ export function SignalsPage() {
           <Stat label="Open risks" value={risks.data?.risks?.length ?? 0} />
           <Stat label="Watermelons" value={watermelons} tone="text-rag-red" />
           <Stat label="Drift findings" value={risks.data?.drift?.length ?? 0} />
-          <Stat label="Stale items" value={flow.data?.stale_count ?? 0} tone="text-rag-amber" />
         </div>
       </div>
 
