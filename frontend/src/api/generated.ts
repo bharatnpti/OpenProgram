@@ -2987,6 +2987,8 @@ export interface components {
       newest_item_at?: string | null;
       /** Config Error */
       config_error?: string | null;
+      /** Provider Error */
+      provider_error?: string | null;
       /** Targets */
       targets: components["schemas"]["SyncTargetStatusResponse"][];
     };

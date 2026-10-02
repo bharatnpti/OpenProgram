@@ -23,6 +23,8 @@ from core.domain.sync_status import (
     LAST_ERROR_KIND_KEY,
     LAST_FAILED_AT_KEY,
     LAST_ITEM_COUNT_KEY,
+    PROVIDER_START_FAILURE_PREFIX,
+    PROVIDER_START_FAILURE_REASONS,
     SyncErrorKind,
 )
 from core.ports.repositories import SyncCursorRepository
@@ -42,6 +44,20 @@ def classify_sync_error(error: BaseException) -> SyncErrorKind:
             return SyncErrorKind.CREDENTIALS
         return SyncErrorKind.PROVIDER_UNAVAILABLE
     return SyncErrorKind.UNEXPECTED
+
+
+def provider_start_failure_message(error: BaseException) -> str:
+    """A reader-safe reason a provider could not be built.
+
+    Only fixed phrases and the exception's class name are used. The message is
+    dropped: building a provider fails on exactly the values -- a token, a base
+    URL, a key -- that must never be echoed back.
+    """
+    reason = PROVIDER_START_FAILURE_REASONS[classify_sync_error(error)]
+    error_type = type(error).__name__
+    if not error_type.isidentifier():
+        error_type = "Error"
+    return f"{PROVIDER_START_FAILURE_PREFIX}: {reason} ({error_type})"
 
 
 def succeeded_cursor(cursor: SyncCursor, checked_at: datetime, item_count: int) -> SyncCursor:

@@ -333,6 +333,9 @@ function sourceWarning(source: SyncSourceStatusResponse, now: number): string | 
       : "Signals from this source may be out of date.";
   switch (source.health) {
     case "failing":
+      if (source.provider_error) {
+        return `${source.provider_error}. Syncs from this source can't run until its credentials or settings are fixed. ${stale}`;
+      }
       if (source.config_error) {
         return `Sync targets can't be resolved, so recurring syncs stop until the project or pod settings are fixed: ${source.config_error}`;
       }
