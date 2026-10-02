@@ -63,6 +63,7 @@ async def test_gitlab_adapter_maps_recorded_rest_payloads() -> None:
                     "updated_at": "2026-01-10T09:30:00Z",
                     "draft": False,
                     "web_url": "https://gitlab.test/openprogram/repo/-/merge_requests/7",
+                    "source_branch": "PO-7-read-sync",
                     "references": {"full": "openprogram/repo!7"},
                 }
             ],
@@ -105,5 +106,9 @@ async def test_gitlab_adapter_maps_recorded_rest_payloads() -> None:
     assert pull_requests[0].merged is True
     assert pull_requests[0].opened_at == datetime(2026, 1, 10, 8, 45, tzinfo=UTC)
     assert pull_requests[0].metadata["repo"] == "openprogram/repo"
+    assert pull_requests[0].metadata["source_branch"] == "PO-7-read-sync"
+    assert pull_requests[0].metadata["web_url"] == (
+        "https://gitlab.test/openprogram/repo/-/merge_requests/7"
+    )
     assert authored[0].metadata["repo"] == "openprogram/repo"
     assert {call.request.method for call in respx.calls} == {"GET"}

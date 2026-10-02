@@ -233,10 +233,18 @@ Fixed on this branch:
   and one failed check-in no longer fails the fan-out. A node left by the old
   behaviour is removed with `DELETE /config/members/<id>`.
 
+- A draft or closed merge request was stored as an ordinary open one: the
+  adapters read the state, but sync kept only `merged`. MR facts now carry a
+  provider-neutral `state` (open / merged / closed), `draft`, `source_branch`
+  and `web_url`; the PR-age rule ignores closed requests, and the LLM's git tool
+  shows state, draft and branch.
+
 Open:
 
 - Only default-branch commits are synced, so a branch's commits are invisible
   until it is merged. A branch with no MR is visible only as a missing MR.
+- Risk evidence links for a merge request are built from `github_base_url`, so
+  a GitLab MR's link points at github.com; the fact's own `web_url` is unused.
 - The backend image installs `pip install .` against the `>=` ranges in
   `pyproject.toml`, not `uv.lock`, so containers run newer libraries than the
   tests do (on 2026-10-02: DBOS 3.2.0 vs 2.24.0 locked, Temporal 1.34 vs 1.28,

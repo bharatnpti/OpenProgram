@@ -441,6 +441,59 @@ async def test_vcs_read_sync_attributes_git_authors_to_the_member() -> None:
     assert repo[0].payload["author_name"] == "git name"
 
 
+async def test_vcs_read_sync_records_a_provider_neutral_merge_request_state() -> None:
+    # GitLab says opened/merged/closed, GitHub open/closed plus merged_at; a draft
+    # or closed request used to read as an ordinary open one.
+    store = InMemoryGraphStore()
+    await store.upsert_node(Developer(tenant_id="demo", id="dev-1", name="Dev One"))
+    at = datetime(2026, 1, 10, 8, 0, tzinfo=UTC)
+
+    def request(pr_id: str, *, merged: bool, **metadata: str | bool) -> PullRequest:
+        return PullRequest(
+            tenant_id="demo",
+            id=pr_id,
+            title=f"PO-{pr_id} work",
+            author=UserRef(tenant_id="demo", external_id="dev-1"),
+            merged=merged,
+            metadata={"repo": "repo-1", **metadata},
+            updated_at=at,
+        )
+
+    provider = FakeVcsProvider(
+        repos=[Repo(tenant_id="demo", id="r-1", name="repo-1", default_branch="main")],
+        pull_requests=[
+            request("1", merged=False, state="opened", draft=True, source_branch="PO-1-x"),
+            request("2", merged=True, state="merged", web_url="https://git.test/repo-1/-/2"),
+            request("3", merged=False, state="closed"),
+            request("4", merged=False, state="open"),
+        ],
+    )
+    service = VcsReadSyncService(
+        vcs_provider=provider,
+        graph_repository=store,
+        time_series_repository=store,
+        cursor_repository=store,
+    )
+
+    await service.sync_repo(tenant_id="demo", repo_name="repo-1", observed_at=at)
+
+    facts = {
+        fact.payload["id"]: fact.payload
+        for fact in await store.list_facts(
+            "demo", EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1")
+        )
+    }
+    assert {pr: (p["state"], p["draft"]) for pr, p in facts.items()} == {
+        "1": ("open", True),
+        "2": ("merged", False),
+        "3": ("closed", False),
+        "4": ("open", False),
+    }
+    assert facts["1"]["source_branch"] == "PO-1-x"
+    assert facts["2"]["web_url"] == "https://git.test/repo-1/-/2"
+    assert "source_branch" not in facts["3"]
+
+
 async def test_vcs_read_sync_links_repo_to_configured_containers() -> None:
     store = InMemoryGraphStore()
     await store.upsert_node(

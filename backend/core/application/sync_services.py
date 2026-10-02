@@ -498,6 +498,7 @@ class VcsReadSyncService:
                     "title": pull_request.title,
                     "merged": pull_request.merged,
                     "opened_at": _datetime_iso(pull_request.opened_at or pull_request.updated_at),
+                    **_pull_request_state(pull_request),
                     **_unlinked_author(pull_request.author, member),
                 },
                 observed_at=pull_request_observed_at,
@@ -606,6 +607,23 @@ def _linked_member(author: UserRef | None, members: Mapping[str, str]) -> UserRe
         return None
     member_id = members.get(author.external_id.strip().lower())
     return replace(author, external_id=member_id) if member_id is not None else None
+
+
+def _pull_request_state(pull_request: PullRequest) -> dict[str, JsonScalar]:
+    """Provider-neutral state, draft flag, branch and link of a pull/merge request.
+
+    GitLab reports opened/merged/closed/locked, GitHub open/closed plus a merge
+    time. Without this a closed or draft request read as an ordinary open one.
+    """
+    metadata = pull_request.metadata
+    raw_state = metadata.get("state")
+    state = "merged" if pull_request.merged else "closed" if raw_state == "closed" else "open"
+    values: dict[str, JsonScalar] = {"state": state, "draft": bool(metadata.get("draft"))}
+    for key in ("source_branch", "web_url"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value:
+            values[key] = value
+    return values
 
 
 def _unlinked_author(author: UserRef | None, member: UserRef | None) -> dict[str, JsonScalar]:
