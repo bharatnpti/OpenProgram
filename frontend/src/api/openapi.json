@@ -5225,6 +5225,72 @@
         }
       }
     },
+    "/pods/{pod_id}/rollup": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Pod Rollup",
+        "operationId": "pod_rollup_pods__pod_id__rollup_get",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodRollupResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/projects/{project_id}/progress": {
       "get": {
         "tags": ["personas"],
@@ -9711,6 +9777,46 @@
         "required": ["role"],
         "title": "PodMemberLinkRequest"
       },
+      "PodRollupResponse": {
+        "properties": {
+          "pod_id": {
+            "type": "string",
+            "title": "Pod Id"
+          },
+          "pod_name": {
+            "type": "string",
+            "title": "Pod Name"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "rag": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "source": {
+            "$ref": "#/components/schemas/StatusSource"
+          },
+          "factors": {
+            "items": {
+              "$ref": "#/components/schemas/RollupFactorDto"
+            },
+            "type": "array",
+            "title": "Factors"
+          },
+          "source_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Source Names"
+          }
+        },
+        "type": "object",
+        "required": ["pod_id", "pod_name", "as_of", "rag", "source", "factors", "source_names"],
+        "title": "PodRollupResponse"
+      },
       "PortfolioFeedItemResponse": {
         "properties": {
           "source": {
@@ -10021,6 +10127,13 @@
             "type": "array",
             "title": "Factors"
           },
+          "source_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Source Names"
+          },
           "tasks": {
             "items": {
               "$ref": "#/components/schemas/TaskProgressDto"
@@ -10044,6 +10157,7 @@
           "red_tasks",
           "unknown_tasks",
           "factors",
+          "source_names",
           "tasks"
         ],
         "title": "ProjectProgressResponse"
@@ -11082,6 +11196,13 @@
             "type": "array",
             "title": "Factors"
           },
+          "source_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Source Names"
+          },
           "tasks": {
             "items": {
               "$ref": "#/components/schemas/TaskProgressDto"
@@ -11105,6 +11226,7 @@
           "red_tasks",
           "unknown_tasks",
           "factors",
+          "source_names",
           "tasks"
         ],
         "title": "WorkstreamProgressResponse"

@@ -45,6 +45,7 @@ import type {
   PodMemberLinkRequest,
   PodBlockersResponse,
   PodCheckinsResponse,
+  PodRollupResponse,
   NodeKind,
   NodeTrendResponse,
   PortfolioHeatmapResponse,
@@ -188,6 +189,8 @@ export const apiClient = {
     requestJson<PodBlockersResponse>(withAsOf(`/pods/${podId}/blockers`, asOf)),
   podCheckins: (podId: string, asOf?: string) =>
     requestJson<PodCheckinsResponse>(withAsOf(`/pods/${podId}/checkins`, asOf)),
+  podRollup: (podId: string, asOf?: string) =>
+    requestJson<PodRollupResponse>(withAsOf(`/pods/${podId}/rollup`, asOf)),
   projectProgress: (projectId: string, asOf?: string) =>
     requestJson<ProjectProgressResponse>(withAsOf(`/projects/${projectId}/progress`, asOf)),
   workstreamProgress: (workstreamId: string, asOf?: string) =>
