@@ -85,7 +85,7 @@ Functional requirements:
 Functional requirements:
 
 - A member shall open their own check-in schedule from the avatar menu and change the days the bot asks them and their time zone.
-- The member's own schedule shall refuse any other field: the check-in time, reply windows, and write-back consent stay with an admin.
+- The member's own schedule shall refuse any other field: reply windows and write-back consent stay with an admin, and there is no per-person check-in time.
 - Only a configured member shall have a check-in schedule; the avatar-menu entry shall not be offered to anyone without a member record, since the bot never asks them.
 - A member's time zone shall decide which day their reply counts for.
 - Admins shall view check-in preferences for all configured members.
@@ -94,7 +94,7 @@ Functional requirements:
 - The system shall refuse an empty list of check-in days, from an admin or from the member, because it would stop that member's check-ins without saying so.
 - Admins shall configure reply wait and final reply wait windows as an amount and a unit, with presets, so a stored value is shown exactly and saving a member without changes leaves their windows as they were.
 - The system shall reject a negative reply window, or one too large to store.
-- Admins shall be able to record a member's local check-in time. The scheduler does not use it: check-ins are sent on the single tenant-wide schedule.
+- The console shall not show or set a per-member check-in time, because check-ins are sent on the single tenant-wide schedule. The API keeps the stored field, and the scheduler does not use it to decide when to send.
 - A changed preference shall apply from the member's next check-in, never to one already sent.
 - A member shall follow the team default for any field not set for them: check-in days, time zone, and reply windows. Only values set for the member shall be stored, so a later change to a default reaches everyone who hasn't set that field.
 - The admin screen shall show which of a member's values are the team default and which were set for them, and let an admin put a field back to the team default. A member shall be able to go back to the team's time zone from their own schedule.
