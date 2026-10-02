@@ -85,6 +85,49 @@ async def test_runtime_sync_target_resolver_combines_jira_and_dedupes_github_rep
     }
 
 
+async def test_runtime_sync_target_resolver_gives_an_unfiltered_pod_the_whole_project() -> None:
+    # Identity-style pod: no filter, so every issue of its project is the pod's,
+    # alongside a filtered pod carved out of the same project.
+    store = InMemoryGraphStore()
+    await store.upsert_node(
+        GraphNode(
+            tenant_id="demo",
+            id="project-identity",
+            kind=NodeKind.PROJECT,
+            name="Identity",
+            metadata={"jira_project_key": "IDP"},
+        )
+    )
+    for pod_id, metadata in (
+        ("pod-identity", {}),
+        ("pod-platform", {"jira_filter_jql": "labels = platform"}),
+    ):
+        await store.upsert_node(
+            GraphNode(
+                tenant_id="demo", id=pod_id, kind=NodeKind.POD, name=pod_id, metadata=metadata
+            )
+        )
+        await store.add_edge(
+            GraphEdge(
+                tenant_id="demo",
+                from_node_id="project-identity",
+                to_node_id=pod_id,
+                kind=EdgeKind.CONTAINS,
+            )
+        )
+
+    targets = await RuntimeSyncTargetResolver(store).resolve("demo", as_of=date(2026, 1, 10))
+
+    payloads = {item.payload["target_node_id"]: item.payload for item in targets.issue_dispatches}
+    assert set(payloads) == {"project-identity", "pod-identity", "pod-platform"}
+    assert payloads["pod-identity"]["jql"] == 'project = "IDP"'
+    assert payloads["pod-identity"]["target_node_kind"] == "pod"
+    assert payloads["pod-platform"]["jql"] == '(project = "IDP") AND (labels = platform)'
+    # Same query as the project, but its own cursor.
+    assert payloads["pod-identity"]["cursor_scope"].startswith("query:pod:pod-identity:")
+    assert payloads["pod-identity"]["cursor_scope"] != payloads["project-identity"]["cursor_scope"]
+
+
 async def test_runtime_sync_target_resolver_empty_integration_fields_produce_no_targets() -> None:
     store = InMemoryGraphStore()
     await store.upsert_node(

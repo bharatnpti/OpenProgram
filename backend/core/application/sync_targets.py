@@ -113,10 +113,12 @@ def _pod_issue_dispatches(
         project = projects_by_id[edge.from_node_id]
         pod = pods_by_id[edge.to_node_id]
         base_query = _project_jql(project)
-        pod_filter = _metadata_string(pod, "jira_filter_jql")
-        if base_query is None or pod_filter is None:
+        if base_query is None:
             continue
-        query = f"({base_query}) AND ({pod_filter})"
+        # A filter narrows the project to the pod; a pod without one covers the
+        # whole project. Skipping it left such a pod with no issues at all.
+        pod_filter = _metadata_string(pod, "jira_filter_jql")
+        query = base_query if pod_filter is None else f"({base_query}) AND ({pod_filter})"
         scope = _query_scope(pod, query)
         payload: dict[str, str | int | float | bool | None] = {
             "jql": query,
