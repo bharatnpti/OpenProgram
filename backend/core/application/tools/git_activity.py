@@ -91,6 +91,14 @@ def _format_fact(fact: FactEvent) -> str:
         repo = _payload_string(payload, "repo")
         merged = payload.get("merged")
         details = [f"title={title}", f"merged={merged}"]
+        state = _payload_string(payload, "state")
+        if state is not None:
+            details.append(f"state={state}")
+        if payload.get("draft") is True:
+            details.append("draft=True")
+        branch = _payload_string(payload, "source_branch")
+        if branch is not None:
+            details.append(f"branch={branch}")
         if repo is not None:
             details.insert(0, f"repo={repo}")
         return f"{fact.observed_at.isoformat()} pull_request: " + ", ".join(details)

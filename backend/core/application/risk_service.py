@@ -307,7 +307,9 @@ class RiskService:
 
         findings: list[RiskFinding] = []
         for (repo, pr_id), fact in latest_by_pr.items():
-            if _payload_bool(fact.payload, "merged"):
+            # Closed without merging is no longer waiting on anyone. Facts from
+            # before the state was recorded have none and count as open.
+            if _payload_bool(fact.payload, "merged") or fact.payload.get("state") == "closed":
                 continue
             opened_at = _payload_datetime(fact.payload, "opened_at") or fact.observed_at
             age_days = _age_days(opened_at, as_of)
