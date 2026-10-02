@@ -869,6 +869,7 @@ class ServiceRegistry:
             graph_repository=self.graph_repository(),
             time_series_repository=self.time_series_repository(),
             cursor_repository=self.sync_cursor_repository(),
+            identity_link_repository=self.identity_link_repository(),
         )
 
     def vcs_read_sync_service(self) -> VcsReadSyncService:

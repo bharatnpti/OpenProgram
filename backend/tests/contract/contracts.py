@@ -91,7 +91,9 @@ def assert_chat_webhook_mapper_contract(
     assert message.thread_id
 
 
-async def assert_issue_tracker_contract(provider: IssueTracker) -> None:
+async def assert_issue_tracker_contract(
+    provider: IssueTracker, *, known_email: str | None = None
+) -> None:
     user = UserRef(tenant_id="demo", external_id="U123")
     projects = await provider.list_projects("demo")
     assert all(isinstance(project, Project) for project in projects)
@@ -102,6 +104,11 @@ async def assert_issue_tracker_contract(provider: IssueTracker) -> None:
     issue = await provider.get_issue("demo", "PO-1")
     assert isinstance(issue, Issue)
     assert await provider.list_active_for(user)
+    assert await provider.find_user_by_email("demo", "nobody@example.invalid") is None
+    if known_email is not None:
+        found = await provider.find_user_by_email("demo", known_email.upper())
+        assert found is not None
+        assert await provider.list_active_for(found)
     # Write-back is now implemented behind the gated, audited WriteBackService, so
     # the port itself accepts writes. The closed-system-gate no-op is enforced and
     # covered in test_writeback_service.py, not at the raw port level.

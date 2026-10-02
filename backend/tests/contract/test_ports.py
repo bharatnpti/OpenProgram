@@ -76,9 +76,10 @@ async def test_fake_issue_tracker_satisfies_contract() -> None:
                 state=IssueState.IN_PROGRESS,
                 assignee=user,
             )
-        }
+        },
+        user_emails={"u123@example.com": "U123"},
     )
-    await assert_issue_tracker_contract(provider)
+    await assert_issue_tracker_contract(provider, known_email="u123@example.com")
 
 
 async def test_fake_vcs_provider_satisfies_contract() -> None:

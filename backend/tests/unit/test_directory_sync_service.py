@@ -167,6 +167,15 @@ async def test_slack_directory_provider_paginates_and_filters() -> None:
                         "is_bot": False,
                         "profile": {"display_name": "Removed User"},
                     },
+                    # Slack lists Slackbot in every workspace and does not flag it
+                    # as a bot.
+                    {
+                        "id": "USLACKBOT",
+                        "name": "slackbot",
+                        "deleted": False,
+                        "is_bot": False,
+                        "profile": {"real_name": "Slackbot"},
+                    },
                 ],
                 "response_metadata": {"next_cursor": ""},
             },

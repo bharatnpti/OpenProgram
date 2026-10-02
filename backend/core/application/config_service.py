@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 
 from core.domain.directory import DirectoryUser
-from core.domain.errors import GraphNotFound, OpenProgramError
+from core.domain.errors import GraphNotFound, OpenProgramError, ProviderUnavailable
 from core.domain.escalation import (
     EscalationContact,
     EscalationTarget,
@@ -28,6 +28,7 @@ from core.domain.rollup import Rag
 from core.domain.status import CheckInPreference, StatusSource
 from core.domain.writeback import WriteBackGate, WriteBackGateSource
 from core.ports.directory import DirectoryUserRepository
+from core.ports.issue_tracker import IssueTracker
 from core.ports.repositories import (
     GraphRepository,
     IdentityLinkRepository,
@@ -151,6 +152,8 @@ class ConfigService:
         time_series_repository: TimeSeriesRepository | None = None,
         identity_link_repository: IdentityLinkRepository | None = None,
         writeback_config_repository: WriteBackConfigRepository | None = None,
+        issue_tracker: IssueTracker | None = None,
+        require_issue_tracker_link: bool = False,
     ) -> None:
         self._graph_repository = graph_repository
         self._status_repository = status_repository
@@ -158,6 +161,10 @@ class ConfigService:
         self._time_series_repository = time_series_repository
         self._identity_link_repository = identity_link_repository
         self._writeback_config_repository = writeback_config_repository
+        self._issue_tracker = issue_tracker
+        # True when a real tracker is configured: a member it cannot attribute
+        # issues to is then as unmapped as one who cannot be messaged.
+        self._require_issue_tracker_link = require_issue_tracker_link
 
     async def list_nodes(self, tenant_id: str, kind: NodeKind) -> list[GraphNode]:
         return await self._graph_repository.list_nodes(tenant_id, kind)
@@ -566,7 +573,12 @@ class ConfigService:
         For every configured developer node, resolve the matching directory user
         (the member id is the directory ``external_id``) and fill any field that
         is currently unset: ``external_id`` -> ``chat_user_id`` and ``email`` ->
-        ``jira_email``. Admin-set values are never overwritten.
+        ``jira_email``. Then, when an issue tracker is wired, resolve
+        ``jira_email`` -> ``jira_account_id``: the account id is what the tracker
+        indexes assignments by, so without it the member's issues are never
+        found. An admin-entered ``jira_email`` (someone whose tracker address
+        differs from their chat address) is resolved the same way. Admin-set
+        values are never overwritten.
         """
         directory = self._directory_repository_or_raise()
         repository = self._identity_link_repository_or_raise()
@@ -587,21 +599,43 @@ class ConfigService:
             if jira_email is None and directory_user.email:
                 jira_email = directory_user.email
                 filled.append("jira_email")
+            jira_account_id = link.jira_account_id
+            if jira_account_id is None and jira_email is not None:
+                jira_account_id = await self._tracker_account_for(tenant_id, jira_email)
+                if jira_account_id is not None:
+                    filled.append("jira_account_id")
             if not filled:
                 continue
             await repository.upsert_identity_link(
-                replace(link, chat_user_id=chat_user_id, jira_email=jira_email)
+                replace(
+                    link,
+                    chat_user_id=chat_user_id,
+                    jira_email=jira_email,
+                    jira_account_id=jira_account_id,
+                )
             )
             matched.append(
                 IdentityAutoMatchMember(id=member.id, name=member.name, filled=tuple(filled))
             )
         return IdentityAutoMatchResult(updated_count=len(matched), members=tuple(matched))
 
-    async def list_unmapped_members(self, tenant_id: str) -> list[UnmappedMember]:
-        """List developer nodes whose identity link is missing or lacks a chat id.
+    async def _tracker_account_for(self, tenant_id: str, email: str) -> str | None:
+        if self._issue_tracker is None:
+            return None
+        try:
+            found = await self._issue_tracker.find_user_by_email(tenant_id, email)
+        except ProviderUnavailable:
+            return None
+        return found.external_id if found is not None else None
 
-        A member with no resolved ``chat_user_id`` cannot receive check-in DMs, so
-        it is surfaced to admins together with the identity fields still unset.
+    async def list_unmapped_members(self, tenant_id: str) -> list[UnmappedMember]:
+        """List developer nodes whose identity link cannot reach or attribute them.
+
+        A member with no resolved ``chat_user_id`` cannot receive check-in DMs.
+        With a real issue tracker configured, a member with no
+        ``jira_account_id`` is unmapped too: the tracker's issues can never be
+        attributed to them, so their status is built without their work. Each
+        is surfaced to admins together with the identity fields still unset.
         """
         repository = self._identity_link_repository_or_raise()
         members = await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER)
@@ -611,7 +645,11 @@ class ConfigService:
         unmapped: list[UnmappedMember] = []
         for member in members:
             link = links.get(member.id)
-            if link is not None and link.chat_user_id is not None:
+            if (
+                link is not None
+                and link.chat_user_id is not None
+                and not (self._require_issue_tracker_link and link.jira_account_id is None)
+            ):
                 continue
             unmapped.append(
                 UnmappedMember(
