@@ -9,7 +9,9 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from config.settings import Settings
+from core.application.blocker_resolution import BlockerResolutionService
 from core.application.rollup_service import RollupService
+from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
 from core.domain.graph import (
     Developer,
     EdgeKind,
@@ -120,6 +122,59 @@ def test_phase1_non_response_records_non_green_terminal_status() -> None:
 
 
 async def test_phase1_critical_path_blocker_rolls_up_red_and_persists() -> None:
+    as_of = date(2026, 6, 15)
+    store = await _critical_path_store()
+    # Criticality follows the work item a blocker is attributed to, so the
+    # blocker names the critical task, as the check-in parser records it.
+    await store.record_developer_status_with_blockers(
+        _blocked_status(as_of),
+        (
+            DeveloperBlocker(
+                tenant_id="demo",
+                blocker_id="blk-release-gate",
+                developer_id="dev-1",
+                description="release gate",
+                normalized_key=normalize_blocker_key("release gate"),
+                work_item_id="task-critical",
+                source=BlockerSource.CHECKIN,
+                first_seen_on=as_of,
+                last_seen_on=as_of,
+            ),
+        ),
+    )
+    tree = await store.get_program_tree("demo", "program-1", as_of)
+
+    statuses = await RollupService(
+        store, store, BlockerResolutionService(store, store)
+    ).compute_and_record(tree, as_of)
+    persisted = await store.latest_node_status(
+        "demo",
+        EntityRef(tenant_id="demo", kind=NodeKind.PROGRAM, id="program-1"),
+        as_of,
+    )
+
+    assert {status.entity_ref.id: status.rag.value for status in statuses}["program-1"] == "red"
+    assert persisted is not None
+    assert persisted.rag.value == "red"
+
+
+async def test_phase1_unattributed_blocker_on_critical_path_developer_stays_amber() -> None:
+    # Owning a critical task does not make every blocker critical: a blocker
+    # that names no work item may belong to other work (another pod's), and
+    # treating it as critical is the cross-pod leak blocker attribution removed.
+    as_of = date(2026, 6, 15)
+    store = await _critical_path_store()
+    await store.record_developer_status(_blocked_status(as_of))
+    tree = await store.get_program_tree("demo", "program-1", as_of)
+
+    statuses = await RollupService(
+        store, store, BlockerResolutionService(store, store)
+    ).compute_and_record(tree, as_of)
+
+    assert {status.entity_ref.id: status.rag.value for status in statuses}["program-1"] == "amber"
+
+
+async def _critical_path_store() -> InMemoryGraphStore:
     store = InMemoryGraphStore()
     await store.upsert_node(Program(tenant_id="demo", id="program-1", name="Program"))
     await store.upsert_node(Pod(tenant_id="demo", id="pod-1", name="Runtime Pod"))
@@ -156,28 +211,18 @@ async def test_phase1_critical_path_blocker_rolls_up_red_and_persists() -> None:
             kind=EdgeKind.ASSIGNED_TO,
         )
     )
-    await store.record_developer_status(
-        DeveloperStatus(
-            tenant_id="demo",
-            developer_id="dev-1",
-            as_of=date(2026, 6, 15),
-            source=StatusSource.CONFIRMED,
-            blockers=("release gate",),
-            summary="Blocked on release gate.",
-        )
-    )
-    tree = await store.get_program_tree("demo", "program-1", date(2026, 6, 15))
+    return store
 
-    statuses = await RollupService(store, store).compute_and_record(tree, date(2026, 6, 15))
-    persisted = await store.latest_node_status(
-        "demo",
-        EntityRef(tenant_id="demo", kind=NodeKind.PROGRAM, id="program-1"),
-        date(2026, 6, 15),
-    )
 
-    assert {status.entity_ref.id: status.rag.value for status in statuses}["program-1"] == "red"
-    assert persisted is not None
-    assert persisted.rag.value == "red"
+def _blocked_status(as_of: date) -> DeveloperStatus:
+    return DeveloperStatus(
+        tenant_id="demo",
+        developer_id="dev-1",
+        as_of=as_of,
+        source=StatusSource.CONFIRMED,
+        blockers=("release gate",),
+        summary="Blocked on release gate.",
+    )
 
 
 def test_phase1_persona_routes_are_role_scoped() -> None:
