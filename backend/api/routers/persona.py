@@ -27,6 +27,7 @@ from api.dtos import (
     NodeTrendResponse,
     PodBlockersResponse,
     PodCheckinsResponse,
+    PodRollupResponse,
     PortfolioFeedResponse,
     PortfolioFlowResponse,
     PortfolioHeatmapResponse,
@@ -94,6 +95,24 @@ async def pod_checkins(
     _ensure(principal, Capability.READ_POD_CHECKINS)
     view = await persona_service.pod_checkins(principal.tenant_id, pod_id, as_of)
     return PodCheckinsResponse.from_view(view)
+
+
+@router.get("/pods/{pod_id}/rollup", response_model=PodRollupResponse)
+async def pod_rollup(
+    pod_id: str,
+    as_of: Annotated[date, Query(default_factory=date.today)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+) -> PodRollupResponse:
+    # A pod's reasons name its open blockers and who has not checked in, so
+    # they need both pod capabilities: the pair the pod panel already needs.
+    _ensure(principal, Capability.READ_POD_BLOCKERS)
+    _ensure(principal, Capability.READ_POD_CHECKINS)
+    try:
+        view = await persona_service.pod_rollup(principal.tenant_id, pod_id, as_of)
+    except GraphNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return PodRollupResponse.from_view(view)
 
 
 @router.get("/projects/{project_id}/progress", response_model=ProjectProgressResponse)

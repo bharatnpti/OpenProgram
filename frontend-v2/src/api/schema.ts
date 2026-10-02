@@ -46,6 +46,7 @@ export type ProgramProjectLinkRequest = components["schemas"]["ProgramProjectLin
 export type MemberTaskAssignmentRequest = components["schemas"]["MemberTaskAssignmentRequest"];
 export type PodBlockersResponse = components["schemas"]["PodBlockersResponse"];
 export type PodCheckinsResponse = components["schemas"]["PodCheckinsResponse"];
+export type PodRollupResponse = components["schemas"]["PodRollupResponse"];
 export type ProjectProgressResponse = components["schemas"]["ProjectProgressResponse"];
 export type WorkstreamProgressResponse = components["schemas"]["WorkstreamProgressResponse"];
 export type ProgramTreeResponse = components["schemas"]["ProgramTreeResponse"];

@@ -1130,6 +1130,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/pods/{pod_id}/rollup": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Pod Rollup */
+    get: operations["pod_rollup_pods__pod_id__rollup_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/projects/{project_id}/progress": {
     parameters: {
       query?: never;
@@ -2535,6 +2552,26 @@ export interface components {
       /** Role */
       role: string;
     };
+    /** PodRollupResponse */
+    PodRollupResponse: {
+      /** Pod Id */
+      pod_id: string;
+      /** Pod Name */
+      pod_name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      rag: components["schemas"]["Rag"];
+      source: components["schemas"]["StatusSource"];
+      /** Factors */
+      factors: components["schemas"]["RollupFactorDto"][];
+      /** Source Names */
+      source_names: {
+        [key: string]: string;
+      };
+    };
     /** PortfolioFeedItemResponse */
     PortfolioFeedItemResponse: {
       /** Source */
@@ -2670,6 +2707,10 @@ export interface components {
       unknown_tasks: number;
       /** Factors */
       factors: components["schemas"]["RollupFactorDto"][];
+      /** Source Names */
+      source_names: {
+        [key: string]: string;
+      };
       /** Tasks */
       tasks: components["schemas"]["TaskProgressDto"][];
     };
@@ -3027,6 +3068,10 @@ export interface components {
       unknown_tasks: number;
       /** Factors */
       factors: components["schemas"]["RollupFactorDto"][];
+      /** Source Names */
+      source_names: {
+        [key: string]: string;
+      };
       /** Tasks */
       tasks: components["schemas"]["TaskProgressDto"][];
     };
@@ -6175,6 +6220,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PodCheckinsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  pod_rollup_pods__pod_id__rollup_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PodRollupResponse"];
         };
       };
       /** @description Validation Error */
