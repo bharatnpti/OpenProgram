@@ -1,0 +1,25 @@
+frontend-v2/src/features/coordination/RequestsBoard.tsx
+  s_386bf853700fa5::t_a62defd3aa656d 62
+frontend-v2/src/features/today/ProductOwnerToday.tsx
+  s_386bf853700fa5::t_d97b8387cdc854 2,5,10,16-17,23-47,60-78
+frontend-v2/src/lib/today.ts
+  s_386bf853700fa5::t_6f5a2093147805 16-21
+frontend-v2/src/pages/TodayPage.tsx
+  s_386bf853700fa5::t_62a6b0cea975f1 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6d40948b14252a310fa096a20e976a4e610a6c36",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
