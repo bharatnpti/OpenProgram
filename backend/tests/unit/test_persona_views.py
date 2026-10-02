@@ -311,6 +311,44 @@ async def test_workstream_progress_uses_latest_task_facts_for_rollup() -> None:
     assert any(factor.source_ref == blocked_task.ref for factor in view.factors)
 
 
+async def test_progress_routes_refuse_wrong_node_kinds() -> None:
+    """project_progress requires a project id, workstream_progress requires a workstream id."""
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    project = Project(tenant_id="demo", id="project-a", name="Project A")
+    workstream = Workstream(tenant_id="demo", id="ws-a", name="Workstream A")
+    pod = Pod(tenant_id="demo", id="pod-a", name="Pod A")
+    developer = Developer(tenant_id="demo", id="dev-1", name="Dev One")
+    for node in (project, workstream, pod, developer):
+        await store.upsert_node(node)
+    for from_id, to_id in (
+        (project.id, workstream.id),
+        (workstream.id, pod.id),
+        (pod.id, developer.id),
+    ):
+        await store.add_edge(
+            GraphEdge(
+                tenant_id="demo", from_node_id=from_id, to_node_id=to_id, kind=EdgeKind.CONTAINS
+            )
+        )
+    service = _persona_service(store)
+
+    # Valid ids work
+    project_view = await service.project_progress("demo", project.id, as_of)
+    assert project_view.project_id == project.id
+    workstream_view = await service.workstream_progress("demo", workstream.id, as_of)
+    assert workstream_view.workstream_id == workstream.id
+
+    # Wrong node kind or missing id raises GraphNotFound
+    for node_id in (workstream.id, pod.id, developer.id, "project-missing"):
+        with pytest.raises(GraphNotFound):
+            await service.project_progress("demo", node_id, as_of)
+
+    for node_id in (project.id, pod.id, developer.id, "workstream-missing"):
+        with pytest.raises(GraphNotFound):
+            await service.workstream_progress("demo", node_id, as_of)
+
+
 async def test_portfolio_heatmap_uses_existing_rollups_without_graph_fallback() -> None:
     store = InMemoryGraphStore()
     as_of = date(2026, 1, 10)
