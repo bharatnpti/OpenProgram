@@ -1,0 +1,21 @@
+frontend-v2/src/features/delivery/DeliveryDetail.tsx
+  s_386bf853700fa5::t_7cc5bf02d57953 12,114-117,148,223
+frontend-v2/src/features/delivery/ProgramDetail.tsx
+  s_386bf853700fa5::t_14ec241f7db2e0 1-386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dce78654f3f84b1e7f9a0a4353d03ff2c16f6fa1",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "unknown"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
