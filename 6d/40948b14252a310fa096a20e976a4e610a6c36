@@ -1,11 +1,15 @@
 frontend-v2/src/features/coordination/RequestsBoard.tsx
   s_386bf853700fa5::t_a62defd3aa656d 62
+  s_db98bf649daf00::t_b710a9a9dc508b 62
 frontend-v2/src/features/today/ProductOwnerToday.tsx
   s_386bf853700fa5::t_d97b8387cdc854 2,5,10,16-17,23-47,60-78
+  s_db98bf649daf00::t_1a106922f01a7e 2,5,10,16-17,23-47,60-78
 frontend-v2/src/lib/today.ts
   s_386bf853700fa5::t_6f5a2093147805 16-21
+  s_db98bf649daf00::t_67769691ae3d73 16-21
 frontend-v2/src/pages/TodayPage.tsx
   s_386bf853700fa5::t_62a6b0cea975f1 13
+  s_db98bf649daf00::t_67769691ae3d73 13
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -20,6 +24,14 @@ frontend-v2/src/pages/TodayPage.tsx
         "model": "claude-opus-5-5"
       },
       "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
     }
   }
 }
