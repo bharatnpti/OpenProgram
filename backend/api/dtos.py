@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from core.application.ask_service import AskResponseView
 from core.application.config_service import (
     DirectoryItemView,
+    DirectoryPersonView,
     IdentityAutoMatchResult,
     UnmappedMember,
 )
@@ -408,6 +409,24 @@ class WorkItemTransitionRequest(BaseModel):
     new_state: str = Field(min_length=1)
 
 
+class DirectoryPersonResponse(BaseModel):
+    """A person named in a node's metadata (``key``, e.g. ``owner_id``).
+
+    ``member_id`` and ``name`` are null when ``id`` matches no member.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    id: str
+    member_id: str | None
+    name: str | None
+
+    @classmethod
+    def from_view(cls, view: DirectoryPersonView) -> DirectoryPersonResponse:
+        return cls(key=view.key, id=view.id, member_id=view.member_id, name=view.name)
+
+
 class DirectoryItemResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -425,6 +444,7 @@ class DirectoryItemResponse(BaseModel):
     pod_ids: list[str]
     member_ids: list[str]
     task_ids: list[str]
+    people: list[DirectoryPersonResponse]
 
     @classmethod
     def from_view(cls, view: DirectoryItemView) -> DirectoryItemResponse:
@@ -443,6 +463,7 @@ class DirectoryItemResponse(BaseModel):
             pod_ids=list(view.pod_ids),
             member_ids=list(view.member_ids),
             task_ids=list(view.task_ids),
+            people=[DirectoryPersonResponse.from_view(person) for person in view.people],
         )
 
 

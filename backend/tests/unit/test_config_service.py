@@ -4,7 +4,12 @@ from datetime import date, time
 
 import pytest
 
-from core.application.config_service import ConfigConflict, ConfigService, DirectoryService
+from core.application.config_service import (
+    ConfigConflict,
+    ConfigService,
+    DirectoryPersonView,
+    DirectoryService,
+)
 from core.domain.directory import DirectoryUser
 from core.domain.errors import GraphNotFound
 from core.domain.escalation import EscalationContact, EscalationTarget, PodEscalationContacts
@@ -182,6 +187,78 @@ async def test_directory_service_lists_configured_relationships_and_rollup() -> 
     assert pods[0].project_ids == (project.id,)
     assert pods[0].workstream_ids == (workstream.id,)
     assert pods[0].member_ids == (member.id,)
+
+
+async def test_directory_service_resolves_workstream_people_to_member_names() -> None:
+    store = InMemoryGraphStore()
+    service = ConfigService(store, store, identity_link_repository=store)
+    directory = DirectoryService(store, store, store)
+    as_of = date(2026, 1, 10)
+
+    # One member per way a person field can name someone: by node id, by the
+    # chat id on an identity link, and by the chat id copied from the directory.
+    await service.create_node("demo", NodeKind.DEVELOPER, "dev-asha", "Asha Rao")
+    await service.create_node("demo", NodeKind.DEVELOPER, "dev-ira", "Ira Novak")
+    await service.set_identity_link(
+        IdentityLink(tenant_id="demo", developer_id="dev-ira", chat_user_id="U2006")
+    )
+    await service.create_node(
+        "demo", NodeKind.DEVELOPER, "dev-ben", "Ben Sorensen", {"chat_external_id": "U2014"}
+    )
+    pod = await service.create_node("demo", NodeKind.POD, "pod-1", "Pod")
+    await service.create_node(
+        "demo",
+        NodeKind.WORKSTREAM,
+        "ws-resolved",
+        "Payments",
+        {"owner_id": "dev-asha", "tpm_id": "U2006", "sm_id": "U2014", "phase": "build"},
+    )
+    await service.create_node(
+        "demo",
+        NodeKind.WORKSTREAM,
+        "ws-unresolved",
+        "Search",
+        # An id no member carries, and the id of a node that is not a person.
+        {"owner_id": "U1002", "tpm_id": pod.id, "sm_id": ""},
+    )
+
+    workstreams = {item.id: item for item in await directory.list_workstreams("demo", as_of)}
+
+    assert workstreams["ws-resolved"].people == (
+        DirectoryPersonView(key="owner_id", id="dev-asha", member_id="dev-asha", name="Asha Rao"),
+        DirectoryPersonView(key="tpm_id", id="U2006", member_id="dev-ira", name="Ira Novak"),
+        DirectoryPersonView(key="sm_id", id="U2014", member_id="dev-ben", name="Ben Sorensen"),
+    )
+    # An unmatched id is kept as is with no name, never guessed; a blank field
+    # names nobody.
+    assert workstreams["ws-unresolved"].people == (
+        DirectoryPersonView(key="owner_id", id="U1002"),
+        DirectoryPersonView(key="tpm_id", id=pod.id),
+    )
+    assert (await directory.get_workstream("demo", "ws-resolved", as_of)).people[0].name == (
+        "Asha Rao"
+    )
+    assert (await directory.list_pods("demo", as_of))[0].people == ()
+
+
+async def test_directory_service_prefers_a_member_id_over_another_members_chat_id() -> None:
+    store = InMemoryGraphStore()
+    service = ConfigService(store, store, identity_link_repository=store)
+    directory = DirectoryService(store, store)
+
+    await service.create_node("demo", NodeKind.DEVELOPER, "U1002", "Liam Chen")
+    await service.create_node(
+        "demo", NodeKind.DEVELOPER, "dev-other", "Someone Else", {"chat_external_id": "U1002"}
+    )
+    await service.create_node(
+        "demo", NodeKind.WORKSTREAM, "ws-1", "Payments", {"owner_id": "U1002"}
+    )
+
+    [workstream] = await directory.list_workstreams("demo", date(2026, 1, 10))
+
+    assert workstream.people == (
+        DirectoryPersonView(key="owner_id", id="U1002", member_id="U1002", name="Liam Chen"),
+    )
 
 
 async def test_config_service_reports_wrong_kind_node() -> None:

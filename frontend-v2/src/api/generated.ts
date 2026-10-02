@@ -2036,6 +2036,24 @@ export interface components {
       member_ids: string[];
       /** Task Ids */
       task_ids: string[];
+      /** People */
+      people: components["schemas"]["DirectoryPersonResponse"][];
+    };
+    /**
+     * DirectoryPersonResponse
+     * @description A person named in a node's metadata (``key``, e.g. ``owner_id``).
+     *
+     *     ``member_id`` and ``name`` are null when ``id`` matches no member.
+     */
+    DirectoryPersonResponse: {
+      /** Key */
+      key: string;
+      /** Id */
+      id: string;
+      /** Member Id */
+      member_id: string | null;
+      /** Name */
+      name: string | null;
     };
     /** DirectorySearchResponse */
     DirectorySearchResponse: {
