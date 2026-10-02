@@ -57,6 +57,9 @@ class FakeWorkflowScheduler:
             for config in configs
         ]
 
+    async def remove_schedule(self, schedule_id: str) -> ScheduleBootstrapResult:
+        return ScheduleBootstrapResult(schedule_id=schedule_id, status="absent")
+
     async def dispatch_developer_checkin(self, input: DeveloperCheckinDispatch) -> str:
         return safe_workflow_id(
             f"fake-checkin-{input.tenant_id}-{input.developer_id}-{input.checkin_date or 'today'}"

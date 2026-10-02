@@ -557,9 +557,10 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
         settings.cross_person_notify_retry_schedule_id,
         *(config.schedule_id for config in registry.scheduler.sync_configs),
     ]
+    assert registry.scheduler.removed == []
 
 
-async def test_ensure_workflow_schedules_skips_conversation_purge_when_disabled() -> None:
+async def test_ensure_workflow_schedules_removes_conversation_purge_when_disabled() -> None:
     settings_factory = cast(Callable[..., Settings], Settings)
     settings = settings_factory(
         _env_file=None,
@@ -572,10 +573,15 @@ async def test_ensure_workflow_schedules_skips_conversation_purge_when_disabled(
     results = await schedule.ensure_workflow_schedules(registry)
 
     assert registry.scheduler.purge_configs == []
-    assert settings.conversation_purge_schedule_id not in [result.schedule_id for result in results]
+    assert registry.scheduler.removed == [settings.conversation_purge_schedule_id]
+    assert {r.schedule_id: r.status for r in results}[
+        settings.conversation_purge_schedule_id
+    ] == "removed"
 
 
-async def test_ensure_workflow_schedules_skips_checkin_reconcile_when_disabled() -> None:
+async def test_ensure_workflow_schedules_removes_checkin_reconcile_when_disabled() -> None:
+    # Not creating it was not enough: a catch-up schedule made while the flag was
+    # on kept DMing every member after the flag was turned off.
     settings_factory = cast(Callable[..., Settings], Settings)
     settings = settings_factory(
         _env_file=None,
@@ -588,7 +594,28 @@ async def test_ensure_workflow_schedules_skips_checkin_reconcile_when_disabled()
     results = await schedule.ensure_workflow_schedules(registry)
 
     assert registry.scheduler.checkin_reconcile_configs == []
-    assert settings.checkin_reconcile_schedule_id not in [result.schedule_id for result in results]
+    assert registry.scheduler.removed == [settings.checkin_reconcile_schedule_id]
+    assert {r.schedule_id: r.status for r in results}[
+        settings.checkin_reconcile_schedule_id
+    ] == "removed"
+
+
+async def test_ensure_workflow_schedules_removes_narrative_briefs_when_disabled() -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        heartbeat_schedule_id="heartbeat-test",
+        narrative_brief_enabled=False,
+    )
+    registry = _ScheduleBootstrapRegistry(settings)
+
+    await schedule.ensure_workflow_schedules(registry)
+
+    brief_ids = [c.schedule_id for c in schedule.narrative_brief_schedule_configs(settings)]
+    assert brief_ids
+    assert registry.scheduler.removed == brief_ids
+    assert not {c.schedule_id for c in registry.scheduler.sync_configs} & set(brief_ids)
 
 
 @pytest.mark.parametrize(
@@ -598,7 +625,7 @@ async def test_ensure_workflow_schedules_skips_checkin_reconcile_when_disabled()
         pytest.param({"cross_person_auto_notify": False}, id="auto-notify-off"),
     ],
 )
-async def test_ensure_workflow_schedules_skips_cross_person_notify_retry_when_off(
+async def test_ensure_workflow_schedules_removes_cross_person_notify_retry_when_off(
     overrides: dict[str, object],
 ) -> None:
     settings_factory = cast(Callable[..., Settings], Settings)
@@ -613,9 +640,10 @@ async def test_ensure_workflow_schedules_skips_cross_person_notify_retry_when_of
     results = await schedule.ensure_workflow_schedules(registry)
 
     assert registry.scheduler.notify_retry_configs == []
-    assert settings.cross_person_notify_retry_schedule_id not in [
-        result.schedule_id for result in results
-    ]
+    assert registry.scheduler.removed == [settings.cross_person_notify_retry_schedule_id]
+    assert {r.schedule_id: r.status for r in results}[
+        settings.cross_person_notify_retry_schedule_id
+    ] == "removed"
 
 
 def test_cross_person_notify_retry_config_comes_from_settings() -> None:
@@ -855,6 +883,57 @@ async def test_dbos_checkin_fanout_survives_one_failed_check_in(
     assert started == ["dev-1", "gitlab_admin@example.com", "dev-2"]
     assert result.dispatched == 2
     assert result.workflow_ids == ["child-dev-1", "child-dev-2"]
+
+
+def test_dbos_applied_schedules_are_resumed(monkeypatch: pytest.MonkeyPatch) -> None:
+    # DBOS 3 upserts a schedule and keeps its status, so a hand-paused catch-up
+    # stayed paused through restarts with its flag on. Applying must resume it.
+    calls: list[tuple[str, object]] = []
+    monkeypatch.setattr(
+        dbos_workflows.DBOS,
+        "apply_schedules",
+        lambda schedules: calls.append(("apply", [s["schedule_name"] for s in schedules])),
+    )
+    monkeypatch.setattr(
+        dbos_workflows.DBOS, "resume_schedule", lambda name: calls.append(("resume", name))
+    )
+    reconcile = dbos_workflows._checkin_reconcile_schedule_input(
+        CheckinReconcileScheduleConfig(
+            schedule_id="checkin-reconcile",
+            tenant_id="demo",
+            cron="*/15 * * * 1-5",
+            after_local_time="09:45",
+            timezone="UTC",
+        )
+    )
+
+    dbos_workflows._apply_active_schedules([reconcile])
+
+    assert calls == [("apply", ["checkin-reconcile"]), ("resume", "checkin-reconcile")]
+
+
+@pytest.mark.parametrize(("exists", "status"), [(True, "removed"), (False, "absent")])
+async def test_dbos_remove_schedule_deletes_only_an_existing_schedule(
+    monkeypatch: pytest.MonkeyPatch, exists: bool, status: str
+) -> None:
+    deleted: list[str] = []
+    monkeypatch.setattr(dbos_workflows, "_ensure_dbos_runtime", lambda config: False)
+    monkeypatch.setattr(
+        dbos_workflows.DBOS, "get_schedule", lambda name: object() if exists else None
+    )
+    monkeypatch.setattr(dbos_workflows.DBOS, "delete_schedule", deleted.append)
+    scheduler = dbos_workflows.DbosWorkflowScheduler(
+        app_name="openprogram",
+        system_database_url="postgresql://unused",
+        schedule_id="heartbeat",
+        tenant_id="demo",
+        heartbeat_cron="0 * * * * *",
+    )
+
+    result = await scheduler.remove_schedule("checkin-reconcile")
+
+    assert result == ScheduleBootstrapResult(schedule_id="checkin-reconcile", status=status)
+    assert deleted == (["checkin-reconcile"] if exists else [])
 
 
 def test_dbos_checkin_schedule_inputs_enable_backfill() -> None:
@@ -1485,6 +1564,7 @@ class _RecordingWorkflowScheduler:
         self.sweeper_configs: list[InboundSweeperScheduleConfig] = []
         self.notify_retry_configs: list[CrossPersonNotifyRetryScheduleConfig] = []
         self.sync_configs: list[SyncScheduleConfig] = []
+        self.removed: list[str] = []
 
     async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
         self.heartbeat_calls += 1
@@ -1528,6 +1608,10 @@ class _RecordingWorkflowScheduler:
             ScheduleBootstrapResult(schedule_id=config.schedule_id, status="ready")
             for config in configs
         ]
+
+    async def remove_schedule(self, schedule_id: str) -> ScheduleBootstrapResult:
+        self.removed.append(schedule_id)
+        return ScheduleBootstrapResult(schedule_id=schedule_id, status="removed")
 
 
 class _ScheduleBootstrapRegistry:

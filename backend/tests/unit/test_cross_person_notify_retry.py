@@ -443,8 +443,10 @@ async def test_dbos_scheduler_applies_the_retry_schedule(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     applied: list[object] = []
+    resumed: list[str] = []
     monkeypatch.setattr(dbos_workflows, "_ensure_dbos_runtime", lambda config: False)
     monkeypatch.setattr("infra.adapters.workflows.dbos.DBOS.apply_schedules", applied.append)
+    monkeypatch.setattr("infra.adapters.workflows.dbos.DBOS.resume_schedule", resumed.append)
     scheduler = dbos_workflows.DbosWorkflowScheduler(
         app_name="openprogram-test",
         system_database_url="postgresql://openprogram:openprogram@localhost:5432/openprogram",
@@ -458,6 +460,7 @@ async def test_dbos_scheduler_applies_the_retry_schedule(
     assert result.schedule_id == "cross-person-notify-retry"
     assert result.status == "configured"
     assert applied == [[dbos_workflows._cross_person_notify_retry_schedule_input(_config())]]
+    assert resumed == ["cross-person-notify-retry"]
 
 
 async def test_fake_scheduler_accepts_the_retry_schedule() -> None:
