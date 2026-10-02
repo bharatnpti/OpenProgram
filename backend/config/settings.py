@@ -135,11 +135,11 @@ class Settings(BaseSettings):
     calendar_provider: str = "google"
     workflow_provider: str = "dbos"
     slack_bot_token: str | None = None
-    # How Slack delivers inbound events. "socket" holds an outbound Socket Mode
-    # WebSocket from the worker (needs slack_app_token, no public URL); "http"
-    # is the Events API Request URL at /webhooks/chat/slack (needs a public
-    # HTTPS endpoint and slack_signing_secret).
-    slack_inbound_transport: Literal["socket", "http"] = "socket"
+    # How Slack delivers inbound events. "http" (default) is the Events API
+    # Request URL at /webhooks/chat/slack (needs a public HTTPS endpoint and
+    # slack_signing_secret); "socket" holds an outbound Socket Mode WebSocket
+    # from the worker (needs slack_app_token, no public URL).
+    slack_inbound_transport: Literal["socket", "http"] = "http"
     slack_app_token: str | None = None
     slack_signing_secret: str | None = None
     slack_signature_tolerance_seconds: int = 300
