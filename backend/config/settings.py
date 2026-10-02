@@ -135,6 +135,12 @@ class Settings(BaseSettings):
     calendar_provider: str = "google"
     workflow_provider: str = "dbos"
     slack_bot_token: str | None = None
+    # How Slack delivers inbound events. "socket" holds an outbound Socket Mode
+    # WebSocket from the worker (needs slack_app_token, no public URL); "http"
+    # is the Events API Request URL at /webhooks/chat/slack (needs a public
+    # HTTPS endpoint and slack_signing_secret).
+    slack_inbound_transport: Literal["socket", "http"] = "socket"
+    slack_app_token: str | None = None
     slack_signing_secret: str | None = None
     slack_signature_tolerance_seconds: int = 300
     slack_api_base_url: str = "https://slack.com/api"
@@ -569,6 +575,11 @@ class Settings(BaseSettings):
                 "secret_key is the public default committed for local bring-up and is "
                 "refused when environment is not 'local' -- provide a unique Fernet key"
             )
+
+    @property
+    def slack_socket_mode(self) -> bool:
+        """Whether real Slack events arrive over Socket Mode instead of the webhook."""
+        return self.chat_provider == "slack" and self.slack_inbound_transport == "socket"
 
     @property
     def dev_roles(self) -> frozenset[Role]:
