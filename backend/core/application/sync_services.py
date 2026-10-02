@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
+from core.application.sync_recording import recording_sync_failure, succeeded_cursor
 from core.domain.graph import (
     Developer,
     EdgeKind,
@@ -71,29 +73,32 @@ class IssueReadSyncService:
         observed = _timestamp(observed_at)
         scope = f"project:{project_key}"
         cursor = await self._cursor_repository.get_cursor(tenant_id, self.connector, scope)
-        project = await self._sync_project_node(tenant_id, project_key, container_id)
-        sprints = (
-            await self._sync_sprint_nodes(tenant_id, project.id, board_id)
-            if board_id is not None
-            else []
-        )
-        issues = await self._issue_tracker.list_issues_updated_since(
-            tenant_id,
-            project_key,
-            cursor,
-        )
+        async with self._recording_failure(tenant_id, scope, cursor, observed):
+            project = await self._sync_project_node(tenant_id, project_key, container_id)
+            sprints = (
+                await self._sync_sprint_nodes(tenant_id, project.id, board_id)
+                if board_id is not None
+                else []
+            )
+            issues = await self._issue_tracker.list_issues_updated_since(
+                tenant_id,
+                project_key,
+                cursor,
+            )
 
-        for issue in issues:
-            await self._sync_issue(issue, project, sprints, observed)
+            for issue in issues:
+                await self._sync_issue(issue, project, sprints, observed)
 
-        next_cursor = _next_cursor(cursor, (_issue_updated_at(issue, observed) for issue in issues))
-        recorded_cursor = _with_sync_metadata(next_cursor, observed, len(issues))
-        await self._cursor_repository.record_cursor(
-            tenant_id,
-            self.connector,
-            scope,
-            recorded_cursor,
-        )
+            next_cursor = _next_cursor(
+                cursor, (_issue_updated_at(issue, observed) for issue in issues)
+            )
+            recorded_cursor = succeeded_cursor(next_cursor, observed, len(issues))
+            await self._cursor_repository.record_cursor(
+                tenant_id,
+                self.connector,
+                scope,
+                recorded_cursor,
+            )
         return SyncRunResult(
             connector=self.connector,
             scope=scope,
@@ -114,30 +119,45 @@ class IssueReadSyncService:
     ) -> SyncRunResult:
         observed = _timestamp(observed_at)
         cursor = await self._cursor_repository.get_cursor(tenant_id, self.connector, cursor_scope)
-        target = await self._sync_target_node(tenant_id, target_node_id, target_node_kind)
-        sprints = (
-            await self._sync_sprint_nodes(tenant_id, target.id, board_id)
-            if board_id is not None and target.kind is NodeKind.PROJECT
-            else []
-        )
-        issues = await self._issue_tracker.list_issues_for_query(tenant_id, jql, cursor)
+        async with self._recording_failure(tenant_id, cursor_scope, cursor, observed):
+            target = await self._sync_target_node(tenant_id, target_node_id, target_node_kind)
+            sprints = (
+                await self._sync_sprint_nodes(tenant_id, target.id, board_id)
+                if board_id is not None and target.kind is NodeKind.PROJECT
+                else []
+            )
+            issues = await self._issue_tracker.list_issues_for_query(tenant_id, jql, cursor)
 
-        for issue in issues:
-            await self._sync_issue(issue, target, sprints, observed)
+            for issue in issues:
+                await self._sync_issue(issue, target, sprints, observed)
 
-        next_cursor = _next_cursor(cursor, (_issue_updated_at(issue, observed) for issue in issues))
-        recorded_cursor = _with_sync_metadata(next_cursor, observed, len(issues))
-        await self._cursor_repository.record_cursor(
-            tenant_id,
-            self.connector,
-            cursor_scope,
-            recorded_cursor,
-        )
+            next_cursor = _next_cursor(
+                cursor, (_issue_updated_at(issue, observed) for issue in issues)
+            )
+            recorded_cursor = succeeded_cursor(next_cursor, observed, len(issues))
+            await self._cursor_repository.record_cursor(
+                tenant_id,
+                self.connector,
+                cursor_scope,
+                recorded_cursor,
+            )
         return SyncRunResult(
             connector=self.connector,
             scope=cursor_scope,
             items_synced=len(issues),
             cursor=recorded_cursor,
+        )
+
+    def _recording_failure(
+        self, tenant_id: str, scope: str, cursor: SyncCursor, attempted_at: datetime
+    ) -> AbstractAsyncContextManager[None]:
+        return recording_sync_failure(
+            self._cursor_repository,
+            tenant_id=tenant_id,
+            connector=self.connector,
+            scope=scope,
+            cursor=cursor,
+            attempted_at=attempted_at,
         )
 
     async def _sync_project_node(
@@ -311,30 +331,43 @@ class VcsReadSyncService:
         observed = _timestamp(observed_at)
         scope = f"repo:{repo_name}"
         cursor = await self._cursor_repository.get_cursor(tenant_id, self.connector, scope)
-        repo = await self._sync_repo_node(tenant_id, repo_name)
-        for container_id in container_ids:
-            await self._link_repo_container(tenant_id, container_id, repo.id)
-        commits = await self._vcs_provider.list_commits(tenant_id, repo_name, cursor)
-        pull_requests = await self._vcs_provider.list_pull_requests(tenant_id, repo_name, cursor)
+        async with recording_sync_failure(
+            self._cursor_repository,
+            tenant_id=tenant_id,
+            connector=self.connector,
+            scope=scope,
+            cursor=cursor,
+            attempted_at=observed,
+        ):
+            repo = await self._sync_repo_node(tenant_id, repo_name)
+            for container_id in container_ids:
+                await self._link_repo_container(tenant_id, container_id, repo.id)
+            commits = await self._vcs_provider.list_commits(tenant_id, repo_name, cursor)
+            pull_requests = await self._vcs_provider.list_pull_requests(
+                tenant_id, repo_name, cursor
+            )
 
-        for commit in commits:
-            await self._append_commit_fact(commit, repo.ref)
-        for pull_request in pull_requests:
-            await self._append_pull_request_fact(pull_request, repo_name, observed)
+            for commit in commits:
+                await self._append_commit_fact(commit, repo.ref)
+            for pull_request in pull_requests:
+                await self._append_pull_request_fact(pull_request, repo_name, observed)
 
-        timestamps = [
-            *(commit.committed_at for commit in commits),
-            *(_pull_request_updated_at(pull_request, observed) for pull_request in pull_requests),
-        ]
-        next_cursor = _next_cursor(cursor, timestamps)
-        item_count = len(commits) + len(pull_requests)
-        recorded_cursor = _with_sync_metadata(next_cursor, observed, item_count)
-        await self._cursor_repository.record_cursor(
-            tenant_id,
-            self.connector,
-            scope,
-            recorded_cursor,
-        )
+            timestamps = [
+                *(commit.committed_at for commit in commits),
+                *(
+                    _pull_request_updated_at(pull_request, observed)
+                    for pull_request in pull_requests
+                ),
+            ]
+            next_cursor = _next_cursor(cursor, timestamps)
+            item_count = len(commits) + len(pull_requests)
+            recorded_cursor = succeeded_cursor(next_cursor, observed, item_count)
+            await self._cursor_repository.record_cursor(
+                tenant_id,
+                self.connector,
+                scope,
+                recorded_cursor,
+            )
         return SyncRunResult(
             connector=self.connector,
             scope=scope,
@@ -537,18 +570,6 @@ def _next_cursor(cursor: SyncCursor, timestamps: Iterable[datetime]) -> SyncCurs
         value=latest.isoformat() if latest is not None else cursor.value,
         updated_at=latest,
         metadata=dict(cursor.metadata),
-    )
-
-
-def _with_sync_metadata(cursor: SyncCursor, observed_at: datetime, item_count: int) -> SyncCursor:
-    return SyncCursor(
-        value=cursor.value,
-        updated_at=cursor.updated_at,
-        metadata={
-            **cursor.metadata,
-            "last_checked_at": observed_at.isoformat(),
-            "last_item_count": item_count,
-        },
     )
 
 

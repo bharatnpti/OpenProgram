@@ -87,15 +87,15 @@ def _runtime_or_legacy_dispatches(
     issue_dispatches = targets.issue_dispatches
     vcs_dispatches = targets.vcs_dispatches
     if connector == "issue":
-        return issue_dispatches or _legacy_issue_dispatches(settings, tenant_id)
+        return issue_dispatches or legacy_issue_dispatches(settings, tenant_id)
     if connector == "vcs":
-        return vcs_dispatches or _legacy_vcs_dispatches(settings, tenant_id)
-    return (issue_dispatches or _legacy_issue_dispatches(settings, tenant_id)) + (
-        vcs_dispatches or _legacy_vcs_dispatches(settings, tenant_id)
+        return vcs_dispatches or legacy_vcs_dispatches(settings, tenant_id)
+    return (issue_dispatches or legacy_issue_dispatches(settings, tenant_id)) + (
+        vcs_dispatches or legacy_vcs_dispatches(settings, tenant_id)
     )
 
 
-def _legacy_issue_dispatches(settings: Settings, tenant_id: str) -> tuple[SyncDispatchInput, ...]:
+def legacy_issue_dispatches(settings: Settings, tenant_id: str) -> tuple[SyncDispatchInput, ...]:
     dispatches: list[SyncDispatchInput] = []
     for entry in settings.jira_sync_projects:
         project_key, container_id, board_id = _jira_project_target(entry)
@@ -115,7 +115,7 @@ def _legacy_issue_dispatches(settings: Settings, tenant_id: str) -> tuple[SyncDi
     return tuple(dispatches)
 
 
-def _legacy_vcs_dispatches(settings: Settings, tenant_id: str) -> tuple[SyncDispatchInput, ...]:
+def legacy_vcs_dispatches(settings: Settings, tenant_id: str) -> tuple[SyncDispatchInput, ...]:
     return tuple(
         SyncDispatchInput(
             tenant_id=tenant_id,

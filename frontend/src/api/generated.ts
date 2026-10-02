@@ -250,6 +250,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/admin/ops/sync-status": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Sync Status
+     * @description Per-source sync health: configured targets, last success, last failure.
+     *
+     *     Read-only and built from recorded runs; it never calls a provider.
+     */
+    get: operations["get_sync_status_admin_ops_sync_status_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/admin/ops/dead-letters/{dead_letter_id}/rearm": {
     parameters: {
       query?: never;
@@ -2920,6 +2942,91 @@ export interface components {
      * @enum {string}
      */
     StatusSource: "confirmed" | "partial" | "inferred" | "stale" | "unknown";
+    /**
+     * SyncHealth
+     * @description How much a reader can trust the data a source feeds in.
+     *
+     *     ``DISABLED`` is a source that by design is not synced (the calendar is read
+     *     live). ``NOT_CONFIGURED`` has no recurring target, so nothing will refresh
+     *     it. Neither is ever reported as healthy.
+     * @enum {string}
+     */
+    SyncHealth: "healthy" | "stale" | "failing" | "never_synced" | "not_configured" | "disabled";
+    /**
+     * SyncOutcome
+     * @enum {string}
+     */
+    SyncOutcome: "succeeded" | "failed";
+    /**
+     * SyncSource
+     * @enum {string}
+     */
+    SyncSource: "issue_tracker" | "vcs" | "calendar" | "directory";
+    /** SyncSourceStatusResponse */
+    SyncSourceStatusResponse: {
+      source: components["schemas"]["SyncSource"];
+      /** Provider */
+      provider: string;
+      /** Simulated */
+      simulated: boolean;
+      /** Sync Enabled */
+      sync_enabled: boolean;
+      /** Schedule */
+      schedule?: string | null;
+      /** Stale After Minutes */
+      stale_after_minutes?: number | null;
+      target_origin: components["schemas"]["SyncTargetOrigin"];
+      health: components["schemas"]["SyncHealth"];
+      /** Last Synced At */
+      last_synced_at?: string | null;
+      /** Last Attempt At */
+      last_attempt_at?: string | null;
+      /** Last Error */
+      last_error?: string | null;
+      /** Newest Item At */
+      newest_item_at?: string | null;
+      /** Config Error */
+      config_error?: string | null;
+      /** Targets */
+      targets: components["schemas"]["SyncTargetStatusResponse"][];
+    };
+    /** SyncStatusResponse */
+    SyncStatusResponse: {
+      /**
+       * Generated At
+       * Format: date-time
+       */
+      generated_at: string;
+      /** Sources */
+      sources: components["schemas"]["SyncSourceStatusResponse"][];
+    };
+    /**
+     * SyncTargetOrigin
+     * @description Where a source's recurring targets come from.
+     * @enum {string}
+     */
+    SyncTargetOrigin: "runtime_config" | "environment" | "workspace" | "none";
+    /** SyncTargetStatusResponse */
+    SyncTargetStatusResponse: {
+      /** Scope */
+      scope: string;
+      /** Label */
+      label: string;
+      /** Detail */
+      detail?: string | null;
+      /** Configured */
+      configured: boolean;
+      health: components["schemas"]["SyncHealth"];
+      /** Last Synced At */
+      last_synced_at?: string | null;
+      /** Last Attempt At */
+      last_attempt_at?: string | null;
+      last_outcome?: components["schemas"]["SyncOutcome"] | null;
+      /** Last Error */
+      last_error?: string | null;
+      /** Items Synced */
+      items_synced?: number | null;
+    };
     /** TaskProgressDto */
     TaskProgressDto: {
       /** Id */
@@ -3616,6 +3723,37 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["DeadLettersResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_sync_status_admin_ops_sync_status_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SyncStatusResponse"];
         };
       };
       /** @description Validation Error */

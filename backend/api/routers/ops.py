@@ -9,16 +9,19 @@ from api.dependencies import (
     get_current_principal,
     get_dead_letter_service,
     get_registry,
+    get_sync_status_service,
     get_write_back_service,
 )
 from api.dtos import (
     DeadLetterResponse,
     DeadLettersResponse,
+    SyncStatusResponse,
     WorkflowDispatchResponse,
     WriteBackRevertResponse,
 )
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.dead_letter_service import DeadLetterService
+from core.application.sync_status_service import SyncStatusService
 from core.application.writeback_service import WriteBackService
 from core.domain.auth import Principal
 from core.domain.errors import AuthorizationDenied
@@ -38,6 +41,20 @@ async def list_dead_letters(
     return DeadLettersResponse(
         dead_letters=[DeadLetterResponse.from_domain(item) for item in dead_letters],
     )
+
+
+@router.get("/sync-status", response_model=SyncStatusResponse)
+async def get_sync_status(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[SyncStatusService, Depends(get_sync_status_service)],
+) -> SyncStatusResponse:
+    """Per-source sync health: configured targets, last success, last failure.
+
+    Read-only and built from recorded runs; it never calls a provider.
+    """
+    _ensure_admin_ops(principal)
+    report = await service.status(principal.tenant_id)
+    return SyncStatusResponse.from_domain(report)
 
 
 @router.post("/dead-letters/{dead_letter_id}/rearm", response_model=WorkflowDispatchResponse)
