@@ -66,7 +66,10 @@ export function latestBriefPerScopePerDay(
   return [...newest.values()].sort((a, b) => b.generated_at.localeCompare(a.generated_at));
 }
 
-function localDay(generatedAt: string): string {
+/** The local day a brief was generated, as YYYY-MM-DD, matching the dates the UI prints. */
+export function localDay(generatedAt: string): string {
   const at = new Date(generatedAt);
-  return `${at.getFullYear()}-${at.getMonth() + 1}-${at.getDate()}`;
+  const month = String(at.getMonth() + 1).padStart(2, "0");
+  const day = String(at.getDate()).padStart(2, "0");
+  return `${at.getFullYear()}-${month}-${day}`;
 }

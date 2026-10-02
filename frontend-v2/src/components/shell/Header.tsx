@@ -5,6 +5,7 @@ import { useRole } from "../../app/role";
 import { cn } from "../../lib/utils";
 import { AvatarMenu } from "./AvatarMenu";
 import { PersonPicker } from "./PersonPicker";
+import { ViewingDateControl } from "./ViewingDate";
 
 type NavItem = { label: string; to: string; needsAggregate?: boolean };
 
@@ -29,7 +30,9 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {
         <div className="grid h-10 w-10 place-items-center rounded-lg bg-magenta text-[22px] font-extrabold text-white">
           T
         </div>
-        <div>
+        {/* The wordmark gives way below xl so the date control, person picker
+            and avatar keep their room instead of pushing past the edge. */}
+        <div className="hidden xl:block">
           <div className="text-[18px] font-extrabold tracking-tight">OpenProgram</div>
           <div className="text-xs text-grey-secondary">Delivery intelligence</div>
         </div>
@@ -42,7 +45,7 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {
             to={item.to}
             className={({ isActive }) =>
               cn(
-                "relative flex h-full items-center px-[18px] text-[16px] no-underline",
+                "relative flex h-full items-center px-3 text-[16px] no-underline xl:px-[18px]",
                 isActive ? "font-bold text-ink" : "font-medium text-grey-secondary hover:text-ink",
               )
             }
@@ -74,6 +77,7 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {
             ⌘K
           </span>
         </button>
+        <ViewingDateControl />
         <PersonPicker />
         <AvatarMenu />
       </div>

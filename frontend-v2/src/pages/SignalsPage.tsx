@@ -2,10 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { apiClient } from "../api/client";
+import { useViewingDate } from "../app/viewingDate";
 import { FlowStrip } from "../features/signals/FlowStrip";
 import { SignalCard, type SignalCardData } from "../features/signals/SignalCard";
 import { toneForRag } from "../lib/status";
-import { todayIso } from "../lib/today";
 import { cn } from "../lib/utils";
 import type { DriftFindingResponse, RiskFindingResponse } from "../api/schema";
 
@@ -54,7 +54,7 @@ function driftCard(drift: DriftFindingResponse, index: number): SignalCardData {
 }
 
 export function SignalsPage() {
-  const asOf = todayIso();
+  const { asOf, isPast, label } = useViewingDate();
   const [filter, setFilter] = useState<FilterKey>("all");
 
   const risks = useQuery({
@@ -86,6 +86,8 @@ export function SignalsPage() {
 
   const watermelons = (risks.data?.risks ?? []).filter((risk) => risk.is_watermelon).length;
 
+  // The feed takes no as_of: it is always the newest activity. Mixed into a
+  // past day's stream it would pass for that day's, so it stays on its own tab.
   const cards =
     filter === "risk"
       ? riskCards
@@ -95,7 +97,14 @@ export function SignalsPage() {
           ? feedCards
           : filter === "flow"
             ? []
-            : [...riskCards, ...driftCards, ...feedCards];
+            : [...riskCards, ...driftCards, ...(isPast ? [] : feedCards)];
+  const pastNote = !isPast
+    ? null
+    : filter === "feed"
+      ? `The feed shows the latest activity. It can't look back to ${label}.`
+      : filter === "all"
+        ? "Feed items are left out here. The feed only has the latest activity."
+        : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -131,6 +140,7 @@ export function SignalsPage() {
           </button>
         ))}
       </div>
+      {pastNote ? <p className="-mt-3 text-[13px] text-grey-secondary">{pastNote}</p> : null}
 
       {filter === "flow" ? (
         <div className="flex max-w-[920px] flex-col gap-3">

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
 import { useRole } from "../../app/role";
+import { useViewingDate } from "../../app/viewingDate";
 import { Card } from "../../components/ui/Card";
 
 /** The cross-person requests waiting on whoever is being acted as.
@@ -15,6 +16,7 @@ import { Card } from "../../components/ui/Card";
 export function WaitingOnYou({ animateDelay }: { animateDelay?: number }) {
   const navigate = useNavigate();
   const { people } = useRole();
+  const { isPast } = useViewingDate();
 
   const myRequests = useQuery({
     queryKey: ["persona", "my-cross-person-requests"],
@@ -35,6 +37,10 @@ export function WaitingOnYou({ animateDelay }: { animateDelay?: number }) {
           All requests
         </button>
       </div>
+      {/* Requests have no as_of, so a past day still shows today's inbox. */}
+      {isPast ? (
+        <p className="px-5 pb-1 text-[13px] text-grey-secondary">Requests show current state.</p>
+      ) : null}
       {requests.map((request) => (
         // The request's own id: one check-in reply can mint several requests
         // that all share a source correlation id.

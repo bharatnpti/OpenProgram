@@ -96,6 +96,22 @@ function actingAsHeaders(): Record<string, string> {
   return headers;
 }
 
+/**
+ * Why changes are refused right now, or null when they are allowed.
+ *
+ * Set while the console views a past day. A confirm or correction sent then is
+ * filed against that day, and any other change lands today while the screen
+ * shows another one. The buttons are disabled too; this is the backstop. Asking
+ * the graph is a question, not a change, and signing out always works.
+ */
+let readOnlyReason: string | null = null;
+
+export function setReadOnlyReason(next: string | null): void {
+  readOnlyReason = next;
+}
+
+const ALWAYS_ALLOWED_WRITES = ["/ask", "/api/v1/auth/"];
+
 export class ApiError extends Error {
   status: number;
   detail: unknown;
@@ -112,6 +128,13 @@ async function requestJson<T>(
   path: string,
   options: { method?: string; body?: unknown } = {},
 ): Promise<T> {
+  if (
+    readOnlyReason &&
+    isWriteMethod(options.method) &&
+    !ALWAYS_ALLOWED_WRITES.some((prefix) => path.startsWith(prefix))
+  ) {
+    throw new ApiError(409, readOnlyReason);
+  }
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: options.method,
     credentials: "include",
@@ -431,9 +454,12 @@ function withQuery(path: string, params: Record<string, string | undefined>): st
   return query ? `${path}?${query}` : path;
 }
 
+function isWriteMethod(method?: string): boolean {
+  return ["POST", "PUT", "PATCH", "DELETE"].includes((method ?? "GET").toUpperCase());
+}
+
 function csrfHeader(method?: string): Record<string, string> {
-  const requestMethod = method ?? "GET";
-  if (!["POST", "PUT", "PATCH", "DELETE"].includes(requestMethod.toUpperCase())) {
+  if (!isWriteMethod(method)) {
     return {};
   }
   const token = readCookie(CSRF_COOKIE_NAME);
