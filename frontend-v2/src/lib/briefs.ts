@@ -1,4 +1,41 @@
-import type { NarrativeBriefResponse } from "../api/schema";
+import type { BriefKind, NarrativeBriefResponse } from "../api/schema";
+
+/** Every brief kind, widest scope first: the order the Coordination filter offers. */
+export const BRIEF_KINDS: readonly BriefKind[] = ["exec", "weekly_project", "daily_pod"];
+
+export const BRIEF_KIND_LABEL: Record<BriefKind, string> = {
+  exec: "Exec",
+  weekly_project: "Weekly project",
+  daily_pod: "Daily pod",
+};
+
+/** The Coordination search param that holds the briefs filter, so Today can link to one kind. */
+const BRIEF_KIND_PARAM = "briefs";
+
+/** The brief kind the params name, or undefined for "all" and anything unrecognised. */
+export function briefKindParam(params: URLSearchParams): BriefKind | undefined {
+  const value = params.get(BRIEF_KIND_PARAM);
+  return BRIEF_KINDS.find((kind) => kind === value);
+}
+
+/** The same params with the briefs filter set to `kind`, or cleared for "all". */
+export function withBriefKindParam(
+  params: URLSearchParams,
+  kind: BriefKind | undefined,
+): URLSearchParams {
+  const next = new URLSearchParams(params);
+  if (kind === undefined) {
+    next.delete(BRIEF_KIND_PARAM);
+  } else {
+    next.set(BRIEF_KIND_PARAM, kind);
+  }
+  return next;
+}
+
+/** Coordination with its briefs column filtered to one kind. */
+export function briefsHref(kind: BriefKind): string {
+  return `/coordination?${withBriefKindParam(new URLSearchParams(), kind).toString()}`;
+}
 
 /** The newest brief for each scope on each day it was generated.
  *
@@ -6,6 +43,10 @@ import type { NarrativeBriefResponse } from "../api/schema";
  * the same pod or project appeared twice with slightly different wording.
  * Keeping the newest per scope per day preserves the day-by-day record that
  * makes the column read like a real log, without the duplicate.
+ *
+ * The exec brief has one scope, the whole portfolio, but not one scope id: the
+ * seed writes it against the program and the worker against "". Keyed by scope
+ * id, both would show for the same day, so it is keyed by kind alone.
  *
  * Days are the *local* days the UI prints, so grouping can never disagree with
  * the dates on screen.
@@ -15,7 +56,8 @@ export function latestBriefPerScopePerDay(
 ): NarrativeBriefResponse[] {
   const newest = new Map<string, NarrativeBriefResponse>();
   for (const brief of briefs) {
-    const key = `${brief.kind}:${brief.scope_id}:${localDay(brief.generated_at)}`;
+    const scope = brief.kind === "exec" ? "" : brief.scope_id;
+    const key = `${brief.kind}:${scope}:${localDay(brief.generated_at)}`;
     const current = newest.get(key);
     if (current === undefined || current.generated_at < brief.generated_at) {
       newest.set(key, brief);
