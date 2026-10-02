@@ -1,5 +1,6 @@
 frontend/src/app/RoleProvider.tsx
   s_386bf853700fa5::t_d55abd7f8367e1 46-47
+  s_4dea2fe3f5c791::t_eb02e1714796b3 46-47
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -14,6 +15,14 @@ frontend/src/app/RoleProvider.tsx
         "model": "claude-opus-5-5"
       },
       "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_4dea2fe3f5c791": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "60af7a42-09e4-42a8-b3ea-7084c97cbced",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
     }
   }
 }
