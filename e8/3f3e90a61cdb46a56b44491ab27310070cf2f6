@@ -1,0 +1,45 @@
+backend/api/dtos.py
+  s_51495ccc67ba04::t_2624989dc5b830 37-40,894-968
+backend/api/routers/persona.py
+  s_51495ccc67ba04::t_c4ccbc5e2fb562 31,119-137
+backend/core/application/persona_views.py
+  s_51495ccc67ba04::t_c8e31d9293a6c0 128-163,451-542,944-1043
+backend/tests/unit/test_pod_tasks.py
+  s_51495ccc67ba04::t_aa405f3bdca399 1-360
+docs/lld/phase-1/persona-views.md
+  s_51495ccc67ba04::t_ed218a002760f0 16
+frontend-v2/src/api/client.ts
+  s_51495ccc67ba04::t_b7d9292f39eae4 49,195-196
+frontend-v2/src/api/generated.ts
+  s_51495ccc67ba04::t_61e27d6ff75ab7 1150-1166,2592-2645,6342-6376
+frontend-v2/src/api/openapi.json
+  s_51495ccc67ba04::t_e747a91148e678 5294-5359,9886-10023
+frontend-v2/src/api/schema.ts
+  s_51495ccc67ba04::t_190dfe7b526db5 50-51
+frontend-v2/src/features/delivery/DeliveryDetail.tsx
+  s_51495ccc67ba04::t_a706af6ef38c9f 12,17,144-145,205-207,213,218-222
+frontend-v2/src/features/delivery/PodTasks.tsx
+  s_51495ccc67ba04::t_72c4bc733cfd8b 1-67
+frontend-v2/src/features/delivery/TaskRow.tsx
+  s_51495ccc67ba04::t_95cea6cb26f847 1-44
+frontend/src/api/generated.ts
+  s_51495ccc67ba04::t_b450f035b87901 1150-1166,2596-2649,6346-6380
+frontend/src/api/openapi.json
+  s_51495ccc67ba04::t_de33e0f1e9aeac 5294-5359,9886-10023
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e83f3e90a61cdb46a56b44491ab27310070cf2f6",
+  "prompts": {},
+  "sessions": {
+    "s_51495ccc67ba04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98259e94-8aa1-45f5-b5cc-46cac669b27d",
+        "model": "unknown"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
