@@ -24,6 +24,7 @@ import type {
   BriefKind,
   NarrativeBriefsResponse,
   WriteBackAdoptionResponse,
+  EscalationCandidateResponse,
   PodEscalationContactsResponse,
   PodEscalationContactsUpdateRequest,
   IdentityLinkResponse,
@@ -377,6 +378,8 @@ export const apiClient = {
       method: "PUT",
       body,
     }),
+  podEscalationCandidates: (podId: string) =>
+    requestJson<EscalationCandidateResponse[]>(`/config/pods/${podId}/escalation-candidates`),
   configMemberWritebackConsent: (memberId: string) =>
     requestJson<WritebackConsentResponse>(`/config/members/${memberId}/writeback-consent`),
   updateConfigMemberWritebackConsent: (memberId: string, body: WritebackConsentUpdateRequest) =>
