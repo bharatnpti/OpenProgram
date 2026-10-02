@@ -155,6 +155,39 @@ def test_node_trend_endpoint_rejects_unsupported_kind(settings: Settings) -> Non
     assert response.status_code == 422
 
 
+def test_node_trend_endpoint_answers_an_exec_for_the_program(settings: Settings) -> None:
+    # The exec's Today charts the program's 30-day momentum from this route, so
+    # an exec must be able to read it -- the same aggregate they read as heat.
+    # A developer, who holds no aggregate read, is still turned away.
+    def trend_status(role: str) -> int:
+        role_settings = settings.model_copy(update={"dev_principal_roles": role})
+        app = create_app(settings=role_settings)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            asyncio.run(
+                app.state.registry.rollup_repository().record_node_status(
+                    NodeStatus(
+                        entity_ref=EntityRef(
+                            tenant_id="demo", kind=NodeKind.PROGRAM, id="program-platform"
+                        ),
+                        rag=Rag.AMBER,
+                        source=StatusSource.CONFIRMED,
+                        factors=(),
+                        as_of=date(2026, 1, 10),
+                    )
+                )
+            )
+            response = client.get(
+                "/persona/program/program-platform/trend",
+                params={"as_of": "2026-01-10", "window_days": 30},
+            )
+        if response.status_code == 200:
+            assert [point["rag"] for point in response.json()["points"]] == ["amber"]
+        return response.status_code
+
+    assert trend_status("exec") == 200
+    assert trend_status("dev") == 403
+
+
 def test_pod_escalation_contacts_endpoint_round_trip(settings: Settings) -> None:
     app = create_app(settings=settings)
     with TestClient(app) as client:
