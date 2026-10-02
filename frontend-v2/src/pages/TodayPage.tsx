@@ -39,9 +39,7 @@ export function TodayPage() {
       {role === "dev" ? <DeveloperToday /> : null}
       {role === "sm" ? <ScrumMasterToday /> : null}
       {role === "po" ? <ProductOwnerToday /> : null}
-      {role === "mgr" ? <ManagerExecToday role="mgr" /> : null}
-      {role === "exec" ? <ManagerExecToday role="exec" /> : null}
-      {role === "admin" ? <ManagerExecToday role="exec" /> : null}
+      {role === "mgr" || role === "exec" || role === "admin" ? <ManagerExecToday /> : null}
     </div>
   );
 }
