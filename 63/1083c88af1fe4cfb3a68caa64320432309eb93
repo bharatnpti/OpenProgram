@@ -1,0 +1,49 @@
+frontend-v2/src/api/generated.ts
+  s_51495ccc67ba04::t_3e560b20dc3ad3 2706-2709
+frontend-v2/src/api/openapi.json
+  s_51495ccc67ba04::t_be9f33474fab28 10097-10103
+frontend/src/api/generated.ts
+  s_51495ccc67ba04::t_183ba71e0d5f16 2710-2713
+backend/api/dtos.py
+  s_51495ccc67ba04::t_3e246c0960581a 127-131
+backend/api/routers/health.py
+  s_51495ccc67ba04::t_737e639b09c932 33-34,38
+backend/core/ports/readiness.py
+  s_51495ccc67ba04::t_281587eaf44ddb 3-4,9-29
+backend/infra/adapters/catalog.py
+  s_51495ccc67ba04::t_1e2b04e2a49793 58,354-359
+backend/infra/adapters/llm/readiness.py
+  s_51495ccc67ba04::t_a00a48fdadb52b 1-198
+backend/infra/registry.py
+  s_51495ccc67ba04::t_93c69d78ae4aae 5,46,104-105,901-905,913,916,960,962-975
+backend/infra/smoke.py
+  s_51495ccc67ba04::t_275b048b738d15 16-21
+backend/tests/unit/test_llm_readiness.py
+  s_51495ccc67ba04::t_03daf9c2e9006c 1-392
+docs/lld/service-and-api.md
+  s_51495ccc67ba04::t_bb2c3208786bc3 10
+docs/ops/local-demo.md
+  s_51495ccc67ba04::t_da2652c7257491 175-179
+frontend/src/api/openapi.json
+  s_51495ccc67ba04::t_5e0a829d9fb801 10097-10103
+scripts/mock_llm.py
+  s_51495ccc67ba04::t_d82ea3098613c3 170,174-188
+scripts/use-real-llm.sh
+  s_51495ccc67ba04::t_e9c7cd14ac1560 89-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "631083c88af1fe4cfb3a68caa64320432309eb93",
+  "prompts": {},
+  "sessions": {
+    "s_51495ccc67ba04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98259e94-8aa1-45f5-b5cc-46cac669b27d",
+        "model": "unknown"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
