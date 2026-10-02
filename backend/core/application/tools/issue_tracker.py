@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 
 from core.domain.errors import ProviderUnavailable
@@ -36,6 +36,10 @@ class IssueTrackerTool:
     tenant_id: str
     developer_id: str
     issue_tracker: IssueTracker
+    # The tracker's own id for this developer (Jira accountId). Without it the
+    # tool queries by developer_id, the chat id, which a real tracker never
+    # indexes assignments by.
+    resolve_assignee_id: Callable[[], Awaitable[str]] | None = None
 
     name: str = "fetch_issue_tracker_context"
     description: str = (
@@ -64,8 +68,13 @@ class IssueTrackerTool:
 
         limit = _bounded_positive_int(arguments.get("limit"), default=DEFAULT_ACTIVE_ISSUE_LIMIT)
         try:
+            assignee_id = (
+                await self.resolve_assignee_id()
+                if self.resolve_assignee_id is not None
+                else self.developer_id
+            )
             issues = await self.issue_tracker.list_active_for(
-                UserRef(tenant_id=self.tenant_id, external_id=self.developer_id)
+                UserRef(tenant_id=self.tenant_id, external_id=assignee_id)
             )
         except (ProviderUnavailable, KeyError):
             return "Active issues could not be fetched."

@@ -254,7 +254,8 @@ def test_pod_escalation_contacts_endpoint_missing_pod_returns_404(settings: Sett
 
 
 def test_identity_link_auto_match_and_unmapped_flow(settings: Settings) -> None:
-    app = create_app(settings=settings)
+    # Fake tracker: "unmapped" means unreachable on chat only.
+    app = create_app(settings=settings.model_copy(update={"issue_tracker_provider": "fake"}))
     with TestClient(app) as client:
         client.post("/config/directory/sync")
         client.post("/config/members/from-directory", json={"external_ids": ["U1001", "U1002"]})
@@ -293,6 +294,32 @@ def test_identity_link_auto_match_and_unmapped_flow(settings: Settings) -> None:
 
     assert unmapped_after.status_code == 200
     assert unmapped_after.json() == []
+
+
+def test_identity_unmapped_flags_missing_jira_account_with_a_real_tracker(
+    settings: Settings,
+) -> None:
+    # With Jira configured, a member reachable on chat but with no Jira account
+    # is unmapped too: none of their issues can be attributed to them.
+    assert settings.issue_tracker_provider == "jira"
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        client.post("/config/directory/sync")
+        client.post("/config/members/from-directory", json={"external_ids": ["U1001", "U1002"]})
+        client.put(
+            "/config/members/U1001/identity-link",
+            json={"chat_user_id": "U1001", "jira_account_id": "712020:asha"},
+        )
+        client.put("/config/members/U1002/identity-link", json={"chat_user_id": "U1002"})
+        unmapped = client.get("/config/members/unmapped")
+        # Jira is not reachable in tests: auto-match must degrade, not fail.
+        auto_match = client.post("/config/members/identity-links/auto-match")
+
+    assert unmapped.status_code == 200
+    assert [item["id"] for item in unmapped.json()] == ["U1002"]
+    assert "jira_account_id" in unmapped.json()[0]["missing"]
+    assert "chat_user_id" not in unmapped.json()[0]["missing"]
+    assert auto_match.status_code == 200
 
 
 def test_identity_unmapped_requires_manage_config(settings: Settings) -> None:

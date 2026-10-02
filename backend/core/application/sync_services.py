@@ -33,7 +33,12 @@ from core.domain.integrations import (
 )
 from core.ports.calendar import CalendarProvider
 from core.ports.issue_tracker import IssueTracker
-from core.ports.repositories import GraphRepository, SyncCursorRepository, TimeSeriesRepository
+from core.ports.repositories import (
+    GraphRepository,
+    IdentityLinkRepository,
+    SyncCursorRepository,
+    TimeSeriesRepository,
+)
 from core.ports.vcs import VcsProvider
 
 
@@ -55,11 +60,13 @@ class IssueReadSyncService:
         graph_repository: GraphRepository,
         time_series_repository: TimeSeriesRepository,
         cursor_repository: SyncCursorRepository,
+        identity_link_repository: IdentityLinkRepository | None = None,
     ) -> None:
         self._issue_tracker = issue_tracker
         self._graph_repository = graph_repository
         self._time_series_repository = time_series_repository
         self._cursor_repository = cursor_repository
+        self._identity_link_repository = identity_link_repository
 
     async def sync_project(
         self,
@@ -86,8 +93,9 @@ class IssueReadSyncService:
                 cursor,
             )
 
+            developers = await self._developers_by_tracker_account(tenant_id)
             for issue in issues:
-                await self._sync_issue(issue, project, sprints, observed)
+                await self._sync_issue(issue, project, sprints, observed, developers)
 
             next_cursor = _next_cursor(
                 cursor, (_issue_updated_at(issue, observed) for issue in issues)
@@ -128,8 +136,9 @@ class IssueReadSyncService:
             )
             issues = await self._issue_tracker.list_issues_for_query(tenant_id, jql, cursor)
 
+            developers = await self._developers_by_tracker_account(tenant_id)
             for issue in issues:
-                await self._sync_issue(issue, target, sprints, observed)
+                await self._sync_issue(issue, target, sprints, observed, developers)
 
             next_cursor = _next_cursor(
                 cursor, (_issue_updated_at(issue, observed) for issue in issues)
@@ -245,6 +254,7 @@ class IssueReadSyncService:
         parent: GraphNode,
         sprints: list[SprintNode],
         observed_at: datetime,
+        developers: Mapping[str, str],
     ) -> None:
         metadata = {
             **_scalar_mapping(issue.metadata),
@@ -269,11 +279,16 @@ class IssueReadSyncService:
             )
         )
         if issue.assignee is not None:
-            await self._upsert_assignee(issue.assignee)
+            developer_id = developers.get(issue.assignee.external_id)
+            if developer_id is None:
+                # Nobody is linked to this tracker account yet: keep the work
+                # attributable by recording the account as its own developer.
+                await self._upsert_assignee(issue.assignee)
+                developer_id = issue.assignee.external_id
             await self._graph_repository.add_edge(
                 GraphEdge(
                     tenant_id=issue.tenant_id,
-                    from_node_id=issue.assignee.external_id,
+                    from_node_id=developer_id,
                     to_node_id=issue.key,
                     kind=EdgeKind.ASSIGNED_TO,
                 )
@@ -293,6 +308,22 @@ class IssueReadSyncService:
                 ),
             )
         )
+
+    async def _developers_by_tracker_account(self, tenant_id: str) -> dict[str, str]:
+        """Tracker account id -> member id, from identity links.
+
+        Members are keyed by their chat id; the tracker only knows its own
+        account ids. Without this map every assignee became a second developer
+        node beside the real member, and that member's own views never saw the
+        issue.
+        """
+        if self._identity_link_repository is None:
+            return {}
+        return {
+            link.jira_account_id: link.developer_id
+            for link in await self._identity_link_repository.list_identity_links(tenant_id)
+            if link.jira_account_id
+        }
 
     async def _upsert_assignee(self, assignee: UserRef) -> None:
         await self._graph_repository.upsert_node(

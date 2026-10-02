@@ -193,3 +193,74 @@ async def test_jira_adapter_transition_raises_when_state_unavailable() -> None:
     )
     with pytest.raises(ProviderUnavailable):
         await adapter.transition("demo", "PO-1", IssueState.DONE.value)
+
+
+@respx.mock
+async def test_jira_adapter_finds_user_by_email_when_address_is_hidden() -> None:
+    # Jira blanks emailAddress unless the owner made it visible, which is the
+    # common case: a single active human result is the match.
+    adapter = JiraIssueTrackerAdapter(
+        base_url="https://jira.test", email="agent@example.com", api_token="token"
+    )
+    route = respx.get("https://jira.test/rest/api/3/user/search").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "accountId": "712020:liam",
+                    "accountType": "atlassian",
+                    "displayName": "Liam Chen",
+                    "emailAddress": "",
+                    "active": True,
+                }
+            ],
+        )
+    )
+
+    found = await adapter.find_user_by_email("demo", "liam@example.com")
+
+    assert found == UserRef(tenant_id="demo", external_id="712020:liam", display_name="Liam Chen")
+    assert route.calls.last.request.url.params["query"] == "liam@example.com"
+
+
+@respx.mock
+async def test_jira_adapter_find_user_by_email_prefers_visible_exact_match() -> None:
+    adapter = JiraIssueTrackerAdapter(
+        base_url="https://jira.test", email="agent@example.com", api_token="token"
+    )
+    respx.get("https://jira.test/rest/api/3/user/search").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"accountId": "a-long", "emailAddress": "bob@example.com.au", "active": True},
+                {"accountId": "a-bob", "emailAddress": "Bob@Example.com", "active": True},
+                {"accountId": "app-1", "accountType": "app", "emailAddress": ""},
+            ],
+        )
+    )
+
+    found = await adapter.find_user_by_email("demo", "bob@example.com")
+
+    assert found is not None
+    assert found.external_id == "a-bob"
+
+
+@respx.mock
+async def test_jira_adapter_find_user_by_email_refuses_to_guess() -> None:
+    adapter = JiraIssueTrackerAdapter(
+        base_url="https://jira.test", email="agent@example.com", api_token="token"
+    )
+    respx.get("https://jira.test/rest/api/3/user/search").mock(
+        side_effect=[
+            # two hidden-email accounts: ambiguous
+            httpx.Response(200, json=[{"accountId": "a-1"}, {"accountId": "a-2"}]),
+            # one visible address that is not the one asked for
+            httpx.Response(200, json=[{"accountId": "a-3", "emailAddress": "other@example.com"}]),
+            # only a deactivated account
+            httpx.Response(200, json=[{"accountId": "a-4", "active": False}]),
+        ]
+    )
+
+    assert await adapter.find_user_by_email("demo", "x@example.com") is None
+    assert await adapter.find_user_by_email("demo", "x@example.com") is None
+    assert await adapter.find_user_by_email("demo", "x@example.com") is None

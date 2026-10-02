@@ -98,6 +98,13 @@ class JiraIssueTrackerAdapter:
                 json={"body": _adf_document(body)},
             )
 
+    async def find_user_by_email(self, tenant_id: str, email: str) -> UserRef | None:
+        with _tracer.start_as_current_span("jira.find_user_by_email"):
+            payload = await self._get_json(
+                tenant_id, "/rest/api/3/user/search", params={"query": email}
+            )
+            return _single_user_for_email(tenant_id, payload, email)
+
     async def _get(
         self,
         tenant_id: str,
@@ -105,6 +112,18 @@ class JiraIssueTrackerAdapter:
         *,
         params: Mapping[str, str] | None = None,
     ) -> Mapping[str, object]:
+        payload = await self._get_json(tenant_id, path, params=params)
+        if not isinstance(payload, Mapping):
+            raise ProviderUnavailable("issue tracker response was not an object")
+        return cast(Mapping[str, object], payload)
+
+    async def _get_json(
+        self,
+        tenant_id: str,
+        path: str,
+        *,
+        params: Mapping[str, str] | None = None,
+    ) -> object:
         credentials = await self._credentials(tenant_id)
         headers = {"Accept": "application/json"}
         auth: httpx.Auth | None = None
@@ -120,13 +139,10 @@ class JiraIssueTrackerAdapter:
             ) as client:
                 response = await client.get(path, headers=headers, auth=auth, params=params)
                 response.raise_for_status()
-                payload = response.json()
+                payload: object = response.json()
         except httpx.HTTPError as exc:
             raise ProviderUnavailable("issue tracker request failed") from exc
-
-        if not isinstance(payload, Mapping):
-            raise ProviderUnavailable("issue tracker response was not an object")
-        return cast(Mapping[str, object], payload)
+        return payload
 
     async def _post(
         self,
@@ -285,6 +301,33 @@ def _map_user(tenant_id: str, payload: Mapping[str, object]) -> UserRef:
         external_id=external_id,
         display_name=_optional_string(payload, "displayName"),
     )
+
+
+def _single_user_for_email(tenant_id: str, payload: object, email: str) -> UserRef | None:
+    """Pick the one human account ``user/search`` returned for an email.
+
+    The search is a prefix match over email and display name, and Jira blanks
+    ``emailAddress`` unless the owner made it visible, so the address usually
+    cannot be compared. Prefer a visible exact match; otherwise accept the
+    result only when it is the single active human account, and refuse to
+    guess between several.
+    """
+    if not isinstance(payload, Sequence) or isinstance(payload, str | bytes):
+        raise ProviderUnavailable("issue tracker user search response was not a list")
+    people = [
+        cast(Mapping[str, object], item)
+        for item in payload
+        if isinstance(item, Mapping)
+        and item.get("accountType", "atlassian") == "atlassian"
+        and item.get("active", True) is not False
+    ]
+    wanted = email.strip().lower()
+    exact = [p for p in people if (_optional_string(p, "emailAddress") or "").lower() == wanted]
+    if len(exact) == 1:
+        return _map_user(tenant_id, exact[0])
+    if len(people) == 1 and not _optional_string(people[0], "emailAddress"):
+        return _map_user(tenant_id, people[0])
+    return None
 
 
 def _issue_state(status: Mapping[str, object]) -> IssueState:

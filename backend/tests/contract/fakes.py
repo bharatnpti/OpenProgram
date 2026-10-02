@@ -67,6 +67,8 @@ class FakeIssueTracker:
     sprints: list[Sprint] = field(default_factory=list)
     transitions: list[tuple[str, str, str]] = field(default_factory=list)
     comments: list[tuple[str, str, str]] = field(default_factory=list)
+    # email -> tracker account id, for find_user_by_email
+    user_emails: dict[str, str] = field(default_factory=dict)
 
     async def list_projects(self, tenant_id: str) -> list[Project]:
         return [project for project in self.projects if project.tenant_id == tenant_id]
@@ -100,6 +102,12 @@ class FakeIssueTracker:
 
     async def list_active_for(self, assignee: UserRef) -> list[Issue]:
         return [issue for issue in self.issues.values() if issue.assignee == assignee]
+
+    async def find_user_by_email(self, tenant_id: str, email: str) -> UserRef | None:
+        external_id = self.user_emails.get(email.strip().lower())
+        if external_id is None:
+            return None
+        return UserRef(tenant_id=tenant_id, external_id=external_id)
 
     async def transition(self, tenant_id: str, key: str, to_state: str) -> None:
         self.transitions.append((tenant_id, key, to_state))

@@ -24,6 +24,8 @@ class FakeIssueTracker:
     projects: list[Project] = field(default_factory=list)
     issues: list[Issue] = field(default_factory=list)
     sprints: list[Sprint] = field(default_factory=list)
+    # email -> tracker account id, for find_user_by_email
+    user_emails: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.projects:
@@ -119,6 +121,12 @@ class FakeIssueTracker:
             and issue.assignee.external_id == assignee.external_id
             and issue.state is not IssueState.DONE
         ]
+
+    async def find_user_by_email(self, tenant_id: str, email: str) -> UserRef | None:
+        external_id = self.user_emails.get(email.strip().lower())
+        if external_id is None:
+            return None
+        return UserRef(tenant_id=tenant_id, external_id=external_id)
 
     async def transition(self, tenant_id: str, key: str, to_state: str) -> None:
         raise ProviderUnavailable("fake issue tracker is read-only")

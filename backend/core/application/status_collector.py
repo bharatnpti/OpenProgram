@@ -4,6 +4,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from typing import Literal, Protocol, TypedDict, cast
 from uuid import uuid4
 
@@ -43,6 +44,7 @@ from core.domain.blockers import (
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.cross_person import CrossPersonRequestResolution, CrossPersonRequestStatus
 from core.domain.directory import DirectoryUser
+from core.domain.errors import ProviderUnavailable
 from core.domain.escalation import EscalationTarget
 from core.domain.graph import EntityRef, FactEvent, GraphNode, JsonScalar, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
@@ -932,14 +934,27 @@ class StatusCollector:
 
         Jira indexes issues by ``accountId`` rather than the chat-provider id
         used as the canonical ``developer_id``. When an identity link maps the
-        developer to a ``jira_account_id`` we query by that; otherwise we fall
-        back to the canonical id so unmapped developers keep prior behaviour.
+        developer to a ``jira_account_id`` we query by that. A link that only
+        knows the ``jira_email`` is resolved through the tracker once and the
+        account id is stored on the link, so it is looked up a single time.
+        Otherwise we fall back to the canonical id so unmapped developers keep
+        prior behaviour (a real tracker then finds nothing for them).
         """
         if self._identity_link_repository is None:
             return developer_id
         link = await self._identity_link_repository.get_identity_link(tenant_id, developer_id)
         if link is not None and link.jira_account_id:
             return link.jira_account_id
+        if link is not None and link.jira_email:
+            try:
+                found = await self._issue_tracker.find_user_by_email(tenant_id, link.jira_email)
+            except ProviderUnavailable:
+                found = None
+            if found is not None:
+                await self._identity_link_repository.upsert_identity_link(
+                    replace(link, jira_account_id=found.external_id)
+                )
+                return found.external_id
         return developer_id
 
     async def build_context(
@@ -1821,6 +1836,9 @@ class StatusCollector:
             tenant_id=tenant_id,
             developer_id=developer_id,
             issue_tracker=self._issue_tracker,
+            resolve_assignee_id=partial(
+                self._resolve_issue_tracker_assignee_id, tenant_id, developer_id
+            ),
         )
 
     def _git_activity_tool(

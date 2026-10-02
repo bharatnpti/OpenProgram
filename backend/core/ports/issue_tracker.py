@@ -22,6 +22,15 @@ class IssueTracker(Protocol):
 
     async def list_active_for(self, assignee: UserRef) -> list[Issue]: ...
 
+    async def find_user_by_email(self, tenant_id: str, email: str) -> UserRef | None:
+        """Resolve the tracker account an email belongs to; ``None`` unless exactly one matches.
+
+        Trackers index assignments by their own account id (Jira's ``accountId``),
+        which nothing outside the tracker knows; email is the identifier people
+        share across tools. Read-only.
+        """
+        ...
+
     # Reserved for later write-back phases. Phase 1 application code must not call this.
     async def transition(self, tenant_id: str, key: str, to_state: str) -> None: ...
 

@@ -131,6 +131,8 @@ def get_config_service(request: Request) -> ConfigService:
         time_series_repository=registry.time_series_repository(),
         identity_link_repository=registry.identity_link_repository(),
         writeback_config_repository=registry.writeback_config_repository(),
+        issue_tracker=registry.issue_tracker(),
+        require_issue_tracker_link=registry.settings.issue_tracker_provider != "fake",
     )
 
 
