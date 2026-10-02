@@ -17,6 +17,7 @@ from core.application.persona_views import PersonaViewService
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.application.risk_service import RiskService
 from core.application.self_status_service import SelfStatusService
+from core.application.sync_status_service import SyncStatusService
 from core.application.writeback_service import WriteBackService
 from core.domain.auth import Principal, Role
 from core.domain.errors import (
@@ -154,6 +155,11 @@ def get_narrative_brief_repository(request: Request) -> NarrativeBriefRepository
 def get_dead_letter_service(request: Request) -> DeadLetterService:
     registry = get_registry(request)
     return registry.dead_letter_service()
+
+
+def get_sync_status_service(request: Request) -> SyncStatusService:
+    registry = get_registry(request)
+    return registry.sync_status_service()
 
 
 def get_write_back_service(request: Request) -> WriteBackService:

@@ -18,7 +18,7 @@ from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.graph import EntityRef, JsonScalar, NodeKind
-from core.domain.integrations import SyncCursor
+from core.domain.integrations import SyncCursor, SyncCursorRecord
 from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import (
     CheckIn,
@@ -965,6 +965,26 @@ class PostgresSyncCursorRepository:
                     _json_scalar_mapping(cursor.metadata),
                 ),
             )
+
+    async def list_cursors(self, tenant_id: str) -> list[SyncCursorRecord]:
+        with _tracer.start_as_current_span("postgres.cursor.list_cursors"):
+            rows = await self._executor.fetch(
+                """
+                SELECT connector, scope, cursor_value, cursor_updated_at, metadata
+                FROM connector_sync_cursors
+                WHERE tenant_id = %s
+                ORDER BY connector, scope
+                """,
+                (tenant_id,),
+            )
+        return [
+            SyncCursorRecord(
+                connector=str(row["connector"]),
+                scope=str(row["scope"]),
+                cursor=_sync_cursor_from_row(row),
+            )
+            for row in rows
+        ]
 
 
 class PostgresConversationRepository:

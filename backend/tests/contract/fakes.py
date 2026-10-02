@@ -22,6 +22,7 @@ from core.domain.integrations import (
     Repo,
     Sprint,
     SyncCursor,
+    SyncCursorRecord,
     UserRef,
 )
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
@@ -760,6 +761,15 @@ class FakeSyncCursorRepository:
         self, tenant_id: str, connector: str, scope: str, cursor: SyncCursor
     ) -> None:
         self.cursors[(tenant_id, connector, scope)] = cursor
+
+    async def list_cursors(self, tenant_id: str) -> list[SyncCursorRecord]:
+        return [
+            SyncCursorRecord(connector=connector, scope=scope, cursor=cursor)
+            for (cursor_tenant, connector, scope), cursor in sorted(
+                self.cursors.items(), key=lambda item: item[0]
+            )
+            if cursor_tenant == tenant_id
+        ]
 
 
 @dataclass

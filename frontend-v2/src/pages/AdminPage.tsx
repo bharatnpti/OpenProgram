@@ -1,11 +1,12 @@
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { DatabaseZap, Link2, ShieldAlert, Settings2, UserPlus } from "lucide-react";
-import type { ReactNode } from "react";
+import { Cable, DatabaseZap, Link2, ShieldAlert, Settings2, UserPlus } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import { apiClient } from "../api/client";
 import type { ConfigNodeResponse } from "../api/schema";
 import { CheckinPreferencesPanel } from "../features/admin/CheckinPreferencesPanel";
+import { DataSourcesPanel } from "../features/admin/DataSourcesPanel";
 import { DirectoryPanel } from "../features/admin/DirectoryPanel";
 import { EntitiesPanel } from "../features/admin/EntitiesPanel";
 import { RelationshipsPanel } from "../features/admin/RelationshipsPanel";
@@ -17,10 +18,12 @@ const TABS: { value: string; label: string; icon: typeof Settings2 }[] = [
   { value: "relationships", label: "Links", icon: Link2 },
   { value: "directory", label: "Directory", icon: UserPlus },
   { value: "preferences", label: "Check-ins", icon: DatabaseZap },
+  { value: "sources", label: "Data sources", icon: Cable },
 ];
 
 export function AdminPage() {
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState("entities");
 
   const programs = useQuery({
     queryKey: ["config", "programs"],
@@ -67,7 +70,8 @@ export function AdminPage() {
       <div>
         <h1 className="text-[28px] font-extrabold">Configuration</h1>
         <p className="mt-1 max-w-[640px] text-[15px] text-grey-secondary">
-          Manage hierarchy, directory onboarding, graph links, assignments, and check-in timing.
+          Manage hierarchy, directory onboarding, graph links, assignments, check-in timing, and
+          data source sync.
         </p>
       </div>
 
@@ -93,7 +97,7 @@ export function AdminPage() {
         />
       </div>
 
-      <TabsPrimitive.Root defaultValue="entities" className="flex flex-col gap-5">
+      <TabsPrimitive.Root value={tab} onValueChange={setTab} className="flex flex-col gap-5">
         <TabsPrimitive.List className="flex flex-wrap gap-2">
           {TABS.map((tab) => {
             const Icon = tab.icon;
@@ -143,6 +147,10 @@ export function AdminPage() {
             preferences={checkinPreferences.data ?? []}
             onChanged={invalidateAll}
           />
+        </TabsPrimitive.Content>
+
+        <TabsPrimitive.Content value="sources">
+          <DataSourcesPanel onOpenDirectory={() => setTab("directory")} />
         </TabsPrimitive.Content>
       </TabsPrimitive.Root>
     </div>

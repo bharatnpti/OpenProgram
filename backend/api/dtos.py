@@ -63,6 +63,17 @@ from core.domain.status import (
     StatusSource,
     WriteBackConsent,
 )
+from core.domain.sync_status import (
+    SYNC_ERROR_MESSAGES,
+    SyncErrorKind,
+    SyncHealth,
+    SyncOutcome,
+    SyncSource,
+    SyncSourceStatus,
+    SyncStatusReport,
+    SyncTargetOrigin,
+    SyncTargetStatus,
+)
 from core.domain.writeback import (
     WriteBackAdoption,
     WriteBackAudit,
@@ -1661,6 +1672,94 @@ class DeadLettersResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     dead_letters: list[DeadLetterResponse]
+
+
+def _sync_error_message(kind: SyncErrorKind | None) -> str | None:
+    # Only the fixed message for the recorded category ever leaves the API; no
+    # exception or provider text is stored, so none can be returned.
+    return SYNC_ERROR_MESSAGES[kind] if kind is not None else None
+
+
+class SyncTargetStatusResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    scope: str
+    label: str
+    detail: str | None = None
+    configured: bool
+    health: SyncHealth
+    last_synced_at: datetime | None = None
+    last_attempt_at: datetime | None = None
+    last_outcome: SyncOutcome | None = None
+    last_error: str | None = None
+    items_synced: int | None = None
+
+    @classmethod
+    def from_domain(cls, target: SyncTargetStatus) -> SyncTargetStatusResponse:
+        return cls(
+            scope=target.scope,
+            label=target.label,
+            detail=target.detail,
+            configured=target.configured,
+            health=target.health,
+            last_synced_at=target.last_synced_at,
+            last_attempt_at=target.last_attempt_at,
+            last_outcome=target.last_outcome,
+            last_error=_sync_error_message(target.last_error),
+            items_synced=target.items_synced,
+        )
+
+
+class SyncSourceStatusResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    source: SyncSource
+    provider: str
+    simulated: bool
+    sync_enabled: bool
+    schedule: str | None = None
+    stale_after_minutes: int | None = None
+    target_origin: SyncTargetOrigin
+    health: SyncHealth
+    last_synced_at: datetime | None = None
+    last_attempt_at: datetime | None = None
+    last_error: str | None = None
+    newest_item_at: datetime | None = None
+    config_error: str | None = None
+    targets: list[SyncTargetStatusResponse]
+
+    @classmethod
+    def from_domain(cls, source: SyncSourceStatus) -> SyncSourceStatusResponse:
+        return cls(
+            source=source.source,
+            provider=source.provider,
+            simulated=source.simulated,
+            sync_enabled=source.sync_enabled,
+            schedule=source.schedule,
+            stale_after_minutes=source.stale_after_minutes,
+            target_origin=source.target_origin,
+            health=source.health,
+            last_synced_at=source.last_synced_at,
+            last_attempt_at=source.last_attempt_at,
+            last_error=_sync_error_message(source.last_error),
+            newest_item_at=source.newest_item_at,
+            config_error=source.config_error,
+            targets=[SyncTargetStatusResponse.from_domain(target) for target in source.targets],
+        )
+
+
+class SyncStatusResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    generated_at: datetime
+    sources: list[SyncSourceStatusResponse]
+
+    @classmethod
+    def from_domain(cls, report: SyncStatusReport) -> SyncStatusResponse:
+        return cls(
+            generated_at=report.generated_at,
+            sources=[SyncSourceStatusResponse.from_domain(source) for source in report.sources],
+        )
 
 
 class WriteBackRevertResponse(BaseModel):
