@@ -182,6 +182,52 @@ async def test_pr_age_finding_uses_pr_author_as_owner_when_unmatched() -> None:
     assert finding.age_days == 5
 
 
+@pytest.mark.parametrize(
+    ("entity", "state", "flagged", "owner"),
+    [
+        pytest.param(NodeKind.DEVELOPER, "closed", False, None, id="closed-unmerged"),
+        pytest.param(NodeKind.DEVELOPER, "open", True, "dev-author", id="open"),
+        # An author no member is linked to is recorded on the repo: no owner.
+        pytest.param(NodeKind.REPO, "open", True, None, id="unlinked-author"),
+    ],
+)
+async def test_pr_age_skips_closed_requests_and_owns_only_member_authored_ones(
+    entity: NodeKind, state: str, flagged: bool, owner: str | None
+) -> None:
+    store = InMemoryGraphStore()
+    project_id, _workstream_id = await _setup_project_with_workstream(
+        store, project_metadata={"github_repos": "acme/api"}
+    )
+    await store.append_fact_once(
+        FactEvent(
+            tenant_id=TENANT,
+            source="vcs_pull_request",
+            entity_ref=EntityRef(
+                tenant_id=TENANT,
+                kind=entity,
+                id="dev-author" if entity is NodeKind.DEVELOPER else "acme/api",
+            ),
+            payload={
+                "repo": "acme/api",
+                "id": "42",
+                "title": "Add feature",
+                "merged": False,
+                "state": state,
+                "opened_at": _iso_days_ago(AS_OF, 5),
+            },
+            observed_at=datetime.now(tz=UTC),
+            correlation_id="pr-42-observed",
+        )
+    )
+    service = _service(store, default_pr_age_days=3)
+
+    delta = await service.assess_and_persist_project(TENANT, project_id, AS_OF)
+
+    assert [f.rule_id for f in delta.newly_opened] == ([RiskRuleId.PR_AGE] if flagged else [])
+    if flagged:
+        assert delta.newly_opened[0].owner_id == owner
+
+
 async def test_pr_age_ignores_prs_outside_project_repo_scope() -> None:
     store = InMemoryGraphStore()
     project_id, _workstream_id = await _setup_project_with_workstream(

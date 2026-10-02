@@ -66,6 +66,8 @@ async def test_github_adapter_maps_recorded_rest_payloads() -> None:
                     "merged_at": "2026-01-10T09:00:00Z",
                     "updated_at": "2026-01-10T09:30:00Z",
                     "draft": False,
+                    "html_url": "https://github.test/acme/repo/pull/7",
+                    "head": {"ref": "PO-7-read-sync"},
                 }
             ],
         )
@@ -108,5 +110,7 @@ async def test_github_adapter_maps_recorded_rest_payloads() -> None:
     assert pull_requests[0].merged is True
     assert pull_requests[0].opened_at == datetime(2026, 1, 10, 8, 45, tzinfo=UTC)
     assert pull_requests[0].metadata["repo"] == "repo"
+    assert pull_requests[0].metadata["source_branch"] == "PO-7-read-sync"
+    assert pull_requests[0].metadata["web_url"] == "https://github.test/acme/repo/pull/7"
     assert authored[0].metadata["repo"] == "acme/repo"
     assert {call.request.method for call in respx.calls} == {"GET"}

@@ -191,6 +191,8 @@ def _map_pull_request(tenant_id: str, repo: str, payload: Mapping[str, object]) 
                 "repo": repo,
                 "state": payload.get("state"),
                 "draft": payload.get("draft"),
+                "web_url": payload.get("html_url"),
+                "source_branch": _optional_string(_optional_mapping(payload, "head") or {}, "ref"),
             }
         ),
     )

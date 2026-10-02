@@ -214,6 +214,7 @@ def _map_merge_request(
                 "state": payload.get("state"),
                 "draft": payload.get("draft") or payload.get("work_in_progress"),
                 "web_url": payload.get("web_url"),
+                "source_branch": payload.get("source_branch"),
             }
         ),
     )

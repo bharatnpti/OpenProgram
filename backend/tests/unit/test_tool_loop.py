@@ -184,6 +184,44 @@ async def test_git_activity_tool_filters_recent_developer_facts_by_issue_key() -
     assert "PO-2 unrelated" not in output
 
 
+async def test_git_activity_tool_reports_merge_request_state_and_finds_it_by_branch() -> None:
+    # The LLM judges "it's done" against this output, so a draft or closed
+    # request must say so; the branch carries the key when the title does not.
+    repository = FakeTimeSeriesRepository()
+    reference_at = datetime(2026, 1, 10, 12, 0, tzinfo=UTC)
+    await repository.append_fact(
+        FactEvent(
+            tenant_id="demo",
+            source="vcs_pull_request",
+            entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.DEVELOPER, id="dev-1"),
+            payload={
+                "repo": "repo-1",
+                "id": "3",
+                "title": "Refund edge cases",
+                "merged": False,
+                "state": "open",
+                "draft": True,
+                "source_branch": "PO-6-refund-edge-cases",
+            },
+            observed_at=reference_at - timedelta(hours=1),
+            correlation_id="vcs:pull_request:demo:repo-1:3",
+        )
+    )
+    tool = GitActivityTool(
+        tenant_id="demo",
+        developer_id="dev-1",
+        repository=repository,
+        reference_at=reference_at,
+    )
+
+    output = await tool.run({"issue_key": "PO-6", "since_days": 3})
+
+    assert (
+        "pull_request: repo=repo-1, title=Refund edge cases, merged=False, state=open, "
+        "draft=True, branch=PO-6-refund-edge-cases"
+    ) in output
+
+
 async def test_git_activity_tool_default_lookback_matches_recent_fact_window() -> None:
     repository = FakeTimeSeriesRepository()
     reference_at = datetime(2026, 1, 30, 12, 0, tzinfo=UTC)
