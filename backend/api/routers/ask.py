@@ -22,7 +22,7 @@ async def ask(
 ) -> AskResponse:
     _ensure_aggregate(principal)
     view = await service.ask(
-        tenant_id=principal.tenant_id,
+        principal=principal,
         question=request.question,
         correlation_id=f"ask:{principal.subject}:{uuid4().hex}",
         as_of=request.as_of,
