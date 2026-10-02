@@ -1,9 +1,12 @@
 backend/core/application/cross_person_service.py
   s_386bf853700fa5::t_b9021b86fe54c0 292-295,300
+  s_db98bf649daf00::t_fa20292f04d336 292-295,300
 backend/core/application/portfolio_feed_service.py
   s_386bf853700fa5::t_9a477fa2093a9b 153-159,161-162
+  s_db98bf649daf00::t_fa20292f04d336 153-159,161-162
 backend/tests/unit/test_portfolio_feed_risk.py
   s_386bf853700fa5::t_c4d3e77294a3d0 89-128
+  s_db98bf649daf00::t_28c23bfb843dac 89-128
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -18,6 +21,14 @@ backend/tests/unit/test_portfolio_feed_risk.py
         "model": "claude-opus-5-5"
       },
       "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
     }
   }
 }
