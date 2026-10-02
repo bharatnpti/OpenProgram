@@ -12,6 +12,7 @@ from core.application.blocker_resolution import BlockerResolutionService
 from core.application.risk_service import RiskService
 from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
 from core.domain.graph import (
+    Developer,
     EdgeKind,
     EntityRef,
     FactEvent,
@@ -19,6 +20,7 @@ from core.domain.graph import (
     NodeKind,
     Pod,
     Project,
+    Task,
     WorkItem,
     Workstream,
 )
@@ -170,6 +172,160 @@ def _settings(**overrides: object) -> Settings:
         runtime_mode="memory",
         **overrides,
     )
+
+
+# ---- merged_issue_open ---------------------------------------------------
+
+
+async def _seed_issue_with_merge_requests(
+    store: InMemoryGraphStore,
+    *,
+    issue_state: str = "in_progress",
+    requests: tuple[dict[str, object], ...],
+) -> None:
+    """Project proj-1 (repo acme/api) holding Jira issue CHK-3, assigned to Liam."""
+    await store.upsert_node(
+        Project(
+            tenant_id=TENANT, id="proj-1", name="Checkout", metadata={"github_repos": "acme/api"}
+        )
+    )
+    await store.upsert_node(
+        Task(
+            tenant_id=TENANT,
+            id="CHK-3",
+            name="Payment intent API",
+            metadata={"key": "CHK-3", "state": issue_state, "status": "In Progress"},
+        )
+    )
+    await store.upsert_node(Developer(tenant_id=TENANT, id="U-liam", name="Liam"))
+    await store.add_edge(
+        GraphEdge(
+            tenant_id=TENANT, from_node_id="proj-1", to_node_id="CHK-3", kind=EdgeKind.CONTAINS
+        )
+    )
+    await store.add_edge(
+        GraphEdge(
+            tenant_id=TENANT, from_node_id="U-liam", to_node_id="CHK-3", kind=EdgeKind.ASSIGNED_TO
+        )
+    )
+    for index, request in enumerate(requests):
+        days_ago = int(cast(int, request.pop("days_ago", 2)))
+        observed = datetime.combine(AS_OF - timedelta(days=days_ago), datetime.min.time(), UTC)
+        await store.append_fact(
+            FactEvent(
+                tenant_id=TENANT,
+                source="vcs_pull_request",
+                entity_ref=EntityRef(tenant_id=TENANT, kind=NodeKind.DEVELOPER, id="U-liam"),
+                payload={"repo": "acme/api", "id": str(index + 1), **request},
+                observed_at=observed,
+                correlation_id=f"pr-{index}",
+            )
+        )
+
+
+async def test_merged_request_on_an_open_issue_is_drift() -> None:
+    store = InMemoryGraphStore()
+    await _seed_issue_with_merge_requests(
+        store,
+        requests=(
+            {
+                "title": "Payment intent API",
+                "source_branch": "CHK-3-payment-intent-api",
+                "merged": True,
+                "state": "merged",
+                "web_url": "https://git.test/acme/api/-/merge_requests/1",
+            },
+        ),
+    )
+
+    findings = await _service(store).project_drift(TENANT, "proj-1", AS_OF)
+
+    assert [f.kind for f in findings] == [DriftFindingKind.MERGED_ISSUE_OPEN]
+    finding = findings[0]
+    assert finding.severity is Rag.AMBER
+    assert finding.entity_ref == EntityRef(tenant_id=TENANT, kind=NodeKind.TASK, id="CHK-3")
+    assert finding.owner_id == "U-liam"
+    assert finding.stated_source is None
+    assert finding.evidence is not None
+    assert finding.evidence.identifier == "acme/api#1"
+    assert finding.evidence.url == "https://git.test/acme/api/-/merge_requests/1"
+    assert "merged 2 day(s) ago" in finding.reason
+    assert "CHK-3 is still 'In Progress'" in finding.reason
+
+
+@pytest.mark.parametrize(
+    ("issue_state", "requests"),
+    [
+        pytest.param(
+            "done",
+            ({"title": "CHK-3 x", "merged": True, "state": "merged"},),
+            id="issue-done",
+        ),
+        pytest.param(
+            "in_progress",
+            ({"title": "CHK-3 x", "merged": True, "state": "merged", "days_ago": 0},),
+            id="merged-today",
+        ),
+        pytest.param(
+            "in_progress",
+            (
+                {"title": "CHK-3 part 1", "merged": True, "state": "merged"},
+                {"title": "CHK-3 part 2", "merged": False, "state": "open", "draft": True},
+            ),
+            id="another-request-still-open",
+        ),
+        pytest.param(
+            "in_progress",
+            ({"title": "Payment intent", "merged": True, "state": "merged"},),
+            id="no-key",
+        ),
+        pytest.param(
+            "in_progress",
+            ({"title": "CHK-30 other issue", "merged": True, "state": "merged"},),
+            id="other-key",
+        ),
+    ],
+)
+async def test_merged_issue_open_is_not_raised_when_nothing_disagrees(
+    issue_state: str, requests: tuple[dict[str, object], ...]
+) -> None:
+    store = InMemoryGraphStore()
+    await _seed_issue_with_merge_requests(store, issue_state=issue_state, requests=requests)
+
+    findings = await _service(store).project_drift(TENANT, "proj-1", AS_OF)
+
+    assert [f for f in findings if f.kind is DriftFindingKind.MERGED_ISSUE_OPEN] == []
+
+
+async def test_merged_issue_open_ignores_requests_outside_the_project_repos() -> None:
+    store = InMemoryGraphStore()
+    await _seed_issue_with_merge_requests(
+        store, requests=({"title": "CHK-3 x", "merged": True, "state": "merged"},)
+    )
+    await store.upsert_node(
+        Project(
+            tenant_id=TENANT, id="proj-1", name="Checkout", metadata={"github_repos": "acme/web"}
+        )
+    )
+
+    assert await _service(store).project_drift(TENANT, "proj-1", AS_OF) == []
+
+
+async def test_merged_issue_open_never_downgrades_the_assignee() -> None:
+    # Forgetting to move a ticket is tracker hygiene, not a false status claim.
+    store = InMemoryGraphStore()
+    await _seed_issue_with_merge_requests(
+        store, requests=({"title": "CHK-3 x", "merged": True, "state": "merged"},)
+    )
+    await _record_owner_status(store, "U-liam", StatusSource.CONFIRMED)
+
+    result = await _service(store).scan_and_record_drift(TENANT, "proj-1", AS_OF)
+
+    assert [f.kind for f in result.findings] == [DriftFindingKind.MERGED_ISSUE_OPEN]
+    assert result.statuses_downgraded == 0
+    status = await store.latest_developer_status(TENANT, "U-liam", AS_OF)
+    assert status is not None
+    assert status.source is StatusSource.CONFIRMED
 
 
 # ---- said_done_no_pr ----------------------------------------------------
