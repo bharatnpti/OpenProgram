@@ -2,6 +2,7 @@
 
     uv run python -m scripts.qa_org.use_real                  # real integrations, catch-up paused
     uv run python -m scripts.qa_org.use_real --live-checkins  # ... and let it DM unprompted
+    uv run python -m scripts.qa_org.use_real --live-checkins --test-windows  # ... nudge within 1 h
 
 Then (re)create only the docker backend and worker from it:
 
@@ -56,15 +57,27 @@ def admin_slack_id(token: str) -> str:
     return str(response["user"]["id"])
 
 
-def managed_values(*, live_checkins: bool) -> dict[str, str]:
+# Tenant defaults short enough that one test day sees the whole ladder: the
+# developer is nudged after 15 min, the scrum master and then the manager 10 min
+# apart, and an unanswered check-in closes after 30 min more. A member's own
+# stored reply windows still win over these.
+TEST_WINDOWS = {
+    "OPENPROGRAM_CHECKIN_REPLY_WAIT_SECONDS": "900",
+    "OPENPROGRAM_ESCALATION_SCRUM_MASTER_WAIT_SECONDS": "600",
+    "OPENPROGRAM_ESCALATION_MANAGER_WAIT_SECONDS": "600",
+    "OPENPROGRAM_CHECKIN_FINAL_REPLY_WAIT_SECONDS": "1800",
+}
+
+
+def managed_values(*, live_checkins: bool, test_windows: bool = False) -> dict[str, str]:
     secrets = env.require(*SECRET_KEYS)
     return {
         # Off by default so switching mid-afternoon does not DM every member
         # within 15 minutes. NOTE: under DBOS this only stops the schedule from
         # being (re)created; one that already exists keeps firing until removed.
         "OPENPROGRAM_CHECKIN_RECONCILE_ENABLED": "true" if live_checkins else "false",
-        # DMs the person a check-in asks something of. Off on main today; pinned
-        # here because a branch in flight turns it on by default.
+        # DMs the person a check-in asks something of. On by default in
+        # settings; pinned off here unless a test needs real members DMed.
         "OPENPROGRAM_CROSS_PERSON_AUTO_NOTIFY": "true" if live_checkins else "false",
         "OPENPROGRAM_TENANT_ID": TENANT_ID,
         "OPENPROGRAM_CHAT_PROVIDER": "slack",
@@ -78,6 +91,7 @@ def managed_values(*, live_checkins: bool) -> dict[str, str]:
         "OPENPROGRAM_DEV_PRINCIPAL_ROLES": "admin",
         **secrets,
         **gitlab_values(),
+        **(TEST_WINDOWS if test_windows else {}),
     }
 
 
@@ -119,8 +133,13 @@ def main() -> None:
         action="store_true",
         help="let catch-up check-ins and cross-person notifications DM real members",
     )
+    parser.add_argument(
+        "--test-windows",
+        action="store_true",
+        help="shorten reply, escalation and close-out waits so one day covers the nudge ladder",
+    )
     args = parser.parse_args()
-    values = managed_values(live_checkins=args.live_checkins)
+    values = managed_values(live_checkins=args.live_checkins, test_windows=args.test_windows)
     QA_ENV.write_text("\n".join(render(BASE_ENV.read_text().splitlines(), values)) + "\n")
     QA_ENV.chmod(0o600)
     print(f"wrote {QA_ENV} (tenant {TENANT_ID}); {BASE_ENV} untouched. Recreate with:")
