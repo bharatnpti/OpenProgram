@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from core.application.blocker_lifecycle import BlockerLifecycleService
 from core.application.blocker_resolution import BlockerResolutionService
 from core.application.persona_views import BlockerDetailView
+from core.application.status_summaries import NO_REPLY_BLOCKER, basis_status, confirmed_summary
 from core.domain.blockers import (
     BlockerReconciliation,
     BlockerReport,
@@ -23,6 +24,10 @@ class SelfStatusService:
     before editing — so an omitted blocker resolves (deliberately unlike chat
     replies, which are partial statements and carry unmentioned blockers
     forward). Confirm re-asserts every open blocker today.
+
+    Confirming an inferred, stale, unknown or carried-forward status records
+    what was confirmed -- an earlier day's status with its date, or what the
+    inference was drawn from -- not the "no confirmed check-in" wording.
     """
 
     def __init__(
@@ -96,13 +101,16 @@ class SelfStatusService:
         # so on a day with no reply yet `existing.as_of` is an earlier day --
         # and writing there confirmed *that* day instead, leaving today with no
         # status at all while restamping history as confirmed just now.
+        basis = await basis_status(self._status_repository, existing)
         confirmed = DeveloperStatus(
             tenant_id=existing.tenant_id,
             developer_id=existing.developer_id,
             as_of=as_of,
             source=StatusSource.CONFIRMED,
-            blockers=blocker_descriptions(reconciliation.open_after) or existing.blockers,
-            summary=existing.summary,
+            # The non-response placeholder is not a blocker the developer has.
+            blockers=blocker_descriptions(reconciliation.open_after)
+            or tuple(blocker for blocker in existing.blockers if blocker != NO_REPLY_BLOCKER),
+            summary=confirmed_summary(existing, basis, as_of),
             eta_change_days=existing.eta_change_days,
             developer_confirmed=True,
             confirmed_at=now,

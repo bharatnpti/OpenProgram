@@ -23,6 +23,7 @@ from core.application.status_parsing import (
     ClarificationEvaluator,
     StatusParser,
 )
+from core.application.status_summaries import inferred_summary
 from core.application.tools.conversation_history import MAX_HISTORY_LIMIT, ConversationHistoryTool
 from core.application.tools.git_activity import GitActivityTool
 from core.application.tools.issue_tracker import IssueTrackerTool
@@ -2597,9 +2598,7 @@ def _inferred_summary(
     if git_activity:
         basis.append(f"recent Git activity: {git_activity}")
 
-    if not basis:
-        return "No confirmed check-in after a nudge. Inferred from recent signals."
-    return f"No confirmed check-in after a nudge. Inferred from {'; '.join(basis)}."
+    return inferred_summary("; ".join(basis) or "recent signals")
 
 
 def _inferred_issue_label(issue: Issue, reference_at: datetime) -> str:
