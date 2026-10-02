@@ -12,6 +12,9 @@ Feature: Cross-person request detection
     Then the response status code should be 200
     And the response status should be "processed"
     And a cross-person request should notify "U1002" with text containing "API schema review"
+    And a cross-person request should notify "U1002" with text containing "Asha Rao asked for your review"
+    And the cross-person request DM to "U1002" should not contain "Blocked waiting"
+    And the cross-person request DM to "U1002" should not contain "U1001"
     When member "U1002" replies to the cross-person request with text "on it"
     Then the response status code should be 200
     And the response status should be "acknowledged"
@@ -98,3 +101,27 @@ Feature: Cross-person request detection
     When Slack delivers the check-in reply event "Ev-1" from "U1001" with text "Blocked waiting on Liam Chen to review the API schema."
     Then the response status should be "duplicate"
     And exactly 1 cross-person request DM should have gone to "U1002"
+
+  Scenario: Naming yourself sends no DM but keeps the request
+    Given the cross-person request stack is running where every reply names "Asha Rao"
+    And a configured member "U1001" named "Asha Rao" with chat id "U1001"
+    And the mock Slack directory is synced
+    And member "U1001" has a bot check-in message
+    When I submit a reply to the bot message for "U1001" with text "Blocked waiting on Asha Rao to review the API schema."
+    Then the response status should be "processed"
+    And the cross-person request raised by "U1001" should have status "open"
+    And no cross-person request should notify anyone
+
+  Scenario: A thank-you after the request is resolved neither reopens it nor tells the requester again
+    Given the cross-person request stack is running with Liam review extraction
+    And a configured member "U1001" named "Asha Rao" with chat id "U1001"
+    And the mock Slack directory is synced
+    And member "U1001" has a bot check-in message
+    When I submit a reply to the bot message for "U1001" with text "Blocked waiting on Liam Chen to review the API schema."
+    Then the response status should be "processed"
+    When member "U1002" replies in the thread of the cross-person request with text "Reviewed and approved"
+    Then the response status should be "resolved"
+    When member "U1002" replies in the thread of the cross-person request with text "thanks!"
+    Then the response status should be "resolved"
+    And the cross-person request for "U1002" should have status "resolved"
+    And "U1001" should be told the cross-person request was resolved by "Liam Chen"

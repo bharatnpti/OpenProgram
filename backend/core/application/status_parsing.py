@@ -29,6 +29,13 @@ GENERIC_CLARIFICATION_QUESTION = (
     "record today's status?"
 )
 
+# A request's note is sent to the named person as the ask, so it must be the ask
+# and not the reply: the person it names has not seen the reply and is not meant to.
+_REQUEST_NOTE_RULE = (
+    "A requests note is a short phrase of at most 100 characters saying what is needed "
+    "from that person, in your own words; never copy or quote the reply into it."
+)
+
 PARSE_REPLY_SYSTEM_PROMPT = (
     "Extract structured status signals from the current reply. Use prior conversation turns only "
     "as context. Do not invent blockers; use an empty blocker list when no blocker is stated. "
@@ -225,6 +232,7 @@ def _parser_prompt(raw_reply: str, *, prior_text: str = "") -> str:
         "equal to the blocker_details descriptions. "
         "Each requests item uses keys: name string, kind dependency/review/input, "
         "note string, email string or null. "
+        f"{_REQUEST_NOTE_RULE} "
         "Each issue_updates item uses keys: issue_key string, claimed_done boolean, "
         "claimed_state string or null, and note string. "
         "Do not invent blockers; use empty blockers and blocker_details arrays when no "
@@ -276,6 +284,7 @@ def _clarification_prompt(raw_reply: str, *, prior_text: str = "") -> str:
         "record the attribution in blocker_details. "
         "Only include a request when the reply "
         "explicitly needs a deliverable, review, or input from a specific named person. "
+        f"{_REQUEST_NOTE_RULE} "
         "Use Jira/Git tools when available to cross-check issue and progress claims. If a reply "
         "says an issue is done but Jira is not done, or claims substantial progress while recent "
         "Git activity for that issue is absent or contradictory, set sufficient false and ask "
