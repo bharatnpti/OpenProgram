@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
+
 from core.application.persona_views import PersonaViewService
 from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
+from core.domain.errors import GraphNotFound
 from core.domain.graph import (
     Developer,
     EdgeKind,
@@ -537,6 +540,31 @@ async def test_pod_checkins_counts_partial_statuses() -> None:
         "dev-stale": "stale",
         "dev-missing": "missing",
     }
+
+
+async def test_pod_views_refuse_a_node_that_is_not_a_pod() -> None:
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    project = Project(tenant_id="demo", id="project-a", name="Project A")
+    pod = Pod(tenant_id="demo", id="pod-a", name="Pod A")
+    developer = Developer(tenant_id="demo", id="dev-1", name="Dev One")
+    for node in (project, pod, developer):
+        await store.upsert_node(node)
+    for from_id, to_id in ((project.id, pod.id), (pod.id, developer.id)):
+        await store.add_edge(
+            GraphEdge(
+                tenant_id="demo", from_node_id=from_id, to_node_id=to_id, kind=EdgeKind.CONTAINS
+            )
+        )
+    service = _persona_service(store)
+
+    assert (await service.pod_checkins("demo", pod.id, as_of)).pod_id == pod.id
+    assert (await service.pod_blockers("demo", pod.id, as_of)).pod_id == pod.id
+    for node_id in (project.id, developer.id, "pod-missing"):
+        with pytest.raises(GraphNotFound):
+            await service.pod_checkins("demo", node_id, as_of)
+        with pytest.raises(GraphNotFound):
+            await service.pod_blockers("demo", node_id, as_of)
 
 
 async def test_pod_blockers_excludes_blockers_attributed_to_other_pod() -> None:

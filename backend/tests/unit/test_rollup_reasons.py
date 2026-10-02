@@ -27,7 +27,7 @@ from tests.fixtures.demo_graph import populate_demo_graph
 AS_OF = "2026-06-15"
 
 
-@pytest.mark.parametrize("roles", ["sm", "admin"])
+@pytest.mark.parametrize("roles", ["sm", "mgr", "admin"])
 def test_pod_rollup_is_readable_with_the_pod_capabilities(settings: Settings, roles: str) -> None:
     app = create_app(settings=settings.model_copy(update={"dev_principal_roles": roles}))
     with TestClient(app) as client:
@@ -47,7 +47,7 @@ def test_pod_rollup_is_readable_with_the_pod_capabilities(settings: Settings, ro
     assert body["source_names"] == {"task-graph": "Graph persistence"}
 
 
-@pytest.mark.parametrize("roles", ["po", "mgr", "exec", "dev"])
+@pytest.mark.parametrize("roles", ["po", "exec", "dev"])
 def test_pod_rollup_is_denied_without_the_pod_capabilities(settings: Settings, roles: str) -> None:
     app = create_app(settings=settings.model_copy(update={"dev_principal_roles": roles}))
     with TestClient(app) as client:

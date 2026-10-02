@@ -239,7 +239,8 @@ async def test_pod_tasks_refuse_a_node_that_is_not_a_pod() -> None:
 
 
 def test_pod_tasks_route_is_readable_only_with_pod_detail_access(settings: Settings) -> None:
-    for roles in ("sm", "admin"):
+    # A manager is the last escalation step for a pod, so it opens pods too.
+    for roles in ("sm", "mgr", "admin"):
         app = _app(settings, roles)
         with TestClient(app) as client:
             response = client.get("/pods/pod-runtime/tasks?as_of=2026-06-15")
@@ -261,7 +262,7 @@ def test_pod_tasks_route_is_readable_only_with_pod_detail_access(settings: Setti
         assert body["tasks"][0]["open_blockers"] == []
         assert missing.status_code == 404
 
-    for roles in ("dev", "po", "mgr", "exec"):
+    for roles in ("dev", "po", "exec"):
         app = _app(settings, roles)
         with TestClient(app) as client:
             denied = client.get("/pods/pod-runtime/tasks?as_of=2026-06-15")

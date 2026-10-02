@@ -82,7 +82,10 @@ async def pod_blockers(
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
 ) -> PodBlockersResponse:
     _ensure(principal, Capability.READ_POD_BLOCKERS)
-    view = await persona_service.pod_blockers(principal.tenant_id, pod_id, as_of)
+    try:
+        view = await persona_service.pod_blockers(principal.tenant_id, pod_id, as_of)
+    except GraphNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return PodBlockersResponse.from_view(view)
 
 
@@ -94,7 +97,10 @@ async def pod_checkins(
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
 ) -> PodCheckinsResponse:
     _ensure(principal, Capability.READ_POD_CHECKINS)
-    view = await persona_service.pod_checkins(principal.tenant_id, pod_id, as_of)
+    try:
+        view = await persona_service.pod_checkins(principal.tenant_id, pod_id, as_of)
+    except GraphNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return PodCheckinsResponse.from_view(view)
 
 

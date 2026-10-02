@@ -44,9 +44,12 @@ export type RoleContextValue = {
    * A developer has neither, so portfolio-scoped endpoints 403 for them.
    */
   canReadAggregate: boolean;
-  /** Mirrors `READ_PROJECT_PROGRESS`: product owner, manager, admin. */
+  /** Mirrors `READ_PROJECT_PROGRESS`: product owner, manager, executive, admin. */
   canReadProjectProgress: boolean;
-  /** Mirrors `READ_POD_CHECKINS`/`READ_POD_BLOCKERS`: scrum master, admin. */
+  /**
+   * Mirrors `READ_POD_CHECKINS`/`READ_POD_BLOCKERS`: scrum master, manager,
+   * admin. Not the executive: check-ins and blockers are per-person.
+   */
   canReadPodDetail: boolean;
   canAccessAdmin: boolean;
   canAccessRole: (role: AppRole) => boolean;

@@ -216,8 +216,8 @@ Functional requirements:
 - Developers shall read their own work and directory data.
 - Scrum masters shall read directory data, team aggregates, pod blockers, pod check-ins, and raw DM content where allowed.
 - Product owners shall read directory data, team aggregates, and project progress.
-- Managers shall read directory data, team aggregates, executive aggregates, project progress, program rollups, and portfolio heatmaps.
-- Executives shall read directory data, executive aggregates, program rollups, and portfolio heatmaps.
+- Managers shall read directory data, team aggregates, executive aggregates, project progress, pod blockers, pod check-ins, program rollups, and portfolio heatmaps.
+- Executives shall read directory data, executive aggregates, project and workstream progress, program rollups, and portfolio heatmaps, but not pod blockers or pod check-ins.
 - Admins shall manage configuration and dispatch workflows.
 - Admin role shall short-circuit to allowed for capabilities.
 - Raw DM content and budget-like sensitive fields shall be protected by field-level checks.
