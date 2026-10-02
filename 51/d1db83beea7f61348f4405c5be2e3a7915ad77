@@ -1,0 +1,71 @@
+backend/infra/workflows/worker.py
+  s_07adae6a420afb::t_61d11654e54457 5-6,8-9,13-14,22-26,31-39
+  s_07adae6a420afb::t_f31975ef013571 40-41
+backend/tests/unit/test_agent_and_workflow.py
+  s_07adae6a420afb::t_ec858b0aa43fd6 15
+  s_07adae6a420afb::t_29db692ad77043 1414-1415
+  s_07adae6a420afb::t_b409a9fda80fed 602-653,1375-1381,1384-1385,1391-1395,1408-1413
+docker-compose.yml
+  s_07adae6a420afb::t_46ade32090bcc0 286,343
+.env.example
+  s_07adae6a420afb::t_46ade32090bcc0 49-54
+backend/tests/unit/test_registry_providers.py
+  s_07adae6a420afb::t_333e5422ee692f 153,166,175-257,384-386,389-395
+docs/lld/service-and-api.md
+  s_07adae6a420afb::t_6e599748a7e8c3 12
+backend/infra/adapters/catalog.py
+  s_07adae6a420afb::t_418130f2dce6fa 39-44,141-165,311,321-325,330-336,340-341,346-347
+  s_07adae6a420afb::t_ddedd7062e9e3e 348-349
+backend/infra/adapters/chat/slack.py
+  s_07adae6a420afb::t_bbc3d36f3e0ba0 22,26,28,235-244,316-319,324-325,328-329,331
+backend/api/routers/webhooks.py
+  s_07adae6a420afb::t_e0e500e238a488 46-50
+docs/ops/slack-setup.md
+  s_07adae6a420afb::t_a51ec58edcaf14 1-52,54-96
+  s_07adae6a420afb::t_e6ecbbb31e85b9 53
+backend/tests/unit/test_testcontainers_compose.py
+  s_07adae6a420afb::t_46ade32090bcc0 11
+backend/infra/adapters/chat/slack_socket.py
+  s_07adae6a420afb::t_9a5754b5b8f3c9 233-234,236
+  s_07adae6a420afb::t_9d785193f8b8b4 1-123,125-163,165-174,176-180,182-232,235,237-252,259-262,272-279
+  s_07adae6a420afb::t_fdbb558828b7d2 164,175,263-271
+  s_07adae6a420afb::t_2661a7b2ba589f 124,181,253-258
+backend/infra/registry.py
+  s_07adae6a420afb::t_960c1fc58ec6bf 398
+  s_07adae6a420afb::t_e0e500e238a488 75,372-397
+docs/ops/infrastructure-procurement.md
+  s_07adae6a420afb::t_ec46ea8dc99923 286-289,291-292,298-299,366
+  s_07adae6a420afb::t_e6ecbbb31e85b9 19-20,74-75,78,86,106,189-190,257,365,367-377
+uv.lock
+  s_07adae6a420afb::t_3a1647fda7c8b3 1145,1194
+pyproject.toml
+  s_07adae6a420afb::t_2a737a22ecd141 32
+backend/config/settings.py
+  s_07adae6a420afb::t_d310bfe9b3e259 138-143
+  s_07adae6a420afb::t_b6f6005db4488c 579
+  s_07adae6a420afb::t_04c161a073604e 580-583
+backend/tests/contract/test_slack_socket_listener.py
+  s_07adae6a420afb::t_1e746d7777c83a 1-3,5-6,8-11,13-15,17-22,24-25,27-264
+  s_07adae6a420afb::t_6275fa71c6532b 7,16,26,265-307
+  s_07adae6a420afb::t_fdbb558828b7d2 352-366
+  s_07adae6a420afb::t_09d579bde14f03 4,12,23,308-351
+docs/lld/chat-roundtrip.md
+  s_07adae6a420afb::t_6e599748a7e8c3 18-24,26,33
+  s_07adae6a420afb::t_c30d5900d4fc98 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "51d1db83beea7f61348f4405c5be2e3a7915ad77",
+  "prompts": {},
+  "sessions": {
+    "s_07adae6a420afb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f57b89c-7e33-4f69-8787-d5d1f13b6b94",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
