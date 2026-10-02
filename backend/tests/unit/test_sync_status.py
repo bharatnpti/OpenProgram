@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from api.main import create_app
 from config.settings import Settings
 from core.application.directory_sync_service import DirectorySyncService
-from core.application.sync_recording import classify_sync_error
+from core.application.sync_recording import classify_sync_error, provider_start_failure_message
 from core.application.sync_services import IssueReadSyncService, VcsReadSyncService
 from core.application.sync_status_service import (
     SyncStatusService,
@@ -33,8 +33,10 @@ from core.domain.sync_status import (
     SyncTargetOrigin,
 )
 from core.domain.workflows import SyncDispatchInput
+from infra.adapters import catalog
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.persistence.postgres_status import PostgresSyncCursorRepository
+from infra.registry import ServiceRegistry
 from tests.contract.fakes import FakeDirectoryUserRepository, FakeIssueTracker, FakeVcsProvider
 
 TENANT = "demo"
@@ -297,6 +299,38 @@ def test_classify_sync_error_uses_closed_categories() -> None:
     assert classify_sync_error(KeyError("x")) is SyncErrorKind.UNEXPECTED
 
 
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            ProviderConfigurationError(LEAKY_MESSAGE),
+            "Provider could not start: missing or invalid credential (ProviderConfigurationError)",
+        ),
+        (
+            ProviderUnavailable(LEAKY_MESSAGE),
+            "Provider could not start: provider unavailable (ProviderUnavailable)",
+        ),
+        (
+            ValueError(LEAKY_MESSAGE),
+            "Provider could not start: unexpected error (ValueError)",
+        ),
+        (
+            # A class name is code, but a dynamically named one is not trusted.
+            type("token=sk-live-abc123", (Exception,), {})(LEAKY_MESSAGE),
+            "Provider could not start: unexpected error (Error)",
+        ),
+    ],
+)
+def test_provider_start_failure_message_is_fixed_text_and_the_error_type(
+    error: BaseException, expected: str
+) -> None:
+    message = provider_start_failure_message(error)
+
+    assert message == expected
+    assert "sk-live" not in message
+    assert "tracker.example.invalid" not in message
+
+
 # --- schedule thresholds ---------------------------------------------------
 
 
@@ -479,6 +513,103 @@ async def test_status_reports_invalid_target_config_as_failing() -> None:
     ]
 
 
+_DIRECTORY_START_ERROR = (
+    "Provider could not start: missing or invalid credential (ProviderConfigurationError)"
+)
+
+
+async def test_status_reports_a_provider_that_cannot_start_as_failing() -> None:
+    store = await _configured_store()
+
+    report = await _service(
+        store,
+        directory_provider="slack",
+        provider_start_errors={SyncSource.DIRECTORY: _DIRECTORY_START_ERROR},
+    ).status(TENANT, now=NOW)
+
+    directory = _source(report.sources, SyncSource.DIRECTORY)
+    assert directory.health is SyncHealth.FAILING
+    assert directory.provider_error == _DIRECTORY_START_ERROR
+    assert directory.last_error is None
+    assert directory.last_synced_at is None
+    # The target still says what is true of it: no run has ever recorded anything.
+    assert [target.health for target in directory.targets] == [SyncHealth.NEVER_SYNCED]
+    for source in (SyncSource.ISSUE_TRACKER, SyncSource.VCS):
+        working = _source(report.sources, source)
+        assert working.provider_error is None
+        assert working.health is SyncHealth.NEVER_SYNCED
+
+
+async def test_status_provider_start_failure_outranks_cursor_history_and_missing_targets() -> None:
+    store = await _configured_store()
+    scope = await _issue_scope(store)
+    await store.record_cursor(TENANT, "issue", scope, _ok_cursor(NOW - timedelta(minutes=5)))
+    error = "Provider could not start: unexpected error (ValueError)"
+
+    report = await _service(
+        store,
+        provider_start_errors={SyncSource.ISSUE_TRACKER: error, SyncSource.VCS: error},
+    ).status(TENANT, now=NOW)
+
+    issue = _source(report.sources, SyncSource.ISSUE_TRACKER)
+    assert issue.health is SyncHealth.FAILING
+    assert issue.provider_error == error
+    assert issue.last_synced_at == NOW - timedelta(minutes=5)
+
+    empty = await _service(
+        InMemoryGraphStore(), provider_start_errors={SyncSource.VCS: error}
+    ).status(TENANT, now=NOW)
+    assert _source(empty.sources, SyncSource.VCS).health is SyncHealth.FAILING
+    assert _source(empty.sources, SyncSource.ISSUE_TRACKER).health is SyncHealth.NOT_CONFIGURED
+
+
+async def test_status_with_working_providers_has_no_provider_error() -> None:
+    store = await _configured_store()
+
+    report = await _service(store).status(TENANT, now=NOW)
+
+    assert all(source.provider_error is None for source in report.sources)
+    assert _source(report.sources, SyncSource.DIRECTORY).health is SyncHealth.NEVER_SYNCED
+
+
+def _container_settings(**overrides: object) -> Settings:
+    values: dict[str, object] = {
+        "_env_file": None,
+        "secret_key": "q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        "runtime_mode": "container",
+        "slack_bot_token": None,
+    }
+    values.update(overrides)
+    return Settings(**values)  # type: ignore[arg-type]
+
+
+def test_registry_reports_a_chat_directory_without_a_token_as_unable_to_start() -> None:
+    registry = ServiceRegistry(_container_settings(directory_provider="slack"))
+
+    errors = registry.sync_provider_start_errors()
+
+    assert errors == {SyncSource.DIRECTORY: _DIRECTORY_START_ERROR}
+
+
+def test_registry_reports_no_start_error_when_the_chat_token_is_set() -> None:
+    registry = ServiceRegistry(
+        _container_settings(directory_provider="slack", slack_bot_token="xoxb-not-a-real-token")
+    )
+
+    assert registry.sync_provider_start_errors() == {}
+
+
+def test_registry_reports_each_provider_that_fails_to_build_by_error_type_only() -> None:
+    # An unusable secret key breaks the secret store, and with it both external
+    # sync providers that are built around it -- the same way for each.
+    registry = ServiceRegistry(Settings(_env_file=None, secret_key="k" * 44, runtime_mode="memory"))
+
+    errors = registry.sync_provider_start_errors()
+
+    expected = "Provider could not start: unexpected error (ValueError)"
+    assert errors == {SyncSource.ISSUE_TRACKER: expected, SyncSource.VCS: expected}
+
+
 # --- API -------------------------------------------------------------------
 
 
@@ -534,6 +665,53 @@ def test_sync_status_endpoint_is_admin_only(settings: Settings) -> None:
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.get("/admin/ops/sync-status")
         assert response.status_code == 403, role
+
+
+def test_sync_status_endpoint_shows_a_provider_that_cannot_start_as_failing(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _cannot_start(_settings: Settings) -> None:
+        raise ProviderConfigurationError(LEAKY_MESSAGE)
+
+    monkeypatch.setattr(catalog, "build_directory_provider", _cannot_start)
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        response = client.get("/admin/ops/sync-status")
+
+    assert response.status_code == 200
+    sources = {source["source"]: source for source in response.json()["sources"]}
+    directory = sources["directory"]
+    assert directory["health"] == "failing"
+    assert directory["provider_error"] == _DIRECTORY_START_ERROR
+    assert directory["last_synced_at"] is None
+    # Everything else is untouched: a healthy provider reports no error.
+    for name in ("issue_tracker", "vcs", "calendar"):
+        assert sources[name]["provider_error"] is None
+    assert sources["calendar"]["health"] == "disabled"
+    assert sources["issue_tracker"]["health"] != "failing"
+    # The exception's text, and what it echoes, never reaches the response.
+    assert "sk-live" not in response.text
+    assert "tracker.example.invalid" not in response.text
+    assert LEAKY_MESSAGE not in response.text
+
+
+def test_sync_status_endpoint_never_returns_the_value_that_broke_a_provider(
+    settings: Settings,
+) -> None:
+    broken_key = "k" * 44
+    app = create_app(settings=settings.model_copy(update={"secret_key": broken_key}))
+    with TestClient(app) as client:
+        response = client.get("/admin/ops/sync-status")
+
+    assert response.status_code == 200
+    sources = {source["source"]: source for source in response.json()["sources"]}
+    for name in ("issue_tracker", "vcs"):
+        assert sources[name]["health"] == "failing"
+        assert sources[name]["provider_error"] == (
+            "Provider could not start: unexpected error (ValueError)"
+        )
+    assert sources["directory"]["provider_error"] is None
+    assert broken_key not in response.text
 
 
 # --- Postgres --------------------------------------------------------------

@@ -171,6 +171,7 @@ Functional requirements:
 - The system shall record each sync run's outcome per target, and a failure only as a fixed category (credentials, provider unavailable, or unexpected), never the provider's error text.
 - Admins shall see on the Data sources tab, per data source (issue tracker, VCS, calendar, directory), its configured targets, when it last synced, its last attempt, the newest item seen, and a health of healthy, stale, failing, never synced, not configured, or disabled. A source with no recorded run shall never read as healthy.
 - The sync status view shall be built only from recorded runs and shall never call a provider.
+- The sync status view shall show a source whose provider cannot be built (for example a missing chat token) as failing, with a reason made only of fixed text and the error type, never the error message or a credential value.
 
 ### 4.8 Rollup Engine
 

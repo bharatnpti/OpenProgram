@@ -10882,6 +10882,17 @@
             ],
             "title": "Config Error"
           },
+          "provider_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Error"
+          },
           "targets": {
             "items": {
               "$ref": "#/components/schemas/SyncTargetStatusResponse"

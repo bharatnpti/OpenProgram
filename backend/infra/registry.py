@@ -20,6 +20,7 @@ from core.application.directory_sync_service import DirectorySyncService
 from core.application.reply_ingestion import ReplyDrainResult, ReplyIngestionService
 from core.application.self_status_service import SelfStatusService
 from core.application.status_collector import StatusCollector
+from core.application.sync_recording import provider_start_failure_message
 from core.application.sync_services import (
     CalendarReadSyncService,
     IssueReadSyncService,
@@ -30,7 +31,7 @@ from core.application.writeback_service import WriteBackService
 from core.domain.errors import ProviderUnavailable
 from core.domain.inbound import InboundChatEvent, conversation_key
 from core.domain.messaging import InboundMessage
-from core.domain.sync_status import SyncStatusConfig
+from core.domain.sync_status import SyncSource, SyncStatusConfig
 from core.domain.workflows import InboundSweeperResult
 from core.ports.auth import (
     AuthCallbackResult,
@@ -840,8 +841,33 @@ class ServiceRegistry:
                 legacy_issue_targets=legacy_issue_dispatches(settings, settings.tenant_id),
                 legacy_vcs_targets=legacy_vcs_dispatches(settings, settings.tenant_id),
                 simulated_providers=frozenset({"fake", _CHAT_SIMULATOR_PROVIDER}),
+                provider_start_errors=self.sync_provider_start_errors(),
             ),
         )
+
+    def sync_provider_start_errors(self) -> dict[SyncSource, str]:
+        """Sanitised reasons for each synced source whose provider can't be built.
+
+        A provider that fails while being built (a missing chat token, an
+        unusable secret key) makes the sync fail before it reaches any cursor,
+        so the sync status would otherwise read "never synced". Building only
+        wires settings into a client object -- no connection is opened and no
+        provider is called -- and a failed build is not cached, so the next
+        read retries. Only fixed text and the error type are kept, never the
+        exception message.
+        """
+        builders = (
+            (SyncSource.ISSUE_TRACKER, self.issue_tracker),
+            (SyncSource.VCS, self.vcs_provider),
+            (SyncSource.DIRECTORY, self.directory_provider),
+        )
+        errors: dict[SyncSource, str] = {}
+        for source, build in builders:
+            try:
+                build()
+            except Exception as error:
+                errors[source] = provider_start_failure_message(error)
+        return errors
 
     def cross_person_request_service(self) -> CrossPersonRequestService:
         return CrossPersonRequestService(
