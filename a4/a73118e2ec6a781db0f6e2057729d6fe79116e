@@ -1,0 +1,25 @@
+.github/workflows/ci.yml
+  s_51495ccc67ba04::t_54ffce8f984501 6,57-74,88-90,93-97,101
+Makefile
+  s_51495ccc67ba04::t_7dec5b4dfc5a31 38,63,116-127
+README.md
+  s_51495ccc67ba04::t_c38dff782ca126 89,247,255-256,259,262,265
+docs/lld/platform-and-cicd.md
+  s_51495ccc67ba04::t_7b56f9c9ba5672 33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a4a73118e2ec6a781db0f6e2057729d6fe79116e",
+  "prompts": {},
+  "sessions": {
+    "s_51495ccc67ba04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98259e94-8aa1-45f5-b5cc-46cac669b27d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
