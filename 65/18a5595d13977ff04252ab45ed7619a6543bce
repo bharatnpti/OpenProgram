@@ -1,0 +1,31 @@
+backend/api/dependencies.py
+  s_51495ccc67ba04::t_acf7a907879c4f 200
+backend/api/dtos.py
+  s_51495ccc67ba04::t_30d3ddb766d2f4 1474
+backend/api/routers/ask.py
+  s_51495ccc67ba04::t_e5ca58847481ec 25
+backend/core/application/ask_service.py
+  s_51495ccc67ba04::t_42744fafdc0c29 4,6,9,20-23,26-27,34-42,44-46,49-87,110-113,125-126,289-295,298,302-307,313-329,333-334,348-349,351-352,354-357,359-376,388-393,399,408,420-424,429,436,448-453,459,468,477,481-488,493,495-505,512,514-515,517-757,768,777,784,791,808-811,817,821-857,859-867,869-872,874-893,896-910,914-918,920-930,942-944,1027-1044,1048-1058,1061,1064-1066,1069-1070,1072,1077-1158
+backend/core/domain/risk.py
+  s_51495ccc67ba04::t_42d33e9de4afc1 73-81
+backend/tests/unit/test_ask_api.py
+  s_51495ccc67ba04::t_d2456989e30c16 1-134
+backend/tests/unit/test_ask_service.py
+  s_51495ccc67ba04::t_7a8a993a1bfab6 4-5,7-9,11,13,15-18,21-22,24,27-49,228-281,288-289,294-714,716-771
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6518a5595d13977ff04252ab45ed7619a6543bce",
+  "prompts": {},
+  "sessions": {
+    "s_51495ccc67ba04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98259e94-8aa1-45f5-b5cc-46cac669b27d",
+        "model": "unknown"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
