@@ -6,10 +6,10 @@ import { Card } from "../../components/ui/Card";
 import { Sparkline } from "../../components/ui/Sparkline";
 import { cn } from "../../lib/utils";
 import { firstItemId } from "../../lib/selection";
-import { latestBriefPerScopePerDay } from "../../lib/briefs";
+import { briefsHref } from "../../lib/briefs";
 import { ragSeverity, toneForRag, toneHex } from "../../lib/status";
 import { todayIso } from "../../lib/today";
-import type { DirectoryItemResponse, Rag } from "../../api/schema";
+import type { BriefKind, DirectoryItemResponse, Rag } from "../../api/schema";
 
 const HERO_BG: Record<string, string> = {
   danger: "bg-rag-red-bg",
@@ -63,12 +63,6 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
     queryFn: () => apiClient.portfolioRisks(asOf),
   });
 
-  const briefs = useQuery({
-    queryKey: ["persona", "briefs"],
-    queryFn: () => apiClient.personaBriefs(undefined, 20),
-    staleTime: 5 * 60_000,
-  });
-
   // Each row is a fixed four columns, so a tenant with more than four of a
   // kind cannot show them all. Order worst-first before truncating: taking the
   // first four in directory order (which is alphabetical) hid the tenant's
@@ -112,7 +106,6 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
   const topRisks = [...(risks.data?.risks ?? [])]
     .sort((a, b) => b.age_days - a.age_days)
     .slice(0, 3);
-  const topBriefs = latestBriefPerScopePerDay(briefs.data?.briefs ?? []).slice(0, 3);
   // "No material risks detected" is only true once the risk query has come back
   // with none of them.
   const heroDetail = risks.isError
@@ -158,7 +151,9 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
         </div>
       </Card>
 
-      <Card padding="p-6" animateDelay={140}>
+      <LeadBrief animateDelay={140} />
+
+      <Card padding="p-6" animateDelay={210}>
         <h2 className="text-[18px] font-bold">Portfolio heat</h2>
         <div className="mt-4 flex flex-col gap-2.5">
           {heatRows.map((row) => (
@@ -201,7 +196,7 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
         </div>
       </Card>
 
-      <Card padding="p-0" animateDelay={210}>
+      <Card padding="p-0" animateDelay={280}>
         <div className="flex items-center justify-between px-6 pt-6 pb-2">
           <h2 className="text-[18px] font-bold">Top signals</h2>
           <button
@@ -238,26 +233,73 @@ export function ManagerExecToday({ role }: { role: "mgr" | "exec" }) {
           </div>
         ))}
       </Card>
+    </div>
+  );
+}
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        {topBriefs.map((brief) => (
-          <Card
-            key={`${brief.kind}-${brief.scope_id}-${brief.generated_at}`}
-            padding="p-6"
-            animateDelay={280}
-          >
-            <div className="text-xs font-bold uppercase tracking-wide text-magenta">
-              {briefKindLabel(brief.kind)}
-            </div>
-            <h3 className="mt-2 text-[17px] font-bold">{brief.title}</h3>
+/**
+ * The kind of brief this screen leads with, for every role that lands here.
+ *
+ * Manager, exec and admin all see this screen, and each may read every brief
+ * kind (the endpoint asks only for an aggregate read), so permission does not
+ * pick the brief -- scope does. Everything else here is portfolio-wide, and the
+ * exec brief is the one brief written at that scope, from the same heatmap and
+ * feed. Leading with a weekly project brief would put one project above the
+ * rest for no reason; those are a click away on Coordination.
+ */
+const LEAD_BRIEF_KIND: BriefKind = "exec";
+
+/** The newest exec brief, or a plain statement that there is none. */
+function LeadBrief({ animateDelay }: { animateDelay?: number }) {
+  const navigate = useNavigate();
+
+  // Asked of the endpoint by kind, not picked out of the newest twenty of any
+  // kind: daily pod briefs fill those before last week's exec brief appears.
+  // With no exec brief the card says so rather than standing another kind in.
+  const lead = useQuery({
+    queryKey: ["persona", "briefs", LEAD_BRIEF_KIND, "latest"],
+    queryFn: () => apiClient.personaBriefs(LEAD_BRIEF_KIND, 1),
+    staleTime: 5 * 60_000,
+  });
+  const brief = lead.data?.briefs[0];
+
+  return (
+    <Card padding="p-6" animateDelay={animateDelay}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-[18px] font-bold">{brief?.title ?? "Executive brief"}</h2>
+          {brief ? (
             <div className="mt-1 text-xs text-grey-secondary">
               {new Date(brief.generated_at).toLocaleDateString()}
             </div>
-            <p className="mt-2 text-[14px] leading-relaxed text-grey-body">{brief.body}</p>
-          </Card>
-        ))}
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate(briefsHref(LEAD_BRIEF_KIND))}
+          className="shrink-0 text-[14px] font-bold text-magenta"
+        >
+          All briefs
+        </button>
       </div>
-    </div>
+      {brief ? (
+        // Clamped so a long fallback body cannot push the heat map off the
+        // screen; the full text is on Coordination.
+        <p className="mt-3 line-clamp-6 max-w-[760px] text-[15px] leading-relaxed text-grey-body">
+          {brief.body}
+        </p>
+      ) : (
+        <p className="mt-3 text-sm text-grey-secondary">
+          {lead.isError
+            ? `The executive brief could not be loaded: ${
+                lead.error instanceof Error ? lead.error.message : "unknown error"
+              }`
+            : lead.isLoading
+              ? "Loading the executive brief…"
+              : "No executive brief has been generated yet."}
+        </p>
+      )}
+    </Card>
   );
 }
 
@@ -309,10 +351,4 @@ function momentumLabel(points: { score: number; rag: Rag }[] | undefined): strin
   if (last > first + 0.05) return "improving";
   if (last < first - 0.05) return "sliding";
   return "steady";
-}
-
-function briefKindLabel(kind: string): string {
-  if (kind === "daily_pod") return "Daily pod";
-  if (kind === "weekly_project") return "Weekly project";
-  return "Exec";
 }
