@@ -206,6 +206,7 @@ def get_directory_service(request: Request) -> DirectoryService:
     return DirectoryService(
         graph_repository=registry.graph_repository(),
         rollup_repository=registry.rollup_repository(),
+        identity_link_repository=registry.identity_link_repository(),
     )
 
 
