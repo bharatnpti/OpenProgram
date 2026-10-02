@@ -1,5 +1,6 @@
 backend/core/application/sync_services.py
   s_51495ccc67ba04::t_aaf780f4010f73 5,348,354,441-480,485,501,503,512
+  s_51495ccc67ba04::t_73230490ef92a7 383,385,387
 backend/infra/registry.py
   s_51495ccc67ba04::t_b061b114bc164a 812
 backend/tests/unit/test_sync_services.py
