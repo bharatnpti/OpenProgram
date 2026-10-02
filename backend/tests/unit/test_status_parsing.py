@@ -193,6 +193,24 @@ async def test_status_parser_extracts_cross_person_requests() -> None:
     )
     assert "requests array" in provider.requests[0].prompt
     assert "specific named person" in provider.requests[0].prompt
+    # The note is forwarded to the named person, so it must not be the reply.
+    assert "never copy or quote the reply" in provider.requests[0].prompt
+
+
+async def test_clarification_evaluator_asks_for_a_request_note_that_is_not_the_reply() -> None:
+    provider = CapturingLlmProvider(
+        text='{"is_status_update":false,"sufficient":false,"question":null,"signals":null}'
+    )
+    evaluator = ClarificationEvaluator(provider, model="test-model")
+
+    await evaluator.evaluate(
+        tenant_id="demo",
+        developer_id="dev-1",
+        raw_reply="Need Liam to review the PR.",
+        correlation_id="corr-1",
+    )
+
+    assert "never copy or quote the reply" in provider.requests[0].prompt
 
 
 async def test_status_parser_extracts_issue_updates() -> None:

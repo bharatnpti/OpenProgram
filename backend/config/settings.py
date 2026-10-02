@@ -74,8 +74,9 @@ class Settings(BaseSettings):
     workflow_backlog_ready_threshold: int = 0
     checkin_fanout_concurrency: int = 10
     # When a check-in reply asks something of another person, DM that person about
-    # the request. On by default; set OPENPROGRAM_CROSS_PERSON_AUTO_NOTIFY=false to
-    # record the request for the requester and the board without messaging anyone.
+    # the request: who asked, the kind and a short note, never the reply itself.
+    # On by default; set OPENPROGRAM_CROSS_PERSON_AUTO_NOTIFY=false to record the
+    # request for the requester and the board without messaging anyone.
     cross_person_auto_notify: bool = True
     # System gate fallback default for issue-tracker write-back (OFF by default).
     # A persisted per-tenant override (admin-controlled) wins when present.
