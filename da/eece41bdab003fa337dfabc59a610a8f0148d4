@@ -1,0 +1,23 @@
+backend/api/routers/persona.py
+  s_386bf853700fa5::t_332ae71c6c4263 234-238
+backend/tests/unit/test_cross_person_api.py
+  s_386bf853700fa5::t_d52125a997ac76 39-60
+frontend-v2/src/features/coordination/RequestsBoard.tsx
+  s_386bf853700fa5::t_aaf561c47bf10c 62-63,84-88,92,96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "daeece41bdab003fa337dfabc59a610a8f0148d4",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
