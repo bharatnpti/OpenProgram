@@ -1,0 +1,86 @@
+backend/infra/persistence/postgres_status.py
+  s_386bf853700fa5::t_ddd54767c40b67 301-307,1186,1188-1191,1195,1197-1204
+backend/api/dtos.py
+  s_386bf853700fa5::t_54fb6c5458ef36 2289-2290
+  s_386bf853700fa5::t_4c335afc709234 61,65,1865-1886,1888-1889,1899-1904,1907,1916,1943-1948
+  s_386bf853700fa5::t_0073217a05e8f4 63,1898,1915
+scripts/seed_demo_history.py
+  s_386bf853700fa5::t_9652660c9175b5 25,301-302
+backend/api/routers/config.py
+  s_386bf853700fa5::t_1929cde34817bc 65,915,932-934,937,942,958,978,995-997,1385-1390,1393,1395-1396,1405-1410,1412-1414,1417-1418,1423,1428
+  s_386bf853700fa5::t_16879688c70afe 1397
+backend/core/domain/status.py
+  s_386bf853700fa5::t_0073217a05e8f4 146-147,149-153,155,176-177,188,206
+  s_386bf853700fa5::t_66fb4d920fa6c3 128-135,138,140-145,148,154,156-165,169-175,178-187,189-205,207-226
+frontend-v2/src/features/checkin/myCheckinPreference.ts
+  s_386bf853700fa5::t_11f32b65f827b2 33-36,43-48
+backend/tests/contract/contracts.py
+  s_386bf853700fa5::t_481b299d95fd77 4,265-266,271-295,297
+frontend-v2/src/api/schema.ts
+  s_386bf853700fa5::t_1a460299715143 42-43
+backend/tests/unit/test_status_persistence.py
+  s_386bf853700fa5::t_5b7fc5444416b5 3,30,443-483
+  s_386bf853700fa5::t_806527d52cd088 409-442,484-486
+backend/api/routers/checkin.py
+  s_386bf853700fa5::t_ba74cd66471410 28,115-116,128-131,135-137,142-143,148,151,154-155,159-172
+backend/tests/unit/test_timezone_correctness.py
+  s_386bf853700fa5::t_07bba469461034 43,50,58
+frontend/src/api/generated.ts
+  s_386bf853700fa5::t_31610f3a7d84ab 1818-1847,1878-1881,1898-1901,1903,1905-1911,2963-2964
+  s_386bf853700fa5::t_57525f2a9e45dc 1902
+frontend-v2/src/api/generated.ts
+  s_386bf853700fa5::t_31610f3a7d84ab 1818-1843,1874-1877,1894-1897,1899,1901-1907,2955-2956
+  s_386bf853700fa5::t_57525f2a9e45dc 1898
+backend/infra/workflows/daily_checkin.py
+  s_386bf853700fa5::t_54fb6c5458ef36 11,53-54,57-58
+  s_386bf853700fa5::t_07bba469461034 4,61,287,289,294
+backend/tests/unit/test_checkin_preference_inheritance.py
+  s_386bf853700fa5::t_9507db4f99c8fb 1-63
+frontend-v2/src/features/admin/CheckinPreferencesPanel.tsx
+  s_386bf853700fa5::t_a65837402b9669 12-13,36,40-41,56-60,62-72,74-81,83-87,96,100,102-106,108-111,117-118,134-179,181,187-188,190,196-197,199,207,209-211,215,249-250,258-260,271-296,304-305,309,314-341,343-344,347-355,357,359-362,364-367,369-372,376,379,381-388,393,395-401,403-410,412-415
+  s_386bf853700fa5::t_8d677afb41704a 358
+  s_386bf853700fa5::t_f6dfdafef93782 61,299-300,306-308,345-346
+  s_386bf853700fa5::t_37fc0b69a2a950 101,297,310,313,342,356,363,394,411
+  s_386bf853700fa5::t_e1a3608210d9db 73,107,218,373,402
+  s_386bf853700fa5::t_272e774a75ea03 298,416
+frontend-v2/src/api/openapi.json
+  s_386bf853700fa5::t_31610f3a7d84ab 7435-7484,7616-7626,7636,7638,7640-7641,7710-7711,10779
+  s_386bf853700fa5::t_57525f2a9e45dc 7637
+frontend-v2/src/features/admin/DurationField.tsx
+  s_386bf853700fa5::t_e1a3608210d9db 1,20-21,27,35,88
+frontend-v2/src/features/checkin/CheckinScheduleDialog.tsx
+  s_386bf853700fa5::t_11f32b65f827b2 27,40,190-191
+features.md
+  s_386bf853700fa5::t_74d1268a5dcb7b 99-100
+backend/infra/persistence/migrations/versions/0030_checkin_preferences_inherit_defaults.py
+  s_386bf853700fa5::t_c97e66a086f5d8 1-71
+backend/tests/unit/test_agent_and_workflow.py
+  s_386bf853700fa5::t_39de1a2e03df80 23,1262-1293,1597,1602-1605
+  s_386bf853700fa5::t_3f725847195c31 20-22,24-27,1758-1763
+  s_386bf853700fa5::t_76fa513e344b25 1764
+backend/tests/unit/test_api.py
+  s_386bf853700fa5::t_21677f9db8f2a9 25,1133-1137,1139,1146-1158,1167-1168,1170-1176,1340-1347,1362-1491
+  s_386bf853700fa5::t_7aebaef816b030 1492-1493
+backend/config/settings.py
+  s_386bf853700fa5::t_ee61f51c9bd2e1 15,692-698
+  s_386bf853700fa5::t_eec69bd5e8c373 699
+frontend/src/api/openapi.json
+  s_386bf853700fa5::t_57525f2a9e45dc 7637
+  s_386bf853700fa5::t_31610f3a7d84ab 7435-7484,7616-7626,7636,7638,7640-7641,7710-7711,10779
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "01baaeab2d25671bb2a7c0d2120cc08b97fb10fa",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
