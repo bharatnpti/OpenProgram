@@ -376,6 +376,80 @@ async def test_developer_blockers_migration_backfill_and_round_trip(
         await _drop_database(admin_database_url, database_name)
 
 
+async def test_legacy_inferred_summary_scrub_migration(
+    compose_stack: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admin_database_url = _service_url(compose_stack, "postgres", 5432, "postgres")
+    database_name = f"openprogram_it_0030_{uuid4().hex[:12]}"
+    database_url = _service_url(compose_stack, "postgres", 5432, database_name)
+    legacy = "No confirmed check-in after a nudge. Inferred from context: "
+    dump = (
+        "Developer: Noah\nRecent fact for developer/dev-1: source=cross_person_request, "
+        "note=ask for the staging password before Friday"
+    )
+    stale_lead = "No confirmed check-in after a nudge. Last known inferred status on 2026-09-29: "
+    neutral = "No confirmed check-in after a nudge. Inferred from recent activity."
+    expected = [
+        ("acme", "dev-9", date(2026, 9, 29), neutral),
+        ("demo", "dev-1", date(2026, 9, 29), neutral),
+        ("demo", "dev-1", date(2026, 9, 30), f"{stale_lead}{neutral}"),
+        ("demo", "dev-2", date(2026, 9, 29), "Shipped the refund flow."),
+    ]
+    await _create_database(admin_database_url, database_name)
+    try:
+        # Stop right before the scrub so rows can be stored the way the old
+        # inferred, stale and confirm paths wrote them.
+        _run_alembic(monkeypatch, database_url, "upgrade", "0029_backfill_developer_blockers")
+        executor = PsycopgAsyncExecutor(database_url)
+        try:
+            for tenant_id, developer_id, as_of, source, summary in (
+                ("demo", "dev-1", date(2026, 9, 29), "inferred", f"{legacy}{dump}"),
+                ("demo", "dev-1", date(2026, 9, 30), "stale", f"{stale_lead}{legacy}{dump}"),
+                ("acme", "dev-9", date(2026, 9, 29), "confirmed", f"{legacy}{dump}"),
+                ("demo", "dev-2", date(2026, 9, 29), "confirmed", "Shipped the refund flow."),
+            ):
+                await executor.execute(
+                    """
+                    INSERT INTO developer_statuses (
+                        tenant_id, developer_id, as_of, source, summary
+                    )
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (tenant_id, developer_id, as_of, source, summary),
+                )
+        finally:
+            await executor.close()
+
+        _run_alembic(monkeypatch, database_url, "upgrade", "head")
+        assert await _developer_status_summaries(database_url) == expected
+
+        # Forward-only: stepping back over it leaves the scrubbed text in place.
+        _run_alembic(monkeypatch, database_url, "downgrade", "0029_backfill_developer_blockers")
+        assert await _developer_status_summaries(database_url) == expected
+    finally:
+        get_settings.cache_clear()
+        await _drop_database(admin_database_url, database_name)
+
+
+async def _developer_status_summaries(database_url: str) -> list[tuple[str, str, date, str]]:
+    executor = PsycopgAsyncExecutor(database_url)
+    try:
+        rows = await executor.fetch(
+            """
+            SELECT tenant_id, developer_id, as_of, summary
+            FROM developer_statuses
+            ORDER BY tenant_id, developer_id, as_of
+            """
+        )
+    finally:
+        await executor.close()
+    return [
+        (str(row["tenant_id"]), str(row["developer_id"]), row["as_of"], str(row["summary"]))
+        for row in rows
+    ]
+
+
 async def test_directory_user_search_indexes_migration(
     compose_stack: object,
     monkeypatch: pytest.MonkeyPatch,
