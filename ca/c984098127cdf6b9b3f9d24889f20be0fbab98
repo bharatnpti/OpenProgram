@@ -1,0 +1,70 @@
+backend/tests/unit/test_directory_sync_service.py
+  s_51495ccc67ba04::t_dc309f0e37e8ce 170-178
+backend/core/application/config_service.py
+  s_51495ccc67ba04::t_7b91735f39a1b7 648-651
+  s_51495ccc67ba04::t_abbe2276bb23f9 8,31,155-156,164-167,576-581,602-606,610-615,622-630,632,634-638,652
+backend/core/ports/issue_tracker.py
+  s_51495ccc67ba04::t_ec1018bbba2efb 25-33
+backend/tests/unit/test_sync_services.py
+  s_51495ccc67ba04::t_6f282c290b0dee 11,191-245
+  s_51495ccc67ba04::t_8d0816e91aae06 246-247
+backend/core/application/tools/issue_tracker.py
+  s_51495ccc67ba04::t_186c81a8b60bfd 3,39-42,71-75,77
+backend/infra/registry.py
+  s_51495ccc67ba04::t_8e0d207c21aae6 803
+backend/tests/contract/test_jira_adapter.py
+  s_51495ccc67ba04::t_7e8e5b6abd569d 196-266
+backend/api/dependencies.py
+  s_51495ccc67ba04::t_abbe2276bb23f9 134-135
+backend/core/application/sync_services.py
+  s_51495ccc67ba04::t_8e0d207c21aae6 36-41,63,69,257,282-287,291,312-326
+  s_51495ccc67ba04::t_dd1009ee02ff23 327
+backend/tests/unit/test_config_service.py
+  s_51495ccc67ba04::t_7b91735f39a1b7 673
+  s_51495ccc67ba04::t_dcc7dcb41b570c 24,657-672,674-731
+backend/infra/adapters/integrations/fake.py
+  s_51495ccc67ba04::t_9535764930de16 130
+  s_51495ccc67ba04::t_9b49483e46e2b7 27-28,125-129
+backend/tests/contract/fakes.py
+  s_51495ccc67ba04::t_5ebf36d326cbbf 111
+  s_51495ccc67ba04::t_9b49483e46e2b7 70-71,106-110
+backend/tests/unit/test_identity_links.py
+  s_51495ccc67ba04::t_90a3f868abc085 98-176
+backend/tests/unit/test_api.py
+  s_51495ccc67ba04::t_f64a84ea353588 257-258,299-322
+  s_51495ccc67ba04::t_18b6ce93b9c152 323-324
+backend/infra/adapters/directory/slack.py
+  s_51495ccc67ba04::t_6f2444c56f05e1 12-13
+  s_51495ccc67ba04::t_3680300ec7bbf9 41-44
+backend/infra/adapters/jira/jira_adapter.py
+  s_51495ccc67ba04::t_4282a907ce32dc 142,145
+  s_51495ccc67ba04::t_a5a10c65290cc0 101-107,115-126
+  s_51495ccc67ba04::t_fb295ef79a0f40 306-332
+frontend-v2/src/pages/AdminPage.tsx
+  s_51495ccc67ba04::t_5d372b46b09f23 198
+  s_51495ccc67ba04::t_d6eaa09332f941 7,89,184-197
+backend/tests/contract/contracts.py
+  s_51495ccc67ba04::t_9b49483e46e2b7 94-96,107-111
+backend/tests/contract/test_ports.py
+  s_51495ccc67ba04::t_9b49483e46e2b7 79-80,82
+backend/core/application/status_collector.py
+  s_51495ccc67ba04::t_186c81a8b60bfd 47,1839-1841
+  s_51495ccc67ba04::t_7b91735f39a1b7 7
+  s_51495ccc67ba04::t_5eaa675dec3068 937-941,948-957
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cac984098127cdf6b9b3f9d24889f20be0fbab98",
+  "prompts": {},
+  "sessions": {
+    "s_51495ccc67ba04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98259e94-8aa1-45f5-b5cc-46cac669b27d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
