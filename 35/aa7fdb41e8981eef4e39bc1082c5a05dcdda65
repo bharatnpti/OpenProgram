@@ -1,0 +1,19 @@
+backend/tests/integration/test_phase1_sense.py
+  s_c8095495eaf879::t_a85e30850ed862 12,14,125-177,214,217-225
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "35aa7fdb41e8981eef4e39bc1082c5a05dcdda65",
+  "prompts": {},
+  "sessions": {
+    "s_c8095495eaf879": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb2e9460-efa2-4aa7-aac7-a35a97b9dca5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
