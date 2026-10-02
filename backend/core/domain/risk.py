@@ -26,6 +26,9 @@ class DriftFindingKind(StrEnum):
     SAID_DONE_NO_PR = "said_done_no_pr"
     CLAIMED_PROGRESS_NO_ACTIVITY = "claimed_progress_no_activity"
     GREEN_OVER_RED = "green_over_red"
+    #: The issue tracker still shows an issue open after the merge request for it
+    #: was merged: the tracker's stated state contradicts the code.
+    MERGED_ISSUE_OPEN = "merged_issue_open"
 
 
 class RiskFindingStatus(StrEnum):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
@@ -43,6 +44,11 @@ _RISK_FACT_SCAN_LIMIT = 5000
 # contradiction against one of these is a watermelon worth downgrading.
 _GREEN_STATUS_SOURCES = {StatusSource.CONFIRMED, StatusSource.INFERRED}
 _VCS_FACT_SOURCES = ("vcs_pull_request", "vcs_commit")
+# An issue key as a branch or a merge request title carries it ("CHK-3-payment-intent").
+_ISSUE_KEY = re.compile(r"(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9_]*-\d+)(?![0-9])")
+# Merged today is not yet drift: the issue sync runs hourly, the VCS sync every
+# 15 minutes, so for a while the merge is known before the tracker update is.
+_MERGED_ISSUE_GRACE_DAYS = 1
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -565,7 +571,111 @@ class RiskService:
                         child_entity_ref=red_child.ref,
                     )
                 )
+        findings.extend(
+            await self._merged_issue_open_drift(
+                tenant_id, project_id, nodes_by_id, edges, repo_scope, as_of
+            )
+        )
         return findings
+
+    async def _merged_issue_open_drift(
+        self,
+        tenant_id: str,
+        project_id: str,
+        nodes_by_id: Mapping[str, GraphNode],
+        contains_edges: Sequence[GraphEdge],
+        repo_scope: set[str],
+        as_of: date,
+    ) -> list[DriftFinding]:
+        """Issues the tracker still shows open although their merge request was merged.
+
+        The merge request is matched to the issue by the key in its source
+        branch or title. An issue that still has another request open is work
+        in progress, not drift. Structural like ``green_over_red``: nobody's
+        status is downgraded for it.
+        """
+        tasks = _project_tasks(project_id, nodes_by_id, contains_edges)
+        if not tasks or not repo_scope:
+            return []
+        requests_by_key = await self._merge_requests_by_issue_key(tenant_id, repo_scope, set(tasks))
+        assignees = {
+            edge.to_node_id: edge.from_node_id
+            for edge in await self._graph_repository.list_edges(
+                tenant_id, kind=EdgeKind.ASSIGNED_TO
+            )
+            if edge.to_node_id in tasks and edge.is_active_on(as_of)
+        }
+        findings: list[DriftFinding] = []
+        for key, requests in sorted(requests_by_key.items()):
+            task = tasks[key]
+            if (_string_metadata(task, "state") or "").lower() == "done":
+                continue
+            merged = [fact for fact in requests if _payload_bool(fact.payload, "merged")]
+            still_open = [
+                fact
+                for fact in requests
+                if not _payload_bool(fact.payload, "merged")
+                and fact.payload.get("state") != "closed"
+            ]
+            if not merged or still_open:
+                continue
+            latest = max(merged, key=lambda fact: fact.observed_at)
+            days = _age_days(latest.observed_at, as_of) or 0
+            if days < _MERGED_ISSUE_GRACE_DAYS:
+                continue
+            repo = _payload_str(latest.payload, "repo") or "repo"
+            pr_id = _payload_str(latest.payload, "id") or "?"
+            title = _payload_str(latest.payload, "title") or f"merge request {pr_id}"
+            status = _string_metadata(task, "status") or _string_metadata(task, "state") or "open"
+            findings.append(
+                self._drift_finding(
+                    tenant_id=tenant_id,
+                    kind=DriftFindingKind.MERGED_ISSUE_OPEN,
+                    severity=Rag.AMBER,
+                    entity_ref=task.ref,
+                    workstream_id=None,
+                    reason=(
+                        f"'{title}' in {repo} was merged {days} day(s) ago, but {key} is "
+                        f"still '{status}' in the issue tracker."
+                    ),
+                    owner_id=assignees.get(key),
+                    stated_source=None,
+                    evidence=RiskEvidence(
+                        identifier=f"{repo}#{pr_id}",
+                        url=_payload_str(latest.payload, "web_url"),
+                    ),
+                )
+            )
+        return findings
+
+    async def _merge_requests_by_issue_key(
+        self, tenant_id: str, repo_scope: set[str], issue_keys: set[str]
+    ) -> dict[str, list[FactEvent]]:
+        """The latest fact of each in-scope merge request, grouped by the issue key it names."""
+        facts = await self._time_series_repository.list_recent_facts(
+            tenant_id, sources=("vcs_pull_request",), limit=_RISK_FACT_SCAN_LIMIT
+        )
+        latest: dict[tuple[str, str], FactEvent] = {}
+        for fact in sorted(facts, key=lambda item: (item.observed_at, item.ingested_at)):
+            repo = _payload_str(fact.payload, "repo")
+            pr_id = _payload_str(fact.payload, "id")
+            if repo is not None and pr_id is not None and repo in repo_scope:
+                latest[(repo, pr_id)] = fact
+        by_key: dict[str, list[FactEvent]] = {}
+        upper_keys = {key.upper(): key for key in issue_keys}
+        for fact in latest.values():
+            text = " ".join(
+                value
+                for value in (
+                    _payload_str(fact.payload, "source_branch"),
+                    _payload_str(fact.payload, "title"),
+                )
+                if value
+            )
+            named = {match.upper() for match in _ISSUE_KEY.findall(text)}
+            for upper in named & set(upper_keys):
+                by_key.setdefault(upper_keys[upper], []).append(fact)
+        return by_key
 
     async def _work_item_drift(
         self,
@@ -1052,6 +1162,25 @@ def _optional_datetime(value: str | None) -> datetime | None:
     except ValueError:
         return None
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
+def _project_tasks(
+    project_id: str,
+    nodes_by_id: Mapping[str, GraphNode],
+    contains_edges: Sequence[GraphEdge],
+) -> dict[str, GraphNode]:
+    """The project's issue-tracker tasks: its own, and those filed under its sprints."""
+    parents = {project_id}
+    for edge in contains_edges:
+        child = nodes_by_id.get(edge.to_node_id)
+        if edge.from_node_id == project_id and child is not None and child.kind is NodeKind.SPRINT:
+            parents.add(child.id)
+    tasks: dict[str, GraphNode] = {}
+    for edge in contains_edges:
+        child = nodes_by_id.get(edge.to_node_id)
+        if edge.from_node_id in parents and child is not None and child.kind is NodeKind.TASK:
+            tasks[child.id] = child
+    return tasks
 
 
 def _age_days(reference_at: datetime | None, as_of: date) -> int | None:
