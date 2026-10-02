@@ -1,14 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../api/client";
+import { useViewingDate } from "../app/viewingDate";
 import { DeliveryDetail } from "../features/delivery/DeliveryDetail";
 import { DeliveryNavigator } from "../features/delivery/DeliveryNavigator";
 import { firstItemId } from "../lib/selection";
-import { todayIso } from "../lib/today";
 import { useDeliverySelection } from "../lib/useDeliverySelection";
 
 export function DeliveryPage() {
-  const asOf = todayIso();
+  const { asOf } = useViewingDate();
 
   const programs = useQuery({
     queryKey: ["directory", "programs", asOf],

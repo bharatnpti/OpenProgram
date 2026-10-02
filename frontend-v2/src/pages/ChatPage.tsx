@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { apiClient } from "../api/client";
 import type { ChatSimulatorMessageResponse, DevUserResponse } from "../api/schema";
 import { initialsFor, useRole } from "../app/role";
+import { useViewingDate } from "../app/viewingDate";
 import { Card } from "../components/ui/Card";
 import { Modal } from "../components/ui/Modal";
 import { Pill } from "../components/ui/Pill";
@@ -22,6 +23,9 @@ import { cn } from "../lib/utils";
 export function ChatPage() {
   const queryClient = useQueryClient();
   const { actingAs, people, canAccessAdmin, chatEnabled } = useRole();
+  // A message sent now is filed against today's check-in, whatever day the
+  // console is showing, so the thread is read-only while a past day is viewed.
+  const { isPast, label } = useViewingDate();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [resetOpen, setResetOpen] = useState(false);
@@ -156,7 +160,7 @@ export function ChatPage() {
               variant="ghost"
               size="sm"
               className="border-rag-red text-rag-red hover:bg-rag-red-bg"
-              disabled={resetMutation.isPending}
+              disabled={resetMutation.isPending || isPast}
               onClick={() => setResetOpen(true)}
             >
               <Trash2 size={14} />
@@ -203,7 +207,7 @@ export function ChatPage() {
               <Pill
                 variant="ghost"
                 size="sm"
-                disabled={!threadId || askMutation.isPending}
+                disabled={!threadId || askMutation.isPending || isPast}
                 onClick={() => askMutation.mutate()}
               >
                 <Bell size={14} />
@@ -252,7 +256,7 @@ export function ChatPage() {
             className="flex items-center gap-3 border-t border-grey-fill px-6 py-4"
             onSubmit={(event) => {
               event.preventDefault();
-              if (threadId && draft.trim()) {
+              if (threadId && draft.trim() && !isPast) {
                 sendMutation.mutate();
               }
             }}
@@ -260,13 +264,15 @@ export function ChatPage() {
             <input
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              disabled={!threadId || sendMutation.isPending}
+              disabled={!threadId || sendMutation.isPending || isPast}
               placeholder={
-                threadId
-                  ? isOwnThread
-                    ? "Share your status… e.g. “Shipped the capture path. Blocked on sandbox creds. ETA slips 2 days.”"
-                    : `Write as ${threadPerson?.name ?? threadId}…`
-                  : "Select a conversation…"
+                isPast
+                  ? `Read-only while you view ${label}. Go back to today to reply.`
+                  : threadId
+                    ? isOwnThread
+                      ? "Share your status… e.g. “Shipped the capture path. Blocked on sandbox creds. ETA slips 2 days.”"
+                      : `Write as ${threadPerson?.name ?? threadId}…`
+                    : "Select a conversation…"
               }
               className="h-12 min-w-0 flex-1 rounded-full border border-grey-border bg-white px-5 text-[15px] outline-none focus:border-magenta disabled:bg-grey-fill disabled:text-grey-secondary"
             />
@@ -274,7 +280,7 @@ export function ChatPage() {
               type="submit"
               variant="dark"
               size="lg"
-              disabled={!threadId || !draft.trim() || sendMutation.isPending}
+              disabled={!threadId || !draft.trim() || sendMutation.isPending || isPast}
             >
               <Send size={14} />
               {sendMutation.isPending ? "Sending…" : "Send"}

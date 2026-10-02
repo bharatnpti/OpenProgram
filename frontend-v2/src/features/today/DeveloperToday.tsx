@@ -13,7 +13,7 @@ import { RagChip } from "../../components/ui/RagChip";
 import { checkinHint, useStatusRollups } from "./statusRollups";
 import { WaitingOnYou } from "./WaitingOnYou";
 import { WhereYourStatusGoes } from "./WhereYourStatusGoes";
-import { todayIso } from "../../lib/today";
+import { useViewingDate } from "../../app/viewingDate";
 import { toneForRag } from "../../lib/status";
 
 interface BlockerRow {
@@ -25,7 +25,7 @@ interface BlockerRow {
 }
 
 export function DeveloperToday() {
-  const asOf = todayIso();
+  const { asOf, isPast, label } = useViewingDate();
   const queryClient = useQueryClient();
   const [correctOpen, setCorrectOpen] = useState(false);
   const [summary, setSummary] = useState("");
@@ -187,16 +187,23 @@ export function DeveloperToday() {
                 variant="primary"
                 size="lg"
                 onClick={() => confirmStatus.mutate()}
-                disabled={confirmStatus.isPending}
+                disabled={confirmStatus.isPending || isPast}
               >
                 <CheckCircle2 size={18} />
                 {confirmStatus.isPending ? "Confirming…" : "Confirm check-in"}
               </Pill>
             )}
-            <Pill variant="ghost" size="lg" onClick={() => setCorrectOpen(true)}>
+            <Pill variant="ghost" size="lg" onClick={() => setCorrectOpen(true)} disabled={isPast}>
               Correct details
             </Pill>
           </div>
+          {/* Both write against the day asked for, so on a past day they would
+              rewrite that day's check-in. */}
+          {isPast ? (
+            <p className="mt-3 text-[13px] text-grey-secondary">
+              You're viewing {label}. Go back to today to confirm or correct your check-in.
+            </p>
+          ) : null}
         </Card>
 
         <Card padding="p-0" animateDelay={140}>
@@ -374,7 +381,7 @@ export function DeveloperToday() {
               variant="primary"
               size="md"
               onClick={() => correctStatus.mutate()}
-              disabled={correctStatus.isPending}
+              disabled={correctStatus.isPending || isPast}
             >
               {correctStatus.isPending ? "Saving…" : "Save correction"}
             </Pill>

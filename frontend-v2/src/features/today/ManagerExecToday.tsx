@@ -6,9 +6,9 @@ import { Card } from "../../components/ui/Card";
 import { Sparkline } from "../../components/ui/Sparkline";
 import { cn } from "../../lib/utils";
 import { firstItemId } from "../../lib/selection";
-import { briefsHref } from "../../lib/briefs";
+import { briefsHref, localDay } from "../../lib/briefs";
 import { ragSeverity, toneForRag, toneHex } from "../../lib/status";
-import { todayIso } from "../../lib/today";
+import { useViewingDate } from "../../app/viewingDate";
 import type { BriefKind, DirectoryItemResponse, Rag } from "../../api/schema";
 
 const HERO_BG: Record<string, string> = {
@@ -33,7 +33,7 @@ const HERO_TEXT: Record<string, string> = {
  * here is held back by role.
  */
 export function ManagerExecToday() {
-  const asOf = todayIso();
+  const { asOf } = useViewingDate();
   const navigate = useNavigate();
 
   const programs = useQuery({
@@ -269,12 +269,17 @@ function LeadBrief({ animateDelay }: { animateDelay?: number }) {
   // Asked of the endpoint by kind, not picked out of the newest twenty of any
   // kind: daily pod briefs fill those before last week's exec brief appears.
   // With no exec brief the card says so rather than standing another kind in.
+  //
+  // The endpoint has no as-of, so on a past day the card takes the newest
+  // brief generated on or before it: a brief written after the day being
+  // viewed would describe a portfolio the reader is not looking at.
+  const { asOf, isPast, label } = useViewingDate();
   const lead = useQuery({
-    queryKey: ["persona", "briefs", LEAD_BRIEF_KIND, "latest"],
-    queryFn: () => apiClient.personaBriefs(LEAD_BRIEF_KIND, 1),
+    queryKey: ["persona", "briefs", LEAD_BRIEF_KIND, "recent"],
+    queryFn: () => apiClient.personaBriefs(LEAD_BRIEF_KIND, 10),
     staleTime: 5 * 60_000,
   });
-  const brief = lead.data?.briefs[0];
+  const brief = lead.data?.briefs.find((item) => localDay(item.generated_at) <= asOf);
 
   return (
     <Card padding="p-6" animateDelay={animateDelay}>
@@ -309,7 +314,9 @@ function LeadBrief({ animateDelay }: { animateDelay?: number }) {
               }`
             : lead.isLoading
               ? "Loading the executive brief…"
-              : "No executive brief has been generated yet."}
+              : isPast
+                ? `No executive brief was generated on or before ${label}.`
+                : "No executive brief has been generated yet."}
         </p>
       )}
     </Card>

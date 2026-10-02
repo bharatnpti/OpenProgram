@@ -58,6 +58,9 @@ export function PersonPicker() {
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
+        // Below lg only the initials show, so the name rides on the label.
+        aria-label={actingAs ? `Acting as ${actingAs.name}` : "Select a person"}
+        title={actingAs ? `Acting as ${actingAs.name}` : "Select a person"}
         onClick={() => {
           setOpen((current) => !current);
           setQuery("");
@@ -70,7 +73,7 @@ export function PersonPicker() {
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-grey-fill text-[12px] font-extrabold text-ink">
           {actingAs ? initialsFor(actingAs.name) : <Users size={14} />}
         </span>
-        <span className="min-w-0">
+        <span className="hidden min-w-0 lg:block">
           <span className="block truncate text-[14px] font-bold leading-tight">
             {actingAs?.name ?? "Select a person"}
           </span>

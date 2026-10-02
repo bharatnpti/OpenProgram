@@ -2,16 +2,17 @@ import { useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../api/client";
 import { useRole } from "../app/role";
+import { useViewingDate } from "../app/viewingDate";
 import { DeveloperToday } from "../features/today/DeveloperToday";
 import { ManagerExecToday } from "../features/today/ManagerExecToday";
 import { ProductOwnerToday } from "../features/today/ProductOwnerToday";
 import { ScrumMasterToday } from "../features/today/ScrumMasterToday";
 import { firstItemId } from "../lib/selection";
-import { greetingFor, todayIso, todayKicker } from "../lib/today";
+import { greetingFor, todayKicker } from "../lib/today";
 
 export function TodayPage() {
   const { role, displayName } = useRole();
-  const asOf = todayIso();
+  const { asOf } = useViewingDate();
 
   const programs = useQuery({
     queryKey: ["directory", "programs", asOf],
@@ -25,7 +26,7 @@ export function TodayPage() {
       <div className="animate-op-fade-up flex items-end justify-between gap-6">
         <div className="min-w-0">
           <div className="text-[13px] font-bold uppercase tracking-wide text-grey-secondary">
-            {todayKicker(program?.name ?? null)}
+            {todayKicker(program?.name ?? null, asOf)}
           </div>
           <h1 className="mt-1.5 text-[40px] font-extrabold leading-[1.05]">
             {greetingFor(displayName)}
