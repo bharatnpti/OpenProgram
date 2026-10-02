@@ -30,4 +30,4 @@
 
 ## CI
 
-CI runs ruff, format check, mypy strict, import-linter, tests with coverage on `backend/core`, Docker-backed integration tests, frontend lint/typecheck/build, image build, GHCR push on non-PR runs, and a dev deployment summary using the pushed image.
+CI runs ruff, format check, mypy strict, import-linter, tests with coverage on `backend/core`, Docker-backed integration tests, lint/typecheck/format check/build for both `frontend/` and `frontend-v2/`, the OpenAPI and generated-client drift gate (`make openapi-check`) for both, image build, and GHCR push on non-PR runs.
