@@ -47,7 +47,7 @@ Walk the program graph and drill into any project, workstream, or pod. Selection
 
 ### Signals — risks, drift, and flow
 
-Merges portfolio risks, flow metrics, and the activity feed into one ranked stream: stale tasks, repeated blockers, watermelon status (green over red), and reported-vs-actual drift.
+Merges portfolio risks, flow metrics, and the activity feed into one ranked stream: stale work items, ageing pull requests, features with no pull request, watermelon status (green over red), and reported-vs-actual drift.
 
 ![Signals](docs/images/signals.png)
 
@@ -76,7 +76,7 @@ to whoever you are acting as.
 
 ### Admin — runtime configuration
 
-Full CRUD over the hierarchy, directory onboarding, graph links, assignments, identity links, escalation contacts, write-back consent, and per-developer check-in timing.
+Full CRUD over the hierarchy, directory onboarding, graph links, assignments, identity links, escalation contacts, write-back consent, per-member check-in days and reply windows, and data-source sync status.
 
 ![Admin configuration](docs/images/admin.png)
 
@@ -229,7 +229,7 @@ All settings are `OPENPROGRAM_`-prefixed pydantic-settings, documented in [.env.
 | `OPENPROGRAM_WORKFLOW_PROVIDER` | `dbos` or `temporal` |
 | `OPENPROGRAM_CHAT_PROVIDER` | `slack`, `mock_slack`, or `fake` |
 | `OPENPROGRAM_ISSUE_TRACKER_PROVIDER` / `VCS_PROVIDER` / `CALENDAR_PROVIDER` | `jira` / `github`\|`gitlab` / `google` |
-| `OPENPROGRAM_CHECKIN_FANOUT_CRON` | when daily check-ins go out (per-developer local time is respected) |
+| `OPENPROGRAM_CHECKIN_FANOUT_CRON` | when daily check-ins go out — one schedule for the whole tenant; each member's check-in days are honoured, but a per-member check-in time is stored and not used |
 | `OPENPROGRAM_CONVERSATION_RETENTION_DAYS` | retention for raw chat conversation history |
 
 Jira write-back is **default-deny behind three independent gates**: a tenant flag (`jira_writeback_enabled`), the `WRITE_ISSUE_TRACKER` capability, and per-developer consent (`always_ask` / `auto_apply` / `never`). Only `writeback_service.py` may call the write path, and every applied change is audited and revertible.
@@ -274,7 +274,7 @@ Install both apps first (`make frontend-install frontend-v2-install`) so `npx pr
 | `backend/tests/bdd` | Gherkin scenarios for check-in, reply parsing, reliability, access control; some need the running simulator/LLM |
 | `make ui-bdd` | Playwright-backed Mock Slack UI scenarios (`OPENPROGRAM_RUN_UI_BDD=1`) |
 
-CI (`.github/workflows/ci.yml`) runs backend lint+types+tests, integration, and the frontend build on every PR.
+CI (`.github/workflows/ci.yml`) runs backend lint+types+tests, integration, lint/typecheck/format-check/build of both frontends, the OpenAPI drift gate, and the image build on every PR.
 
 ---
 
@@ -288,6 +288,6 @@ CI (`.github/workflows/ci.yml`) runs backend lint+types+tests, integration, and 
 | [infra/](infra) | container, Prometheus, Grafana, OTel, and LiteLLM configuration |
 | [scripts/](scripts) | mock LLM and local helper scripts |
 | [docs/lld/](docs/lld) | low-level designs per seam |
-| [docs/ops/](docs/ops) | Slack setup |
+| [docs/ops/](docs/ops) | Slack setup and the local demo |
 | [docker-compose.yml](docker-compose.yml) | full local stack with opt-in profiles |
 | [Makefile](Makefile) | every task above |
