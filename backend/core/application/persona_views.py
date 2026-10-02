@@ -126,6 +126,42 @@ class PodCheckinsView:
 
 
 @dataclass(frozen=True, kw_only=True)
+class PodTaskOwnerView:
+    id: str
+    name: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class PodTaskBlockerView:
+    blocker_id: str
+    description: str
+    first_seen_on: date
+    age_days: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class PodTaskView:
+    id: str
+    name: str
+    rag: Rag
+    source: StatusSource
+    confidence: float | None
+    deadline: date | None
+    owners: tuple[PodTaskOwnerView, ...]
+    #: Red, or carrying an open blocker attributed to the task or its work item.
+    blocked: bool
+    open_blockers: tuple[PodTaskBlockerView, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class PodTasksView:
+    pod_id: str
+    pod_name: str
+    as_of: date
+    tasks: tuple[PodTaskView, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
 class TaskProgressView:
     id: str
     name: str
@@ -411,6 +447,98 @@ class PersonaViewService:
             missing=sum(1 for item in developers if item.state == "missing"),
             developers=tuple(sorted(developers, key=lambda item: item.developer_name)),
         )
+
+    async def pod_tasks(self, tenant_id: str, pod_id: str, as_of: date) -> PodTasksView:
+        """The tasks a pod's panel lists: its members' work, inside the pod's remit.
+
+        A task is the pod's when both hold on ``as_of``:
+
+        1. It is assigned (``developer --assigned_to--> task``) to a member of
+           the pod (``pod --contains--> developer``).
+        2. Its nearest owner up the ``contains`` chain is in the pod's remit:
+           the pod itself (``pod --contains--> task`` or work item), a
+           workstream the pod serves (``pod --assigned_to--> workstream``), or
+           a project that contains the pod. A task with no owner at all --
+           assigned straight to a member, nothing in between -- is unclaimed
+           rather than foreign and counts, as it does for project progress. A
+           member in two pods therefore shows it in both.
+
+        Membership alone is not enough. A member who also works in another pod
+        brings that pod's tasks along, and the pod's tree reaches them over
+        ``assigned_to`` with their own workstream out of sight, so a check
+        against the tree would read them as unclaimed. The owner is resolved
+        against the tenant's ``contains`` edges instead -- the same ownership
+        rule as ``_owned_tasks``, which stops a project's progress absorbing
+        another project's tasks through a shared pod. Tasks in a served
+        workstream that no member is assigned are left out: the panel lists the
+        members' work, and another pod serving the same workstream lists its
+        own.
+
+        A task is ``blocked`` when it is red, or when one of the pod's open
+        blockers is attributed to it: to the task itself, or to the work item
+        it implements. Blocked tasks come first, then worst status first.
+        """
+        tree = await self._graph_repository.get_program_tree(tenant_id, pod_id, as_of)
+        pod = tree.root
+        if pod.kind is not NodeKind.POD:
+            raise GraphNotFound(f"{pod_id} is a {pod.kind.value}, not a pod")
+        members = _pod_members(tree)
+        assignees = _member_assignments(tree, members)
+        if not assignees:
+            return PodTasksView(pod_id=pod.id, pod_name=pod.name, as_of=as_of, tasks=())
+
+        kinds = {node.id: node.kind for node in await self._graph_repository.list_nodes(tenant_id)}
+        parents: dict[str, list[str]] = {}
+        for edge in await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS):
+            if edge.is_active_on(as_of):
+                parents.setdefault(edge.to_node_id, []).append(edge.from_node_id)
+        remit = _pod_remit(tree, parents, kinds)
+
+        blockers: list[ResolvedBlocker] = []
+        for member in members.values():
+            resolved = await self._blocker_resolution.open_blockers_for_developer(
+                tenant_id, member.id, as_of
+            )
+            blockers.extend(blocker for blocker in resolved if pod.id in blocker.pod_ids)
+        blockers.sort(key=lambda item: (item.first_seen_on, item.blocker_id))
+
+        nodes = {node.id: node for node in tree.nodes}
+        tasks: list[PodTaskView] = []
+        for task_id, owners in assignees.items():
+            owner_ids, attributable_ids = _task_owners(task_id, parents, kinds)
+            if owner_ids and owner_ids.isdisjoint(remit):
+                continue
+            node = nodes[task_id]
+            status = await self._task_status(node, as_of)
+            open_blockers = tuple(
+                PodTaskBlockerView(
+                    blocker_id=blocker.blocker_id,
+                    description=blocker.description,
+                    first_seen_on=blocker.first_seen_on,
+                    age_days=_blocker_age_days(blocker, as_of),
+                )
+                for blocker in blockers
+                if blocker.work_item_ref is not None
+                and blocker.work_item_ref.id in attributable_ids
+            )
+            tasks.append(
+                PodTaskView(
+                    id=node.id,
+                    name=node.name,
+                    rag=status.rag,
+                    source=status.source,
+                    confidence=status.confidence,
+                    deadline=_deadline(node),
+                    owners=tuple(
+                        PodTaskOwnerView(id=owner.id, name=owner.name)
+                        for owner in sorted(owners, key=lambda item: (item.name, item.id))
+                    ),
+                    blocked=status.rag is Rag.RED or bool(open_blockers),
+                    open_blockers=open_blockers,
+                )
+            )
+        tasks.sort(key=lambda task: (not task.blocked, _TRIAGE_RANK[task.rag], task.name, task.id))
+        return PodTasksView(pod_id=pod.id, pod_name=pod.name, as_of=as_of, tasks=tuple(tasks))
 
     async def project_progress(
         self, tenant_id: str, project_id: str, as_of: date
@@ -811,6 +939,106 @@ def _owned_tasks(tree: GraphTree) -> tuple[GraphNode, ...]:
         and ((ws_id := owning_workstream_id(node.id)) is None or ws_id in owned_workstreams)
     ]
     return _sorted_nodes(tuple(tasks))
+
+
+def _pod_members(tree: GraphTree) -> dict[str, GraphNode]:
+    """The developers the pod at the root of ``tree`` contains."""
+    nodes = {node.id: node for node in tree.nodes}
+    members: dict[str, GraphNode] = {}
+    for edge in tree.edges:
+        member = nodes.get(edge.to_node_id)
+        if (
+            edge.kind is EdgeKind.CONTAINS
+            and edge.from_node_id == tree.root.id
+            and member is not None
+            and member.kind is NodeKind.DEVELOPER
+        ):
+            members[member.id] = member
+    return members
+
+
+def _member_assignments(
+    tree: GraphTree, members: dict[str, GraphNode]
+) -> dict[str, list[GraphNode]]:
+    """Each task assigned to a member, with the members it is assigned to."""
+    nodes = {node.id: node for node in tree.nodes}
+    assignees: dict[str, dict[str, GraphNode]] = {}
+    for edge in tree.edges:
+        task = nodes.get(edge.to_node_id)
+        member = members.get(edge.from_node_id)
+        if (
+            edge.kind is EdgeKind.ASSIGNED_TO
+            and member is not None
+            and task is not None
+            and task.kind is NodeKind.TASK
+        ):
+            assignees.setdefault(task.id, {})[member.id] = member
+    return {task_id: list(by_id.values()) for task_id, by_id in assignees.items()}
+
+
+def _pod_remit(
+    tree: GraphTree,
+    parents: dict[str, list[str]],
+    kinds: dict[str, NodeKind],
+) -> frozenset[str]:
+    """The owners whose work a pod may list: itself, its workstreams, its projects.
+
+    Its workstreams are the ones it serves (``assigned_to``, what
+    ``assign_pod_workstream`` writes) or contains outright. Its projects are
+    the ones that contain it.
+    """
+    pod_id = tree.root.id
+    remit = {pod_id}
+    remit.update(
+        edge.to_node_id
+        for edge in tree.edges
+        if edge.from_node_id == pod_id
+        and edge.kind in {EdgeKind.CONTAINS, EdgeKind.ASSIGNED_TO}
+        and kinds.get(edge.to_node_id) is NodeKind.WORKSTREAM
+    )
+    remit.update(
+        parent_id
+        for parent_id in parents.get(pod_id, ())
+        if kinds.get(parent_id) is NodeKind.PROJECT
+    )
+    return frozenset(remit)
+
+
+# The node kinds that own what they contain. Walking up from a task, the first
+# of these on each `contains` path is its owner; anything passed on the way (a
+# work item, usually) is part of the task for blocker attribution.
+_OWNER_KINDS = frozenset({NodeKind.WORKSTREAM, NodeKind.POD, NodeKind.PROJECT, NodeKind.PROGRAM})
+
+# Worst first, for a list someone triages. Unlike `_rag_severity`, unknown sorts
+# ahead of green: silence is not a clean bill of health.
+_TRIAGE_RANK: dict[Rag, int] = {Rag.RED: 0, Rag.AMBER: 1, Rag.UNKNOWN: 2, Rag.GREEN: 3}
+
+
+def _task_owners(
+    task_id: str,
+    parents: dict[str, list[str]],
+    kinds: dict[str, NodeKind],
+) -> tuple[frozenset[str], frozenset[str]]:
+    """A task's nearest owners up `contains`, and the ids attributable to it.
+
+    The second set is the task itself plus every non-owner node between it and
+    its owners -- the work item it implements -- so a blocker raised against
+    the work item marks the task.
+    """
+    owners: set[str] = set()
+    attributable: set[str] = {task_id}
+    queue = [task_id]
+    while queue:
+        current = queue.pop()
+        for parent_id in parents.get(current, ()):
+            if parent_id in owners or parent_id in attributable:
+                continue
+            if kinds.get(parent_id) in _OWNER_KINDS:
+                owners.add(parent_id)
+            else:
+                attributable.add(parent_id)
+                queue.append(parent_id)
+    return frozenset(owners), frozenset(attributable)
 
 
 def _since_for_as_of(as_of: date) -> datetime:

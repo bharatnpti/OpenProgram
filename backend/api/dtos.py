@@ -34,6 +34,10 @@ from core.application.persona_views import (
     PodBlockersView,
     PodCheckinsView,
     PodRollupView,
+    PodTaskBlockerView,
+    PodTaskOwnerView,
+    PodTasksView,
+    PodTaskView,
     PortfolioHeatmapView,
     ProgramTreeView,
     ProjectProgressView,
@@ -884,6 +888,81 @@ class PodRollupResponse(BaseModel):
             source=view.source,
             factors=[RollupFactorDto.from_domain(factor) for factor in view.factors],
             source_names=dict(view.source_names),
+        )
+
+
+class PodTaskOwnerDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    name: str
+
+    @classmethod
+    def from_view(cls, owner: PodTaskOwnerView) -> PodTaskOwnerDto:
+        return cls(id=owner.id, name=owner.name)
+
+
+class PodTaskBlockerDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    blocker_id: str
+    description: str
+    first_seen_on: date
+    age_days: int
+
+    @classmethod
+    def from_view(cls, blocker: PodTaskBlockerView) -> PodTaskBlockerDto:
+        return cls(
+            blocker_id=blocker.blocker_id,
+            description=blocker.description,
+            first_seen_on=blocker.first_seen_on,
+            age_days=blocker.age_days,
+        )
+
+
+class PodTaskDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    name: str
+    rag: Rag
+    source: StatusSource
+    confidence: float | None
+    deadline: date | None
+    owners: list[PodTaskOwnerDto]
+    blocked: bool
+    open_blockers: list[PodTaskBlockerDto]
+
+    @classmethod
+    def from_view(cls, task: PodTaskView) -> PodTaskDto:
+        return cls(
+            id=task.id,
+            name=task.name,
+            rag=task.rag,
+            source=task.source,
+            confidence=task.confidence,
+            deadline=task.deadline,
+            owners=[PodTaskOwnerDto.from_view(owner) for owner in task.owners],
+            blocked=task.blocked,
+            open_blockers=[PodTaskBlockerDto.from_view(item) for item in task.open_blockers],
+        )
+
+
+class PodTasksResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    pod_id: str
+    pod_name: str
+    as_of: date
+    tasks: list[PodTaskDto]
+
+    @classmethod
+    def from_view(cls, view: PodTasksView) -> PodTasksResponse:
+        return cls(
+            pod_id=view.pod_id,
+            pod_name=view.pod_name,
+            as_of=view.as_of,
+            tasks=[PodTaskDto.from_view(task) for task in view.tasks],
         )
 
 

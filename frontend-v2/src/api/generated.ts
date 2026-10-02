@@ -1147,6 +1147,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/pods/{pod_id}/tasks": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Pod Tasks */
+    get: operations["pod_tasks_pods__pod_id__tasks_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/projects/{project_id}/progress": {
     parameters: {
       query?: never;
@@ -2571,6 +2588,60 @@ export interface components {
       source_names: {
         [key: string]: string;
       };
+    };
+    /** PodTaskBlockerDto */
+    PodTaskBlockerDto: {
+      /** Blocker Id */
+      blocker_id: string;
+      /** Description */
+      description: string;
+      /**
+       * First Seen On
+       * Format: date
+       */
+      first_seen_on: string;
+      /** Age Days */
+      age_days: number;
+    };
+    /** PodTaskDto */
+    PodTaskDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      rag: components["schemas"]["Rag"];
+      source: components["schemas"]["StatusSource"];
+      /** Confidence */
+      confidence: number | null;
+      /** Deadline */
+      deadline: string | null;
+      /** Owners */
+      owners: components["schemas"]["PodTaskOwnerDto"][];
+      /** Blocked */
+      blocked: boolean;
+      /** Open Blockers */
+      open_blockers: components["schemas"]["PodTaskBlockerDto"][];
+    };
+    /** PodTaskOwnerDto */
+    PodTaskOwnerDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+    };
+    /** PodTasksResponse */
+    PodTasksResponse: {
+      /** Pod Id */
+      pod_id: string;
+      /** Pod Name */
+      pod_name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Tasks */
+      tasks: components["schemas"]["PodTaskDto"][];
     };
     /** PortfolioFeedItemResponse */
     PortfolioFeedItemResponse: {
@@ -6255,6 +6326,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PodRollupResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  pod_tasks_pods__pod_id__tasks_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PodTasksResponse"];
         };
       };
       /** @description Validation Error */
