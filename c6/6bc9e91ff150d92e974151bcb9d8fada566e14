@@ -1,9 +1,12 @@
 backend/api/routers/graph.py
   s_386bf853700fa5::t_c720e539ba0b66 6,13,25-31
+  s_cf6265cb994e26::t_993a562938e201 6,13,25-31
 backend/tests/integration/test_container_backed_phase0.py
   s_386bf853700fa5::t_d9b6a45a7904d0 41,349-355
+  s_cf6265cb994e26::t_3bc5002e495bd7 41,349-355
 backend/tests/unit/test_graph_api.py
   s_386bf853700fa5::t_18d8393962deac 1-40
+  s_cf6265cb994e26::t_f6262912a2ebc6 1-40
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -18,6 +21,14 @@ backend/tests/unit/test_graph_api.py
         "model": "claude-opus-5-5"
       },
       "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_cf6265cb994e26": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e787ee6b-2d24-470e-8e2c-33a810fc06d4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
     }
   }
 }
