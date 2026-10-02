@@ -366,8 +366,14 @@ def test_stale_after_is_three_missed_runs_with_a_floor() -> None:
 
 async def test_status_reports_runtime_targets_and_their_health() -> None:
     store = await _configured_store()
-    scope = await _issue_scope(store)
-    await store.record_cursor(TENANT, "issue", scope, _ok_cursor(NOW - timedelta(minutes=12), 4))
+    report = await _service(store).status(TENANT, now=NOW)
+    # The project, and the pod with no filter, which covers the whole project.
+    scopes = [target.scope for target in _source(report.sources, SyncSource.ISSUE_TRACKER).targets]
+    assert len(scopes) == 2
+    for scope in scopes:
+        await store.record_cursor(
+            TENANT, "issue", scope, _ok_cursor(NOW - timedelta(minutes=12), 4)
+        )
     await store.record_cursor(
         TENANT, "vcs", "repo:acme/pay-api", _ok_cursor(NOW - timedelta(hours=5))
     )
