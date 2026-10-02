@@ -1,7 +1,9 @@
 """How generated status summaries are worded.
 
 When a developer doesn't answer a check-in, the collector writes an inferred,
-stale or unknown status whose summary opens with :data:`NON_RESPONSE_LEAD`.
+stale or unknown status whose summary opens with :data:`NON_RESPONSE_LEAD`. A
+stale one names the last confirmed, partial or inferred status once, however
+many unanswered days follow it, so the sentence never nests.
 Confirming such a status from the console writes a confirmed status, and its
 summary is built here too: it keeps what the status was based on but drops the
 non-response framing, so a confirmed status never says it wasn't confirmed.
@@ -20,6 +22,7 @@ from core.ports.repositories import StatusRepository
 
 NON_RESPONSE_LEAD = "No confirmed check-in after a nudge."
 INFERRED_LEAD = f"{NON_RESPONSE_LEAD} Inferred from "
+UNKNOWN_SUMMARY = f"{NON_RESPONSE_LEAD} Current status is unknown."
 CONFIRMED_LEAD = "Confirmed the status"
 # The placeholder blocker a non-response status carries when nothing is open.
 NO_REPLY_BLOCKER = "no confirmed reply"
@@ -82,6 +85,40 @@ async def basis_status(
     if current is None or current.source not in _BASIS_SOURCES or current.as_of < floor:
         return None
     return current
+
+
+def names_one_basis(summary: str) -> bool:
+    """Whether a stale summary names the status it stands for once, unnested.
+
+    Stale summaries used to quote the previous status verbatim, so after an
+    inferred or stale day the non-response sentence repeated, once more each
+    day the developer didn't answer.
+    """
+    return summary.startswith(NON_RESPONSE_LEAD) and summary.count(NON_RESPONSE_LEAD) == 1
+
+
+def stale_summary(basis: DeveloperStatus | None) -> str:
+    """The summary of a stale status standing for ``basis``.
+
+    ``basis`` is :func:`basis_status` of the latest status: the last one that
+    said something about the developer's work. It is named once with its date,
+    however many unanswered days lie between.
+    """
+    if basis is None:
+        return (
+            f"{NON_RESPONSE_LEAD} No confirmed or inferred status in the last "
+            f"{BASIS_LOOKBACK.days} days."
+        )
+    day = day_label(basis.as_of)
+    if basis.source is StatusSource.INFERRED:
+        inferred_from = inferred_basis(basis.summary)
+        if inferred_from is None:
+            return f"{NON_RESPONSE_LEAD} Last inferred on {day}."
+        return f"{NON_RESPONSE_LEAD} Last inferred on {day} from {inferred_from}."
+    return (
+        f"{NON_RESPONSE_LEAD} Last known {basis.source.value} status on {day}: "
+        f"{reported_text(basis.summary)}"
+    )
 
 
 def confirmed_summary(

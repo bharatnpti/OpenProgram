@@ -2466,6 +2466,156 @@ async def test_inferred_non_response_summary_without_active_issues(
     assert inferred.summary == expected
 
 
+def _stored_status(as_of: date, source: StatusSource, summary: str) -> DeveloperStatus:
+    return DeveloperStatus(
+        tenant_id="demo",
+        developer_id="dev-1",
+        as_of=as_of,
+        source=source,
+        blockers=(),
+        summary=summary,
+    )
+
+
+_SHIPPED = "Shipped the refund flow."
+_GIT_INFERRED = "No confirmed check-in after a nudge. Inferred from recent Git activity: 1 commit."
+# The wording stale statuses were stored in before they stopped nesting.
+_STORED_STALE_ON_4 = (
+    f"No confirmed check-in after a nudge. Last known confirmed status on 2026-01-03: {_SHIPPED}"
+)
+
+
+@pytest.mark.parametrize(
+    ("history", "expected"),
+    [
+        pytest.param(
+            [_stored_status(date(2026, 1, 5), StatusSource.CONFIRMED, _SHIPPED)],
+            "No confirmed check-in after a nudge. Last known confirmed status on Jan 5: "
+            f"{_SHIPPED}",
+            id="confirmed",
+        ),
+        pytest.param(
+            [_stored_status(date(2026, 1, 5), StatusSource.PARTIAL, "Halfway; ETA open.")],
+            "No confirmed check-in after a nudge. Last known partial status on Jan 5: "
+            "Halfway; ETA open.",
+            id="partial",
+        ),
+        pytest.param(
+            [_stored_status(date(2026, 1, 5), StatusSource.INFERRED, _GIT_INFERRED)],
+            "No confirmed check-in after a nudge. Last inferred on Jan 5 from recent Git "
+            "activity: 1 commit.",
+            id="inferred",
+        ),
+        pytest.param(
+            [_stored_status(date(2026, 1, 5), StatusSource.INFERRED, "Working the queue.")],
+            "No confirmed check-in after a nudge. Last inferred on Jan 5.",
+            id="inferred-in-other-words",
+        ),
+        pytest.param(
+            [
+                _stored_status(date(2026, 1, 3), StatusSource.CONFIRMED, _SHIPPED),
+                _stored_status(date(2026, 1, 4), StatusSource.STALE, _STORED_STALE_ON_4),
+                _stored_status(
+                    date(2026, 1, 5),
+                    StatusSource.STALE,
+                    "No confirmed check-in after a nudge. Last known stale status on "
+                    f"2026-01-04: {_STORED_STALE_ON_4}",
+                ),
+            ],
+            "No confirmed check-in after a nudge. Last known confirmed status on Jan 3: "
+            f"{_SHIPPED}",
+            id="stored-nested-stale",
+        ),
+        pytest.param(
+            # Confirm used to copy the non-response summary in verbatim.
+            [_stored_status(date(2026, 1, 5), StatusSource.CONFIRMED, _GIT_INFERRED)],
+            "No confirmed check-in after a nudge. Last known confirmed status on Jan 5: "
+            "Inferred from recent Git activity: 1 commit.",
+            id="stored-confirmed-copy",
+        ),
+        pytest.param(
+            [
+                _stored_status(date(2025, 9, 1), StatusSource.CONFIRMED, _SHIPPED),
+                _stored_status(
+                    date(2026, 1, 5),
+                    StatusSource.STALE,
+                    "No confirmed check-in after a nudge. Last known stale status on "
+                    f"2026-01-04: {_STORED_STALE_ON_4}",
+                ),
+            ],
+            "No confirmed check-in after a nudge. No confirmed or inferred status in the "
+            "last 90 days.",
+            id="nothing-in-lookback",
+        ),
+    ],
+)
+async def test_stale_non_response_names_the_last_real_status_once(
+    history: list[DeveloperStatus], expected: str
+) -> None:
+    """Day after day without an answer, the stale summary stays one sentence.
+
+    It used to quote the previous status, so after an inferred or stale day the
+    "No confirmed check-in after a nudge." prefix stacked once more each day.
+    """
+    store = InMemoryGraphStore()
+    for status in history:
+        await store.record_developer_status(status)
+    # Nothing to infer from, so every day falls through to stale.
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(texts=[]),
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    for day in (date(2026, 1, 6), date(2026, 1, 7), date(2026, 1, 8), date(2026, 1, 9)):
+        stale = await collector.record_non_response(
+            tenant_id="demo", developer_id="dev-1", as_of=day
+        )
+
+        assert stale.source is StatusSource.STALE
+        assert stale.summary == expected, day
+        assert stale.summary.count("No confirmed check-in after a nudge.") == 1
+        assert await store.latest_developer_status("demo", "dev-1", day) == stale
+
+
+async def test_stale_non_response_names_a_reply_between_unanswered_days() -> None:
+    store = InMemoryGraphStore()
+    await store.record_developer_status(
+        _stored_status(date(2026, 1, 5), StatusSource.INFERRED, _GIT_INFERRED)
+    )
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=FakeChatProvider(),
+        llm_provider=SequenceLlmProvider(texts=[]),
+        status_repository=store,
+        conversation_repository=store,
+        model="test-model",
+    )
+
+    before = await collector.record_non_response(
+        tenant_id="demo", developer_id="dev-1", as_of=date(2026, 1, 6)
+    )
+    await store.record_developer_status(
+        _stored_status(date(2026, 1, 7), StatusSource.PARTIAL, "Halfway; ETA open.")
+    )
+    after = [
+        await collector.record_non_response(tenant_id="demo", developer_id="dev-1", as_of=day)
+        for day in (date(2026, 1, 8), date(2026, 1, 9))
+    ]
+
+    assert before.summary == (
+        "No confirmed check-in after a nudge. Last inferred on Jan 5 from recent Git "
+        "activity: 1 commit."
+    )
+    assert [status.summary for status in after] == [
+        "No confirmed check-in after a nudge. Last known partial status on Jan 7: "
+        "Halfway; ETA open."
+    ] * 2
+
+
 async def _record_open_checkin_with_correlation(store: InMemoryGraphStore) -> None:
     asked_at = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
     await store.record_checkin(

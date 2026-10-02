@@ -23,7 +23,13 @@ from core.application.status_parsing import (
     ClarificationEvaluator,
     StatusParser,
 )
-from core.application.status_summaries import inferred_summary
+from core.application.status_summaries import (
+    UNKNOWN_SUMMARY,
+    basis_status,
+    inferred_summary,
+    names_one_basis,
+    stale_summary,
+)
 from core.application.tools.conversation_history import MAX_HISTORY_LIMIT, ConversationHistoryTool
 from core.application.tools.git_activity import GitActivityTool
 from core.application.tools.issue_tracker import IssueTrackerTool
@@ -869,11 +875,7 @@ class StatusCollector:
                 source=StatusSource.STALE,
                 blockers=tuple(blocker.description for blocker in open_rows)
                 or ("no confirmed reply",),
-                summary=(
-                    "No confirmed check-in after a nudge. "
-                    f"Last known {prior.source.value} status on {prior.as_of.isoformat()}: "
-                    f"{prior.summary}"
-                ),
+                summary=await self._stale_summary(prior),
             )
             await self._status_repository.record_developer_status(stale)
             return stale
@@ -884,10 +886,21 @@ class StatusCollector:
             as_of=as_of,
             source=StatusSource.UNKNOWN,
             blockers=("no confirmed reply",),
-            summary="No confirmed check-in after a nudge. Current status is unknown.",
+            summary=UNKNOWN_SUMMARY,
         )
         await self._status_repository.record_developer_status(unknown)
         return unknown
+
+    async def _stale_summary(self, prior: DeveloperStatus) -> str:
+        """Name the last status that said something, once, however long ago.
+
+        A stale prior already names it unless it was stored in the old nested
+        wording; nothing has been said since, so it is reused as is. Otherwise
+        the status is found by following earlier rows back.
+        """
+        if prior.source is StatusSource.STALE and names_one_basis(prior.summary):
+            return prior.summary
+        return stale_summary(await basis_status(self._status_repository, prior))
 
     async def infer_fallback_status(
         self,
