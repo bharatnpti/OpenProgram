@@ -1,0 +1,69 @@
+backend/api/dependencies.py
+  s_51495ccc67ba04::t_0e88e21383210b 20,160-164
+backend/api/dtos.py
+  s_51495ccc67ba04::t_00555ddc3bc959 66-76,1677-1764
+backend/api/routers/ops.py
+  s_51495ccc67ba04::t_1b804ebb64768b 12,18,24,46-59
+backend/core/application/directory_sync_service.py
+  s_51495ccc67ba04::t_cbe642e73a2146 3-5,7,10-17,24-28,31-54
+backend/core/application/sync_recording.py
+  s_51495ccc67ba04::t_808f8eed92bf72 1-123
+backend/core/application/sync_services.py
+  s_51495ccc67ba04::t_ec6bc2887921de 4,8,76-87,89-90,92-101,122-143,151-162,334-370
+backend/core/application/sync_status_service.py
+  s_51495ccc67ba04::t_8c0d767a50cab7 1-488
+backend/core/domain/integrations.py
+  s_51495ccc67ba04::t_936de12efca128 25-33
+backend/core/domain/sync_status.py
+  s_51495ccc67ba04::t_1daeee93154e0e 1-143
+backend/core/ports/repositories.py
+  s_51495ccc67ba04::t_f2a4def20ebb11 24,349-352
+backend/infra/adapters/catalog.py
+  s_51495ccc67ba04::t_ddf91ae06772c7 124-125,127,129-137
+backend/infra/persistence/in_memory_graph.py
+  s_51495ccc67ba04::t_6631cf4f79534b 31,966-974
+backend/infra/persistence/postgres_status.py
+  s_51495ccc67ba04::t_4ad856cd3070a3 21,969-988
+backend/infra/registry.py
+  s_51495ccc67ba04::t_8774688b10df7d 28,33,104,823-843
+backend/infra/workflows/runtime_sync.py
+  s_51495ccc67ba04::t_bfa4f154093304 90,92-94,98,118
+backend/tests/contract/contracts.py
+  s_51495ccc67ba04::t_45cb383ad51d85 30,946-954
+backend/tests/contract/fakes.py
+  s_51495ccc67ba04::t_b29d20911dd52a 25,765-773
+backend/tests/unit/test_sync_status.py
+  s_51495ccc67ba04::t_dd33286d012d32 1-581
+frontend-v2/src/api/client.ts
+  s_51495ccc67ba04::t_2b09e7033f59fa 68,271
+frontend-v2/src/api/generated.ts
+  s_51495ccc67ba04::t_8b1632b386c865 253-274,2941-3025,3735-3765
+frontend-v2/src/api/openapi.json
+  s_51495ccc67ba04::t_6b82246eab33f7 568-615,10766-11018
+frontend-v2/src/api/schema.ts
+  s_51495ccc67ba04::t_2ac97b5f6c4247 62-67
+frontend-v2/src/features/admin/DataSourcesPanel.tsx
+  s_51495ccc67ba04::t_affca3958e390d 1-392
+frontend-v2/src/pages/AdminPage.tsx
+  s_51495ccc67ba04::t_e72c5b87a5b11d 3-4,9,21,26,73-74,100,151-154
+frontend/src/api/generated.ts
+  s_51495ccc67ba04::t_5371406e52c399 253-274,2945-3029,3739-3769
+frontend/src/api/openapi.json
+  s_51495ccc67ba04::t_380da52ed219f7 568-615,10766-11018
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bc8b74123e175e780e29d7234768502792bf585e",
+  "prompts": {},
+  "sessions": {
+    "s_51495ccc67ba04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98259e94-8aa1-45f5-b5cc-46cac669b27d",
+        "model": "unknown"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
