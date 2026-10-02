@@ -1,0 +1,19 @@
+frontend-v2/src/app/RoleProvider.tsx
+  s_386bf853700fa5::t_24c5b465e0f496 2,134-147,157-166,174,179,188,191-194,196-197,199,213,233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b84bc55ab28e5bb493a3449a3220b288b7ada70e",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
