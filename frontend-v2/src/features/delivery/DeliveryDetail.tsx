@@ -9,10 +9,12 @@ import { toneForRag, toneHex } from "../../lib/status";
 import type { DeliveryKind } from "../../lib/useDeliverySelection";
 import { useRole } from "../../app/role";
 import { cn } from "../../lib/utils";
+import { PodTasks } from "./PodTasks";
 import { ProgramDetail } from "./ProgramDetail";
 import { RollupReasonsCard } from "./RollupReasonsCard";
 import { leadReason, reasonsAddToLead } from "./rollupReasons";
 import { useNodeReasons } from "./useNodeReasons";
+import { TaskRow } from "./TaskRow";
 
 type Lists = {
   programs: DirectoryItemResponse[];
@@ -139,6 +141,8 @@ export function DeliveryDetail({
       : (progress?.percent_complete ?? null);
 
   const tasks = progress?.tasks ?? [];
+  // A pod's tasks come from their own read, under the pod capabilities.
+  const showPodTasks = selection.kind === "pod" && mayReadDetail;
   const pills = relatedPills(item, lists);
 
   return (
@@ -198,30 +202,24 @@ export function DeliveryDetail({
       ) : null}
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1.4fr_1fr]">
-        {tasks.length > 0 ? (
+        {showPodTasks ? (
+          <PodTasks podId={selection.id} asOf={asOf} />
+        ) : tasks.length > 0 ? (
           <Card padding="p-0">
             <div className="px-6 pt-6 pb-2">
               <h3 className="text-[18px] font-bold">Tasks</h3>
             </div>
             {tasks.map((task) => (
-              <div
-                key={task.id}
-                className="flex items-center justify-between gap-4 border-t border-grey-fill px-6 py-4 first:border-t-0"
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-[15px] font-bold">{task.name}</div>
-                  <div className="mt-0.5 text-[13px] text-grey-secondary">
-                    {task.id} · {task.source}
-                    {task.confidence != null ? ` · ${Math.round(task.confidence * 100)}%` : ""}
-                  </div>
-                </div>
-                <RagChip tone={toneForRag(task.rag)}>{task.rag}</RagChip>
-              </div>
+              <TaskRow key={task.id} task={task} />
             ))}
           </Card>
         ) : null}
 
-        <Card variant="grey" padding="p-6" className={cn(tasks.length === 0 && "lg:col-span-2")}>
+        <Card
+          variant="grey"
+          padding="p-6"
+          className={cn(tasks.length === 0 && !showPodTasks && "lg:col-span-2")}
+        >
           <h3 className="text-[18px] font-bold">Details</h3>
           {mayReadDetail ? null : (
             <p className="mt-3 text-sm text-grey-secondary">{detailDeniedNote(selection.kind)}</p>
