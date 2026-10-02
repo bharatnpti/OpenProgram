@@ -1,0 +1,21 @@
+frontend-v2/src/features/delivery/DeliveryDetail.tsx
+  s_386bf853700fa5::t_30f8f0fcf5bf75 12,114-117,148,223
+frontend-v2/src/features/delivery/ProgramDetail.tsx
+  s_386bf853700fa5::t_5e0747a8d2bc96 1-386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f4f56de63932ca5d16e24f555f5691529634f9d8",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
