@@ -10,7 +10,9 @@ import { TextArea, TextInput } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
+import { checkinHint, useStatusRollups } from "./statusRollups";
 import { WaitingOnYou } from "./WaitingOnYou";
+import { WhereYourStatusGoes } from "./WhereYourStatusGoes";
 import { todayIso } from "../../lib/today";
 import { toneForRag } from "../../lib/status";
 
@@ -38,6 +40,7 @@ export function DeveloperToday() {
     queryKey: ["persona", "my-status", asOf],
     queryFn: () => apiClient.myStatus(asOf),
   });
+  const rollups = useStatusRollups(asOf);
   useEffect(() => {
     if (myStatus.data) {
       setSummary(myStatus.data.summary);
@@ -114,12 +117,19 @@ export function DeveloperToday() {
   const blockerDetails = myStatus.data?.blocker_details ?? [];
   const blockerList = myStatus.data?.blockers ?? focus.data?.blockers ?? [];
   const etaDays = myStatus.data?.eta_change_days ?? null;
+  const statusSource = myStatus.data?.source ?? focus.data?.status_source;
   const checkinProvenance = provenanceLabel(
-    myStatus.data?.source ?? focus.data?.status_source,
+    statusSource,
     myStatus.data?.confirmed_at ?? null,
     myStatus.data?.developer_confirmed ?? false,
     statusAsOf,
     asOf,
+  );
+  const hint = checkinHint(
+    statusSource,
+    statusAsOf,
+    asOf,
+    rollups.pods.map((pod) => pod.name),
   );
 
   return (
@@ -165,6 +175,7 @@ export function DeveloperToday() {
               ) : null}
             </div>
           )}
+          {hint ? <p className="mt-4 text-[14px] leading-snug text-grey-body">{hint}</p> : null}
           <div className="mt-5 flex items-center gap-3.5">
             {confirmed ? (
               <Pill variant="success" size="lg">
@@ -247,15 +258,7 @@ export function DeveloperToday() {
 
       <div className="flex flex-col gap-6">
         <WaitingOnYou animateDelay={280} />
-
-        <Card padding="p-6" animateDelay={350}>
-          <h2 className="text-[18px] font-bold">Why this matters</h2>
-          <p className="mt-3 text-[14px] leading-relaxed text-grey-body">
-            Your check-in feeds every rollup above you — pod, project, and program. Silence is never
-            read as green: an unconfirmed status stays visible as stale until you confirm or correct
-            it, so leaders always see what's real.
-          </p>
-        </Card>
+        <WhereYourStatusGoes rollups={rollups} animateDelay={350} />
       </div>
 
       <Modal open={correctOpen} onOpenChange={setCorrectOpen} title="Correct your check-in">
@@ -432,5 +435,3 @@ function formatDay(isoDate: string): string {
     month: "short",
   }).format(new Date(year, month - 1, day));
 }
-
-/** Name of whoever raised a request, falling back to their id. */
