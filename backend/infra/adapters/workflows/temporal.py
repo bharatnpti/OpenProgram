@@ -798,6 +798,18 @@ class TemporalWorkflowScheduler:
             results.append(ScheduleBootstrapResult(schedule_id=config.schedule_id, status=status))
         return results
 
+    async def remove_schedule(self, schedule_id: str) -> ScheduleBootstrapResult:
+        from temporalio.service import RPCError, RPCStatusCode
+
+        client = await _connect_temporal(self.target)
+        try:
+            await client.get_schedule_handle(schedule_id).delete()
+        except RPCError as exc:
+            if exc.status != RPCStatusCode.NOT_FOUND:
+                raise
+            return ScheduleBootstrapResult(schedule_id=schedule_id, status="absent")
+        return ScheduleBootstrapResult(schedule_id=schedule_id, status="removed")
+
     async def dispatch_developer_checkin(self, input: DeveloperCheckinDispatch) -> str:
         client = await _connect_temporal(self.target)
         workflow_id = safe_workflow_id(
