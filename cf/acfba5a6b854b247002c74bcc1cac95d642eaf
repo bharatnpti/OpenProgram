@@ -1,0 +1,43 @@
+backend/api/routers/persona.py
+  s_51495ccc67ba04::t_f340cedd5c979a 85-88,100-103
+backend/core/application/authorization.py
+  s_51495ccc67ba04::t_6b8e1504434d0d 67-71,79-83
+backend/core/application/persona_views.py
+  s_51495ccc67ba04::t_ecb6811a1c57f4 400,423,543-554
+backend/tests/unit/test_api.py
+  s_51495ccc67ba04::t_52c3df5de06b28 945-950,955-1007
+backend/tests/unit/test_authorization.py
+  s_51495ccc67ba04::t_5e1a92cbac9bb1 26-28,51-94
+backend/tests/unit/test_persona_views.py
+  s_51495ccc67ba04::t_f44aa5d8475137 5-6,9,545-569
+backend/tests/unit/test_pod_tasks.py
+  s_51495ccc67ba04::t_ed8c3b4f792212 242-243,265
+backend/tests/unit/test_rollup_reasons.py
+  s_51495ccc67ba04::t_be3d7ca587b64f 30,50
+docs/lld/phase-1/persona-views.md
+  s_51495ccc67ba04::t_8313b68949a8ef 14-17
+features.md
+  s_51495ccc67ba04::t_e791c67bbf9b16 219-220
+frontend-v2/src/app/RoleProvider.tsx
+  s_51495ccc67ba04::t_033df1b07b2e95 195-197
+frontend-v2/src/app/role.ts
+  s_51495ccc67ba04::t_3a783ed95c8c17 47,49-52
+frontend-v2/src/features/delivery/DeliveryDetail.tsx
+  s_51495ccc67ba04::t_02fc0fe9ed332d 321,323,328-330
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cfacfba5a6b854b247002c74bcc1cac95d642eaf",
+  "prompts": {},
+  "sessions": {
+    "s_51495ccc67ba04": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "98259e94-8aa1-45f5-b5cc-46cac669b27d",
+        "model": "unknown"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
