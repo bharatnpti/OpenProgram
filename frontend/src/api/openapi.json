@@ -7432,6 +7432,56 @@
         "required": ["status", "message_id"],
         "title": "ChatWebhookResponse"
       },
+      "CheckInPreferenceField": {
+        "type": "string",
+        "enum": [
+          "local_time",
+          "timezone",
+          "weekdays",
+          "reply_wait_seconds",
+          "final_reply_wait_seconds"
+        ],
+        "title": "CheckInPreferenceField",
+        "description": "The preference fields a member can leave to the team default, in display order."
+      },
+      "CheckinDefaultsResponse": {
+        "properties": {
+          "local_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Local Time"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "weekdays": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Weekdays"
+          },
+          "reply_wait_seconds": {
+            "type": "integer",
+            "title": "Reply Wait Seconds"
+          },
+          "final_reply_wait_seconds": {
+            "type": "integer",
+            "title": "Final Reply Wait Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "local_time",
+          "timezone",
+          "weekdays",
+          "reply_wait_seconds",
+          "final_reply_wait_seconds"
+        ],
+        "title": "CheckinDefaultsResponse",
+        "description": "The team defaults a member follows for any field not set for them."
+      },
       "CheckinDeveloperDto": {
         "properties": {
           "developer_id": {
@@ -7563,6 +7613,17 @@
           "final_reply_wait_seconds": {
             "type": "integer",
             "title": "Final Reply Wait Seconds"
+          },
+          "inherited": {
+            "items": {
+              "$ref": "#/components/schemas/CheckInPreferenceField"
+            },
+            "type": "array",
+            "title": "Inherited",
+            "description": "Fields not set for this member. Their values above are the team defaults, and a change to those defaults reaches this member."
+          },
+          "defaults": {
+            "$ref": "#/components/schemas/CheckinDefaultsResponse"
           }
         },
         "type": "object",
@@ -7572,9 +7633,12 @@
           "timezone",
           "weekdays",
           "reply_wait_seconds",
-          "final_reply_wait_seconds"
+          "final_reply_wait_seconds",
+          "inherited",
+          "defaults"
         ],
-        "title": "CheckinPreferenceResponse"
+        "title": "CheckinPreferenceResponse",
+        "description": "A member's check-in preference as it applies: their own values, else the team's."
       },
       "CheckinPreferenceUpdateRequest": {
         "properties": {
@@ -7643,7 +7707,8 @@
           }
         },
         "type": "object",
-        "title": "CheckinPreferenceUpdateRequest"
+        "title": "CheckinPreferenceUpdateRequest",
+        "description": "An admin's change to a member's check-in preference.\n\nA field left out keeps what is stored. A field sent as ``null`` is cleared,\nso the member follows the team default for it again."
       },
       "ConfigEdgeResponse": {
         "properties": {
@@ -10711,7 +10776,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "SelfCheckinPreferenceUpdateRequest",
-        "description": "The part of their own check-in preference a person may change.\n\nOnly the days they are asked and their time zone. The reply windows stay\nwith an admin (``PUT /config/members/{id}/checkin-preference``) because they\ndecide when a missed check-in reaches the scrum master and manager. The\ncheck-in time is left out because check-ins go out at one tenant-wide time,\nso a personal time would change nothing. A request carrying any other field\nis rejected, never silently ignored."
+        "description": "The part of their own check-in preference a person may change.\n\nOnly the days they are asked and their time zone. The reply windows stay\nwith an admin (``PUT /config/members/{id}/checkin-preference``) because they\ndecide when a missed check-in reaches the scrum master and manager. The\ncheck-in time is left out because check-ins go out at one tenant-wide time,\nso a personal time would change nothing. A request carrying any other field\nis rejected, never silently ignored. A field sent as ``null`` goes back to\nthe team default."
       },
       "StatusCorrectionRequest": {
         "properties": {

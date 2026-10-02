@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 
 from core.domain.blockers import (
     BlockerResolutionReason,
@@ -262,11 +262,39 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
         == []
     )
 
+    # Nothing set: every schedule field comes back unset (NULL), never as a
+    # copy of the defaults, so the member keeps following the team defaults.
     preference = CheckInPreference(tenant_id="demo", developer_id="dev-1")
     await repository.record_checkin_preference(preference)
     assert await repository.checkin_preference_for("demo", "dev-1") == preference
     assert await repository.list_checkin_preferences("demo") == [preference]
+    # Some fields set, the rest left to the defaults.
+    partial = CheckInPreference(
+        tenant_id="demo",
+        developer_id="dev-1",
+        weekdays=(0, 2, 4),
+        final_reply_wait_seconds=600,
+    )
+    await repository.record_checkin_preference(partial)
+    assert await repository.checkin_preference_for("demo", "dev-1") == partial
+    # Every field set, then cleared again by saving it unset.
+    full = CheckInPreference(
+        tenant_id="demo",
+        developer_id="dev-2",
+        local_time=time(8, 15),
+        timezone="Europe/Berlin",
+        weekdays=(0, 1, 2, 3, 4, 5),
+        reply_wait_seconds=3600,
+        final_reply_wait_seconds=7200,
+    )
+    await repository.record_checkin_preference(full)
+    assert await repository.checkin_preference_for("demo", "dev-2") == full
+    cleared = replace(full, local_time=None, weekdays=None, reply_wait_seconds=None)
+    await repository.record_checkin_preference(cleared)
+    assert await repository.checkin_preference_for("demo", "dev-2") == cleared
+    assert await repository.list_checkin_preferences("demo") == [partial, cleared]
     await repository.delete_checkin_preference("demo", "dev-1")
+    await repository.delete_checkin_preference("demo", "dev-2")
     assert await repository.checkin_preference_for("demo", "dev-1") is None
     assert await repository.list_checkin_preferences("demo") == []
 

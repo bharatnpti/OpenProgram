@@ -58,8 +58,11 @@ from core.domain.identity import IdentityLink
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import Rag, RollupFactor
 from core.domain.status import (
+    CheckInDefaults,
     CheckInPreference,
+    CheckInPreferenceField,
     DeveloperStatus,
+    EffectiveCheckInPreference,
     StatusSource,
     WriteBackConsent,
 )
@@ -1861,7 +1864,31 @@ class CalendarSyncDispatchRequest(BaseModel):
         return self
 
 
+class CheckinDefaultsResponse(BaseModel):
+    """The team defaults a member follows for any field not set for them."""
+
+    model_config = ConfigDict(frozen=True)
+
+    local_time: time
+    timezone: str
+    weekdays: list[int]
+    reply_wait_seconds: int
+    final_reply_wait_seconds: int
+
+    @classmethod
+    def from_domain(cls, defaults: CheckInDefaults) -> CheckinDefaultsResponse:
+        return cls(
+            local_time=defaults.local_time,
+            timezone=defaults.timezone,
+            weekdays=list(defaults.weekdays),
+            reply_wait_seconds=defaults.reply_wait_seconds,
+            final_reply_wait_seconds=defaults.final_reply_wait_seconds,
+        )
+
+
 class CheckinPreferenceResponse(BaseModel):
+    """A member's check-in preference as it applies: their own values, else the team's."""
+
     model_config = ConfigDict(frozen=True)
 
     developer_id: str
@@ -1870,9 +1897,16 @@ class CheckinPreferenceResponse(BaseModel):
     weekdays: list[int]
     reply_wait_seconds: int
     final_reply_wait_seconds: int
+    inherited: list[CheckInPreferenceField] = Field(
+        description=(
+            "Fields not set for this member. Their values above are the team defaults, "
+            "and a change to those defaults reaches this member."
+        ),
+    )
+    defaults: CheckinDefaultsResponse
 
     @classmethod
-    def from_domain(cls, preference: CheckInPreference) -> CheckinPreferenceResponse:
+    def from_domain(cls, preference: EffectiveCheckInPreference) -> CheckinPreferenceResponse:
         return cls(
             developer_id=preference.developer_id,
             local_time=preference.local_time,
@@ -1880,6 +1914,8 @@ class CheckinPreferenceResponse(BaseModel):
             weekdays=list(preference.weekdays),
             reply_wait_seconds=preference.reply_wait_seconds,
             final_reply_wait_seconds=preference.final_reply_wait_seconds,
+            inherited=list(preference.inherited),
+            defaults=CheckinDefaultsResponse.from_domain(preference.defaults),
         )
 
 
@@ -1906,6 +1942,12 @@ MAX_CHECKIN_WAIT_SECONDS = 2_147_483_647
 
 
 class CheckinPreferenceUpdateRequest(BaseModel):
+    """An admin's change to a member's check-in preference.
+
+    A field left out keeps what is stored. A field sent as ``null`` is cleared,
+    so the member follows the team default for it again.
+    """
+
     model_config = ConfigDict(frozen=True)
 
     local_time: time | None = None
@@ -2246,7 +2288,8 @@ class SelfCheckinPreferenceUpdateRequest(BaseModel):
     decide when a missed check-in reaches the scrum master and manager. The
     check-in time is left out because check-ins go out at one tenant-wide time,
     so a personal time would change nothing. A request carrying any other field
-    is rejected, never silently ignored.
+    is rejected, never silently ignored. A field sent as ``null`` goes back to
+    the team default.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

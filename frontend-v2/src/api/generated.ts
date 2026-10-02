@@ -1815,6 +1815,32 @@ export interface components {
       /** Message Id */
       message_id: string;
     };
+    /**
+     * CheckInPreferenceField
+     * @description The preference fields a member can leave to the team default, in display order.
+     * @enum {string}
+     */
+    CheckInPreferenceField:
+      "local_time" | "timezone" | "weekdays" | "reply_wait_seconds" | "final_reply_wait_seconds";
+    /**
+     * CheckinDefaultsResponse
+     * @description The team defaults a member follows for any field not set for them.
+     */
+    CheckinDefaultsResponse: {
+      /**
+       * Local Time
+       * Format: time
+       */
+      local_time: string;
+      /** Timezone */
+      timezone: string;
+      /** Weekdays */
+      weekdays: number[];
+      /** Reply Wait Seconds */
+      reply_wait_seconds: number;
+      /** Final Reply Wait Seconds */
+      final_reply_wait_seconds: number;
+    };
     /** CheckinDeveloperDto */
     CheckinDeveloperDto: {
       /** Developer Id */
@@ -1845,7 +1871,10 @@ export interface components {
       /** Checkin Date */
       checkin_date?: string | null;
     };
-    /** CheckinPreferenceResponse */
+    /**
+     * CheckinPreferenceResponse
+     * @description A member's check-in preference as it applies: their own values, else the team's.
+     */
     CheckinPreferenceResponse: {
       /** Developer Id */
       developer_id: string;
@@ -1862,8 +1891,20 @@ export interface components {
       reply_wait_seconds: number;
       /** Final Reply Wait Seconds */
       final_reply_wait_seconds: number;
+      /**
+       * Inherited
+       * @description Fields not set for this member. Their values above are the team defaults, and a change to those defaults reaches this member.
+       */
+      inherited: components["schemas"]["CheckInPreferenceField"][];
+      defaults: components["schemas"]["CheckinDefaultsResponse"];
     };
-    /** CheckinPreferenceUpdateRequest */
+    /**
+     * CheckinPreferenceUpdateRequest
+     * @description An admin's change to a member's check-in preference.
+     *
+     *     A field left out keeps what is stored. A field sent as ``null`` is cleared,
+     *     so the member follows the team default for it again.
+     */
     CheckinPreferenceUpdateRequest: {
       /** Local Time */
       local_time?: string | null;
@@ -2911,7 +2952,8 @@ export interface components {
      *     decide when a missed check-in reaches the scrum master and manager. The
      *     check-in time is left out because check-ins go out at one tenant-wide time,
      *     so a personal time would change nothing. A request carrying any other field
-     *     is rejected, never silently ignored.
+     *     is rejected, never silently ignored. A field sent as ``null`` goes back to
+     *     the team default.
      */
     SelfCheckinPreferenceUpdateRequest: {
       /** Timezone */
