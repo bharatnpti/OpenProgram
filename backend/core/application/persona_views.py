@@ -552,10 +552,32 @@ class PersonaViewService:
             raise GraphNotFound(f"pod {pod_id} not found for tenant {tenant_id}")
         return tree
 
+    async def _project_tree(self, tenant_id: str, project_id: str, as_of: date) -> GraphTree:
+        """The subtree under a project, or GraphNotFound if `project_id` is not a project.
+
+        The tree walk starts from any node, so without this a pod or program
+        id would return progress for everyone beneath it instead of just the project.
+        """
+        tree = await self._graph_repository.get_program_tree(tenant_id, project_id, as_of)
+        if tree.root.kind is not NodeKind.PROJECT:
+            raise GraphNotFound(f"project {project_id} not found for tenant {tenant_id}")
+        return tree
+
+    async def _workstream_tree(self, tenant_id: str, workstream_id: str, as_of: date) -> GraphTree:
+        """The subtree under a workstream, or GraphNotFound if `workstream_id` is not a workstream.
+
+        The tree walk starts from any node, so without this a pod or project
+        id would return progress for everyone beneath it instead of just the workstream.
+        """
+        tree = await self._graph_repository.get_program_tree(tenant_id, workstream_id, as_of)
+        if tree.root.kind is not NodeKind.WORKSTREAM:
+            raise GraphNotFound(f"workstream {workstream_id} not found for tenant {tenant_id}")
+        return tree
+
     async def project_progress(
         self, tenant_id: str, project_id: str, as_of: date
     ) -> ProjectProgressView:
-        tree = await self._graph_repository.get_program_tree(tenant_id, project_id, as_of)
+        tree = await self._project_tree(tenant_id, project_id, as_of)
         statuses = await self._node_statuses_for_tree(tree, as_of)
         root_status = statuses.get((tree.root.kind, tree.root.id))
         tasks = tuple(
@@ -587,7 +609,7 @@ class PersonaViewService:
         workstream_id: str,
         as_of: date,
     ) -> WorkstreamProgressView:
-        tree = await self._graph_repository.get_program_tree(tenant_id, workstream_id, as_of)
+        tree = await self._workstream_tree(tenant_id, workstream_id, as_of)
         statuses = await self._node_statuses_for_tree(tree, as_of)
         root_status = statuses.get((tree.root.kind, tree.root.id))
         tasks = tuple(

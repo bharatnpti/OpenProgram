@@ -149,7 +149,10 @@ async def project_progress(
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
 ) -> ProjectProgressResponse:
     _ensure(principal, Capability.READ_PROJECT_PROGRESS)
-    view = await persona_service.project_progress(principal.tenant_id, project_id, as_of)
+    try:
+        view = await persona_service.project_progress(principal.tenant_id, project_id, as_of)
+    except GraphNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return ProjectProgressResponse.from_view(view)
 
 
@@ -161,7 +164,10 @@ async def workstream_progress(
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
 ) -> WorkstreamProgressResponse:
     _ensure(principal, Capability.READ_PROJECT_PROGRESS)
-    view = await persona_service.workstream_progress(principal.tenant_id, workstream_id, as_of)
+    try:
+        view = await persona_service.workstream_progress(principal.tenant_id, workstream_id, as_of)
+    except GraphNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return WorkstreamProgressResponse.from_view(view)
 
 
