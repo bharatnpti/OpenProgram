@@ -62,7 +62,7 @@ from core.domain.errors import (
 )
 from core.domain.graph import GraphNode, JsonScalar, NodeKind
 from core.domain.identity import IdentityLink
-from core.domain.status import CheckInPreference
+from core.domain.status import CheckInPreference, effective_checkin_preference
 
 router = APIRouter(tags=["config"])
 
@@ -912,9 +912,7 @@ async def get_config_member_checkin_preference(
         preference = await service.get_checkin_preference(principal.tenant_id, member_id)
     except GraphNotFound as exc:
         raise _http_error(exc) from exc
-    return CheckinPreferenceResponse.from_domain(
-        preference or _default_preference(principal.tenant_id, member_id, settings)
-    )
+    return _preference_response(principal.tenant_id, member_id, preference, settings)
 
 
 @router.put(
@@ -931,14 +929,17 @@ async def update_config_member_checkin_preference(
     _ensure(principal, Capability.MANAGE_CONFIG)
     try:
         existing = await service.get_checkin_preference(principal.tenant_id, member_id)
+        # Start from what is stored for the member, never from the defaults:
+        # copying the defaults in would stop later changes to them reaching
+        # this member.
         preference = _merge_preference(
             request,
-            existing or _default_preference(principal.tenant_id, member_id, settings),
+            existing or _unset_preference(principal.tenant_id, member_id),
         )
         updated = await service.record_checkin_preference(preference)
     except (ConfigValidationError, GraphNotFound) as exc:
         raise _http_error(exc) from exc
-    return CheckinPreferenceResponse.from_domain(updated)
+    return _preference_response(principal.tenant_id, member_id, updated, settings)
 
 
 @router.get("/config/checkin-preferences", response_model=list[CheckinPreferenceResponse])
@@ -954,10 +955,7 @@ async def list_config_checkin_preferences(
         for preference in await service.list_checkin_preferences(principal.tenant_id)
     }
     return [
-        CheckinPreferenceResponse.from_domain(
-            preferences.get(member.id)
-            or _default_preference(principal.tenant_id, member.id, settings)
-        )
+        _preference_response(principal.tenant_id, member.id, preferences.get(member.id), settings)
         for member in members
     ]
 
@@ -970,7 +968,6 @@ async def get_config_member_writeback_consent(
     member_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ConfigService, Depends(get_config_service)],
-    settings: Annotated[Settings, Depends(get_settings_from_request)],
 ) -> WritebackConsentResponse:
     _ensure(principal, Capability.MANAGE_CONFIG)
     try:
@@ -978,7 +975,7 @@ async def get_config_member_writeback_consent(
     except GraphNotFound as exc:
         raise _http_error(exc) from exc
     return WritebackConsentResponse.from_domain(
-        preference or _default_preference(principal.tenant_id, member_id, settings)
+        preference or _unset_preference(principal.tenant_id, member_id)
     )
 
 
@@ -991,12 +988,13 @@ async def update_config_member_writeback_consent(
     request: WritebackConsentUpdateRequest,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ConfigService, Depends(get_config_service)],
-    settings: Annotated[Settings, Depends(get_settings_from_request)],
 ) -> WritebackConsentResponse:
     _ensure(principal, Capability.MANAGE_CONFIG)
     try:
         existing = await service.get_checkin_preference(principal.tenant_id, member_id)
-        base = existing or _default_preference(principal.tenant_id, member_id, settings)
+        # Only the consent is set here; the schedule fields keep following the
+        # team defaults unless they were set for this member.
+        base = existing or _unset_preference(principal.tenant_id, member_id)
         preference = replace(base, write_back_consent=request.consent)
         updated = await service.record_checkin_preference(preference)
     except (ConfigValidationError, GraphNotFound) as exc:
@@ -1384,17 +1382,19 @@ def _work_item_metadata(
     return merged
 
 
-def _default_preference(
+def _unset_preference(tenant_id: str, member_id: str) -> CheckInPreference:
+    """A member with nothing set: every schedule field follows the team default."""
+    return CheckInPreference(tenant_id=tenant_id, developer_id=member_id)
+
+
+def _preference_response(
     tenant_id: str,
     member_id: str,
+    preference: CheckInPreference | None,
     settings: Settings,
-) -> CheckInPreference:
-    return CheckInPreference(
-        tenant_id=tenant_id,
-        developer_id=member_id,
-        timezone=settings.tenant_default_timezone,
-        reply_wait_seconds=settings.checkin_reply_wait_seconds,
-        final_reply_wait_seconds=settings.checkin_final_reply_wait_seconds,
+) -> CheckinPreferenceResponse:
+    return CheckinPreferenceResponse.from_domain(
+        effective_checkin_preference(tenant_id, member_id, preference, settings.checkin_defaults())
     )
 
 
@@ -1402,32 +1402,32 @@ def _merge_preference(
     request: CheckinPreferenceUpdateRequest,
     existing: CheckInPreference,
 ) -> CheckInPreference:
+    """Apply an admin's change to what is stored for a member.
+
+    A field sent replaces the stored value, a field sent as ``null`` is cleared
+    so the member follows the team default again, and a field left out keeps
+    what is stored -- so a save with no changes rewrites nothing.
+    """
     fields = request.model_fields_set
-    return CheckInPreference(
-        tenant_id=existing.tenant_id,
-        developer_id=existing.developer_id,
-        local_time=(
-            request.local_time
-            if "local_time" in fields and request.local_time is not None
-            else existing.local_time
-        ),
+    return replace(
+        existing,
+        local_time=request.local_time if "local_time" in fields else existing.local_time,
         timezone=request.timezone if "timezone" in fields else existing.timezone,
         weekdays=(
-            tuple(request.weekdays)
-            if "weekdays" in fields and request.weekdays is not None
+            (tuple(request.weekdays) if request.weekdays is not None else None)
+            if "weekdays" in fields
             else existing.weekdays
         ),
         reply_wait_seconds=(
             request.reply_wait_seconds
-            if "reply_wait_seconds" in fields and request.reply_wait_seconds is not None
+            if "reply_wait_seconds" in fields
             else existing.reply_wait_seconds
         ),
         final_reply_wait_seconds=(
             request.final_reply_wait_seconds
-            if "final_reply_wait_seconds" in fields and request.final_reply_wait_seconds is not None
+            if "final_reply_wait_seconds" in fields
             else existing.final_reply_wait_seconds
         ),
-        write_back_consent=existing.write_back_consent,
     )
 
 

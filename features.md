@@ -96,7 +96,8 @@ Functional requirements:
 - The system shall reject a negative reply window, or one too large to store.
 - Admins shall be able to record a member's local check-in time. The scheduler does not use it: check-ins are sent on the single tenant-wide schedule.
 - A changed preference shall apply from the member's next check-in, never to one already sent.
-- The system shall fall back to tenant-level defaults when a member-specific preference does not exist.
+- A member shall follow the team default for any field not set for them: check-in days, time zone, and reply windows. Only values set for the member shall be stored, so a later change to a default reaches everyone who hasn't set that field.
+- The admin screen shall show which of a member's values are the team default and which were set for them, and let an admin put a field back to the team default. A member shall be able to go back to the team's time zone from their own schedule.
 
 ### 4.4 Daily Status Collector
 
