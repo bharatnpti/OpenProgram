@@ -32,8 +32,28 @@ def test_portfolio_cross_person_requests_visible_to_aggregate_roles(settings: Se
     assert request["id"] == "xreq-1"
     assert request["status"] == "open"
     assert request["counterpart_email"] == "alice@example.com"
+    assert request["delivery"] == "sent"
     assert "notify_message_id" not in request
     assert "notify_correlation_id" not in request
+    assert "notify_attempts" not in request
+
+
+def test_raised_requests_say_when_the_counterpart_dm_was_not_delivered(
+    settings: Settings,
+) -> None:
+    """A requester whose ask never reached the other person needs to know."""
+    store = InMemoryGraphStore()
+    asyncio.run(_seed_undelivered_request(store, request_id="xreq-gave-up", next_attempt=False))
+    asyncio.run(_seed_undelivered_request(store, request_id="xreq-retrying", next_attempt=True))
+    app = _app_for_role(settings, "dev", "dev-1", store)
+
+    with TestClient(app) as client:
+        raised = client.get("/me/cross-person-requests?relation=raised").json()
+
+    assert {request["id"]: request["delivery"] for request in raised["requests"]} == {
+        "xreq-gave-up": "not_delivered",
+        "xreq-retrying": "retrying",
+    }
 
 
 def test_portfolio_cross_person_requests_without_status_returns_every_active(
@@ -145,6 +165,34 @@ def _app_for_role(
     )
     registry = ServiceRegistry(role_settings, graph_store=store)
     return create_app(settings=role_settings, registry=registry)
+
+
+async def _seed_undelivered_request(
+    store: InMemoryGraphStore,
+    *,
+    request_id: str,
+    next_attempt: bool,
+) -> None:
+    attempted_at = datetime(2026, 1, 10, 9, 10, tzinfo=UTC)
+    await store.create(
+        CrossPersonRequest(
+            tenant_id="demo",
+            id=request_id,
+            requester_id="dev-1",
+            requester_chat_ref="U-dev",
+            counterpart_id="U-alice",
+            kind=CrossPersonRequestKind.REVIEW,
+            note="API schema review",
+            source_correlation_id="corr-1",
+            status=CrossPersonRequestStatus.OPEN,
+            created_at=attempted_at,
+            updated_at=attempted_at,
+            counterpart_display_name="Alice Chen",
+            notify_attempts=5 if not next_attempt else 2,
+            notify_last_attempt_at=attempted_at,
+            notify_next_attempt_at=attempted_at if next_attempt else None,
+        )
+    )
 
 
 async def _seed_request(

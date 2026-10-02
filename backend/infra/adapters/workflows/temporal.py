@@ -19,6 +19,9 @@ from core.domain.workflows import (
     ConversationPurgeInput,
     ConversationPurgeResult,
     ConversationPurgeScheduleConfig,
+    CrossPersonNotifyRetryInput,
+    CrossPersonNotifyRetryResult,
+    CrossPersonNotifyRetryScheduleConfig,
     DeveloperCheckinDispatch,
     DirectorySyncInput,
     DirectorySyncResult,
@@ -39,6 +42,7 @@ from infra.workflows import (
     calendar_sync,
     checkin_fanout,
     conversation_purge,
+    cross_person_notify_retry,
     daily_checkin,
     directory_sync,
     drift_scan,
@@ -511,6 +515,30 @@ class ScheduledInboundSweeperWorkflow:
         )
 
 
+@activity.defn
+async def retry_cross_person_notifications_activity(
+    payload: CrossPersonNotifyRetryInput,
+) -> CrossPersonNotifyRetryResult:
+    return await cross_person_notify_retry.retry_cross_person_notifications_activity(payload)
+
+
+@workflow.defn
+class ScheduledCrossPersonNotifyRetryWorkflow:
+    @workflow.run
+    async def run(
+        self, config: CrossPersonNotifyRetryScheduleConfig
+    ) -> CrossPersonNotifyRetryResult:
+        # A retried activity is safe: each DM is claimed before it is sent.
+        return await workflow.execute_activity(
+            retry_cross_person_notifications_activity,
+            CrossPersonNotifyRetryInput(
+                tenant_id=config.tenant_id,
+                now=workflow.now().isoformat(),
+            ),
+            start_to_close_timeout=timedelta(minutes=5),
+        )
+
+
 async def _execute_sync_activity(
     payload: JiraSyncInput
     | GitSyncInput
@@ -717,6 +745,31 @@ class TemporalWorkflowScheduler:
         status = await _ensure_temporal_schedule(client, config.schedule_id, schedule)
         return ScheduleBootstrapResult(schedule_id=config.schedule_id, status=status)
 
+    async def ensure_cross_person_notify_retry_schedule(
+        self, config: CrossPersonNotifyRetryScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        from temporalio.client import (
+            Schedule,
+            ScheduleActionStartWorkflow,
+            ScheduleOverlapPolicy,
+            SchedulePolicy,
+            ScheduleSpec,
+        )
+
+        client = await _connect_temporal(self.target)
+        schedule = Schedule(
+            action=ScheduleActionStartWorkflow(
+                ScheduledCrossPersonNotifyRetryWorkflow.run,
+                config,
+                id=f"{config.schedule_id}-workflow",
+                task_queue=self.task_queue,
+            ),
+            spec=ScheduleSpec(cron_expressions=[config.cron]),
+            policy=SchedulePolicy(overlap=ScheduleOverlapPolicy.SKIP),
+        )
+        status = await _ensure_temporal_schedule(client, config.schedule_id, schedule)
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status=status)
+
     async def ensure_sync_schedules(
         self, configs: Sequence[SyncScheduleConfig]
     ) -> list[ScheduleBootstrapResult]:
@@ -885,6 +938,7 @@ class TemporalWorkflowWorker:
                 NudgeWorkflow,
                 ReplyCoalesceWorkflow,
                 ScheduledInboundSweeperWorkflow,
+                ScheduledCrossPersonNotifyRetryWorkflow,
             ],
             activities=[
                 record_heartbeat_activity,
@@ -906,6 +960,7 @@ class TemporalWorkflowWorker:
                 close_checkin_non_response_activity,
                 drain_inbound_conversation_activity,
                 sweep_inbound_events_activity,
+                retry_cross_person_notifications_activity,
             ],
         )
         await worker.run()

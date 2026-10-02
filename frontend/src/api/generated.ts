@@ -2019,6 +2019,12 @@ export interface components {
         [key: string]: string | number | boolean | null;
       } | null;
     };
+    /**
+     * CrossPersonDelivery
+     * @description Whether the counterpart has been sent the DM about a request.
+     * @enum {string}
+     */
+    CrossPersonDelivery: "sent" | "retrying" | "not_delivered";
     /** CrossPersonRequestResponse */
     CrossPersonRequestResponse: {
       /** Id */
@@ -2050,6 +2056,7 @@ export interface components {
        * Format: date-time
        */
       updated_at: string;
+      delivery: components["schemas"]["CrossPersonDelivery"] | null;
     };
     /**
      * CrossPersonRequestStatus

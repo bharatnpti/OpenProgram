@@ -49,7 +49,11 @@ from core.application.persona_views import (
 )
 from core.application.portfolio_feed_service import PortfolioFeedItemView, PortfolioFeedView
 from core.domain.brief import BriefKind, NarrativeBrief
-from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
+from core.domain.cross_person import (
+    CrossPersonDelivery,
+    CrossPersonRequest,
+    CrossPersonRequestStatus,
+)
 from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.directory import DirectoryUser
 from core.domain.escalation import EscalationContact, PodEscalationContacts
@@ -1567,6 +1571,10 @@ class CrossPersonRequestResponse(BaseModel):
     source_correlation_id: str
     created_at: datetime
     updated_at: datetime
+    # Whether the counterpart was sent the DM: sent, retrying after a failed
+    # send, or not_delivered once the attempts ran out. Null when no DM was
+    # attempted (unmatched, asked of oneself, or notification off).
+    delivery: CrossPersonDelivery | None
 
     @classmethod
     def from_domain(cls, request: CrossPersonRequest) -> CrossPersonRequestResponse:
@@ -1583,6 +1591,7 @@ class CrossPersonRequestResponse(BaseModel):
             source_correlation_id=request.source_correlation_id,
             created_at=request.created_at,
             updated_at=request.updated_at,
+            delivery=request.delivery,
         )
 
 

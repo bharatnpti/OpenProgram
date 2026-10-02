@@ -18,6 +18,7 @@ def test_sync_services_loads_without_structlog_or_rich() -> None:
         "import infra.workflows.jira_sync\n"
         "import infra.workflows.git_sync\n"
         "import infra.workflows.calendar_sync\n"
+        "import infra.workflows.cross_person_notify_retry\n"
         "loaded = sorted(name for name in ('structlog', 'rich') if name in sys.modules)\n"
         "print(','.join(loaded))\n"
     )

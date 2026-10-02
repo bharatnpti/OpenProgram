@@ -22,6 +22,9 @@ from core.domain.workflows import (
     ConversationPurgeInput,
     ConversationPurgeResult,
     ConversationPurgeScheduleConfig,
+    CrossPersonNotifyRetryInput,
+    CrossPersonNotifyRetryResult,
+    CrossPersonNotifyRetryScheduleConfig,
     DeveloperCheckinDispatch,
     DirectorySyncInput,
     DirectorySyncResult,
@@ -42,6 +45,7 @@ from infra.workflows import (
     calendar_sync,
     checkin_fanout,
     conversation_purge,
+    cross_person_notify_retry,
     daily_checkin,
     directory_sync,
     drift_scan,
@@ -547,6 +551,27 @@ async def dbos_scheduled_inbound_events_sweeper_workflow(
     )
 
 
+@DBOS.step(name="openprogram_retry_cross_person_notifications", retries_allowed=True)
+async def dbos_retry_cross_person_notifications_step(
+    payload: CrossPersonNotifyRetryInput,
+) -> CrossPersonNotifyRetryResult:
+    # A retried step is safe: each DM is claimed before it is sent.
+    return await cross_person_notify_retry.retry_cross_person_notifications_activity(payload)
+
+
+@DBOS.workflow(name="openprogram_scheduled_cross_person_notify_retry")
+async def dbos_scheduled_cross_person_notify_retry_workflow(
+    scheduled_time: datetime,
+    context: dict[str, str],
+) -> CrossPersonNotifyRetryResult:
+    return await dbos_retry_cross_person_notifications_step(
+        CrossPersonNotifyRetryInput(
+            tenant_id=context["tenant_id"],
+            now=scheduled_time.isoformat(),
+        )
+    )
+
+
 async def _run_sync_dispatch(
     input: SyncDispatchInput,
 ) -> SyncWorkflowResult:
@@ -689,6 +714,22 @@ class DbosWorkflowScheduler:
         )
         try:
             DBOS.apply_schedules([_inbound_events_sweeper_schedule_input(config)])
+        finally:
+            if started_runtime:
+                destroy_dbos_runtime()
+        return ScheduleBootstrapResult(schedule_id=config.schedule_id, status="configured")
+
+    async def ensure_cross_person_notify_retry_schedule(
+        self, config: CrossPersonNotifyRetryScheduleConfig
+    ) -> ScheduleBootstrapResult:
+        started_runtime = _ensure_dbos_runtime(
+            DbosRuntimeConfig(
+                app_name=self.app_name,
+                system_database_url=self.system_database_url,
+            )
+        )
+        try:
+            DBOS.apply_schedules([_cross_person_notify_retry_schedule_input(config)])
         finally:
             if started_runtime:
                 destroy_dbos_runtime()
@@ -902,6 +943,23 @@ def _inbound_events_sweeper_schedule_input(
             "schedule_id": config.schedule_id,
             "tenant_id": config.tenant_id,
             "grace_seconds": str(config.grace_seconds),
+        },
+        "automatic_backfill": False,
+    }
+
+
+def _cross_person_notify_retry_schedule_input(
+    config: CrossPersonNotifyRetryScheduleConfig,
+) -> ScheduleInput:
+    # No backfill: a missed pass is caught up by the next one, which picks up
+    # every attempt that has come due in the meantime.
+    return {
+        "schedule_name": config.schedule_id,
+        "workflow_fn": cast(Any, dbos_scheduled_cross_person_notify_retry_workflow),
+        "schedule": config.cron,
+        "context": {
+            "schedule_id": config.schedule_id,
+            "tenant_id": config.tenant_id,
         },
         "automatic_backfill": False,
     }

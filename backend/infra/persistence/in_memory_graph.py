@@ -283,26 +283,7 @@ class InMemoryGraphStore:
         existing = await self.get(tenant_id, request_id)
         if existing is None:
             return None
-        updated = CrossPersonRequest(
-            tenant_id=existing.tenant_id,
-            id=existing.id,
-            requester_id=existing.requester_id,
-            requester_chat_ref=existing.requester_chat_ref,
-            counterpart_id=existing.counterpart_id,
-            kind=existing.kind,
-            note=existing.note,
-            source_correlation_id=existing.source_correlation_id,
-            status=status,
-            created_at=existing.created_at,
-            updated_at=updated_at,
-            task_ref=existing.task_ref,
-            raw_name=existing.raw_name,
-            email=existing.email,
-            counterpart_display_name=existing.counterpart_display_name,
-            counterpart_email=existing.counterpart_email,
-            notify_message_id=existing.notify_message_id,
-            notify_correlation_id=existing.notify_correlation_id,
-        )
+        updated = replace(existing, status=status, updated_at=updated_at)
         self._cross_person_requests[(tenant_id, request_id)] = updated
         return updated
 
@@ -318,28 +299,67 @@ class InMemoryGraphStore:
         existing = await self.get(tenant_id, request_id)
         if existing is None:
             return None
-        updated = CrossPersonRequest(
-            tenant_id=existing.tenant_id,
-            id=existing.id,
-            requester_id=existing.requester_id,
-            requester_chat_ref=existing.requester_chat_ref,
-            counterpart_id=existing.counterpart_id,
-            kind=existing.kind,
-            note=existing.note,
-            source_correlation_id=existing.source_correlation_id,
-            status=existing.status,
-            created_at=existing.created_at,
+        updated = replace(
+            existing,
             updated_at=updated_at,
-            task_ref=existing.task_ref,
-            raw_name=existing.raw_name,
-            email=existing.email,
-            counterpart_display_name=existing.counterpart_display_name,
-            counterpart_email=existing.counterpart_email,
             notify_message_id=notify_message_id,
             notify_correlation_id=notify_correlation_id,
+            notify_next_attempt_at=None,
         )
         self._cross_person_requests[(tenant_id, request_id)] = updated
         return updated
+
+    async def claim_notification_attempt(
+        self,
+        tenant_id: str,
+        request_id: str,
+        *,
+        expected_attempts: int,
+        attempted_at: datetime,
+        next_attempt_at: datetime | None,
+    ) -> CrossPersonRequest | None:
+        # Read, check and write with no await in between, so two coroutines
+        # racing for the same attempt cannot both win it.
+        key = (tenant_id, request_id)
+        existing = self._cross_person_requests.get(key)
+        if (
+            existing is None
+            or existing.status is not CrossPersonRequestStatus.OPEN
+            or existing.counterpart_id is None
+            or existing.notified
+            or existing.notify_attempts != expected_attempts
+        ):
+            return None
+        claimed = replace(
+            existing,
+            notify_attempts=expected_attempts + 1,
+            notify_last_attempt_at=attempted_at,
+            notify_next_attempt_at=next_attempt_at,
+        )
+        self._cross_person_requests[key] = claimed
+        return claimed
+
+    async def list_notification_retries_due(
+        self,
+        tenant_id: str,
+        *,
+        due_at: datetime,
+        max_attempts: int,
+        limit: int,
+    ) -> list[CrossPersonRequest]:
+        due = [
+            request
+            for request in self._cross_person_requests.values()
+            if request.tenant_id == tenant_id
+            and request.status is CrossPersonRequestStatus.OPEN
+            and request.counterpart_id is not None
+            and not request.notified
+            and 0 < request.notify_attempts < max_attempts
+            and request.notify_next_attempt_at is not None
+            and request.notify_next_attempt_at <= due_at
+        ]
+        due.sort(key=lambda request: (request.notify_next_attempt_at or due_at, request.id))
+        return due[: max(0, limit)]
 
     async def list_for_counterpart(
         self,

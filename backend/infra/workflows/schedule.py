@@ -7,6 +7,7 @@ from core.domain.workflows import (
     CheckinReconcileScheduleConfig,
     CheckinScheduleConfig,
     ConversationPurgeScheduleConfig,
+    CrossPersonNotifyRetryScheduleConfig,
     InboundSweeperScheduleConfig,
     ScheduleBootstrapResult,
     SyncScheduleConfig,
@@ -48,6 +49,13 @@ async def ensure_workflow_schedules(
         results.append(
             await scheduler.ensure_inbound_sweeper_schedule(inbound_sweeper_config(settings))
         )
+    if settings.cross_person_notify_retry_enabled and settings.cross_person_auto_notify:
+        # Nothing to retry while counterpart DMs are off, so no schedule either.
+        results.append(
+            await scheduler.ensure_cross_person_notify_retry_schedule(
+                cross_person_notify_retry_config(settings)
+            )
+        )
     sync_configs = sync_schedule_configs(settings)
     if settings.narrative_brief_enabled:
         sync_configs = (*sync_configs, *narrative_brief_schedule_configs(settings))
@@ -88,6 +96,14 @@ def inbound_sweeper_config(settings: Settings) -> InboundSweeperScheduleConfig:
         tenant_id=settings.tenant_id,
         cron=settings.inbound_events_sweeper_cron,
         grace_seconds=settings.inbound_events_grace_seconds,
+    )
+
+
+def cross_person_notify_retry_config(settings: Settings) -> CrossPersonNotifyRetryScheduleConfig:
+    return CrossPersonNotifyRetryScheduleConfig(
+        schedule_id=settings.cross_person_notify_retry_schedule_id,
+        tenant_id=settings.tenant_id,
+        cron=settings.cross_person_notify_retry_cron,
     )
 
 
