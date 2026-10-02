@@ -121,10 +121,20 @@ def build_chat_provider(
     )
 
 
-def build_directory_provider(settings: Settings) -> DirectoryProvider:
+def effective_directory_provider(settings: Settings) -> str:
+    """The directory provider ``build_directory_provider`` actually builds."""
     if settings.directory_provider == "mock_slack":
-        return MockSlackDirectoryProvider()
+        return "mock_slack"
     if settings.runtime_mode == "memory" or settings.directory_provider == "fake":
+        return "fake"
+    return "slack"
+
+
+def build_directory_provider(settings: Settings) -> DirectoryProvider:
+    provider = effective_directory_provider(settings)
+    if provider == "mock_slack":
+        return MockSlackDirectoryProvider()
+    if provider == "fake":
         return FakeDirectoryProvider()
     return SlackDirectoryProvider(http_client=_slack_http_client(settings))
 

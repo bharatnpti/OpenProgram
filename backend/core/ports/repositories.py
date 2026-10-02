@@ -21,7 +21,7 @@ from core.domain.graph import (
 )
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
-from core.domain.integrations import SyncCursor
+from core.domain.integrations import SyncCursor, SyncCursorRecord
 from core.domain.rollup import NodeStatus
 from core.domain.status import (
     CheckIn,
@@ -345,6 +345,10 @@ class SyncCursorRepository(Protocol):
     async def record_cursor(
         self, tenant_id: str, connector: str, scope: str, cursor: SyncCursor
     ) -> None: ...
+
+    async def list_cursors(self, tenant_id: str) -> list[SyncCursorRecord]:
+        """Every stored cursor for a tenant, ordered by connector then scope."""
+        ...
 
 
 class IdentityLinkRepository(Protocol):

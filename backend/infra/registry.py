@@ -25,10 +25,12 @@ from core.application.sync_services import (
     IssueReadSyncService,
     VcsReadSyncService,
 )
+from core.application.sync_status_service import SyncStatusService
 from core.application.writeback_service import WriteBackService
 from core.domain.errors import ProviderUnavailable
 from core.domain.inbound import InboundChatEvent, conversation_key
 from core.domain.messaging import InboundMessage
+from core.domain.sync_status import SyncStatusConfig
 from core.domain.workflows import InboundSweeperResult
 from core.ports.auth import (
     AuthCallbackResult,
@@ -99,6 +101,7 @@ from infra.persistence.postgres_status import (
     PostgresSyncCursorRepository,
 )
 from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
+from infra.workflows.runtime_sync import legacy_issue_dispatches, legacy_vcs_dispatches
 
 _CHAT_SIMULATOR_PROVIDER = "mock_slack"
 # Upper bound on any one readiness probe, so a hung dependency cannot stall /ready.
@@ -817,6 +820,27 @@ class ServiceRegistry:
         return DirectorySyncService(
             provider=self.directory_provider(),
             repository=self.directory_user_repository(),
+            cursor_repository=self.sync_cursor_repository(),
+        )
+
+    def sync_status_service(self) -> SyncStatusService:
+        settings = self.settings
+        return SyncStatusService(
+            graph_repository=self.graph_repository(),
+            cursor_repository=self.sync_cursor_repository(),
+            time_series_repository=self.time_series_repository(),
+            config=SyncStatusConfig(
+                issue_tracker_provider=settings.issue_tracker_provider,
+                vcs_provider=settings.vcs_provider,
+                calendar_provider=settings.calendar_provider,
+                directory_provider=catalog.effective_directory_provider(settings),
+                issue_sync_cron=settings.jira_sync_cron,
+                vcs_sync_cron=settings.github_sync_cron,
+                directory_sync_cron=settings.directory_sync_cron,
+                legacy_issue_targets=legacy_issue_dispatches(settings, settings.tenant_id),
+                legacy_vcs_targets=legacy_vcs_dispatches(settings, settings.tenant_id),
+                simulated_providers=frozenset({"fake", _CHAT_SIMULATOR_PROVIDER}),
+            ),
         )
 
     def cross_person_request_service(self) -> CrossPersonRequestService:

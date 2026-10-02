@@ -28,7 +28,7 @@ from core.domain.graph import (
 )
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
-from core.domain.integrations import SyncCursor
+from core.domain.integrations import SyncCursor, SyncCursorRecord
 from core.domain.rollup import NodeStatus
 from core.domain.status import (
     CheckIn,
@@ -962,6 +962,15 @@ class InMemoryGraphStore:
         self, tenant_id: str, connector: str, scope: str, cursor: SyncCursor
     ) -> None:
         self._sync_cursors[(tenant_id, connector, scope)] = cursor
+
+    async def list_cursors(self, tenant_id: str) -> list[SyncCursorRecord]:
+        return [
+            SyncCursorRecord(connector=connector, scope=scope, cursor=cursor)
+            for (cursor_tenant, connector, scope), cursor in sorted(
+                self._sync_cursors.items(), key=lambda item: item[0]
+            )
+            if cursor_tenant == tenant_id
+        ]
 
     async def append_turn(self, turn: ConversationTurn) -> None:
         self._conversation_turns.append(

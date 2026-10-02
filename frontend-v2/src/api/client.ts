@@ -65,6 +65,7 @@ import type {
   WorkstreamFlowResponse,
   WorkstreamProgressResponse,
   WorkflowDispatchResponse,
+  SyncStatusResponse,
 } from "./schema";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -267,6 +268,7 @@ export const apiClient = {
       method: "POST",
       body: input,
     }),
+  syncStatus: () => requestJson<SyncStatusResponse>("/admin/ops/sync-status"),
   chatSimulatorStatus: () =>
     requestJson<ChatSimulatorStatusResponse>("/test/chat-simulator/status"),
   chatSimulatorMessages: (userId?: string) =>

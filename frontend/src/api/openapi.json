@@ -565,6 +565,54 @@
         }
       }
     },
+    "/admin/ops/sync-status": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Get Sync Status",
+        "description": "Per-source sync health: configured targets, last success, last failure.\n\nRead-only and built from recorded runs; it never calls a provider.",
+        "operationId": "get_sync_status_admin_ops_sync_status_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/admin/ops/dead-letters/{dead_letter_id}/rearm": {
       "post": {
         "tags": ["admin"],
@@ -10714,6 +10762,259 @@
         "type": "string",
         "enum": ["confirmed", "partial", "inferred", "stale", "unknown"],
         "title": "StatusSource"
+      },
+      "SyncHealth": {
+        "type": "string",
+        "enum": ["healthy", "stale", "failing", "never_synced", "not_configured", "disabled"],
+        "title": "SyncHealth",
+        "description": "How much a reader can trust the data a source feeds in.\n\n``DISABLED`` is a source that by design is not synced (the calendar is read\nlive). ``NOT_CONFIGURED`` has no recurring target, so nothing will refresh\nit. Neither is ever reported as healthy."
+      },
+      "SyncOutcome": {
+        "type": "string",
+        "enum": ["succeeded", "failed"],
+        "title": "SyncOutcome"
+      },
+      "SyncSource": {
+        "type": "string",
+        "enum": ["issue_tracker", "vcs", "calendar", "directory"],
+        "title": "SyncSource"
+      },
+      "SyncSourceStatusResponse": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/SyncSource"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "simulated": {
+            "type": "boolean",
+            "title": "Simulated"
+          },
+          "sync_enabled": {
+            "type": "boolean",
+            "title": "Sync Enabled"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule"
+          },
+          "stale_after_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale After Minutes"
+          },
+          "target_origin": {
+            "$ref": "#/components/schemas/SyncTargetOrigin"
+          },
+          "health": {
+            "$ref": "#/components/schemas/SyncHealth"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "newest_item_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newest Item At"
+          },
+          "config_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Error"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/SyncTargetStatusResponse"
+            },
+            "type": "array",
+            "title": "Targets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "provider",
+          "simulated",
+          "sync_enabled",
+          "target_origin",
+          "health",
+          "targets"
+        ],
+        "title": "SyncSourceStatusResponse"
+      },
+      "SyncStatusResponse": {
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SyncSourceStatusResponse"
+            },
+            "type": "array",
+            "title": "Sources"
+          }
+        },
+        "type": "object",
+        "required": ["generated_at", "sources"],
+        "title": "SyncStatusResponse"
+      },
+      "SyncTargetOrigin": {
+        "type": "string",
+        "enum": ["runtime_config", "environment", "workspace", "none"],
+        "title": "SyncTargetOrigin",
+        "description": "Where a source's recurring targets come from."
+      },
+      "SyncTargetStatusResponse": {
+        "properties": {
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "health": {
+            "$ref": "#/components/schemas/SyncHealth"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "last_outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SyncOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "items_synced": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items Synced"
+          }
+        },
+        "type": "object",
+        "required": ["scope", "label", "configured", "health"],
+        "title": "SyncTargetStatusResponse"
       },
       "TaskProgressDto": {
         "properties": {
