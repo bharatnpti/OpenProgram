@@ -1,0 +1,19 @@
+docs/ops/infrastructure-procurement.md
+  s_c8095495eaf879::t_dc31d0f79b0f8d 19,75,364
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d688e6a22e1ec3fc39e550bc2060f24d377cb245",
+  "prompts": {},
+  "sessions": {
+    "s_c8095495eaf879": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bb2e9460-efa2-4aa7-aac7-a35a97b9dca5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
