@@ -1,5 +1,7 @@
 frontend-v2/src/features/today/ManagerExecToday.tsx
   s_386bf853700fa5::t_e4c64b8fd0992d 9,86-101,107-117,137
+  s_db98bf649daf00::t_6e171c6ab7abdb 86-101,108-117,137
+  s_db98bf649daf00::t_59aab71e816a59 9,107
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -14,6 +16,14 @@ frontend-v2/src/features/today/ManagerExecToday.tsx
         "model": "claude-opus-5-5"
       },
       "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
     }
   }
 }
