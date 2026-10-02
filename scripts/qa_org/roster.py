@@ -23,6 +23,7 @@ The shape is deliberately enterprise-messy, because that is what the mocks hid:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from scripts.qa_org import env
@@ -113,6 +114,14 @@ class GitWork:
     commits: tuple[str, ...]  # one commit (adding one file) per message
     mr: str | None = "open"  # open | draft | merged | None: pushed, never opened
     to_main: bool = False  # committed straight to the default branch, no branch at all
+
+
+def git_branch(work: GitWork, jira_key: str) -> str:
+    """The branch a piece of work lives on: the Jira key, then a slug of the issue."""
+    if work.to_main:
+        return "main"
+    slug = re.sub(r"[^a-z0-9]+", "-", work.issue.lower()).strip("-")[:32].rstrip("-")
+    return f"{jira_key}-{slug}"
 
 
 def mail(tag: str) -> str:

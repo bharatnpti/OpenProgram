@@ -15,6 +15,17 @@ mocks hid shows up.
 
 Everything about the org is declared in [`scripts/qa_org/roster.py`](../../scripts/qa_org/roster.py).
 
+For the live details (URLs, every person's Slack, Jira and GitLab ids, the
+hierarchy, issue statuses, merge requests, schedule states), generate a private
+reference outside the repository:
+
+```bash
+uv run python -m scripts.qa_org.write_setup_doc
+```
+
+It writes `../openprogram-qa/QA-ORG.md`, a sibling of the checkout, because it
+names real addresses and workspace URLs. It never contains a token or password.
+
 ## The org
 
 11 people, 5 pods, 3 projects, 28 Jira issues plus epics. Shaped to hit the
