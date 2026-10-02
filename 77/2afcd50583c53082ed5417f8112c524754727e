@@ -1,7 +1,9 @@
 backend/core/application/status_collector.py
   s_386bf853700fa5::t_6d2c0e566d77f4 20,899-905,913,940,960-975,2542-2630
+  s_386bf853700fa5::t_ed8ab132316bbf 20,899-905,913,940,960-975,2542-2630
 backend/tests/unit/test_status_collector.py
   s_386bf853700fa5::t_9894aed1e4cf01 2312-2468
+  s_386bf853700fa5::t_720957d4305e51 2312-2468
 ---
 {
   "schema_version": "authorship/3.0.0",
