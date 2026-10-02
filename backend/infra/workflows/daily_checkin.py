@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from typing import TYPE_CHECKING
 
 from core.domain.escalation import EscalationTarget
 from core.domain.status import (
     CheckIn,
-    CheckInPreference,
     CheckInScheduleRun,
+    effective_checkin_preference,
     resolve_timezone,
 )
 from core.ports.repositories import StatusRepository
@@ -50,22 +50,15 @@ async def start_daily_checkin_activity(payload: DailyCheckinInput) -> DailyCheck
     try:
         repository = registry.status_repository()
         settings = registry.settings
-        preference = await repository.checkin_preference_for(
+        # Whatever isn't set for the member follows today's team defaults.
+        preference = effective_checkin_preference(
             payload.tenant_id,
             payload.developer_id,
-        )
-        preference = preference or CheckInPreference(
-            tenant_id=payload.tenant_id,
-            developer_id=payload.developer_id,
-            reply_wait_seconds=settings.checkin_reply_wait_seconds,
-            final_reply_wait_seconds=settings.checkin_final_reply_wait_seconds,
+            await repository.checkin_preference_for(payload.tenant_id, payload.developer_id),
+            settings.checkin_defaults(),
         )
         checkin_date = _checkin_date(payload, datetime.now(tz=UTC))
-        scheduled_at = _scheduled_at(
-            checkin_date,
-            preference,
-            preference.timezone or settings.tenant_default_timezone,
-        )
+        scheduled_at = _scheduled_at(checkin_date, preference.local_time, preference.timezone)
 
         existing_run = await repository.checkin_schedule_run(
             payload.tenant_id,
@@ -110,9 +103,6 @@ async def start_daily_checkin_activity(payload: DailyCheckinInput) -> DailyCheck
                 reply_wait_seconds=preference.reply_wait_seconds,
                 final_reply_wait_seconds=preference.final_reply_wait_seconds,
             )
-
-        timezone = preference.timezone or settings.tenant_default_timezone
-        scheduled_at = _scheduled_at(checkin_date, preference, timezone)
 
         existing = None
         if payload.correlation_id is not None:
@@ -294,14 +284,14 @@ def _checkin_date(payload: DailyCheckinInput, fallback: datetime) -> date:
     return (asked_at or fallback).date()
 
 
-def _scheduled_at(checkin_date: date, preference: CheckInPreference, timezone: str) -> datetime:
+def _scheduled_at(checkin_date: date, local_time: time, timezone: str) -> datetime:
     zone = resolve_timezone(timezone, "UTC")
-    local_dt = datetime.combine(checkin_date, preference.local_time, tzinfo=zone)
+    local_dt = datetime.combine(checkin_date, local_time, tzinfo=zone)
     # Spring-forward gap: the wall-clock time does not exist that day, so a
     # round-trip through UTC yields a different wall time. Advance to the first
     # valid instant after the transition instead of silently keeping fold=0.
     normalized = local_dt.astimezone(UTC).astimezone(zone)
-    if normalized.time() != preference.local_time:
+    if normalized.time() != local_time:
         local_dt = normalized
     return local_dt.astimezone(UTC)
 

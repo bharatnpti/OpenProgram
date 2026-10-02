@@ -125,14 +125,105 @@ class CheckInCorrelation:
 
 @dataclass(frozen=True, kw_only=True)
 class CheckInPreference:
+    """What has been set for one member's check-ins, and nothing more.
+
+    A ``None`` field was never set for this member, so it follows the team
+    default (``CheckInDefaults``) when it is read or dispatched. Storing only
+    what was set is what lets a later change to the defaults reach the member;
+    copying the defaults in on the first save froze them.
+    """
+
     tenant_id: str
     developer_id: str
-    local_time: time = time(9, 30)
+    local_time: time | None = None
     timezone: str | None = None
+    weekdays: tuple[int, ...] | None = None
+    reply_wait_seconds: int | None = None
+    final_reply_wait_seconds: int | None = None
+    write_back_consent: WriteBackConsent = WriteBackConsent.ALWAYS_ASK
+
+
+class CheckInPreferenceField(StrEnum):
+    """The preference fields a member can leave to the team default, in display order."""
+
+    LOCAL_TIME = "local_time"
+    TIMEZONE = "timezone"
+    WEEKDAYS = "weekdays"
+    REPLY_WAIT_SECONDS = "reply_wait_seconds"
+    FINAL_REPLY_WAIT_SECONDS = "final_reply_wait_seconds"
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckInDefaults:
+    """The team's check-in defaults: what a member follows for anything not set for them.
+
+    The values come from the deployment's settings; the domain keeps no
+    dependency on ``config.settings``, so callers pass them in.
+    """
+
+    local_time: time = time(9, 30)
+    timezone: str = "UTC"
     weekdays: tuple[int, ...] = (0, 1, 2, 3, 4)
     reply_wait_seconds: int = 14400
     final_reply_wait_seconds: int = 28800
-    write_back_consent: WriteBackConsent = WriteBackConsent.ALWAYS_ASK
+
+
+@dataclass(frozen=True, kw_only=True)
+class EffectiveCheckInPreference:
+    """A member's check-in preference with every gap filled from the team defaults.
+
+    ``inherited`` names the fields that follow the defaults, in
+    ``CheckInPreferenceField`` order, so a screen can say which values were set
+    for this member.
+    """
+
+    tenant_id: str
+    developer_id: str
+    local_time: time
+    timezone: str
+    weekdays: tuple[int, ...]
+    reply_wait_seconds: int
+    final_reply_wait_seconds: int
+    write_back_consent: WriteBackConsent
+    inherited: tuple[CheckInPreferenceField, ...]
+    defaults: CheckInDefaults
+
+
+def effective_checkin_preference(
+    tenant_id: str,
+    developer_id: str,
+    preference: CheckInPreference | None,
+    defaults: CheckInDefaults,
+) -> EffectiveCheckInPreference:
+    """Resolve each field: the member's own value, else the team default.
+
+    Resolved when read and when dispatched, never when saved, so a change to
+    the defaults reaches everyone who hasn't set that field. An empty
+    ``weekdays`` tuple is a stored value (an older row saved with no days), not
+    a gap, and is kept as it is.
+    """
+    stored = preference or CheckInPreference(tenant_id=tenant_id, developer_id=developer_id)
+    inherited = tuple(field for field in CheckInPreferenceField if getattr(stored, field) is None)
+    return EffectiveCheckInPreference(
+        tenant_id=tenant_id,
+        developer_id=developer_id,
+        local_time=stored.local_time if stored.local_time is not None else defaults.local_time,
+        timezone=stored.timezone if stored.timezone is not None else defaults.timezone,
+        weekdays=stored.weekdays if stored.weekdays is not None else defaults.weekdays,
+        reply_wait_seconds=(
+            stored.reply_wait_seconds
+            if stored.reply_wait_seconds is not None
+            else defaults.reply_wait_seconds
+        ),
+        final_reply_wait_seconds=(
+            stored.final_reply_wait_seconds
+            if stored.final_reply_wait_seconds is not None
+            else defaults.final_reply_wait_seconds
+        ),
+        write_back_consent=stored.write_back_consent,
+        inherited=inherited,
+        defaults=defaults,
+    )
 
 
 @dataclass(frozen=True, kw_only=True)

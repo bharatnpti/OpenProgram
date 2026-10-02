@@ -24,7 +24,7 @@ import {
   type ScheduleDraft,
 } from "./myCheckinPreference";
 
-// The select's value for a stored null zone, which means the team default.
+// The select's value for following the team's zone rather than a zone of one's own.
 const TEAM_ZONE = "";
 
 /**
@@ -37,7 +37,7 @@ export function CheckinScheduleMenuItem({ onSelect }: { onSelect: () => void }) 
   if (isNoCheckin(preference.error)) return null;
 
   const summary = preference.data
-    ? `${daysLabel(preference.data.weekdays)} · ${timezoneLabel(preference.data.timezone)}`
+    ? `${daysLabel(preference.data.weekdays)} · ${timezoneLabel(draftFrom(preference.data).timezone)}`
     : preference.isError
       ? "Couldn't load"
       : "Loading…";
@@ -187,7 +187,8 @@ function ScheduleForm({
             }))
           }
         >
-          {initial.timezone === null ? <option value={TEAM_ZONE}>Team time zone</option> : null}
+          {/* Always offered, so someone who picked a zone can go back to the team's. */}
+          <option value={TEAM_ZONE}>Team time zone ({preference.defaults.timezone})</option>
           {zones.map((zone) => (
             <option key={zone} value={zone}>
               {zone}

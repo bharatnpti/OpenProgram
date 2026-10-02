@@ -25,7 +25,7 @@ from core.domain.auth import Principal
 from core.domain.blockers import BlockerReport
 from core.domain.errors import AuthorizationDenied
 from core.domain.graph import NodeKind
-from core.domain.status import CheckInPreference
+from core.domain.status import CheckInPreference, effective_checkin_preference
 from infra.registry import ServiceRegistry
 
 router = APIRouter(tags=["checkins"])
@@ -112,8 +112,8 @@ async def get_checkin_preference(
 ) -> CheckinPreferenceResponse:
     _ensure_own_work(principal)
     await _ensure_member(registry, principal)
-    preference = await _preference_for(registry, settings, principal)
-    return CheckinPreferenceResponse.from_domain(preference)
+    preference = await _stored_preference(registry, principal)
+    return _preference_response(principal, preference, settings)
 
 
 @router.put("/me/checkin-preference", response_model=CheckinPreferenceResponse)
@@ -125,41 +125,51 @@ async def update_checkin_preference(
 ) -> CheckinPreferenceResponse:
     _ensure_own_work(principal)
     await _ensure_member(registry, principal)
-    existing = await _preference_for(registry, settings, principal)
+    existing = await _stored_preference(registry, principal) or CheckInPreference(
+        tenant_id=principal.tenant_id,
+        developer_id=principal.subject,
+    )
     fields = request.model_fields_set
     # Only days and time zone are the person's to change. Everything else --
     # check-in time, reply windows, write-back consent -- is carried over as
-    # stored; the request model refuses those fields outright.
+    # stored; the request model refuses those fields outright. A field sent as
+    # null goes back to the team default. The team defaults are never copied
+    # in, so a later change to them still reaches this person.
     updated = replace(
         existing,
         timezone=request.timezone if "timezone" in fields else existing.timezone,
         weekdays=(
-            tuple(request.weekdays)
-            if "weekdays" in fields and request.weekdays is not None
+            (tuple(request.weekdays) if request.weekdays is not None else None)
+            if "weekdays" in fields
             else existing.weekdays
         ),
     )
     await registry.status_repository().record_checkin_preference(updated)
-    return CheckinPreferenceResponse.from_domain(updated)
+    return _preference_response(principal, updated, settings)
 
 
-async def _preference_for(
+async def _stored_preference(
     registry: ServiceRegistry,
-    settings: Settings,
     principal: Principal,
-) -> CheckInPreference:
-    preference = await registry.status_repository().checkin_preference_for(
+) -> CheckInPreference | None:
+    return await registry.status_repository().checkin_preference_for(
         principal.tenant_id,
         principal.subject,
     )
-    if preference is not None:
-        return preference
-    return CheckInPreference(
-        tenant_id=principal.tenant_id,
-        developer_id=principal.subject,
-        timezone=settings.tenant_default_timezone,
-        reply_wait_seconds=settings.checkin_reply_wait_seconds,
-        final_reply_wait_seconds=settings.checkin_final_reply_wait_seconds,
+
+
+def _preference_response(
+    principal: Principal,
+    preference: CheckInPreference | None,
+    settings: Settings,
+) -> CheckinPreferenceResponse:
+    return CheckinPreferenceResponse.from_domain(
+        effective_checkin_preference(
+            principal.tenant_id,
+            principal.subject,
+            preference,
+            settings.checkin_defaults(),
+        )
     )
 
 

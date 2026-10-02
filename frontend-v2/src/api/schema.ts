@@ -39,6 +39,8 @@ export type StatusCorrectionRequest = components["schemas"]["StatusCorrectionReq
 export type BlockerDetailDto = components["schemas"]["BlockerDetailDto"];
 export type BlockerCorrectionItemDto = components["schemas"]["BlockerCorrectionItemDto"];
 export type CheckinPreferenceResponse = components["schemas"]["CheckinPreferenceResponse"];
+export type CheckinDefaultsResponse = components["schemas"]["CheckinDefaultsResponse"];
+export type CheckInPreferenceField = components["schemas"]["CheckInPreferenceField"];
 export type CheckinPreferenceUpdateRequest =
   components["schemas"]["CheckinPreferenceUpdateRequest"];
 export type SelfCheckinPreferenceUpdateRequest =

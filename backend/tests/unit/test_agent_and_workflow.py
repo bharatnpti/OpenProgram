@@ -17,7 +17,14 @@ from core.domain.errors import ProviderConfigurationError
 from core.domain.escalation import EscalationPolicy
 from core.domain.graph import GraphNode, NodeKind
 from core.domain.integrations import SyncCursor
-from core.domain.status import CheckIn, CheckInScheduleRun, DeveloperStatus, StatusSource
+from core.domain.status import (
+    CheckIn,
+    CheckInDefaults,
+    CheckInPreference,
+    CheckInScheduleRun,
+    DeveloperStatus,
+    StatusSource,
+)
 from core.domain.workflows import (
     CheckinFanoutInput,
     CheckinReconcileDispatchPlan,
@@ -1252,6 +1259,38 @@ async def test_daily_checkin_activity_sends_without_calendar_availability_gate(
     )
 
 
+async def test_daily_checkin_activity_fills_unset_fields_from_the_current_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Only the days and zone are set for this member, so the reply windows and
+    # the time come from the team defaults as they are when the check-in goes out.
+    registry = _DailyCheckinRegistry(collector=_RecordingStatusCollector())
+    registry.settings.checkin_reply_wait_seconds = 600
+    registry.repository.preference = CheckInPreference(
+        tenant_id="demo",
+        developer_id="dev-1",
+        timezone="Asia/Kolkata",
+        weekdays=(0, 1, 2, 3, 4, 5, 6),
+    )
+    monkeypatch.setattr(daily_checkin, "_service_registry", lambda: registry)
+
+    result = await daily_checkin.start_daily_checkin_activity(
+        daily_checkin.DailyCheckinInput(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-sat",
+            checkin_date="2026-01-10",
+        )
+    )
+
+    assert result.status == "sent"
+    assert result.reply_wait_seconds == 600
+    assert result.final_reply_wait_seconds == 28800
+    run = registry.repository.schedule_runs[("demo", "dev-1", date(2026, 1, 10))]
+    # The default 09:30 in the member's own zone (UTC+5:30).
+    assert run.scheduled_at == datetime(2026, 1, 10, 4, 0, tzinfo=UTC)
+
+
 async def test_nudge_activities_send_once_then_close_unknown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1555,12 +1594,15 @@ class _ExistingCheckinRepository:
 class _DailyCheckinRepository:
     def __init__(self) -> None:
         self.schedule_runs: dict[tuple[str, str, date], CheckInScheduleRun] = {}
+        self.preference: CheckInPreference | None = None
 
     async def checkin_by_correlation(self, tenant_id: str, correlation_id: str) -> None:
         return None
 
-    async def checkin_preference_for(self, tenant_id: str, developer_id: str) -> None:
-        return None
+    async def checkin_preference_for(
+        self, tenant_id: str, developer_id: str
+    ) -> CheckInPreference | None:
+        return self.preference
 
     async def checkin_schedule_run(
         self, tenant_id: str, developer_id: str, checkin_date: date
@@ -1712,6 +1754,13 @@ class _WorkflowSettings:
     tenant_default_timezone = "UTC"
     checkin_reply_wait_seconds = 14400
     checkin_final_reply_wait_seconds = 28800
+
+    def checkin_defaults(self) -> CheckInDefaults:
+        return CheckInDefaults(
+            timezone=self.tenant_default_timezone,
+            reply_wait_seconds=self.checkin_reply_wait_seconds,
+            final_reply_wait_seconds=self.checkin_final_reply_wait_seconds,
+        )
 
     def escalation_policy(self) -> EscalationPolicy:
         return EscalationPolicy(steps=())

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 import { TextInput } from "../../components/ui/Field";
 import {
@@ -17,12 +17,14 @@ import { FormField } from "./FormField";
  * A wait typed as an amount and a unit, with one-click presets. It shows any
  * stored value exactly (4 h, 90 min, 61 s) instead of fitting it to a slider's
  * range, so opening a member and saving changes nothing. `onChange` gets
- * `null` while the amount can't be saved.
+ * `null` while the amount can't be saved. `note` sits under the input, for
+ * where the value comes from.
  */
 export function DurationField({
   id,
   label,
   hint,
+  note,
   value,
   presets,
   onChange,
@@ -30,6 +32,7 @@ export function DurationField({
   id: string;
   label: string;
   hint: string;
+  note?: ReactNode;
   value: number | null;
   presets: number[];
   onChange: (seconds: number | null) => void;
@@ -82,6 +85,7 @@ export function DurationField({
           </AdminSelect>
         </div>
       </FormField>
+      {note}
       <p className="mt-1.5 text-[12px] text-grey-secondary">{hint}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         {presets.map((seconds) => (

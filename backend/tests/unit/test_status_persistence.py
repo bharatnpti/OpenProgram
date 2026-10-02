@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time
 
 from core.domain.blockers import (
@@ -26,6 +27,7 @@ from core.domain.status import (
 )
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.persistence.postgres_status import (
+    PostgresStatusRepository,
     _checkin_clarification_from_row,
     _checkin_correlation_from_row,
     _checkin_from_row,
@@ -401,6 +403,84 @@ def test_postgres_row_mappers_reconstruct_status_domain_types() -> None:
         question="What is still blocked?",
         sent_at=replied_at,
         outbound_message_id="clarify-1",
+    )
+
+
+def test_checkin_preference_row_mapper_keeps_unset_columns_unset() -> None:
+    # A NULL column was never set for the member and must stay unset, so the
+    # team default is applied when the preference is read, not copied in.
+    unset = _checkin_preference_from_row(
+        {
+            "tenant_id": "demo",
+            "developer_id": "dev-1",
+            "local_time": None,
+            "timezone": None,
+            "weekdays": None,
+            "reply_wait_seconds": None,
+            "final_reply_wait_seconds": None,
+            "write_back_consent": "always_ask",
+        }
+    )
+    # An older row saved with no days keeps its empty list; it isn't a gap.
+    no_days = _checkin_preference_from_row(
+        {
+            "tenant_id": "demo",
+            "developer_id": "dev-2",
+            "local_time": None,
+            "timezone": "",
+            "weekdays": {"items": []},
+            "reply_wait_seconds": 0,
+            "final_reply_wait_seconds": None,
+        }
+    )
+
+    assert unset == CheckInPreference(tenant_id="demo", developer_id="dev-1")
+    assert no_days == CheckInPreference(
+        tenant_id="demo",
+        developer_id="dev-2",
+        weekdays=(),
+        reply_wait_seconds=0,
+    )
+
+
+@dataclass
+class _ExecuteRecorder:
+    calls: list[tuple[str, tuple[object, ...]]] = field(default_factory=list)
+
+    async def execute(self, query: str, params: tuple[object, ...]) -> object:
+        self.calls.append((query, params))
+        return object()
+
+
+async def test_postgres_record_checkin_preference_writes_null_for_unset_fields() -> None:
+    executor = _ExecuteRecorder()
+    repository = PostgresStatusRepository(executor)  # type: ignore[arg-type]
+
+    await repository.record_checkin_preference(
+        CheckInPreference(tenant_id="demo", developer_id="dev-1", timezone="Europe/Berlin")
+    )
+    await repository.record_checkin_preference(
+        CheckInPreference(
+            tenant_id="demo",
+            developer_id="dev-1",
+            local_time=time(8, 15),
+            weekdays=(0, 2),
+            reply_wait_seconds=60,
+            final_reply_wait_seconds=0,
+        )
+    )
+
+    (_, unset), (_, set_values) = executor.calls
+    assert unset == ("demo", "dev-1", None, "Europe/Berlin", None, None, None, "always_ask")
+    assert set_values == (
+        "demo",
+        "dev-1",
+        time(8, 15),
+        None,
+        {"items": [0, 2]},
+        60,
+        0,
+        "always_ask",
     )
 
 
