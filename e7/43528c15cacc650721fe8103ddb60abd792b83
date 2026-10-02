@@ -1,0 +1,23 @@
+frontend-v2/src/features/today/DeveloperToday.tsx
+  s_386bf853700fa5::t_49a55b349b44ef 13,15,43,120,122,128-133,178,261
+frontend-v2/src/features/today/WhereYourStatusGoes.tsx
+  s_386bf853700fa5::t_ff52079063bba3 1-75
+frontend-v2/src/features/today/statusRollups.ts
+  s_386bf853700fa5::t_4af9cf36102afc 1-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e743528c15cacc650721fe8103ddb60abd792b83",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "unknown"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
