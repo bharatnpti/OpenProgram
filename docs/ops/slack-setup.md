@@ -95,3 +95,23 @@ recorded; a request with a bad signature gets 401.
 The webhook route stays mounted under `socket` too, and it still requires a
 valid signature. With no signing secret configured, it rejects every request
 with 401.
+
+## Counterpart DMs (on by default)
+
+When a developer's check-in reply asks something of another person ("need Liam
+to review the PR"), OpenProgram resolves that person in the directory and DMs
+them once about the request. Their reply in that DM thread acknowledges the
+request, or resolves it, in which case the developer is told. A person who
+cannot be found, or is ambiguous, gets no DM and the request stays visible to
+the developer who asked.
+
+This needs no extra Slack scope: it uses the same `chat:write` and `im:write`
+the check-ins use, and `im:history` to read the reply. To record these requests
+without messaging anyone, set:
+
+```bash
+OPENPROGRAM_CROSS_PERSON_AUTO_NOTIFY=false
+```
+
+on the API and the worker (both route replies). Existing requests are
+unaffected; the board and the "Raised by you" list work the same either way.

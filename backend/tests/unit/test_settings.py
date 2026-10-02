@@ -129,7 +129,18 @@ def test_settings_defaults_workflow_provider_to_dbos() -> None:
     assert settings.conversation_purge_enabled is True
     assert settings.conversation_purge_cron == "0 3 * * *"
     assert settings.conversation_purge_schedule_id == "openprogram-conversation-purge"
-    assert settings.cross_person_auto_notify is False
+
+
+def test_settings_default_cross_person_auto_notify_on() -> None:
+    assert _settings(secret_key=SECRET_KEY).cross_person_auto_notify is True
+
+
+def test_settings_cross_person_auto_notify_can_be_switched_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENPROGRAM_CROSS_PERSON_AUTO_NOTIFY", "false")
+
+    assert _settings(secret_key=SECRET_KEY).cross_person_auto_notify is False
 
 
 def test_settings_resolves_configured_heartbeat_schedule_id() -> None:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import zlib
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -46,22 +48,33 @@ class _ScriptedLlmRegistry(WorldRegistry):
         return self._scripted_llm
 
 
+_CHECKIN_QUESTION = "Can you share progress, blockers, and ETA changes?"
+
+
+def _signals_reply(name: str, kind: str, note: str, *, email: str | None = None) -> str:
+    """What the scripted model returns for a reply that asks `name` for something."""
+    return json.dumps(
+        {
+            "is_status_update": True,
+            "sufficient": True,
+            "question": None,
+            "signals": {
+                "progress_note": f"Blocked on {note}",
+                "blockers": [note],
+                "eta_change_days": None,
+                "blockers_answered": True,
+                "eta_answered": True,
+                "requests": [{"name": name, "kind": kind, "note": note, "email": email}],
+            },
+        }
+    )
+
+
 @given("the cross-person request stack is running with Liam review extraction")
 def _given_liam_review_stack(world: World) -> None:
+    # No cross_person_auto_notify override: these scenarios run on the default.
     _start_scripted_stack(
-        world,
-        [
-            "Can you share progress, blockers, and ETA changes?",
-            (
-                '{"is_status_update":true,"sufficient":true,"question":null,'
-                '"signals":{"progress_note":"Blocked on API schema review",'
-                '"blockers":["API schema review"],"eta_change_days":null,'
-                '"blockers_answered":true,"eta_answered":true,'
-                '"requests":[{"name":"Liam Chen","kind":"review",'
-                '"note":"API schema review","email":null}]}}'
-            ),
-        ],
-        auto_notify=True,
+        world, [_CHECKIN_QUESTION, _signals_reply("Liam Chen", "review", "API schema review")]
     )
 
 
@@ -71,17 +84,7 @@ def _given_liam_review_stack(world: World) -> None:
 def _given_liam_review_stack_without_auto_notify(world: World) -> None:
     _start_scripted_stack(
         world,
-        [
-            "Can you share progress, blockers, and ETA changes?",
-            (
-                '{"is_status_update":true,"sufficient":true,"question":null,'
-                '"signals":{"progress_note":"Blocked on API schema review",'
-                '"blockers":["API schema review"],"eta_change_days":null,'
-                '"blockers_answered":true,"eta_answered":true,'
-                '"requests":[{"name":"Liam Chen","kind":"review",'
-                '"note":"API schema review","email":null}]}}'
-            ),
-        ],
+        [_CHECKIN_QUESTION, _signals_reply("Liam Chen", "review", "API schema review")],
         auto_notify=False,
     )
 
@@ -91,25 +94,20 @@ def _given_ambiguous_alex_stack(world: World) -> None:
     _start_scripted_stack(
         world,
         [
-            "Can you share progress, blockers, and ETA changes?",
-            (
-                '{"is_status_update":true,"sufficient":true,"question":null,'
-                '"signals":{"progress_note":"Blocked on schema confirmation",'
-                '"blockers":["schema confirmation"],"eta_change_days":null,'
-                '"blockers_answered":true,"eta_answered":true,'
-                '"requests":[{"name":"Alex","kind":"input",'
-                '"note":"schema confirmation","email":null}]}}'
-            ),
-            (
-                '{"is_status_update":true,"sufficient":true,"question":null,'
-                '"signals":{"progress_note":"Blocked on schema confirmation",'
-                '"blockers":["schema confirmation"],"eta_change_days":null,'
-                '"blockers_answered":true,"eta_answered":true,'
-                '"requests":[{"name":"Alex","kind":"input",'
-                '"note":"schema confirmation","email":"alexa.roy@example.com"}]}}'
-            ),
+            _CHECKIN_QUESTION,
+            _signals_reply("Alex", "input", "schema confirmation"),
+            _signals_reply("Alex", "input", "schema confirmation", email="alexa.roy@example.com"),
         ],
-        auto_notify=True,
+    )
+
+
+@given(parsers.parse('the cross-person request stack is running where every reply names "{name}"'))
+def _given_stack_naming_the_same_person_every_reply(world: World, name: str) -> None:
+    # One initial question, then the same unresolved person for every reply the
+    # check-in will take before it gives up asking.
+    _start_scripted_stack(
+        world,
+        [_CHECKIN_QUESTION] + [_signals_reply(name, "review", "API schema review")] * 3,
     )
 
 
@@ -155,6 +153,47 @@ def _when_reply_to_latest_bot_message(world: World, member_id: str, text: str) -
     world.response = cast(Any, _submit_reply(world, str(message["message_id"]), text))
 
 
+@when(
+    parsers.parse(
+        'Slack delivers the check-in reply event "{event_id}" from "{member_id}" with text "{text}"'
+    )
+)
+def _when_slack_delivers_checkin_reply(
+    world: World, event_id: str, member_id: str, text: str
+) -> None:
+    check_in = world.stash[f"bot_message:{member_id}"]
+    world.response = cast(
+        Any,
+        _deliver_slack_event(
+            world,
+            event_id=event_id,
+            user_id=member_id,
+            text=text,
+            channel_id=str(check_in["channel_id"]),
+        ),
+    )
+
+
+@when(
+    parsers.parse(
+        'member "{member_id}" replies in the thread of the cross-person request with text "{text}"'
+    )
+)
+def _when_counterpart_replies_in_thread(world: World, member_id: str, text: str) -> None:
+    message = _latest_cross_person_bot_message(world, member_id)
+    world.response = cast(
+        Any,
+        _deliver_slack_event(
+            world,
+            event_id=f"Ev-thread-{member_id}-{len(_messages(world))}",
+            user_id=member_id,
+            text=text,
+            channel_id=str(message["channel_id"]),
+            thread_ts=str(message["message_id"]),
+        ),
+    )
+
+
 @then(
     parsers.parse(
         'a cross-person request should notify "{member_id}" with text containing "{fragment}"'
@@ -175,6 +214,43 @@ def _then_counterpart_not_notified(world: World, member_id: str) -> None:
         and item["purpose"] == "cross_person_request"
     ]
     assert messages == []
+
+
+@then(parsers.parse("no cross-person request should notify anyone"))
+def _then_nobody_notified(world: World) -> None:
+    assert _cross_person_bot_messages(world) == []
+
+
+@then(parsers.parse('exactly {count:d} cross-person request DM should have gone to "{member_id}"'))
+def _then_dm_count(world: World, count: int, member_id: str) -> None:
+    sent = [item for item in _cross_person_bot_messages(world) if item["user_id"] == member_id]
+    assert len(sent) == count, sent
+
+
+@then(
+    parsers.parse('"{member_id}" should be told the cross-person request was resolved by "{name}"')
+)
+def _then_requester_told_resolved(world: World, member_id: str, name: str) -> None:
+    told = [
+        item
+        for item in _messages(world)
+        if item["direction"] == "bot"
+        and item["user_id"] == member_id
+        and item["purpose"] == "cross_person_request_resolved"
+    ]
+    assert len(told) == 1, told
+    assert name in told[0]["text"]
+
+
+@then(
+    parsers.parse('the cross-person request raised by "{member_id}" should have status "{status}"')
+)
+def _then_raised_request_status(world: World, member_id: str, status: str) -> None:
+    requests = asyncio.run(
+        world.registry().cross_person_request_repository().list_for_requester("demo", member_id)
+    )
+    assert len(requests) == 1
+    assert requests[0].status.value == status
 
 
 @then(parsers.parse('the cross-person request for "{member_id}" should have status "{status}"'))
@@ -203,21 +279,58 @@ def _then_no_cross_person_requests(world: World) -> None:
     assert requests == []
 
 
-def _start_scripted_stack(world: World, texts: list[str], *, auto_notify: bool) -> None:
-    settings = mock_slack_settings(cross_person_auto_notify=auto_notify)
+def _start_scripted_stack(
+    world: World, texts: list[str], *, auto_notify: bool | None = None
+) -> None:
+    overrides: dict[str, object] = {}
+    if auto_notify is not None:
+        overrides["cross_person_auto_notify"] = auto_notify
+    settings = mock_slack_settings(**overrides)
     world.start_app(settings=settings, registry=_ScriptedLlmRegistry(settings, texts))
 
 
-def _latest_cross_person_bot_message(world: World, member_id: str) -> dict[str, Any]:
-    messages = [
+def _cross_person_bot_messages(world: World) -> list[dict[str, Any]]:
+    return [
         item
         for item in _messages(world)
-        if item["direction"] == "bot"
-        and item["user_id"] == member_id
-        and item["purpose"] == "cross_person_request"
+        if item["direction"] == "bot" and item["purpose"] == "cross_person_request"
     ]
+
+
+def _latest_cross_person_bot_message(world: World, member_id: str) -> dict[str, Any]:
+    messages = [item for item in _cross_person_bot_messages(world) if item["user_id"] == member_id]
     assert messages, f"no cross-person bot message found for {member_id}"
     return messages[-1]
+
+
+def _deliver_slack_event(
+    world: World,
+    *,
+    event_id: str,
+    user_id: str,
+    text: str,
+    channel_id: str,
+    thread_ts: str | None = None,
+) -> object:
+    """Post a Slack Events API envelope the way Slack would, thread and all.
+
+    The simulator's own reply endpoint copies the bot message's correlation id
+    onto the reply, which routes it by correlation. Real Slack carries only the
+    channel and, for a threaded reply, ``thread_ts`` -- so this goes through the
+    webhook route to exercise the routing a deployment actually relies on. The
+    timestamp is derived from the event id so a redelivery is byte-identical.
+    """
+    assert world.client is not None
+    event: dict[str, object] = {
+        "type": "message",
+        "user": user_id,
+        "text": text,
+        "ts": f"1900000000.{zlib.crc32(event_id.encode()) % 1_000_000:06d}",
+        "channel": channel_id,
+    }
+    if thread_ts is not None:
+        event["thread_ts"] = thread_ts
+    return world.client.post("/webhooks/chat/slack", json={"event_id": event_id, "event": event})
 
 
 def _latest_bot_message_uncached(world: World, member_id: str) -> dict[str, Any]:
