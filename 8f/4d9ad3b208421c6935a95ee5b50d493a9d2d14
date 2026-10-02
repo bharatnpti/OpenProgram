@@ -1,0 +1,19 @@
+backend/infra/persistence/postgres_graph.py
+  s_386bf853700fa5::t_45bef835d0b5d1 558,575
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8f4d9ad3b208421c6935a95ee5b50d493a9d2d14",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
