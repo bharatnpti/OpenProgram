@@ -194,6 +194,39 @@ def _when_counterpart_replies_in_thread(world: World, member_id: str, text: str)
     )
 
 
+@when(
+    parsers.parse(
+        'member "{member_id}" answers the cross-person request from the built-in chat '
+        'thread with text "{text}"'
+    )
+)
+def _when_counterpart_answers_in_built_in_chat_thread(
+    world: World, member_id: str, text: str
+) -> None:
+    """What the chat page's Reply action sends: the DM's id as the thread."""
+    assert world.client is not None
+    message = _latest_cross_person_bot_message(world, member_id)
+    world.response = cast(
+        Any,
+        world.client.post(
+            f"/test/chat-simulator/users/{member_id}/messages",
+            json={"text": text, "thread_id": message["message_id"]},
+        ),
+    )
+
+
+@then(parsers.parse('no check-in should have been opened for "{member_id}"'))
+def _then_no_checkin_opened(world: World, member_id: str) -> None:
+    opened = [
+        item
+        for item in _messages(world)
+        if item["direction"] == "bot"
+        and item["user_id"] == member_id
+        and item["purpose"] == "status_checkin"
+    ]
+    assert opened == []
+
+
 @then(
     parsers.parse(
         'a cross-person request should notify "{member_id}" with text containing "{fragment}"'

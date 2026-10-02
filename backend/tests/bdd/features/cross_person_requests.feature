@@ -60,6 +60,23 @@ Feature: Cross-person request detection
     And the cross-person request for "U1002" should have status "resolved"
     And "U1001" should be told the cross-person request was resolved by "Liam Chen"
 
+  Scenario: The counterpart answers from the built-in chat's Reply action without opening a check-in
+    Given the cross-person request stack is running with Liam review extraction
+    And a configured member "U1001" named "Asha Rao" with chat id "U1001"
+    And the mock Slack directory is synced
+    And member "U1001" has a bot check-in message
+    When I submit a reply to the bot message for "U1001" with text "Blocked waiting on Liam Chen to review the API schema."
+    Then the response status should be "processed"
+    When member "U1002" answers the cross-person request from the built-in chat thread with text "on it"
+    Then the response status code should be 200
+    And the response status should be "acknowledged"
+    And no check-in should have been opened for "U1002"
+    When member "U1002" answers the cross-person request from the built-in chat thread with text "Done, reviewed and approved"
+    Then the response status should be "resolved"
+    And the cross-person request for "U1002" should have status "resolved"
+    And no check-in should have been opened for "U1002"
+    And "U1001" should be told the cross-person request was resolved by "Liam Chen"
+
   Scenario: A person who cannot be found gets no DM and the request stays with the requester
     Given the cross-person request stack is running where every reply names "Zed Quinn"
     And a configured member "U1001" named "Asha Rao" with chat id "U1001"

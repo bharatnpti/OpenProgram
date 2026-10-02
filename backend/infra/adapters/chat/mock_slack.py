@@ -28,6 +28,11 @@ class MockSlackMessage:
     correlation_id: str | None = None
     purpose: str | None = None
     reply_to_message_id: str | None = None
+    # Set only on a reply posted *in the thread* of an earlier message, and then
+    # to that message's id -- the mock's ``thread_ts``. ``reply_to_message_id``
+    # is wider: a check-in answer also carries the question it answers, yet is
+    # an ordinary channel message, not a thread reply.
+    thread_id: str | None = None
     metadata: Mapping[str, JsonScalar] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
@@ -42,6 +47,7 @@ class MockSlackMessage:
             "correlation_id": self.correlation_id,
             "purpose": self.purpose,
             "reply_to_message_id": self.reply_to_message_id,
+            "thread_id": self.thread_id,
             "metadata": dict(self.metadata),
         }
 
@@ -63,6 +69,7 @@ class MockSlackMessage:
             correlation_id=_optional_string(payload.get("correlation_id")),
             purpose=_optional_string(payload.get("purpose")),
             reply_to_message_id=_optional_string(payload.get("reply_to_message_id")),
+            thread_id=_optional_string(payload.get("thread_id")),
             metadata=_json_scalar_mapping(metadata),
         )
 
@@ -88,6 +95,7 @@ class MockSlackStore(Protocol):
         reply_to_message_id: str,
         text: str,
         created_at: datetime | None = None,
+        in_thread: bool = False,
     ) -> MockSlackMessage: ...
 
     async def latest_user_reply(
@@ -160,6 +168,7 @@ class InMemoryMockSlackStore:
         reply_to_message_id: str,
         text: str,
         created_at: datetime | None = None,
+        in_thread: bool = False,
     ) -> MockSlackMessage:
         parent = await self.message_by_id(tenant_id=tenant_id, message_id=reply_to_message_id)
         if parent is None or parent.direction != "bot":
@@ -172,8 +181,9 @@ class InMemoryMockSlackStore:
             user_id=parent.user_id,
             direction="user",
             text=text,
-            correlation_id=parent.correlation_id,
+            correlation_id=_reply_correlation_id(parent, in_thread=in_thread),
             reply_to_message_id=parent.message_id,
+            thread_id=parent.message_id if in_thread else None,
             metadata={"source": "mock_slack"},
             created_at=observed_at,
         )
@@ -266,6 +276,7 @@ class RedisMockSlackStore:
         reply_to_message_id: str,
         text: str,
         created_at: datetime | None = None,
+        in_thread: bool = False,
     ) -> MockSlackMessage:
         parent = await self.message_by_id(tenant_id=tenant_id, message_id=reply_to_message_id)
         if parent is None or parent.direction != "bot":
@@ -278,8 +289,9 @@ class RedisMockSlackStore:
             user_id=parent.user_id,
             direction="user",
             text=text,
-            correlation_id=parent.correlation_id,
+            correlation_id=_reply_correlation_id(parent, in_thread=in_thread),
             reply_to_message_id=parent.message_id,
+            thread_id=parent.message_id if in_thread else None,
             metadata={"source": "mock_slack"},
             created_at=observed_at,
         )
@@ -588,16 +600,17 @@ class MockSlackHttpClient:
 
 
 def slack_event_payload(message: MockSlackMessage) -> dict[str, object]:
-    return {
-        "event": {
-            "user": message.user_id,
-            "text": message.text,
-            "ts": message.message_id,
-            "channel": message.channel_id,
-            "client_msg_id": message.message_id,
-            "correlation_id": message.correlation_id,
-        }
+    event: dict[str, object] = {
+        "user": message.user_id,
+        "text": message.text,
+        "ts": message.message_id,
+        "channel": message.channel_id,
+        "client_msg_id": message.message_id,
+        "correlation_id": message.correlation_id,
     }
+    if message.thread_id is not None:
+        event["thread_ts"] = message.thread_id
+    return {"event": event}
 
 
 def _reply_payload(message: MockSlackMessage) -> dict[str, object]:
@@ -607,6 +620,18 @@ def _reply_payload(message: MockSlackMessage) -> dict[str, object]:
         "ts": message.message_id,
         "client_msg_id": message.message_id,
     }
+
+
+def _reply_correlation_id(parent: MockSlackMessage, *, in_thread: bool) -> str | None:
+    """What correlation a reply carries: the question's, unless it is a thread reply.
+
+    A channel reply keeps the bot message's correlation id so it lands on the
+    check-in that asked. A thread reply is its own message, as it is in Slack,
+    where it carries a fresh client id and only the thread timestamp ties it to
+    the message above. Inheriting the parent's id would route it by correlation
+    and never exercise the thread at all.
+    """
+    return None if in_thread else parent.correlation_id
 
 
 def _message_id(observed_at: datetime, counter: int) -> str:

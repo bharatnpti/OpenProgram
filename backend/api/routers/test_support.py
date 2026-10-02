@@ -68,6 +68,10 @@ async def chat_simulator_user_message(
     Unlike the reply endpoint this does not need an outstanding bot question:
     if the person speaks first, the check-in is opened for them and the text
     becomes its reply.
+
+    With ``thread_id`` the text is a reply in the thread of that bot message
+    instead, and neither opens a check-in nor counts as a status update. A
+    thread under a message that is not a request DM is kept but ``ignored``.
     """
     _ensure_enabled(registry, settings)
     _ensure_thread_access(principal, user_id)
@@ -79,6 +83,7 @@ async def chat_simulator_user_message(
             text=request.text,
             received_at=request.received_at,
             correlation_id=current_correlation_id(),
+            thread_id=request.thread_id,
         )
     except ProviderUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
