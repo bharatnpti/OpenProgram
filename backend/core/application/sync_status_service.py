@@ -10,7 +10,10 @@ Read-only. It joins three things that are already recorded:
   the cursor.
 
 It never calls a provider, so opening the view can't itself fail on, or
-spend quota against, Jira or GitHub.
+spend quota against, Jira or GitHub. The one thing it is told about providers
+is whether each could be *built* (``SyncStatusConfig.provider_start_errors``):
+a provider that fails to build fails every run before it records anything, so
+without that a broken source would read as "never synced".
 """
 
 from __future__ import annotations
@@ -116,6 +119,7 @@ class SyncStatusService:
                     ),
                     newest_item_at=await self._newest_fact_at(tenant_id, ISSUE_FACT_SOURCES),
                     config_error=config_error,
+                    provider_error=config.provider_start_errors.get(SyncSource.ISSUE_TRACKER),
                 ),
                 _source_status(
                     SyncSource.VCS,
@@ -133,6 +137,7 @@ class SyncStatusService:
                     ),
                     newest_item_at=await self._newest_fact_at(tenant_id, VCS_FACT_SOURCES),
                     config_error=config_error,
+                    provider_error=config.provider_start_errors.get(SyncSource.VCS),
                 ),
                 _calendar_status(
                     config.calendar_provider,
@@ -157,6 +162,7 @@ class SyncStatusService:
                     ),
                     newest_item_at=None,
                     config_error=None,
+                    provider_error=config.provider_start_errors.get(SyncSource.DIRECTORY),
                 ),
             ),
         )
@@ -302,6 +308,7 @@ def _source_status(
     targets: tuple[SyncTargetStatus, ...],
     newest_item_at: datetime | None,
     config_error: str | None,
+    provider_error: str | None,
 ) -> SyncSourceStatus:
     configured = [target for target in targets if target.configured]
     failing = [target for target in configured if target.health is SyncHealth.FAILING]
@@ -314,18 +321,29 @@ def _source_status(
         schedule=schedule,
         stale_after_minutes=int(stale_after_for_cron(schedule).total_seconds() // 60),
         target_origin=origin,
-        health=_source_health(configured, config_error),
+        health=_source_health(configured, config_error, provider_error),
         last_synced_at=_latest(target.last_synced_at for target in targets),
         last_attempt_at=_latest(target.last_attempt_at for target in targets),
-        last_error=latest_failure.last_error if latest_failure and not config_error else None,
+        last_error=(
+            latest_failure.last_error
+            if latest_failure and not (config_error or provider_error)
+            else None
+        ),
         newest_item_at=newest_item_at,
         config_error=config_error,
+        provider_error=provider_error,
         targets=targets,
     )
 
 
-def _source_health(configured: Sequence[SyncTargetStatus], config_error: str | None) -> SyncHealth:
-    if config_error is not None:
+def _source_health(
+    configured: Sequence[SyncTargetStatus],
+    config_error: str | None,
+    provider_error: str | None,
+) -> SyncHealth:
+    # A provider that can't be built fails every run before it records anything,
+    # so no cursor will ever say so: report it ahead of what the cursors show.
+    if config_error is not None or provider_error is not None:
         return SyncHealth.FAILING
     if not configured:
         return SyncHealth.NOT_CONFIGURED

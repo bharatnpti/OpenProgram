@@ -1726,6 +1726,7 @@ class SyncSourceStatusResponse(BaseModel):
     last_error: str | None = None
     newest_item_at: datetime | None = None
     config_error: str | None = None
+    provider_error: str | None = None
     targets: list[SyncTargetStatusResponse]
 
     @classmethod
@@ -1744,6 +1745,7 @@ class SyncSourceStatusResponse(BaseModel):
             last_error=_sync_error_message(source.last_error),
             newest_item_at=source.newest_item_at,
             config_error=source.config_error,
+            provider_error=source.provider_error,
             targets=[SyncTargetStatusResponse.from_domain(target) for target in source.targets],
         )
 

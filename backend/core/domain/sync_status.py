@@ -8,6 +8,7 @@ of looking healthy.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -73,6 +74,16 @@ SYNC_ERROR_MESSAGES: dict[SyncErrorKind, str] = {
     SyncErrorKind.UNEXPECTED: "The sync stopped on an unexpected error. Check the worker logs.",
 }
 
+# A provider that cannot be built is reported as "<prefix>: <reason> (<ErrorType>)",
+# assembled only from these fixed phrases and the exception's class name -- never
+# its message, which can carry a credential, a URL or a config value.
+PROVIDER_START_FAILURE_PREFIX = "Provider could not start"
+PROVIDER_START_FAILURE_REASONS: dict[SyncErrorKind, str] = {
+    SyncErrorKind.CREDENTIALS: "missing or invalid credential",
+    SyncErrorKind.PROVIDER_UNAVAILABLE: "provider unavailable",
+    SyncErrorKind.UNEXPECTED: "unexpected error",
+}
+
 # Cursor metadata keys a sync run writes. ``last_checked_at``/``last_item_count``
 # predate this module; the failure keys sit beside them in the same JSON so no
 # schema change is needed and the cursor value itself never moves on failure.
@@ -89,7 +100,9 @@ class SyncStatusConfig:
     ``*_provider`` names are the effective provider the registry builds, so a
     built-in sample provider is reported as such. Legacy targets are the
     environment fallback the runtime sync uses when no project/pod config sets
-    one.
+    one. ``provider_start_errors`` holds the sanitised reason for each source
+    whose provider could not even be built; no sync run ever records that,
+    because a run that cannot build its provider never reaches the cursor.
     """
 
     issue_tracker_provider: str
@@ -103,6 +116,7 @@ class SyncStatusConfig:
     legacy_vcs_targets: tuple[SyncDispatchInput, ...] = ()
     # Built-in providers that serve canned data instead of a live system.
     simulated_providers: frozenset[str] = frozenset({"fake"})
+    provider_start_errors: Mapping[SyncSource, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -134,6 +148,8 @@ class SyncSourceStatus:
     last_error: SyncErrorKind | None = None
     newest_item_at: datetime | None = None
     config_error: str | None = None
+    # Why the provider could not be built: fixed text and the error type only.
+    provider_error: str | None = None
     targets: tuple[SyncTargetStatus, ...] = field(default_factory=tuple)
 
 
