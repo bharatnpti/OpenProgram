@@ -18,6 +18,7 @@ async def test_jira_adapter_maps_read_payloads() -> None:
         base_url="https://jira.test",
         email="agent@example.com",
         api_token="token",
+        clock=lambda: datetime(2026, 1, 2, 1, 0, tzinfo=UTC),
     )
     respx.get("https://jira.test/rest/api/3/project/search").mock(
         return_value=httpx.Response(
@@ -92,10 +93,42 @@ async def test_jira_adapter_maps_read_payloads() -> None:
         for call in respx.calls
         if call.request.url.path == "/rest/api/3/search/jql"
     ]
+    # 60 minutes since the cursor plus the 2-minute overlap, as a relative date.
     assert (
-        '(project = "PO" AND component = API) AND updated > "2026-01-02T00:00:00+00:00" '
-        "ORDER BY updated ASC"
+        '(project = "PO" AND component = API) AND updated >= -62m ORDER BY updated ASC'
     ) in search_jqls
+    assert not any("2026-01-02T" in jql for jql in search_jqls)
+
+
+@respx.mock
+async def test_jira_incremental_search_drops_issues_the_cursor_already_covers() -> None:
+    """The relative window overlaps the cursor; anything not newer than it is dropped."""
+    adapter = JiraIssueTrackerAdapter(
+        base_url="https://jira.test",
+        email="agent@example.com",
+        api_token="token",
+        clock=lambda: datetime(2026, 1, 10, 9, 0, 30, tzinfo=UTC),
+    )
+    already_seen = _issue_payload("PO-1")  # updated 08:30:00.000, the cursor itself
+    newer = _issue_payload("PO-2")
+    cast_fields = newer["fields"]
+    assert isinstance(cast_fields, dict)
+    cast_fields["updated"] = "2026-01-10T14:00:01.000+0530"  # 08:30:01 UTC
+    route = respx.get("https://jira.test/rest/api/3/search/jql").mock(
+        return_value=httpx.Response(200, json={"issues": [already_seen, newer]})
+    )
+
+    issues = await adapter.list_issues_for_query(
+        "demo",
+        'project = "PO"',
+        SyncCursor(updated_at=datetime(2026, 1, 10, 8, 30, tzinfo=UTC)),
+    )
+
+    assert [issue.key for issue in issues] == ["PO-2"]
+    # 30.5 minutes + 2 overlap rounds up to 33.
+    assert route.calls.last.request.url.params["jql"] == (
+        '(project = "PO") AND updated >= -33m ORDER BY updated ASC'
+    )
 
 
 def _issue_payload(key: str) -> dict[str, object]:
