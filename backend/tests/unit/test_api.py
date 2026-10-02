@@ -1165,6 +1165,52 @@ def test_config_routes_are_admin_only_but_directory_is_readable(settings: Settin
     assert directory.status_code == 200
 
 
+def test_directory_names_workstream_people_for_every_role_that_opens_delivery(
+    settings: Settings,
+) -> None:
+    """The member list is admin-only, so the directory carries the names.
+
+    Delivery shows a workstream's owner, TPM and SM to every role that opens it.
+    Without names in the directory response those roles could only show ids.
+    """
+    app = create_app(settings=settings.model_copy(update={"demo_mode": True}))
+    with TestClient(app) as client:
+        client.post("/config/members", json={"id": "dev-ada", "name": "Ada Lovelace"})
+        client.post("/config/members", json={"id": "dev-ira", "name": "Ira Novak"})
+        client.put("/config/members/dev-ira/identity-link", json={"chat_user_id": "U2006"})
+        created = client.post(
+            "/config/workstreams",
+            json={
+                "id": "workstream-alpha",
+                "name": "Runtime Config Admin",
+                "metadata": {"owner_id": "dev-ada", "tpm_id": "U2006", "sm_id": "U1002"},
+            },
+        )
+        by_role = {}
+        for role in ("exec", "mgr", "po", "sm"):
+            # What the console sends while acting as someone in that role.
+            headers = {"x-openprogram-dev-user": "dev-ada", "x-openprogram-dev-roles": role}
+            by_role[role] = (
+                client.get("/config/members", headers=headers).status_code,
+                client.get("/workstreams", headers=headers),
+                client.get("/workstreams/workstream-alpha", headers=headers),
+            )
+
+    assert created.status_code == 201
+    expected = [
+        {"key": "owner_id", "id": "dev-ada", "member_id": "dev-ada", "name": "Ada Lovelace"},
+        {"key": "tpm_id", "id": "U2006", "member_id": "dev-ira", "name": "Ira Novak"},
+        {"key": "sm_id", "id": "U1002", "member_id": None, "name": None},
+    ]
+    for role, (members_status, listing, detail) in by_role.items():
+        assert members_status == 403, role
+        assert listing.status_code == 200, role
+        assert listing.json()[0]["people"] == expected, role
+        assert detail.json()["people"] == expected, role
+        # The stored ids are untouched, so the admin form still round-trips them.
+        assert listing.json()[0]["metadata"]["tpm_id"] == "U2006", role
+
+
 def test_config_crud_full_lifecycle(settings: Settings) -> None:
     app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "admin"}))
     with TestClient(app) as client:

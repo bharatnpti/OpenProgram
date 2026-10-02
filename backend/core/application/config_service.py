@@ -42,6 +42,25 @@ class ConfigConflict(OpenProgramError):
     """Raised when a requested runtime config mutation would duplicate state."""
 
 
+# Metadata keys that hold a person's id rather than a value to show as is.
+PERSON_METADATA_KEYS: tuple[str, ...] = ("owner_id", "tpm_id", "sm_id")
+
+
+@dataclass(frozen=True, kw_only=True)
+class DirectoryPersonView:
+    """A person a node's metadata names, resolved to a member where one matches.
+
+    ``id`` is the value exactly as stored, which may be a member node id or a
+    chat user id. ``member_id`` and ``name`` are None when no member matches,
+    so a reader can tell an unresolved id from a name.
+    """
+
+    key: str
+    id: str
+    member_id: str | None = None
+    name: str | None = None
+
+
 @dataclass(frozen=True, kw_only=True)
 class DirectoryItemView:
     id: str
@@ -58,6 +77,7 @@ class DirectoryItemView:
     pod_ids: tuple[str, ...] = ()
     member_ids: tuple[str, ...] = ()
     task_ids: tuple[str, ...] = ()
+    people: tuple[DirectoryPersonView, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -750,9 +770,11 @@ class DirectoryService:
         self,
         graph_repository: GraphRepository,
         rollup_repository: RollupRepository,
+        identity_link_repository: IdentityLinkRepository | None = None,
     ) -> None:
         self._graph_repository = graph_repository
         self._rollup_repository = rollup_repository
+        self._identity_link_repository = identity_link_repository
 
     async def list_programs(self, tenant_id: str, as_of: date) -> list[DirectoryItemView]:
         return await self._list_items(tenant_id, NodeKind.PROGRAM, as_of)
@@ -805,6 +827,7 @@ class DirectoryService:
             (status.entity_ref.kind, status.entity_ref.id): status
             for status in await self._rollup_repository.list_node_statuses(tenant_id, as_of)
         }
+        member_for = await self._member_resolver(tenant_id, nodes, selected)
         views: list[DirectoryItemView] = []
         for node in selected:
             status = status_by_ref.get((node.kind, node.id))
@@ -879,9 +902,42 @@ class DirectoryService:
                             )
                         )
                     ),
+                    people=_people(node, member_for),
                 )
             )
         return sorted(views, key=lambda item: (item.name, item.id))
+
+    async def _member_resolver(
+        self,
+        tenant_id: str,
+        nodes: Sequence[GraphNode],
+        selected: Sequence[GraphNode],
+    ) -> Mapping[str, GraphNode]:
+        """Index members by every id a person field may hold.
+
+        Admins type these fields by hand, so a value is either a member node id
+        or the person's chat user id. Members imported from the chat directory
+        share the two; members created by hand do not, which is why the chat id
+        is looked up as well. The member list itself is admin-only, so this is
+        the one place every role reading the directory gets the names.
+        """
+        wanted = {person_id for node in selected for _, person_id in _person_fields(node)}
+        if not wanted:
+            return {}
+        members = {node.id: node for node in nodes if node.kind is NodeKind.DEVELOPER}
+        by_id: dict[str, GraphNode] = {}
+        if self._identity_link_repository is not None and not wanted.issubset(members):
+            for link in await self._identity_link_repository.list_identity_links(tenant_id):
+                member = members.get(link.developer_id)
+                if member is not None and link.chat_user_id:
+                    by_id.setdefault(link.chat_user_id, member)
+        for member in members.values():
+            chat_id = _string_metadata(member, "chat_external_id")
+            if chat_id is not None:
+                by_id.setdefault(chat_id, member)
+        # A member's own node id always wins over another member's chat id.
+        by_id.update(members)
+        return by_id
 
     async def _ensure_node(
         self,
@@ -895,6 +951,32 @@ class DirectoryService:
         if node.kind is not kind:
             raise GraphNotFound(f"{id} exists as a {node.kind.value}, not a {kind.value}")
         return node
+
+
+def _person_fields(node: GraphNode) -> tuple[tuple[str, str], ...]:
+    return tuple(
+        (key, value)
+        for key in PERSON_METADATA_KEYS
+        if isinstance(value := node.metadata.get(key), str) and value
+    )
+
+
+def _people(
+    node: GraphNode,
+    member_for: Mapping[str, GraphNode],
+) -> tuple[DirectoryPersonView, ...]:
+    people: list[DirectoryPersonView] = []
+    for key, person_id in _person_fields(node):
+        member = member_for.get(person_id)
+        people.append(
+            DirectoryPersonView(
+                key=key,
+                id=person_id,
+                member_id=member.id if member is not None else None,
+                name=member.name if member is not None else None,
+            )
+        )
+    return tuple(people)
 
 
 def _source_ids(

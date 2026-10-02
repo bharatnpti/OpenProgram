@@ -265,9 +265,9 @@ function detailRows(
     return [
       ["Type", stringMeta(metadata.type)],
       ["Phase", stringMeta(metadata.phase)],
-      ["Owner", stringMeta(metadata.owner_id)],
-      ["TPM", stringMeta(metadata.tpm_id)],
-      ["SM", stringMeta(metadata.sm_id)],
+      ["Owner", personMeta(item, "owner_id")],
+      ["TPM", personMeta(item, "tpm_id")],
+      ["SM", personMeta(item, "sm_id")],
       ["Target date", stringMeta(metadata.target_date)],
     ];
   }
@@ -290,6 +290,17 @@ function detailRows(
 
 function stringMeta(value: unknown): string {
   return typeof value === "string" && value ? value : "—";
+}
+
+/**
+ * A person field by name. The stored value is an id, and the member list is
+ * admin-only, so the directory resolves it for every role. An id that matches
+ * no member is shown as an id, never passed off as a name.
+ */
+function personMeta(item: DirectoryItemResponse, key: string): string {
+  const person = item.people.find((entry) => entry.key === key);
+  if (!person) return stringMeta(item.metadata[key]);
+  return person.name ?? `${person.id} · not a member`;
 }
 
 /** Which role opens this kind of node, for the panel to say so plainly. */
