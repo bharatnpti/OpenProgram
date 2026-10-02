@@ -114,8 +114,9 @@ export function CheckinPreferencesPanel({
       <div>
         <h2 className="text-[18px] font-bold">Check-in preferences</h2>
         <p className="mt-1 text-[13px] text-grey-secondary">
-          Set local check-in timing, weekdays, and reply windows per member. Anything not set for a
-          member follows the team default, and changes when the default does.
+          Set each member's time zone, check-in days, and reply windows. Check-ins go out at one
+          time for the whole team. Anything not set for a member follows the team default, and
+          changes when the default does.
         </p>
       </div>
 
@@ -130,32 +131,22 @@ export function CheckinPreferencesPanel({
               placeholder="Select member"
             />
           </FormField>
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <FormField label="Local time" htmlFor="checkin-time">
-                <TextInput
-                  id="checkin-time"
-                  type="time"
-                  value={form.local_time}
-                  onChange={(event) => edit("local_time", event.target.value)}
-                />
-              </FormField>
-              {source("local_time")}
-            </div>
-            <div>
-              <FormField
-                label="Timezone"
-                htmlFor="checkin-timezone"
-                error={noZone ? "Enter a time zone, or use the team default." : undefined}
-              >
-                <TextInput
-                  id="checkin-timezone"
-                  value={form.timezone}
-                  onChange={(event) => edit("timezone", event.target.value)}
-                />
-              </FormField>
-              {source("timezone")}
-            </div>
+          {/* No per-person time: check-ins go out on one tenant-wide
+              schedule, so a time set here would change nothing. The API
+              still stores one, and the form never sends it. */}
+          <div>
+            <FormField
+              label="Timezone"
+              htmlFor="checkin-timezone"
+              error={noZone ? "Enter a time zone, or use the team default." : undefined}
+            >
+              <TextInput
+                id="checkin-timezone"
+                value={form.timezone}
+                onChange={(event) => edit("timezone", event.target.value)}
+              />
+            </FormField>
+            {source("timezone")}
           </div>
           <div>
             <FormField label="Weekdays" error={noDays ? "Pick at least one day." : undefined}>
@@ -246,8 +237,7 @@ export function CheckinPreferencesPanel({
                     {memberName(pref.developer_id, members)}
                   </div>
                   <div className="mt-0.5 text-[13px] text-grey-secondary">
-                    {pref.local_time} / {pref.timezone ?? pref.defaults.timezone} /{" "}
-                    {weekdayLabels(pref.weekdays)}
+                    {pref.timezone ?? pref.defaults.timezone} / {weekdayLabels(pref.weekdays)}
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     <RagChip tone="info">{formatDuration(pref.reply_wait_seconds)} wait</RagChip>
@@ -256,7 +246,7 @@ export function CheckinPreferencesPanel({
                     </RagChip>
                   </div>
                   <div className="mt-1.5 text-[12px] text-grey-secondary">
-                    {inheritedSummary(pref.inherited)}
+                    {inheritedSummary(pref.inherited.filter(isFormField))}
                   </div>
                 </div>
               ))}
@@ -294,11 +284,11 @@ function InheritNote({
   );
 }
 
-type PrefField = CheckInPreferenceField;
+/** The fields the console sets: every preference field but the unused per-person time. */
+type PrefField = Exclude<CheckInPreferenceField, "local_time">;
 
 /** What the form shows for each field; a wait is `null` while it can't be saved. */
 type FieldValues = {
-  local_time: string;
   timezone: string;
   weekdays: number[];
   reply_wait_seconds: number | null;
@@ -311,7 +301,6 @@ type PreferenceForm = FieldValues & {
 };
 
 const formFields: PrefField[] = [
-  "local_time",
   "timezone",
   "weekdays",
   "reply_wait_seconds",
@@ -320,7 +309,6 @@ const formFields: PrefField[] = [
 
 /** Shown before a member is picked; Save stays off until one is. */
 const emptyForm: PreferenceForm = {
-  local_time: "09:30",
   timezone: "UTC",
   weekdays: [0, 1, 2, 3, 4],
   reply_wait_seconds: 14400,
@@ -330,13 +318,16 @@ const emptyForm: PreferenceForm = {
 
 function formFrom(pref: CheckinPreferenceResponse): PreferenceForm {
   return {
-    local_time: pref.local_time.slice(0, 5),
     timezone: pref.timezone ?? pref.defaults.timezone,
     weekdays: pref.weekdays,
     reply_wait_seconds: pref.reply_wait_seconds,
     final_reply_wait_seconds: pref.final_reply_wait_seconds,
-    inherited: pref.inherited,
+    inherited: pref.inherited.filter(isFormField),
   };
+}
+
+function isFormField(field: CheckInPreferenceField): field is PrefField {
+  return (formFields as CheckInPreferenceField[]).includes(field);
 }
 
 function defaultValue<F extends PrefField>(
@@ -344,7 +335,6 @@ function defaultValue<F extends PrefField>(
   field: F,
 ): FieldValues[F] {
   const values: FieldValues = {
-    local_time: defaults.local_time.slice(0, 5),
     timezone: defaults.timezone,
     weekdays: defaults.weekdays,
     reply_wait_seconds: defaults.reply_wait_seconds,
@@ -390,7 +380,7 @@ function preferenceChanges(
   return changes;
 }
 
-/** A value as the form shows it: "09:30", "UTC", "Mon–Fri", "4 h". */
+/** A value as the form shows it: "UTC", "Mon Tue Wed", "4 h". */
 function valueLabel(field: PrefField, value: unknown): string {
   if (field === "weekdays") return weekdayLabels(value as number[]);
   if (field === "reply_wait_seconds" || field === "final_reply_wait_seconds") {
@@ -400,7 +390,6 @@ function valueLabel(field: PrefField, value: unknown): string {
 }
 
 const fieldNames: Record<PrefField, string> = {
-  local_time: "time",
   timezone: "time zone",
   weekdays: "days",
   reply_wait_seconds: "reply wait",
