@@ -1,0 +1,76 @@
+features.md
+  s_386bf853700fa5::t_aadf704733c356 466
+backend/tests/bdd/steps_cross_person_requests.py
+  s_386bf853700fa5::t_d3e0f84e7b0c08 197-229
+frontend-v2/src/api/openapi.json
+  s_386bf853700fa5::t_65510d37a59ea2 6528,7233-7243,7401-7411
+frontend/src/api/openapi.json
+  s_386bf853700fa5::t_65510d37a59ea2 6528,7233-7243,7401-7411
+frontend-v2/src/api/generated.ts
+  s_386bf853700fa5::t_65510d37a59ea2 1504-1507,1753-1754,1802-1803
+backend/tests/unit/test_mock_slack_adapter.py
+  s_386bf853700fa5::t_68b387aa97fda1 10
+  s_386bf853700fa5::t_0cc0dee4bfafd3 81-124
+backend/tests/unit/test_chat_simulator_api.py
+  s_386bf853700fa5::t_c7cfecaacd3e4f 238-342,345-443,447-461
+  s_386bf853700fa5::t_f656515de991b5 343-344
+  s_386bf853700fa5::t_45be299eb179c5 7,9,14-16
+  s_386bf853700fa5::t_24002f0c30ce04 444-446
+backend/api/dtos.py
+  s_386bf853700fa5::t_10fab06ba43e9c 616-619
+  s_386bf853700fa5::t_2d6cc64eb74459 581-583
+backend/infra/registry.py
+  s_386bf853700fa5::t_308cb427ad91a7 680-683
+  s_386bf853700fa5::t_855711b946edbf 743-793,804,811
+  s_386bf853700fa5::t_389a3c3c5c25fe 702,710-712,714-721
+backend/api/routers/test_support.py
+  s_386bf853700fa5::t_0e5633935dda5d 86
+  s_386bf853700fa5::t_fb2c033691995a 71-74
+backend/tests/bdd/features/cross_person_requests.feature
+  s_386bf853700fa5::t_30e25c8a31cb93 63-79
+frontend/src/api/generated.ts
+  s_386bf853700fa5::t_65510d37a59ea2 1504-1507,1753-1754,1802-1803
+backend/infra/adapters/chat/mock_slack.py
+  s_386bf853700fa5::t_59e929847705c2 31-35
+  s_386bf853700fa5::t_0452cd903fd0cb 72
+  s_386bf853700fa5::t_6c8769377f788f 98
+  s_386bf853700fa5::t_3f66ac663e8ab9 171,184,186
+  s_386bf853700fa5::t_ebd096bfb58215 279,292,294
+  s_386bf853700fa5::t_4afe5a229160b6 50
+  s_386bf853700fa5::t_e9c853b08664bc 603-609,611-613
+  s_386bf853700fa5::t_57afce089af0ea 625-636
+frontend-v2/src/pages/ChatPage.tsx
+  s_386bf853700fa5::t_39680cbd421eb0 22-27
+  s_386bf853700fa5::t_f5baf5b17c870b 37,40
+  s_386bf853700fa5::t_9a2ad6c4bcb87a 98-99
+  s_386bf853700fa5::t_e1c0e7b4e9db6a 111,114-116
+  s_386bf853700fa5::t_a9fa0819692d9d 267,271,274,276-281
+  s_386bf853700fa5::t_ad8b9ffec183fa 109,113
+  s_386bf853700fa5::t_40ba77ca8b6ad2 535
+  s_386bf853700fa5::t_6c1e8e0cc3e1fa 584-633
+  s_386bf853700fa5::t_8eb42a2a8ccdbc 418-491,494-506
+  s_386bf853700fa5::t_d1c19721fe1c4c 100
+  s_386bf853700fa5::t_63ed82780b75d3 86-88,90
+  s_386bf853700fa5::t_7572884a7e5461 65-71
+  s_386bf853700fa5::t_c1127da141d38e 2
+  s_386bf853700fa5::t_d183f847e2764b 210-213
+  s_386bf853700fa5::t_13846745ece20e 291,293-297,299-300,302-335
+  s_386bf853700fa5::t_7610bab195ff59 292,492-493
+  s_386bf853700fa5::t_f7243dfd1dc7d5 298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3bea79e9c43445728fb5abddcf53529f996b7c90",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
