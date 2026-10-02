@@ -35,6 +35,20 @@ def test_settings_default_to_dev_auth_provider() -> None:
     assert settings.auth_cookie_samesite == "lax"
 
 
+def test_settings_default_slack_inbound_transport_is_http_webhook() -> None:
+    settings = _settings(secret_key=SECRET_KEY, chat_provider="slack")
+
+    assert settings.slack_inbound_transport == "http"
+    assert settings.slack_socket_mode is False
+    assert _settings(
+        secret_key=SECRET_KEY, chat_provider="slack", slack_inbound_transport="socket"
+    ).slack_socket_mode
+    # Socket Mode only applies to real Slack, never to the simulator.
+    assert not _settings(
+        secret_key=SECRET_KEY, chat_provider="mock_slack", slack_inbound_transport="socket"
+    ).slack_socket_mode
+
+
 def test_settings_require_oidc_fields_for_bff_mode() -> None:
     with pytest.raises(ValidationError):
         _settings(secret_key=SECRET_KEY, auth_provider="oidc_bff", runtime_mode="memory")

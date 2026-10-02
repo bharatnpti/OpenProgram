@@ -19,8 +19,8 @@ sequenceDiagram
 
 Real Slack events reach `ServiceRegistry.accept_chat_event` by one of two transports, chosen by `slack_inbound_transport`:
 
-- `socket` (default): `SlackSocketModeListener` runs in the worker, opens a Socket Mode WebSocket with the app-level token (`apps.connections.open`), and passes each `events_api` envelope payload into the intake. It acks the envelope only after intake succeeds; an unacked envelope is redelivered by Slack.
-- `http`: Slack POSTs to `/webhooks/chat/slack`; the router verifies the signature and calls the same intake.
+- `socket`: `SlackSocketModeListener` runs in the worker, opens a Socket Mode WebSocket with the app-level token (`apps.connections.open`), and passes each `events_api` envelope payload into the intake. It acks the envelope only after intake succeeds; an unacked envelope is redelivered by Slack.
+- `http` (default): Slack POSTs to `/webhooks/chat/slack`; the router verifies the signature and calls the same intake.
 
 The envelope payload is the same JSON body Slack would POST to the webhook, so both transports share `SlackChatWebhookMapper`, `event_id` dedup, reply coalescing and the inbound sweeper. Setup and operations: [docs/ops/slack-setup.md](../ops/slack-setup.md).
 
