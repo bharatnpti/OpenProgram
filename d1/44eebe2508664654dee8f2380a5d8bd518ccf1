@@ -1,0 +1,161 @@
+backend/config/settings.py
+  s_01f7ef64da2d25::t_2d7402d92106ab 579
+  s_01f7ef64da2d25::t_4cd5aab408aeda 583
+  s_07adae6a420afb::t_d310bfe9b3e259 138-143
+  s_07adae6a420afb::t_04c161a073604e 580-583
+  s_07adae6a420afb::t_b6f6005db4488c 579
+backend/tests/unit/test_chat_simulator_api.py
+  s_01f7ef64da2d25::t_2192f994b562f3 42
+frontend-v2/src/components/shell/AvatarMenu.tsx
+  s_db98bf649daf00::t_691d86cf6fba3b 74-76,78-81,83
+frontend-v2/src/features/coordination/RequestsBoard.tsx
+  s_db98bf649daf00::t_03be215e5327a7 24-25,40,55,72-73,76-79
+frontend-v2/src/components/shell/CommandPalette.tsx
+  s_db98bf649daf00::t_1192f308fbdb5c 70
+pyproject.toml
+  s_07adae6a420afb::t_2a737a22ecd141 32
+backend/api/routers/webhooks.py
+  s_07adae6a420afb::t_e0e500e238a488 46-50
+docs/lld/service-and-api.md
+  s_07adae6a420afb::t_6e599748a7e8c3 12
+uv.lock
+  s_07adae6a420afb::t_3a1647fda7c8b3 1145,1194
+backend/infra/adapters/chat/slack_socket.py
+  s_07adae6a420afb::t_2661a7b2ba589f 124,181,253-258
+  s_07adae6a420afb::t_9d785193f8b8b4 1-123,125-163,165-174,176-180,182-232,235,237-252,259-262,272-279
+  s_07adae6a420afb::t_9a5754b5b8f3c9 233-234,236
+  s_07adae6a420afb::t_fdbb558828b7d2 164,175,263-271
+backend/infra/registry.py
+  s_07adae6a420afb::t_960c1fc58ec6bf 398
+  s_07adae6a420afb::t_e0e500e238a488 75,372-397
+.env.example
+  s_07adae6a420afb::t_46ade32090bcc0 49-54
+backend/infra/workflows/worker.py
+  s_07adae6a420afb::t_61d11654e54457 5-6,8-9,13-14,22-26,31-39
+  s_07adae6a420afb::t_f31975ef013571 40-41
+backend/tests/unit/test_testcontainers_compose.py
+  s_07adae6a420afb::t_46ade32090bcc0 11
+backend/tests/unit/test_registry_providers.py
+  s_07adae6a420afb::t_333e5422ee692f 153,166,175-257,384-386,389-395
+backend/infra/adapters/chat/slack.py
+  s_07adae6a420afb::t_bbc3d36f3e0ba0 22,26,28,235-244,316-319,324-325,328-329,331
+docs/lld/chat-roundtrip.md
+  s_07adae6a420afb::t_c30d5900d4fc98 25
+  s_07adae6a420afb::t_6e599748a7e8c3 18-24,26,33
+docker-compose.yml
+  s_07adae6a420afb::t_46ade32090bcc0 286,343
+backend/tests/unit/test_agent_and_workflow.py
+  s_07adae6a420afb::t_29db692ad77043 1414-1415
+  s_07adae6a420afb::t_b409a9fda80fed 602-653,1375-1381,1384-1385,1391-1395,1408-1413
+  s_07adae6a420afb::t_ec858b0aa43fd6 15
+docs/ops/slack-setup.md
+  s_07adae6a420afb::t_a51ec58edcaf14 1-52,54-96
+  s_07adae6a420afb::t_e6ecbbb31e85b9 53
+docs/ops/infrastructure-procurement.md
+  s_07adae6a420afb::t_ec46ea8dc99923 286-289,291-292,298-299,366
+  s_07adae6a420afb::t_e6ecbbb31e85b9 19-20,74-75,78,86,106,189-190,257,365,367-377
+backend/infra/adapters/catalog.py
+  s_07adae6a420afb::t_ddedd7062e9e3e 348-349
+  s_07adae6a420afb::t_418130f2dce6fa 39-44,141-165,311,321-325,330-336,340-341,346-347
+backend/tests/contract/test_slack_socket_listener.py
+  s_07adae6a420afb::t_fdbb558828b7d2 352-366
+  s_07adae6a420afb::t_09d579bde14f03 4,12,23,308-351
+  s_07adae6a420afb::t_1e746d7777c83a 1-3,5-6,8-11,13-15,17-22,24-25,27-264
+  s_07adae6a420afb::t_6275fa71c6532b 7,16,26,265-307
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d144eebe2508664654dee8f2380a5d8bd518ccf1",
+  "prompts": {},
+  "sessions": {
+    "s_01f7ef64da2d25": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2e3b65a-bb8b-4a19-85f1-b33d77807471",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    },
+    "s_07adae6a420afb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f57b89c-7e33-4f69-8787-d5d1f13b6b94",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    },
+    "s_3c921e7a3f5001": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "396c1021-babe-4d13-ad49-4f006a262f02",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    },
+    "s_4d2c603f9ae4cc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "824f918d-1b2a-4c0d-8ce3-8997774f4ff6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    },
+    "s_4dea2fe3f5c791": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "60af7a42-09e4-42a8-b3ea-7084c97cbced",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    },
+    "s_648c4d8ed10e2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6fa2021c-7e4e-4385-86fb-a09b2fdb6b8c",
+        "model": "claude-opus-5"
+      },
+      "human_author": null
+    },
+    "s_99c2059995c70c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "347344e1-d69c-4b8a-87ae-173565ce6f33",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    },
+    "s_cf6265cb994e26": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e787ee6b-2d24-470e-8e2c-33a810fc06d4",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    },
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    },
+    "s_e3c35ff5a3ad90": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "99d1d5d1-7de9-44f3-bd50-c1e127bf1ad9",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    },
+    "s_faafef13df0102": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4b68406f-83dc-4b20-bc08-414732a151ca",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
+    }
+  }
+}
