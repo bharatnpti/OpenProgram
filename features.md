@@ -463,6 +463,7 @@ Functional requirements:
 - The system shall provide a built-in chat provider that stands in for the chat workspace. It shall be enabled by configuration and served only on a local tenant.
 - The Chat screen shall show one thread per person, with the bot's check-in question, follow-ups, and nudges, and a composer whose reply travels the same webhook correlation path as real chat, so the parsed status reaches the rollups.
 - Everyone shall read and answer their own thread. An admin shall also get the roster, open and write in anyone's thread, request a check-in for that person, and clear the chat history for everyone.
+- A message asking someone for a review or input shall offer a Reply action. Replying shall post in that message's thread, as in a real chat workspace, and shall show under the message it answers. It acknowledges the request, or resolves it when the text says the work is done, and is never opened as a check-in or read as a status update. A thread reply under any other message is kept in the conversation and otherwise ignored.
 - The same surface shall be available to scripts through test-support endpoints.
 - The Chat screen and its nav entry shall be absent when the backend does not serve the built-in chat.
 

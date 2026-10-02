@@ -677,6 +677,10 @@ class ServiceRegistry:
         messages.sort(key=lambda message: (message.created_at, message.message_id))
         for message in reversed(messages):
             if message.direction == "user":
+                if message.thread_id is not None:
+                    # A reply inside a request DM's thread answers that DM, not
+                    # the check-in question above it, which stays open.
+                    continue
                 return None
             if (
                 message.direction == "bot"
@@ -695,6 +699,7 @@ class ServiceRegistry:
         text: str,
         received_at: datetime | None,
         correlation_id: str,
+        thread_id: str | None = None,
     ) -> Mapping[str, object]:
         """Post a message as a person, asking them for status first if needed.
 
@@ -702,7 +707,18 @@ class ServiceRegistry:
         person speaks unprompted the bot's question is issued synchronously
         first -- the same ``start_checkin`` path the scheduled fan-out uses --
         and the text then lands as its reply.
+
+        With ``thread_id`` the message is instead a reply in the thread of that
+        bot message, and takes the thread path below.
         """
+        if thread_id is not None:
+            return await self._send_chat_simulator_thread_reply(
+                user_id=user_id,
+                thread_id=thread_id,
+                text=text,
+                received_at=received_at,
+                correlation_id=correlation_id,
+            )
         question_id = await self.open_chat_simulator_question(user_id)
         started_checkin = False
         if question_id is None:
@@ -724,6 +740,57 @@ class ServiceRegistry:
         )
         return {**result, "started_checkin": started_checkin}
 
+    async def _send_chat_simulator_thread_reply(
+        self,
+        *,
+        user_id: str,
+        thread_id: str,
+        text: str,
+        received_at: datetime | None,
+        correlation_id: str,
+    ) -> Mapping[str, object]:
+        """Reply in the thread of one of the bot's messages, as Slack would.
+
+        The reply reaches inbound routing with the parent's id as its thread, so
+        a cross-person request DM claims it through the threaded-reply path.
+        A thread reply is never a status update: it does not open a check-in
+        and is not parsed as one. Under any message that is not a request DM
+        nothing claims it, so it stays in the transcript under that message and
+        is reported ``ignored`` -- it is deliberately not handed to the
+        check-in collector, which would file it as the person's status.
+        """
+        store = self._chat_simulator_store()
+        tenant_id = self.settings.tenant_id
+        parent = await store.message_by_id(tenant_id=tenant_id, message_id=thread_id)
+        if parent is None or parent.direction != "bot" or parent.user_id != user_id:
+            raise ProviderUnavailable("simulator message to reply to was not found")
+        request = await self.cross_person_request_repository().get_by_notify_message_id(
+            tenant_id,
+            parent.message_id,
+        )
+        if request is not None:
+            result = await self.inject_chat_simulator_reply(
+                message_id=parent.message_id,
+                text=text,
+                received_at=received_at,
+                correlation_id=correlation_id,
+                in_thread=True,
+            )
+            return {**result, "started_checkin": False}
+        reply = await store.record_user_reply(
+            tenant_id=tenant_id,
+            reply_to_message_id=parent.message_id,
+            text=text,
+            created_at=received_at,
+            in_thread=True,
+        )
+        return {
+            "message_id": reply.message_id,
+            "status": "ignored",
+            "processed_message_id": reply.message_id,
+            "started_checkin": False,
+        }
+
     async def reset_chat_simulator(self) -> None:
         await self._chat_simulator_store().reset(self.settings.tenant_id)
 
@@ -734,12 +801,14 @@ class ServiceRegistry:
         text: str,
         received_at: datetime | None,
         correlation_id: str,
+        in_thread: bool = False,
     ) -> Mapping[str, object]:
         reply = await self._chat_simulator_store().record_user_reply(
             tenant_id=self.settings.tenant_id,
             reply_to_message_id=message_id,
             text=text,
             created_at=received_at,
+            in_thread=in_thread,
         )
         result = await self.process_chat_webhook(
             _CHAT_SIMULATOR_PROVIDER,

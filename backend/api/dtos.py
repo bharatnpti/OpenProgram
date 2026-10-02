@@ -578,6 +578,9 @@ class ChatSimulatorMessageResponse(BaseModel):
     correlation_id: str | None = None
     purpose: str | None = None
     reply_to_message_id: str | None = None
+    # Set only on a reply posted in the thread of another message: that message's
+    # id. A check-in answer has a reply_to_message_id but is no thread reply.
+    thread_id: str | None = None
     metadata: dict[str, str | int | float | bool | None]
 
 
@@ -610,6 +613,10 @@ class ChatSimulatorUserMessageRequest(BaseModel):
     # Defaults to the chat user id, which is how the demo tenant is wired.
     developer_id: str | None = None
     developer_name: str | None = None
+    # Post as a reply in the thread of this bot message (it must be in the same
+    # person's conversation). A thread reply never opens a check-in and is never
+    # read as a status update; leave it out for an ordinary message.
+    thread_id: str | None = None
 
 
 class ChatSimulatorUserMessageResponse(BaseModel):
