@@ -35,7 +35,7 @@ export OPENPROGRAM_LANGFUSE_PUBLIC_KEY
 export OPENPROGRAM_LANGFUSE_SECRET_KEY
 export OPENPROGRAM_LANGFUSE_PROJECT_ID
 
-.PHONY: up down migrate smoke phase1-smoke integration ui-bdd verify test lint format api openapi openapi-check worker mock-llm frontend-install frontend-dev frontend-lint frontend-format frontend-build frontend-generate
+.PHONY: up down migrate smoke phase1-smoke integration ui-bdd verify test lint format api openapi openapi-check worker mock-llm frontend-install frontend-dev frontend-lint frontend-format frontend-build frontend-generate frontend-v2-install frontend-v2-lint frontend-v2-format frontend-v2-build
 
 up:
 	docker compose up -d
@@ -60,7 +60,7 @@ integration:
 ui-bdd:
 	OPENPROGRAM_RUN_UI_BDD=1 PYTHONPATH=$(PYTHONPATH) uv run pytest backend/tests/bdd -m ui_bdd_scenario --no-cov
 
-verify: lint test frontend-lint frontend-build openapi-check integration smoke phase1-smoke
+verify: lint test frontend-lint frontend-build frontend-v2-lint frontend-v2-build openapi-check integration smoke phase1-smoke
 
 test:
 	PYTHONPATH=$(PYTHONPATH) uv run pytest
@@ -113,3 +113,15 @@ frontend-build:
 
 frontend-generate:
 	cd frontend && npm run generate:client
+
+frontend-v2-install:
+	cd frontend-v2 && npm install
+
+frontend-v2-lint:
+	cd frontend-v2 && npm run lint && npm run typecheck && npm run format:check
+
+frontend-v2-format:
+	cd frontend-v2 && npm run format
+
+frontend-v2-build:
+	cd frontend-v2 && npm run build
