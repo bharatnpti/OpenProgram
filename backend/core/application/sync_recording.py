@@ -14,8 +14,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-import structlog
-
 from core.domain.errors import ProviderConfigurationError, ProviderUnavailable, SecretNotFound
 from core.domain.integrations import SyncCursor
 from core.domain.sync_status import (
@@ -28,8 +26,6 @@ from core.domain.sync_status import (
     SyncErrorKind,
 )
 from core.ports.repositories import SyncCursorRepository
-
-_logger = structlog.get_logger(__name__)
 
 
 def classify_sync_error(error: BaseException) -> SyncErrorKind:
@@ -101,7 +97,13 @@ async def record_sync_failure(
             tenant_id, connector, scope, failed_cursor(cursor, failed_at, error)
         )
     except Exception:  # pragma: no cover - defensive; the caller re-raises the real error
-        _logger.warning(
+        # Imported here, not at module load: the sync workflow definitions import
+        # sync_services, which imports this module, and the workflow runtime
+        # loads those definitions inside a sandbox that refuses structlog's
+        # import-time randomness (through rich).
+        import structlog
+
+        structlog.get_logger(__name__).warning(
             "sync_failure_not_recorded",
             tenant_id=tenant_id,
             connector=connector,
