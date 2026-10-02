@@ -1,0 +1,38 @@
+backend/tests/unit/test_agent_and_workflow.py
+  s_700a7231520d64::t_692921e10bbc8e 560,563,576-579,582-584,597-618,628,643-646,888-938,1567,1612-1614
+  s_700a7231520d64::t_ed5fcd9cee8476 1615
+backend/infra/adapters/workflows/fake.py
+  s_700a7231520d64::t_9c80bf116b843b 60-62
+backend/core/ports/workflows.py
+  s_700a7231520d64::t_9c80bf116b843b 46-49
+backend/infra/adapters/workflows/dbos.py
+  s_700a7231520d64::t_9c80bf116b843b 643-654,672,696,712,728,744,760,778,787-803
+  s_700a7231520d64::t_3108810eafe247 804
+docs/ops/real-integrations.md
+  s_700a7231520d64::t_54c9c6a8620219 155-160,201-209,240-244
+backend/tests/unit/test_cross_person_notify_retry.py
+  s_700a7231520d64::t_5c860e523643db 446,449,463
+backend/infra/adapters/workflows/temporal.py
+  s_700a7231520d64::t_aaa643858a2d30 801-812
+backend/infra/workflows/schedule.py
+  s_700a7231520d64::t_692921e10bbc8e 59
+  s_700a7231520d64::t_aaa643858a2d30 40-41,46-47,52-53,58,67-70,74-76
+scripts/qa_org/use_real.py
+  s_700a7231520d64::t_54c9c6a8620219 76-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2014ce58154b1a454ad4ddbc379ea5192ac70d44",
+  "prompts": {},
+  "sessions": {
+    "s_700a7231520d64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "36fa9789-4943-4fbd-be9c-cc918ee14b0f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
