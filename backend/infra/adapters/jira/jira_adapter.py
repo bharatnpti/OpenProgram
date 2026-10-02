@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-from datetime import datetime
+import math
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import cast
 
 import httpx
@@ -15,6 +16,14 @@ from core.ports.secrets import SecretRef, SecretStore
 
 _tracer = trace.get_tracer("openprogram.adapters.issue_tracker.jira")
 _ISSUE_FIELDS = "summary,status,assignee,updated,project,issuetype,parent"
+# JQL dates have minute precision and are read in the API user's profile timezone,
+# so the incremental filter is a relative window, widened by this much to absorb
+# rounding and clock skew; issues the cursor already covers are dropped afterwards.
+_CURSOR_OVERLAP = timedelta(minutes=2)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 @dataclass(frozen=True)
@@ -31,6 +40,7 @@ class JiraIssueTrackerAdapter:
     api_token: str | None = None
     secret_store: SecretStore | None = None
     timeout_seconds: float = 10.0
+    clock: Callable[[], datetime] = field(default=_utc_now)
 
     async def list_projects(self, tenant_id: str) -> list[Project]:
         with _tracer.start_as_current_span("jira.list_projects"):
@@ -178,15 +188,18 @@ class JiraIssueTrackerAdapter:
         jql: str,
         cursor: SyncCursor,
     ) -> list[Issue]:
-        effective_jql = jql
-        if cursor.updated_at is not None:
-            effective_jql = (
-                f"({effective_jql}) AND updated > {_jql_string(cursor.updated_at.isoformat())}"
-            )
-        return await self._search_issues_for_jql(
+        since = cursor.updated_at
+        if since is None:
+            return await self._search_issues_for_jql(tenant_id, f"{jql} ORDER BY updated ASC")
+        # Not an absolute date: Jira answers an ISO-8601 literal with an empty
+        # result rather than an error, and reads "yyyy-MM-dd HH:mm" in the API
+        # user's profile timezone, which the cursor does not know.
+        window = _relative_window(since, self.clock())
+        issues = await self._search_issues_for_jql(
             tenant_id,
-            f"{effective_jql} ORDER BY updated ASC",
+            f"({jql}) AND updated >= {window} ORDER BY updated ASC",
         )
+        return [issue for issue in issues if issue.updated_at is None or issue.updated_at > since]
 
     async def _search_issues_for_jql(self, tenant_id: str, jql: str) -> list[Issue]:
         issues: list[Issue] = []
@@ -413,6 +426,12 @@ def _metadata(values: Mapping[str, object]) -> Mapping[str, JsonScalar]:
         for key, value in values.items()
         if value is None or isinstance(value, str | int | float | bool)
     }
+
+
+def _relative_window(since: datetime, now: datetime) -> str:
+    """A JQL relative date ("-95m") reaching back past ``since``, timezone-free."""
+    elapsed = max(now - since, timedelta(0)) + _CURSOR_OVERLAP
+    return f"-{math.ceil(elapsed.total_seconds() / 60)}m"
 
 
 def _jql_string(value: str) -> str:
