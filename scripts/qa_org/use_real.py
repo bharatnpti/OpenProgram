@@ -73,8 +73,8 @@ def managed_values(*, live_checkins: bool, test_windows: bool = False) -> dict[s
     secrets = env.require(*SECRET_KEYS)
     return {
         # Off by default so switching mid-afternoon does not DM every member
-        # within 15 minutes. NOTE: under DBOS this only stops the schedule from
-        # being (re)created; one that already exists keeps firing until removed.
+        # within 15 minutes; the worker deletes the schedule when it starts with
+        # this off.
         "OPENPROGRAM_CHECKIN_RECONCILE_ENABLED": "true" if live_checkins else "false",
         # DMs the person a check-in asks something of. On by default in
         # settings; pinned off here unless a test needs real members DMed.

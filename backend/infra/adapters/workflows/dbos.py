@@ -640,6 +640,18 @@ async def _start_sync_child_workflow(input: SyncDispatchInput, *, workflow_id: s
     return workflow_id
 
 
+def _apply_active_schedules(schedules: Sequence[ScheduleInput]) -> None:
+    """Create or replace schedules, then resume them: configuration wins over a pause.
+
+    DBOS 3.x upserts a schedule and keeps its status, so one paused by hand
+    stayed paused through every worker restart even with its flag on (2.x
+    replaced it). Switching a feature off is remove_schedule, not a pause.
+    """
+    DBOS.apply_schedules(list(schedules))
+    for entry in schedules:
+        DBOS.resume_schedule(entry["schedule_name"])
+
+
 @dataclass(frozen=True)
 class DbosWorkflowScheduler:
     app_name: str
@@ -657,7 +669,7 @@ class DbosWorkflowScheduler:
             )
         )
         try:
-            DBOS.apply_schedules(
+            _apply_active_schedules(
                 [
                     _heartbeat_schedule_input(
                         schedule_id=self.schedule_id,
@@ -681,7 +693,7 @@ class DbosWorkflowScheduler:
             )
         )
         try:
-            DBOS.apply_schedules([_checkin_fanout_schedule_input(config)])
+            _apply_active_schedules([_checkin_fanout_schedule_input(config)])
         finally:
             if started_runtime:
                 destroy_dbos_runtime()
@@ -697,7 +709,7 @@ class DbosWorkflowScheduler:
             )
         )
         try:
-            DBOS.apply_schedules([_checkin_reconcile_schedule_input(config)])
+            _apply_active_schedules([_checkin_reconcile_schedule_input(config)])
         finally:
             if started_runtime:
                 destroy_dbos_runtime()
@@ -713,7 +725,7 @@ class DbosWorkflowScheduler:
             )
         )
         try:
-            DBOS.apply_schedules([_conversation_purge_schedule_input(config)])
+            _apply_active_schedules([_conversation_purge_schedule_input(config)])
         finally:
             if started_runtime:
                 destroy_dbos_runtime()
@@ -729,7 +741,7 @@ class DbosWorkflowScheduler:
             )
         )
         try:
-            DBOS.apply_schedules([_inbound_events_sweeper_schedule_input(config)])
+            _apply_active_schedules([_inbound_events_sweeper_schedule_input(config)])
         finally:
             if started_runtime:
                 destroy_dbos_runtime()
@@ -745,7 +757,7 @@ class DbosWorkflowScheduler:
             )
         )
         try:
-            DBOS.apply_schedules([_cross_person_notify_retry_schedule_input(config)])
+            _apply_active_schedules([_cross_person_notify_retry_schedule_input(config)])
         finally:
             if started_runtime:
                 destroy_dbos_runtime()
@@ -763,7 +775,7 @@ class DbosWorkflowScheduler:
             )
         )
         try:
-            DBOS.apply_schedules([_sync_schedule_input(config) for config in configs])
+            _apply_active_schedules([_sync_schedule_input(config) for config in configs])
         finally:
             if started_runtime:
                 destroy_dbos_runtime()
@@ -771,6 +783,24 @@ class DbosWorkflowScheduler:
             ScheduleBootstrapResult(schedule_id=config.schedule_id, status="configured")
             for config in configs
         ]
+
+    async def remove_schedule(self, schedule_id: str) -> ScheduleBootstrapResult:
+        started_runtime = _ensure_dbos_runtime(
+            DbosRuntimeConfig(
+                app_name=self.app_name,
+                system_database_url=self.system_database_url,
+            )
+        )
+        try:
+            existed = DBOS.get_schedule(schedule_id) is not None
+            if existed:
+                DBOS.delete_schedule(schedule_id)
+        finally:
+            if started_runtime:
+                destroy_dbos_runtime()
+        return ScheduleBootstrapResult(
+            schedule_id=schedule_id, status="removed" if existed else "absent"
+        )
 
     async def arm_reply_coalesce(self, conversation_key: str, tenant_id: str) -> None:
         _ensure_dbos_runtime(

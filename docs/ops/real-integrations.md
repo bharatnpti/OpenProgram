@@ -152,14 +152,12 @@ docker backend and worker at `.env.qa`.
 person's Slack id, Jira account and GitLab login. Raj's Jira account is left
 unlinked on purpose; `--link-raj` links it.
 
-**Check-in catch-up.** `use_real` sets `CHECKIN_RECONCILE_ENABLED=false`, but
-under DBOS that only stops the schedule being *created*: one that already exists
-in `dbos.workflow_schedules` keeps firing (it DMed all 11 members once on
-2026-10-02). Pause it explicitly, and resume it when a test needs it:
-
-```bash
-docker compose exec -T worker python -c "import os; from dbos import DBOSClient; c = DBOSClient(system_database_url=os.environ['OPENPROGRAM_DATABASE_URL']); c.pause_schedule('openprogram-checkin-reconcile'); c.destroy()"
-```
+**Check-in catch-up.** `use_real` sets `CHECKIN_RECONCILE_ENABLED=false`, and
+the worker deletes the `openprogram-checkin-reconcile` schedule when it starts
+with the flag off. With the flag on it (re)creates the schedule and resumes it,
+so a manual `pause_schedule` lasts only until the next worker restart. The same
+holds for the conversation purge, inbound sweeper, counterpart-DM retry and
+narrative-brief schedules.
 
 The 09:30 weekday fan-out (`openprogram-checkin-fanout`, cron in UTC) stays
 active.
@@ -200,6 +198,15 @@ docker compose up -d --no-deps --force-recreate backend worker
 
 Fixed on this branch:
 
+- The incremental Jira sync never picked up a change after its first run. Its
+  cursor went into JQL as an ISO-8601 literal, which Jira answers with zero
+  issues rather than an error. It is now a relative window
+  (`updated >= -<n>m`), since Jira reads absolute JQL dates in the API user's
+  profile timezone.
+- Switching a schedule's feature off did not remove it, and switching it on did
+  not resume one paused by hand (DBOS 3 keeps a schedule's status on upsert).
+  The worker now deletes the schedule of a disabled feature and resumes every
+  schedule it applies.
 - Nobody's Jira work was found. Jira indexes assignments by `accountId`; the
   identity link's `jira_email` was never read, lookups fell back to the Slack id
   (Jira answers that with an empty 200), and the agent's Jira tool ignored the
@@ -230,8 +237,11 @@ Open:
 
 - Only default-branch commits are synced, so a branch's commits are invisible
   until it is merged. A branch with no MR is visible only as a missing MR.
-- `CHECKIN_RECONCILE_ENABLED=false` does not remove an existing DBOS schedule
-  (above).
+- The backend image installs `pip install .` against the `>=` ranges in
+  `pyproject.toml`, not `uv.lock`, so containers run newer libraries than the
+  tests do (on 2026-10-02: DBOS 3.2.0 vs 2.24.0 locked, Temporal 1.34 vs 1.28,
+  FastAPI 0.142 vs 0.137). DBOS 3 changed `apply_schedules` from replace to
+  upsert, which is how a paused schedule survived restarts.
 - `test_cross_person_service.py::test_registry_routes_slack_thread_reply_by_notify_message_id_first`
   passes on a clean checkout and fails when the checkout's `.env` carries real
   Slack settings: something in that path still reads the local `.env`.

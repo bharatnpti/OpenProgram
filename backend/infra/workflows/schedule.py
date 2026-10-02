@@ -37,18 +37,26 @@ async def ensure_workflow_schedules(
         await scheduler.ensure_heartbeat_schedule(),
         await scheduler.ensure_checkin_fanout_schedule(checkin_fanout_config(settings)),
     ]
+    # A feature switched off removes its schedule: one created while it was on
+    # would otherwise keep firing, because nothing else ever deletes it.
     if settings.checkin_reconcile_enabled:
         results.append(
             await scheduler.ensure_checkin_reconcile_schedule(checkin_reconcile_config(settings))
         )
+    else:
+        results.append(await scheduler.remove_schedule(settings.checkin_reconcile_schedule_id))
     if settings.conversation_purge_enabled:
         results.append(
             await scheduler.ensure_conversation_purge_schedule(conversation_purge_config(settings))
         )
+    else:
+        results.append(await scheduler.remove_schedule(settings.conversation_purge_schedule_id))
     if settings.inbound_events_sweeper_enabled:
         results.append(
             await scheduler.ensure_inbound_sweeper_schedule(inbound_sweeper_config(settings))
         )
+    else:
+        results.append(await scheduler.remove_schedule(settings.inbound_events_sweeper_schedule_id))
     if settings.cross_person_notify_retry_enabled and settings.cross_person_auto_notify:
         # Nothing to retry while counterpart DMs are off, so no schedule either.
         results.append(
@@ -56,9 +64,16 @@ async def ensure_workflow_schedules(
                 cross_person_notify_retry_config(settings)
             )
         )
+    else:
+        results.append(
+            await scheduler.remove_schedule(settings.cross_person_notify_retry_schedule_id)
+        )
     sync_configs = sync_schedule_configs(settings)
     if settings.narrative_brief_enabled:
         sync_configs = (*sync_configs, *narrative_brief_schedule_configs(settings))
+    else:
+        for brief in narrative_brief_schedule_configs(settings):
+            results.append(await scheduler.remove_schedule(brief.schedule_id))
     results.extend(await scheduler.ensure_sync_schedules(sync_configs))
     return results
 
