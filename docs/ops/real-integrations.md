@@ -239,6 +239,13 @@ Fixed on this branch:
   and `web_url`; the PR-age rule ignores closed requests, and the LLM's git tool
   shows state, draft and branch.
 
+- Nothing flagged work merged in git but still open in Jira (IDP-5 and INS-3
+  in the seeded org). A drift finding `merged_issue_open` now does: amber, on
+  the issue, owned by its assignee, when a merge request whose branch or title
+  names the issue was merged at least a day ago, no other request for it is
+  still open, and the issue is not done. It shows on Signals and in
+  `/projects/{id}/risks`; nobody's status is downgraded for it.
+
 Open:
 
 - Only default-branch commits are synced, so a branch's commits are invisible
