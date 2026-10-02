@@ -27,6 +27,7 @@ from core.domain.integrations import (
     Repo,
     Sprint,
     SyncCursor,
+    SyncCursorRecord,
     UserRef,
 )
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
@@ -941,6 +942,15 @@ async def assert_sync_cursor_repository_contract(repository: SyncCursorRepositor
     )
     await repository.record_cursor("demo", "jira", "project:PO", cursor)
     assert await repository.get_cursor("demo", "jira", "project:PO") == cursor
+
+    other = SyncCursor(value="cursor-2", updated_at=updated_at)
+    await repository.record_cursor("demo", "github", "repo:openprogram", other)
+    await repository.record_cursor("other-tenant", "jira", "project:PO", other)
+    assert await repository.list_cursors("demo") == [
+        SyncCursorRecord(connector="github", scope="repo:openprogram", cursor=other),
+        SyncCursorRecord(connector="jira", scope="project:PO", cursor=cursor),
+    ]
+    assert await repository.list_cursors("missing-tenant") == []
 
 
 async def assert_conversation_repository_contract(repository: ConversationRepository) -> None:

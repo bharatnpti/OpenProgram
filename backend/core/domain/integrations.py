@@ -23,6 +23,15 @@ class SyncCursor:
 
 
 @dataclass(frozen=True, kw_only=True)
+class SyncCursorRecord:
+    """A stored cursor with the connector and scope it belongs to."""
+
+    connector: str
+    scope: str
+    cursor: SyncCursor
+
+
+@dataclass(frozen=True, kw_only=True)
 class Project:
     tenant_id: str
     id: str
