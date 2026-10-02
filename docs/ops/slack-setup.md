@@ -4,17 +4,18 @@ OpenProgram sends check-in DMs through the Slack Web API and receives developer
 replies through one of two inbound transports, picked by
 `OPENPROGRAM_SLACK_INBOUND_TRANSPORT`:
 
-| | `socket` (default) | `http` |
+| | `http` (default) | `socket` |
 |---|---|---|
-| How replies arrive | The worker holds an outbound Socket Mode WebSocket to Slack | Slack POSTs each event to `https://<api-host>/webhooks/chat/slack` |
-| Network | Outbound HTTPS/WSS to `*.slack.com` only | A **public** HTTPS endpoint Slack can reach, plus WAF on `/webhooks/*` |
-| Inbound credential | App-level token `OPENPROGRAM_SLACK_APP_TOKEN` (`xapp-`) | Signing secret `OPENPROGRAM_SLACK_SIGNING_SECRET` |
-| Runs in | `worker` (`python -m infra.workflows.worker`) | `backend` API |
+| How replies arrive | Slack POSTs each event to `https://<api-host>/webhooks/chat/slack` | The worker holds an outbound Socket Mode WebSocket to Slack |
+| Network | A **public** HTTPS endpoint Slack can reach, plus WAF on `/webhooks/*` | Outbound HTTPS/WSS to `*.slack.com` only |
+| Inbound credential | Signing secret `OPENPROGRAM_SLACK_SIGNING_SECRET` | App-level token `OPENPROGRAM_SLACK_APP_TOKEN` (`xapp-`) |
+| Runs in | `backend` API | `worker` (`python -m infra.workflows.worker`) |
 
 Both paths feed the same intake (`ServiceRegistry.accept_chat_event`), so
 mapping, `event_id` redelivery dedup, reply coalescing and the inbound sweeper
-behave identically. Use `socket` unless the deployment already has a public
-ingress for other reasons.
+behave identically. `http` is the default and Slack's recommended production
+mode; it needs an approved public ingress. `socket` needs none, which suits
+local development, UAT, and a fallback while the ingress is unavailable.
 
 For local work without Slack, use the simulator instead
 (`OPENPROGRAM_CHAT_PROVIDER=mock_slack`, see [mock-slack.md](../../mock-slack.md)).
@@ -32,7 +33,7 @@ At <https://api.slack.com/apps> → **Create New App** → *From scratch*, one a
 3. **Event Subscriptions:** enable, and under *Subscribe to bot events* add
    `message.im`.
 
-## Socket Mode (`socket`, default)
+## Socket Mode (`socket`)
 
 1. **Socket Mode:** enable it. Slack asks you to create an app-level token; give
    it the `connections:write` scope and copy it (`xapp-…`) into
@@ -76,7 +77,7 @@ reports `"slack_socket": true`; a DM to the bot is recorded as a check-in reply.
 | `slack.socket.misconfigured` … `Socket Mode is disabled` | Socket Mode switched off in the app config | Re-enable it, or move to `http` |
 | repeated `slack.socket.connection_lost` | Egress blocked or proxy not set | Check the proxy and the allow-list for `*.slack.com` |
 
-## Events API over HTTP (`http`)
+## Events API over HTTP (`http`, default)
 
 1. Leave **Socket Mode** off. Under **Event Subscriptions** set the Request URL
    to `https://<api-host>/webhooks/chat/slack`. Slack sends a `url_verification`
