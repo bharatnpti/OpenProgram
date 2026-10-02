@@ -1,0 +1,19 @@
+frontend-v2/src/features/admin/CheckinPreferencesPanel.tsx
+  s_386bf853700fa5::t_510e0d61d2336b 167-173,175,189-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9f6dc3a95c08ee5b6059c341212c90c9f6fa0271",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
