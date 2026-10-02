@@ -30,10 +30,12 @@ async def health(
 
 @router.get("/ready", response_model=ReadyResponse)
 async def ready(registry: Annotated[ServiceRegistry, Depends(get_registry)]) -> ReadyResponse:
-    dependencies = await registry.readiness()
+    reports = await registry.readiness_report()
+    dependencies = {name: report.ready for name, report in reports.items()}
     return ReadyResponse(
         status="ok" if all(dependencies.values()) else "degraded",
         dependencies=dependencies,
+        details={name: report.detail for name, report in reports.items() if report.detail},
     )
 
 
