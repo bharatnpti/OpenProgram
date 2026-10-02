@@ -1,9 +1,13 @@
 frontend-v2/src/app/RoleProvider.tsx
   s_386bf853700fa5::t_dea23b1bb18b39 195-196
+  s_db98bf649daf00::t_127c817e4a9d80 195-196
 frontend-v2/src/app/role.ts
   s_386bf853700fa5::t_704fa8cb71e44f 47-50
+  s_db98bf649daf00::t_127c817e4a9d80 47-50
 frontend-v2/src/features/delivery/DeliveryDetail.tsx
   s_386bf853700fa5::t_5e3daef69723b3 10,71-82,87,92,97,102,116-117,122,199-201,317-324
+  s_db98bf649daf00::t_127c817e4a9d80 10,71-82,87,92,97,102,116-117,122,199-201,317-323
+  s_db98bf649daf00::t_c4576c10a70418 324
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -18,6 +22,14 @@ frontend-v2/src/features/delivery/DeliveryDetail.tsx
         "model": "claude-opus-5-5"
       },
       "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_db98bf649daf00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d9afa7e-84c9-490b-a8be-1445bb823f3a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "CICD <cicd@oneai.telekom.de>"
     }
   }
 }
