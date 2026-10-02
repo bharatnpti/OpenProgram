@@ -1,0 +1,21 @@
+backend/core/application/ask_service.py
+  s_386bf853700fa5::t_b6f848ece0e6b3 305,323,332,347,356,374,383,399,432,435,448,451,470-479,483,485,487-490
+backend/tests/unit/test_ask_service.py
+  s_386bf853700fa5::t_8d46f2d88a6e87 6-13,16,178-224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "778f3cdd2c8d66381d3109bc24d25481c8a79a8b",
+  "prompts": {},
+  "sessions": {
+    "s_386bf853700fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "428cf8da-e7ca-4bee-82cd-1567403b1ef2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
