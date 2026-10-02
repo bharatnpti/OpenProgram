@@ -192,8 +192,9 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         lensSet.has("mgr") ||
         lensSet.has("po") ||
         lensSet.has("sm"),
-      canReadProjectProgress: hasAdmin || lensSet.has("po") || lensSet.has("mgr"),
-      canReadPodDetail: hasAdmin || lensSet.has("sm"),
+      canReadProjectProgress:
+        hasAdmin || lensSet.has("po") || lensSet.has("mgr") || lensSet.has("exec"),
+      canReadPodDetail: hasAdmin || lensSet.has("sm") || lensSet.has("mgr"),
       canAccessAdmin: hasAdmin,
       // Which lenses are on offer is about who the person is, not the lens they
       // happen to be wearing, so this one reads the held set.
