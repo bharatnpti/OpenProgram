@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from contextlib import AbstractAsyncContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 
 from core.application.sync_recording import recording_sync_failure, succeeded_cursor
@@ -345,11 +345,13 @@ class VcsReadSyncService:
         graph_repository: GraphRepository,
         time_series_repository: TimeSeriesRepository,
         cursor_repository: SyncCursorRepository,
+        identity_link_repository: IdentityLinkRepository | None = None,
     ) -> None:
         self._vcs_provider = vcs_provider
         self._graph_repository = graph_repository
         self._time_series_repository = time_series_repository
         self._cursor_repository = cursor_repository
+        self._identity_link_repository = identity_link_repository
 
     async def sync_repo(
         self,
@@ -378,10 +380,11 @@ class VcsReadSyncService:
                 tenant_id, repo_name, cursor
             )
 
+            members = await self._members_by_vcs_identity(tenant_id)
             for commit in commits:
-                await self._append_commit_fact(commit, repo.ref)
+                await self._append_commit_fact(commit, repo.ref, members)
             for pull_request in pull_requests:
-                await self._append_pull_request_fact(pull_request, repo_name, observed)
+                await self._append_pull_request_fact(pull_request, repo_name, observed, members)
 
             timestamps = [
                 *(commit.committed_at for commit in commits),
@@ -435,14 +438,51 @@ class VcsReadSyncService:
             )
         )
 
-    async def _append_commit_fact(self, commit: Commit, repo_ref: EntityRef) -> None:
-        if commit.author is not None:
-            await self._upsert_developer(commit.author)
+    async def _members_by_vcs_identity(self, tenant_id: str) -> dict[str, str]:
+        """Lower-cased git login or commit email -> member id.
+
+        Members are keyed by their chat id. A provider reports a merge request's
+        author by login and a commit's author by the email on the commit, so the
+        login comes from the identity link's ``vcs_username`` and the email from
+        the member's directory profile. Without this every author became a
+        second (and for commits a third) developer node beside the member, and
+        none of the member's own views or risk owners saw their git activity.
+        """
+        members: dict[str, str] = {}
+        for node in await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER):
+            email = node.metadata.get("email")
+            if isinstance(email, str) and email.strip():
+                members.setdefault(email.strip().lower(), node.id)
+        if self._identity_link_repository is not None:
+            for link in await self._identity_link_repository.list_identity_links(tenant_id):
+                if link.vcs_username:
+                    members[link.vcs_username.strip().lower()] = link.developer_id
+        return members
+
+    async def _member_or_new_developer(
+        self, author: UserRef, members: Mapping[str, str]
+    ) -> UserRef:
+        member_id = members.get(author.external_id.strip().lower())
+        if member_id is not None:
+            return replace(author, external_id=member_id)
+        # Nobody is linked to this author yet: keep the activity attributable by
+        # recording the author as its own developer, as before.
+        await self._upsert_developer(author)
+        return author
+
+    async def _append_commit_fact(
+        self, commit: Commit, repo_ref: EntityRef, members: Mapping[str, str]
+    ) -> None:
+        author = (
+            await self._member_or_new_developer(commit.author, members)
+            if commit.author is not None
+            else None
+        )
         await self._time_series_repository.append_fact_once(
             FactEvent(
                 tenant_id=commit.tenant_id,
                 source="vcs_commit",
-                entity_ref=_author_or_repo_ref(commit.tenant_id, repo_ref, commit.author),
+                entity_ref=_author_or_repo_ref(commit.tenant_id, repo_ref, author),
                 payload={
                     "repo": commit.repo,
                     "sha": commit.sha,
@@ -458,8 +498,9 @@ class VcsReadSyncService:
         pull_request: PullRequest,
         repo_name: str,
         observed_at: datetime,
+        members: Mapping[str, str],
     ) -> None:
-        await self._upsert_developer(pull_request.author)
+        author = await self._member_or_new_developer(pull_request.author, members)
         pull_request_observed_at = _pull_request_updated_at(pull_request, observed_at)
         await self._time_series_repository.append_fact_once(
             FactEvent(
@@ -468,7 +509,7 @@ class VcsReadSyncService:
                 entity_ref=EntityRef(
                     tenant_id=pull_request.tenant_id,
                     kind=NodeKind.DEVELOPER,
-                    id=pull_request.author.external_id,
+                    id=author.external_id,
                 ),
                 payload={
                     "repo": repo_name,
