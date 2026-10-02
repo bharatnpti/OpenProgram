@@ -1,23 +1,33 @@
 backend/api/dependencies.py
   s_386bf853700fa5::t_75052922995cf5 209
+  s_386bf853700fa5::t_ffd99069538b66 209
 backend/api/dtos.py
   s_386bf853700fa5::t_a2e8e6d5fb4a9a 12,412-429,447,466
+  s_386bf853700fa5::t_79e190fd087ab5 12,412-429,447,466
 backend/core/application/config_service.py
   s_386bf853700fa5::t_9f07f993e6859b 45-63,80,773,777,830,905,910-941,956-981
+  s_386bf853700fa5::t_0faeafdb731743 45-63,80,773,777,830,905,910-941,956-981
 backend/tests/unit/test_api.py
   s_386bf853700fa5::t_fc620a68200648 1168-1213
+  s_386bf853700fa5::t_2ecc11ddf54a27 1168-1213
 backend/tests/unit/test_config_service.py
   s_386bf853700fa5::t_e68e6b9d5eae3a 7-12,192-263
+  s_386bf853700fa5::t_27310d18e568d9 7-12,192-263
 frontend-v2/src/api/generated.ts
   s_386bf853700fa5::t_f3ea681b76d20b 2039-2056
+  s_386bf853700fa5::t_bf4954bf29701c 2039-2056
 frontend-v2/src/api/openapi.json
   s_386bf853700fa5::t_fb01e30f3ffec7 8231-8237,8255-8256,8260-8297
+  s_386bf853700fa5::t_9afff96e4e5c9d 8231-8237,8255-8256,8260-8297
 frontend-v2/src/features/delivery/DeliveryDetail.tsx
   s_386bf853700fa5::t_f9bfb1817174e1 268-270,295-305
+  s_386bf853700fa5::t_f154fffdcedc9e 268-270,295-305
 frontend/src/api/generated.ts
   s_386bf853700fa5::t_cfaab86de715af 2043-2060
+  s_386bf853700fa5::t_bf1d8b551b9bc2 2043-2060
 frontend/src/api/openapi.json
   s_386bf853700fa5::t_0a4216a69a203c 8231-8237,8255-8256,8260-8297
+  s_386bf853700fa5::t_75b6d8d71a380a 8231-8237,8255-8256,8260-8297
 ---
 {
   "schema_version": "authorship/3.0.0",
