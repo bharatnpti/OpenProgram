@@ -1624,6 +1624,16 @@ class PortfolioRisksResponse(BaseModel):
     drift: list[DriftFindingResponse] = []
 
 
+class AskSourceResponse(BaseModel):
+    """A reference with the words a reader knows it by; label is None when no node matches."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    kind: NodeKind | None = None
+    label: str | None = None
+
+
 class AskResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -1631,6 +1641,8 @@ class AskResponse(BaseModel):
     references: list[str]
     tools_used: list[str]
     trace_id: str
+    # The references again, in order, each labelled for a reader.
+    sources: list[AskSourceResponse] = []
 
     @classmethod
     def from_view(cls, view: AskResponseView) -> AskResponse:
@@ -1639,6 +1651,10 @@ class AskResponse(BaseModel):
             references=list(view.references),
             tools_used=list(view.tools_used),
             trace_id=view.trace_id,
+            sources=[
+                AskSourceResponse(id=source.id, kind=source.kind, label=source.label)
+                for source in view.sources
+            ],
         )
 
 
