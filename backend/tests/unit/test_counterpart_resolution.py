@@ -441,9 +441,9 @@ async def test_two_members_of_one_name_are_settled_by_a_slack_mailto_answer() ->
         [
             _status_json(_review_of_chk8("Noah")),
             # As in R1: the model reads the answer on its own, keeps no request
-            # and the ETA is missing, so the next question is about the ETA.
+            # and no ETA. The first message already answered the ETA, and that
+            # still counts (N8), so no ETA question follows.
             _status_json(eta_answered=False),
-            _status_json(),
         ]
     )
     collector = _collector(store, llm, chat)
@@ -468,8 +468,8 @@ async def test_two_members_of_one_name_are_settled_by_a_slack_mailto_answer() ->
     assert answer.text == "The backend one, noah.backend@acme.example"
     second = await _handle(collector, service, answer)
 
-    assert second.kind == "clarifying"
-    assert chat.texts_to(REQUESTER)[-1] == "Thanks. What is your ETA to finish it?"
+    assert second.kind == "processed"
+    assert not any("ETA" in text for text in chat.texts_to(REQUESTER))
     (request,) = await _raised(store)
     assert request.id == waiting.id
     assert request.status is CrossPersonRequestStatus.OPEN

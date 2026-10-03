@@ -37,6 +37,7 @@ from core.domain.status import (
     CheckInNudge,
     CheckInPreference,
     CheckInScheduleRun,
+    CheckInSignals,
     DeveloperStatus,
 )
 from core.domain.writeback import WriteBackAudit, WriteBackStatus
@@ -472,6 +473,19 @@ class InMemoryGraphStore:
                 return False
             await self.record_checkin(checkin)
             return True
+
+    async def record_open_checkin_signals(
+        self, tenant_id: str, correlation_id: str, signals: CheckInSignals
+    ) -> bool:
+        # The same lock as the final reply, so a finalized check-in is never reopened.
+        async with self._checkin_reply_lock:
+            for index, existing in enumerate(self._checkins):
+                if existing.tenant_id == tenant_id and existing.correlation_id == correlation_id:
+                    if existing.replied_at is not None:
+                        return False
+                    self._checkins[index] = replace(existing, signals=signals)
+                    return True
+            return False
 
     async def checkin_by_correlation(self, tenant_id: str, correlation_id: str) -> CheckIn | None:
         for index in range(len(self._checkins) - 1, -1, -1):
