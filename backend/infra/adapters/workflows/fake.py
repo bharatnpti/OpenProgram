@@ -65,7 +65,9 @@ class FakeWorkflowScheduler:
             f"fake-checkin-{input.tenant_id}-{input.developer_id}-{input.checkin_date or 'today'}"
         )
 
-    async def arm_reply_coalesce(self, conversation_key: str, tenant_id: str) -> None:
+    async def arm_reply_coalesce(
+        self, conversation_key: str, tenant_id: str, *, burst_key: str
+    ) -> None:
         return None
 
     async def dispatch_sync(self, input: SyncDispatchInput) -> str:
