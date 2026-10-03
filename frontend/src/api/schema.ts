@@ -151,9 +151,18 @@ export interface AskRequest {
   as_of?: string | null;
 }
 
+/** A reference with the words a reader knows it by; no label when no node matches. */
+export interface AskSourceResponse {
+  id: string;
+  kind?: string | null;
+  label?: string | null;
+}
+
 export interface AskResponse {
   answer: string;
   references: string[];
   tools_used: string[];
   trace_id: string;
+  /** The references again, in order, each labelled. Absent from older servers. */
+  sources?: AskSourceResponse[];
 }
