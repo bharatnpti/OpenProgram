@@ -1,0 +1,25 @@
+backend/tests/unit/test_escalation.py
+  s_027fd12d872fd7::t_b3881d738e99d6 25
+  s_027fd12d872fd7::t_019f9c4101f098 11
+  s_027fd12d872fd7::t_87ce41a060cce0 584-673
+backend/core/application/status_collector.py
+  s_027fd12d872fd7::t_db7f6aff76718b 775-780
+  s_027fd12d872fd7::t_763a7c34ecb290 892-930
+  s_027fd12d872fd7::t_2da9de695e200c 2209-2212,2216,2219-2223,2225,2227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fdaea991dc34af7d638e0188ae58008a36dc2556",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
