@@ -1,12 +1,13 @@
 Feature: Cross-person request detection
-  Detects named dependencies in check-in replies, resolves them through the
-  directory, notifies the counterpart (on by default), and routes counterpart
-  replies back into the request lifecycle.
+  Detects named dependencies in check-in replies, resolves them to the tenant's
+  members (never to other directory accounts), notifies the counterpart (on by
+  default), and routes counterpart replies back into the request lifecycle.
 
-  Scenario: Directory-resolved request notifies the counterpart by default and records acknowledgement
+  Scenario: A request naming a member notifies the counterpart by default and records acknowledgement
     Given the cross-person request stack is running with Liam review extraction
     And a configured member "U1001" named "Asha Rao" with chat id "U1001"
     And the mock Slack directory is synced
+    And a configured member "U1002" named "Liam Chen"
     And member "U1001" has a bot check-in message
     When I submit a reply to the bot message for "U1001" with text "Blocked waiting on Liam Chen to review the API schema."
     Then the response status code should be 200
@@ -20,10 +21,11 @@ Feature: Cross-person request detection
     And the response status should be "acknowledged"
     And the cross-person request for "U1002" should have status "acknowledged"
 
-  Scenario: Directory-resolved request is recorded without a counterpart DM when auto notify is switched off
+  Scenario: A request naming a member is recorded without a counterpart DM when auto notify is switched off
     Given the cross-person request stack is running with Liam review extraction and auto notify disabled
     And a configured member "U1001" named "Asha Rao" with chat id "U1001"
     And the mock Slack directory is synced
+    And a configured member "U1002" named "Liam Chen"
     And member "U1001" has a bot check-in message
     When I submit a reply to the bot message for "U1001" with text "Blocked waiting on Liam Chen to review the API schema."
     Then the response status code should be 200
@@ -35,6 +37,8 @@ Feature: Cross-person request detection
     Given the cross-person request stack is running with ambiguous Alex responses
     And a configured member "U1001" named "Asha Rao" with chat id "U1001"
     And the directory contains ambiguous Alex users
+    And a configured member "U2001" named "Alex Chen"
+    And a configured member "U2002" named "Alexa Roy"
     And member "U1001" has a bot check-in message
     When I submit a reply to the bot message for "U1001" with text "Blocked waiting on Alex for schema confirmation."
     Then the response status code should be 200
@@ -51,6 +55,7 @@ Feature: Cross-person request detection
     Given the cross-person request stack is running with Liam review extraction
     And a configured member "U1001" named "Asha Rao" with chat id "U1001"
     And the mock Slack directory is synced
+    And a configured member "U1002" named "Liam Chen"
     And member "U1001" has a bot check-in message
     When I submit a reply to the bot message for "U1001" with text "Blocked waiting on Liam Chen to review the API schema."
     Then the response status should be "processed"
@@ -64,6 +69,7 @@ Feature: Cross-person request detection
     Given the cross-person request stack is running with Liam review extraction
     And a configured member "U1001" named "Asha Rao" with chat id "U1001"
     And the mock Slack directory is synced
+    And a configured member "U1002" named "Liam Chen"
     And member "U1001" has a bot check-in message
     When I submit a reply to the bot message for "U1001" with text "Blocked waiting on Liam Chen to review the API schema."
     Then the response status should be "processed"
@@ -96,6 +102,8 @@ Feature: Cross-person request detection
     Given the cross-person request stack is running where every reply names "Alex"
     And a configured member "U1001" named "Asha Rao" with chat id "U1001"
     And the directory contains ambiguous Alex users
+    And a configured member "U2001" named "Alex Chen"
+    And a configured member "U2002" named "Alexa Roy"
     And member "U1001" has a bot check-in message
     When I submit a reply to the bot message for "U1001" with text "Waiting on Alex for the API schema."
     Then the response status should be "clarifying"
@@ -111,6 +119,7 @@ Feature: Cross-person request detection
     Given the cross-person request stack is running with Liam review extraction
     And a configured member "U1001" named "Asha Rao" with chat id "U1001"
     And the mock Slack directory is synced
+    And a configured member "U1002" named "Liam Chen"
     And member "U1001" has a bot check-in message
     When Slack delivers the check-in reply event "Ev-1" from "U1001" with text "Blocked waiting on Liam Chen to review the API schema."
     Then the response status should be "processed"
@@ -133,6 +142,7 @@ Feature: Cross-person request detection
     Given the cross-person request stack is running with Liam review extraction
     And a configured member "U1001" named "Asha Rao" with chat id "U1001"
     And the mock Slack directory is synced
+    And a configured member "U1002" named "Liam Chen"
     And member "U1001" has a bot check-in message
     When I submit a reply to the bot message for "U1001" with text "Blocked waiting on Liam Chen to review the API schema."
     Then the response status should be "processed"
@@ -142,3 +152,13 @@ Feature: Cross-person request detection
     Then the response status should be "resolved"
     And the cross-person request for "U1002" should have status "resolved"
     And "U1001" should be told the cross-person request was resolved by "Liam Chen"
+
+  Scenario: A directory account that is not a member is never offered or DMed
+    Given the cross-person request stack is running where every reply names "Liam Chen"
+    And a configured member "U1001" named "Asha Rao" with chat id "U1001"
+    And the mock Slack directory is synced
+    And member "U1001" has a bot check-in message
+    When I submit a reply to the bot message for "U1001" with text "Blocked waiting on Liam Chen to review the API schema."
+    Then the response status should be "clarifying"
+    And the latest bot message for "U1001" should contain "could not find Liam Chen"
+    And no cross-person request should notify "U1002"
