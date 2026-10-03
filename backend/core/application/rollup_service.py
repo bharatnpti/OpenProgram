@@ -8,6 +8,7 @@ from core.application.blocker_resolution import (
     BlockerResolutionService,
     ResolvedBlocker,
 )
+from core.application.status_summaries import NO_REPLY_BLOCKER
 from core.domain.graph import EdgeKind, EntityRef, GraphNode, GraphTree, JsonScalar, NodeKind
 from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import DeveloperStatus, StatusSource
@@ -245,7 +246,18 @@ def _developer_factors(
 def _legacy_status_blockers(
     node: GraphNode, status: DeveloperStatus
 ) -> tuple[ResolvedBlocker, ...]:
-    """Without a resolver, flat status strings behave as global blockers."""
+    """When nothing was resolved, flat status strings behave as global blockers.
+
+    Except the placeholder a non-response status carries: silence is the
+    person's status (inferred, stale or unknown), never a blocker. Counted as
+    one, it read "Blocker: no confirmed reply" up to the program and, beside
+    one real blocker, made two -- red. The resolver drops it the same way.
+    """
+    descriptions = [
+        description
+        for description in status.blockers
+        if description.strip().lower() != NO_REPLY_BLOCKER
+    ]
     return tuple(
         ResolvedBlocker(
             blocker_id=f"legacy:{node.id}:{index}",
@@ -260,7 +272,7 @@ def _legacy_status_blockers(
             critical=False,
             provenance=BlockerProvenance.LEGACY_STATUS,
         )
-        for index, description in enumerate(status.blockers, start=1)
+        for index, description in enumerate(descriptions, start=1)
     )
 
 

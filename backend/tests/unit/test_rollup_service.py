@@ -7,6 +7,7 @@ import pytest
 from core.application.blocker_resolution import BlockerResolutionService
 from core.application.persona_views import PersonaViewService
 from core.application.rollup_service import RollupService, task_health, task_rag
+from core.application.status_summaries import NO_REPLY_BLOCKER
 from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
@@ -794,6 +795,101 @@ async def _reported(*developer_ids: str, as_of: date) -> FakeStatusRepository:
 
 def _cited(status: NodeStatus) -> set[str]:
     return {factor.source_ref.id for factor in status.factors}
+
+
+async def test_a_silent_member_beside_one_real_blocker_is_one_blocker_not_red() -> None:
+    # A non-response status carries a placeholder blocker string. The resolver
+    # drops it; the rollup fell back to the flat strings and counted it, so a
+    # silent member beside one real blocker made two blockers -- and red.
+    as_of = date(2026, 1, 10)
+    program, project, pod = _program_project_pod()
+    tree = _contains_tree(
+        program,
+        (program, project),
+        (project, pod),
+        (pod, _developer("dev-1")),
+        (pod, _developer("dev-2")),
+        (pod, _ticket("PAY-8", "In Progress", "in_progress")),
+    )
+    store = await _store_for_tree(tree)
+    await store.record_developer_status_with_blockers(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-1",
+            as_of=as_of,
+            source=StatusSource.CONFIRMED,
+            blockers=("waiting on review",),
+            summary="Waiting on review.",
+        ),
+        (_blocker("waiting on review", work_item_id="PAY-8", as_of=as_of),),
+    )
+    await store.record_developer_status(_silent_status("dev-2", StatusSource.INFERRED, as_of))
+
+    statuses = await _resolving_rollup(store).compute(tree, as_of)
+    by_id = {status.entity_ref.id: status for status in statuses}
+
+    assert by_id["dev-2"].rag is Rag.AMBER
+    assert [(factor.kind, factor.description) for factor in by_id["dev-2"].factors] == [
+        (FactorKind.STATUS, "Status is inferred and needs confirmation.")
+    ]
+    for node_id in ("pod-1", "project-1", "program-1"):
+        blockers = [f for f in by_id[node_id].factors if f.kind is FactorKind.BLOCKER]
+        assert [factor.description for factor in blockers] == ["Blocker: waiting on review"]
+        # One blocker beside an inferred member is amber; two would be red.
+        assert by_id[node_id].rag is Rag.AMBER, node_id
+        assert not any(NO_REPLY_BLOCKER in f.description for f in by_id[node_id].factors)
+
+
+@pytest.mark.parametrize(
+    ("source", "rag"),
+    [
+        (StatusSource.INFERRED, Rag.AMBER),
+        (StatusSource.STALE, Rag.AMBER),
+        (StatusSource.UNKNOWN, Rag.UNKNOWN),
+    ],
+)
+async def test_without_a_resolver_silence_is_a_status_and_real_strings_still_block(
+    source: StatusSource, rag: Rag
+) -> None:
+    as_of = date(2026, 1, 10)
+    tree = _program_tree(include_second_developer=True)
+    status_repository = FakeStatusRepository()
+    await status_repository.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-1",
+            as_of=as_of,
+            source=StatusSource.CONFIRMED,
+            blockers=("schema review",),
+            summary="Blocked on schema review.",
+        )
+    )
+    await status_repository.record_developer_status(_silent_status("dev-2", source, as_of))
+
+    statuses = await RollupService(status_repository).compute(tree, as_of)
+    by_id = {status.entity_ref.id: status for status in statuses}
+
+    assert by_id["dev-2"].rag is rag
+    assert all(factor.kind is FactorKind.STATUS for factor in by_id["dev-2"].factors)
+    assert [factor.description for factor in by_id["dev-1"].factors] == ["Blocker: schema review"]
+    program_blockers = [
+        factor for factor in by_id["program-1"].factors if factor.kind is FactorKind.BLOCKER
+    ]
+    assert [factor.description for factor in program_blockers] == ["Blocker: schema review"]
+    # One real blocker: amber, whatever colour the silent member's status is.
+    assert by_id["program-1"].rag is Rag.AMBER
+
+
+def _silent_status(developer_id: str, source: StatusSource, as_of: date) -> DeveloperStatus:
+    """What the collector records when someone never answers the check-in."""
+    return DeveloperStatus(
+        tenant_id="demo",
+        developer_id=developer_id,
+        as_of=as_of,
+        source=source,
+        blockers=(NO_REPLY_BLOCKER,),
+        summary="No confirmed check-in after a nudge.",
+    )
 
 
 def _resolving_rollup(store: InMemoryGraphStore) -> RollupService:
