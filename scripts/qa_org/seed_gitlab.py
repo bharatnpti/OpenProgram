@@ -175,8 +175,10 @@ def ensure_group(gl: GitLab, users: dict[str, int]) -> int:
     )
     group_id = int(group["id"])
     owner = next(p for p in PEOPLE if "admin" in p.roles)
+    developers = {p.gitlab_username for p in PEOPLE if "dev" in p.roles}
     for username, user_id in users.items():
-        level = REPORTER if username == BOT else DEVELOPER
+        # Exec, PO and SM accounts read; only developers push.
+        level = DEVELOPER if username in developers else REPORTER
         if username == owner.gitlab_username:
             level = MAINTAINER
         response = gl.call(

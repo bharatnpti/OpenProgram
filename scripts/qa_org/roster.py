@@ -1,9 +1,9 @@
 """The QA org's people, hierarchy and Jira work: one editable source of truth.
 
 Unlike ``scripts/demo_roster.py`` nothing here is mocked: every person is a real
-Slack member, most are real Jira users, and developers get real GitLab accounts.
-Emails are plus-addresses on one mailbox (``OPENPROGRAM_QA_MAIL_BASE``), so the
-address itself never lands in the repo.
+Slack member, Jira user and GitLab account. Emails are plus-addresses on one of
+two mailboxes (``OPENPROGRAM_QA_MAIL_BASE`` and ``OPENPROGRAM_QA_MAIL_BASE_2``),
+some on the googlemail.com alias of the same inbox, so no address lands in the repo.
 
 The shape is deliberately enterprise-messy, because that is what the mocks hid:
 
@@ -15,8 +15,7 @@ The shape is deliberately enterprise-messy, because that is what the mocks hid:
   so some issues sit in two pods at once
 * two pods carved out of one Jira project by component (Payments / Storefront)
 * a pod with no manager (Data)
-* an exec with no pod and no Jira seat (Elena)
-* one person whose Jira email differs from their Slack email (Raj)
+* an exec with no pod (Elena)
 * Git usernames that do not match Slack handles
 * unassigned issues and a backlog that is not in any sprint
 """
@@ -28,6 +27,10 @@ from dataclasses import dataclass
 
 from scripts.qa_org import env
 
+# The OpenProgram tenant the org lives in. "qa" belonged to the first Slack
+# workspace; its members are keyed by that workspace's user ids, so the second
+# workspace starts a fresh tenant instead of deleting the first one's data.
+QA_TENANT = "qa2"
 PROGRAM_ID = "program-platform"
 PROGRAM_NAME = "Digital Platform Program"
 GITLAB_GROUP = "acme"
@@ -48,19 +51,23 @@ class Person:
     pods: tuple[Membership, ...] = ()
     timezone: str = "Europe/Berlin"
     in_jira: bool = True
-    jira_tag: str | None = None  # set only when the Jira email differs from Slack
     gitlab_username: str | None = None
+    mailbox: int = 1  # which OPENPROGRAM_QA_MAIL_BASE[_<n>] the plus-address is on
+    googlemail: bool = False  # the googlemail.com alias: same inbox, a distinct address
     scenario: str = ""
 
     @property
+    def email(self) -> str:
+        """The one address this person uses in Slack, Jira and GitLab."""
+        return mail(self.tag, mailbox=self.mailbox, googlemail=self.googlemail)
+
+    @property
     def slack_email(self) -> str:
-        return mail(self.tag)
+        return self.email
 
     @property
     def jira_email(self) -> str | None:
-        if not self.in_jira:
-            return None
-        return mail(self.jira_tag or self.tag)
+        return self.email if self.in_jira else None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -124,9 +131,12 @@ def git_branch(work: GitWork, jira_key: str) -> str:
     return f"{jira_key}-{slug}"
 
 
-def mail(tag: str) -> str:
-    base = env.require("OPENPROGRAM_QA_MAIL_BASE")["OPENPROGRAM_QA_MAIL_BASE"]
+def mail(tag: str, *, mailbox: int = 1, googlemail: bool = False) -> str:
+    key = "OPENPROGRAM_QA_MAIL_BASE" if mailbox == 1 else f"OPENPROGRAM_QA_MAIL_BASE_{mailbox}"
+    base = env.require(key)[key]
     local, _, domain = base.partition("@")
+    if googlemail and domain == "gmail.com":
+        domain = "googlemail.com"
     return f"{local}+{tag}@{domain}"
 
 
@@ -242,8 +252,8 @@ PEOPLE: tuple[Person, ...] = (
         name="Elena Fischer",
         title="Director of Engineering",
         roles=("exec",),
-        in_jira=False,
-        scenario="exec with no pod and no Jira seat",
+        gitlab_username="efischer",
+        scenario="exec with no pod",
     ),
     Person(
         tag="asha",
@@ -268,6 +278,8 @@ PEOPLE: tuple[Person, ...] = (
             Membership(pod_id="pod-payments", role="product_owner"),
             Membership(pod_id="pod-storefront", role="product_owner"),
         ),
+        gitlab_username="mpatel",
+        googlemail=True,
         scenario="PO over two pods carved out of one Jira project",
     ),
     Person(
@@ -280,6 +292,8 @@ PEOPLE: tuple[Person, ...] = (
             Membership(pod_id="pod-data", role="product_owner"),
         ),
         timezone="Asia/Tokyo",
+        gitlab_username="hkobayashi",
+        googlemail=True,
         scenario="PO in another timezone, across two projects",
     ),
     Person(
@@ -291,6 +305,8 @@ PEOPLE: tuple[Person, ...] = (
             Membership(pod_id="pod-payments", role="scrum_master"),
             Membership(pod_id="pod-identity", role="scrum_master"),
         ),
+        gitlab_username="inovak",
+        mailbox=2,
         scenario="scrum master across two projects, owns no tickets",
     ),
     Person(
@@ -300,6 +316,7 @@ PEOPLE: tuple[Person, ...] = (
         roles=("dev",),
         pods=(Membership(pod_id="pod-payments"),),
         gitlab_username="lchen",
+        mailbox=2,
         scenario="single-pod baseline",
     ),
     Person(
@@ -309,6 +326,7 @@ PEOPLE: tuple[Person, ...] = (
         roles=("dev",),
         pods=(Membership(pod_id="pod-payments"), Membership(pod_id="pod-identity")),
         gitlab_username="noah.weber",
+        mailbox=2,
         scenario="split across two projects; heaviest ticket load",
     ),
     Person(
@@ -318,6 +336,8 @@ PEOPLE: tuple[Person, ...] = (
         roles=("dev",),
         pods=(Membership(pod_id="pod-storefront"), Membership(pod_id="pod-payments")),
         gitlab_username="zalmeida",
+        mailbox=2,
+        googlemail=True,
         scenario="two pods inside the same project, in progress in both",
     ),
     Person(
@@ -332,6 +352,8 @@ PEOPLE: tuple[Person, ...] = (
         ),
         timezone="Asia/Kolkata",
         gitlab_username="ohaddad",
+        mailbox=2,
+        googlemail=True,
         scenario="shared SRE in three pods across all three projects",
     ),
     Person(
@@ -349,9 +371,10 @@ PEOPLE: tuple[Person, ...] = (
         title="Data Engineer",
         roles=("dev",),
         pods=(Membership(pod_id="pod-data"),),
-        jira_tag="riyer",
         gitlab_username="riyer",
-        scenario="Jira email differs from Slack email, so matching by email fails",
+        mailbox=2,
+        googlemail=True,
+        scenario="data engineer in a pod with no manager",
     ),
 )
 
