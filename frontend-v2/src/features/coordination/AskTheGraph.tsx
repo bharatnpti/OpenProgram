@@ -1,5 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
@@ -9,6 +10,35 @@ import { Card } from "../../components/ui/Card";
 import { TextArea } from "../../components/ui/Field";
 import { Pill } from "../../components/ui/Pill";
 import { formatDayLabel } from "../../lib/viewingDate";
+import { answerLines, sourceChips, type AnswerLine } from "./askAnswer";
+
+/** The verdict and closing lines as text, the drivers between them as a list. */
+function AnswerText({ answer }: { answer: string }) {
+  const groups: { kind: AnswerLine["kind"]; lines: string[] }[] = [];
+  answerLines(answer).forEach((line) => {
+    const last = groups[groups.length - 1];
+    if (last && last.kind === line.kind && line.kind === "bullet") {
+      last.lines.push(line.text);
+    } else {
+      groups.push({ kind: line.kind, lines: [line.text] });
+    }
+  });
+  return (
+    <div className="space-y-1 text-[14px]">
+      {groups.map((group, index) =>
+        group.kind === "bullet" ? (
+          <ul key={index} className="list-disc space-y-0.5 pl-5">
+            {group.lines.map((line, lineIndex) => (
+              <li key={lineIndex}>{line}</li>
+            ))}
+          </ul>
+        ) : (
+          <p key={index}>{group.lines[0]}</p>
+        ),
+      )}
+    </div>
+  );
+}
 
 export function AskTheGraph() {
   const [question, setQuestion] = useState("");
@@ -22,6 +52,7 @@ export function AskTheGraph() {
     onError: (error) => toast.error(error instanceof Error ? error.message : "Ask failed"),
   });
   const answeredFor = ask.variables;
+  const chips = ask.data ? sourceChips(ask.data) : [];
 
   // /ask answers across the graph, so it needs an aggregate read. A developer
   // gets the explanation instead of a box that rejects every question.
@@ -65,17 +96,29 @@ export function AskTheGraph() {
               As of {formatDayLabel(answeredFor, today)}
             </div>
           ) : null}
-          <p className="text-[14px]">{ask.data.answer}</p>
-          {ask.data.references.length > 0 ? (
+          <AnswerText answer={ask.data.answer} />
+          {chips.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-2">
-              {ask.data.references.map((reference) => (
-                <span
-                  key={reference}
-                  className="rounded-full bg-white px-3 py-1 text-[12px] font-bold"
-                >
-                  {reference}
-                </span>
-              ))}
+              {chips.map((chip) =>
+                chip.to ? (
+                  <Link
+                    key={chip.key}
+                    to={chip.to}
+                    title={chip.title}
+                    className="rounded-full bg-white px-3 py-1 text-[12px] font-bold hover:underline"
+                  >
+                    {chip.label}
+                  </Link>
+                ) : (
+                  <span
+                    key={chip.key}
+                    title={chip.title}
+                    className="rounded-full bg-white px-3 py-1 text-[12px] font-bold"
+                  >
+                    {chip.label}
+                  </span>
+                ),
+              )}
             </div>
           ) : null}
         </div>
