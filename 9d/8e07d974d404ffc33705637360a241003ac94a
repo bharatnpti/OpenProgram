@@ -1,0 +1,41 @@
+frontend-v2/src/features/coordination/askAnswer.test.ts
+  s_027fd12d872fd7::t_3ceedc0bb86a6e 1-7,9,11-20,22-29,31-41,44-48,50-68
+  s_027fd12d872fd7::t_1db9b554d4b5b4 8,10,21,30,42-43,49
+frontend/src/pages/PortfolioPage.tsx
+  s_027fd12d872fd7::t_6d094756fcb98b 382,391-395,397-398,401
+frontend-v2/package.json
+  s_027fd12d872fd7::t_c0de0ffc3d2ccc 13
+frontend-v2/src/features/coordination/askAnswer.ts
+  s_027fd12d872fd7::t_fd2da87cef0595 1
+  s_027fd12d872fd7::t_6bc5db766a2c9d 2-25,30-39,41-42,44-61
+  s_027fd12d872fd7::t_81d6887e7a674d 26-29
+  s_027fd12d872fd7::t_1b68ddafb7e1b0 40,43
+frontend-v2/src/features/coordination/AskTheGraph.tsx
+  s_027fd12d872fd7::t_7361a56481937f 99-100,102-121
+  s_027fd12d872fd7::t_ec0fe49ba46c71 55
+  s_027fd12d872fd7::t_dd257141f0e5f1 13
+  s_027fd12d872fd7::t_a6b0d0337cc5b8 3,15-41
+  s_027fd12d872fd7::t_71faedd805577c 14
+frontend/src/api/schema.ts
+  s_027fd12d872fd7::t_b9af44a6a8abfb 154-160,166-167
+frontend-v2/src/api/schema.ts
+  s_027fd12d872fd7::t_bde991129555a8 178-184,190-191
+frontend-v2/tsconfig.json
+  s_027fd12d872fd7::t_9ea632017bd713 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9d8e07d974d404ffc33705637360a241003ac94a",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
