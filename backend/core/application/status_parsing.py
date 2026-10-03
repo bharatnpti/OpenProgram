@@ -10,7 +10,7 @@ from core.application.conversation_history import llm_messages_from_turns
 from core.application.json_parsing import extract_json_object
 from core.domain.blockers import BlockerReport, DeveloperBlocker, normalize_blocker_key
 from core.domain.conversation import ConversationTurn
-from core.domain.cross_person import CrossPersonRequestKind
+from core.domain.cross_person import CrossPersonRequestKind, is_placeholder_name
 from core.domain.llm import LlmRequest, LlmResponse
 from core.domain.status import CheckInSignals, CrossPersonMention, IssueClaim
 from core.ports.llm import LlmProvider
@@ -34,6 +34,11 @@ GENERIC_CLARIFICATION_QUESTION = (
 _REQUEST_NOTE_RULE = (
     "A requests note is a short phrase of at most 100 characters saying what is needed "
     "from that person, in your own words; never copy or quote the reply into it."
+)
+# A request DMs the person it names, so the name has to be a person's.
+_REQUEST_NAME_RULE = (
+    "A requests name is a person's name. A role or placeholder such as reviewer, someone, "
+    "anyone, the team, QA, a dev or my lead names nobody: add no request for it."
 )
 
 PARSE_REPLY_SYSTEM_PROMPT = (
@@ -254,6 +259,7 @@ def _parser_prompt(raw_reply: str, *, prior_text: str = "") -> str:
         "gives an ETA, ETA change, or says there is no ETA change. "
         "Only include a request when the reply explicitly needs a deliverable, review, "
         "or input from a specific named person. Use an empty requests array otherwise. "
+        f"{_REQUEST_NAME_RULE} "
         "Only include an issue_updates item when the reply explicitly names an issue key or "
         "unambiguously refers to an active issue in context. "
         "Previously open blockers are context only. When the reply says a previously open "
@@ -296,6 +302,7 @@ def _clarification_prompt(raw_reply: str, *, prior_text: str = "") -> str:
         "record the attribution in blocker_details. "
         "Only include a request when the reply "
         "explicitly needs a deliverable, review, or input from a specific named person. "
+        f"{_REQUEST_NAME_RULE} "
         f"{_REQUEST_NOTE_RULE} "
         "Use Jira/Git tools when available to cross-check issue and progress claims. If a reply "
         "says an issue is done but Jira is not done, or claims substantial progress while recent "
@@ -504,12 +511,18 @@ def _request_tuple(value: object) -> tuple[CrossPersonMention, ...]:
         note = _clean_string(item.get("note"))
         if raw_name is None or kind is None or note is None:
             continue
+        email = _clean_string(item.get("email"))
+        if email is None and is_placeholder_name(raw_name):
+            # "Waiting on reviewer" names nobody. The blocker it describes is
+            # kept; a request, a directory lookup and a "could not find
+            # reviewer" question are not.
+            continue
         requests.append(
             CrossPersonMention(
                 raw_name=raw_name,
                 kind=kind.value,
                 note=note,
-                email=_clean_string(item.get("email")),
+                email=email,
             )
         )
     return tuple(requests)
