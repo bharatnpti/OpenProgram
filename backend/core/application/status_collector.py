@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
@@ -34,7 +34,7 @@ from core.application.status_summaries import (
 from core.application.tools.conversation_history import MAX_HISTORY_LIMIT, ConversationHistoryTool
 from core.application.tools.git_activity import GitActivityTool
 from core.application.tools.issue_tracker import IssueTrackerTool
-from core.application.writeback_service import WriteBackService
+from core.application.writeback_service import WriteBackService, target_state_label
 from core.domain.blockers import (
     BlockerReconciliation,
     BlockerSource,
@@ -274,7 +274,9 @@ class StatusCollector:
             conversation_turns=conversation_turns,
             tools=tools,
             prior_blockers=prior_blockers,
+            tracker_write_back=await self._tracker_write_back_open(checkin),
         )
+        decision = await self._without_tracker_update_question(checkin, decision)
         if not decision.is_status_update:
             await self._send_non_status_ack(checkin=checkin, message=message)
             span.set_attribute("openprogram.reply_classification", "non_status")
@@ -444,6 +446,60 @@ class StatusCollector:
             source=BlockerSource.CHECKIN,
             source_correlation_id=checkin.correlation_id,
         )
+
+    async def _tracker_write_back_open(self, checkin: CheckIn) -> bool:
+        """Whether OpenProgram writes this person's own issue updates without asking."""
+        service = self._write_back_service
+        if service is None:
+            return False
+        try:
+            return await service.standing_consent_open(checkin.tenant_id, checkin.developer_id)
+        except Exception:  # pragma: no cover - defensive; the hint is best-effort
+            return False
+
+    async def _without_tracker_update_question(
+        self,
+        checkin: CheckIn,
+        decision: ClarificationDecision,
+    ) -> ClarificationDecision:
+        """Drop a follow-up asking the person to update the tracker we are about to update.
+
+        With standing consent, a claim on the person's own issue is written to
+        the tracker when the check-in is recorded. A question that asks them to
+        do that themselves ("Can you update the Jira ticket to Done?") is then
+        wrong, so the reply counts as sufficient and the recorded claim is
+        written instead. Every other question is kept: one naming an issue the
+        write-back will not touch, and any question that asks for something else.
+        """
+        service = self._write_back_service
+        if (
+            service is None
+            or decision.sufficient
+            or decision.question is None
+            or decision.signals is None
+            or not decision.signals.issue_updates
+            or not asks_person_to_update_tracker(decision.question)
+        ):
+            return decision
+        try:
+            written = await service.auto_apply_issue_keys(
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                claims=decision.signals.issue_updates,
+            )
+        except Exception:  # pragma: no cover - defensive; keep the question
+            return decision
+        named = set(_ISSUE_KEY_IN_TEXT.findall(decision.question))
+        if not written or not named <= written:
+            return decision
+        _logger.info(
+            "tracker_update_question_dropped",
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            correlation_id=checkin.correlation_id,
+            issue_keys=sorted(written),
+        )
+        return replace(decision, sufficient=True, question=None)
 
     async def _maybe_insufficient_reply_clarification(
         self,
@@ -1390,11 +1446,11 @@ class StatusCollector:
         )
         await self._append_checkin_fact(updated, status, reconciliation=reconciliation)
         await self._append_blocker_resolved_facts(updated, status, reconciliation)
-        await self._maybe_write_back(updated, final_signals)
+        written = await self._maybe_write_back(updated, final_signals)
         # Send exactly one "Got it" ack per accepted reply. Gated on the
         # record_checkin_reply_once success above, so a durable retry or a
         # duplicate delivery (which returns early) never double-acks (C3).
-        await self._send_checkin_ack(checkin=updated, signals=final_signals)
+        await self._send_checkin_ack(checkin=updated, signals=final_signals, applied=written)
         return status
 
     async def _send_checkin_ack(
@@ -1402,6 +1458,7 @@ class StatusCollector:
         *,
         checkin: CheckIn,
         signals: CheckInSignals,
+        applied: Sequence[WriteBackAudit] = (),
     ) -> None:
         """DM the developer a short receipt once their reply is finalized.
 
@@ -1426,6 +1483,7 @@ class StatusCollector:
         text = _compose_checkin_ack_text(
             signals=signals,
             max_chars=self._outbound_dm_max_chars,
+            applied=applied,
         )
         try:
             await self._chat_provider.send_dm(
@@ -1450,16 +1508,19 @@ class StatusCollector:
                 correlation_id=checkin.correlation_id,
             )
 
-    async def _maybe_write_back(self, checkin: CheckIn, signals: CheckInSignals) -> None:
+    async def _maybe_write_back(
+        self, checkin: CheckIn, signals: CheckInSignals
+    ) -> list[WriteBackAudit]:
         """Apply gated write-back for a finalized check-in's issue claims.
 
-        The three default-deny gates and audit live in ``WriteBackService``; here we
+        The default-deny gates and audit live in ``WriteBackService``; here we
         only forward the claims. A write-back failure must never lose a recorded
         check-in, so any error is logged (without raw reply content) and swallowed.
+        Returns the rows that were applied, for the ack to name.
         """
         service = self._write_back_service
         if service is None or not signals.issue_updates:
-            return
+            return []
         try:
             results = await service.apply_from_checkin(
                 tenant_id=checkin.tenant_id,
@@ -1474,7 +1535,7 @@ class StatusCollector:
                 developer_id=checkin.developer_id,
                 correlation_id=checkin.correlation_id,
             )
-            return
+            return []
         if results:
             _logger.info(
                 "writeback_recorded",
@@ -1482,13 +1543,18 @@ class StatusCollector:
                 developer_id=checkin.developer_id,
                 correlation_id=checkin.correlation_id,
                 outcomes=[
-                    {"issue_key": audit.issue_key, "status": audit.status.value}
+                    {
+                        "issue_key": audit.issue_key,
+                        "status": audit.status.value,
+                        "source": audit.source,
+                    }
                     for audit in results
                 ],
             )
         proposed = [audit for audit in results if audit.status is WriteBackStatus.PROPOSED]
         if proposed:
             await self._send_consent_prompt(checkin=checkin, proposals=proposed)
+        return [audit for audit in results if audit.status is WriteBackStatus.APPLIED]
 
     async def _send_consent_prompt(
         self,
@@ -2035,6 +2101,29 @@ class StatusCollector:
 
 _NO_CONTEXT = "No active issues or recent facts were available."
 
+_ISSUE_KEY_IN_TEXT = re.compile(r"(?<![A-Za-z0-9])[A-Z][A-Z0-9]+-\d+(?![A-Za-z0-9])")
+_SENTENCE_END = re.compile(r"[.?!\n]+")
+_ADDRESSES_PERSON = re.compile(r"\b(?:you|your|please|could|can|would)\b", re.IGNORECASE)
+_TRACKER_UPDATE_VERB = re.compile(
+    r"\b(?:update|move|mark|close|transition|set|change|resolve)\b", re.IGNORECASE
+)
+_TRACKER_NOUN = re.compile(r"\b(?:jira|ticket|tracker|board)\b", re.IGNORECASE)
+
+
+def asks_person_to_update_tracker(question: str) -> bool:
+    """Whether a follow-up asks the person to change the issue tracker themselves.
+
+    One sentence must address the person, name an update verb and name the
+    tracker: "Can you update the Jira ticket to Done?". A statement about the
+    tracker ("IDP-5 is still marked In Progress in Jira.") is not an ask.
+    """
+    return any(
+        _ADDRESSES_PERSON.search(sentence)
+        and _TRACKER_UPDATE_VERB.search(sentence)
+        and _TRACKER_NOUN.search(sentence)
+        for sentence in _SENTENCE_END.split(question)
+    )
+
 
 def _new_correlation_id() -> str:
     return f"checkin-{uuid4().hex}"
@@ -2080,11 +2169,14 @@ def _compose_consent_prompt_text(
     if len(proposals) == 1:
         proposal = proposals[0]
         prompt = (
-            f"Want me to update {proposal.issue_key} to “{proposal.target_state}” "
+            f"Want me to update {proposal.issue_key} to "
+            f"“{target_state_label(proposal.target_state)}” "
             f"in the issue tracker? Reply yes or no."
         )
     else:
-        diffs = ", ".join(f"{p.issue_key} → {p.target_state}" for p in proposals)
+        diffs = ", ".join(
+            f"{p.issue_key} → {target_state_label(p.target_state)}" for p in proposals
+        )
         prompt = f"Want me to apply these issue-tracker updates: {diffs}? Reply yes or no."
     if len(prompt) > max_chars:
         return prompt[: max(0, max_chars - 1)].rstrip() + "…"
@@ -2101,20 +2193,38 @@ def _compose_checkin_ack_text(
     *,
     signals: CheckInSignals,
     max_chars: int = OUTBOUND_DM_MAX_CHARS,
+    applied: Sequence[WriteBackAudit] = (),
 ) -> str:
     """Deterministic "Got it" ack for a finalized check-in reply.
 
     A confident parse gets the plain ack. A low-confidence parse restates the
     recorded status (state + first blocker, never the raw reply) and invites a
-    correction. Every branch stays within ``max_chars`` with a safe fallback.
+    correction. Tracker updates OpenProgram just applied are named (issue key
+    and state only), so the person knows they need not make them. Every branch
+    stays within ``max_chars`` with a safe fallback.
     """
     if signals.parser_confident:
-        return _cap_outbound_dm_text(_CHECKIN_ACK_PLAIN, max_chars)
-    recorded = _recorded_status_phrase(signals)
-    text = f"Got it \U0001f44d I recorded this as {recorded} — reply 'fix' if that's wrong."
-    if len(text) > max_chars:
-        return _cap_outbound_dm_text(_CHECKIN_ACK_LOW_CONFIDENCE_FALLBACK, max_chars)
-    return text
+        text = _CHECKIN_ACK_PLAIN
+    else:
+        recorded = _recorded_status_phrase(signals)
+        text = f"Got it \U0001f44d I recorded this as {recorded} — reply 'fix' if that's wrong."
+        if len(text) > max_chars:
+            return _cap_outbound_dm_text(_CHECKIN_ACK_LOW_CONFIDENCE_FALLBACK, max_chars)
+    note = _applied_write_back_note(applied)
+    if note is not None and len(f"{text} {note}") <= max_chars:
+        return f"{text} {note}"
+    return _cap_outbound_dm_text(text, max_chars)
+
+
+def _applied_write_back_note(applied: Sequence[WriteBackAudit]) -> str | None:
+    updates = [
+        f"{audit.issue_key} to {target_state_label(audit.after_state or audit.target_state)}"
+        for audit in applied
+        if audit.status is WriteBackStatus.APPLIED
+    ]
+    if not updates:
+        return None
+    return f"I updated {_joined(updates)} in the issue tracker."
 
 
 def _recorded_status_phrase(signals: CheckInSignals) -> str:

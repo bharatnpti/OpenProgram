@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Literal
 from uuid import uuid4
 
@@ -11,7 +12,12 @@ from core.domain.auth import Principal, Role
 from core.domain.errors import ProviderUnavailable
 from core.domain.integrations import Issue, IssueState
 from core.domain.status import IssueClaim, WriteBackConsent
-from core.domain.writeback import WriteBackAdoption, WriteBackAudit, WriteBackStatus
+from core.domain.writeback import (
+    WriteBackAdoption,
+    WriteBackAudit,
+    WriteBackStatus,
+    WriteBackTarget,
+)
 from core.ports.issue_tracker import IssueTracker
 from core.ports.repositories import (
     IdentityLinkRepository,
@@ -25,6 +31,9 @@ from core.ports.repositories import (
 # made for it; the row only shows why the claim did not reach the tracker.
 NOT_OWNER_SOURCE = "not_owner"
 UNASSIGNED_SOURCE = "unassigned"
+# ``source`` of the ``expired`` row that resolves a confirmed proposal whose
+# issue the tracker already shows in the target state: nothing is written.
+NO_CHANGE_SOURCE = "no_change"
 
 
 class WriteBackService:
@@ -45,6 +54,11 @@ class WriteBackService:
     records ``declined`` (no); ``never`` and a closed system gate do nothing.
     Every applied write captures the prior state for reversibility and is
     idempotent on (issue_key, target_state, correlation_id).
+
+    The target is always a canonical ``WriteBackTarget`` (see
+    ``canonical_target_state``), never the parser's free text, and a claim the
+    tracker already shows is a no-op: no transition, no comment, no proposal and
+    no row.
 
     This is the single sanctioned application-layer caller of the issue tracker
     write methods; the architecture-boundary guard is scoped to allow it.
@@ -74,6 +88,49 @@ class WriteBackService:
     async def system_gate_open(self, tenant_id: str) -> bool:
         override = await self._config.get_writeback_enabled(tenant_id)
         return self._default_enabled if override is None else override
+
+    async def standing_consent_open(self, tenant_id: str, developer_id: str) -> bool:
+        """Whether this developer's claims on their own issues are written without asking.
+
+        Read-only: the capability, system and consent gates only. Used to tell the
+        check-in conversation that OpenProgram updates the tracker itself.
+        """
+        principal = Principal(
+            tenant_id=tenant_id, subject=developer_id, roles=frozenset({Role.DEV})
+        )
+        if not self._policy.can(principal, Capability.WRITE_ISSUE_TRACKER):
+            return False
+        if not await self.system_gate_open(tenant_id):
+            return False
+        return await self._consent(tenant_id, developer_id) is WriteBackConsent.AUTO_APPLY
+
+    async def auto_apply_issue_keys(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        claims: Sequence[IssueClaim],
+    ) -> frozenset[str]:
+        """Issue keys ``apply_from_checkin`` would write right away for these claims.
+
+        A dry run with no write and no audit row: every gate, the ownership
+        check, a canonical target and a real change of state must all hold. The
+        check-in conversation uses it so it never asks a person to update the
+        tracker for an update OpenProgram is about to make itself.
+        """
+        if not claims or not await self.standing_consent_open(tenant_id, developer_id):
+            return frozenset()
+        keys: set[str] = set()
+        for claim in claims:
+            target_state = _target_state(claim)
+            if target_state is None:
+                continue
+            issue = await self._read_issue(tenant_id, claim.issue_key)
+            if issue is None or _already_in_target_state(issue, target_state):
+                continue
+            if await self._ownership_refusal(tenant_id, developer_id, issue) is None:
+                keys.add(claim.issue_key)
+        return frozenset(keys)
 
     async def apply_from_checkin(
         self,
@@ -107,61 +164,78 @@ class WriteBackService:
             )
             if existing is not None:
                 continue
-            row_source = "standing_consent" if consent is WriteBackConsent.AUTO_APPLY else source
-            issue = await self._read_issue(tenant_id, claim.issue_key)
-            if issue is None:
-                # Without the issue there is no owner to check, so nothing is
-                # written or proposed; the row says the tracker read failed.
-                results.append(
-                    await self._record(
-                        tenant_id=tenant_id,
-                        developer_id=developer_id,
-                        correlation_id=correlation_id,
-                        issue_key=claim.issue_key,
-                        target_state=target_state,
-                        status=WriteBackStatus.FAILED,
-                        before_state=None,
-                        after_state=None,
-                        comment=None,
-                        source=row_source,
-                    )
-                )
-                continue
-            refusal = await self._ownership_refusal(tenant_id, developer_id, issue)
-            if refusal is not None:
-                results.append(
-                    await self._refuse(
-                        tenant_id, developer_id, correlation_id, issue, target_state, refusal
-                    )
-                )
-                continue
-            if consent is WriteBackConsent.AUTO_APPLY:
-                # Standing consent -- apply immediately, tagging the provenance so
-                # the audit distinguishes it from an interactively-confirmed write.
-                results.append(
-                    await self._apply(
-                        tenant_id,
-                        developer_id,
-                        correlation_id,
-                        claim,
-                        target_state,
-                        row_source,
-                        before_state=issue.state.value,
-                    )
-                )
-            else:  # WriteBackConsent.ALWAYS_ASK
-                results.append(
-                    await self._propose(
-                        tenant_id,
-                        developer_id,
-                        correlation_id,
-                        claim,
-                        target_state,
-                        row_source,
-                        before_state=issue.state.value,
-                    )
-                )
+            row = await self._write_claim(
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                correlation_id=correlation_id,
+                claim=claim,
+                target_state=target_state,
+                consent=consent,
+                source=source,
+            )
+            if row is not None:
+                results.append(row)
         return results
+
+    async def _write_claim(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        correlation_id: str,
+        claim: IssueClaim,
+        target_state: str,
+        consent: WriteBackConsent,
+        source: str,
+    ) -> WriteBackAudit | None:
+        """Apply or propose one claim whose consent gates already hold, or record why not."""
+        row_source = "standing_consent" if consent is WriteBackConsent.AUTO_APPLY else source
+        issue = await self._read_issue(tenant_id, claim.issue_key)
+        if issue is None:
+            # Without the issue there is no owner to check, so nothing is
+            # written or proposed; the row says the tracker read failed.
+            return await self._record(
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                correlation_id=correlation_id,
+                issue_key=claim.issue_key,
+                target_state=target_state,
+                status=WriteBackStatus.FAILED,
+                before_state=None,
+                after_state=None,
+                comment=None,
+                source=row_source,
+            )
+        refusal = await self._ownership_refusal(tenant_id, developer_id, issue)
+        if refusal is not None:
+            return await self._refuse(
+                tenant_id, developer_id, correlation_id, issue, target_state, refusal
+            )
+        if _already_in_target_state(issue, target_state):
+            # The tracker already says so: no transition, no comment, no
+            # proposal and no row. Only a real change reaches the tracker.
+            return None
+        if consent is WriteBackConsent.AUTO_APPLY:
+            # Standing consent -- apply immediately, tagging the provenance so
+            # the audit distinguishes it from an interactively-confirmed write.
+            return await self._apply(
+                tenant_id,
+                developer_id,
+                correlation_id,
+                claim,
+                target_state,
+                row_source,
+                before_state=issue.state.value,
+            )
+        return await self._propose(  # WriteBackConsent.ALWAYS_ASK
+            tenant_id,
+            developer_id,
+            correlation_id,
+            claim,
+            target_state,
+            row_source,
+            before_state=issue.state.value,
+        )
 
     async def list_pending_proposals(
         self, tenant_id: str, correlation_id: str
@@ -235,54 +309,8 @@ class WriteBackService:
         results: list[WriteBackAudit] = []
         for proposal in pending:
             if intent == "affirm":
-                claim = IssueClaim(
-                    issue_key=proposal.issue_key,
-                    claimed_state=proposal.target_state,
-                    note=proposal.comment or "",
-                )
-                # The issue may have been reassigned since it was proposed; a yes
-                # never writes to an issue the developer no longer owns. A failed
-                # read records ``failed`` and leaves the proposal pending.
-                issue = await self._read_issue(tenant_id, proposal.issue_key)
-                if issue is None:
-                    results.append(
-                        await self._record(
-                            tenant_id=tenant_id,
-                            developer_id=developer_id,
-                            correlation_id=correlation_id,
-                            issue_key=proposal.issue_key,
-                            target_state=proposal.target_state,
-                            status=WriteBackStatus.FAILED,
-                            before_state=proposal.before_state,
-                            after_state=proposal.before_state,
-                            comment=None,
-                            source="consent_reply",
-                        )
-                    )
-                    continue
-                refusal = await self._ownership_refusal(tenant_id, developer_id, issue)
-                if refusal is not None:
-                    results.append(
-                        await self._refuse(
-                            tenant_id,
-                            developer_id,
-                            correlation_id,
-                            issue,
-                            proposal.target_state,
-                            refusal,
-                        )
-                    )
-                    continue
                 results.append(
-                    await self._apply(
-                        tenant_id,
-                        developer_id,
-                        correlation_id,
-                        claim,
-                        proposal.target_state,
-                        "consent_reply",
-                        before_state=issue.state.value,
-                    )
+                    await self._apply_confirmed(tenant_id, developer_id, correlation_id, proposal)
                 )
             else:  # intent == "decline"
                 results.append(
@@ -300,6 +328,72 @@ class WriteBackService:
                     )
                 )
         return results
+
+    async def _apply_confirmed(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        correlation_id: str,
+        proposal: WriteBackAudit,
+    ) -> WriteBackAudit:
+        """Write a proposal the developer said yes to, re-checking owner and state.
+
+        Every row keeps the proposal's own target so it resolves the proposal;
+        the tracker is asked for the canonical state (older proposals stored
+        free text, which is normalised here when it can be).
+        """
+        # The issue may have been reassigned since it was proposed; a yes never
+        # writes to an issue the developer no longer owns. A failed read records
+        # ``failed`` and leaves the proposal pending.
+        issue = await self._read_issue(tenant_id, proposal.issue_key)
+        if issue is None:
+            return await self._record(
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                correlation_id=correlation_id,
+                issue_key=proposal.issue_key,
+                target_state=proposal.target_state,
+                status=WriteBackStatus.FAILED,
+                before_state=proposal.before_state,
+                after_state=proposal.before_state,
+                comment=None,
+                source="consent_reply",
+            )
+        refusal = await self._ownership_refusal(tenant_id, developer_id, issue)
+        if refusal is not None:
+            return await self._refuse(
+                tenant_id, developer_id, correlation_id, issue, proposal.target_state, refusal
+            )
+        tracker_state = _stored_target_for_tracker(proposal.target_state)
+        if _already_in_target_state(issue, tracker_state):
+            # Already there: resolve the proposal without touching the tracker.
+            return await self._record(
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                correlation_id=correlation_id,
+                issue_key=proposal.issue_key,
+                target_state=proposal.target_state,
+                status=WriteBackStatus.EXPIRED,
+                before_state=issue.state.value,
+                after_state=issue.state.value,
+                comment=None,
+                source=NO_CHANGE_SOURCE,
+            )
+        claim = IssueClaim(
+            issue_key=proposal.issue_key,
+            claimed_state=proposal.target_state,
+            note=proposal.comment or "",
+        )
+        return await self._apply(
+            tenant_id,
+            developer_id,
+            correlation_id,
+            claim,
+            proposal.target_state,
+            "consent_reply",
+            before_state=issue.state.value,
+            tracker_state=tracker_state,
+        )
 
     async def revert(self, audit: WriteBackAudit) -> WriteBackAudit | None:
         """Reverse a previously applied write back to its captured prior state.
@@ -457,10 +551,14 @@ class WriteBackService:
         source: str,
         *,
         before_state: str | None,
+        tracker_state: str | None = None,
     ) -> WriteBackAudit:
+        # ``target_state`` keys the audit row; ``tracker_state`` (default: the
+        # same) is what the tracker is asked to move to.
+        to_state = tracker_state or target_state
         comment = claim.note.strip() or None
         try:
-            await self._issue_tracker.transition(tenant_id, claim.issue_key, target_state)
+            await self._issue_tracker.transition(tenant_id, claim.issue_key, to_state)
             if comment is not None:
                 await self._issue_tracker.add_comment(tenant_id, claim.issue_key, comment)
         except ProviderUnavailable:
@@ -484,7 +582,7 @@ class WriteBackService:
             target_state=target_state,
             status=WriteBackStatus.APPLIED,
             before_state=before_state,
-            after_state=target_state,
+            after_state=to_state,
             comment=comment,
             source=source,
         )
@@ -576,11 +674,224 @@ def interpret_consent_reply(text: str) -> Literal["affirm", "decline", "unclear"
     return "affirm" if affirm else "decline"
 
 
+# --- Canonical target states -------------------------------------------------
+#
+# A claim's state is free text from the reply parser ("on track", "merged and
+# ready to close", "starting", "acceptance criteria drafted, pending review").
+# Only wording that clearly names one state becomes a target; anything that
+# says "no change", hedges about the future, negates, or names two states at
+# once becomes no target at all, so nothing is written for it.
+
+
+class _NoTarget(Enum):
+    NO_TRANSITION = "no_transition"  # wording that rules a transition out
+    UNRECOGNISED = "unrecognised"  # wording that names no state
+
+
+_TODO = WriteBackTarget.TODO
+_IN_PROGRESS = WriteBackTarget.IN_PROGRESS
+_IN_REVIEW = WriteBackTarget.IN_REVIEW
+_BLOCKED = WriteBackTarget.BLOCKED
+_DONE = WriteBackTarget.DONE
+
+_EXACT_STATES: dict[str, WriteBackTarget] = {
+    "todo": _TODO,
+    "to do": _TODO,
+    "open": _TODO,
+    "backlog": _TODO,
+    "new": _TODO,
+    "not started": _TODO,
+    "not yet started": _TODO,
+    "yet to start": _TODO,
+    "in progress": _IN_PROGRESS,
+    "inprogress": _IN_PROGRESS,
+    "wip": _IN_PROGRESS,
+    "work in progress": _IN_PROGRESS,
+    "started": _IN_PROGRESS,
+    "ongoing": _IN_PROGRESS,
+    "doing": _IN_PROGRESS,
+    "active": _IN_PROGRESS,
+    "underway": _IN_PROGRESS,
+    "in development": _IN_PROGRESS,
+    "draft": _IN_PROGRESS,
+    "in review": _IN_REVIEW,
+    "review": _IN_REVIEW,
+    "under review": _IN_REVIEW,
+    "code review": _IN_REVIEW,
+    "in code review": _IN_REVIEW,
+    "pending review": _IN_REVIEW,
+    "awaiting review": _IN_REVIEW,
+    "ready for review": _IN_REVIEW,
+    "up for review": _IN_REVIEW,
+    "blocked": _BLOCKED,
+    "on hold": _BLOCKED,
+    "stuck": _BLOCKED,
+    "done": _DONE,
+    "closed": _DONE,
+    "resolved": _DONE,
+    "complete": _DONE,
+    "completed": _DONE,
+    "finished": _DONE,
+    "merged": _DONE,
+    "shipped": _DONE,
+    "released": _DONE,
+    "ready to close": _DONE,
+    "ready to be closed": _DONE,
+}
+_STATE_SIGNALS: tuple[tuple[WriteBackTarget, re.Pattern[str]], ...] = (
+    (
+        _DONE,
+        re.compile(
+            r"\b(?:done|closed|close it|ready to close|ready to be closed|can be closed|"
+            r"resolved|complete|completed|finished|merged|shipped|released)\b"
+        ),
+    ),
+    (_IN_REVIEW, re.compile(r"\b(?:review|reviewing)\b")),
+    (_BLOCKED, re.compile(r"\b(?:blocked|on hold|impeded|stuck)\b")),
+    (
+        _IN_PROGRESS,
+        re.compile(
+            r"\b(?:in progress|wip|work in progress|started|ongoing|underway|"
+            r"in development|working on|implementing|draft)\b"
+        ),
+    ),
+    (_TODO, re.compile(r"\b(?:to do|todo|backlog)\b")),
+)
+# "On track", "no change" and friends: a status, not a request to move anything.
+_NO_TRANSITION_PHRASES = frozenset({"fine", "ok", "okay", "good", "all good", "same", "as is"})
+_NO_TRANSITION_WORDING = re.compile(
+    r"\b(?:on track|no change|no changes|unchanged|same as|as before|as planned|"
+    r"no update|nothing new|steady|going well)\b"
+)
+# A state in the future (or only partly reached) is not the state now:
+# "starting" (as in "starting CHK-4 next"), "MR to be opened", "almost done".
+_HEDGED_WORDING = re.compile(
+    r"\b(?:almost|nearly|soon|tomorrow|next|will|going to|about to|plan to|planning to|"
+    r"expected|expect|expecting|hopefully|should|aim|aiming|later|partially|partly|"
+    r"mostly|might|maybe|probably|eventually|shortly|eta|by eod|by end of|starting|"
+    r"by (?:mon|tues|wednes|thurs|fri|satur|sun)day)\b"
+    r"|(?<!ready )\bto be (?:opened|raised|created|merged|reviewed|closed|done|started)\b"
+)
+# Something still outstanding ("merged, waiting for QA"), unless it is the review.
+_WAITING_WORDING = re.compile(r"\b(?:waiting|awaiting|pending)\b")
+# A negation close before a state word ("not done", "isn't merged yet").
+_NEGATED_STATE = re.compile(
+    r"\b(?:not|no|never|isn t|hasn t|haven t|aren t|wasn t|didn t|don t|doesn t|"
+    r"cannot|can t|won t|yet to)\s+(?:\w+\s+){0,2}"
+    r"(?:done|closed|close|merged|resolved|complete|completed|finished|shipped|released|"
+    r"started|begun|review|reviewed|progress|blocked|stuck)\b"
+)
+_NOT_STARTED_WORDING = re.compile(
+    r"\b(?:not started|not yet started|yet to start|hasn t started|haven t started|not begun)\b"
+)
+_NON_WORD = re.compile(r"[^a-z0-9]+")
+
+
+def canonical_target_state(text: str | None) -> WriteBackTarget | None:
+    """The canonical state a claimed state names, or ``None`` when it names none.
+
+    Pure and deterministic. ``None`` covers both wording that rules a
+    transition out ("on track", "no change", "almost done", "not done") and
+    wording that names no state ("branch pushed").
+    """
+    verdict = _classify_claimed_state(text or "")
+    return verdict if isinstance(verdict, WriteBackTarget) else None
+
+
+def _state_signals(phrase: str) -> set[WriteBackTarget]:
+    return {target for target, pattern in _STATE_SIGNALS if pattern.search(phrase)}
+
+
+def _classify_claimed_state(text: str) -> WriteBackTarget | _NoTarget:
+    phrase = " ".join(_NON_WORD.split(text.lower())).strip()
+    if not phrase:
+        return _NoTarget.UNRECOGNISED
+    exact = _EXACT_STATES.get(phrase)
+    if exact is not None:
+        return exact
+    if (
+        phrase in _NO_TRANSITION_PHRASES
+        or _NO_TRANSITION_WORDING.search(phrase)
+        or _HEDGED_WORDING.search(phrase)
+    ):
+        return _NoTarget.NO_TRANSITION
+    if _NOT_STARTED_WORDING.search(phrase):
+        # "Not started (yet)" is the one negation that names a state.
+        rest = _NOT_STARTED_WORDING.sub(" ", phrase)
+        if _state_signals(rest) <= {_TODO} and not _NEGATED_STATE.search(rest):
+            return _TODO
+        return _NoTarget.NO_TRANSITION
+    if _NEGATED_STATE.search(phrase):
+        return _NoTarget.NO_TRANSITION
+    signals = _state_signals(phrase)
+    if _WAITING_WORDING.search(phrase) and _IN_REVIEW not in signals:
+        return _NoTarget.NO_TRANSITION
+    if signals == {_IN_PROGRESS, _IN_REVIEW}:
+        return _IN_REVIEW
+    if len(signals) == 1:
+        return next(iter(signals))
+    # Two states at once ("code done, in review") is no target; none is unknown.
+    return _NoTarget.UNRECOGNISED if not signals else _NoTarget.NO_TRANSITION
+
+
 def _target_state(claim: IssueClaim) -> str | None:
-    if claim.claimed_state:
-        state = claim.claimed_state.strip()
-        if state:
-            return state
+    """The canonical target for a claim, or ``None`` when nothing should move.
+
+    The stated state decides. Wording that rules a transition out wins over the
+    parser's ``claimed_done`` flag; only wording that names no state at all
+    falls back to it.
+    """
+    if claim.claimed_state and claim.claimed_state.strip():
+        verdict = _classify_claimed_state(claim.claimed_state)
+        if isinstance(verdict, WriteBackTarget):
+            return verdict.value
+        if verdict is _NoTarget.NO_TRANSITION:
+            return None
     if claim.claimed_done:
-        return IssueState.DONE.value
+        return WriteBackTarget.DONE.value
     return None
+
+
+# Review statuses read as in progress (the tracker adapters map them so), so an
+# "in review" claim on an in-progress issue is no change OpenProgram can see.
+_TARGET_ISSUE_STATES: dict[WriteBackTarget, IssueState] = {
+    WriteBackTarget.TODO: IssueState.TODO,
+    WriteBackTarget.IN_PROGRESS: IssueState.IN_PROGRESS,
+    WriteBackTarget.IN_REVIEW: IssueState.IN_PROGRESS,
+    WriteBackTarget.BLOCKED: IssueState.BLOCKED,
+    WriteBackTarget.DONE: IssueState.DONE,
+}
+
+
+def _already_in_target_state(issue: Issue, target_state: str) -> bool:
+    try:
+        target = WriteBackTarget(target_state)
+    except ValueError:
+        return False  # an older free-text proposal: nothing to compare with
+    return issue.state is _TARGET_ISSUE_STATES[target]
+
+
+def _stored_target_for_tracker(target_state: str) -> str:
+    """The canonical form of a stored target; older free text kept when it has none."""
+    try:
+        return WriteBackTarget(target_state).value
+    except ValueError:
+        canonical = canonical_target_state(target_state)
+        return canonical.value if canonical is not None else target_state
+
+
+_TARGET_LABELS: dict[WriteBackTarget, str] = {
+    WriteBackTarget.TODO: "To Do",
+    WriteBackTarget.IN_PROGRESS: "In Progress",
+    WriteBackTarget.IN_REVIEW: "In Review",
+    WriteBackTarget.BLOCKED: "Blocked",
+    WriteBackTarget.DONE: "Done",
+}
+
+
+def target_state_label(target_state: str) -> str:
+    """A person-facing name for a stored target ("in_review" -> "In Review")."""
+    try:
+        return _TARGET_LABELS[WriteBackTarget(target_state)]
+    except ValueError:
+        return target_state

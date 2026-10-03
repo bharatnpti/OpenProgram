@@ -5,6 +5,22 @@ from datetime import datetime
 from enum import StrEnum
 
 
+class WriteBackTarget(StrEnum):
+    """The canonical states a check-in claim can move a tracker issue to.
+
+    Free-text claims ("on track", "merged and ready to close") are normalised to
+    one of these before anything is written; each tracker adapter maps them to a
+    transition its workflow really offers. Stored as ``target_state`` on audit
+    rows, so it is never exposed as an API enum.
+    """
+
+    TODO = "todo"
+    IN_PROGRESS = "in_progress"
+    IN_REVIEW = "in_review"
+    BLOCKED = "blocked"
+    DONE = "done"
+
+
 class WriteBackStatus(StrEnum):
     """Lifecycle of a single audited issue-tracker write."""
 
