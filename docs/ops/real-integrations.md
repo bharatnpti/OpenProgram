@@ -7,11 +7,11 @@ mocks hid shows up.
 
 | Piece | Here | Notes |
 |---|---|---|
-| Chat + directory | Slack Free workspace, bot from [`infra/slack/app-manifest.yaml`](../../infra/slack/app-manifest.yaml) | Replies arrive over a tunnel, see §4 |
+| Chat + directory | Slack Free workspace, bot from [`infra/slack/app-manifest.socket.yaml`](../../infra/slack/app-manifest.socket.yaml) | Replies over Socket Mode, see §5 |
 | Issue tracker | Jira Cloud Free (10-user cap) | Company-managed scrum projects |
 | VCS | GitLab CE in docker (`docker-compose.qa.yml`), http://localhost:8929 | ~3 GB RAM; synced read-only by `openprogram-bot` |
 | LLM | whatever `.env` already uses | unchanged by the switch |
-| Tenant | `qa` | the seeded `demo` tenant is left untouched |
+| Tenant | `qa2` (`QA_TENANT` in the roster) | the seeded `demo` tenant is left untouched |
 
 Everything about the org is declared in [`scripts/qa_org/roster.py`](../../scripts/qa_org/roster.py).
 
@@ -33,7 +33,7 @@ cases a single-pod-per-person demo never does:
 
 | Person | Role | Pods | Why they are there |
 |---|---|---|---|
-| Elena Fischer | exec | — | exec with no pod and **no Jira seat** |
+| Elena Fischer | exec | — | exec with **no pod** |
 | Asha Rao | mgr, admin | Payments, Storefront, Identity, Platform (manager) | owns the workspace, site and tokens; the dev principal |
 | Mina Patel | po | Payments, Storefront | PO over two pods carved out of **one** Jira project |
 | Hana Kobayashi | po | Identity, Data | Asia/Tokyo |
@@ -43,7 +43,7 @@ cases a single-pod-per-person demo never does:
 | Zoe Almeida | dev | Storefront, Payments | **two pods in the same project**, in progress in both |
 | Omar Haddad | dev | Platform, Identity, Data | **shared SRE in three pods**, Asia/Kolkata |
 | Sofia Bergmann | dev | Identity, Storefront | QA across two projects |
-| Raj Iyer | dev | Data | **Jira email differs from Slack email** |
+| Raj Iyer | dev | Data | data engineer in the pod with no manager |
 
 | Pod | Project(s) | Jira scope |
 |---|---|---|
@@ -66,17 +66,22 @@ rights. Branches and MR titles carry the Jira key.
 
 ## 1. Accounts (manual, once)
 
-Accounts are created by a person, not a script. All addresses are
-plus-addresses on one mailbox, `<mailbox>+<firstname>@<domain>` (Raj's Jira
-address uses `+riyer`). Disposable-mail services do not work: Atlassian refuses
-them with "Email is blocked".
+Accounts are created by a person, not a script. Each person has one address,
+used in Slack, Jira and GitLab alike: a plus-address `<mailbox>+<firstname>@…` on
+one of two mailboxes (`OPENPROGRAM_QA_MAIL_BASE`, `OPENPROGRAM_QA_MAIL_BASE_2`),
+some on the `googlemail.com` alias of the same Gmail inbox, as the roster's
+`mailbox` and `googlemail` fields say. Disposable-mail services do not work:
+Atlassian refuses them with "Email is blocked".
 
-1. Slack: create the workspace as Asha, create the app from the manifest, install
-   it, invite the other 10, accept each invite in a private window with
-   email + password (not "Continue with Google", which binds the bare mailbox).
+1. Slack: create the workspace as Asha, create the app from
+   [`app-manifest.socket.yaml`](../../infra/slack/app-manifest.socket.yaml), install
+   it, generate an app-level token with `connections:write`, invite the other 10,
+   accept each invite in a private window with email + password (not "Continue
+   with Google", which binds the bare mailbox).
 2. Jira: sign up for Jira Free as Asha, create a classic API token.
 3. Put the values in `~/.config/oneai/secrets.env`:
-   `OPENPROGRAM_QA_MAIL_BASE`, `OPENPROGRAM_SLACK_BOT_TOKEN`,
+   `OPENPROGRAM_QA_MAIL_BASE`, `OPENPROGRAM_QA_MAIL_BASE_2`,
+   `OPENPROGRAM_SLACK_BOT_TOKEN`, `OPENPROGRAM_SLACK_APP_TOKEN`,
    `OPENPROGRAM_SLACK_SIGNING_SECRET`, `OPENPROGRAM_JIRA_BASE_URL`,
    `OPENPROGRAM_JIRA_EMAIL`, `OPENPROGRAM_JIRA_API_TOKEN`.
 
@@ -140,7 +145,7 @@ docker compose -f docker-compose.yml -f docker-compose.qa.yml --env-file .env.qa
 uv run python -m scripts.qa_org.seed_openprogram
 ```
 
-`use_real` writes `.env.qa` (gitignored): the shared `.env` plus tenant `qa`,
+`use_real` writes `.env.qa` (gitignored): the shared `.env` plus tenant `qa2`,
 real Slack and Jira, GitLab once its tokens exist, and the dev principal set to Asha's real Slack id. It
 **never edits `.env`**: anything else that reads `.env` at startup — a host
 `uvicorn` run from this checkout, the test suite — must keep getting the mock
@@ -148,9 +153,15 @@ demo. (An earlier version edited `.env` in place and moved a parallel session's
 host backend onto the real tenant.) `docker-compose.qa.yml` points only the
 docker backend and worker at `.env.qa`.
 
-`seed_openprogram` goes through the `/config/*` API only and links each
-person's Slack id, Jira account and GitLab login. Raj's Jira account is left
-unlinked on purpose; `--link-raj` links it.
+`seed_openprogram` goes through the `/config/*` API only, links each person's
+Slack id, Jira account and GitLab login, and sets each pod's scrum master and
+manager as its escalation contacts.
+
+**Moving to another Slack workspace.** Members are keyed by their Slack user id,
+and the check-in fan-out also asks anyone with check-in history, so a new
+workspace gets a new tenant (`QA_TENANT`) rather than deleting the old one's
+members. The old tenant's rows stay in the database; nothing schedules it any
+more once the worker runs with the new tenant id.
 
 **Check-in catch-up.** `use_real` sets `CHECKIN_RECONCILE_ENABLED=false`, and
 the worker deletes the `openprogram-checkin-reconcile` schedule when it starts
@@ -168,7 +179,14 @@ it on by default; it DMs whoever a check-in asks something of).
 
 ## 5. Inbound replies
 
-Slack posts replies to `/webhooks/chat/slack`, which must be public HTTPS.
+With `OPENPROGRAM_SLACK_APP_TOKEN` in the secrets file, `use_real` sets
+`OPENPROGRAM_SLACK_INBOUND_TRANSPORT=socket`: the worker holds an outbound Socket
+Mode connection and receives replies over it. Nothing has to be public, so the
+gate, the tunnel and the Request URL below are not needed. `/ready` reports
+`slack_socket: true` once the worker is connected.
+
+Without an app token it falls back to the Events API: Slack posts replies to
+`/webhooks/chat/slack`, which must be public HTTPS.
 Under dev auth every other route is an unauthenticated admin, so never tunnel
 port 8000 directly — tunnel the gate, which forwards exactly
 `POST /webhooks/chat/<provider>` and 404s the rest:
