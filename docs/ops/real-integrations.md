@@ -264,17 +264,16 @@ Fixed on this branch:
   still open, and the issue is not done. It shows on Signals and in
   `/projects/{id}/risks`; nobody's status is downgraded for it.
 
+- The backend image ran `pip install .` against the `>=` ranges, so containers ran
+  newer libraries than the tests (DBOS 3.2 vs 2.24 locked). It now installs
+  exactly `uv.lock`, which was upgraded to the versions the image was running.
+- Risk evidence for a GitLab merge request linked to github.com; it now uses the
+  provider's own `web_url`.
+
 Open:
 
 - Only default-branch commits are synced, so a branch's commits are invisible
   until it is merged. A branch with no MR is visible only as a missing MR.
-- Risk evidence links for a merge request are built from `github_base_url`, so
-  a GitLab MR's link points at github.com; the fact's own `web_url` is unused.
-- The backend image installs `pip install .` against the `>=` ranges in
-  `pyproject.toml`, not `uv.lock`, so containers run newer libraries than the
-  tests do (on 2026-10-02: DBOS 3.2.0 vs 2.24.0 locked, Temporal 1.34 vs 1.28,
-  FastAPI 0.142 vs 0.137). DBOS 3 changed `apply_schedules` from replace to
-  upsert, which is how a paused schedule survived restarts.
 - `test_cross_person_service.py::test_registry_routes_slack_thread_reply_by_notify_message_id_first`
   passes on a clean checkout and fails when the checkout's `.env` carries real
   Slack settings: something in that path still reads the local `.env`.
