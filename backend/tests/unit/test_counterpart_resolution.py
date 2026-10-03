@@ -11,12 +11,14 @@ import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+import pytest
+
 from core.application.counterparts import MemberContact, MemberDirectory, members_for_mention
 from core.application.cross_person_service import CrossPersonRequestService
 from core.application.status_collector import StatusCollector
-from core.domain.cross_person import CrossPersonRequestStatus
+from core.domain.cross_person import CrossPersonRequestStatus, is_placeholder_name
 from core.domain.directory import DirectoryUser
-from core.domain.graph import Developer
+from core.domain.graph import Developer, GraphNode, NodeKind
 from core.domain.identity import IdentityLink
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
@@ -297,3 +299,75 @@ async def test_a_member_whose_chat_account_is_deactivated_is_not_a_candidate() -
         ("dev-hand", "dev-hand"),
         ("dev-kim", "U-chat"),
     ]
+
+
+class _CountingGraph:
+    """The store, counting how often the member pool is read."""
+
+    def __init__(self, store: InMemoryGraphStore) -> None:
+        self._store = store
+        self.member_reads = 0
+
+    async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
+        if kind is NodeKind.DEVELOPER:
+            self.member_reads += 1
+        return await self._store.list_nodes(tenant_id, kind)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._store, name)
+
+
+async def test_a_role_word_is_no_request_no_lookup_and_no_could_not_find() -> None:
+    store = await _store_with(members=(NOAH,), others=(NOAH_DUPLICATE,))
+    graph = _CountingGraph(store)
+    chat = _RecordingChat()
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=_ScriptedLlm([_status_json(_review_of_chk8("reviewer"))]),
+        status_repository=store,
+        conversation_repository=store,
+        directory_repository=InMemoryDirectoryUserRepository(store),
+        identity_link_repository=store,
+        graph_repository=graph,  # type: ignore[arg-type]
+        model="test-model",
+        checkin_ack_enabled=False,
+    )
+
+    outcome = await collector.handle_reply(_message("INS-2 MR !1 is waiting on reviewer."))
+
+    assert outcome.kind == "processed"
+    assert outcome.cross_person_requests == ()
+    assert graph.member_reads == 0
+    assert all("could not find" not in message.text for _, message in chat.sent)
+    checkin = await store.checkin_by_correlation(TENANT, "corr-zoe")
+    assert checkin is not None and checkin.signals is not None
+    assert checkin.signals.requests == ()
+    assert checkin.signals.blockers == ("CHK-8 waits for review",)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "reviewer",
+        "Reviewers",
+        "someone",
+        "anyone",
+        "someone from QA",
+        "the team",
+        "QA",
+        "QA team",
+        "the payments team",
+        "a dev",
+        "my lead",
+        "the tech lead",
+        "no one",
+    ],
+)
+def test_role_and_placeholder_words_are_not_names(name: str) -> None:
+    assert is_placeholder_name(name)
+
+
+@pytest.mark.parametrize("name", ["Noah", "Noah Weber", "Dev", "Dev Patel", "Lea", "Team Rocket"])
+def test_people_are_names(name: str) -> None:
+    assert not is_placeholder_name(name)
