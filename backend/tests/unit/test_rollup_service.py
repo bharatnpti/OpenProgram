@@ -6,7 +6,7 @@ import pytest
 
 from core.application.blocker_resolution import BlockerResolutionService
 from core.application.persona_views import PersonaViewService
-from core.application.rollup_service import RollupService
+from core.application.rollup_service import RollupService, task_health, task_rag
 from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
@@ -14,15 +14,20 @@ from core.domain.graph import (
     EdgeKind,
     EntityRef,
     GraphEdge,
+    GraphNode,
     GraphTree,
+    JsonScalar,
     NodeKind,
     Pod,
     Program,
     Project,
+    RepoNode,
+    SprintNode,
     Task,
+    WorkItem,
     Workstream,
 )
-from core.domain.rollup import FactorKind, Rag
+from core.domain.rollup import FactorKind, NodeStatus, Rag
 from core.domain.status import DeveloperStatus, StatusSource
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from tests.contract.fakes import FakeRollupRepository, FakeStatusRepository
@@ -543,6 +548,252 @@ async def test_legacy_status_strings_resolve_as_unattributed_fallback() -> None:
         ]
         assert len(blocker_factors) == 1
         assert blocker_factors[0].unattributed is True
+
+
+# A tree synced from Jira and git: a project holds repos, sprints, workstreams,
+# pods and tickets. Only people, and a blocked or at-risk ticket, say how it is
+# going; the rest is neutral -- it must neither hold the project unknown nor
+# make it green.
+
+
+async def test_project_is_green_when_its_people_report_beside_repos_sprints_and_tickets() -> None:
+    as_of = date(2026, 1, 10)
+    program, project, pod = _program_project_pod()
+    repo = RepoNode(tenant_id="demo", id="repo-1", name="checkout-api")
+    sprint = SprintNode(tenant_id="demo", id="sprint-1", name="Sprint 1")
+    workstream = Workstream(tenant_id="demo", id="ws-1", name="Payments")
+    tree = _contains_tree(
+        program,
+        (program, project),
+        (project, pod),
+        (pod, _developer("dev-1")),
+        (pod, _developer("dev-2")),
+        (pod, repo),
+        (pod, _ticket("QA-1", "In Progress", "in_progress")),
+        (pod, _ticket("QA-2", "To Do", "todo")),
+        # The same repo under the project too: a neutral node reached twice.
+        (project, repo),
+        (project, sprint),
+        (sprint, _ticket("QA-3", "In Progress", "in_progress")),
+        (sprint, _ticket("QA-4", "Done", "done")),
+        (project, workstream),
+        (workstream, _ticket("QA-5", "To Do", "todo")),
+        (project, _ticket("QA-6", "To Do", "todo")),
+    )
+
+    statuses = await RollupService(await _reported("dev-1", "dev-2", as_of=as_of)).compute(
+        tree, as_of
+    )
+    by_id = {status.entity_ref.id: status for status in statuses}
+
+    for node_id in ("pod-1", "project-1", "program-1"):
+        assert by_id[node_id].rag is Rag.GREEN, node_id
+        assert by_id[node_id].source is StatusSource.CONFIRMED, node_id
+        assert _cited(by_id[node_id]) == {node_id}, node_id
+    # A neutral node keeps a status of its own: nothing about it has reported.
+    for node_id in ("repo-1", "sprint-1", "ws-1"):
+        assert by_id[node_id].rag is Rag.UNKNOWN, node_id
+
+
+async def test_a_member_with_no_status_keeps_the_pod_unknown_and_is_its_only_reason() -> None:
+    as_of = date(2026, 1, 10)
+    program, project, pod = _program_project_pod()
+    tree = _contains_tree(
+        program,
+        (program, project),
+        (project, pod),
+        (pod, _developer("dev-1")),
+        (pod, _developer("dev-2")),
+        (pod, RepoNode(tenant_id="demo", id="repo-1", name="checkout-api")),
+        (pod, _ticket("QA-1", "In Progress", "in_progress")),
+        (project, SprintNode(tenant_id="demo", id="sprint-1", name="Sprint 1")),
+    )
+
+    statuses = await RollupService(await _reported("dev-1", as_of=as_of)).compute(tree, as_of)
+    by_id = {status.entity_ref.id: status for status in statuses}
+
+    # Silence is never green, and the reason names the person, not the repo,
+    # the sprint or the ticket.
+    for node_id in ("pod-1", "project-1", "program-1"):
+        assert by_id[node_id].rag is Rag.UNKNOWN, node_id
+        assert by_id[node_id].source is StatusSource.UNKNOWN, node_id
+        assert _cited(by_id[node_id]) == {"dev-2"}, node_id
+
+
+@pytest.mark.parametrize(
+    ("status", "state"),
+    [("Blocked", "blocked"), ("On Hold", "blocked"), ("blocked", None)],
+)
+async def test_a_blocked_ticket_turns_its_sprint_pod_and_project_red(
+    status: str, state: str | None
+) -> None:
+    as_of = date(2026, 1, 10)
+    program, project, pod = _program_project_pod()
+    sprint = SprintNode(tenant_id="demo", id="sprint-1", name="Sprint 1")
+    tree = _contains_tree(
+        program,
+        (program, project),
+        (project, pod),
+        (pod, _developer("dev-1")),
+        (pod, sprint),
+        (sprint, _ticket("QA-1", "In Progress", "in_progress")),
+        (sprint, _ticket("QA-9", status, state)),
+    )
+
+    statuses = await RollupService(await _reported("dev-1", as_of=as_of)).compute(tree, as_of)
+    by_id = {status.entity_ref.id: status for status in statuses}
+
+    for node_id in ("sprint-1", "pod-1", "project-1", "program-1"):
+        assert by_id[node_id].rag is Rag.RED, node_id
+        assert _cited(by_id[node_id]) == {"QA-9"}, node_id
+    assert by_id["pod-1"].factors[0].description == "Task Ticket QA-9 is blocked."
+
+
+async def test_a_project_with_only_neutral_children_stays_unknown_never_green() -> None:
+    as_of = date(2026, 1, 10)
+    program, project, pod = _program_project_pod()
+    sprint = SprintNode(tenant_id="demo", id="sprint-1", name="Sprint 1")
+    workstream = Workstream(tenant_id="demo", id="ws-1", name="Payments")
+    tree = _contains_tree(
+        program,
+        (program, project),
+        # A pod nobody has been added to yet has nobody to hear from.
+        (project, pod),
+        (project, RepoNode(tenant_id="demo", id="repo-1", name="checkout-api")),
+        (project, sprint),
+        (sprint, _ticket("QA-1", "In Progress", "in_progress")),
+        (sprint, _ticket("QA-2", "Done", "done")),
+        (project, workstream),
+        (workstream, WorkItem(tenant_id="demo", id="WI-1", name="Refunds")),
+        (project, _ticket("QA-3", "To Do", "todo")),
+    )
+
+    statuses = await RollupService(FakeStatusRepository()).compute(tree, as_of)
+    by_id = {status.entity_ref.id: status for status in statuses}
+
+    for node_id in ("project-1", "program-1"):
+        assert by_id[node_id].rag is Rag.UNKNOWN, node_id
+        assert by_id[node_id].source is StatusSource.UNKNOWN, node_id
+        assert [
+            (factor.description, factor.source_ref.id) for factor in by_id[node_id].factors
+        ] == [("No child status data is available.", node_id)]
+
+
+async def test_a_seeded_task_rag_still_counts_but_a_done_ticket_reports_nothing() -> None:
+    # workstream -> work item -> task with an explicit RAG is how the demo seeds
+    # its delivery tree; a done ticket is finished work, not a health report.
+    as_of = date(2026, 1, 10)
+    project = Project(tenant_id="demo", id="project-1", name="Project")
+    seeded = Workstream(tenant_id="demo", id="ws-seeded", name="Seeded")
+    finished = Workstream(tenant_id="demo", id="ws-finished", name="Finished")
+    work_item = WorkItem(tenant_id="demo", id="WI-1", name="Refunds")
+    green_task = Task(
+        tenant_id="demo",
+        id="task-green",
+        name="Green task",
+        metadata={"status": "green", "source": "confirmed"},
+    )
+    tree = _contains_tree(
+        project,
+        (project, seeded),
+        (seeded, work_item),
+        (work_item, green_task),
+        (project, finished),
+        (finished, _ticket("QA-1", "Done", "done")),
+    )
+
+    statuses = await RollupService(FakeStatusRepository()).compute(tree, as_of)
+    by_id = {status.entity_ref.id: status for status in statuses}
+
+    assert by_id["WI-1"].rag is Rag.GREEN
+    assert by_id["ws-seeded"].rag is Rag.GREEN
+    assert by_id["ws-finished"].rag is Rag.UNKNOWN
+    assert by_id["project-1"].rag is Rag.GREEN
+    assert by_id["project-1"].source is StatusSource.CONFIRMED
+
+
+@pytest.mark.parametrize(
+    ("metadata", "health", "rag"),
+    [
+        ({"status": "To Do", "state": "todo"}, None, None),
+        ({"status": "In Progress", "state": "in_progress"}, None, None),
+        ({"status": "Done", "state": "done"}, None, Rag.GREEN),
+        ({"status": "Closed", "state": "done"}, None, Rag.GREEN),
+        ({"status": "Blocked", "state": "blocked"}, Rag.RED, Rag.RED),
+        ({"status": "On Hold", "state": "blocked"}, Rag.RED, Rag.RED),
+        ({"status": "at-risk"}, Rag.AMBER, Rag.AMBER),
+        ({"status": "green", "source": "confirmed"}, Rag.GREEN, Rag.GREEN),
+        ({"status": "unknown"}, None, Rag.UNKNOWN),
+        ({}, None, None),
+    ],
+)
+def test_task_health_for_its_parent_and_its_own_colour(
+    metadata: dict[str, JsonScalar], health: Rag | None, rag: Rag | None
+) -> None:
+    assert task_health(metadata) is health
+    assert task_rag(metadata) is rag
+
+
+def _program_project_pod() -> tuple[Program, Project, Pod]:
+    return (
+        Program(tenant_id="demo", id="program-1", name="Program"),
+        Project(tenant_id="demo", id="project-1", name="Project"),
+        Pod(tenant_id="demo", id="pod-1", name="Pod"),
+    )
+
+
+def _developer(developer_id: str) -> Developer:
+    return Developer(tenant_id="demo", id=developer_id, name=developer_id)
+
+
+def _ticket(key: str, status: str, state: str | None) -> Task:
+    """A task as the Jira sync writes it: the tracker's status name and its state."""
+    metadata: dict[str, JsonScalar] = {"key": key, "status": status}
+    if state is not None:
+        metadata["state"] = state
+    return Task(tenant_id="demo", id=key, name=f"Ticket {key}", metadata=metadata)
+
+
+def _contains_tree(root: GraphNode, *links: tuple[GraphNode, GraphNode]) -> GraphTree:
+    """A tree of `contains` links, each given as (parent, child)."""
+    nodes: dict[str, GraphNode] = {root.id: root}
+    for parent, child in links:
+        nodes.setdefault(parent.id, parent)
+        nodes.setdefault(child.id, child)
+    return GraphTree(
+        root=root,
+        nodes=tuple(nodes.values()),
+        edges=tuple(
+            GraphEdge(
+                tenant_id="demo",
+                from_node_id=parent.id,
+                to_node_id=child.id,
+                kind=EdgeKind.CONTAINS,
+            )
+            for parent, child in links
+        ),
+    )
+
+
+async def _reported(*developer_ids: str, as_of: date) -> FakeStatusRepository:
+    """Each of these developers confirmed a status with no blockers on `as_of`."""
+    repository = FakeStatusRepository()
+    for developer_id in developer_ids:
+        await repository.record_developer_status(
+            DeveloperStatus(
+                tenant_id="demo",
+                developer_id=developer_id,
+                as_of=as_of,
+                source=StatusSource.CONFIRMED,
+                blockers=(),
+                summary="On track.",
+            )
+        )
+    return repository
+
+
+def _cited(status: NodeStatus) -> set[str]:
+    return {factor.source_ref.id for factor in status.factors}
 
 
 def _resolving_rollup(store: InMemoryGraphStore) -> RollupService:
