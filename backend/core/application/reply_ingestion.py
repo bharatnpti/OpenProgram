@@ -56,6 +56,23 @@ def coalesce_inbound_events(events: Sequence[InboundChatEvent]) -> CoalescedRepl
     return CoalescedReply(message=message, source_event_ids=source_ids)
 
 
+def reply_burst_key(events: Sequence[InboundChatEvent]) -> str | None:
+    """Name the burst a conversation's buffered events belong to.
+
+    The key is the id of the earliest unprocessed event, in the order the drain
+    coalesces them. Every message that lands while that event is still buffered
+    shares the key, so it joins the pending burst; once a drain marks the event
+    processed, the next message opens a burst with a key of its own. The key is
+    durable data rather than a random id, so concurrent arms for one burst agree
+    on it and the workflow engine dedupes them.
+    """
+    keyed = [event for event in events if event.id is not None]
+    if not keyed:
+        return None
+    earliest = min(keyed, key=lambda event: (event.received_at, event.message_ref))
+    return earliest.id
+
+
 async def run_reply_debounce(
     received_before_timeout: Callable[[], Awaitable[bool]],
 ) -> int:
@@ -88,6 +105,13 @@ class ReplyIngestionService:
     ) -> None:
         self._repository = repository
         self._processor = processor
+
+    async def pending_burst_key(self, *, tenant_id: str, conversation_key: str) -> str | None:
+        """The key of the conversation's buffered burst, or None when none is."""
+        events = await self._repository.list_unprocessed_for_conversation(
+            tenant_id, conversation_key
+        )
+        return reply_burst_key(events)
 
     async def drain_conversation(
         self,

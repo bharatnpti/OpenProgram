@@ -508,6 +508,18 @@ DBOS_REPLY_TOPIC = "reply"
 _MAX_COALESCE_PASSES = 5
 
 
+def reply_coalesce_workflow_id(tenant_id: str, conversation_key: str, burst_key: str) -> str:
+    """One DBOS coalesce workflow per buffered burst, not per conversation.
+
+    DBOS dedupes a workflow id forever: starting a finished id returns the old
+    result and runs nothing. A per-conversation id therefore left every message
+    after the first burst to the sweeper. ``burst_key`` is the burst's earliest
+    unprocessed event id, so messages within one burst share a workflow and the
+    first message after a drain gets a new one.
+    """
+    return safe_workflow_id(f"reply-coalesce-{tenant_id}-{conversation_key}-{burst_key}")
+
+
 @DBOS.step(name="openprogram_drain_inbound_conversation", retries_allowed=True)
 async def dbos_drain_inbound_conversation_step(
     payload: ReplyCoalesceInput,
@@ -802,16 +814,18 @@ class DbosWorkflowScheduler:
             schedule_id=schedule_id, status="removed" if existed else "absent"
         )
 
-    async def arm_reply_coalesce(self, conversation_key: str, tenant_id: str) -> None:
+    async def arm_reply_coalesce(
+        self, conversation_key: str, tenant_id: str, *, burst_key: str
+    ) -> None:
         _ensure_dbos_runtime(
             DbosRuntimeConfig(
                 app_name=self.app_name,
                 system_database_url=self.system_database_url,
             )
         )
-        coalesce_id = safe_workflow_id(f"reply-coalesce-{tenant_id}-{conversation_key}")
-        # Idempotent start (no-op if the window is already running) then signal,
-        # which resets the debounce timer on the running coalesce workflow.
+        coalesce_id = reply_coalesce_workflow_id(tenant_id, conversation_key, burst_key)
+        # Idempotent start (no-op while this burst's window is running) then
+        # signal, which resets the debounce timer on that coalesce workflow.
         with SetWorkflowID(coalesce_id):
             await DBOS.start_workflow_async(
                 dbos_reply_coalesce_workflow,
