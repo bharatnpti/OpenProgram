@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -124,3 +125,68 @@ def new_cross_person_request(
         counterpart_display_name=resolution.counterpart_display_name,
         counterpart_email=resolution.counterpart_email,
     )
+
+
+# Words that stand for a role, a group or nobody in particular. A request needs
+# a named person: "waiting on reviewer" names no one, so it is not a request.
+_PLACEHOLDER_NAMES = frozenset(
+    {
+        "someone",
+        "somebody",
+        "anyone",
+        "anybody",
+        "everyone",
+        "everybody",
+        "nobody",
+        "no one",
+        "reviewer",
+        "reviewers",
+        "approver",
+        "approvers",
+        "maintainer",
+        "maintainers",
+        "team",
+        "qa",
+        "devs",
+        "developer",
+        "developers",
+        "engineer",
+        "engineers",
+        "tester",
+        "testers",
+        "lead",
+        "tech lead",
+        "team lead",
+        "manager",
+        "product owner",
+        "scrum master",
+        "code owner",
+        "code owners",
+    }
+)
+# Short words that are also first names ("Dev") count as a role only after a
+# determiner: "a dev" is a role, "Dev" may be a person.
+_PLACEHOLDER_AFTER_DETERMINER = frozenset({"dev", "pm", "po", "sm", "ops", "owner"})
+_DETERMINERS = frozenset({"a", "an", "the", "my", "our", "your", "their", "some", "any"})
+_INDEFINITE = frozenset({"someone", "somebody", "anyone", "anybody", "everyone", "nobody"})
+_NAME_WORD = re.compile(r"[^\W_]+")
+
+
+def is_placeholder_name(name: str) -> bool:
+    """True when a request's "name" is a role or placeholder, not a person.
+
+    Deliberately small: an exact role phrase ("reviewer", "the team", "QA",
+    "my lead", "a dev"), a group ("payments team"), or an indefinite pronoun
+    leading the phrase ("someone from QA"). Anything else is treated as a name.
+    """
+    words = _NAME_WORD.findall(name.casefold())
+    determined = False
+    while words and words[0] in _DETERMINERS:
+        words = words[1:]
+        determined = True
+    if not words:
+        return determined
+    if words[0] in _INDEFINITE or (len(words) > 1 and words[-1] == "team"):
+        return True
+    phrase = " ".join(words)
+    return phrase in _PLACEHOLDER_NAMES or (determined and phrase in _PLACEHOLDER_AFTER_DETERMINER)
