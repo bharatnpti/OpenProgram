@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
 WORKDIR /app
-COPY --from=ghcr.io/astral-sh/uv:0.11.2 /uv /usr/local/bin/uv
+RUN pip install --no-cache-dir uv==0.11.2
 COPY pyproject.toml uv.lock ./
 # Install exactly what uv.lock pins, runtime dependencies only. `pip install .`
 # re-resolved the >= ranges on every build, so containers ran newer libraries
