@@ -349,6 +349,7 @@ class RiskService:
                         pr_id=pr_id,
                         github_base_url=self._provider_config.github_base_url,
                         metadata=work_item.metadata if work_item is not None else None,
+                        provider_url=_payload_str(fact.payload, "web_url"),
                     ),
                     age_days=age_days,
                     owner_id=owner_id,
