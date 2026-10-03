@@ -17,6 +17,7 @@ from core.application.blocker_lifecycle import (
     BlockerLifecycleService,
     reconciliation_with_updates,
 )
+from core.application.checkin_signals import merge_checkin_signals
 from core.application.conversation_history import llm_messages_from_turns
 from core.application.counterparts import (
     MemberContact,
@@ -331,6 +332,11 @@ class StatusCollector:
             return ReplyOutcome(kind="ignored")
         requests = await self._request_ledger(checkin)
         await self._settle_waiting_requests(checkin, requests, message.text)
+        # What this person's earlier messages in this check-in said (stored as
+        # each one was read); None for the first message. This message is read
+        # on its own and then merged in, so a short answer to a follow-up never
+        # drops what the first reply said (N8).
+        earlier = checkin.signals
 
         conversation_turns = await self._recent_conversation_turns(
             tenant_id=message.tenant_id,
@@ -354,7 +360,7 @@ class StatusCollector:
             prior_blockers=prior_blockers,
             tracker_write_back=await self._tracker_write_back_open(checkin),
         )
-        decision = await self._without_tracker_update_question(checkin, decision)
+        decision = await self._without_tracker_update_question(checkin, decision, earlier=earlier)
         if not decision.is_status_update:
             await self._send_non_status_ack(checkin=checkin, message=message)
             span.set_attribute("openprogram.reply_classification", "non_status")
@@ -369,6 +375,7 @@ class StatusCollector:
             checkin=checkin,
             message=message,
             decision=decision,
+            earlier=earlier,
             prior_blockers=prior_blockers,
             clarification_count=clarification_count,
         )
@@ -395,6 +402,9 @@ class StatusCollector:
             tools=tools,
             prior_blockers=prior_blockers,
         )
+        # Blockers stay this message's own: the lifecycle carries the earlier
+        # messages' blockers (persisted with their partial status) and resolves
+        # them only when a message says so.
         reconciliation = await self._reconcile_reply_blockers(
             checkin=checkin,
             at=message.received_at,
@@ -402,10 +412,11 @@ class StatusCollector:
             signals=signals,
             raw_reply=message.text,
         )
+        merged = merge_checkin_signals(earlier, signals)
         required_details_outcome = await self._maybe_required_details_clarification(
             checkin=checkin,
             message=message,
-            signals=signals,
+            signals=merged,
             reconciliation=reconciliation,
             clarification_count=clarification_count,
         )
@@ -422,9 +433,10 @@ class StatusCollector:
                 bool(required_details_outcome.status and required_details_outcome.status.blockers),
             )
             return replace(required_details_outcome, cross_person_requests=requests.outcome())
+        final_signals = merged
         if not decision.sufficient:
-            signals = _signals_with_note(
-                signals,
+            final_signals = _signals_with_note(
+                merged,
                 "Clarification cap reached before all details were confirmed.",
             )
         person_question = await self._resolve_cross_person_requests(
@@ -437,10 +449,11 @@ class StatusCollector:
         if person_question is not None:
             # Same reasoning as the clarification branch above: hold the reply's
             # own signals rather than letting the day read as no reply at all.
+            await self._hold_open_checkin_signals(checkin, merged)
             person_partial_status = await self._record_partial_checkin_status(
                 checkin=checkin,
                 as_of_at=message.received_at,
-                signals=signals,
+                signals=final_signals,
                 reconciliation=reconciliation,
             )
             await self._send_clarification(
@@ -450,7 +463,7 @@ class StatusCollector:
                 clarification_number=clarification_count + 1,
             )
             span.set_attribute("openprogram.reply_classification", "needs_person_resolution")
-            span.set_attribute("openprogram.has_blocker", bool(signals.blockers))
+            span.set_attribute("openprogram.has_blocker", bool(final_signals.blockers))
             return ReplyOutcome(
                 kind="clarifying",
                 status=person_partial_status,
@@ -459,7 +472,8 @@ class StatusCollector:
         attribution_outcome, reconciliation = await self._maybe_attribution_clarification(
             checkin=checkin,
             message=message,
-            signals=signals,
+            signals=final_signals,
+            open_signals=merged,
             reconciliation=reconciliation,
             clarification_count=clarification_count,
         )
@@ -470,8 +484,12 @@ class StatusCollector:
         status = await self._finalize_checkin_reply(
             checkin=checkin,
             replied_at=message.received_at,
-            raw_reply=message.text,
-            signals=signals,
+            raw_reply=(
+                message.text
+                if earlier is None
+                else _checkin_messages_text(checkin, conversation_turns, message)
+            ),
+            signals=final_signals,
             reconciliation=reconciliation,
         )
         span.set_attribute("openprogram.reply_classification", "status_update")
@@ -556,6 +574,8 @@ class StatusCollector:
         self,
         checkin: CheckIn,
         decision: ClarificationDecision,
+        *,
+        earlier: CheckInSignals | None = None,
     ) -> ClarificationDecision:
         """Drop a follow-up asking the person to update the tracker we are about to update.
 
@@ -567,7 +587,9 @@ class StatusCollector:
         because the issue's merge request is still open: moving it themselves
         would make the tracker wrong, and the ack says why it was left as it is.
         Every other question is kept: one naming an issue the write-back will
-        not touch, and any question that asks for something else.
+        not touch, and any question that asks for something else. The claims
+        are the whole check-in's (``earlier`` messages merged with this one),
+        the same set the write-back gets when the check-in is recorded.
         """
         service = self._write_back_service
         if (
@@ -575,15 +597,16 @@ class StatusCollector:
             or decision.sufficient
             or decision.question is None
             or decision.signals is None
-            or not decision.signals.issue_updates
-            or not asks_person_to_update_tracker(decision.question)
         ):
+            return decision
+        claims = merge_checkin_signals(earlier, decision.signals).issue_updates
+        if not claims or not asks_person_to_update_tracker(decision.question):
             return decision
         try:
             dry_run = await service.dry_run(
                 tenant_id=checkin.tenant_id,
                 developer_id=checkin.developer_id,
-                claims=decision.signals.issue_updates,
+                claims=claims,
             )
         except Exception:  # pragma: no cover - defensive; keep the question
             return decision
@@ -606,6 +629,7 @@ class StatusCollector:
         checkin: CheckIn,
         message: InboundMessage,
         decision: ClarificationDecision,
+        earlier: CheckInSignals | None,
         prior_blockers: tuple[DeveloperBlocker, ...],
         clarification_count: int,
     ) -> ReplyOutcome | None:
@@ -618,7 +642,9 @@ class StatusCollector:
         reported ETA change was dropped, and an end-of-day reconcile could
         finalize the day as unknown -- counting them as a non-replier in every
         rollup above them. ``replied_at`` stays unset, so the clarification loop
-        and its timeout finalizer still own the turn.
+        and its timeout finalizer still own the turn. What it said is merged with
+        the ``earlier`` messages of the check-in and kept on the open check-in,
+        so the answer to this question is merged with it in turn.
         """
         if (
             decision.sufficient
@@ -628,10 +654,12 @@ class StatusCollector:
             return None
         partial_status: DeveloperStatus | None = None
         if decision.signals is not None:
+            merged = merge_checkin_signals(earlier, decision.signals)
+            await self._hold_open_checkin_signals(checkin, merged)
             partial_status = await self._record_partial_checkin_status(
                 checkin=checkin,
                 as_of_at=message.received_at,
-                signals=decision.signals,
+                signals=merged,
                 reconciliation=await self._reconcile_reply_blockers(
                     checkin=checkin,
                     at=message.received_at,
@@ -661,6 +689,7 @@ class StatusCollector:
         missing_required = _missing_required_status_details(required_check_signals)
         if not missing_required or clarification_count >= self._checkin_max_clarifications:
             return None
+        await self._hold_open_checkin_signals(checkin, signals)
         partial_status = await self._record_partial_checkin_status(
             checkin=checkin,
             as_of_at=message.received_at,
@@ -681,6 +710,7 @@ class StatusCollector:
         checkin: CheckIn,
         message: InboundMessage,
         signals: CheckInSignals,
+        open_signals: CheckInSignals,
         reconciliation: BlockerReconciliation,
         clarification_count: int,
     ) -> tuple[ReplyOutcome | None, BlockerReconciliation]:
@@ -689,6 +719,8 @@ class StatusCollector:
         Only multi-pod developers are asked, only within the clarification
         budget, and required-detail/person clarifications always outrank this
         one. A single-pod developer's unattributed blockers auto-attribute.
+        ``open_signals`` (the check-in's merged signals without any closing
+        note) is what the open check-in keeps while the question is out.
         """
         candidates = tuple(
             blocker
@@ -710,6 +742,7 @@ class StatusCollector:
         asked_at = datetime.now(tz=UTC)
         stamped = tuple(replace(blocker, attribution_asked_at=asked_at) for blocker in candidates)
         updated = reconciliation_with_updates(reconciliation, stamped)
+        await self._hold_open_checkin_signals(checkin, open_signals)
         partial_status = await self._record_partial_checkin_status(
             checkin=checkin,
             as_of_at=message.received_at,
@@ -1934,6 +1967,20 @@ class StatusCollector:
         await self._blockers.persist_with_status(status, reconciliation)
         return status
 
+    async def _hold_open_checkin_signals(self, checkin: CheckIn, signals: CheckInSignals) -> None:
+        """Keep what the check-in's messages said so far on the still-open check-in.
+
+        The next message of the check-in (the answer to a follow-up) is merged
+        with these, and so is the close-out of an unanswered follow-up. Only an
+        open check-in is written: ``replied_at`` and ``raw_reply`` stay unset,
+        and a check-in finalized meanwhile is left alone.
+        """
+        await self._status_repository.record_open_checkin_signals(
+            checkin.tenant_id,
+            checkin.correlation_id,
+            signals,
+        )
+
     async def _finalize_accumulated_reply_on_timeout(
         self,
         *,
@@ -1992,6 +2039,14 @@ class StatusCollector:
             signals=signals,
             raw_reply=raw_reply,
         )
+        if checkin.signals is not None:
+            # What each message said as it was read stays, so a claim or answer
+            # this reading of all the messages leaves out is not lost; it still
+            # words the summary, and wins for whatever it does mention.
+            signals = replace(
+                merge_checkin_signals(checkin.signals, signals),
+                progress_note=signals.progress_note,
+            )
         return await self._finalize_checkin_reply(
             checkin=checkin,
             replied_at=user_turns[-1].observed_at,
@@ -2630,6 +2685,25 @@ def _single_correlation_or_log_ambiguous(
 def _signals_with_note(signals: CheckInSignals, note: str) -> CheckInSignals:
     # replace() preserves every other field (issue_updates, parser_confident, ...).
     return replace(signals, progress_note=f"{signals.progress_note} {note}")
+
+
+def _checkin_messages_text(
+    checkin: CheckIn,
+    other_turns: Iterable[ConversationTurn],
+    message: InboundMessage,
+) -> str:
+    """The person's messages in this check-in, oldest first, as one raw reply.
+
+    The same shape the clarification-timeout finalizer stores. ``other_turns``
+    are the recent turns without ``message`` itself.
+    """
+    messages = [
+        (turn.observed_at, turn.content)
+        for turn in other_turns
+        if turn.role is ConversationRole.USER and turn.correlation_id == checkin.correlation_id
+    ]
+    messages.append((message.received_at, message.text))
+    return "\n".join(text for _, text in sorted(messages, key=lambda item: item[0]))
 
 
 def _reconcile_mode_for_reply(signals: CheckInSignals, raw_reply: str) -> ReconcileMode:

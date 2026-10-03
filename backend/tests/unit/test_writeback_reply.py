@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+
+import pytest
 
 from core.application import status_collector as status_collector_module
 from core.application.status_collector import StatusCollector, asks_person_to_update_tracker
@@ -20,6 +22,8 @@ from core.domain.status import (
     CheckInCorrelation,
     CheckInPreference,
     CheckInSignals,
+    IssueClaim,
+    StatusSource,
     WriteBackConsent,
 )
 from core.domain.writeback import WriteBackAudit, WriteBackStatus
@@ -464,3 +468,381 @@ def test_open_merge_request_note_wording() -> None:
         signals=signals, max_chars=60, held=[one]
     )
     assert short == status_collector_module._CHECKIN_ACK_PLAIN
+
+
+# --- N8: R2, Raj answers the INS-4 ETA follow-up and the first reply must still count ---
+
+_RAJ_FIRST_TEXT = (
+    "INS-2 backfill is done, code-wise. Only waiting on a merge of insights-pipeline !1. "
+    "INS-3 is merged (!2), haven't started INS-4 yet. No blockers."
+)
+_RAJ_ANSWER_TEXT = "Starting INS-4 Monday once !1 is merged, should be wrapped up by midweek."
+_INS4_QUESTION = "What is your ETA to start or complete INS-4?"
+_INS2_CLAIM = {
+    "issue_key": "INS-2",
+    "claimed_done": True,
+    "claimed_state": "done",
+    "note": "Backfill done code-wise; waiting on the merge of insights-pipeline !1.",
+}
+_INS3_CLAIM = {
+    "issue_key": "INS-3",
+    "claimed_done": True,
+    "claimed_state": "merged",
+    "note": "Merged in insights-pipeline !2.",
+}
+_INS4_NOT_STARTED = {
+    "issue_key": "INS-4",
+    "claimed_done": False,
+    "claimed_state": "not started",
+    "note": "Not started yet.",
+}
+_INS4_MONDAY = {
+    "issue_key": "INS-4",
+    "claimed_done": False,
+    "claimed_state": "starting Monday",
+    "note": "Starts Monday once !1 is merged, done by midweek.",
+}
+
+
+def _evaluation(
+    *,
+    progress_note: str,
+    issue_updates: list[dict[str, object]],
+    question: str | None = None,
+    blockers_answered: bool = False,
+    eta_answered: bool = False,
+    eta_change_days: int | None = None,
+) -> str:
+    return json.dumps(
+        {
+            "is_status_update": True,
+            "sufficient": question is None,
+            "question": question,
+            "signals": {
+                "progress_note": progress_note,
+                "blockers": [],
+                "eta_change_days": eta_change_days,
+                "blockers_answered": blockers_answered,
+                "eta_answered": eta_answered,
+                "issue_updates": issue_updates,
+            },
+        }
+    )
+
+
+# R2 as it happened: the first reply drew only the INS-4 ETA question...
+_RAJ_FIRST_EVALUATION = _evaluation(
+    progress_note=(
+        "INS-2 backfill done code-wise, waiting on the merge of insights-pipeline !1; "
+        "INS-3 merged (!2); INS-4 not started; no blockers"
+    ),
+    issue_updates=[_INS2_CLAIM, _INS3_CLAIM, _INS4_NOT_STARTED],
+    question=_INS4_QUESTION,
+    blockers_answered=True,
+)
+# ...and the answer, read on its own, names INS-4 only (the R2 final signals).
+_RAJ_ANSWER_EVALUATION = _evaluation(
+    progress_note="INS-4 starts Monday once !1 is merged; wrapped up by midweek",
+    issue_updates=[_INS4_MONDAY],
+    eta_answered=True,
+)
+
+
+def _merge_request(iid: str, issue_key: str, *, state: str) -> FactEvent:
+    observed_at = datetime(2026, 10, 3, 17, 30, tzinfo=UTC)
+    return FactEvent(
+        tenant_id=_TENANT,
+        source="vcs_pull_request",
+        entity_ref=EntityRef(tenant_id=_TENANT, kind=NodeKind.REPO, id="acme/insights-pipeline"),
+        payload={
+            "repo": "acme/insights-pipeline",
+            "id": iid,
+            "title": f"{issue_key}: insights pipeline work",
+            "merged": state == "merged",
+            "state": state,
+            "draft": False,
+            "source_branch": f"feature/{issue_key}",
+            "web_url": f"https://gitlab.example/acme/insights-pipeline/-/merge_requests/{iid}",
+        },
+        observed_at=observed_at,
+        correlation_id=f"vcs:pull_request:{_TENANT}:acme/insights-pipeline:{iid}:{observed_at}",
+    )
+
+
+async def _raj_r2_collector(
+    texts: list[str],
+    *,
+    consent: WriteBackConsent = WriteBackConsent.AUTO_APPLY,
+) -> tuple[StatusCollector, FakeIssueTracker, FakeChatProvider, InMemoryGraphStore]:
+    """Raj on qa2 before R2: INS-2 (!1 open), INS-3 (!2 merged) In Progress, INS-4 To Do."""
+    store = InMemoryGraphStore()
+    asked_at = datetime(2026, 10, 3, 18, 0, 13, tzinfo=UTC)
+    await store.record_checkin(
+        CheckIn(
+            tenant_id=_TENANT,
+            developer_id=_RAJ,
+            correlation_id=_RAJ_CORRELATION,
+            asked_at=asked_at,
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    await store.record_checkin_correlation(
+        CheckInCorrelation(
+            tenant_id=_TENANT,
+            developer_id=_RAJ,
+            correlation_id=_RAJ_CORRELATION,
+            chat_user_ref=_RAJ,
+            chat_thread_ref="thread-raj",
+            outbound_message_id="msg-question-raj",
+            asked_at=asked_at,
+        )
+    )
+    await store.record_checkin_preference(
+        CheckInPreference(tenant_id=_TENANT, developer_id=_RAJ, write_back_consent=consent)
+    )
+    await store.upsert_identity_link(
+        IdentityLink(tenant_id=_TENANT, developer_id=_RAJ, jira_account_id="acct-raj")
+    )
+    await store.set_writeback_enabled(_TENANT, True)
+    await store.append_fact(_merge_request("1", "INS-2", state="open"))
+    await store.append_fact(_merge_request("2", "INS-3", state="merged"))
+    raj = UserRef(tenant_id=_TENANT, external_id="acct-raj")
+    tracker = FakeIssueTracker(
+        issues={
+            key: Issue(tenant_id=_TENANT, key=key, title=title, state=state, assignee=raj)
+            for key, title, state in (
+                ("INS-2", "Event ingest backfill", IssueState.IN_PROGRESS),
+                ("INS-3", "Retention job", IssueState.IN_PROGRESS),
+                ("INS-4", "Daily rollup table", IssueState.TODO),
+            )
+        }
+    )
+    chat = FakeChatProvider()
+    collector = StatusCollector(
+        issue_tracker=tracker,
+        chat_provider=chat,
+        llm_provider=_ScriptedLlm(texts=list(texts)),
+        status_repository=store,
+        conversation_repository=store,
+        identity_link_repository=store,
+        write_back_service=WriteBackService(
+            issue_tracker=tracker,
+            audit_repository=store,
+            config_repository=store,
+            status_repository=store,
+            identity_link_repository=store,
+            time_series_repository=store,
+        ),
+        model="test-model",
+    )
+    return collector, tracker, chat, store
+
+
+def _raj_says(text: str, message_id: str, at: datetime) -> InboundMessage:
+    return InboundMessage(
+        tenant_id=_TENANT,
+        user=ChatUserRef(tenant_id=_TENANT, external_id=_RAJ),
+        text=text,
+        thread_id="thread-raj",
+        message_id=message_id,
+        correlation_id=_RAJ_CORRELATION,
+        received_at=at,
+    )
+
+
+_RAJ_FIRST = _raj_says(
+    _RAJ_FIRST_TEXT, "msg-raj-first", datetime(2026, 10, 3, 18, 3, 46, tzinfo=UTC)
+)
+_RAJ_ANSWER = _raj_says(
+    _RAJ_ANSWER_TEXT, "msg-raj-answer", datetime(2026, 10, 3, 18, 5, 46, tzinfo=UTC)
+)
+
+
+async def _rows_by_issue(store: InMemoryGraphStore) -> dict[str, WriteBackAudit]:
+    rows = await store.list_writeback_by_correlation(_TENANT, _RAJ_CORRELATION)
+    return {row.issue_key: row for row in rows}
+
+
+async def test_raj_r2_answer_to_the_follow_up_keeps_ins2_and_ins3_from_his_first_reply() -> None:
+    collector, tracker, chat, store = await _raj_r2_collector(
+        [_RAJ_FIRST_EVALUATION, _RAJ_ANSWER_EVALUATION]
+    )
+
+    first = await collector.handle_reply(_RAJ_FIRST)
+
+    assert first.kind == "clarifying"
+    assert _sent(chat, "status_clarification") == [_INS4_QUESTION]
+    held = await store.checkin_by_correlation(_TENANT, _RAJ_CORRELATION)
+    assert held is not None and held.replied_at is None and held.raw_reply is None
+    assert held.signals is not None
+    assert [claim.issue_key for claim in held.signals.issue_updates] == ["INS-2", "INS-3", "INS-4"]
+    assert tracker.transitions == []  # nothing is written while the question is out
+
+    second = await collector.handle_reply(_RAJ_ANSWER)
+
+    assert second.kind == "processed"
+    checkin = await store.checkin_by_correlation(_TENANT, _RAJ_CORRELATION)
+    assert checkin is not None and checkin.signals is not None
+    claims = {claim.issue_key: claim for claim in checkin.signals.issue_updates}
+    assert list(claims) == ["INS-2", "INS-3", "INS-4"]
+    assert (claims["INS-2"].claimed_done, claims["INS-2"].claimed_state) == (True, "done")
+    assert (claims["INS-3"].claimed_done, claims["INS-3"].claimed_state) == (True, "merged")
+    # INS-4 is what the answer says now: starting Monday, so nothing to move.
+    assert claims["INS-4"].claimed_state == "starting Monday"
+    assert checkin.raw_reply == f"{_RAJ_FIRST_TEXT}\n{_RAJ_ANSWER_TEXT}"
+    assert checkin.replied_at == _RAJ_ANSWER.received_at
+
+    # Write-back reads the whole check-in: INS-3 (merged !2) moves to Done, INS-2
+    # stays In Progress while insights-pipeline !1 is open (G6), INS-4 is untouched.
+    rows = await _rows_by_issue(store)
+    assert sorted(rows) == ["INS-2", "INS-3"]
+    assert (rows["INS-2"].status, rows["INS-2"].source) == (WriteBackStatus.DECLINED, "open_mr")
+    assert (rows["INS-3"].status, rows["INS-3"].target_state) == (WriteBackStatus.APPLIED, "done")
+    assert tracker.transitions == [(_TENANT, "INS-3", "done")]
+    assert tracker.comments == [(_TENANT, "INS-3", "Merged in insights-pipeline !2.")]
+
+    # The status and its summary carry both messages: no blockers (first), ETA (answer).
+    status = second.status
+    assert status is not None
+    assert status.source is StatusSource.CONFIRMED
+    assert "INS-2" in status.summary and "INS-3" in status.summary
+    assert "INS-4 starts Monday" in status.summary
+    [ack] = _sent(chat, "status_ack")
+    assert "I updated INS-3 to Done in the issue tracker." in ack
+    assert _INS2_NOTE in ack
+
+
+async def test_a_later_message_that_changes_an_earlier_fact_wins() -> None:
+    correction = _evaluation(
+        progress_note="Correction: INS-3 is not merged yet, !2 is still in review; ETA +3 days",
+        issue_updates=[
+            {
+                "issue_key": "INS-3",
+                "claimed_done": False,
+                "claimed_state": "in review",
+                "note": "Still in review on !2.",
+            }
+        ],
+        blockers_answered=True,
+        eta_answered=True,
+        eta_change_days=3,
+    )
+    collector, tracker, _, store = await _raj_r2_collector(
+        [
+            _evaluation(
+                progress_note="INS-3 merged (!2); ETA +1 day",
+                issue_updates=[_INS3_CLAIM],
+                question="Any blockers?",
+                eta_answered=True,
+                eta_change_days=1,
+            ),
+            correction,
+        ]
+    )
+
+    await collector.handle_reply(
+        _raj_says("INS-3 is merged (!2). ETA +1 day.", "m-1", _RAJ_FIRST.received_at)
+    )
+    outcome = await collector.handle_reply(
+        _raj_says(
+            "Sorry, INS-3 isn't merged yet, !2 is still in review. No blockers, ETA +3 days.",
+            "m-2",
+            _RAJ_ANSWER.received_at,
+        )
+    )
+
+    assert outcome.kind == "processed"
+    checkin = await store.checkin_by_correlation(_TENANT, _RAJ_CORRELATION)
+    assert checkin is not None and checkin.signals is not None
+    (claim,) = checkin.signals.issue_updates
+    assert (claim.claimed_done, claim.claimed_state) == (False, "in review")
+    # The earlier "merged" no longer moves INS-3 to Done.
+    assert tracker.transitions == []
+    assert await store.list_writeback_by_correlation(_TENANT, _RAJ_CORRELATION) == []
+    assert outcome.status is not None and outcome.status.eta_change_days == 3
+
+
+async def test_a_check_in_answered_in_one_message_is_recorded_exactly_as_before(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    collector, tracker, chat, store = await _raj_collector(merge_request=_insights_mr(state="open"))
+    held_writes: list[tuple[str, str, CheckInSignals]] = []
+
+    async def record_open_checkin_signals(
+        tenant_id: str, correlation_id: str, signals: CheckInSignals
+    ) -> bool:
+        held_writes.append((tenant_id, correlation_id, signals))
+        return True
+
+    monkeypatch.setattr(store, "record_open_checkin_signals", record_open_checkin_signals)
+
+    outcome = await collector.handle_reply(_raj_reply())
+
+    assert outcome.kind == "processed"
+    checkin = await store.checkin_by_correlation(_TENANT, _RAJ_CORRELATION)
+    assert checkin is not None and checkin.signals is not None
+    assert checkin.raw_reply == "INS-2 backfill is done."
+    assert checkin.signals.progress_note == "INS-2 backfill is done."
+    assert checkin.signals.issue_updates == (
+        IssueClaim(
+            issue_key="INS-2", claimed_done=True, claimed_state="done", note="Backfill is done."
+        ),
+    )
+    assert held_writes == []  # nothing is held: the check-in never stayed open
+    assert tracker.transitions == []
+    [ack] = _sent(chat, "status_ack")
+    assert _INS2_NOTE in ack
+
+
+async def test_always_ask_raj_is_asked_about_ins3_after_answering_the_follow_up() -> None:
+    collector, tracker, chat, store = await _raj_r2_collector(
+        [_RAJ_FIRST_EVALUATION, _RAJ_ANSWER_EVALUATION], consent=WriteBackConsent.ALWAYS_ASK
+    )
+
+    await collector.handle_reply(_RAJ_FIRST)
+    await collector.handle_reply(_RAJ_ANSWER)
+
+    rows = await _rows_by_issue(store)
+    assert (rows["INS-3"].status, rows["INS-3"].target_state) == (
+        WriteBackStatus.PROPOSED,
+        "done",
+    )
+    assert (rows["INS-2"].status, rows["INS-2"].source) == (WriteBackStatus.DECLINED, "open_mr")
+    assert tracker.transitions == []
+    assert _sent(chat, "writeback_consent_prompt") == [
+        "Want me to update INS-3 to “Done” in the issue tracker? Reply yes or no."
+    ]
+
+
+async def test_close_out_of_an_unanswered_follow_up_keeps_the_first_replys_claims() -> None:
+    # The close-out reads all of Raj's messages again; this reading drops INS-2/INS-3.
+    collector, tracker, _, store = await _raj_r2_collector(
+        [
+            _RAJ_FIRST_EVALUATION,
+            _evaluation(
+                progress_note="INS-4 not started; no blockers",
+                issue_updates=[_INS4_NOT_STARTED],
+                blockers_answered=True,
+            ),
+        ]
+    )
+    await collector.handle_reply(_RAJ_FIRST)
+
+    status = await collector.record_non_response(
+        tenant_id=_TENANT,
+        developer_id=_RAJ,
+        as_of=date(2026, 10, 3),
+        correlation_id=_RAJ_CORRELATION,
+    )
+
+    checkin = await store.checkin_by_correlation(_TENANT, _RAJ_CORRELATION)
+    assert checkin is not None and checkin.signals is not None
+    assert [claim.issue_key for claim in checkin.signals.issue_updates] == [
+        "INS-2",
+        "INS-3",
+        "INS-4",
+    ]
+    assert "clarification timeout" in status.summary
+    assert tracker.transitions == [(_TENANT, "INS-3", "done")]

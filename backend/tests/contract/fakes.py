@@ -34,6 +34,7 @@ from core.domain.status import (
     CheckInNudge,
     CheckInPreference,
     CheckInScheduleRun,
+    CheckInSignals,
     DeveloperStatus,
 )
 from core.domain.writeback import WriteBackAudit, WriteBackStatus
@@ -186,6 +187,17 @@ class FakeStatusRepository:
             return False
         await self.record_checkin(checkin)
         return True
+
+    async def record_open_checkin_signals(
+        self, tenant_id: str, correlation_id: str, signals: CheckInSignals
+    ) -> bool:
+        for index, existing in enumerate(self.checkins):
+            if existing.tenant_id == tenant_id and existing.correlation_id == correlation_id:
+                if existing.replied_at is not None:
+                    return False
+                self.checkins[index] = replace(existing, signals=signals)
+                return True
+        return False
 
     async def checkin_by_correlation(self, tenant_id: str, correlation_id: str) -> CheckIn | None:
         for index in range(len(self.checkins) - 1, -1, -1):

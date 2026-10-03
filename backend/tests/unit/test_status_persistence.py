@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time
+from types import SimpleNamespace
 
 from core.domain.blockers import (
     BlockerReport,
@@ -560,6 +561,45 @@ def test_developer_blocker_row_mapper_defaults_missing_optionals() -> None:
     assert not blocker.is_attributed
     assert blocker.is_open_on(date(2026, 1, 8))
     assert not blocker.is_open_on(date(2026, 1, 7))
+
+
+@dataclass
+class _RowcountRecorder:
+    rowcount: int
+    calls: list[tuple[str, tuple[object, ...]]] = field(default_factory=list)
+
+    async def execute(self, query: str, params: tuple[object, ...]) -> object:
+        self.calls.append((query, params))
+        return SimpleNamespace(rowcount=self.rowcount)
+
+
+async def test_postgres_open_checkin_signals_is_one_update_that_skips_finalized_rows() -> None:
+    signals = CheckInSignals(
+        progress_note="INS-2 done code-wise; INS-3 merged. INS-4 starts Monday.",
+        blockers_answered=True,
+        eta_answered=True,
+        issue_updates=(
+            IssueClaim(issue_key="INS-3", claimed_done=True, claimed_state="merged", note="!2"),
+        ),
+    )
+    open_row = _RowcountRecorder(rowcount=1)
+    finalized_row = _RowcountRecorder(rowcount=0)
+
+    assert await PostgresStatusRepository(open_row).record_open_checkin_signals(  # type: ignore[arg-type]
+        "qa2", "corr-raj", signals
+    )
+    assert not await PostgresStatusRepository(  # type: ignore[arg-type]
+        finalized_row
+    ).record_open_checkin_signals("qa2", "corr-raj", signals)
+
+    ((query, params),) = open_row.calls
+    statement = " ".join(query.split())
+    assert statement == (
+        "UPDATE checkins SET signals = %s WHERE tenant_id = %s AND correlation_id = %s "
+        "AND replied_at IS NULL"
+    )
+    assert params == (_signals_to_json(signals), "qa2", "corr-raj")
+    assert _signals_from_json(params[0]) == signals
 
 
 def test_signals_json_round_trip_preserves_blocker_reports_and_resolved_ids() -> None:
