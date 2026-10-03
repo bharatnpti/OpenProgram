@@ -30,6 +30,7 @@ from core.domain.status import (
     CheckInNudge,
     CheckInPreference,
     CheckInScheduleRun,
+    CheckInSignals,
     DeveloperStatus,
 )
 from core.domain.writeback import WriteBackAudit
@@ -193,6 +194,18 @@ class StatusRepository(Protocol):
     async def record_checkin(self, checkin: CheckIn) -> None: ...
 
     async def record_checkin_reply_once(self, checkin: CheckIn) -> bool: ...
+
+    async def record_open_checkin_signals(
+        self, tenant_id: str, correlation_id: str, signals: CheckInSignals
+    ) -> bool:
+        """Keep what an open check-in's replies said so far; touch nothing else.
+
+        Only the signals of a check-in that is not finalized (``replied_at`` is
+        unset) change; ``replied_at`` and ``raw_reply`` stay as they are. Returns
+        False and writes nothing once the check-in is finalized, or when there
+        is no such check-in.
+        """
+        ...
 
     async def checkin_by_correlation(
         self, tenant_id: str, correlation_id: str

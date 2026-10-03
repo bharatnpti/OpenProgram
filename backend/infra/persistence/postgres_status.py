@@ -122,6 +122,24 @@ class PostgresStatusRepository:
             )
         return int(getattr(result, "rowcount", 0) or 0) > 0
 
+    async def record_open_checkin_signals(
+        self, tenant_id: str, correlation_id: str, signals: CheckInSignals
+    ) -> bool:
+        with _tracer.start_as_current_span("postgres.status.record_open_checkin_signals"):
+            # One conditional UPDATE: a finalized check-in (replied_at set) is
+            # never touched, so a late write can not reopen or rewrite it.
+            result = await self._executor.execute(
+                """
+                UPDATE checkins
+                SET signals = %s
+                WHERE tenant_id = %s
+                  AND correlation_id = %s
+                  AND replied_at IS NULL
+                """,
+                (_signals_to_json(signals), tenant_id, correlation_id),
+            )
+        return int(getattr(result, "rowcount", 0) or 0) > 0
+
     async def checkin_by_correlation(self, tenant_id: str, correlation_id: str) -> CheckIn | None:
         with _tracer.start_as_current_span("postgres.status.checkin_by_correlation"):
             rows = await self._executor.fetch(

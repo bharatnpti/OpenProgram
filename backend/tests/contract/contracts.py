@@ -41,6 +41,7 @@ from core.domain.status import (
     CheckInScheduleRun,
     CheckInSignals,
     DeveloperStatus,
+    IssueClaim,
     StatusSource,
 )
 from core.domain.writeback import WriteBackAudit, WriteBackStatus
@@ -210,6 +211,40 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
     once_checkin = await repository.checkin_by_correlation("demo", "corr-once")
     assert once_checkin is not None
     assert once_checkin.raw_reply == "first final reply"
+
+    # An open check-in keeps what its messages said so far; a finalized one is
+    # never rewritten or reopened by it.
+    await repository.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="dev-1",
+            correlation_id="corr-open",
+            asked_at=asked_at,
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    held = CheckInSignals(
+        progress_note="INS-3 merged; INS-4 not started",
+        blockers_answered=True,
+        issue_updates=(
+            IssueClaim(issue_key="INS-3", claimed_done=True, claimed_state="merged", note="!2"),
+        ),
+    )
+    assert await repository.record_open_checkin_signals("demo", "corr-open", held)
+    open_checkin = await repository.checkin_by_correlation("demo", "corr-open")
+    assert open_checkin is not None
+    assert open_checkin.signals == held
+    assert open_checkin.replied_at is None
+    assert open_checkin.raw_reply is None
+    assert not await repository.record_open_checkin_signals("demo", "corr-once", held)
+    once_checkin = await repository.checkin_by_correlation("demo", "corr-once")
+    assert once_checkin is not None
+    assert once_checkin.signals == CheckInSignals(progress_note="first")
+    assert once_checkin.replied_at == replied_at
+    assert not await repository.record_open_checkin_signals("demo", "corr-missing", held)
+    assert await repository.checkin_by_correlation("demo", "corr-missing") is None
 
     correlation = CheckInCorrelation(
         tenant_id="demo",

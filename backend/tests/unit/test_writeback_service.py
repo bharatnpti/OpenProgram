@@ -697,6 +697,9 @@ async def test_every_r1_target_is_a_valid_transition_or_an_explicit_noop(
         ("code is done and in review", None),
         ("merged, waiting for QA", None),
         ("no longer blocked", None),
+        # R2 (Raj): his answer to the INS-4 follow-up, and INS-2 "done" pending a merge.
+        ("starting Monday", None),
+        ("done code-wise, waiting on merge of insights-pipeline !1", None),
         # Wording that names no state at all.
         ("branch pushed", None),
         ("", None),
