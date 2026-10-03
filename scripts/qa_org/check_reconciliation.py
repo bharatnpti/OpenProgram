@@ -30,12 +30,12 @@ from typing import Any
 import httpx
 
 from scripts.qa_org import env
-from scripts.qa_org.roster import GITLAB_GROUP, PODS, PROJECTS
+from scripts.qa_org.roster import GITLAB_GROUP, PODS, PROJECTS, QA_TENANT
 from scripts.qa_org.write_setup_doc import API, GITLAB_WEB, table
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = REPO_ROOT.parent / "openprogram-qa"
-TENANT = "qa"
+TENANT = QA_TENANT
 POSTGRES = ("docker", "exec", "-i", "openprogram-postgres-1", "psql", "-U", "openprogram")
 JIRA_KEY = re.compile(r"\b(?:CHK|IDP|INS)-\d+\b")
 DONE = "done"

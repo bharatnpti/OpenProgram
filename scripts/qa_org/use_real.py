@@ -28,11 +28,11 @@ from pathlib import Path
 import httpx
 
 from scripts.qa_org import env
-from scripts.qa_org.roster import GITLAB_GROUP, PEOPLE
+from scripts.qa_org.roster import GITLAB_GROUP, PEOPLE, QA_TENANT
 
 BASE_ENV = Path(".env")
 QA_ENV = Path(".env.qa")
-TENANT_ID = "qa"
+TENANT_ID = QA_TENANT
 
 SECRET_KEYS = (
     "OPENPROGRAM_SLACK_BOT_TOKEN",
@@ -90,8 +90,25 @@ def managed_values(*, live_checkins: bool, test_windows: bool = False) -> dict[s
         "OPENPROGRAM_DEV_PRINCIPAL_SUBJECT": admin_slack_id(secrets["OPENPROGRAM_SLACK_BOT_TOKEN"]),
         "OPENPROGRAM_DEV_PRINCIPAL_ROLES": "admin",
         **secrets,
+        **slack_inbound_values(),
         **gitlab_values(),
         **(TEST_WINDOWS if test_windows else {}),
+    }
+
+
+def slack_inbound_values() -> dict[str, str]:
+    """Socket Mode once an app-level token exists; the Events API over the tunnel until then.
+
+    Socket Mode has the worker hold an outbound connection to Slack, so replies
+    need no public tunnel, no webhook gate and no Request URL to re-save each
+    time the quick tunnel changes its hostname.
+    """
+    app_token = env.get("OPENPROGRAM_SLACK_APP_TOKEN")
+    if app_token is None:
+        return {"OPENPROGRAM_SLACK_INBOUND_TRANSPORT": "http"}
+    return {
+        "OPENPROGRAM_SLACK_INBOUND_TRANSPORT": "socket",
+        "OPENPROGRAM_SLACK_APP_TOKEN": app_token,
     }
 
 

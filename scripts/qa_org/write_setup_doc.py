@@ -32,6 +32,7 @@ from scripts.qa_org.roster import (
     PODS,
     PROGRAM_NAME,
     PROJECTS,
+    QA_TENANT,
     WORKSTREAMS,
     Person,
     Pod,
@@ -53,9 +54,11 @@ ROLE_LABEL = {
 }
 
 SECRET_KEYS = (
-    ("OPENPROGRAM_QA_MAIL_BASE", "the mailbox every plus-address delivers to"),
+    ("OPENPROGRAM_QA_MAIL_BASE", "first mailbox the plus-addresses deliver to"),
+    ("OPENPROGRAM_QA_MAIL_BASE_2", "second mailbox (mailbox=2 in the roster)"),
     ("OPENPROGRAM_SLACK_BOT_TOKEN", "Slack bot token (xoxb-)"),
     ("OPENPROGRAM_SLACK_SIGNING_SECRET", "verifies inbound Slack webhooks"),
+    ("OPENPROGRAM_SLACK_APP_TOKEN", "Slack app-level token (xapp-), Socket Mode replies"),
     ("OPENPROGRAM_JIRA_BASE_URL / _EMAIL / _API_TOKEN", "Jira site and Asha's API token"),
     ("OPENPROGRAM_QA_GITLAB_ROOT_PASSWORD", "GitLab UI sign-in as root"),
     ("OPENPROGRAM_QA_GITLAB_ADMIN_TOKEN", "root api+sudo, used only by seed_gitlab"),
@@ -218,6 +221,7 @@ def render(state: dict[str, Any]) -> str:  # noqa: C901 - one linear document
     ]
     jira_base = jira.get("base", "")
     tunnel_url = f"https://{tunnel}" if tunnel else None
+    socket_mode = env.get("OPENPROGRAM_SLACK_APP_TOKEN") is not None
     out += table(
         ("What", "Where", "How you get in"),
         [
@@ -240,12 +244,24 @@ def render(state: dict[str, Any]) -> str:  # noqa: C901 - one linear document
                 f"{GITLAB_WEB}/{GITLAB_GROUP}",
                 "`root` + OPENPROGRAM_QA_GITLAB_ROOT_PASSWORD",
             ),
-            ("Webhook gate (local)", "http://127.0.0.1:8787", "forwards POST /webhooks/chat/*"),
-            ("Public tunnel", tunnel_url or "not running", "changes on every restart"),
-            (
-                "Slack Event Subscriptions URL",
-                f"{tunnel_url}/webhooks/chat/slack" if tunnel_url else "start the tunnel first",
-                "bot event `message.im`",
+            *(
+                [("Slack replies", "Socket Mode", "the worker's outbound connection; no tunnel")]
+                if socket_mode
+                else [
+                    (
+                        "Webhook gate (local)",
+                        "http://127.0.0.1:8787",
+                        "forwards POST /webhooks/chat/*",
+                    ),
+                    ("Public tunnel", tunnel_url or "not running", "changes on every restart"),
+                    (
+                        "Slack Event Subscriptions URL",
+                        f"{tunnel_url}/webhooks/chat/slack"
+                        if tunnel_url
+                        else "start the tunnel first",
+                        "bot event `message.im`",
+                    ),
+                ]
             ),
         ],
     )
@@ -409,7 +425,8 @@ def render(state: dict[str, Any]) -> str:  # noqa: C901 - one linear document
     out += ["## OpenProgram", ""]
     status = op.get("status") or {}
     out += [
-        f"- Tenant `qa`, acting by default as `{status.get('user', {}).get('subject', '?')}`",
+        f"- Tenant `{QA_TENANT}`, acting by default as "
+        f"`{status.get('user', {}).get('subject', '?')}`",
         f"  (Asha); {len(op.get('personas', []))} people in the persona picker.",
         "- Providers: Slack (chat + directory), Jira, GitLab; the shared `.env` stays the",
         "  mock demo, the docker stack reads `.env.qa`.",
@@ -445,11 +462,13 @@ def render(state: dict[str, Any]) -> str:  # noqa: C901 - one linear document
     out += [
         "## Known gaps going into testing",
         "",
-        "- Check-in catch-up (`openprogram-checkin-reconcile`) is paused; the 09:30 UTC",
-        "  weekday fan-out is active. `CROSS_PERSON_AUTO_NOTIFY` is pinned off.",
-        '- Unknown git authors become people: GitLab root shows up as "Administrator".',
         "- Only default-branch commits sync; branch work shows only through its MR.",
-        "- Slack replies need the Event Subscriptions URL above to be saved in the app.",
+        "- Not flagged yet: an issue done while its MR is open, or in progress with no MR.",
+        *(
+            []
+            if socket_mode
+            else ["- Slack replies need the Event Subscriptions URL above to be saved in the app."]
+        ),
         "",
     ]
     return "\n".join(out)
@@ -473,8 +492,6 @@ def _jira_cell(person: Person, accounts: dict[str, str]) -> str:
     account = accounts.get(person.tag)
     if account is None:
         return f"not invited yet ({person.jira_email})"
-    if person.jira_tag:
-        return f"{account} via {person.jira_email}"
     return account
 
 

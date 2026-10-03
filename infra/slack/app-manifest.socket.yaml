@@ -1,0 +1,44 @@
+# Slack app for OpenProgram check-ins, receiving replies over Socket Mode.
+#
+# api.slack.com/apps -> Create New App -> From a manifest -> pick the workspace ->
+# paste this file -> Create -> Install to Workspace. Then:
+#   OAuth & Permissions -> Bot User OAuth Token (xoxb-)      -> OPENPROGRAM_SLACK_BOT_TOKEN
+#   Basic Information -> App-Level Tokens -> Generate, scope
+#     connections:write (xapp-)                              -> OPENPROGRAM_SLACK_APP_TOKEN
+#   Basic Information -> Signing Secret                      -> OPENPROGRAM_SLACK_SIGNING_SECRET
+#
+# Unlike app-manifest.yaml (Events API over HTTP) the event subscription is in the
+# manifest: Socket Mode delivers events over the worker's own outbound connection,
+# so there is no Request URL for Slack to verify and nothing has to be public.
+# Scopes are the ones the adapters call:
+#   users:read, users:read.email  directory sync (users.list, with email for identity matching)
+#   im:write                      conversations.open, to start the DM
+#   chat:write                    chat.postMessage, the check-in question
+#   im:history                    conversations.history and the message.im event, the reply
+display_information:
+  name: OpenProgram
+  description: Daily delivery check-ins
+  background_color: "#1f2937"
+features:
+  app_home:
+    home_tab_enabled: false
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: OpenProgram
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - im:write
+      - im:history
+      - users:read
+      - users:read.email
+settings:
+  event_subscriptions:
+    bot_events:
+      - message.im
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false

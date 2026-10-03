@@ -1,7 +1,6 @@
 """Load the QA org into OpenProgram through its runtime config API.
 
     uv run python -m scripts.qa_org.seed_openprogram            # against http://127.0.0.1:8000
-    uv run python -m scripts.qa_org.seed_openprogram --link-raj # also link Raj's Jira account
 
 Everything goes through the same ``/config/*`` endpoints the admin console uses
 (no direct database writes), so this also exercises them. Run it after
@@ -10,10 +9,9 @@ Everything goes through the same ``/config/*`` endpoints the admin console uses
 
 Order matters and mirrors what an admin would do: sync the Slack directory,
 build program -> projects -> workstreams -> pods, add members from the
-directory (their id IS their Slack id), put them in pods with a role, then
-link identities. Raj's Jira account is left unlinked by default: his Jira email
-differs from his Slack email, which is the gap the identity tests start from.
-Idempotent: existing nodes are updated, existing links are kept.
+directory (their id IS their Slack id), put them in pods with a role, link
+identities, then give each pod its scrum master and manager as escalation
+contacts. Idempotent: existing nodes are updated, existing links are kept.
 """
 
 from __future__ import annotations
@@ -135,11 +133,11 @@ def add_members(
     api: Api,
     directory: dict[str, dict[str, Any]],
     state: dict[str, Any],
-    *,
-    link_raj: bool,
-) -> None:
+) -> dict[str, str]:
+    """Add, place and link every person; returns roster tag -> member (Slack) id."""
     print("== members")
     accounts: dict[str, str] = state.get("jira_accounts", {})
+    member_ids: dict[str, str] = {}
     for person in PEOPLE:
         slack_id = str(directory[person.slack_email.lower()]["external_id"])
         response = api.call("POST", "/config/members/from-directory", {"external_ids": [slack_id]})
@@ -165,7 +163,8 @@ def add_members(
             f"/config/members/{slack_id}/checkin-preference",
             {"local_time": CHECKIN_TIME, "timezone": person.timezone, "weekdays": WEEKDAYS},
         )
-        jira_id = jira_link(person, accounts, link_raj=link_raj)
+        member_ids[person.tag] = slack_id
+        jira_id = accounts.get(person.tag) if person.in_jira else None
         link: dict[str, str | None] = {"chat_user_id": slack_id}
         if jira_id:
             link["jira_account_id"] = jira_id
@@ -175,14 +174,26 @@ def add_members(
         jira = jira_id or "-"
         git = person.gitlab_username or "-"
         print(f"  {person.name:<16} {slack_id}  Jira {jira:<46} Git {git:<11} {_pods(person)}")
+    return member_ids
 
 
-def jira_link(person: Person, accounts: dict[str, str], *, link_raj: bool) -> str | None:
-    if not person.in_jira:
-        return None
-    if person.jira_tag is not None and not link_raj:
-        return None  # the identity-mismatch scenario starts unlinked
-    return accounts.get(person.tag)
+def set_escalation_contacts(api: Api, member_ids: dict[str, str]) -> None:
+    """Each pod's scrum master, then its manager, as the roster names them."""
+    print("== escalation contacts")
+    for pod in PODS:
+        contacts: dict[str, dict[str, str]] = {}
+        for rung, role in (("scrum_master", "scrum_master"), ("manager", "manager")):
+            holder = next(
+                (p for p in PEOPLE if any(m.pod_id == pod.id and m.role == role for m in p.pods)),
+                None,
+            )
+            if holder is not None:
+                contacts[rung] = {"member_id": member_ids[holder.tag]}
+        if contacts:
+            api.ok("PUT", f"/config/pods/{pod.id}/escalation-contacts", contacts)
+        name_by_id = {member_ids[p.tag]: p.name for p in PEOPLE}
+        shown = ", ".join(f"{rung} {name_by_id[c['member_id']]}" for rung, c in contacts.items())
+        print(f"  {pod.id}: {shown or 'none'}")
 
 
 def _pods(person: Person) -> str:
@@ -193,7 +204,6 @@ def _pods(person: Person) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--api", default="http://127.0.0.1:8000", help="OpenProgram backend")
-    parser.add_argument("--link-raj", action="store_true", help="link Raj's Jira account too")
     args = parser.parse_args()
     api = Api(args.api)
     status = api.ok("GET", "/api/v1/auth/status")
@@ -201,7 +211,8 @@ def main() -> None:
     state = load_state()
     directory = sync_directory(api)
     build_hierarchy(api, state)
-    add_members(api, directory, state, link_raj=args.link_raj)
+    member_ids = add_members(api, directory, state)
+    set_escalation_contacts(api, member_ids)
     unmapped = api.ok("GET", "/config/members/unmapped")
     print(f"== unmapped members: {[m.get('name') for m in unmapped] or 'none'}")
 
