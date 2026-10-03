@@ -18,6 +18,7 @@ from core.application.blocker_lifecycle import (
     reconciliation_with_updates,
 )
 from core.application.conversation_history import llm_messages_from_turns
+from core.application.counterparts import MemberContact, MemberDirectory, members_for_mention
 from core.application.risk_service import RISK_FACT_SOURCE
 from core.application.status_parsing import (
     ClarificationDecision,
@@ -43,7 +44,6 @@ from core.domain.blockers import (
 )
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.cross_person import CrossPersonRequestResolution, CrossPersonRequestStatus
-from core.domain.directory import DirectoryUser
 from core.domain.errors import ProviderUnavailable
 from core.domain.escalation import EscalationTarget
 from core.domain.graph import EntityRef, FactEvent, GraphNode, JsonScalar, NodeKind
@@ -171,6 +171,13 @@ class StatusCollector:
         self._time_series_repository = time_series_repository
         self._directory_repository = directory_repository
         self._identity_link_repository = identity_link_repository
+        # A request can only name a member: the directory is a lookup table for
+        # adding members, never a pool of counterparts to DM.
+        self._members = MemberDirectory(
+            graph_repository=graph_repository,
+            identity_link_repository=identity_link_repository,
+            directory_repository=directory_repository,
+        )
         self._write_back_service = write_back_service
         # Without a graph repository the attribution machinery degrades
         # cleanly: no pods resolve, so no attribution question is ever asked.
@@ -1413,20 +1420,12 @@ class StatusCollector:
     ) -> _CrossPersonResolutionResult:
         if not signals.requests:
             return _CrossPersonResolutionResult(resolutions=())
+        members = await self._members.active_members(checkin.tenant_id)
         resolutions: list[CrossPersonRequestResolution] = []
         for mention in signals.requests:
-            matches = await self._directory_matches_for_mention(checkin.tenant_id, mention)
+            matches = members_for_mention(mention, members)
             if len(matches) == 1:
-                user = matches[0]
-                resolutions.append(
-                    CrossPersonRequestResolution(
-                        mention=mention,
-                        status=CrossPersonRequestStatus.OPEN,
-                        counterpart_id=user.external_id,
-                        counterpart_display_name=user.display_name,
-                        counterpart_email=user.email,
-                    )
-                )
+                resolutions.append(_open_resolution(mention, matches[0]))
                 continue
             if clarification_count < self._checkin_max_clarifications:
                 return _CrossPersonResolutionResult(
@@ -1440,29 +1439,6 @@ class StatusCollector:
                 )
             )
         return _CrossPersonResolutionResult(resolutions=tuple(resolutions))
-
-    async def _directory_matches_for_mention(
-        self,
-        tenant_id: str,
-        mention: CrossPersonMention,
-    ) -> list[DirectoryUser]:
-        if self._directory_repository is None:
-            return []
-        query = (mention.email or mention.raw_name).strip()
-        if not query:
-            return []
-        matches = await self._directory_repository.search(tenant_id, query, limit=10)
-        exact_email = mention.email or (query if "@" in query else None)
-        if exact_email is not None:
-            normalized = exact_email.casefold()
-            exact_matches = [
-                user
-                for user in matches
-                if user.email is not None and user.email.casefold() == normalized
-            ]
-            if exact_matches:
-                return exact_matches
-        return matches
 
     async def _finalize_checkin_reply(
         self,
@@ -2547,24 +2523,37 @@ def _missing_required_status_note(
     return None
 
 
+def _open_resolution(
+    mention: CrossPersonMention,
+    member: MemberContact,
+) -> CrossPersonRequestResolution:
+    return CrossPersonRequestResolution(
+        mention=mention,
+        status=CrossPersonRequestStatus.OPEN,
+        counterpart_id=member.chat_id,
+        counterpart_display_name=member.name,
+        counterpart_email=member.email,
+    )
+
+
 def _person_clarification_question(
     mention: CrossPersonMention,
-    matches: Iterable[DirectoryUser],
+    matches: Iterable[MemberContact],
 ) -> str:
     candidates = tuple(matches)[:5]
     if not candidates:
         return (
-            f"I could not find {mention.raw_name} in the directory. "
+            f"I could not find {mention.raw_name} on the team. "
             "Reply with the person's name or email."
         )
-    options = " or ".join(_person_option(user) for user in candidates)
+    options = " or ".join(_person_option(member) for member in candidates)
     return f"Did you mean {options}? Reply with the name or email."
 
 
-def _person_option(user: DirectoryUser) -> str:
-    if user.email:
-        return f"{user.display_name} ({user.email})"
-    return user.display_name
+def _person_option(member: MemberContact) -> str:
+    if member.email:
+        return f"{member.name} ({member.email})"
+    return member.name
 
 
 def _explicitly_resolves_blockers(raw_reply: str) -> bool:

@@ -16,7 +16,7 @@ from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.cross_person import CrossPersonRequestStatus
 from core.domain.directory import DirectoryUser
 from core.domain.escalation import EscalationTarget
-from core.domain.graph import EntityRef, FactEvent, NodeKind
+from core.domain.graph import Developer, EntityRef, FactEvent, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
 from core.domain.messaging import ChatUserRef, InboundMessage
@@ -129,6 +129,19 @@ def _reply_message(text: str) -> InboundMessage:
         correlation_id="corr-1",
         received_at=datetime(2026, 1, 10, 9, 10, tzinfo=UTC),
     )
+
+
+async def _add_members(store: InMemoryGraphStore, *members: DirectoryUser) -> None:
+    """Make each person a tenant member, as adding them from the directory does."""
+    for user in members:
+        await store.upsert_node(
+            Developer(
+                tenant_id=user.tenant_id,
+                id=user.external_id,
+                name=user.display_name,
+                metadata={"email": user.email} if user.email else {},
+            )
+        )
 
 
 def test_status_collector_requires_conversation_repository() -> None:
@@ -972,16 +985,14 @@ async def test_status_collector_records_partial_when_required_answers_still_miss
 async def test_status_collector_resolves_cross_person_request_by_single_match() -> None:
     store = InMemoryGraphStore()
     directory = InMemoryDirectoryUserRepository(store)
-    await directory.upsert_users(
-        [
-            DirectoryUser(
-                tenant_id="demo",
-                external_id="U-alice",
-                display_name="Alice Chen",
-                email="alice@example.com",
-            )
-        ]
+    alice = DirectoryUser(
+        tenant_id="demo",
+        external_id="U-alice",
+        display_name="Alice Chen",
+        email="alice@example.com",
     )
+    await directory.upsert_users([alice])
+    await _add_members(store, alice)
     await _record_open_checkin(store)
     collector = StatusCollector(
         issue_tracker=FakeIssueTracker(),
@@ -999,6 +1010,7 @@ async def test_status_collector_resolves_cross_person_request_by_single_match() 
         status_repository=store,
         conversation_repository=store,
         directory_repository=directory,
+        graph_repository=store,
         model="test-model",
     )
 
@@ -1016,22 +1028,22 @@ async def test_status_collector_resolves_cross_person_request_by_single_match() 
 async def test_status_collector_clarifies_ambiguous_cross_person_name() -> None:
     store = InMemoryGraphStore()
     directory = InMemoryDirectoryUserRepository(store)
-    await directory.upsert_users(
-        [
-            DirectoryUser(
-                tenant_id="demo",
-                external_id="U-alex-chen",
-                display_name="Alex Chen",
-                email="alex.chen@example.com",
-            ),
-            DirectoryUser(
-                tenant_id="demo",
-                external_id="U-alexa-roy",
-                display_name="Alexa Roy",
-                email="alexa.roy@example.com",
-            ),
-        ]
+    alexes = (
+        DirectoryUser(
+            tenant_id="demo",
+            external_id="U-alex-chen",
+            display_name="Alex Chen",
+            email="alex.chen@example.com",
+        ),
+        DirectoryUser(
+            tenant_id="demo",
+            external_id="U-alexa-roy",
+            display_name="Alexa Roy",
+            email="alexa.roy@example.com",
+        ),
     )
+    await directory.upsert_users(list(alexes))
+    await _add_members(store, *alexes)
     await _record_open_checkin(store)
     chat = FakeChatProvider()
     collector = StatusCollector(
@@ -1050,6 +1062,7 @@ async def test_status_collector_clarifies_ambiguous_cross_person_name() -> None:
         status_repository=store,
         conversation_repository=store,
         directory_repository=directory,
+        graph_repository=store,
         model="test-model",
     )
 
@@ -1069,22 +1082,22 @@ async def test_status_collector_clarifies_ambiguous_cross_person_name() -> None:
 async def test_status_collector_resolves_ambiguous_name_with_email_reply() -> None:
     store = InMemoryGraphStore()
     directory = InMemoryDirectoryUserRepository(store)
-    await directory.upsert_users(
-        [
-            DirectoryUser(
-                tenant_id="demo",
-                external_id="U-alex-chen",
-                display_name="Alex Chen",
-                email="alex.chen@example.com",
-            ),
-            DirectoryUser(
-                tenant_id="demo",
-                external_id="U-alexa-roy",
-                display_name="Alexa Roy",
-                email="alexa.roy@example.com",
-            ),
-        ]
+    alexes = (
+        DirectoryUser(
+            tenant_id="demo",
+            external_id="U-alex-chen",
+            display_name="Alex Chen",
+            email="alex.chen@example.com",
+        ),
+        DirectoryUser(
+            tenant_id="demo",
+            external_id="U-alexa-roy",
+            display_name="Alexa Roy",
+            email="alexa.roy@example.com",
+        ),
     )
+    await directory.upsert_users(list(alexes))
+    await _add_members(store, *alexes)
     await _record_open_checkin(store)
     await store.record_checkin_clarification(
         CheckInClarification(
@@ -1112,6 +1125,7 @@ async def test_status_collector_resolves_ambiguous_name_with_email_reply() -> No
         status_repository=store,
         conversation_repository=store,
         directory_repository=directory,
+        graph_repository=store,
         model="test-model",
         checkin_max_clarifications=2,
     )
