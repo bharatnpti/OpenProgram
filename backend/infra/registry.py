@@ -991,6 +991,7 @@ class ServiceRegistry:
             config_repository=self.writeback_config_repository(),
             status_repository=self.status_repository(),
             identity_link_repository=self.identity_link_repository(),
+            time_series_repository=self.time_series_repository(),
             writeback_enabled_default=self.settings.jira_writeback_enabled,
         )
 

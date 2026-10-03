@@ -8,7 +8,9 @@ from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.writeback_service import (
     NO_CHANGE_SOURCE,
     NOT_OWNER_SOURCE,
+    OPEN_MR_SOURCE,
     UNASSIGNED_SOURCE,
+    OpenMergeRequestHold,
     WriteBackService,
     canonical_target_state,
     interpret_consent_reply,
@@ -16,6 +18,7 @@ from core.application.writeback_service import (
 )
 from core.domain.auth import Principal
 from core.domain.errors import ProviderUnavailable
+from core.domain.graph import EntityRef, FactEvent, NodeKind
 from core.domain.identity import IdentityLink
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.status import CheckInPreference, IssueClaim, WriteBackConsent
@@ -24,6 +27,7 @@ from tests.contract.fakes import (
     FakeIdentityLinkRepository,
     FakeIssueTracker,
     FakeStatusRepository,
+    FakeTimeSeriesRepository,
     FakeWriteBackAuditRepository,
     FakeWriteBackConfigRepository,
 )
@@ -71,6 +75,7 @@ def _build(
     policy: AuthorizationPolicy | None = None,
     developer_id: str = _DEV,
     identity_links: FakeIdentityLinkRepository | None = None,
+    facts: FakeTimeSeriesRepository | None = None,
 ) -> tuple[WriteBackService, FakeIssueTracker, FakeWriteBackAuditRepository]:
     issue_tracker = tracker or FakeIssueTracker(
         issues={
@@ -99,6 +104,7 @@ def _build(
         config_repository=config,
         status_repository=status,
         identity_link_repository=identity_links,
+        time_series_repository=facts,
         authorization_policy=policy,
         writeback_enabled_default=default_enabled,
         clock=lambda: datetime(2026, 7, 25, 9, 0, tzinfo=UTC),
@@ -935,3 +941,226 @@ def test_target_state_label_names_canonical_states_and_keeps_free_text() -> None
     assert target_state_label("in_review") == "In Review"
     assert target_state_label("done") == "Done"
     assert target_state_label("merged and ready to close") == "merged and ready to close"
+
+
+# --- G6: no done while the issue's merge request is still open ---------------
+
+
+def _merge_request_fact(
+    pr_id: str,
+    *,
+    title: str,
+    source_branch: str,
+    state: str = "open",
+    draft: bool = False,
+    repo: str = "acme/insights-pipeline",
+    observed_at: datetime = datetime(2026, 10, 3, 15, 0, tzinfo=UTC),
+) -> FactEvent:
+    """A synced merge request fact as the VCS sync records it."""
+    return FactEvent(
+        tenant_id=_TENANT,
+        source="vcs_pull_request",
+        entity_ref=EntityRef(tenant_id=_TENANT, kind=NodeKind.REPO, id=repo),
+        payload={
+            "repo": repo,
+            "id": pr_id,
+            "title": title,
+            "merged": state == "merged",
+            "state": state,
+            "draft": draft,
+            "source_branch": source_branch,
+            "web_url": f"https://gitlab.example/{repo}/-/merge_requests/{pr_id}",
+        },
+        observed_at=observed_at,
+        correlation_id=f"vcs:pull_request:{_TENANT}:{repo}:{pr_id}:{observed_at.isoformat()}",
+    )
+
+
+def _ins2_mr(
+    *,
+    state: str = "open",
+    draft: bool = False,
+    observed_at: datetime = datetime(2026, 10, 3, 15, 0, tzinfo=UTC),
+) -> FactEvent:
+    return _merge_request_fact(
+        "1",
+        title="INS-2: backfill the insights tables",
+        source_branch="feature/INS-2-backfill",
+        state=state,
+        draft=draft,
+        observed_at=observed_at,
+    )
+
+
+def _ins2_tracker(state: IssueState = IssueState.IN_PROGRESS) -> FakeIssueTracker:
+    return FakeIssueTracker(issues={"INS-2": _issue("INS-2", state)})
+
+
+def _ins2_done() -> list[IssueClaim]:
+    # Raj's "INS-2 backfill is done" as the reply parser records it.
+    return [
+        IssueClaim(
+            issue_key="INS-2", claimed_done=True, claimed_state="done", note="Backfill is done."
+        )
+    ]
+
+
+async def _apply_ins2(
+    service: WriteBackService, claims: list[IssueClaim] | None = None
+) -> list[WriteBackAudit]:
+    return await service.apply_from_checkin(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        claims=claims or _ins2_done(),
+    )
+
+
+@pytest.mark.parametrize(
+    "merge_request",
+    [
+        pytest.param(_ins2_mr(), id="open"),
+        pytest.param(_ins2_mr(draft=True), id="draft"),
+    ],
+)
+async def test_done_with_an_open_or_draft_merge_request_is_declined_open_mr(
+    merge_request: FactEvent,
+) -> None:
+    facts = FakeTimeSeriesRepository(facts=[merge_request])
+    service, tracker, audit = _build(tracker=_ins2_tracker(), default_enabled=True, facts=facts)
+
+    results = await _apply_ins2(service)
+
+    [row] = results
+    assert (row.status, row.source, row.target_state) == (
+        WriteBackStatus.DECLINED,
+        OPEN_MR_SOURCE,
+        "done",
+    )
+    assert (row.before_state, row.after_state, row.comment) == ("in_progress", "in_progress", None)
+    # No Jira call at all: no transition and no comment.
+    assert tracker.transitions == []
+    assert tracker.comments == []
+    assert list(audit.audits.values()) == [row]
+    # The reply can name the request that held it back.
+    assert await service.open_merge_request_holds(_TENANT, results) == [
+        OpenMergeRequestHold(
+            issue_key="INS-2",
+            current_state="in_progress",
+            merge_requests=("insights-pipeline !1",),
+        )
+    ]
+    # Re-processing the same check-in records nothing new.
+    assert await _apply_ins2(service) == []
+    assert len(audit.audits) == 1
+
+
+@pytest.mark.parametrize("state", ["merged", "closed"])
+async def test_done_with_only_a_merged_or_closed_merge_request_transitions(state: str) -> None:
+    # The request was open earlier; its latest fact is what counts.
+    facts = FakeTimeSeriesRepository(
+        facts=[
+            _ins2_mr(observed_at=datetime(2026, 10, 3, 9, 0, tzinfo=UTC)),
+            _ins2_mr(state=state, observed_at=datetime(2026, 10, 3, 15, 0, tzinfo=UTC)),
+        ]
+    )
+    service, tracker, _ = _build(tracker=_ins2_tracker(), default_enabled=True, facts=facts)
+
+    [row] = await _apply_ins2(service)
+
+    assert (row.status, row.source, row.after_state) == (
+        WriteBackStatus.APPLIED,
+        "standing_consent",
+        "done",
+    )
+    assert tracker.transitions == [(_TENANT, "INS-2", "done")]
+    assert len(tracker.comments) == 1
+
+
+async def test_done_with_no_merge_request_for_the_issue_transitions() -> None:
+    # Open requests that name other keys, matched whole: INS-21 and XINS-2 are not INS-2.
+    facts = FakeTimeSeriesRepository(
+        facts=[
+            _merge_request_fact("2", title="INS-21: rename columns", source_branch="INS-21"),
+            _merge_request_fact("3", title="XINS-2 spike", source_branch="spike/XINS-2"),
+        ]
+    )
+    service, tracker, _ = _build(tracker=_ins2_tracker(), default_enabled=True, facts=facts)
+
+    [row] = await _apply_ins2(service)
+
+    assert row.status is WriteBackStatus.APPLIED
+    assert tracker.transitions == [(_TENANT, "INS-2", "done")]
+
+
+async def test_an_open_merge_request_does_not_hold_back_a_non_done_target() -> None:
+    facts = FakeTimeSeriesRepository(facts=[_ins2_mr()])
+    service, tracker, _ = _build(
+        tracker=_ins2_tracker(IssueState.TODO), default_enabled=True, facts=facts
+    )
+
+    [row] = await _apply_ins2(service, [IssueClaim(issue_key="INS-2", claimed_state="started")])
+
+    assert (row.status, row.target_state) == (WriteBackStatus.APPLIED, "in_progress")
+    assert tracker.transitions == [(_TENANT, "INS-2", "in_progress")]
+
+
+async def test_always_ask_is_not_asked_to_confirm_done_while_the_merge_request_is_open() -> None:
+    facts = FakeTimeSeriesRepository(facts=[_ins2_mr()])
+    service, tracker, _ = _build(
+        tracker=_ins2_tracker(),
+        default_enabled=True,
+        consent=WriteBackConsent.ALWAYS_ASK,
+        facts=facts,
+    )
+
+    [row] = await _apply_ins2(service)
+
+    assert (row.status, row.source) == (WriteBackStatus.DECLINED, OPEN_MR_SOURCE)
+    assert await service.list_pending_proposals(_TENANT, _CORRELATION) == []
+    assert tracker.transitions == []
+
+
+async def test_a_yes_never_moves_to_done_once_a_merge_request_is_open() -> None:
+    facts = FakeTimeSeriesRepository()
+    service, tracker, _ = _build(
+        tracker=_ins2_tracker(),
+        default_enabled=True,
+        consent=WriteBackConsent.ALWAYS_ASK,
+        facts=facts,
+    )
+    [proposal] = await _apply_ins2(service)
+    assert proposal.status is WriteBackStatus.PROPOSED
+    facts.facts.append(_ins2_mr())  # opened between the question and the answer
+
+    [row] = await service.resolve_consent_reply(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        reply_text="yes",
+    )
+
+    assert (row.status, row.source, row.target_state) == (
+        WriteBackStatus.DECLINED,
+        OPEN_MR_SOURCE,
+        "done",
+    )
+    assert tracker.transitions == []
+    assert tracker.comments == []
+    assert await service.list_pending_proposals(_TENANT, _CORRELATION) == []
+
+
+async def test_dry_run_holds_back_done_for_an_open_merge_request() -> None:
+    facts = FakeTimeSeriesRepository(facts=[_ins2_mr(draft=True)])
+    service, tracker, audit = _build(tracker=_ins2_tracker(), default_enabled=True, facts=facts)
+
+    dry_run = await service.dry_run(tenant_id=_TENANT, developer_id=_DEV, claims=_ins2_done())
+    keys = await service.auto_apply_issue_keys(
+        tenant_id=_TENANT, developer_id=_DEV, claims=_ins2_done()
+    )
+
+    assert dry_run.written == frozenset()
+    assert dict(dry_run.held_for_open_mr) == {"INS-2": ("insights-pipeline !1",)}
+    assert keys == frozenset()
+    assert tracker.transitions == []
+    assert audit.audits == {}

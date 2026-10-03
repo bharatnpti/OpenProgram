@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Literal
 from uuid import uuid4
 
 from core.application.authorization import AuthorizationPolicy, Capability
+from core.application.merge_request_links import (
+    MERGE_REQUEST_FACT_SOURCE,
+    is_open_merge_request,
+    merge_request_label,
+    merge_requests_by_issue_key,
+)
 from core.domain.auth import Principal, Role
 from core.domain.errors import ProviderUnavailable
 from core.domain.integrations import Issue, IssueState
@@ -22,6 +29,7 @@ from core.ports.issue_tracker import IssueTracker
 from core.ports.repositories import (
     IdentityLinkRepository,
     StatusRepository,
+    TimeSeriesRepository,
     WriteBackAuditRepository,
     WriteBackConfigRepository,
 )
@@ -34,6 +42,34 @@ UNASSIGNED_SOURCE = "unassigned"
 # ``source`` of the ``expired`` row that resolves a confirmed proposal whose
 # issue the tracker already shows in the target state: nothing is written.
 NO_CHANGE_SOURCE = "no_change"
+# ``source`` of the ``declined`` row recorded when a ``done`` write is held back
+# because a merge request naming the issue is still open (or a draft): the work
+# is not merged, so the tracker stays where it is. No Jira call is made for it.
+OPEN_MR_SOURCE = "open_mr"
+# How many synced merge request facts the open merge request check reads.
+_MERGE_REQUEST_FACT_SCAN_LIMIT = 5000
+
+
+@dataclass(frozen=True)
+class WriteBackDryRun:
+    """What ``apply_from_checkin`` would do right away for a person's claims.
+
+    ``written``: issue keys it would write. ``held_for_open_mr``: issue keys whose
+    ``done`` it would hold back, each with the open merge requests naming it
+    (``insights-pipeline !1``).
+    """
+
+    written: frozenset[str] = frozenset()
+    held_for_open_mr: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class OpenMergeRequestHold:
+    """A ``done`` claim held back by open merge requests, for the reply to name."""
+
+    issue_key: str
+    current_state: str
+    merge_requests: tuple[str, ...]
 
 
 class WriteBackService:
@@ -48,6 +84,13 @@ class WriteBackService:
        tracker, through their identity link. An issue assigned to someone else
        or to nobody is never transitioned or commented on, whoever reported it;
        a ``declined`` row with source ``not_owner``/``unassigned`` records why.
+
+    A ``done`` target is also held back while a merge request naming the issue
+    in OpenProgram's synced facts (the key whole in its source branch or title,
+    as the ``merged_issue_open`` drift reads it) is still open or a draft:
+    nothing is transitioned, proposed or commented on, and a ``declined`` row
+    with source ``open_mr`` records why. Merged or closed requests, or none at
+    all, leave ``done`` as it was; other targets are not affected.
 
     ``always_ask`` records a ``proposed`` audit row and writes nothing until the
     developer answers yes/no -- ``resolve_consent_reply`` then applies (yes) or
@@ -72,6 +115,7 @@ class WriteBackService:
         config_repository: WriteBackConfigRepository,
         status_repository: StatusRepository,
         identity_link_repository: IdentityLinkRepository | None = None,
+        time_series_repository: TimeSeriesRepository | None = None,
         authorization_policy: AuthorizationPolicy | None = None,
         writeback_enabled_default: bool = False,
         clock: Callable[[], datetime] | None = None,
@@ -81,6 +125,7 @@ class WriteBackService:
         self._config = config_repository
         self._status = status_repository
         self._identity_links = identity_link_repository
+        self._facts = time_series_repository
         self._policy = authorization_policy or AuthorizationPolicy()
         self._default_enabled = writeback_enabled_default
         self._clock = clock or (lambda: datetime.now(tz=UTC))
@@ -114,13 +159,31 @@ class WriteBackService:
         """Issue keys ``apply_from_checkin`` would write right away for these claims.
 
         A dry run with no write and no audit row: every gate, the ownership
-        check, a canonical target and a real change of state must all hold. The
-        check-in conversation uses it so it never asks a person to update the
-        tracker for an update OpenProgram is about to make itself.
+        check, a canonical target, a real change of state and, for ``done``, no
+        open merge request must all hold. The check-in conversation uses it so
+        it never asks a person to update the tracker for an update OpenProgram
+        is about to make itself.
+        """
+        return (
+            await self.dry_run(tenant_id=tenant_id, developer_id=developer_id, claims=claims)
+        ).written
+
+    async def dry_run(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        claims: Sequence[IssueClaim],
+    ) -> WriteBackDryRun:
+        """The keys ``apply_from_checkin`` would write, and the ones an open MR holds back.
+
+        No write and no audit row, and only for a person whose own claims are
+        written without asking (``standing_consent_open``).
         """
         if not claims or not await self.standing_consent_open(tenant_id, developer_id):
-            return frozenset()
+            return WriteBackDryRun()
         keys: set[str] = set()
+        held: dict[str, tuple[str, ...]] = {}
         for claim in claims:
             target_state = _target_state(claim)
             if target_state is None:
@@ -128,9 +191,33 @@ class WriteBackService:
             issue = await self._read_issue(tenant_id, claim.issue_key)
             if issue is None or _already_in_target_state(issue, target_state):
                 continue
-            if await self._ownership_refusal(tenant_id, developer_id, issue) is None:
+            if await self._ownership_refusal(tenant_id, developer_id, issue) is not None:
+                continue
+            open_requests = await self._open_merge_requests(tenant_id, issue.key, target_state)
+            if open_requests:
+                held[claim.issue_key] = open_requests
+            else:
                 keys.add(claim.issue_key)
-        return frozenset(keys)
+        return WriteBackDryRun(written=frozenset(keys), held_for_open_mr=held)
+
+    async def open_merge_request_holds(
+        self, tenant_id: str, rows: Sequence[WriteBackAudit]
+    ) -> list[OpenMergeRequestHold]:
+        """The open merge requests behind each ``declined``/``open_mr`` row, for the reply."""
+        holds: list[OpenMergeRequestHold] = []
+        for row in rows:
+            if row.status is not WriteBackStatus.DECLINED or row.source != OPEN_MR_SOURCE:
+                continue
+            holds.append(
+                OpenMergeRequestHold(
+                    issue_key=row.issue_key,
+                    current_state=row.before_state or "",
+                    merge_requests=await self._open_merge_requests(
+                        tenant_id, row.issue_key, WriteBackTarget.DONE.value
+                    ),
+                )
+            )
+        return holds
 
     async def apply_from_checkin(
         self,
@@ -215,6 +302,12 @@ class WriteBackService:
             # The tracker already says so: no transition, no comment, no
             # proposal and no row. Only a real change reaches the tracker.
             return None
+        if await self._open_merge_requests(tenant_id, issue.key, target_state):
+            # Done while a merge request for it is still open would make the
+            # tracker wrong: nothing is written or proposed; the row says why.
+            return await self._refuse(
+                tenant_id, developer_id, correlation_id, issue, target_state, OPEN_MR_SOURCE
+            )
         if consent is WriteBackConsent.AUTO_APPLY:
             # Standing consent -- apply immediately, tagging the provenance so
             # the audit distinguishes it from an interactively-confirmed write.
@@ -379,6 +472,17 @@ class WriteBackService:
                 comment=None,
                 source=NO_CHANGE_SOURCE,
             )
+        if await self._open_merge_requests(tenant_id, issue.key, tracker_state):
+            # A yes never moves the issue to done while a merge request for it
+            # is open; the declined row resolves the proposal.
+            return await self._refuse(
+                tenant_id,
+                developer_id,
+                correlation_id,
+                issue,
+                proposal.target_state,
+                OPEN_MR_SOURCE,
+            )
         claim = IssueClaim(
             issue_key=proposal.issue_key,
             claimed_state=proposal.target_state,
@@ -495,6 +599,28 @@ class WriteBackService:
         if issue.assignee.external_id in await self._tracker_account_ids(tenant_id, developer_id):
             return None
         return NOT_OWNER_SOURCE
+
+    async def _open_merge_requests(
+        self, tenant_id: str, issue_key: str, target_state: str
+    ) -> tuple[str, ...]:
+        """Open or draft merge requests naming the issue, when the target is ``done``.
+
+        Read from OpenProgram's synced merge request facts with the matcher the
+        ``merged_issue_open`` drift uses: the key whole in the source branch or
+        title, the latest fact of each request. Empty for every other target,
+        and when no fact store is wired, so those writes behave as before.
+        """
+        if target_state != WriteBackTarget.DONE.value or self._facts is None:
+            return ()
+        facts = await self._facts.list_recent_facts(
+            tenant_id,
+            sources=(MERGE_REQUEST_FACT_SOURCE,),
+            limit=_MERGE_REQUEST_FACT_SCAN_LIMIT,
+        )
+        linked = merge_requests_by_issue_key(facts, {issue_key}).get(issue_key, [])
+        return tuple(
+            sorted(merge_request_label(fact) for fact in linked if is_open_merge_request(fact))
+        )
 
     async def _tracker_account_ids(self, tenant_id: str, developer_id: str) -> set[str]:
         # A member whose id is the tracker account id itself, or the account the
