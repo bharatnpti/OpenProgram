@@ -41,7 +41,12 @@ from core.application.status_summaries import (
 from core.application.tools.conversation_history import MAX_HISTORY_LIMIT, ConversationHistoryTool
 from core.application.tools.git_activity import GitActivityTool
 from core.application.tools.issue_tracker import IssueTrackerTool
-from core.application.writeback_service import WriteBackService, target_state_label
+from core.application.writeback_service import (
+    OPEN_MR_SOURCE,
+    OpenMergeRequestHold,
+    WriteBackService,
+    target_state_label,
+)
 from core.domain.blockers import (
     BlockerReconciliation,
     BlockerSource,
@@ -558,8 +563,11 @@ class StatusCollector:
         the tracker when the check-in is recorded. A question that asks them to
         do that themselves ("Can you update the Jira ticket to Done?") is then
         wrong, so the reply counts as sufficient and the recorded claim is
-        written instead. Every other question is kept: one naming an issue the
-        write-back will not touch, and any question that asks for something else.
+        written instead. The same holds for a ``done`` the write-back holds back
+        because the issue's merge request is still open: moving it themselves
+        would make the tracker wrong, and the ack says why it was left as it is.
+        Every other question is kept: one naming an issue the write-back will
+        not touch, and any question that asks for something else.
         """
         service = self._write_back_service
         if (
@@ -572,22 +580,23 @@ class StatusCollector:
         ):
             return decision
         try:
-            written = await service.auto_apply_issue_keys(
+            dry_run = await service.dry_run(
                 tenant_id=checkin.tenant_id,
                 developer_id=checkin.developer_id,
                 claims=decision.signals.issue_updates,
             )
         except Exception:  # pragma: no cover - defensive; keep the question
             return decision
+        handled = dry_run.written | set(dry_run.held_for_open_mr)
         named = set(_ISSUE_KEY_IN_TEXT.findall(decision.question))
-        if not written or not named <= written:
+        if not handled or not named <= handled:
             return decision
         _logger.info(
             "tracker_update_question_dropped",
             tenant_id=checkin.tenant_id,
             developer_id=checkin.developer_id,
             correlation_id=checkin.correlation_id,
-            issue_keys=sorted(written),
+            issue_keys=sorted(handled),
         )
         return replace(decision, sufficient=True, question=None)
 
@@ -1698,6 +1707,7 @@ class StatusCollector:
             signals=signals,
             max_chars=self._outbound_dm_max_chars,
             applied=applied,
+            held=await self._open_merge_request_holds(checkin, applied),
         )
         try:
             await self._chat_provider.send_dm(
@@ -1722,6 +1732,18 @@ class StatusCollector:
                 correlation_id=checkin.correlation_id,
             )
 
+    async def _open_merge_request_holds(
+        self, checkin: CheckIn, rows: Sequence[WriteBackAudit]
+    ) -> list[OpenMergeRequestHold]:
+        """The open merge requests behind each held-back ``done``, for the ack to name."""
+        service = self._write_back_service
+        if service is None or not any(row.source == OPEN_MR_SOURCE for row in rows):
+            return []
+        try:
+            return await service.open_merge_request_holds(checkin.tenant_id, rows)
+        except Exception:  # pragma: no cover - defensive; the ack is best-effort
+            return []
+
     async def _maybe_write_back(
         self, checkin: CheckIn, signals: CheckInSignals
     ) -> list[WriteBackAudit]:
@@ -1730,7 +1752,8 @@ class StatusCollector:
         The default-deny gates and audit live in ``WriteBackService``; here we
         only forward the claims. A write-back failure must never lose a recorded
         check-in, so any error is logged (without raw reply content) and swallowed.
-        Returns the rows that were applied, for the ack to name.
+        Returns the rows that were applied, and the ``done`` claims an open merge
+        request held back, for the ack to name.
         """
         service = self._write_back_service
         if service is None or not signals.issue_updates:
@@ -1768,7 +1791,12 @@ class StatusCollector:
         proposed = [audit for audit in results if audit.status is WriteBackStatus.PROPOSED]
         if proposed:
             await self._send_consent_prompt(checkin=checkin, proposals=proposed)
-        return [audit for audit in results if audit.status is WriteBackStatus.APPLIED]
+        return [
+            audit
+            for audit in results
+            if audit.status is WriteBackStatus.APPLIED
+            or (audit.status is WriteBackStatus.DECLINED and audit.source == OPEN_MR_SOURCE)
+        ]
 
     async def _send_consent_prompt(
         self,
@@ -2417,14 +2445,17 @@ def _compose_checkin_ack_text(
     signals: CheckInSignals,
     max_chars: int = OUTBOUND_DM_MAX_CHARS,
     applied: Sequence[WriteBackAudit] = (),
+    held: Sequence[OpenMergeRequestHold] = (),
 ) -> str:
     """Deterministic "Got it" ack for a finalized check-in reply.
 
     A confident parse gets the plain ack. A low-confidence parse restates the
     recorded status (state + first blocker, never the raw reply) and invites a
     correction. Tracker updates OpenProgram just applied are named (issue key
-    and state only), so the person knows they need not make them. Every branch
-    stays within ``max_chars`` with a safe fallback.
+    and state only), so the person knows they need not make them, and so is a
+    ``done`` held back by an open merge request (issue key, its state and the
+    request), so they know why the tracker did not move. Every branch stays
+    within ``max_chars`` with a safe fallback.
     """
     if signals.parser_confident:
         text = _CHECKIN_ACK_PLAIN
@@ -2433,10 +2464,31 @@ def _compose_checkin_ack_text(
         text = f"Got it \U0001f44d I recorded this as {recorded} — reply 'fix' if that's wrong."
         if len(text) > max_chars:
             return _cap_outbound_dm_text(_CHECKIN_ACK_LOW_CONFIDENCE_FALLBACK, max_chars)
-    note = _applied_write_back_note(applied)
-    if note is not None and len(f"{text} {note}") <= max_chars:
-        return f"{text} {note}"
+    for note in (_applied_write_back_note(applied), *_open_merge_request_notes(held)):
+        if note is not None and len(f"{text} {note}") <= max_chars:
+            text = f"{text} {note}"
     return _cap_outbound_dm_text(text, max_chars)
+
+
+def open_merge_request_note(hold: OpenMergeRequestHold) -> str:
+    """Why a ``done`` claim did not move the tracker: its merge request is still open.
+
+    "INS-2 still has an open merge request (insights-pipeline !1), so I left it
+    In Progress in the issue tracker; it can move to Done once that merges."
+    """
+    many = len(hold.merge_requests) > 1
+    noun = "open merge requests" if many else "an open merge request"
+    named = f" ({', '.join(hold.merge_requests)})" if hold.merge_requests else ""
+    state = target_state_label(hold.current_state) if hold.current_state else "as it is"
+    merges = "those merge" if many else "that merges"
+    return (
+        f"{hold.issue_key} still has {noun}{named}, so I left it {state} in the issue "
+        f"tracker; it can move to Done once {merges}."
+    )
+
+
+def _open_merge_request_notes(held: Sequence[OpenMergeRequestHold]) -> list[str]:
+    return [open_merge_request_note(hold) for hold in held]
 
 
 def _applied_write_back_note(applied: Sequence[WriteBackAudit]) -> str | None:

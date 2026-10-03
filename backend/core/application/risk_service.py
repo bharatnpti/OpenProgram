@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
+from core.application.merge_request_links import (
+    MERGE_REQUEST_FACT_SOURCE,
+    merge_requests_by_issue_key,
+)
 from core.application.proof_links import pull_request_evidence
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
@@ -44,8 +47,6 @@ _RISK_FACT_SCAN_LIMIT = 5000
 # contradiction against one of these is a watermelon worth downgrading.
 _GREEN_STATUS_SOURCES = {StatusSource.CONFIRMED, StatusSource.INFERRED}
 _VCS_FACT_SOURCES = ("vcs_pull_request", "vcs_commit")
-# An issue key as a branch or a merge request title carries it ("CHK-3-payment-intent").
-_ISSUE_KEY = re.compile(r"(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9_]*-\d+)(?![0-9])")
 # Merged today is not yet drift: the issue sync runs hourly, the VCS sync every
 # 15 minutes, so for a while the merge is known before the tracker update is.
 _MERGED_ISSUE_GRACE_DAYS = 1
@@ -654,29 +655,9 @@ class RiskService:
     ) -> dict[str, list[FactEvent]]:
         """The latest fact of each in-scope merge request, grouped by the issue key it names."""
         facts = await self._time_series_repository.list_recent_facts(
-            tenant_id, sources=("vcs_pull_request",), limit=_RISK_FACT_SCAN_LIMIT
+            tenant_id, sources=(MERGE_REQUEST_FACT_SOURCE,), limit=_RISK_FACT_SCAN_LIMIT
         )
-        latest: dict[tuple[str, str], FactEvent] = {}
-        for fact in sorted(facts, key=lambda item: (item.observed_at, item.ingested_at)):
-            repo = _payload_str(fact.payload, "repo")
-            pr_id = _payload_str(fact.payload, "id")
-            if repo is not None and pr_id is not None and repo in repo_scope:
-                latest[(repo, pr_id)] = fact
-        by_key: dict[str, list[FactEvent]] = {}
-        upper_keys = {key.upper(): key for key in issue_keys}
-        for fact in latest.values():
-            text = " ".join(
-                value
-                for value in (
-                    _payload_str(fact.payload, "source_branch"),
-                    _payload_str(fact.payload, "title"),
-                )
-                if value
-            )
-            named = {match.upper() for match in _ISSUE_KEY.findall(text)}
-            for upper in named & set(upper_keys):
-                by_key.setdefault(upper_keys[upper], []).append(fact)
-        return by_key
+        return merge_requests_by_issue_key(facts, issue_keys, repo_scope=repo_scope)
 
     async def _work_item_drift(
         self,
