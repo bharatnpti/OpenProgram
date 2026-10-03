@@ -36,16 +36,22 @@ def pull_request_evidence(
     pr_id: str,
     github_base_url: str,
     metadata: Mapping[str, JsonScalar] | None = None,
+    provider_url: str | None = None,
 ) -> RiskEvidence:
     """Build proof evidence for a pull/merge request.
 
-    A user-supplied link (``pr_url`` metadata) always wins. Otherwise the
-    link is constructed from the existing ``github_base_url`` setting.
+    A user-supplied link (``pr_url`` metadata) always wins. Next is the link the
+    VCS provider reported for the request (GitLab's ``web_url``, GitHub's
+    ``html_url``); building one from ``github_base_url`` gave GitLab merge
+    requests a github.com link. That constructed link is the last resort.
     """
     identifier = f"{repo}#{pr_id}"
     supplied = _metadata_url(metadata, "pr_url")
     if supplied is not None:
         return RiskEvidence(identifier=identifier, url=supplied, url_is_user_supplied=True)
+    reported = _metadata_url({"url": provider_url}, "url") if provider_url else None
+    if reported is not None:
+        return RiskEvidence(identifier=identifier, url=reported)
     web_base = _github_web_base(github_base_url)
     if web_base is None:
         return RiskEvidence(identifier=identifier, url=None)
