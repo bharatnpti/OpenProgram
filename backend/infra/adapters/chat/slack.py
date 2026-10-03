@@ -15,6 +15,7 @@ from core.domain.errors import ProviderConfigurationError, ProviderUnavailable
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from infra.adapters.chat.rate_limit import RateLimiter
 from infra.adapters.chat.send_once import InMemorySendOnceStore, SendOnceStore
+from infra.adapters.chat.slack_text import plain_text
 
 _tracer = trace.get_tracer("openprogram.adapters.chat.slack")
 
@@ -119,7 +120,7 @@ class SlackChatAdapter:
     def map_reply_payload(self, payload: Mapping[str, object], thread_id: str) -> InboundMessage:
         with _tracer.start_as_current_span("slack.map_reply_payload"):
             user_id = _string_field(payload, "user")
-            text = _string_field(payload, "text")
+            text = plain_text(_string_field(payload, "text"))
             timestamp = _string_field(payload, "ts")
             return InboundMessage(
                 tenant_id=self.tenant_id,
@@ -167,7 +168,9 @@ class SlackChatWebhookMapper:
                     tenant_id=self.tenant_id,
                     external_id=user_id,
                 ),
-                text=text,
+                # Plain text from here on: an address typed in a reply is
+                # "a@b.io", not "<mailto:a@b.io|a@b.io>", wherever it is read.
+                text=plain_text(text),
                 thread_id=thread_id,
                 message_id=timestamp,
                 correlation_id=_string_field(event, "correlation_id", default=correlation_id),

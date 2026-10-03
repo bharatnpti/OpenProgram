@@ -95,6 +95,9 @@ class CrossPersonRequestResolution:
     counterpart_id: str | None = None
     counterpart_display_name: str | None = None
     counterpart_email: str | None = None
+    # Set when this settles a request already recorded as needs_resolution
+    # (the requester answered "who did you mean?"), rather than a new one.
+    request_id: str | None = None
 
 
 def new_cross_person_request(

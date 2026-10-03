@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
 from typing import Literal, Protocol, TypedDict, cast
@@ -18,7 +18,13 @@ from core.application.blocker_lifecycle import (
     reconciliation_with_updates,
 )
 from core.application.conversation_history import llm_messages_from_turns
-from core.application.counterparts import MemberContact, MemberDirectory, members_for_mention
+from core.application.counterparts import (
+    MemberContact,
+    MemberDirectory,
+    member_named_in_answer,
+    members_for_mention,
+    name_words,
+)
 from core.application.risk_service import RISK_FACT_SOURCE
 from core.application.status_parsing import (
     ClarificationDecision,
@@ -43,7 +49,11 @@ from core.domain.blockers import (
     ReconcileMode,
 )
 from core.domain.conversation import ConversationRole, ConversationTurn
-from core.domain.cross_person import CrossPersonRequestResolution, CrossPersonRequestStatus
+from core.domain.cross_person import (
+    CrossPersonRequest,
+    CrossPersonRequestResolution,
+    CrossPersonRequestStatus,
+)
 from core.domain.errors import ProviderUnavailable
 from core.domain.escalation import EscalationTarget
 from core.domain.graph import EntityRef, FactEvent, GraphNode, JsonScalar, NodeKind
@@ -69,6 +79,7 @@ from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
 from core.ports.repositories import (
     ConversationRepository,
+    CrossPersonRequestRepository,
     GraphRepository,
     IdentityLinkRepository,
     StatusRepository,
@@ -133,10 +144,59 @@ class ReplyOutcome:
     cross_person_requests: tuple[CrossPersonRequestResolution, ...] = ()
 
 
-@dataclass(frozen=True, kw_only=True)
-class _CrossPersonResolutionResult:
-    resolutions: tuple[CrossPersonRequestResolution, ...]
-    clarification_question: str | None = None
+@dataclass(kw_only=True)
+class _RequestLedger:
+    """One check-in's cross-person requests while a reply is handled.
+
+    ``recorded`` are the requests already stored for this check-in; this reply
+    adds ``resolutions``: new requests, and answers that settle a recorded
+    needs_resolution one. A request is stored the turn it is stated, so a
+    later turn that re-extracts it without its person, or drops it, cannot
+    lose it.
+    """
+
+    recorded: tuple[CrossPersonRequest, ...] = ()
+    resolutions: list[CrossPersonRequestResolution] = field(default_factory=list)
+
+    def outcome(self) -> tuple[CrossPersonRequestResolution, ...]:
+        return tuple(self.resolutions)
+
+    def unsettled(self) -> list[CrossPersonRequest]:
+        """Recorded requests still waiting for their person after this reply."""
+        settled = {resolution.request_id for resolution in self.resolutions}
+        return [
+            request
+            for request in self.recorded
+            if request.status is CrossPersonRequestStatus.NEEDS_RESOLUTION
+            and request.id not in settled
+        ]
+
+    def unsettled_for(self, mention: CrossPersonMention) -> CrossPersonRequest | None:
+        key = _request_key(mention.kind, mention.raw_name)
+        return next(
+            (
+                request
+                for request in self.unsettled()
+                if _request_key(request.kind.value, request.raw_name or "") == key
+            ),
+            None,
+        )
+
+    def knows(self, mention: CrossPersonMention, counterpart_id: str | None) -> bool:
+        """Whether this check-in already holds the request, stored or added by this reply."""
+        key = _request_key(mention.kind, mention.raw_name)
+        held = [
+            (request.kind.value, request.raw_name or "", request.counterpart_id)
+            for request in self.recorded
+        ] + [
+            (resolution.mention.kind, resolution.mention.raw_name, resolution.counterpart_id)
+            for resolution in self.resolutions
+        ]
+        return any(
+            _request_key(kind, raw_name) == key
+            or (counterpart_id is not None and kind == mention.kind and held_id == counterpart_id)
+            for kind, raw_name, held_id in held
+        )
 
 
 class StatusCollector:
@@ -154,6 +214,7 @@ class StatusCollector:
         identity_link_repository: IdentityLinkRepository | None = None,
         write_back_service: WriteBackService | None = None,
         graph_repository: GraphRepository | None = None,
+        cross_person_repository: CrossPersonRequestRepository | None = None,
         parser: StatusParser | None = None,
         clarification_evaluator: ClarificationEvaluator | None = None,
         tool_agent: ToolCallingAgent | None = None,
@@ -178,6 +239,9 @@ class StatusCollector:
             identity_link_repository=identity_link_repository,
             directory_repository=directory_repository,
         )
+        # Read only, to see which requests a check-in already holds; the
+        # requests themselves are written by CrossPersonRequestService.
+        self._cross_person_repository = cross_person_repository
         self._write_back_service = write_back_service
         # Without a graph repository the attribution machinery degrades
         # cleanly: no pods resolve, so no attribution question is ever asked.
@@ -260,6 +324,8 @@ class StatusCollector:
             return await self._handle_already_replied(checkin=checkin, message=message)
         if await self._register_reply_turn(checkin, message, allow_reprocess=allow_reprocess):
             return ReplyOutcome(kind="ignored")
+        requests = await self._request_ledger(checkin)
+        await self._settle_waiting_requests(checkin, requests, message.text)
 
         conversation_turns = await self._recent_conversation_turns(
             tenant_id=message.tenant_id,
@@ -288,7 +354,7 @@ class StatusCollector:
             await self._send_non_status_ack(checkin=checkin, message=message)
             span.set_attribute("openprogram.reply_classification", "non_status")
             span.set_attribute("openprogram.has_blocker", False)
-            return ReplyOutcome(kind="acknowledged")
+            return ReplyOutcome(kind="acknowledged", cross_person_requests=requests.outcome())
 
         clarification_count = await self._status_repository.checkin_clarification_count(
             checkin.tenant_id,
@@ -302,12 +368,18 @@ class StatusCollector:
             clarification_count=clarification_count,
         )
         if insufficient_outcome is not None:
+            await self._hold_cross_person_requests(
+                checkin=checkin,
+                signals=decision.signals,
+                requests=requests,
+                clarification_count=clarification_count,
+            )
             span.set_attribute("openprogram.reply_classification", "clarifying")
             span.set_attribute(
                 "openprogram.has_blocker",
                 bool(decision.signals and decision.signals.blockers),
             )
-            return insufficient_outcome
+            return replace(insufficient_outcome, cross_person_requests=requests.outcome())
 
         signals = decision.signals or await self._parser.parse_reply(
             tenant_id=message.tenant_id,
@@ -333,24 +405,31 @@ class StatusCollector:
             clarification_count=clarification_count,
         )
         if required_details_outcome is not None:
+            await self._hold_cross_person_requests(
+                checkin=checkin,
+                signals=signals,
+                requests=requests,
+                clarification_count=clarification_count,
+            )
             span.set_attribute("openprogram.reply_classification", "clarifying")
             span.set_attribute(
                 "openprogram.has_blocker",
                 bool(required_details_outcome.status and required_details_outcome.status.blockers),
             )
-            return required_details_outcome
+            return replace(required_details_outcome, cross_person_requests=requests.outcome())
         if not decision.sufficient:
             signals = _signals_with_note(
                 signals,
                 "Clarification cap reached before all details were confirmed.",
             )
-        person_resolution = await self._resolve_cross_person_requests(
+        person_question = await self._resolve_cross_person_requests(
             checkin=checkin,
-            message=message,
             signals=signals,
+            requests=requests,
             clarification_count=clarification_count,
+            ask=True,
         )
-        if person_resolution.clarification_question is not None:
+        if person_question is not None:
             # Same reasoning as the clarification branch above: hold the reply's
             # own signals rather than letting the day read as no reply at all.
             person_partial_status = await self._record_partial_checkin_status(
@@ -362,12 +441,16 @@ class StatusCollector:
             await self._send_clarification(
                 checkin=checkin,
                 message=message,
-                question=person_resolution.clarification_question,
+                question=person_question,
                 clarification_number=clarification_count + 1,
             )
             span.set_attribute("openprogram.reply_classification", "needs_person_resolution")
             span.set_attribute("openprogram.has_blocker", bool(signals.blockers))
-            return ReplyOutcome(kind="clarifying", status=person_partial_status)
+            return ReplyOutcome(
+                kind="clarifying",
+                status=person_partial_status,
+                cross_person_requests=requests.outcome(),
+            )
         attribution_outcome, reconciliation = await self._maybe_attribution_clarification(
             checkin=checkin,
             message=message,
@@ -378,7 +461,7 @@ class StatusCollector:
         if attribution_outcome is not None:
             span.set_attribute("openprogram.reply_classification", "clarifying")
             span.set_attribute("openprogram.has_blocker", True)
-            return attribution_outcome
+            return replace(attribution_outcome, cross_person_requests=requests.outcome())
         status = await self._finalize_checkin_reply(
             checkin=checkin,
             replied_at=message.received_at,
@@ -391,7 +474,7 @@ class StatusCollector:
         return ReplyOutcome(
             kind="processed",
             status=status,
-            cross_person_requests=person_resolution.resolutions,
+            cross_person_requests=requests.outcome(),
         )
 
     async def _register_reply_turn(
@@ -1410,35 +1493,123 @@ class StatusCollector:
         )
         return message_id
 
+    async def _request_ledger(self, checkin: CheckIn) -> _RequestLedger:
+        if self._cross_person_repository is None:
+            return _RequestLedger()
+        raised = await self._cross_person_repository.list_for_requester(
+            checkin.tenant_id,
+            checkin.developer_id,
+        )
+        return _RequestLedger(
+            recorded=tuple(
+                request
+                for request in raised
+                if request.source_correlation_id == checkin.correlation_id
+            )
+        )
+
+    async def _settle_waiting_requests(
+        self,
+        checkin: CheckIn,
+        requests: _RequestLedger,
+        answer: str,
+    ) -> None:
+        """Let a reply answer "who did you mean?" before anything else reads it.
+
+        The answer may be all the reply says (an address, a mention) and the
+        model need not read it as a status update, nor repeat the request it
+        settles, so it is matched against each waiting request's members here.
+        With several requests waiting, an answer only settles one whose
+        candidates include the member it names.
+        """
+        waiting = requests.unsettled()
+        if not waiting:
+            return
+        members = await self._members.active_members(checkin.tenant_id)
+        for request in waiting:
+            mention = _mention_of(request)
+            candidates = members_for_mention(mention, members)
+            member = member_named_in_answer(answer, mention, candidates, members)
+            if member is None or (len(waiting) > 1 and candidates and member not in candidates):
+                continue
+            requests.resolutions.append(_open_resolution(mention, member, request_id=request.id))
+
+    async def _hold_cross_person_requests(
+        self,
+        *,
+        checkin: CheckIn,
+        signals: CheckInSignals | None,
+        requests: _RequestLedger,
+        clarification_count: int,
+    ) -> None:
+        """Record this reply's requests while another question goes out first.
+
+        Without this, a request stated in a reply that is asked for its ETA
+        lived only in the model's reading of that one reply, and was lost when
+        the next reply was read on its own.
+        """
+        if signals is None:
+            return
+        await self._resolve_cross_person_requests(
+            checkin=checkin,
+            signals=signals,
+            requests=requests,
+            clarification_count=clarification_count,
+            ask=False,
+        )
+
     async def _resolve_cross_person_requests(
         self,
         *,
         checkin: CheckIn,
-        message: InboundMessage,
         signals: CheckInSignals,
+        requests: _RequestLedger,
         clarification_count: int,
-    ) -> _CrossPersonResolutionResult:
-        if not signals.requests:
-            return _CrossPersonResolutionResult(resolutions=())
+        ask: bool,
+    ) -> str | None:
+        """Add this reply's requests to the ledger; return a "who?" question when one is due.
+
+        Each request is recorded the turn it is stated: one naming a single
+        member opens (and its person is told), any other waits as
+        needs_resolution. A request the check-in already holds is not added
+        again, and a mention that now names one member settles the waiting
+        request instead. With ``ask`` and clarification budget left, the
+        question is about the first request still waiting for its person.
+        """
+        if not signals.requests and not (ask and requests.unsettled()):
+            return None
         members = await self._members.active_members(checkin.tenant_id)
-        resolutions: list[CrossPersonRequestResolution] = []
         for mention in signals.requests:
             matches = members_for_mention(mention, members)
-            if len(matches) == 1:
-                resolutions.append(_open_resolution(mention, matches[0]))
+            waiting = requests.unsettled_for(mention)
+            if waiting is not None:
+                if len(matches) == 1:
+                    requests.resolutions.append(
+                        _open_resolution(_mention_of(waiting), matches[0], request_id=waiting.id)
+                    )
                 continue
-            if clarification_count < self._checkin_max_clarifications:
-                return _CrossPersonResolutionResult(
-                    resolutions=(),
-                    clarification_question=_person_clarification_question(mention, matches),
-                )
-            resolutions.append(
+            if requests.knows(mention, matches[0].chat_id if len(matches) == 1 else None):
+                continue
+            if len(matches) == 1:
+                requests.resolutions.append(_open_resolution(mention, matches[0]))
+                continue
+            requests.resolutions.append(
                 CrossPersonRequestResolution(
                     mention=mention,
                     status=CrossPersonRequestStatus.NEEDS_RESOLUTION,
                 )
             )
-        return _CrossPersonResolutionResult(resolutions=tuple(resolutions))
+        if not ask or clarification_count >= self._checkin_max_clarifications:
+            return None
+        waiting_mentions = [_mention_of(request) for request in requests.unsettled()] + [
+            resolution.mention
+            for resolution in requests.resolutions
+            if resolution.status is CrossPersonRequestStatus.NEEDS_RESOLUTION
+        ]
+        if not waiting_mentions:
+            return None
+        first = waiting_mentions[0]
+        return _person_clarification_question(first, members_for_mention(first, members))
 
     async def _finalize_checkin_reply(
         self,
@@ -2526,6 +2697,8 @@ def _missing_required_status_note(
 def _open_resolution(
     mention: CrossPersonMention,
     member: MemberContact,
+    *,
+    request_id: str | None = None,
 ) -> CrossPersonRequestResolution:
     return CrossPersonRequestResolution(
         mention=mention,
@@ -2533,7 +2706,22 @@ def _open_resolution(
         counterpart_id=member.chat_id,
         counterpart_display_name=member.name,
         counterpart_email=member.email,
+        request_id=request_id,
     )
+
+
+def _mention_of(request: CrossPersonRequest) -> CrossPersonMention:
+    return CrossPersonMention(
+        raw_name=request.raw_name or "",
+        kind=request.kind.value,
+        note=request.note,
+        email=request.email,
+    )
+
+
+def _request_key(kind: str, raw_name: str) -> tuple[str, tuple[str, ...]]:
+    """Two mentions of the same ask of the same name are one request."""
+    return (kind, name_words(raw_name))
 
 
 def _person_clarification_question(

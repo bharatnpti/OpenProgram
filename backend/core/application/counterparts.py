@@ -146,6 +146,45 @@ def members_by_name(query: str, members: Sequence[MemberContact]) -> tuple[Membe
     return tuple(member for member in members if _starts_words(words, _words(member.name)))
 
 
+def member_named_in_answer(
+    answer: str,
+    asked: CrossPersonMention,
+    candidates: Sequence[MemberContact],
+    members: Sequence[MemberContact],
+) -> MemberContact | None:
+    """The one member an answer to "who did you mean?" picks, else None.
+
+    A chat mention or an email settles it when it names exactly one member,
+    whoever the question offered. Otherwise the answer's words pick among the
+    offered candidates, a full name before a first name, and the pick has to
+    rest on a word the asked name did not have: "Alexa" or "Alex Chen" settles
+    an ambiguous "Alex", repeating "Alex" does not. Two members with the same
+    name stay unsettled until the answer gives an address or a mention. With
+    no candidates offered ("I could not find ..."), only a member's full name
+    counts, so a first name dropped in passing never settles a request.
+    """
+    named: dict[str, MemberContact] = {
+        member.member_id: member for member in members_by_reference(answer, members)
+    }
+    for email in all_emails(answer):
+        named.update({member.member_id: member for member in members_with_email(email, members)})
+    if named:
+        return next(iter(named.values())) if len(named) == 1 else None
+    words = set(_words(answer))
+    new_words = words - set(_words(asked.raw_name))
+    if not new_words:
+        return None
+    pool = candidates or members
+    full = [member for member in pool if _words(member.name) and set(_words(member.name)) <= words]
+    first = [
+        member for member in candidates if _words(member.name) and _words(member.name)[0] in words
+    ]
+    picked = full or first
+    if len(picked) != 1 or not set(_words(picked[0].name)) & new_words:
+        return None
+    return picked[0]
+
+
 def first_email(text: str | None) -> str | None:
     """The first email address in a piece of text, if there is one."""
     if not text:
@@ -159,6 +198,7 @@ def all_emails(text: str) -> tuple[str, ...]:
 
 
 def name_words(text: str) -> tuple[str, ...]:
+    """A name as lower-cased words, for comparing two ways of writing it."""
     return _words(text)
 
 
