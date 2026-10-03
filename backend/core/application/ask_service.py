@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
@@ -12,22 +13,52 @@ from core.application.flow_metrics_service import (
     PortfolioFlowView,
     WorkstreamFlowView,
 )
+from core.application.json_parsing import extract_json_object
 from core.application.persona_views import (
     PersonaViewService,
     PortfolioHeatmapView,
+    TreeNodeView,
     WorkstreamProgressView,
 )
 from core.application.portfolio_feed_service import DEFAULT_FEED_SOURCES, PortfolioFeedService
 from core.application.risk_service import RiskService
+from core.application.status_summaries import NO_REPLY_BLOCKER
 from core.domain.auth import Principal
 from core.domain.errors import GraphNotFound
 from core.domain.graph import EdgeKind, GraphEdge, GraphNode, JsonScalar, NodeKind
 from core.domain.llm import LlmMessage, LlmRequest
 from core.domain.risk import DriftFinding, RiskFinding
-from core.domain.rollup import Rag
+from core.domain.rollup import FactorKind, Rag, RollupFactor
+from core.domain.status import StatusSource
 from core.ports.llm import LlmProvider
 from core.ports.repositories import GraphRepository, TimeSeriesRepository
 from core.ports.tools import AgentTool
+
+# How an answer reads. Answers used to be a paragraph that restated the
+# question, lumped a partial update in with no reply at all, closed on a
+# generic "follow up with ..." and cited people by chat id. Each rule stands
+# alone so a test can hold the prompt to it.
+ANSWER_FORMAT_RULES: tuple[str, ...] = (
+    "Shape: one verdict line that answers the question in a few words (e.g. 'Digital "
+    "Platform Program is red because:'), then at most 4 bullet lines starting with '• ', "
+    "one concrete driver each, then optionally one line on what is fine. 80 words at most.",
+    "Name people by display name, issues by key (CHK-8), merge requests by the ref the "
+    "data gives (storefront-web !1), and programs, projects, workstreams and pods by name. "
+    "One bullet per kind of driver, naming everyone it applies to, e.g. 'Partial updates: "
+    "Omar Haddad, Ira Novak · no reply: Hana Kobayashi'.",
+    "Never put a raw id in answer: no chat user ids such as U0AA1OMAR01 and no node ids "
+    "such as pod-data or program-platform; an issue key is the one id that reads as a "
+    "name. Ids go in references only, copied exactly as the tools return them: the id of "
+    "every person, issue, program, project, workstream and pod the answer names.",
+    "Ground every bullet in the rollup factors and signals the tools return, in their own "
+    "terms: 'partial' is a partial update and 'no reply' is no reply, so never merge or "
+    "upgrade one into the other; give counts exactly (1 open blocker), and never call "
+    "something blocked or late unless a factor or signal says so.",
+    "No filler, no preamble, no restating the question, and no recommendations or next "
+    "steps unless the question asks what to do.",
+    "If data you need is missing or a tool comes back empty, say so in one line instead "
+    "of guessing.",
+)
 
 ASK_SYSTEM_PROMPT = (
     "You answer program-management questions over a delivery graph. "
@@ -36,14 +67,18 @@ ASK_SYSTEM_PROMPT = (
     "Questions about health -- what is red, amber, at risk, blocked, stuck or "
     "behind -- are answered from the status and risk tools: call them before you "
     "say any status is unavailable, and say which day the status is for. "
+    "Why something has its colour, or needs attention, is answered from "
+    "status_reasons: the rollup's own factors, and the open risk and drift signals "
+    "beneath it. "
     "Relationships -- who is assigned to what, who belongs to which pod, what "
     "contains what -- live on edges, so call graph_neighbors before reporting that "
     "something has none, and never tell the user their data is missing or needs "
     "updating when you have not traversed its edges. "
     "Never mention raw DM/reply content. "
+    "Write the answer to these rules: " + " ".join(ANSWER_FORMAT_RULES) + " "
     "Once you have the facts, reply with a single JSON object and nothing else: "
-    "answer holds the prose, references an array of the node ids it rests on. "
-    "Do not restate references inside answer."
+    "answer holds the text, with a newline between lines, and references an array "
+    "of the node ids it rests on. Do not restate references inside answer."
 )
 
 # Named periods a time-window question maps onto, resolved against the as-of
@@ -56,12 +91,39 @@ _MAX_FACT_WINDOW_DAYS = 31
 _FACT_SCAN_LIMIT = 500
 _MAX_PODS = 20
 _MAX_TEXT_CHARS = 240
+_MAX_REASONS = 15
+_MAX_PARTS = 20
+_MAX_SIGNALS = 10
 _RAG_ORDER: dict[Rag, int] = {Rag.RED: 0, Rag.AMBER: 1, Rag.UNKNOWN: 2, Rag.GREEN: 3}
 _AS_OF_PARAMETER: Mapping[str, object] = {
     "type": "string",
     "format": "date",
     "description": "An earlier day to look at. Leave unset for today.",
 }
+
+# Whose reasons a principal may read, per node kind: the capabilities the REST
+# route serving those reasons checks -- /programs/{id}/tree,
+# /projects/{id}/progress, /workstreams/{id}/progress and /pods/{id}/rollup.
+_REASON_CAPABILITIES: Mapping[NodeKind, tuple[Capability, ...]] = {
+    NodeKind.PROGRAM: (Capability.READ_PROGRAM_ROLLUP,),
+    NodeKind.PROJECT: (Capability.READ_PROJECT_PROGRESS,),
+    NodeKind.WORKSTREAM: (Capability.READ_PROJECT_PROGRESS,),
+    NodeKind.POD: (Capability.READ_POD_BLOCKERS, Capability.READ_POD_CHECKINS),
+}
+
+# A person's check-in state in the words an answer may use. The collector
+# writes an inferred, stale or unknown status only when someone has not
+# answered a check-in, so those read "no reply"; unknown also covers a person
+# nothing was ever recorded for, so it claims no more than "no status".
+_CHECKIN_WORDS: Mapping[StatusSource, str] = {
+    StatusSource.CONFIRMED: "confirmed",
+    StatusSource.PARTIAL: "partial",
+    StatusSource.INFERRED: "no reply",
+    StatusSource.STALE: "no reply",
+    StatusSource.UNKNOWN: "no status",
+}
+_NO_REPLY_SAYS = "No confirmed reply to the check-in."
+_BULLET = re.compile(r"^\s*[-*•]\s+")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -87,11 +149,27 @@ def period_windows(as_of: date) -> dict[str, DateWindow]:
 
 
 @dataclass(frozen=True, kw_only=True)
+class AskSource:
+    """One reference, with the words a reader knows it by.
+
+    ``label`` is a person's display name, an issue's key, a merge request's
+    ref, or a program, project, workstream or pod name. It is None when the id
+    matches no node -- a reference the model got wrong stays an id, never a
+    guessed name.
+    """
+
+    id: str
+    kind: NodeKind | None
+    label: str | None
+
+
+@dataclass(frozen=True, kw_only=True)
 class AskResponseView:
     answer: str
     references: tuple[str, ...]
     tools_used: tuple[str, ...]
     trace_id: str
+    sources: tuple[AskSource, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -471,6 +549,136 @@ class WorkstreamProgressTool:
 
 
 @dataclass(frozen=True, kw_only=True)
+class StatusReasonsTool:
+    """Why a program, project, workstream or pod has its colour, in the rollup's words.
+
+    Without it Ask saw one clipped "why" per heatmap cell, so "why does the
+    program need attention?" came back as "multiple unresolved issues and
+    unconfirmed statuses": two people who had replied in part lumped in with
+    one who had not replied at all, and the actual blocker buried. This hands
+    over every factor behind the colour, grouped as the Delivery panel groups
+    them, each naming the person or issue it comes from -- and a person's
+    check-in state in the words the data supports.
+
+    The open risk and drift signals on anything beneath the node come along:
+    the model was told to call open_risks beside it and, asked why the
+    program needed attention, never did -- so two issues merged but still
+    open in the tracker went unmentioned.
+
+    ``kinds`` are the node kinds this principal may read reasons for: a kind
+    whose REST route would refuse them comes back as an error, never data.
+    The signals are the ones open_risks lists, behind the same aggregate read
+    /ask itself requires, so carrying them here widens nothing.
+    """
+
+    tenant_id: str
+    service: PersonaViewService
+    risks: RiskService
+    repository: GraphRepository
+    as_of: date
+    kinds: frozenset[NodeKind]
+
+    name: str = "status_reasons"
+    description: str = (
+        "Why one program, project, workstream or pod has its RAG colour on one day, today "
+        "unless as_of names an earlier one: every rollup factor behind the colour, worst "
+        "first, in the rollup's own words. A factor names the people and issues it comes "
+        "from, and a status factor carries their check-in state as the data has it: "
+        "'partial' (replied without confirming blockers or ETA), 'no reply' (did not "
+        "answer the check-in) or 'no status'. It also lists the colour of every project, "
+        "workstream and pod underneath, and the open risk and drift signals on anything "
+        "underneath -- such as an issue still open after its merge request merged. Use it "
+        "for 'why is X red or amber' and 'why does X need attention'; search_graph_nodes "
+        "turns a name into the node_id."
+    )
+    parameters: Mapping[str, object] = field(
+        default_factory=lambda: {
+            "type": "object",
+            "properties": {
+                "node_id": {
+                    "type": "string",
+                    "description": "The program, project, workstream or pod to explain.",
+                },
+                "as_of": _AS_OF_PARAMETER,
+            },
+            "required": ["node_id"],
+            "additionalProperties": False,
+        }
+    )
+
+    async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
+        node_id = _required_string(arguments.get("node_id"), "node_id")
+        as_of = _snapshot_date(arguments.get("as_of"), self.as_of)
+        node = await self.repository.get_node(self.tenant_id, node_id)
+        if node is None:
+            raise GraphNotFound(
+                f"{node_id} not found; search_graph_nodes finds a program, project, "
+                "workstream or pod by name"
+            )
+        if node.kind not in _REASON_CAPABILITIES:
+            return json.dumps(
+                {
+                    "error": f"{node_id} is a {node.kind.value}; status_reasons explains a "
+                    "program, project, workstream or pod"
+                }
+            )
+        if node.kind not in self.kinds:
+            return json.dumps(
+                {"error": f"the reasons behind a {node.kind.value}'s status are not available"}
+            )
+        tree = await self.service.program_tree(self.tenant_id, node_id, as_of)
+        labels = {
+            graph_node.id: node_label(graph_node)
+            for graph_node in await self.repository.list_nodes(self.tenant_id)
+        }
+        beneath = {tree_node.id for tree_node in tree.nodes}
+        risks = [
+            risk
+            for risk in await self.risks.portfolio_risks(self.tenant_id, as_of)
+            if risk.entity_ref.id in beneath
+        ]
+        drift = [
+            finding
+            for finding in await self.risks.portfolio_drift(self.tenant_id, as_of)
+            if finding.entity_ref.id in beneath
+        ]
+        signals = [
+            (
+                finding.severity,
+                _signal_payload(
+                    "drift",
+                    finding.kind.value,
+                    finding.severity,
+                    finding.entity_ref.id,
+                    finding.owner_id,
+                    finding.reason,
+                    labels,
+                ),
+            )
+            for finding in drift
+        ] + [
+            (
+                risk.severity,
+                _signal_payload(
+                    "risk",
+                    risk.rule_id.value,
+                    risk.severity,
+                    risk.entity_ref.id,
+                    risk.owner_id,
+                    risk.reason,
+                    labels,
+                ),
+            )
+            for risk in risks
+        ]
+        signals.sort(key=lambda signal: _RAG_ORDER[signal[0]])  # worst first
+        payload = _status_reasons_payload(tree.root_id, tree.nodes, labels, as_of)
+        payload["open_signal_count"] = len(signals)
+        payload["signals"] = [signal for _, signal in signals[:_MAX_SIGNALS]]
+        return json.dumps(payload, ensure_ascii=False)
+
+
+@dataclass(frozen=True, kw_only=True)
 class PortfolioHeatmapTool:
     tenant_id: str
     service: PersonaViewService
@@ -484,7 +692,8 @@ class PortfolioHeatmapTool:
         "one. Worst first, each with its colour, source and the main reason for it. "
         "This is the status behind the dashboard heat rows: use it for 'what is at "
         "risk', 'what is red or amber' and 'which workstreams are behind'. Narrow it "
-        "with kinds, e.g. ['workstream']."
+        "with kinds, e.g. ['workstream']. It gives one reason per node; for why one "
+        "node has its colour, status_reasons gives all of them."
     )
     parameters: Mapping[str, object] = field(
         default_factory=lambda: {
@@ -757,6 +966,16 @@ def _has(capability: Capability) -> Callable[[Principal], bool]:
     return lambda principal: AuthorizationPolicy().can(principal, capability)
 
 
+def _reason_kinds(principal: Principal) -> frozenset[NodeKind]:
+    """The node kinds whose reasons this principal's REST routes would serve."""
+    policy = AuthorizationPolicy()
+    return frozenset(
+        kind
+        for kind, capabilities in _REASON_CAPABILITIES.items()
+        if all(policy.can(principal, capability) for capability in capabilities)
+    )
+
+
 class AskService:
     def __init__(
         self,
@@ -811,11 +1030,13 @@ class AskService:
         )
         response = await self._tool_agent.run(request, tools)
         parsed = _parse_answer(response.text)
+        nodes = await _nodes_by_any_id(self._graph_repository, principal.tenant_id)
         return AskResponseView(
-            answer=parsed.answer,
+            answer=_without_raw_ids(_tidy_lines(parsed.answer), nodes),
             references=parsed.references,
             tools_used=tuple(dict.fromkeys(calls)),
             trace_id=response.trace_id,
+            sources=tuple(_source(reference, nodes) for reference in parsed.references),
         )
 
     def _tools(self, principal: Principal, as_of: date) -> tuple[AgentTool, ...]:
@@ -870,6 +1091,19 @@ class AskService:
             (
                 WorkstreamProgressTool(tenant_id=tenant_id, service=personas, as_of=as_of),
                 _has(Capability.READ_PROJECT_PROGRESS),
+            ),
+            # /programs/{id}/tree, /projects|workstreams/{id}/progress, /pods/{id}/rollup:
+            # offered when any of them answers, and per kind only where it does.
+            (
+                StatusReasonsTool(
+                    tenant_id=tenant_id,
+                    service=personas,
+                    risks=self._risk_service,
+                    repository=graph,
+                    as_of=as_of,
+                    kinds=_reason_kinds(principal),
+                ),
+                lambda asker: bool(_reason_kinds(asker)),
             ),
             # /portfolio/heatmap
             (
@@ -929,25 +1163,275 @@ def _prompt(question: str, as_of: date) -> str:
         "happened over a period, give recent_facts a period, or since and until. "
         "A tool asked about the wrong period comes back empty, and empty is not "
         "the same as nothing being wrong. "
-        "Keep the answer concise and specific, naming the people and items "
-        "involved, and list the id of each one in references. "
+        "Answer in the required shape -- a verdict line, at most 4 '• ' bullets, 80 "
+        "words at most -- naming people, issues and merge requests rather than ids, and "
+        "list the id of every node the answer names in references. "
         f"Question: {question}"
     )
 
 
 def _parse_answer(text: str) -> ParsedAnswer:
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        return ParsedAnswer(answer=text.strip(), references=())
-    if not isinstance(parsed, dict):
+    # A fenced or prose-wrapped object used to be shown whole, braces and all.
+    parsed = extract_json_object(text)
+    if parsed is None:
         return ParsedAnswer(answer=text.strip(), references=())
     answer = parsed.get("answer")
     references = parsed.get("references")
     return ParsedAnswer(
-        answer=answer if isinstance(answer, str) and answer else text.strip(),
-        references=tuple(str(item) for item in references) if isinstance(references, list) else (),
+        answer=answer.strip() if isinstance(answer, str) and answer.strip() else text.strip(),
+        references=(
+            tuple(dict.fromkeys(str(item).strip() for item in references if str(item).strip()))
+            if isinstance(references, list)
+            else ()
+        ),
     )
+
+
+def _tidy_lines(answer: str) -> str:
+    """One bullet marker, no trailing spaces, no blank lines between lines."""
+    lines = (_BULLET.sub("• ", line.rstrip()) for line in answer.strip().splitlines())
+    return "\n".join(line for line in lines if line.strip())
+
+
+def node_label(node: GraphNode) -> str | None:
+    """The words a reader knows a node by -- never its raw id, unless that id is the name.
+
+    An issue's key is how everyone refers to it, so a task reads as its key; a
+    merge request as its ref; a person as their display name; everything else
+    as its name. A person whose name is only their id has no label.
+    """
+    if node.kind is NodeKind.TASK:
+        return _string_metadata(node, "key") or node.id
+    if node.kind is NodeKind.WORK_ITEM:
+        repo = _string_metadata(node, "repo")
+        pr_id = _string_metadata(node, "pr_id")
+        if repo and pr_id:
+            return f"{repo}#{pr_id}"
+    name = node.name.strip()
+    if not name or (node.kind is NodeKind.DEVELOPER and name == node.id):
+        return None
+    return name
+
+
+async def _nodes_by_any_id(repository: GraphRepository, tenant_id: str) -> dict[str, GraphNode]:
+    """Every node by its id, and each member also by their chat id.
+
+    A model may cite a person by the chat id a tool showed it. A member's own
+    node id always wins over another member's chat id.
+    """
+    nodes = await repository.list_nodes(tenant_id)
+    by_id: dict[str, GraphNode] = {}
+    for node in nodes:
+        chat_id = _string_metadata(node, "chat_external_id")
+        if node.kind is NodeKind.DEVELOPER and chat_id is not None:
+            by_id.setdefault(chat_id, node)
+    by_id.update({node.id: node for node in nodes})
+    return by_id
+
+
+def _source(reference: str, nodes: Mapping[str, GraphNode]) -> AskSource:
+    node = nodes.get(reference)
+    if node is None:
+        return AskSource(id=reference, kind=None, label=None)
+    return AskSource(id=reference, kind=node.kind, label=node_label(node))
+
+
+def _looks_like_an_id(value: str) -> bool:
+    """Ids such as U0AA1OMAR01 or pod-data, not a word or a bare number."""
+    return (
+        len(value) >= 4
+        and " " not in value
+        and not value.isdigit()
+        and any(char.isdigit() or char in "-_:" for char in value)
+    )
+
+
+def _without_raw_ids(answer: str, nodes: Mapping[str, GraphNode]) -> str:
+    """Swap any raw id the model wrote into the answer for the node's label.
+
+    The prompt forbids ids in the text; this is the backstop, so a chat id
+    or a node id like pod-data never reaches the reader even when the model
+    slips. An id that is its own label -- an issue key -- is left alone, and
+    "Ana (U123)" becomes "Ana", not the name twice.
+    """
+    replacements = sorted(
+        (
+            (raw_id, label)
+            for raw_id, node in nodes.items()
+            if raw_id in answer
+            and _looks_like_an_id(raw_id)
+            and (label := node_label(node)) is not None
+            and label != raw_id
+        ),
+        key=lambda item: -len(item[0]),
+    )
+    for raw_id, label in replacements:
+        escaped = re.escape(raw_id)
+        # A literal, so a backslash in a name is never read as a group reference.
+        literal = label.replace("\\", "\\\\")
+        answer = re.sub(rf"{re.escape(label)}\s*[(\[]\s*`?{escaped}`?\s*[)\]]", literal, answer)
+        answer = re.sub(rf"(?<![\w/-])(`?){escaped}\1(?![\w/-])", literal, answer)
+    return answer
+
+
+def _status_reasons_payload(
+    root_id: str,
+    tree_nodes: Sequence[TreeNodeView],
+    labels: Mapping[str, str | None],
+    as_of: date,
+) -> dict[str, object]:
+    """A node's colour and the reasons behind it, worst first, each naming its source.
+
+    Reasons are grouped the way the Delivery panel groups them: factors that
+    say the same thing become one reason naming everyone it applies to.
+    """
+    context = _ReasonContext(
+        root_id=root_id,
+        nodes={node.id: node for node in tree_nodes},
+        labels=labels,
+        # A blocker attributed to an issue cites the issue; its owner is the
+        # person whose own status carries the same blocker.
+        owners={
+            factor.blocker_id: node
+            for node in tree_nodes
+            if node.kind is NodeKind.DEVELOPER
+            for factor in node.factors
+            if factor.blocker_id
+        },
+    )
+    root = context.nodes[root_id]
+    factors = [factor for factor in root.factors if factor.contributes is not Rag.GREEN] or list(
+        root.factors
+    )
+    factors.sort(key=lambda factor: _RAG_ORDER[factor.contributes])
+    reasons: dict[tuple[str, str, str, str | None], dict[str, object]] = {}
+    for factor in factors:
+        context.add(reasons, factor)
+    blockers = {
+        factor.blocker_id or factor.description
+        for factor in root.factors
+        if factor.kind is FactorKind.BLOCKER and not _is_no_reply_placeholder(factor)
+    }
+    parts = sorted(
+        (
+            node
+            for node in tree_nodes
+            if node.id != root_id
+            and node.kind in {NodeKind.PROJECT, NodeKind.WORKSTREAM, NodeKind.POD}
+        ),
+        key=lambda node: (_RAG_ORDER[node.rag or Rag.UNKNOWN], node.kind.value, node.name),
+    )
+    return {
+        "node": {"id": root.id, "kind": root.kind.value, "name": root.name},
+        "as_of": as_of.isoformat(),
+        "rag": (root.rag or Rag.UNKNOWN).value,
+        "source": (root.source or StatusSource.UNKNOWN).value,
+        "open_blocker_count": len(blockers),
+        "reasons": list(reasons.values())[:_MAX_REASONS],
+        "parts": [
+            {
+                "kind": node.kind.value,
+                "id": node.id,
+                "name": node.name,
+                "rag": (node.rag or Rag.UNKNOWN).value,
+            }
+            for node in parts[:_MAX_PARTS]
+        ],
+    }
+
+
+@dataclass(frozen=True, kw_only=True)
+class _ReasonContext:
+    root_id: str
+    nodes: Mapping[str, TreeNodeView]
+    labels: Mapping[str, str | None]
+    owners: Mapping[str, TreeNodeView]
+
+    def add(
+        self,
+        reasons: dict[tuple[str, str, str, str | None], dict[str, object]],
+        factor: RollupFactor,
+    ) -> None:
+        """Fold one factor into the reason that says the same thing.
+
+        The placeholder a silent person's status used to carry ("Blocker: no
+        confirmed reply") is a check-in state, not a blocker: the rollup
+        stopped counting it, but rows recorded before still hold it, and read
+        as written it turned one non-reply into an extra open blocker.
+        """
+        placeholder = _is_no_reply_placeholder(factor)
+        kind = FactorKind.STATUS if placeholder else factor.kind
+        says = _NO_REPLY_SAYS if placeholder else (_clip(factor.description) or "")
+        cited = self.nodes.get(factor.source_ref.id)
+        person = cited if cited is not None and cited.kind is NodeKind.DEVELOPER else None
+        if person is None and factor.blocker_id:
+            person = self.owners.get(factor.blocker_id)
+        checkin = (
+            _CHECKIN_WORDS[person.source or StatusSource.UNKNOWN]
+            if person is not None and kind is FactorKind.STATUS
+            else None
+        )
+        reason = reasons.setdefault(
+            (factor.contributes.value, kind.value, says, checkin),
+            {"contributes": factor.contributes.value, "kind": kind.value, "says": says},
+        )
+        if checkin is not None:
+            reason["checkin"] = checkin
+        if person is not None:
+            _append(reason, "people", {"id": person.id, "name": self.labels.get(person.id)})
+        # What the factor is about besides a person: the issue a blocker is on,
+        # a task, a workstream's target date. Never the node being explained.
+        subject = factor.work_item_ref or (
+            factor.source_ref if factor.source_ref.kind is not NodeKind.DEVELOPER else None
+        )
+        if subject is not None and subject.id != self.root_id:
+            _append(
+                reason,
+                "about",
+                {
+                    "id": subject.id,
+                    "kind": subject.kind.value,
+                    "label": self.labels.get(subject.id),
+                },
+            )
+
+
+def _signal_payload(
+    signal: str,
+    kind: str,
+    severity: Rag,
+    entity_id: str,
+    owner_id: str | None,
+    reason: str,
+    labels: Mapping[str, str | None],
+) -> dict[str, object]:
+    """A risk or drift finding, about an item by its label and owned by a named person."""
+    return {
+        "signal": signal,
+        "type": kind,
+        "severity": severity.value,
+        "about": {"id": entity_id, "label": labels.get(entity_id)},
+        "owner": {"id": owner_id, "name": labels.get(owner_id)} if owner_id else None,
+        "says": _clip(reason),
+    }
+
+
+def _append(reason: dict[str, object], key: str, entry: dict[str, object]) -> None:
+    entries = reason.setdefault(key, [])
+    if isinstance(entries, list) and entry not in entries:
+        entries.append(entry)
+
+
+def _is_no_reply_placeholder(factor: RollupFactor) -> bool:
+    return (
+        factor.kind is FactorKind.BLOCKER
+        and factor.description.removeprefix("Blocker:").strip().lower() == NO_REPLY_BLOCKER
+    )
+
+
+def _string_metadata(node: GraphNode, key: str) -> str | None:
+    value = node.metadata.get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def _workstream_flow_payload(view: WorkstreamFlowView) -> dict[str, object]:
@@ -1025,7 +1509,7 @@ def _workstream_progress_payload(view: WorkstreamProgressView) -> dict[str, obje
         "red_tasks": view.red_tasks,
         "unknown_tasks": view.unknown_tasks,
         "factors": [
-            {"description": _clip(factor.description), "contributes": factor.contributes.value}
+            _workstream_factor_payload(factor, view.workstream_id, view.source_names)
             for factor in view.factors[:5]
         ],
         "red_and_amber_tasks": [
@@ -1043,6 +1527,24 @@ def _workstream_progress_payload(view: WorkstreamProgressView) -> dict[str, obje
             )[:10]
         ],
     }
+
+
+def _workstream_factor_payload(
+    factor: RollupFactor, workstream_id: str, names: Mapping[str, str]
+) -> dict[str, object]:
+    """A factor, and who or what it is about when that is not the workstream itself."""
+    payload: dict[str, object] = {
+        "description": _clip(factor.description),
+        "contributes": factor.contributes.value,
+    }
+    cited = factor.source_ref
+    if cited.id == workstream_id:
+        return payload
+    # An issue goes by its key; anything else by its name, never by a raw id.
+    about = cited.id if cited.kind is NodeKind.TASK else names.get(cited.id)
+    if about is not None and (cited.kind is NodeKind.TASK or about != cited.id):
+        payload["about"] = about
+    return payload
 
 
 def _portfolio_heatmap_payload(
@@ -1117,7 +1619,12 @@ def _drift_payload(finding: DriftFinding, names: Mapping[str, str]) -> dict[str,
 
 
 async def _node_names(repository: GraphRepository, tenant_id: str) -> dict[str, str]:
-    return {node.id: node.name for node in await repository.list_nodes(tenant_id)}
+    """Names by node id, leaving out a person whose only name is their raw id."""
+    return {
+        node.id: node.name
+        for node in await repository.list_nodes(tenant_id)
+        if node.name and not (node.kind is NodeKind.DEVELOPER and node.name == node.id)
+    }
 
 
 async def _pods(

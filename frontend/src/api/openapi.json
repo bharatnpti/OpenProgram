@@ -6784,11 +6784,52 @@
           "trace_id": {
             "type": "string",
             "title": "Trace Id"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/AskSourceResponse"
+            },
+            "type": "array",
+            "title": "Sources",
+            "default": []
           }
         },
         "type": "object",
         "required": ["answer", "references", "tools_used", "trace_id"],
         "title": "AskResponse"
+      },
+      "AskSourceResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NodeKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "AskSourceResponse",
+        "description": "A reference with the words a reader knows it by; label is None when no node matches."
       },
       "AuthStatusResponse": {
         "properties": {

@@ -1585,6 +1585,22 @@ export interface components {
       tools_used: string[];
       /** Trace Id */
       trace_id: string;
+      /**
+       * Sources
+       * @default []
+       */
+      sources: components["schemas"]["AskSourceResponse"][];
+    };
+    /**
+     * AskSourceResponse
+     * @description A reference with the words a reader knows it by; label is None when no node matches.
+     */
+    AskSourceResponse: {
+      /** Id */
+      id: string;
+      kind?: components["schemas"]["NodeKind"] | null;
+      /** Label */
+      label?: string | null;
     };
     /** AuthStatusResponse */
     AuthStatusResponse: {
