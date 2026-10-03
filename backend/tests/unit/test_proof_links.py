@@ -73,3 +73,27 @@ def test_pull_request_evidence_prefers_user_supplied_link() -> None:
 
     assert evidence.url == "https://github.com/acme/api/pull/42?tab=files"
     assert evidence.url_is_user_supplied is True
+
+
+def test_pull_request_evidence_prefers_the_providers_own_link() -> None:
+    # A GitLab merge request must not get a github.com link built for it.
+    evidence = pull_request_evidence(
+        repo="acme/api",
+        pr_id="2",
+        github_base_url="https://api.github.com",
+        provider_url="http://gitlab.test/acme/api/-/merge_requests/2",
+    )
+    assert evidence.url == "http://gitlab.test/acme/api/-/merge_requests/2"
+    assert evidence.url_is_user_supplied is False
+
+
+def test_pull_request_evidence_user_link_still_beats_the_provider_link() -> None:
+    evidence = pull_request_evidence(
+        repo="acme/api",
+        pr_id="2",
+        github_base_url="https://api.github.com",
+        metadata={"pr_url": "https://review.test/2"},
+        provider_url="http://gitlab.test/acme/api/-/merge_requests/2",
+    )
+    assert evidence.url == "https://review.test/2"
+    assert evidence.url_is_user_supplied is True
