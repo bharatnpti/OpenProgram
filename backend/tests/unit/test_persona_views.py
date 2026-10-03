@@ -15,6 +15,7 @@ from core.domain.graph import (
     GraphEdge,
     GraphNode,
     GraphTree,
+    JsonScalar,
     NodeKind,
     Pod,
     Program,
@@ -309,6 +310,55 @@ async def test_workstream_progress_uses_latest_task_facts_for_rollup() -> None:
     assert view.red_tasks == 1
     assert view.confidence == 0.7
     assert any(factor.source_ref == blocked_task.ref for factor in view.factors)
+
+
+async def test_workstream_progress_leaves_open_tickets_out_of_its_colour_and_reasons() -> None:
+    # To do and in progress tickets have no colour of their own. They used to
+    # turn the workstream amber, each listed as "Task ... is unknown.".
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    workstream = Workstream(tenant_id="demo", id="ws-1", name="Payments")
+    tickets = (
+        _ticket("QA-1", "In Progress", "in_progress"),
+        _ticket("QA-2", "To Do", "todo"),
+        _ticket("QA-3", "Closed", "done"),
+    )
+    for node in (workstream, *tickets):
+        await store.upsert_node(node)
+    for ticket in tickets:
+        await store.add_edge(_contains(workstream.id, ticket.id))
+
+    view = await _persona_service(store).workstream_progress("demo", workstream.id, as_of)
+
+    assert view.rag is Rag.UNKNOWN
+    assert [(factor.description, factor.source_ref.id) for factor in view.factors] == [
+        ("No child task status data is available.", "ws-1")
+    ]
+    # Each ticket keeps its own colour: done is green whatever the tracker calls it.
+    assert {task.id: task.rag for task in view.tasks} == {
+        "QA-1": Rag.UNKNOWN,
+        "QA-2": Rag.UNKNOWN,
+        "QA-3": Rag.GREEN,
+    }
+    assert (view.green_tasks, view.unknown_tasks) == (1, 2)
+
+
+async def test_a_ticket_blocked_under_another_status_name_is_red_and_the_reason() -> None:
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    workstream = Workstream(tenant_id="demo", id="ws-1", name="Payments")
+    held = _ticket("QA-7", "On Hold", "blocked")
+    moving = _ticket("QA-8", "In Progress", "in_progress")
+    for node in (workstream, held, moving):
+        await store.upsert_node(node)
+    for ticket in (held, moving):
+        await store.add_edge(_contains(workstream.id, ticket.id))
+
+    view = await _persona_service(store).workstream_progress("demo", workstream.id, as_of)
+
+    assert view.rag is Rag.RED
+    assert {task.id: task.rag for task in view.tasks} == {"QA-7": Rag.RED, "QA-8": Rag.UNKNOWN}
+    assert {factor.source_ref.id for factor in view.factors} == {"QA-7"}
 
 
 async def test_progress_routes_refuse_wrong_node_kinds() -> None:
@@ -839,6 +889,12 @@ async def _populate_developer_task_tree(store: InMemoryGraphStore) -> Program:
         )
     )
     return program
+
+
+def _ticket(key: str, status: str, state: str) -> Task:
+    """A task as the Jira sync writes it: the tracker's status name and its state."""
+    metadata: dict[str, JsonScalar] = {"key": key, "status": status, "state": state}
+    return Task(tenant_id="demo", id=key, name=f"Ticket {key}", metadata=metadata)
 
 
 def _contains(from_id: str, to_id: str) -> GraphEdge:
