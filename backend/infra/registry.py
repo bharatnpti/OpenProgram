@@ -444,10 +444,25 @@ class ServiceRegistry:
                 status=drained.status,
                 message_id=drained.message_id or message.message_id,
             )
-        await self.workflow_scheduler().arm_reply_coalesce(
-            event.conversation_key, message.tenant_id
-        )
+        await self.arm_reply_coalesce(message.tenant_id, event.conversation_key)
         return ChatWebhookProcessResult(status="accepted", message_id=message.message_id)
+
+    async def arm_reply_coalesce(self, tenant_id: str, conversation_key: str) -> None:
+        """Arm the coalesce workflow for the conversation's buffered burst.
+
+        The burst is keyed by its earliest unprocessed event: a message landing
+        while that event is buffered resets the same debounce window, and the
+        first message after a drained burst starts a new workflow.
+        """
+        burst_key = await self.reply_ingestion_service().pending_burst_key(
+            tenant_id=tenant_id, conversation_key=conversation_key
+        )
+        if burst_key is None:
+            # A drain already in flight took the event; nothing is left to arm.
+            return
+        await self.workflow_scheduler().arm_reply_coalesce(
+            conversation_key, tenant_id, burst_key=burst_key
+        )
 
     def _build_inbound_chat_event(
         self,

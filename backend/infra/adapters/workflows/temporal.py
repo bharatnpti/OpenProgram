@@ -825,8 +825,13 @@ class TemporalWorkflowScheduler:
         )
         return workflow_id
 
-    async def arm_reply_coalesce(self, conversation_key: str, tenant_id: str) -> None:
+    async def arm_reply_coalesce(
+        self, conversation_key: str, tenant_id: str, *, burst_key: str
+    ) -> None:
         client = await _connect_temporal(self.target)
+        # The id stays per conversation here: Temporal's default reuse policy lets
+        # signal_with_start open a fresh run once the previous one has closed, so
+        # unlike DBOS a finished burst never swallows the next one.
         coalesce_id = safe_workflow_id(f"reply-coalesce-{tenant_id}-{conversation_key}")
         # signal_with_start: start the debounce workflow if idle, and in all cases
         # deliver the signal that resets its quiet-window timer.

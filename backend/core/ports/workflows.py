@@ -49,7 +49,16 @@ class WorkflowScheduler(Protocol):
 
     async def dispatch_developer_checkin(self, input: DeveloperCheckinDispatch) -> str: ...
 
-    async def arm_reply_coalesce(self, conversation_key: str, tenant_id: str) -> None: ...
+    async def arm_reply_coalesce(
+        self, conversation_key: str, tenant_id: str, *, burst_key: str
+    ) -> None:
+        """Start, or reset the debounce of, the coalesce workflow for one burst.
+
+        ``burst_key`` names the buffered burst (see ``reply_burst_key``). An
+        engine whose workflow ids dedupe forever must fold it into the id, so a
+        message after a finished burst starts a new workflow.
+        """
+        ...
 
     async def dispatch_sync(self, input: SyncDispatchInput) -> str: ...
 
