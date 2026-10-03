@@ -1,0 +1,65 @@
+backend/core/application/status_collector.py
+  s_027fd12d872fd7::t_15881b80a69e86 452
+  s_027fd12d872fd7::t_1f3cb261906e83 456,466,475,492
+  s_027fd12d872fd7::t_9a173ba8a5b9f3 632,645-647,657-658,662
+  s_027fd12d872fd7::t_bc3b62e65de8ae 692,713,722-723,745,2692-2693,2697-2698,2700-2706
+  s_027fd12d872fd7::t_0289d9e2d891a2 405-407,415,419,436,438-439
+  s_027fd12d872fd7::t_adc0f5cfd7e7ec 335-339
+  s_027fd12d872fd7::t_82b952347596be 363
+  s_027fd12d872fd7::t_f57c4e782ec516 476,487-491
+  s_027fd12d872fd7::t_fddb9af51992b5 577-578,590-592,602-604,609
+  s_027fd12d872fd7::t_d9988e0820da30 2042-2049
+  s_027fd12d872fd7::t_a5cb069ff1940c 2690-2691,2694-2696,2699,2707-2708
+  s_027fd12d872fd7::t_4cd48cb9b55b1d 378
+  s_027fd12d872fd7::t_9eab0a8e61a824 1970-1983
+  s_027fd12d872fd7::t_76125eb194e814 20
+backend/tests/unit/test_counterpart_resolution.py
+  s_027fd12d872fd7::t_d121458e8b9e15 471-472
+  s_027fd12d872fd7::t_9d26c8f0ddcb55 444-445
+backend/infra/persistence/in_memory_graph.py
+  s_027fd12d872fd7::t_76a9798730e9a3 40,477-488
+  s_027fd12d872fd7::t_03dc18b4acf9a3 489
+backend/tests/unit/test_checkin_signals.py
+  s_027fd12d872fd7::t_c86ec54aa38eff 1-96,99-135,138-182
+  s_027fd12d872fd7::t_bac22af2707ade 97-98,136-137
+backend/infra/persistence/postgres_status.py
+  s_027fd12d872fd7::t_f2b795244d5b49 125-142
+backend/tests/unit/test_status_persistence.py
+  s_027fd12d872fd7::t_9f4315b2b5f024 566-604
+  s_027fd12d872fd7::t_c47a5c013d4f80 5
+backend/tests/unit/test_writeback_reply.py
+  s_027fd12d872fd7::t_945eb6490d3cb3 656,659
+  s_027fd12d872fd7::t_971cee21818de1 471-655,657-658,660-848
+  s_027fd12d872fd7::t_5403985f27d0e3 25-26
+  s_027fd12d872fd7::t_45ac4f1ff57462 8-10
+backend/tests/unit/test_writeback_service.py
+  s_027fd12d872fd7::t_118aab3c617623 700-702
+backend/tests/contract/fakes.py
+  s_027fd12d872fd7::t_38a0c10cf5e8eb 37,191-200
+  s_027fd12d872fd7::t_4af63e904cc026 201
+backend/core/application/checkin_signals.py
+  s_027fd12d872fd7::t_a217873f9d7bf9 1-80,82,84-114
+  s_027fd12d872fd7::t_bac22af2707ade 81,83
+backend/core/ports/repositories.py
+  s_027fd12d872fd7::t_50a51358361541 33
+  s_027fd12d872fd7::t_d4a721e81faa63 198-209
+backend/tests/contract/contracts.py
+  s_027fd12d872fd7::t_b58e36e557c2b2 44,215-247
+  s_027fd12d872fd7::t_1446cd79659f3a 248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0ec31d64aa567adda8f85d15738659368ff00cc2",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
