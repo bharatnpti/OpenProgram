@@ -8,21 +8,32 @@ a candidate or DMed.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
 import pytest
 
-from core.application.counterparts import MemberContact, MemberDirectory, members_for_mention
+from core.application.counterparts import (
+    MemberContact,
+    MemberDirectory,
+    member_named_in_answer,
+    members_for_mention,
+)
 from core.application.cross_person_service import CrossPersonRequestService
-from core.application.status_collector import StatusCollector
-from core.domain.cross_person import CrossPersonRequestStatus, is_placeholder_name
+from core.application.status_collector import ReplyOutcome, StatusCollector
+from core.domain.cross_person import (
+    CrossPersonRequest,
+    CrossPersonRequestStatus,
+    is_placeholder_name,
+)
 from core.domain.directory import DirectoryUser
 from core.domain.graph import Developer, GraphNode, NodeKind
 from core.domain.identity import IdentityLink
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from core.domain.status import CheckIn, CrossPersonMention
+from infra.adapters.chat.slack import SlackChatWebhookMapper
+from infra.adapters.chat.slack_text import plain_text
 from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
 from tests.contract.fakes import FakeIssueTracker
 
@@ -98,8 +109,8 @@ class _RecordingChat:
         return [message.metadata.get("purpose") for _, message in self.sent]
 
 
-def _status_json(*requests: dict[str, object]) -> str:
-    """A complete status the model extracts, naming the given requests."""
+def _status_json(*requests: dict[str, object], eta_answered: bool = True) -> str:
+    """A status the model extracts, naming the given requests."""
     return json.dumps(
         {
             "is_status_update": True,
@@ -110,11 +121,16 @@ def _status_json(*requests: dict[str, object]) -> str:
                 "blockers": ["CHK-8 waits for review"],
                 "eta_change_days": None,
                 "blockers_answered": True,
-                "eta_answered": True,
+                "eta_answered": eta_answered,
                 "requests": list(requests),
             },
         }
     )
+
+
+_NOT_A_STATUS = json.dumps(
+    {"is_status_update": False, "sufficient": False, "question": None, "signals": None}
+)
 
 
 def _review_of_chk8(name: str, email: str | None = None) -> dict[str, object]:
@@ -178,6 +194,7 @@ def _collector(
         directory_repository=InMemoryDirectoryUserRepository(store),
         identity_link_repository=store,
         graph_repository=store,
+        cross_person_repository=store,
         model="test-model",
         checkin_max_clarifications=max_clarifications,
         checkin_ack_enabled=False,
@@ -371,3 +388,215 @@ def test_role_and_placeholder_words_are_not_names(name: str) -> None:
 @pytest.mark.parametrize("name", ["Noah", "Noah Weber", "Dev", "Dev Patel", "Lea", "Team Rocket"])
 def test_people_are_names(name: str) -> None:
     assert not is_placeholder_name(name)
+
+
+# --- Defect R1-4: the request survives "who did you mean?" ---------------------
+
+
+def _slack_message(text: str, ts: str) -> InboundMessage:
+    """A DM reply as the Slack transports hand it over, through the real mapper."""
+    message = SlackChatWebhookMapper(tenant_id=TENANT).map_webhook(
+        {
+            "event": {
+                "type": "message",
+                "user": REQUESTER,
+                "text": text,
+                "ts": ts,
+                "channel": "D-zoe",
+            }
+        },
+        "corr-zoe",
+    )
+    assert message is not None
+    return replace(message, received_at=datetime(2026, 10, 3, 12, 16, tzinfo=UTC))
+
+
+async def _handle(
+    collector: StatusCollector,
+    service: CrossPersonRequestService,
+    message: InboundMessage,
+) -> ReplyOutcome:
+    """One reply as the registry processes it: collect, then record its requests."""
+    outcome = await collector.handle_reply(message)
+    if outcome.cross_person_requests:
+        await service.record_from_checkin(
+            tenant_id=TENANT,
+            requester_id=REQUESTER,
+            requester_chat_ref=REQUESTER,
+            source_correlation_id="corr-zoe",
+            resolutions=outcome.cross_person_requests,
+            observed_at=message.received_at,
+        )
+    return outcome
+
+
+async def _raised(store: InMemoryGraphStore) -> list[CrossPersonRequest]:
+    return await store.list_for_requester(TENANT, REQUESTER)
+
+
+async def test_two_members_of_one_name_are_settled_by_a_slack_mailto_answer() -> None:
+    store = await _store_with(members=(NOAH, NOAH_BACKEND), others=(NOAH_DUPLICATE,))
+    chat = _RecordingChat()
+    llm = _ScriptedLlm(
+        [
+            _status_json(_review_of_chk8("Noah")),
+            # As in R1: the model reads the answer on its own, keeps no request
+            # and the ETA is missing, so the next question is about the ETA.
+            _status_json(eta_answered=False),
+            _status_json(),
+        ]
+    )
+    collector = _collector(store, llm, chat)
+    service = _service(store, chat)
+
+    first = await _handle(
+        collector, service, _message("CHK-8 is done on !1 but blocked until Noah reviews it.")
+    )
+
+    assert first.kind == "clarifying"
+    question = chat.texts_to(REQUESTER)[-1]
+    assert "noah@acme.example" in question
+    assert "noah.backend@acme.example" in question
+    assert "noah.weber@elsewhere.example" not in question
+    (waiting,) = await _raised(store)
+    assert waiting.status is CrossPersonRequestStatus.NEEDS_RESOLUTION
+    assert "cross_person_request" not in chat.purposes()
+
+    answer = _slack_message(
+        "The backend one, <mailto:noah.backend@acme.example|noah.backend@acme.example>", "1.2"
+    )
+    assert answer.text == "The backend one, noah.backend@acme.example"
+    second = await _handle(collector, service, answer)
+
+    assert second.kind == "clarifying"
+    assert chat.texts_to(REQUESTER)[-1] == "Thanks. What is your ETA to finish it?"
+    (request,) = await _raised(store)
+    assert request.id == waiting.id
+    assert request.status is CrossPersonRequestStatus.OPEN
+    assert request.counterpart_id == "U-noah-backend"
+    assert request.counterpart_email == "noah.backend@acme.example"
+    (dm,) = chat.texts_to("U-noah-backend")
+    assert "Review CHK-8 on !1" in dm
+    assert chat.texts_to("U-noah") == []
+    assert chat.texts_to("U-noah-dup") == []
+
+    # A redelivered answer neither reassigns the request nor DMs a second time.
+    await service.record_from_checkin(
+        tenant_id=TENANT,
+        requester_id=REQUESTER,
+        requester_chat_ref=REQUESTER,
+        source_correlation_id="corr-zoe",
+        resolutions=second.cross_person_requests,
+    )
+    third = await _handle(collector, service, _message("CHK-8 ETA is unchanged.", "msg-3"))
+
+    assert third.kind == "processed"
+    assert [item.id for item in await _raised(store)] == [waiting.id]
+    assert len(chat.texts_to("U-noah-backend")) == 1
+
+
+async def test_an_answer_naming_neither_member_keeps_the_request_unresolved() -> None:
+    store = await _store_with(members=(NOAH, NOAH_BACKEND))
+    chat = _RecordingChat()
+    llm = _ScriptedLlm(
+        [
+            _status_json(_review_of_chk8("Noah")),
+            _status_json(_review_of_chk8("Noah")),
+            _status_json(),
+        ]
+    )
+    collector = _collector(store, llm, chat)
+    service = _service(store, chat)
+
+    await _handle(collector, service, _message("Blocked until Noah reviews CHK-8."))
+    second = await _handle(collector, service, _message("The one on payments.", "msg-2"))
+
+    assert second.kind == "clarifying"
+    assert chat.texts_to(REQUESTER)[-1].startswith("Did you mean Noah Weber")
+    third = await _handle(collector, service, _message("Payments, as I said.", "msg-3"))
+
+    assert third.kind == "processed"
+    (request,) = await _raised(store)
+    assert request.status is CrossPersonRequestStatus.NEEDS_RESOLUTION
+    assert request.counterpart_id is None
+    assert request.raw_name == "Noah"
+    assert "cross_person_request" not in chat.purposes()
+
+
+async def test_a_mention_settles_the_request_even_when_the_model_sees_no_status() -> None:
+    store = await _store_with(members=(NOAH, NOAH_BACKEND))
+    chat = _RecordingChat()
+    llm = _ScriptedLlm([_status_json(_review_of_chk8("Noah Weber")), _NOT_A_STATUS])
+    collector = _collector(store, llm, chat)
+    service = _service(store, chat)
+
+    await _handle(collector, service, _message("Blocked until Noah Weber reviews CHK-8."))
+    answer = _slack_message("<@U-noah-backend>", "1.2")
+    outcome = await _handle(collector, service, answer)
+
+    assert answer.text == "@U-noah-backend"
+    assert outcome.kind == "acknowledged"
+    (request,) = await _raised(store)
+    assert request.status is CrossPersonRequestStatus.OPEN
+    assert request.counterpart_id == "U-noah-backend"
+    assert len(chat.texts_to("U-noah-backend")) == 1
+
+
+async def test_a_request_stated_with_a_missing_eta_is_recorded_that_turn() -> None:
+    store = await _store_with(members=(NOAH,))
+    chat = _RecordingChat()
+    llm = _ScriptedLlm([_status_json(_review_of_chk8("Noah"), eta_answered=False), _status_json()])
+    collector = _collector(store, llm, chat)
+    service = _service(store, chat)
+
+    first = await _handle(collector, service, _message("Blocked until Noah reviews CHK-8."))
+    second = await _handle(collector, service, _message("ETA is Wednesday.", "msg-2"))
+
+    assert (first.kind, second.kind) == ("clarifying", "processed")
+    (request,) = await _raised(store)
+    assert request.status is CrossPersonRequestStatus.OPEN
+    assert request.counterpart_id == "U-noah"
+    assert len(chat.texts_to("U-noah")) == 1
+
+
+def test_an_answer_settles_on_a_word_the_question_did_not_already_have() -> None:
+    alex = MemberContact(member_id="U1", chat_id="U1", name="Alex Chen", email="a@x.io")
+    alexa = MemberContact(member_id="U2", chat_id="U2", name="Alexa Roy", email="ar@x.io")
+    liam = MemberContact(member_id="U3", chat_id="U3", name="Liam Chen")
+    members = (alex, alexa, liam)
+    asked = CrossPersonMention(raw_name="Alex", kind="input", note="schema")
+    candidates = (alex, alexa)
+
+    def pick(answer: str, offered: tuple[MemberContact, ...] = candidates) -> str | None:
+        member = member_named_in_answer(answer, asked, offered, members)
+        return member.member_id if member is not None else None
+
+    assert pick("Alexa") == "U2"
+    assert pick("Alex Chen, the backend one") == "U1"
+    assert pick("Alex.") is None
+    assert pick("Just Alex") is None
+    assert pick("<mailto:ar@x.io|ar@x.io>") == "U2"
+    assert pick("@U1") == "U1"
+    assert pick("a@x.io or ar@x.io") is None
+    # Nobody offered: only a full name counts, not a first name in passing.
+    assert pick("Liam Chen", offered=()) == "U3"
+    assert pick("Liam said so", offered=()) is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "plain"),
+    [
+        ("<mailto:noah@acme.io|noah@acme.io>", "noah@acme.io"),
+        ("ask <@U0123ABCD> please", "ask @U0123ABCD please"),
+        ("<@U0123ABCD|noah>", "@U0123ABCD"),
+        ("on <https://git.example/mr/1|!1>", "on !1 (https://git.example/mr/1)"),
+        ("<https://git.example/mr/1>", "https://git.example/mr/1"),
+        ("<http://example.com|example.com>", "http://example.com"),
+        ("in <#C123|payments>", "in #payments"),
+        ("<!here> &lt;b&gt; &amp; co", "@here <b> & co"),
+        ("<!subteam^S1|@payments> look", "@payments look"),
+        ("no markup at all", "no markup at all"),
+    ],
+)
+def test_slack_markup_is_unwrapped_into_plain_text(raw: str, plain: str) -> None:
+    assert plain_text(raw) == plain

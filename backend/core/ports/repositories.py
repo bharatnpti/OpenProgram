@@ -113,6 +113,24 @@ class CrossPersonRequestRepository(Protocol):
         updated_at: datetime,
     ) -> CrossPersonRequest | None: ...
 
+    async def assign_counterpart(
+        self,
+        tenant_id: str,
+        request_id: str,
+        *,
+        counterpart_id: str,
+        counterpart_display_name: str | None,
+        counterpart_email: str | None,
+        updated_at: datetime,
+    ) -> CrossPersonRequest | None:
+        """Give a needs_resolution request its counterpart and open it.
+
+        One conditional update: only a request still in needs_resolution
+        changes, so a redelivered answer cannot reassign or reopen one.
+        Returns the opened request, or None when nothing changed.
+        """
+        ...
+
     async def claim_notification_attempt(
         self,
         tenant_id: str,

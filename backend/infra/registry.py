@@ -622,7 +622,9 @@ class ServiceRegistry:
             replace(message, correlation_id=resolved_correlation_id),
             allow_reprocess=allow_reprocess,
         )
-        if outcome.kind == "processed" and outcome.cross_person_requests:
+        # A request is recorded the turn it is stated, while the check-in may
+        # still be asking something else, so every outcome can carry some.
+        if outcome.cross_person_requests:
             assert checkin is not None
             correlation = await self.status_repository().checkin_correlation_by_id(
                 message.tenant_id,
@@ -994,6 +996,7 @@ class ServiceRegistry:
             identity_link_repository=self.identity_link_repository(),
             write_back_service=self.write_back_service(),
             graph_repository=self.graph_repository(),
+            cross_person_repository=self.cross_person_request_repository(),
             model=self.settings.litellm_model,
             tool_agent=tool_agent,
             conversation_retention_days=self.settings.conversation_retention_days,

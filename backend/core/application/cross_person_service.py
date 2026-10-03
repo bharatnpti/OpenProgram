@@ -62,6 +62,11 @@ class CrossPersonRequestService:
     ) -> list[CrossPersonRequest]:
         created: list[CrossPersonRequest] = []
         for index, resolution in enumerate(resolutions):
+            if resolution.request_id is not None:
+                settled = await self._settle(tenant_id, resolution, observed_at)
+                if settled is not None:
+                    created.append(settled)
+                continue
             request = new_cross_person_request(
                 tenant_id=tenant_id,
                 id=_request_id(source_correlation_id, index, resolution),
@@ -82,6 +87,41 @@ class CrossPersonRequestService:
                 stored = await self._notify_best_effort(stored)
             created.append(stored)
         return created
+
+    async def _settle(
+        self,
+        tenant_id: str,
+        resolution: CrossPersonRequestResolution,
+        observed_at: datetime | None,
+    ) -> CrossPersonRequest | None:
+        """Open a needs_resolution request with the member the requester has named since.
+
+        The request was recorded when it was stated, before anyone knew who it
+        named, so the answer to "who did you mean?" finishes that request
+        rather than starting another. A request already settled (a redelivered
+        answer) is returned as it is and nobody is told twice.
+        """
+        request_id = resolution.request_id
+        if (
+            request_id is None
+            or resolution.counterpart_id is None
+            or resolution.status is not CrossPersonRequestStatus.OPEN
+        ):
+            return None
+        opened = await self.repository.assign_counterpart(
+            tenant_id,
+            request_id,
+            counterpart_id=resolution.counterpart_id,
+            counterpart_display_name=resolution.counterpart_display_name,
+            counterpart_email=resolution.counterpart_email,
+            updated_at=observed_at or self.clock(),
+        )
+        if opened is None:
+            return await self.repository.get(tenant_id, request_id)
+        await self._append_fact(opened, transition="opened")
+        if self.auto_notify:
+            opened = await self._notify_best_effort(opened)
+        return opened
 
     async def _notify_best_effort(self, request: CrossPersonRequest) -> CrossPersonRequest:
         """Tell the counterpart, but never let a failed DM lose the request.

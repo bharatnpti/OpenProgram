@@ -504,6 +504,36 @@ async def test_postgres_claim_is_one_conditional_update() -> None:
     assert params == (T0, T0 + timedelta(seconds=600), "demo", "xreq-1", "open", 1)
 
 
+async def test_postgres_assigns_a_counterpart_only_to_a_request_awaiting_one() -> None:
+    executor = _RecordingExecutor(rows=[_row(status="open")])
+    repository = PostgresCrossPersonRequestRepository(executor)
+
+    opened = await repository.assign_counterpart(
+        "demo",
+        "xreq-1",
+        counterpart_id="U-alice",
+        counterpart_display_name="Alice Chen",
+        counterpart_email=None,
+        updated_at=T0,
+    )
+
+    assert opened is not None
+    [(query, params)] = executor.calls
+    compact = " ".join(query.split())
+    assert compact.startswith("UPDATE cross_person_requests SET counterpart_id = %s")
+    assert "AND status = %s RETURNING *" in compact
+    assert params == (
+        "U-alice",
+        "Alice Chen",
+        None,
+        "open",
+        T0,
+        "demo",
+        "xreq-1",
+        "needs_resolution",
+    )
+
+
 async def test_postgres_claim_that_loses_returns_none() -> None:
     repository = PostgresCrossPersonRequestRepository(_RecordingExecutor(rows=[]))
 

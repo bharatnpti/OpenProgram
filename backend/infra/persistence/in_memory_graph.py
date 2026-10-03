@@ -309,6 +309,32 @@ class InMemoryGraphStore:
         self._cross_person_requests[(tenant_id, request_id)] = updated
         return updated
 
+    async def assign_counterpart(
+        self,
+        tenant_id: str,
+        request_id: str,
+        *,
+        counterpart_id: str,
+        counterpart_display_name: str | None,
+        counterpart_email: str | None,
+        updated_at: datetime,
+    ) -> CrossPersonRequest | None:
+        # Read, check and write with no await in between, like the claim below.
+        key = (tenant_id, request_id)
+        existing = self._cross_person_requests.get(key)
+        if existing is None or existing.status is not CrossPersonRequestStatus.NEEDS_RESOLUTION:
+            return None
+        opened = replace(
+            existing,
+            counterpart_id=counterpart_id,
+            counterpart_display_name=counterpart_display_name,
+            counterpart_email=counterpart_email,
+            status=CrossPersonRequestStatus.OPEN,
+            updated_at=updated_at,
+        )
+        self._cross_person_requests[key] = opened
+        return opened
+
     async def claim_notification_attempt(
         self,
         tenant_id: str,
