@@ -10,6 +10,7 @@ import { briefsHref, localDay } from "../../lib/briefs";
 import { ragSeverity, toneForRag, toneHex } from "../../lib/status";
 import { useViewingDate } from "../../app/viewingDate";
 import type { BriefKind, DirectoryItemResponse, Rag } from "../../api/schema";
+import { heroDetailLine, type RollupTree } from "./heroDetail";
 
 const HERO_BG: Record<string, string> = {
   danger: "bg-rag-red-bg",
@@ -121,16 +122,42 @@ export function ManagerExecToday() {
   const topRisks = [...(risks.data?.risks ?? [])]
     .sort((a, b) => b.age_days - a.age_days)
     .slice(0, 3);
-  // "No material risks detected" is only true once the risk query has come back
-  // with none of them.
-  const heroDetail = risks.isError
-    ? "Risks could not be loaded, so this is not an all-clear."
-    : (topRisks[0]?.reason ??
-      (risks.isLoading
-        ? "Checking for open risks\u2026"
-        : heatFailed || heatLoading || worstRag === "unknown"
-          ? "Nothing has reported a status yet."
-          : "No material risks detected across projects, workstreams, or pods right now."));
+
+  // Partial or inferred statuses, blockers and drift turn tiles amber without
+  // leaving a risk record, so with none the line under an amber or red headline
+  // names those drivers from the program's rollup tree -- the read the program
+  // panel uses (same key), granted to manager, exec and admin alike. Pod
+  // blockers and pod rollups are not: they are per-person reads an exec lacks.
+  const needsDrivers = worstRag === "amber" || worstRag === "red";
+  const tree = useQuery({
+    queryKey: ["persona", "program-tree", programId, asOf],
+    queryFn: () => apiClient.personaProgramTree(programId, asOf),
+    enabled: Boolean(programId) && needsDrivers,
+  });
+  const rollupTree: RollupTree = tree.data
+    ? { status: "ready", nodes: tree.data.nodes }
+    : programs.isError || tree.isError
+      ? { status: "failed" }
+      : programs.data && !programId
+        ? { status: "ready", nodes: [] }
+        : { status: "loading" };
+  // "No material risks detected" is only true under a green headline, once the
+  // risk query has come back with none of them.
+  const heroDetail = heroDetailLine({
+    worstRag,
+    heatLoading,
+    heatFailed,
+    risksLoading: risks.isLoading,
+    risksFailed: risks.isError,
+    topRiskReason: topRisks[0]?.reason,
+    drift: risks.data?.drift ?? [],
+    tiles: {
+      pods: pods.data ?? [],
+      projects: projects.data ?? [],
+      workstreams: workstreams.data ?? [],
+    },
+    tree: rollupTree,
+  });
 
   return (
     <div className="flex flex-col gap-6">
