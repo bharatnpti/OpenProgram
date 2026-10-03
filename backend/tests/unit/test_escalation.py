@@ -8,6 +8,7 @@ import pytest
 from core.application.availability import AvailabilityService
 from core.application.status_collector import StatusCollector
 from core.domain.conversation import ConversationRole, ConversationTurn
+from core.domain.directory import DirectoryUser
 from core.domain.escalation import (
     EscalationContact,
     EscalationTarget,
@@ -21,7 +22,7 @@ from core.domain.graph import Developer, EdgeKind, GraphEdge, JsonScalar, Pod
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent, conversation_key
 from core.domain.status import CheckIn, CheckInClarification, CheckInCorrelation
-from infra.persistence.in_memory_graph import InMemoryGraphStore
+from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
 from infra.workflows import nudge
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
 from infra.workflows.daily_checkin import (
@@ -580,3 +581,93 @@ async def test_escalation_step_counts_a_reply_still_waiting_in_the_inbound_buffe
 
     assert result.status == expected
     assert len(chat.sent) == (1 if expected == "escalated" else 0)
+
+
+# The escalation notice names the person by display name, never by a raw chat id.
+
+
+async def test_escalation_notice_names_the_member_not_their_chat_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The scheduled fan-out gives the ladder no developer name.
+    _, chat, payload = await _open_checkin_in_pod_with_contacts(monkeypatch)
+    assert payload.developer_name is None
+
+    for number, target in ((2, EscalationTarget.SCRUM_MASTER), (3, EscalationTarget.MANAGER)):
+        result = await nudge.send_escalation_step_activity(payload.step_input(number, target.value))
+        assert result.status == "escalated"
+
+    assert [message.text for message in chat.sent] == [
+        "Heads up: Rosa Lind hasn't completed today's check-in yet. "
+        "You're notified as the scrum master so you can follow up if needed.",
+        "Heads up: Rosa Lind hasn't completed today's check-in yet. "
+        "You're notified as the manager so you can follow up if needed.",
+    ]
+    assert all("U-DEV" not in message.text for message in chat.sent)
+
+
+@pytest.mark.parametrize(
+    ("developer_name", "member_name", "directory_name", "expected"),
+    [
+        # No name supplied: the member record's display name.
+        (None, "Rosa Lind", "Rosa L.", "Rosa Lind"),
+        # The "name" supplied is only the person's chat id.
+        ("U-DEV", "Rosa Lind", None, "Rosa Lind"),
+        # A real name supplied by the caller is kept.
+        ("Rosa", "Rosa Lind", None, "Rosa"),
+        # No member record: the chat directory's display name.
+        (None, None, "Rosa L.", "Rosa L."),
+        # The member record holds only the id, and nothing else knows a name.
+        (None, "U-DEV", None, "a team member"),
+        (None, None, None, "a team member"),
+    ],
+)
+async def test_escalation_notice_falls_back_to_a_neutral_phrase_never_an_id(
+    developer_name: str | None,
+    member_name: str | None,
+    directory_name: str | None,
+    expected: str,
+) -> None:
+    store = InMemoryGraphStore()
+    if member_name is not None:
+        await store.upsert_node(Developer(tenant_id="demo", id="U-DEV", name=member_name))
+    if directory_name is not None:
+        await store.upsert_users(
+            [DirectoryUser(tenant_id="demo", external_id="U-DEV", display_name=directory_name)]
+        )
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="U-DEV",
+            correlation_id="corr-name",
+            asked_at=_ASKED_AT,
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    chat = FakeChatProvider()
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=FakeLlmProvider(),
+        status_repository=store,
+        conversation_repository=store,
+        graph_repository=store,
+        directory_repository=InMemoryDirectoryUserRepository(store),
+        model="test-model",
+    )
+
+    await collector.send_nudge(
+        tenant_id="demo",
+        correlation_id="corr-name",
+        developer_name=developer_name,
+        chat_external_id="U-DEV",
+        nudge_number=2,
+        target=EscalationTarget.SCRUM_MASTER,
+        recipient_chat_external_id="U-SM",
+    )
+
+    assert len(chat.sent) == 1
+    assert chat.sent[0].text.startswith(f"Heads up: {expected} hasn't completed")
+    assert "U-DEV" not in chat.sent[0].text
