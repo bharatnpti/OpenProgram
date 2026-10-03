@@ -884,6 +884,29 @@ class StatusCollector:
             max_chars=self._outbound_dm_max_chars,
         )
 
+    async def has_reply_on_record(self, checkin: CheckIn) -> bool:
+        """Whether the person has answered this check-in at all.
+
+        ``replied_at`` is set only when a reply is finalized. A reply that drew
+        a clarification leaves it unset until the clarification is answered or
+        the close-out finalizes the accumulated reply, yet the person did reply.
+        Every reply handled here is first recorded as a user turn on the
+        check-in's correlation (``_register_reply_turn``) -- the same turns the
+        timeout finalizer accumulates -- so one of those is the record.
+        """
+        if checkin.replied_at is not None:
+            return True
+        turns = await self._conversation_repository.list_recent_turns(
+            checkin.tenant_id,
+            checkin.developer_id,
+            limit=MAX_HISTORY_LIMIT,
+            since=checkin.asked_at,
+        )
+        return any(
+            turn.role is ConversationRole.USER and turn.correlation_id == checkin.correlation_id
+            for turn in turns
+        )
+
     async def record_non_response(
         self,
         *,

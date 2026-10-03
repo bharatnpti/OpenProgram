@@ -11,12 +11,19 @@ from core.domain.escalation import (
     with_member_identity,
 )
 from core.domain.graph import NodeKind
+from core.domain.inbound import conversation_key
 from core.domain.integrations import UserRef
-from core.domain.status import StatusSource
+from core.domain.status import CheckIn, CheckInCorrelation, StatusSource
 
 if TYPE_CHECKING:
+    from core.application.status_collector import StatusCollector
     from core.ports.repositories import GraphRepository
     from infra.registry import ServiceRegistry
+
+# Rung outcome for a person who has answered the open check-in, though their
+# reply is not finalized yet. Deliberately not "already_replied": that ends the
+# ladder, and the ladder's close-out is what finalizes the accumulated reply.
+SUPPRESSED_REPLIED = "suppressed_replied"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -76,7 +83,7 @@ class EscalationStepInput:
 class EscalationDelivery:
     """Pure decision: whether/where to deliver a given escalation rung."""
 
-    action: str  # "send" | "suppressed_unavailable" | "no_contact"
+    action: str  # "send" | "suppressed_replied" | "suppressed_unavailable" | "no_contact"
     recipient_chat_external_id: str | None = None
     recipient_display_name: str | None = None
 
@@ -87,7 +94,14 @@ def decide_escalation_delivery(
     developer_available: bool,
     developer_chat_external_id: str | None,
     contact: EscalationContact | None,
+    developer_replied: bool = False,
 ) -> EscalationDelivery:
+    if developer_replied:
+        # Every rung is for silence: the nudge asks for an update the person
+        # already gave, and the SM/manager notice says they haven't completed
+        # the check-in. Once they have answered at all -- even with a
+        # clarification still pending -- no rung goes out.
+        return EscalationDelivery(action=SUPPRESSED_REPLIED)
     if target is EscalationTarget.DEVELOPER:
         if not developer_available:
             return EscalationDelivery(action="suppressed_unavailable")
@@ -161,7 +175,14 @@ async def send_checkin_nudge_activity(payload: NudgeInput) -> NudgeResult:
 
 
 async def send_escalation_step_activity(payload: EscalationStepInput) -> NudgeResult:
-    """Deliver one ladder rung: nudge the developer, or notify a pod contact."""
+    """Deliver one ladder rung: nudge the developer, or notify a pod contact.
+
+    Rungs are for silence. Someone who has answered the open check-in at all is
+    never nudged or escalated as a non-responder, even while a clarification is
+    pending; the rung reports ``suppressed_replied`` and the ladder runs on to
+    its close-out, which finalizes their accumulated reply. Someone with no
+    reply at all goes up the ladder exactly as before.
+    """
     registry = _service_registry()
     try:
         repository = registry.status_repository()
@@ -179,26 +200,33 @@ async def send_escalation_step_activity(payload: EscalationStepInput) -> NudgeRe
                 status="already_replied",
             )
 
+        collector = registry.status_collector()
         target = EscalationTarget(payload.target)
         as_of = date.fromisoformat(payload.as_of)
+        developer_replied = await _developer_has_replied(registry, collector, checkin)
         developer_available = True
         contact: EscalationContact | None = None
-        if target is EscalationTarget.DEVELOPER:
-            developer_available = await _developer_available(
-                registry, payload.tenant_id, checkin.developer_id, as_of
-            )
-        else:
-            contact = await _resolve_pod_contact(
-                registry, payload.tenant_id, checkin.developer_id, target, as_of
-            )
+        # A replied person's rung is suppressed whoever it is for: nothing to look up.
+        if not developer_replied:
+            if target is EscalationTarget.DEVELOPER:
+                developer_available = await _developer_available(
+                    registry, payload.tenant_id, checkin.developer_id, as_of
+                )
+            else:
+                contact = await _resolve_pod_contact(
+                    registry, payload.tenant_id, checkin.developer_id, target, as_of
+                )
 
         delivery = decide_escalation_delivery(
             target=target,
             developer_available=developer_available,
             developer_chat_external_id=payload.chat_external_id or checkin.developer_id,
             contact=contact,
+            developer_replied=developer_replied,
         )
         if delivery.action != "send":
+            if delivery.action == SUPPRESSED_REPLIED:
+                _log_suppressed_for_reply(payload, checkin, target)
             return NudgeResult(
                 tenant_id=payload.tenant_id,
                 developer_id=checkin.developer_id,
@@ -206,7 +234,7 @@ async def send_escalation_step_activity(payload: EscalationStepInput) -> NudgeRe
                 status=delivery.action,
             )
 
-        nudge_message_id = await registry.status_collector().send_nudge(
+        nudge_message_id = await collector.send_nudge(
             tenant_id=payload.tenant_id,
             correlation_id=payload.correlation_id,
             developer_name=payload.developer_name,
@@ -225,6 +253,72 @@ async def send_escalation_step_activity(payload: EscalationStepInput) -> NudgeRe
         )
     finally:
         await registry.close()
+
+
+async def _developer_has_replied(
+    registry: ServiceRegistry, collector: StatusCollector, checkin: CheckIn
+) -> bool:
+    """Whether the person has answered this open check-in at all.
+
+    ``replied_at`` stays unset until a reply is finalized, so on its own it
+    reads a person whose reply drew a clarification as silent. Their reply is
+    on record as a user turn on the check-in's correlation; a reply that has
+    arrived but still waits in the inbound buffer counts too.
+    """
+    if await collector.has_reply_on_record(checkin):
+        return True
+    return await _reply_waiting_in_inbound_buffer(registry, checkin)
+
+
+async def _reply_waiting_in_inbound_buffer(registry: ServiceRegistry, checkin: CheckIn) -> bool:
+    """A message from the person in the check-in's DM, received but not yet handled.
+
+    Inbound DMs wait for the coalesce debounce or the sweeper before the
+    collector records them, so a reply can be minutes old and on no record
+    yet. Looks in the DM itself and in a thread on the check-in message.
+    """
+    correlation = await registry.status_repository().checkin_correlation_by_id(
+        checkin.tenant_id,
+        checkin.correlation_id,
+    )
+    if correlation is None:
+        return False
+    inbound = registry.inbound_chat_event_repository()
+    for thread_ref in _reply_thread_refs(correlation):
+        events = await inbound.list_unprocessed_for_conversation(
+            checkin.tenant_id,
+            conversation_key(checkin.tenant_id, thread_ref),
+        )
+        if any(
+            event.chat_user_ref == correlation.chat_user_ref
+            and event.received_at >= checkin.asked_at
+            for event in events
+        ):
+            return True
+    return False
+
+
+def _reply_thread_refs(correlation: CheckInCorrelation) -> tuple[str, ...]:
+    refs = (correlation.chat_thread_ref, correlation.outbound_message_id)
+    return tuple(dict.fromkeys(ref.strip() for ref in refs if ref and ref.strip()))
+
+
+def _log_suppressed_for_reply(
+    payload: EscalationStepInput, checkin: CheckIn, target: EscalationTarget
+) -> None:
+    # Imported here, not at module load: the workflow definitions import this
+    # module, and the workflow runtime loads them inside a sandbox that refuses
+    # structlog's import-time randomness (through rich).
+    import structlog
+
+    structlog.get_logger(__name__).info(
+        "checkin_escalation_suppressed_replied",
+        tenant_id=payload.tenant_id,
+        developer_id=checkin.developer_id,
+        correlation_id=payload.correlation_id,
+        nudge_number=payload.nudge_number,
+        escalation_target=target.value,
+    )
 
 
 async def _developer_available(
