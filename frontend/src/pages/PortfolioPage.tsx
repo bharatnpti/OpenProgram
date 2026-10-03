@@ -379,7 +379,7 @@ export function PortfolioPage() {
                   )}
                   {ask.data && (
                     <div className="mt-4 space-y-3">
-                      <div className="rounded-md border border-border px-3 py-2 text-sm">
+                      <div className="whitespace-pre-line rounded-md border border-border px-3 py-2 text-sm">
                         {ask.data.answer}
                       </div>
                       {ask.data.references.length > 0 && (
@@ -388,12 +388,17 @@ export function PortfolioPage() {
                             References
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            {ask.data.references.map((reference) => (
+                            {/* Labels come from the server; an unmatched id shows as itself. */}
+                            {(ask.data.sources?.length
+                              ? ask.data.sources
+                              : ask.data.references.map((id) => ({ id, label: null }))
+                            ).map((source) => (
                               <span
-                                key={reference}
+                                key={source.id}
+                                title={source.id}
                                 className="rounded-full border border-border px-2 py-1 text-xs text-muted-foreground"
                               >
-                                {reference}
+                                {source.label || source.id}
                               </span>
                             ))}
                           </div>
