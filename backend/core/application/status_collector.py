@@ -772,7 +772,12 @@ class StatusCollector:
             # never carry the developer's raw check-in/reply content.
             text = _compose_escalation_notice(
                 target=target,
-                developer_name=developer_name or checkin.developer_id,
+                developer_name=await self._escalation_subject_name(
+                    tenant_id=tenant_id,
+                    developer_id=checkin.developer_id,
+                    developer_name=developer_name,
+                    chat_external_id=chat_external_id,
+                ),
                 max_chars=self._outbound_dm_max_chars,
             )
             recipient = ChatUserRef(
@@ -883,6 +888,45 @@ class StatusCollector:
             purpose="nudge",
             max_chars=self._outbound_dm_max_chars,
         )
+
+    async def _escalation_subject_name(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        developer_name: str | None,
+        chat_external_id: str | None,
+    ) -> str | None:
+        """The display name an escalation notice gives the person it is about.
+
+        Scheduled check-ins hand the ladder no name, so the member record is
+        looked up. A supplied "name" that is only one of the person's ids counts
+        as no name. ``None`` when no name is known; never a raw id.
+        """
+        raw_ids = {developer_id.strip(), (chat_external_id or "").strip()} - {""}
+        supplied = (developer_name or "").strip()
+        if supplied and supplied not in raw_ids:
+            return supplied
+        return await self._member_display_name(tenant_id, developer_id, raw_ids=raw_ids)
+
+    async def _member_display_name(
+        self, tenant_id: str, developer_id: str, *, raw_ids: set[str]
+    ) -> str | None:
+        """The member's name from their graph member record, else the chat directory."""
+        names: list[str] = []
+        if self._graph_repository is not None:
+            node = await self._graph_repository.get_node(tenant_id, developer_id)
+            if node is not None and node.kind is NodeKind.DEVELOPER:
+                names.append(node.name)
+        if self._directory_repository is not None:
+            user = await self._directory_repository.get(tenant_id, developer_id)
+            if user is not None:
+                names.append(user.display_name)
+        for name in names:
+            cleaned = (name or "").strip()
+            if cleaned and cleaned not in raw_ids:
+                return cleaned
+        return None
 
     async def has_reply_on_record(self, checkin: CheckIn) -> bool:
         """Whether the person has answered this check-in at all.
@@ -2162,16 +2206,25 @@ _ESCALATION_ROLE_LABELS: dict[EscalationTarget, str] = {
 }
 
 
+# Who an escalation notice is about when no name is known: never a raw chat id.
+_ESCALATION_SUBJECT_FALLBACK = "a team member"
+
+
 def _compose_escalation_notice(
     *,
     target: EscalationTarget,
-    developer_name: str,
+    developer_name: str | None,
     max_chars: int = OUTBOUND_DM_MAX_CHARS,
 ) -> str:
-    """A privacy-safe non-response escalation notice (no raw reply content)."""
+    """A privacy-safe non-response escalation notice (no raw reply content).
+
+    ``developer_name`` is a display name, or ``None`` when none is known; the
+    notice then says "a team member" rather than showing an id.
+    """
     role_label = _ESCALATION_ROLE_LABELS.get(target, "escalation contact")
+    subject = (developer_name or "").strip() or _ESCALATION_SUBJECT_FALLBACK
     notice = (
-        f"Heads up: {developer_name} hasn't completed today's check-in yet. "
+        f"Heads up: {subject} hasn't completed today's check-in yet. "
         f"You're notified as the {role_label} so you can follow up if needed."
     )
     if len(notice) > max_chars:
