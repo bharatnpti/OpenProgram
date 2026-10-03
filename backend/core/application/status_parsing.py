@@ -54,6 +54,15 @@ CLARIFICATION_EVALUATOR_SYSTEM_PROMPT = (
     "false and ask one targeted clarification. "
     "If more information is needed, draft one concise follow-up question. Return only valid JSON."
 )
+# Added to the clarification prompt when this person's claims on their own issues
+# are written to the tracker without asking (write-back on, consent auto_apply).
+_TRACKER_WRITE_BACK_NOTE = (
+    "\n\nOpenProgram updates the issue tracker itself, after this check-in, for issues "
+    "assigned to this person. When the reply says one of their own issues changed state "
+    "(for example it is merged or done) and the tracker does not show it yet, that is not "
+    "a contradiction: do not ask about it, and never ask them to update the tracker "
+    "themselves."
+)
 _logger = structlog.get_logger(__name__)
 
 
@@ -150,11 +159,14 @@ class ClarificationEvaluator:
         conversation_turns: Iterable[ConversationTurn] = (),
         tools: Iterable[AgentTool] = (),
         prior_blockers: Sequence[DeveloperBlocker] = (),
+        tracker_write_back: bool = False,
     ) -> ClarificationDecision:
         if _is_trivial_non_status_reply(raw_reply):
             return ClarificationDecision(sufficient=False, is_status_update=False)
 
         prior_text, handles = _prior_blocker_prompt(prior_blockers)
+        if tracker_write_back:
+            prior_text += _TRACKER_WRITE_BACK_NOTE
         request = LlmRequest(
             tenant_id=tenant_id,
             prompt=_clarification_prompt(raw_reply, prior_text=prior_text),

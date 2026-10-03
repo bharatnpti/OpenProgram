@@ -9,7 +9,69 @@ import respx
 
 from core.domain.errors import ProviderUnavailable
 from core.domain.integrations import IssueState, SyncCursor, UserRef
-from infra.adapters.jira.jira_adapter import JiraIssueTrackerAdapter
+from infra.adapters.jira.jira_adapter import JiraIssueTrackerAdapter, _resolve_transition_id
+
+
+def _transition(transition_id: str, name: str, to_name: str, category: str) -> dict[str, object]:
+    return {
+        "id": transition_id,
+        "name": name,
+        "to": {"name": to_name, "statusCategory": {"key": category}},
+    }
+
+
+# The QA Jira workflow: global transitions To Do / In Progress / Done, each also
+# offered from the status the issue is already in (a self-transition).
+_QA_WORKFLOW = {
+    "transitions": [
+        _transition("11", "To Do", "To Do", "new"),
+        _transition("21", "In Progress", "In Progress", "indeterminate"),
+        _transition("31", "Done", "Done", "done"),
+    ]
+}
+
+
+@pytest.mark.parametrize(
+    ("canonical", "transition_id"),
+    [
+        ("todo", "11"),
+        ("in_progress", "21"),
+        # No review status in this workflow: review reads as in progress.
+        ("in_review", "21"),
+        ("done", "31"),
+        # Free-text labels still match by name, as before.
+        ("In Progress", "21"),
+    ],
+)
+def test_canonical_states_resolve_to_the_qa_workflow_transitions(
+    canonical: str, transition_id: str
+) -> None:
+    assert _resolve_transition_id(_QA_WORKFLOW, canonical) == transition_id
+
+
+def test_canonical_states_without_a_matching_status_resolve_to_nothing() -> None:
+    # No Blocked status in the QA workflow, and free text matches no transition.
+    assert _resolve_transition_id(_QA_WORKFLOW, "blocked") is None
+    assert _resolve_transition_id(_QA_WORKFLOW, "merged and ready to close") is None
+    assert _resolve_transition_id(_QA_WORKFLOW, "on track") is None
+
+
+def test_canonical_states_prefer_the_workflow_status_they_name() -> None:
+    workflow = {
+        "transitions": [
+            _transition("5", "Won't Do", "Won't Do", "done"),
+            _transition("6", "Backlog", "Backlog", "new"),
+            _transition("7", "Start", "In Progress", "indeterminate"),
+            _transition("8", "Ready for review", "In Review", "indeterminate"),
+            _transition("9", "Close", "Done", "done"),
+            _transition("10", "Hold", "Blocked", "indeterminate"),
+        ]
+    }
+    assert _resolve_transition_id(workflow, "done") == "9"
+    assert _resolve_transition_id(workflow, "in_review") == "8"
+    assert _resolve_transition_id(workflow, "in_progress") == "7"
+    assert _resolve_transition_id(workflow, "todo") == "6"
+    assert _resolve_transition_id(workflow, "blocked") == "10"
 
 
 @respx.mock

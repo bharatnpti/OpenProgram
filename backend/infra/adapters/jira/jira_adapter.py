@@ -440,16 +440,22 @@ def _jql_string(value: str) -> str:
 
 
 def _resolve_transition_id(payload: Mapping[str, object], to_state: str) -> str | None:
-    """Resolve the transition id whose destination matches ``to_state``.
+    """Resolve the id of a transition this issue really offers to ``to_state``.
 
-    Matches (case-insensitively) against the transition name, the destination
-    status name, and the destination status category key, so a caller can pass
-    either a capability-neutral state ("done") or a concrete workflow label.
+    A canonical state (``todo``, ``in_progress``, ``in_review``, ``blocked``,
+    ``done``) is matched by where each transition leads, read exactly as
+    ``_issue_state`` reads a status, so a write lands on the state the next sync
+    reads back. Anything else is matched case-insensitively against the
+    transition name, the destination status name, and the destination status
+    category key (a concrete workflow label).
     """
     wanted = to_state.strip().lower()
     if not wanted:
         return None
-    for transition in _items(payload, "transitions"):
+    transitions = _items(payload, "transitions")
+    if wanted in _CANONICAL_STATES:
+        return _canonical_transition_id(transitions, wanted)
+    for transition in transitions:
         candidates = [_optional_string(transition, "name")]
         destination = _optional_mapping(transition, "to")
         if destination is not None:
@@ -457,6 +463,64 @@ def _resolve_transition_id(payload: Mapping[str, object], to_state: str) -> str 
             candidates.append(_status_category(destination))
         if any(candidate and candidate.strip().lower() == wanted for candidate in candidates):
             return _optional_string(transition, "id")
+    return None
+
+
+_CANONICAL_STATES: Mapping[str, IssueState] = {
+    "todo": IssueState.TODO,
+    "in_progress": IssueState.IN_PROGRESS,
+    # Jira has no review category: a review status sits in "In Progress", and
+    # _issue_state reads it as in progress.
+    "in_review": IssueState.IN_PROGRESS,
+    "blocked": IssueState.BLOCKED,
+    "done": IssueState.DONE,
+}
+# Done-category resolutions that are not "the work is finished".
+_NOT_DONE_TOKENS = ("won't", "wont", "cancel", "reject", "duplicate", "declin", "invalid")
+
+
+def _canonical_transition_id(transitions: list[Mapping[str, object]], wanted: str) -> str | None:
+    """Pick the transition leading to the canonical state ``wanted``, or ``None``.
+
+    ``in_review`` prefers a destination whose name says review; a workflow
+    without one (To Do / In Progress / Done) gets its in-progress transition,
+    since OpenProgram reads a review status as in progress anyway.
+    """
+    leads_to = [
+        (transition, destination)
+        for transition in transitions
+        if (destination := _optional_mapping(transition, "to")) is not None
+        and _issue_state(destination) is _CANONICAL_STATES[wanted]
+    ]
+
+    def name(destination: Mapping[str, object]) -> str:
+        return (_optional_string(destination, "name") or "").strip().lower()
+
+    if wanted == "in_review":
+        review = [pair for pair in leads_to if "review" in name(pair[1])]
+        if review:
+            leads_to = review
+        else:
+            wanted = "in_progress"
+    if wanted == "in_progress":
+        not_review = [pair for pair in leads_to if "review" not in name(pair[1])]
+        progress = [pair for pair in not_review if "progress" in name(pair[1])]
+        leads_to = progress or not_review
+    elif wanted == "done":
+        finished = [
+            pair
+            for pair in leads_to
+            if not any(token in name(pair[1]) for token in _NOT_DONE_TOKENS)
+        ]
+        exact = [pair for pair in finished if name(pair[1]) == "done"]
+        leads_to = exact or finished
+    elif wanted == "todo":
+        exact = [pair for pair in leads_to if name(pair[1]) in {"to do", "todo"}]
+        leads_to = exact or leads_to
+    for transition, _destination in leads_to:
+        transition_id = _optional_string(transition, "id")
+        if transition_id is not None:
+            return transition_id
     return None
 
 
