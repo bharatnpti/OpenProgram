@@ -20,6 +20,7 @@ from core.domain.graph import (
     Pod,
     Program,
     Project,
+    SprintNode,
     Task,
     WorkItem,
     Workstream,
@@ -255,6 +256,95 @@ async def test_project_progress_excludes_tasks_reached_through_a_shared_pod() ->
     assert view.amber_tasks == 1
     # The borrowed task was green; counting it would have read 50%, not 0%.
     assert view.percent_complete == 0.0
+
+
+async def test_project_progress_counts_the_tasks_it_contains_not_its_peoples_assignments() -> None:
+    """A person working in two projects, and a pod both projects share.
+
+    Jira tickets hang off a project, a sprint or a pod, and off their assignee.
+    The project's tree follows the assignments into the other project, so
+    counting every task in it put each project's tickets in both.
+    """
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    checkout = Project(
+        tenant_id="demo", id="project-chk", name="Checkout", metadata={"jira_project_key": "CHK"}
+    )
+    identity = Project(
+        tenant_id="demo", id="project-idp", name="Identity", metadata={"jira_project_key": "IDP"}
+    )
+    checkout_pod = Pod(tenant_id="demo", id="pod-checkout", name="Checkout Pod")
+    identity_pod = Pod(tenant_id="demo", id="pod-identity", name="Identity Pod")
+    # One Jira filter (a label) spans both projects, so this pod holds both
+    # projects' tickets.
+    platform_pod = Pod(tenant_id="demo", id="pod-platform", name="Platform Pod")
+    noah = Developer(tenant_id="demo", id="dev-noah", name="Noah")
+    omar = Developer(tenant_id="demo", id="dev-omar", name="Omar")
+    sprint = SprintNode(tenant_id="demo", id="sprint-chk", name="CHK Sprint 1")
+    tickets = {
+        "CHK-1": _ticket("CHK-1", "Done", "done"),
+        "CHK-2": _ticket("CHK-2", "In Progress", "in_progress"),
+        "IDP-3": _ticket("IDP-3", "Done", "done"),
+        "CHK-17": _ticket("CHK-17", "To Do", "todo"),
+        "IDP-8": _ticket("IDP-8", "In Progress", "in_progress"),
+    }
+    # Assigned to Noah with no container at all: unclaimed, not foreign.
+    loose = Task(tenant_id="demo", id="task-loose", name="Loose task")
+    for node in (
+        checkout,
+        identity,
+        checkout_pod,
+        identity_pod,
+        platform_pod,
+        noah,
+        omar,
+        sprint,
+        loose,
+        *tickets.values(),
+    ):
+        await store.upsert_node(node)
+    for parent, child in (
+        (checkout, checkout_pod),
+        (identity, identity_pod),
+        (checkout, platform_pod),
+        (identity, platform_pod),
+        (checkout_pod, noah),
+        (identity_pod, noah),
+        (platform_pod, omar),
+        (checkout, sprint),
+        (checkout, tickets["CHK-1"]),
+        (sprint, tickets["CHK-2"]),
+        (identity, tickets["IDP-3"]),
+        (platform_pod, tickets["CHK-17"]),
+        (platform_pod, tickets["IDP-8"]),
+    ):
+        await store.add_edge(_contains(parent.id, child.id))
+    for assignee, task_id in (
+        (noah, "CHK-1"),
+        (noah, "CHK-2"),
+        (noah, "IDP-3"),
+        (noah, "task-loose"),
+        (omar, "CHK-17"),
+        (omar, "IDP-8"),
+    ):
+        await store.add_edge(
+            GraphEdge(
+                tenant_id="demo",
+                from_node_id=assignee.id,
+                to_node_id=task_id,
+                kind=EdgeKind.ASSIGNED_TO,
+            )
+        )
+    service = _persona_service(store)
+
+    checkout_view = await service.project_progress("demo", checkout.id, as_of)
+    identity_view = await service.project_progress("demo", identity.id, as_of)
+
+    assert {task.id for task in checkout_view.tasks} == {"CHK-1", "CHK-2", "CHK-17", "task-loose"}
+    assert (checkout_view.total_tasks, checkout_view.green_tasks) == (4, 1)
+    assert checkout_view.percent_complete == 25.0
+    assert {task.id for task in identity_view.tasks} == {"IDP-3", "IDP-8", "task-loose"}
+    assert (identity_view.total_tasks, identity_view.green_tasks) == (3, 1)
 
 
 async def test_workstream_progress_uses_latest_task_facts_for_rollup() -> None:
@@ -892,8 +982,13 @@ async def _populate_developer_task_tree(store: InMemoryGraphStore) -> Program:
 
 
 def _ticket(key: str, status: str, state: str) -> Task:
-    """A task as the Jira sync writes it: the tracker's status name and its state."""
-    metadata: dict[str, JsonScalar] = {"key": key, "status": status, "state": state}
+    """A task as the Jira sync writes it: status name, state and Jira project."""
+    metadata: dict[str, JsonScalar] = {
+        "key": key,
+        "status": status,
+        "state": state,
+        "project_key": key.rsplit("-", 1)[0],
+    }
     return Task(tenant_id="demo", id=key, name=f"Ticket {key}", metadata=metadata)
 
 
@@ -927,6 +1022,25 @@ class _StaticGraphRepository:
         assert tenant_id == "demo"
         assert root_id == self._root.id
         return GraphTree(root=self._root, nodes=self._nodes, edges=self._edges)
+
+    # The static graph is the whole tenant: ownership reads it through these.
+    async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
+        return [node for node in self._nodes if kind is None or node.kind is kind]
+
+    async def list_edges(
+        self,
+        tenant_id: str,
+        from_node_id: str | None = None,
+        to_node_id: str | None = None,
+        kind: EdgeKind | None = None,
+    ) -> list[GraphEdge]:
+        return [
+            edge
+            for edge in self._edges
+            if (kind is None or edge.kind is kind)
+            and (from_node_id is None or edge.from_node_id == from_node_id)
+            and (to_node_id is None or edge.to_node_id == to_node_id)
+        ]
 
 
 class _FailingGraphRepository:
