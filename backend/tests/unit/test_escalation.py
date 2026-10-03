@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
+from core.application.availability import AvailabilityService
 from core.application.status_collector import StatusCollector
+from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.escalation import (
     EscalationContact,
     EscalationTarget,
@@ -16,7 +19,8 @@ from core.domain.escalation import (
 )
 from core.domain.graph import Developer, EdgeKind, GraphEdge, JsonScalar, Pod
 from core.domain.identity import IdentityLink
-from core.domain.status import CheckIn
+from core.domain.inbound import InboundChatEvent, conversation_key
+from core.domain.status import CheckIn, CheckInClarification, CheckInCorrelation
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.workflows import nudge
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
@@ -26,9 +30,15 @@ from infra.workflows.daily_checkin import (
 from infra.workflows.nudge import (
     EscalationStepPayload,
     NudgeInput,
+    NudgeResult,
     decide_escalation_delivery,
 )
-from tests.contract.fakes import FakeChatProvider, FakeIssueTracker, FakeLlmProvider
+from tests.contract.fakes import (
+    FakeCalendarProvider,
+    FakeChatProvider,
+    FakeIssueTracker,
+    FakeLlmProvider,
+)
 
 
 def test_default_policy_full_ladder() -> None:
@@ -135,6 +145,7 @@ class _EscalationRegistry:
     def __init__(self, store: InMemoryGraphStore, collector: StatusCollector) -> None:
         self._store = store
         self._collector = collector
+        self.settings = SimpleNamespace(tenant_default_timezone="UTC")
 
     def status_repository(self) -> InMemoryGraphStore:
         return self._store
@@ -144,6 +155,12 @@ class _EscalationRegistry:
 
     def identity_link_repository(self) -> InMemoryGraphStore:
         return self._store
+
+    def inbound_chat_event_repository(self) -> InMemoryGraphStore:
+        return self._store
+
+    def availability_service(self) -> AvailabilityService:
+        return AvailabilityService(FakeCalendarProvider())
 
     def status_collector(self) -> StatusCollector:
         return self._collector
@@ -306,3 +323,260 @@ def test_nudge_input_for_daily_checkin_result_propagates_escalation_steps() -> N
     nudge_input = build_nudge_input(result, scheduled, now=datetime(2026, 1, 10, 9, 0))
     assert nudge_input.escalation_steps == steps
     assert nudge_input.resolved_steps() == steps
+
+
+# A person who has answered the open check-in is never nudged or escalated as a
+# non-responder, even while a clarification is still pending. Silence still goes
+# up the whole ladder.
+
+_ASKED_AT = datetime(2026, 1, 12, 9, 0, tzinfo=UTC)
+_CHECKIN_TS = "1768208400.000100"
+_LADDER = (
+    EscalationStepPayload(target=EscalationTarget.DEVELOPER.value, wait_seconds=900),
+    EscalationStepPayload(target=EscalationTarget.SCRUM_MASTER.value, wait_seconds=600),
+    EscalationStepPayload(target=EscalationTarget.MANAGER.value, wait_seconds=600),
+)
+_LADDER_PURPOSES = {"status_nudge", "status_escalation"}
+
+
+async def _open_checkin_in_pod_with_contacts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[InMemoryGraphStore, FakeChatProvider, NudgeInput]:
+    """An open check-in for U-DEV, whose pod's SM and manager were picked from members."""
+    store = InMemoryGraphStore()
+    await store.upsert_node(
+        Pod(
+            tenant_id="demo",
+            id="pod-1",
+            name="Pod",
+            metadata={
+                "escalation_sm_member_id": "sam",
+                "escalation_sm_chat_external_id": "U-SM",
+                "escalation_sm_display_name": "Sam Ortiz",
+                "escalation_manager_member_id": "mia",
+                "escalation_manager_chat_external_id": "U-MGR",
+                "escalation_manager_display_name": "Mia Kovacs",
+            },
+        )
+    )
+    for member_id, name in (("U-DEV", "Rosa Lind"), ("sam", "Sam Ortiz"), ("mia", "Mia Kovacs")):
+        await store.upsert_node(Developer(tenant_id="demo", id=member_id, name=name))
+    await store.add_edge(
+        GraphEdge(
+            tenant_id="demo",
+            from_node_id="pod-1",
+            to_node_id="U-DEV",
+            kind=EdgeKind.CONTAINS,
+            valid_from=date(2026, 1, 1),
+        )
+    )
+    for member_id, chat_id in (("sam", "U-SM"), ("mia", "U-MGR")):
+        await store.upsert_identity_link(
+            IdentityLink(tenant_id="demo", developer_id=member_id, chat_user_id=chat_id)
+        )
+    await store.record_checkin(
+        CheckIn(
+            tenant_id="demo",
+            developer_id="U-DEV",
+            correlation_id="corr-esc",
+            asked_at=_ASKED_AT,
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    await store.record_checkin_correlation(
+        CheckInCorrelation(
+            tenant_id="demo",
+            correlation_id="corr-esc",
+            developer_id="U-DEV",
+            chat_user_ref="U-DEV",
+            chat_thread_ref="D-DEV",
+            outbound_message_id=_CHECKIN_TS,
+            asked_at=_ASKED_AT,
+        )
+    )
+    chat = FakeChatProvider()
+    collector = StatusCollector(
+        issue_tracker=FakeIssueTracker(),
+        chat_provider=chat,
+        llm_provider=FakeLlmProvider(),
+        status_repository=store,
+        conversation_repository=store,
+        graph_repository=store,
+        model="test-model",
+    )
+    registry = _EscalationRegistry(store, collector)
+    monkeypatch.setattr(nudge, "_service_registry", lambda: registry)
+    # As the scheduled fan-out builds it: no developer name.
+    payload = NudgeInput(
+        tenant_id="demo",
+        correlation_id="corr-esc",
+        as_of="2026-01-12",
+        escalation_steps=_LADDER,
+    )
+    return store, chat, payload
+
+
+async def _turn(
+    store: InMemoryGraphStore,
+    *,
+    role: ConversationRole,
+    content: str,
+    minutes: int,
+    correlation_id: str = "corr-esc",
+) -> None:
+    observed_at = _ASKED_AT + timedelta(minutes=minutes)
+    await store.append_turn(
+        ConversationTurn(
+            tenant_id="demo",
+            developer_id="U-DEV",
+            conversation_id=correlation_id,
+            conversation_date=observed_at.date(),
+            role=role,
+            content=content,
+            correlation_id=correlation_id,
+            chat_message_id=f"ts-{correlation_id}-{minutes}",
+            observed_at=observed_at,
+        )
+    )
+
+
+async def _reply_with_unanswered_clarification(store: InMemoryGraphStore) -> None:
+    """The person replied; the follow-up question the bot asked is still unanswered."""
+    await _turn(store, role=ConversationRole.USER, content="Cache work is in review.", minutes=15)
+    await store.record_checkin_clarification(
+        CheckInClarification(
+            tenant_id="demo",
+            correlation_id="corr-esc",
+            clarification_number=1,
+            question="What is your ETA?",
+            sent_at=_ASKED_AT + timedelta(minutes=16),
+            outbound_message_id="ts-clarification-1",
+        )
+    )
+    await _turn(store, role=ConversationRole.AGENT, content="What is your ETA?", minutes=16)
+
+
+async def _run_ladder(payload: NudgeInput) -> tuple[list[str], NudgeResult | None]:
+    """The rung loop of the DBOS and Temporal nudge workflows, without the sleeps."""
+    statuses: list[str] = []
+    for number, step in enumerate(payload.resolved_steps(), start=1):
+        result = await nudge.send_escalation_step_activity(payload.step_input(number, step.target))
+        statuses.append(result.status)
+        if result.status == "already_replied":
+            return statuses, None
+    return statuses, await nudge.close_checkin_non_response_activity(payload)
+
+
+@pytest.mark.parametrize("target", list(EscalationTarget))
+def test_decide_delivery_suppresses_every_rung_once_the_developer_replied(
+    target: EscalationTarget,
+) -> None:
+    contact = EscalationContact(target=target, chat_external_id="U-MGR", display_name="Mia")
+    delivery = decide_escalation_delivery(
+        target=target,
+        developer_available=True,
+        developer_chat_external_id="U-DEV",
+        contact=contact,
+        developer_replied=True,
+    )
+    assert delivery.action == "suppressed_replied"
+    assert delivery.recipient_chat_external_id is None
+
+
+async def test_ladder_does_not_escalate_a_reply_whose_clarification_is_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, chat, payload = await _open_checkin_in_pod_with_contacts(monkeypatch)
+    await _reply_with_unanswered_clarification(store)
+
+    statuses, closed = await _run_ladder(payload)
+
+    # No reminder to them, and no "hasn't completed" notice to the SM or manager.
+    assert statuses == ["suppressed_replied"] * 3
+    assert [m for m in chat.sent if m.metadata.get("purpose") in _LADDER_PURPOSES] == []
+    for number in (1, 2, 3):
+        assert await store.checkin_nudge_for("demo", "corr-esc", number) is None
+    # The ladder still ran to its close-out, which finalized their reply.
+    assert closed is not None
+    assert closed.status == "closed"
+    assert closed.terminal_source == "confirmed"
+    checkin = await store.checkin_by_correlation("demo", "corr-esc")
+    assert checkin is not None
+    assert checkin.replied_at == _ASKED_AT + timedelta(minutes=15)
+
+
+async def test_ladder_still_nudges_and_escalates_someone_who_never_replied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, chat, payload = await _open_checkin_in_pod_with_contacts(monkeypatch)
+    # Only a reply to another check-in is on record, which does not answer this one.
+    await _turn(
+        store,
+        role=ConversationRole.USER,
+        content="Yesterday's work is done.",
+        minutes=5,
+        correlation_id="corr-other",
+    )
+
+    statuses, closed = await _run_ladder(payload)
+
+    assert statuses == ["nudged", "escalated", "escalated"]
+    assert [message.metadata["purpose"] for message in chat.sent] == [
+        "status_nudge",
+        "status_escalation",
+        "status_escalation",
+    ]
+    for message in chat.sent[1:]:
+        assert "hasn't completed today's check-in" in message.text
+    nudges = [await store.checkin_nudge_for("demo", "corr-esc", number) for number in (1, 2, 3)]
+    assert [sent.outbound_message_id if sent else None for sent in nudges] == [
+        "msg-U-DEV-1",
+        "msg-U-SM-2",
+        "msg-U-MGR-3",
+    ]
+    # Silence is never read as fine.
+    assert closed is not None
+    assert closed.terminal_source == "unknown"
+
+
+@pytest.mark.parametrize(
+    ("thread_ref", "minutes", "expected"),
+    [
+        # Top-level reply in the DM, still waiting for the coalesce debounce or sweeper.
+        ("D-DEV", 24, "suppressed_replied"),
+        # Reply in a thread on the check-in message, also still buffered.
+        (_CHECKIN_TS, 24, "suppressed_replied"),
+        # A message left from before this check-in was asked does not answer it.
+        ("D-DEV", -60, "escalated"),
+    ],
+)
+async def test_escalation_step_counts_a_reply_still_waiting_in_the_inbound_buffer(
+    monkeypatch: pytest.MonkeyPatch,
+    thread_ref: str,
+    minutes: int,
+    expected: str,
+) -> None:
+    store, chat, payload = await _open_checkin_in_pod_with_contacts(monkeypatch)
+    await store.append(
+        InboundChatEvent(
+            tenant_id="demo",
+            provider="slack",
+            event_id=f"evt-{minutes}",
+            conversation_key=conversation_key("demo", thread_ref),
+            chat_user_ref="U-DEV",
+            chat_thread_ref=thread_ref,
+            message_ref=f"ts-{minutes}",
+            text="CHK-1 is in review.",
+            correlation_id="req-1",
+            received_at=_ASKED_AT + timedelta(minutes=minutes),
+        )
+    )
+
+    result = await nudge.send_escalation_step_activity(
+        payload.step_input(2, EscalationTarget.SCRUM_MASTER.value)
+    )
+
+    assert result.status == expected
+    assert len(chat.sent) == (1 if expected == "escalated" else 0)
