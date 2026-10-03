@@ -1070,7 +1070,10 @@ async def test_status_collector_clarifies_ambiguous_cross_person_name() -> None:
 
     checkin = await store.checkin_by_correlation("demo", "corr-1")
     assert outcome.kind == "clarifying"
-    assert outcome.cross_person_requests == ()
+    # Recorded as soon as it is stated, waiting for its person.
+    (waiting,) = outcome.cross_person_requests
+    assert waiting.status is CrossPersonRequestStatus.NEEDS_RESOLUTION
+    assert waiting.counterpart_id is None
     assert checkin is not None
     assert checkin.replied_at is None
     assert len(chat.sent) == 1

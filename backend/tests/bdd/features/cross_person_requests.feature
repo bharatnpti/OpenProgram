@@ -45,11 +45,13 @@ Feature: Cross-person request detection
     And the response status should be "clarifying"
     And the latest bot message for "U1001" should contain "alex.chen@example.com"
     And the latest bot message for "U1001" should contain "alexa.roy@example.com"
-    And no cross-person requests should be recorded
+    And the cross-person request raised by "U1001" should have status "needs_resolution"
+    And no cross-person request should notify anyone
     When I reply to the latest bot message for "U1001" with text "I meant alexa.roy@example.com."
     Then the response status code should be 200
     And the response status should be "processed"
     And a cross-person request should notify "U2002" with text containing "schema confirmation"
+    And the cross-person request raised by "U1001" should have status "open"
 
   Scenario: The counterpart's threaded reply resolves the request and the requester is told
     Given the cross-person request stack is running with Liam review extraction

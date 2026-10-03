@@ -112,6 +112,42 @@ class PostgresCrossPersonRequestRepository:
             )
         return _request_from_row(rows[0]) if rows else None
 
+    async def assign_counterpart(
+        self,
+        tenant_id: str,
+        request_id: str,
+        *,
+        counterpart_id: str,
+        counterpart_display_name: str | None,
+        counterpart_email: str | None,
+        updated_at: datetime,
+    ) -> CrossPersonRequest | None:
+        with _tracer.start_as_current_span("postgres.cross_person.assign_counterpart"):
+            rows = await self._executor.fetch(
+                """
+                UPDATE cross_person_requests
+                SET counterpart_id = %s,
+                    counterpart_display_name = %s,
+                    counterpart_email = %s,
+                    status = %s,
+                    updated_at = %s
+                WHERE tenant_id = %s AND id = %s
+                  AND status = %s
+                RETURNING *
+                """,
+                (
+                    counterpart_id,
+                    counterpart_display_name,
+                    counterpart_email,
+                    CrossPersonRequestStatus.OPEN.value,
+                    updated_at,
+                    tenant_id,
+                    request_id,
+                    CrossPersonRequestStatus.NEEDS_RESOLUTION.value,
+                ),
+            )
+        return _request_from_row(rows[0]) if rows else None
+
     async def claim_notification_attempt(
         self,
         tenant_id: str,
