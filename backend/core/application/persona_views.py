@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
-from core.application.rollup_service import RollupService
+from core.application.rollup_service import RollupService, task_rag
 from core.domain.errors import GraphNotFound
 from core.domain.graph import EdgeKind, EntityRef, FactEvent, GraphNode, GraphTree, NodeKind
 from core.domain.rollup import NodeStatus, Rag, RollupFactor
@@ -1183,6 +1183,14 @@ def _workstream_task_rag(
     tasks: tuple[TaskProgressView, ...],
     as_of: date,
 ) -> Rag:
+    """The workstream's colour from its own status, its target date and its tasks.
+
+    Tasks are read from their latest facts, so this can be worse than the
+    stored rollup. As in the rollup, a task only adds risk, when it is red or
+    amber: one to do or in progress has no colour, and a done one is finished
+    work, not a report on the rest, so neither turns the workstream amber or
+    green. Green comes from the rollup or from the workstream's own status.
+    """
     metadata_rag = _rag_from_value(node.metadata.get("status"))
     if metadata_rag is Rag.RED or any(task.rag is Rag.RED for task in tasks):
         return Rag.RED
@@ -1190,10 +1198,6 @@ def _workstream_task_rag(
         return Rag.AMBER
     if _approaching_target_date(node, as_of):
         return Rag.AMBER
-    if any(task.rag is Rag.UNKNOWN for task in tasks):
-        return Rag.AMBER
-    if tasks and all(task.rag is Rag.GREEN for task in tasks):
-        return Rag.GREEN
     if metadata_rag is Rag.GREEN:
         return Rag.GREEN
     return Rag.UNKNOWN
@@ -1205,22 +1209,14 @@ def _workstream_task_factors(
     rag: Rag,
     as_of: date,
 ) -> tuple[RollupFactor, ...]:
-    if not tasks and rag is Rag.UNKNOWN:
-        return (
-            RollupFactor(
-                description="No child task status data is available.",
-                contributes=Rag.UNKNOWN,
-                source_ref=node.ref,
-            ),
-        )
     factors = [
         RollupFactor(
             description=f"Task {task.name} is {task.rag.value}.",
-            contributes=Rag.AMBER if task.rag is Rag.UNKNOWN else task.rag,
+            contributes=task.rag,
             source_ref=EntityRef(tenant_id=node.tenant_id, kind=NodeKind.TASK, id=task.id),
         )
         for task in tasks
-        if task.rag is not Rag.GREEN
+        if task.rag in {Rag.RED, Rag.AMBER}
     ]
     if _approaching_target_date(node, as_of):
         target_date = _deadline(node)
@@ -1233,6 +1229,14 @@ def _workstream_task_factors(
         )
     if factors:
         return tuple(factors)
+    if rag is Rag.UNKNOWN:
+        return (
+            RollupFactor(
+                description="No child task status data is available.",
+                contributes=Rag.UNKNOWN,
+                source_ref=node.ref,
+            ),
+        )
     return (
         RollupFactor(
             description="All child tasks show active progress with no blockers.",
@@ -1282,11 +1286,9 @@ def _deadline(node: GraphNode) -> date | None:
 
 
 def _rag_from_fact_or_metadata(fact: FactEvent | None, node: GraphNode) -> Rag:
-    if fact is not None:
-        status = _rag_from_value(fact.payload.get("status"))
-        if status is not None:
-            return status
-    return _rag_from_value(node.metadata.get("status")) or Rag.UNKNOWN
+    if fact is not None and (rag := task_rag(fact.payload)) is not None:
+        return rag
+    return task_rag(node.metadata) or Rag.UNKNOWN
 
 
 def _rag_from_value(value: object) -> Rag | None:

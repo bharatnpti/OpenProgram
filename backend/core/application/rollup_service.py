@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from datetime import date
 
 from core.application.blocker_resolution import (
@@ -8,7 +8,7 @@ from core.application.blocker_resolution import (
     BlockerResolutionService,
     ResolvedBlocker,
 )
-from core.domain.graph import EdgeKind, EntityRef, GraphNode, GraphTree, NodeKind
+from core.domain.graph import EdgeKind, EntityRef, GraphNode, GraphTree, JsonScalar, NodeKind
 from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import DeveloperStatus, StatusSource
 from core.ports.repositories import RollupRepository, StatusRepository
@@ -22,6 +22,16 @@ class RollupService:
     at POD aggregation, by filtering blocker factors to the pod at hand —
     ancestors then compose pod results structurally, so a project that does
     not contain pod B never sees a B-scoped blocker.
+
+    A parent counts only the children that carry health information. A person
+    always does: one with no status is unknown for their pod, never green. A
+    task does only when it is blocked, at risk or carries an explicit RAG
+    status (see `task_health`). Everything else -- a repo, a sprint, a work
+    item or workstream with nothing beneath it that reports, a task that only
+    says where the work is -- is neutral: it keeps its own unknown status but
+    is left out of its parent's, so a project whose people have all reported
+    can be green although it also holds repos, sprints and open tickets. A
+    node with nothing status-bearing beneath it stays unknown, never green.
     """
 
     def __init__(
@@ -37,31 +47,44 @@ class RollupService:
     async def compute(self, tree: GraphTree, as_of: date) -> tuple[NodeStatus, ...]:
         index = _TreeIndex(tree)
         statuses: dict[str, NodeStatus] = {}
+        # Recorded nodes that carry no health information for their parents.
+        neutral: set[str] = set()
 
         async def rollup_node(node: GraphNode) -> NodeStatus | None:
+            """Roll `node` up and return what it contributes to its parent.
+
+            None means it carries no health information: the parent leaves it
+            out instead of counting it unknown. Its own status is still
+            recorded, except a task's, which never is.
+            """
             existing = statuses.get(node.id)
             if existing is not None:
-                return existing
+                return None if node.id in neutral else existing
             if node.kind is NodeKind.TASK:
                 return _task_node_status(node, as_of)
             if node.kind is NodeKind.DEVELOPER:
                 status = await self._developer_status(node, as_of)
-            else:
+                statuses[node.id] = status
+                return status
+            child_statuses = [
+                child_status
+                for child in index.contained_children(node.id)
+                if (child_status := await rollup_node(child)) is not None
+            ]
+            if node.kind is NodeKind.POD:
                 child_statuses = [
-                    child_status
-                    for child in index.contained_children(node.id)
-                    if (child_status := await rollup_node(child)) is not None
+                    _effective_child_status(child, node.id) for child in child_statuses
                 ]
-                if node.kind is NodeKind.POD:
-                    child_statuses = [
-                        _effective_child_status(child, node.id) for child in child_statuses
-                    ]
-                status = (
-                    _aggregate_workstream_node(node, child_statuses, as_of)
-                    if node.kind is NodeKind.WORKSTREAM
-                    else _aggregate_node(node, child_statuses, as_of)
-                )
+            status = (
+                _aggregate_workstream_node(node, child_statuses, as_of)
+                if node.kind is NodeKind.WORKSTREAM
+                else _aggregate_node(node, child_statuses, as_of)
+            )
             statuses[node.id] = status
+            if not child_statuses:
+                # Nothing beneath it reports: unknown itself, neutral above.
+                neutral.add(node.id)
+                return None
             return status
 
         await rollup_node(tree.root)
@@ -316,6 +339,7 @@ def _aggregate_node(
     child_statuses: Iterable[NodeStatus],
     as_of: date,
 ) -> NodeStatus:
+    """Aggregate the children that carry health; with none, nothing has reported."""
     children = tuple(child_statuses)
     if not children:
         return _node_status(
@@ -359,6 +383,12 @@ def _aggregate_workstream_node(
     child_statuses: Iterable[NodeStatus],
     as_of: date,
 ) -> NodeStatus:
+    """Aggregate the children that carry health, then weigh the target date.
+
+    With no such child the workstream is unknown and neutral for its project,
+    as it was with no children at all: a near target date turns a reported
+    workstream amber, but gives no status to one that nothing reports on.
+    """
     children = tuple(child_statuses)
     if not children:
         return _node_status(
@@ -409,46 +439,84 @@ def _aggregate_workstream_node(
     return _node_status(node, rag, _aggregate_source(children), as_of, factors)
 
 
-def _task_node_status(node: GraphNode, as_of: date) -> NodeStatus:
-    rag = _rag_from_value(node.metadata.get("status")) or Rag.UNKNOWN
-    source = _source_from_value(node.metadata.get("source"), rag)
-    if rag is Rag.UNKNOWN:
-        factors = (
-            RollupFactor(
-                description="Task status is unknown.",
-                contributes=Rag.UNKNOWN,
-                source_ref=node.ref,
-                kind=FactorKind.TASK,
-            ),
-        )
-    elif rag is Rag.GREEN:
-        factors = (
-            RollupFactor(
-                description="Task shows active progress.",
-                contributes=Rag.GREEN,
-                source_ref=node.ref,
-                kind=FactorKind.TASK,
-            ),
-        )
-    elif rag is Rag.RED:
-        factors = (
-            RollupFactor(
-                description=f"Task {node.name} is blocked.",
-                contributes=Rag.RED,
-                source_ref=node.ref,
-                kind=FactorKind.TASK,
-            ),
-        )
+def _task_node_status(node: GraphNode, as_of: date) -> NodeStatus | None:
+    """What a task contributes to its parent, or None when it carries no health."""
+    rag = task_health(node.metadata)
+    if rag is None:
+        return None
+    if rag is Rag.RED:
+        description = f"Task {node.name} is blocked."
+    elif rag is Rag.AMBER:
+        description = f"Task {node.name} needs attention."
     else:
-        factors = (
+        description = "Task shows active progress."
+    return _node_status(
+        node,
+        rag,
+        _source_from_value(node.metadata.get("source"), rag),
+        as_of,
+        (
             RollupFactor(
-                description=f"Task {node.name} needs attention.",
-                contributes=Rag.AMBER,
+                description=description,
+                contributes=rag,
                 source_ref=node.ref,
                 kind=FactorKind.TASK,
             ),
-        )
-    return _node_status(node, rag, source, as_of, factors)
+        ),
+    )
+
+
+# A task's `status` holds either an explicit RAG word, as seeds and people set
+# it, or the tracker's own status name ("To Do", "In Progress", "Done"), as the
+# Jira sync copies it. `state` is the tracker's normalized workflow state:
+# todo, in_progress, done or blocked.
+_TASK_HEALTH_WORDS: dict[str, Rag] = {
+    "green": Rag.GREEN,
+    "amber": Rag.AMBER,
+    "at_risk": Rag.AMBER,
+    "at-risk": Rag.AMBER,
+    "warning": Rag.AMBER,
+    "red": Rag.RED,
+    "blocked": Rag.RED,
+}
+_TASK_DONE_WORDS = frozenset({"done", "complete", "completed"})
+
+
+def task_health(values: Mapping[str, JsonScalar]) -> Rag | None:
+    """What a task tells its parent about health, or None when it tells nothing.
+
+    Only a blocked task, an at-risk one, or an explicit RAG status says how the
+    work is going. Where the work sits in the workflow -- to do, in progress,
+    done -- does not, so such a task is neutral for its parent: neither unknown
+    nor green. `state` catches a blocked task whose tracker status has another
+    name ("On Hold"), so it still goes red.
+    """
+    if _normalized(values.get("state")) == "blocked":
+        return Rag.RED
+    return _TASK_HEALTH_WORDS.get(_normalized(values.get("status")))
+
+
+def task_rag(values: Mapping[str, JsonScalar]) -> Rag | None:
+    """A task's own colour, as its chip shows it, or None when it has none.
+
+    Its health where it has any (`task_health`), green once it is done --
+    whatever the tracker calls done -- and unknown when it says so. To do and
+    in progress get none: RAG has no "in progress", and a green task counts as
+    complete in progress percentages.
+    """
+    health = task_health(values)
+    if health is not None:
+        return health
+    status = _normalized(values.get("status"))
+    if status in _TASK_DONE_WORDS or _normalized(values.get("state")) == "done":
+        return Rag.GREEN
+    if status == "unknown":
+        return Rag.UNKNOWN
+    return None
+
+
+def _normalized(value: object) -> str:
+    return value.strip().lower() if isinstance(value, str) else ""
 
 
 def _aggregate_rag(
@@ -493,21 +561,6 @@ def _node_status(
         factors=factors,
         as_of=as_of,
     )
-
-
-def _rag_from_value(value: object) -> Rag | None:
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip().lower()
-    if normalized in {"done", "complete", "completed", "green"}:
-        return Rag.GREEN
-    if normalized in {"at_risk", "at-risk", "amber", "warning"}:
-        return Rag.AMBER
-    if normalized in {"blocked", "red"}:
-        return Rag.RED
-    if normalized == "unknown":
-        return Rag.UNKNOWN
-    return None
 
 
 def _source_from_value(value: object, rag: Rag) -> StatusSource:
