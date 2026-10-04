@@ -3,6 +3,11 @@
 R3 live: Ira's scrum-master summary said CHK-4 would be ready for review on
 Friday, while its owner Liam said Tuesday. Both were stored and nothing
 flagged the mismatch.
+
+Only people who own or work the issue are compared (N43). Until the N43 tests
+at the end, Ira has no app roles, so she reads as a developer and her ETA
+counts; as a scrum master (``app_roles`` sm) it is a coordinator's remark and
+never a disagreement.
 """
 
 from __future__ import annotations
@@ -39,6 +44,7 @@ _DAY = date(2026, 10, 4)  # R3, a Sunday
 _LIAM = "U-liam"
 _IRA = "U-ira"
 _NOAH = "U-noah"
+_MINA = "U-mina"
 
 
 def _evaluation(claims: list[dict[str, object]], *, eta_change_days: int | None) -> str:
@@ -148,8 +154,8 @@ async def _check_in(
     assert outcome.kind == "processed"
 
 
-async def _drift(store: InMemoryGraphStore, project_id: str = "proj-chk") -> list[DriftFinding]:
-    service = RiskService(
+def _risks(store: InMemoryGraphStore) -> RiskService:
+    return RiskService(
         graph_repository=store,
         time_series_repository=store,
         status_repository=store,
@@ -157,10 +163,13 @@ async def _drift(store: InMemoryGraphStore, project_id: str = "proj-chk") -> lis
         rollup_repository=store,
         provider_config=RiskProviderConfig(),
     )
-    return await service.project_drift(_TENANT, project_id, _DAY)
 
 
-async def test_owner_and_scrum_master_etas_for_chk_4_disagree() -> None:
+async def _drift(store: InMemoryGraphStore, project_id: str = "proj-chk") -> list[DriftFinding]:
+    return await _risks(store).project_drift(_TENANT, project_id, _DAY)
+
+
+async def test_owner_and_teammate_etas_for_chk_4_disagree() -> None:
     store = InMemoryGraphStore()
     await _seed(store)
 
@@ -238,9 +247,10 @@ def _eta_claim(key: str, state: str | None, note: str) -> str:
     )
 
 
-async def test_owner_early_next_week_and_scrum_master_end_of_week_disagree() -> None:
+async def test_owner_early_next_week_and_teammate_end_of_week_disagree() -> None:
     # N31, R4 live: Ira said IDP-3 by end of week, its owner Noah "early next
-    # week"; Noah's vague ETA was not stored, so nothing was compared.
+    # week"; Noah's vague ETA was not stored, so nothing was compared. (Ira has
+    # no app roles here; as a scrum master her ETA is not compared, N43.)
     store = InMemoryGraphStore()
     await _seed(store)
     await store.upsert_node(Project(tenant_id=_TENANT, id="proj-idp", name="Identity"))
@@ -411,3 +421,144 @@ def test_issue_eta_reads_the_day_a_claim_names(
     claim = IssueClaim(issue_key="CHK-4", claimed_state=state, note=note)
 
     assert issue_eta(claim, _DAY) == expected
+
+
+# N43, R5 live (checkins.signals, 2026-10-04 12:08): Ira, a scrum master, on
+# Noah's IDP-3, and Noah, its owner. The drift on her remark alone made Noah,
+# Identity pod, Identity Platform and the programme amber.
+_IRA_R5 = _eta_claim(
+    "IDP-3",
+    "in review",
+    "In review on identity-service!1 with Noah's review, should wrap this week.",
+)
+_NOAH_R5 = _eta_claim("IDP-3", "pending review", "Will close after review, likely early next week.")
+
+
+async def _seed_identity(store: InMemoryGraphStore, *, ira_roles: str | None) -> None:
+    """R5's Identity: IDP-3 is Noah's, a developer's; Ira has ``ira_roles``."""
+    await _seed(store)
+    await store.upsert_node(Project(tenant_id=_TENANT, id="proj-idp", name="Identity"))
+    await store.upsert_node(
+        Task(
+            tenant_id=_TENANT,
+            id="IDP-3",
+            name="Passkey enrolment",
+            metadata={"key": "IDP-3", "state": "in_progress", "status": "In Progress"},
+        )
+    )
+    await store.upsert_node(
+        Developer(tenant_id=_TENANT, id=_NOAH, name="Noah Weber", metadata={"app_roles": "dev"})
+    )
+    await store.upsert_node(
+        Developer(
+            tenant_id=_TENANT,
+            id=_IRA,
+            name="Ira Novak",
+            metadata={"app_roles": ira_roles} if ira_roles is not None else {},
+        )
+    )
+    for edge in (
+        GraphEdge(
+            tenant_id=_TENANT, from_node_id="proj-idp", to_node_id="IDP-3", kind=EdgeKind.CONTAINS
+        ),
+        GraphEdge(
+            tenant_id=_TENANT, from_node_id=_NOAH, to_node_id="IDP-3", kind=EdgeKind.ASSIGNED_TO
+        ),
+    ):
+        await store.add_edge(edge)
+    await store.record_checkin(
+        CheckIn(
+            tenant_id=_TENANT,
+            developer_id=_NOAH,
+            correlation_id=f"corr-{_NOAH}",
+            asked_at=datetime(2026, 10, 4, 0, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+
+
+@pytest.mark.parametrize("roles", ["sm", "po", "exec"])
+async def test_a_coordinators_eta_for_someone_elses_issue_is_no_disagreement(roles: str) -> None:
+    store = InMemoryGraphStore()
+    await _seed_identity(store, ira_roles=roles)
+
+    await _check_in(store, _IRA, _IRA_R5, 8)
+    await _check_in(store, _NOAH, _NOAH_R5, 9)
+
+    assert await _drift(store, "proj-idp") == []
+    # Noah's cell takes no drift for it, so he stays green.
+    assert _NOAH not in await _risks(store).owner_drift(_TENANT, _DAY)
+    # Her ETA stays recorded as context; only the comparison leaves it out.
+    facts = await store.list_recent_facts(_TENANT, sources=("checkin_drift",))
+    assert {
+        (fact.payload["developer_id"], fact.payload["eta_start"], fact.payload["eta_date"])
+        for fact in facts
+        if fact.payload["kind"] == "eta_stated"
+    } == {(_IRA, "2026-10-09", "2026-10-09"), (_NOAH, "2026-10-12", "2026-10-14")}
+
+
+# Without app roles, with the dev role (also beside a coordinator role), or as
+# a manager, who is no coordinator (N16), a person works the issue.
+@pytest.mark.parametrize("roles", [None, "dev", "sm,dev", "mgr,admin"])
+async def test_etas_of_two_people_who_work_the_issue_still_disagree(roles: str | None) -> None:
+    store = InMemoryGraphStore()
+    await _seed_identity(store, ira_roles=roles)
+
+    await _check_in(store, _IRA, _IRA_R5, 8)
+    await _check_in(store, _NOAH, _NOAH_R5, 9)
+
+    assert [finding.reason for finding in await _drift(store, "proj-idp")] == [
+        "ETAs disagree for IDP-3: Noah Weber (owner) said early next week, Oct 12 to Oct 14; "
+        "Ira Novak said end of week, Oct 9. The owner's ETA is the one used."
+    ]
+    owner_drift = await _risks(store).owner_drift(_TENANT, _DAY)
+    assert [signal.kind for signal in owner_drift[_NOAH]] == ["eta_disagreement"]
+
+
+async def test_a_coordinator_who_owns_the_issue_still_counts() -> None:
+    # Mina, a product owner, owns CHK-10: her ETA is the owner's.
+    store = InMemoryGraphStore()
+    await _seed(store)
+    await store.upsert_node(
+        Developer(tenant_id=_TENANT, id=_MINA, name="Mina Patel", metadata={"app_roles": "po"})
+    )
+    await store.upsert_node(
+        Task(
+            tenant_id=_TENANT,
+            id="CHK-10",
+            name="Acceptance criteria",
+            metadata={"key": "CHK-10", "state": "in_progress", "status": "In Progress"},
+        )
+    )
+    for edge in (
+        GraphEdge(
+            tenant_id=_TENANT, from_node_id="proj-chk", to_node_id="CHK-10", kind=EdgeKind.CONTAINS
+        ),
+        GraphEdge(
+            tenant_id=_TENANT, from_node_id=_MINA, to_node_id="CHK-10", kind=EdgeKind.ASSIGNED_TO
+        ),
+    ):
+        await store.add_edge(edge)
+    await store.record_checkin(
+        CheckIn(
+            tenant_id=_TENANT,
+            developer_id=_MINA,
+            correlation_id=f"corr-{_MINA}",
+            asked_at=datetime(2026, 10, 4, 0, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+
+    await _check_in(store, _MINA, _eta_claim("CHK-10", "in review", "Wrapping up Monday EOD"), 6)
+    await _check_in(store, _LIAM, _eta_claim("CHK-10", None, "Should be ready by Friday"), 8)
+    findings = await _drift(store)
+
+    assert [finding.reason for finding in findings] == [
+        "ETAs disagree for CHK-10: Mina Patel (owner) said Monday, Oct 5; "
+        "Liam Chen said Friday, Oct 9. The owner's ETA is the one used."
+    ]
+    assert findings[0].owner_id == _MINA

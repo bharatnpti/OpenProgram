@@ -767,7 +767,9 @@ class RiskService:
         Recorded by the status collector when a check-in is finalized (see
         ``core/application/checkin_drift.py``). Structural like
         ``merged_issue_open``: nobody's status is downgraded for it. The owner
-        is the issue's assignee, else the person who said it.
+        is the issue's assignee, else the person who said it. ETAs are compared
+        only between people who own or work the issue, by their app roles here
+        (N43): a coordinator's ETA for someone else's issue is no disagreement.
         """
         tasks = _project_tasks(project_id, nodes_by_id, contains_edges)
         if not tasks:
@@ -798,15 +800,18 @@ class RiskService:
             )
         project_keys = frozenset(tasks)
 
+        def roles_of(developer_id: str) -> frozenset[str]:
+            speaker = nodes_by_id.get(developer_id)
+            return member_roles(speaker.metadata if speaker is not None else None)
+
         def is_code_work(issue_key: str, developer_id: str) -> bool:
             # N26: a review that is not code work (Mina's, a PO's, on CHK-10) is
             # no drift, also when it was recorded before that rule.
-            speaker = nodes_by_id.get(developer_id)
             return bool(
                 code_work_keys(
                     [issue_key],
                     developer_id=developer_id,
-                    roles=member_roles(speaker.metadata if speaker is not None else None),
+                    roles=roles_of(developer_id),
                     merge_request_facts=merge_requests,
                     commit_facts=commits,
                     project_task_keys=lambda _key: project_keys,
@@ -832,6 +837,7 @@ class RiskService:
                 merge_request_facts=merge_requests,
                 owners=assignees,
                 is_code_work=is_code_work,
+                roles_of=roles_of,
             )
         ]
 
