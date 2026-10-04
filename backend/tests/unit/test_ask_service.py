@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 
@@ -981,6 +982,30 @@ def test_ask_prompt_asks_for_the_answer_shape() -> None:
     assert "a verdict line, at most 4 '• ' bullets, 80 words at most" in prompt
     assert "rather than ids" in prompt
     assert prompt.endswith("Question: Why does the program need attention?")
+
+
+def test_ask_calls_merge_requests_mrs_never_prs() -> None:
+    """A live answer read "merged PRs, issues not closed" for GitLab merge
+    requests: the facts, risk rules and flow fields say pr or pull_request
+    whatever the provider, and tool descriptions spoke of PRs too."""
+    rule = next(rule for rule in ANSWER_FORMAT_RULES if "never a PR" in rule)
+    assert rule in ASK_SYSTEM_PROMPT
+    assert "a merge request or MR, e.g. '2 merged MRs'" in rule
+    assert "PR, pr or pull_request" in rule
+    assert "merge requests (MRs, never PRs)" in _prompt("What merged this week?", AS_OF)
+
+    tools = _ask_service(InMemoryGraphStore(), FakeLlmProvider())._tools(
+        _principal(Role.ADMIN), AS_OF
+    )
+    descriptions = {tool.name: tool.description for tool in tools}
+    pr_wording = re.compile(r"\bPRs?\b|[Pp]ull requests?")
+
+    # Nothing a tool says about itself primes the model to write PR.
+    assert [name for name, text in descriptions.items() if pr_wording.search(text)] == []
+    for name in ("recent_facts", "workstream_flow", "portfolio_flow", "open_risks"):
+        assert "merge request (MR)" in descriptions[name] or "(MRs)" in descriptions[name]
+    recent_facts = next(tool for tool in tools if tool.name == "recent_facts")
+    assert "vcs_pull_request holds the merge requests (MRs)" in json.dumps(recent_facts.parameters)
 
 
 async def test_status_reasons_give_the_rollups_own_reasons_by_name() -> None:

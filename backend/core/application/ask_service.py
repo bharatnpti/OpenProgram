@@ -37,7 +37,9 @@ from core.ports.tools import AgentTool
 # How an answer reads. Answers used to be a paragraph that restated the
 # question, lumped a partial update in with no reply at all, closed on a
 # generic "follow up with ..." and cited people by chat id. Each rule stands
-# alone so a test can hold the prompt to it.
+# alone so a test can hold the prompt to it. They also called GitLab merge
+# requests "merged PRs": the facts, risk rules and flow fields Ask reads say
+# pr or pull_request whatever the provider, and Ask cannot tell which one it is.
 ANSWER_FORMAT_RULES: tuple[str, ...] = (
     "Shape: one verdict line that answers the question in a few words (e.g. 'Digital "
     "Platform Program is red because:'), then at most 4 bullet lines starting with '• ', "
@@ -46,6 +48,8 @@ ANSWER_FORMAT_RULES: tuple[str, ...] = (
     "data gives (storefront-web !1), and programs, projects, workstreams and pods by name. "
     "One bullet per kind of driver, naming everyone it applies to, e.g. 'Partial updates: "
     "Omar Haddad, Ira Novak · no reply: Hana Kobayashi'.",
+    "Call a merge request a merge request or MR, e.g. '2 merged MRs', never a PR or pull "
+    "request -- even where a tool's text, type or field name says PR, pr or pull_request.",
     "Never put a raw id in answer: no chat user ids such as U0AA1OMAR01 and no node ids "
     "such as pod-data or program-platform; an issue key is the one id that reads as a "
     "name. Ids go in references only, copied exactly as the tools return them: the id of "
@@ -378,7 +382,7 @@ class RecentFactsTool:
     name: str = "recent_facts"
     description: str = (
         "The activity log, newest first: work-item transitions, issue updates, commits, "
-        "pull requests, check-in updates (counts only, never reply text), risks opened "
+        "merge requests (MRs), check-in updates (counts only, never reply text), risks opened "
         "or cleared, and cross-person requests. Covers a window of days ending no later "
         "than today; pick it with period, or with since/until dates, and it defaults to "
         "the last 7 days. Use it for what changed or happened over a period -- 'since "
@@ -409,7 +413,10 @@ class RecentFactsTool:
                 "sources": {
                     "type": "array",
                     "items": {"type": "string", "enum": list(DEFAULT_FEED_SOURCES)},
-                    "description": "Optional fact sources to keep.",
+                    "description": (
+                        "Optional fact sources to keep; vcs_pull_request holds the merge "
+                        "requests (MRs)."
+                    ),
                 },
                 "limit": {
                     "type": "integer",
@@ -466,7 +473,8 @@ class WorkstreamFlowTool:
     description: str = (
         "Flow metrics for one workstream on one day, today unless as_of names an "
         "earlier one: active, in-flight, completed, stale and abandoned work-item "
-        "counts, average cycle time and PR age, and each work item's state and age. "
+        "counts, average cycle time and merge request (MR) age, and each work item's state "
+        "and age. "
         "It describes movement and carries no RAG status."
     )
     parameters: Mapping[str, object] = field(
@@ -498,7 +506,8 @@ class PortfolioFlowTool:
     description: str = (
         "Flow metrics for every workstream on one day, today unless as_of names an "
         "earlier one: active, in-flight, completed, stale and abandoned counts, and "
-        "average cycle time and PR age. It describes movement and carries no RAG status."
+        "average cycle time and merge request (MR) age. It describes movement and carries "
+        "no RAG status."
     )
     parameters: Mapping[str, object] = field(
         default_factory=lambda: {
@@ -742,8 +751,8 @@ class OpenRisksTool:
     name: str = "open_risks"
     description: str = (
         "The risks and drift findings open today -- the list the Signals screen shows. "
-        "A risk is signal-derived (a feature with no PR, an ageing PR, a stale work "
-        "item) and carries its severity, days open, the reason, its evidence, what the "
+        "A risk is signal-derived (a feature with no merge request (MR), an ageing MR, a "
+        "stale work item) and carries its severity, days open, the reason, its evidence, what the "
         "owner's latest check-in says, and whether it is a watermelon (the owner "
         "reports fine while the signals do not). A drift finding is where a stated "
         "status and the hard signals disagree. Use it for 'top risks', 'what is at "
@@ -1164,7 +1173,8 @@ def _prompt(question: str, as_of: date) -> str:
         "A tool asked about the wrong period comes back empty, and empty is not "
         "the same as nothing being wrong. "
         "Answer in the required shape -- a verdict line, at most 4 '• ' bullets, 80 "
-        "words at most -- naming people, issues and merge requests rather than ids, and "
+        "words at most -- naming people, issues and merge requests (MRs, never PRs) rather "
+        "than ids, and "
         "list the id of every node the answer names in references. "
         f"Question: {question}"
     )
