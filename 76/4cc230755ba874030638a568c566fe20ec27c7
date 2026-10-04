@@ -1,0 +1,38 @@
+backend/core/application/risk_service.py
+  s_027fd12d872fd7::t_b3396b17c0273a 8-10,12-15,632-633,635-645,647-650,669
+  s_027fd12d872fd7::t_9bdfe862a36610 11,629-631,634,646
+backend/tests/unit/test_review_without_merge_request.py
+  s_027fd12d872fd7::t_2b39ba4ded0ff9 280-350,352-443
+  s_027fd12d872fd7::t_a02da12582e1a9 351
+  s_027fd12d872fd7::t_f75c99f039d38c 11,14-15,20
+backend/core/application/checkin_drift.py
+  s_027fd12d872fd7::t_7cfd812c505d47 28
+  s_027fd12d872fd7::t_771f4525019304 362-363
+  s_027fd12d872fd7::t_04eb4a840384d9 364
+  s_027fd12d872fd7::t_ae75702281e528 11-13
+  s_027fd12d872fd7::t_658348498a209b 49-115,121-130
+  s_027fd12d872fd7::t_d8077f506634ed 116-120
+  s_027fd12d872fd7::t_ffbf236a0598f1 339,344-348
+backend/core/application/status_collector.py
+  s_027fd12d872fd7::t_9ec0260ebd54f0 21,24,30,792,811,813,817-819,831-851,855-889,891,940
+  s_027fd12d872fd7::t_d8077f506634ed 890
+  s_027fd12d872fd7::t_3810b27a2ca20c 22-23
+  s_027fd12d872fd7::t_cf4896df805554 87
+  s_027fd12d872fd7::t_94875b5ca0560a 852-854
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "764cc230755ba874030638a568c566fe20ec27c7",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
