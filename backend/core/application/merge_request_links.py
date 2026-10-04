@@ -146,10 +146,6 @@ class MergeRequestIndex:
         return tuple(named[key] for key in sorted(named))
 
 
-def is_merged_merge_request(fact: FactEvent) -> bool:
-    return fact.payload.get("merged") is True or fact.payload.get("state") == "merged"
-
-
 def _repo_short_name(repo: str) -> str:
     return repo.rstrip("/").rsplit("/", 1)[-1].casefold()
 
