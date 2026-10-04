@@ -70,6 +70,9 @@ class RollupService:
         self._rollup_repository = rollup_repository
         self._blocker_resolution = blocker_resolution
         self._drift_signals = drift_signals
+        # A service lives for one rollup run or one request: a day's drift is
+        # read once for its tree and its people in no team alike.
+        self._drift_by_day: dict[tuple[str, date], Mapping[str, tuple[OwnerDrift, ...]]] = {}
 
     async def compute(self, tree: GraphTree, as_of: date) -> tuple[NodeStatus, ...]:
         index = _TreeIndex(tree)
@@ -225,12 +228,15 @@ class RollupService:
     async def _owner_drift(
         self, tenant_id: str, as_of: date, nodes: Iterable[GraphNode]
     ) -> Mapping[str, tuple[OwnerDrift, ...]]:
-        """The open drift signals per owner, read once per compute; none without a source."""
+        """The open drift signals per owner, read once per day; none without a source."""
         if self._drift_signals is None or not any(
             node.kind is NodeKind.DEVELOPER for node in nodes
         ):
             return {}
-        return await self._drift_signals.owner_drift(tenant_id, as_of)
+        key = (tenant_id, as_of)
+        if key not in self._drift_by_day:
+            self._drift_by_day[key] = await self._drift_signals.owner_drift(tenant_id, as_of)
+        return self._drift_by_day[key]
 
     async def _developer_status(
         self,
