@@ -38,6 +38,7 @@ from core.application.status_summaries import (
     inferred_summary,
     names_one_basis,
     stale_summary,
+    with_no_active_work,
 )
 from core.application.tools.conversation_history import MAX_HISTORY_LIMIT, ConversationHistoryTool
 from core.application.tools.git_activity import GitActivityTool
@@ -1101,11 +1102,10 @@ class StatusCollector:
             if finalized is not None:
                 return finalized
 
-        inferred = await self.infer_fallback_status(
+        inferred, no_active_work = await self._fallback_inference(
             tenant_id=tenant_id,
             developer_id=developer_id,
             as_of=as_of,
-            developer_name=developer_name,
         )
         if inferred is not None:
             await self._status_repository.record_developer_status(inferred)
@@ -1132,7 +1132,9 @@ class StatusCollector:
                 source=StatusSource.STALE,
                 blockers=tuple(blocker.description for blocker in open_rows)
                 or ("no confirmed reply",),
-                summary=await self._stale_summary(prior),
+                summary=with_no_active_work(
+                    await self._stale_summary(prior), no_active_work=no_active_work
+                ),
             )
             await self._status_repository.record_developer_status(stale)
             return stale
@@ -1143,7 +1145,7 @@ class StatusCollector:
             as_of=as_of,
             source=StatusSource.UNKNOWN,
             blockers=("no confirmed reply",),
-            summary=UNKNOWN_SUMMARY,
+            summary=with_no_active_work(UNKNOWN_SUMMARY, no_active_work=no_active_work),
         )
         await self._status_repository.record_developer_status(unknown)
         return unknown
@@ -1167,21 +1169,49 @@ class StatusCollector:
         as_of: date,
         developer_name: str | None = None,
     ) -> DeveloperStatus | None:
-        # Inferred from the same issues and facts the check-in DM is composed
-        # from, but not summarised as that prompt context: the summary is shown to
-        # the developer, their scrum master and "owner says" on Signals, and the
-        # context prints fact payloads, which can quote a reply.
+        inferred, _ = await self._fallback_inference(
+            tenant_id=tenant_id, developer_id=developer_id, as_of=as_of
+        )
+        return inferred
+
+    async def _fallback_inference(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        as_of: date,
+    ) -> tuple[DeveloperStatus | None, bool]:
+        """The inferred status for a silent person, and whether they have no active work.
+
+        Inferred from the same issues and facts the check-in DM is composed
+        from, but not summarised as that prompt context: the summary is shown to
+        the developer, their scrum master and "owner says" on Signals, and the
+        context prints fact payloads, which can quote a reply.
+
+        Only work under way is evidence: an issue In Progress (the trackers read
+        In Review as that) or Blocked. When the tracker lists the person's issues
+        and none is under way, nothing is inferred and the second value is True,
+        so the unknown or stale status says there was no active work to infer
+        from (N4: Hana's only issue was To Do). An empty tracker result is not
+        that: it can be an unmapped assignee, and recent facts still count.
+        """
         reference_at = datetime.now(tz=UTC)
         issues, facts = await self._context_inputs(tenant_id, developer_id)
-        if not issues and not facts:
-            return None
-        return DeveloperStatus(
-            tenant_id=tenant_id,
-            developer_id=developer_id,
-            as_of=as_of,
-            source=StatusSource.INFERRED,
-            blockers=("no confirmed reply",),
-            summary=_inferred_summary(issues, facts, reference_at),
+        active = [issue for issue in issues if issue.state in _ACTIVE_ISSUE_STATES]
+        if issues and not active:
+            return None, True
+        if not active and not facts:
+            return None, False
+        return (
+            DeveloperStatus(
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                as_of=as_of,
+                source=StatusSource.INFERRED,
+                blockers=("no confirmed reply",),
+                summary=_inferred_summary(active, facts, reference_at),
+            ),
+            False,
         )
 
     async def _resolve_issue_tracker_assignee_id(self, tenant_id: str, developer_id: str) -> str:
@@ -3061,6 +3091,9 @@ def _fact_context_lines(facts: Iterable[FactEvent]) -> list[str]:
 
 
 _INFERRED_ISSUE_LIMIT = 3
+# Work under way: what a silent person's status can be inferred from. The
+# trackers read In Review as In Progress.
+_ACTIVE_ISSUE_STATES = frozenset({IssueState.IN_PROGRESS, IssueState.BLOCKED})
 
 
 def _inferred_summary(

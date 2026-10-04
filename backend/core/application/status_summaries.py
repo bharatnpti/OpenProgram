@@ -23,6 +23,9 @@ from core.ports.repositories import StatusRepository
 NON_RESPONSE_LEAD = "No confirmed check-in after a nudge."
 INFERRED_LEAD = f"{NON_RESPONSE_LEAD} Inferred from "
 UNKNOWN_SUMMARY = f"{NON_RESPONSE_LEAD} Current status is unknown."
+# Added to a non-response summary when the tracker lists the person's issues but
+# none is under way (all To Do): there is nothing to infer a status from.
+NO_ACTIVE_WORK_NOTE = "No active work to infer from."
 CONFIRMED_LEAD = "Confirmed the status"
 # The placeholder blocker a non-response status carries when nothing is open.
 NO_REPLY_BLOCKER = "no confirmed reply"
@@ -42,6 +45,16 @@ def day_label(day: date) -> str:
 
 def inferred_summary(basis: str) -> str:
     return f"{INFERRED_LEAD}{basis}."
+
+
+def with_no_active_work(summary: str, *, no_active_work: bool) -> str:
+    """``summary`` ending in :data:`NO_ACTIVE_WORK_NOTE` exactly when ``no_active_work``.
+
+    A stale summary is reused from the day before, so a note that no longer
+    holds is taken off before it is decided again.
+    """
+    base = summary.removesuffix(NO_ACTIVE_WORK_NOTE).rstrip()
+    return f"{base} {NO_ACTIVE_WORK_NOTE}" if no_active_work else base
 
 
 def inferred_basis(summary: str) -> str | None:
