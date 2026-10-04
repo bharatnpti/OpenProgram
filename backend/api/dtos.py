@@ -957,6 +957,9 @@ class PodTaskDto(BaseModel):
     owners: list[PodTaskOwnerDto]
     blocked: bool
     open_blockers: list[PodTaskBlockerDto]
+    # The issue tracker's own status name, e.g. "In Progress"; null for a task
+    # that did not come from a tracker. Optional, so older clients are unaffected.
+    tracker_status: str | None = None
 
     @classmethod
     def from_view(cls, task: PodTaskView) -> PodTaskDto:
@@ -970,6 +973,7 @@ class PodTaskDto(BaseModel):
             owners=[PodTaskOwnerDto.from_view(owner) for owner in task.owners],
             blocked=task.blocked,
             open_blockers=[PodTaskBlockerDto.from_view(item) for item in task.open_blockers],
+            tracker_status=task.tracker_status,
         )
 
 
@@ -1000,6 +1004,9 @@ class TaskProgressDto(BaseModel):
     source: StatusSource
     confidence: float | None
     deadline: date | None
+    # The issue tracker's own status name, e.g. "In Progress"; null for a task
+    # that did not come from a tracker. Optional, so older clients are unaffected.
+    tracker_status: str | None = None
 
     @classmethod
     def from_view(cls, task: TaskProgressView) -> TaskProgressDto:
@@ -1010,6 +1017,7 @@ class TaskProgressDto(BaseModel):
             source=task.source,
             confidence=task.confidence,
             deadline=task.deadline,
+            tracker_status=task.tracker_status,
         )
 
 
