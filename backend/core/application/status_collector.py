@@ -52,6 +52,7 @@ from core.application.status_summaries import (
     NON_STATUS_REPLY_SUMMARY,
     UNKNOWN_SUMMARY,
     basis_status,
+    clarification_cap_note,
     inferred_summary,
     names_one_basis,
     stale_summary,
@@ -464,11 +465,21 @@ class StatusCollector:
             )
             return replace(required_details_outcome, cross_person_requests=requests.outcome())
         final_signals = merged
-        if not decision.sufficient:
-            final_signals = _signals_with_note(
-                merged,
-                "Clarification cap reached before all details were confirmed.",
+        # At the follow-up limit the note names a required detail still missing,
+        # and is left out when every one was given (N30).
+        cap_note = (
+            None
+            if decision.sufficient
+            else clarification_cap_note(
+                _missing_required_status_note(
+                    _missing_required_status_details(
+                        _signals_with_open_blockers(merged, reconciliation)
+                    )
+                )
             )
+        )
+        if cap_note is not None:
+            final_signals = _signals_with_note(merged, cap_note)
         person_question = await self._resolve_cross_person_requests(
             checkin=checkin,
             signals=signals,
