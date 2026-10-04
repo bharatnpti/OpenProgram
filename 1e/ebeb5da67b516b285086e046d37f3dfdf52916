@@ -1,0 +1,52 @@
+backend/infra/adapters/chat/send_once.py
+  s_027fd12d872fd7::t_f85087661e8a9d 14-19,27-32,35-37,41-48,53,62-75,82,87-89,99-114
+  s_027fd12d872fd7::t_406c5a42b6f9e4 115
+backend/infra/persistence/in_memory_graph.py
+  s_027fd12d872fd7::t_cc1921d02c94f5 289-290,292-300,303
+  s_027fd12d872fd7::t_5092bacffdd624 847-849,885-887
+  s_027fd12d872fd7::t_8b70e6002d86a3 840-846,850-884,888-889
+backend/core/application/blocker_settlement.py
+  s_027fd12d872fd7::t_86ca0431cf3aca 132-140
+  s_027fd12d872fd7::t_3dbae1221593f2 207-218
+  s_027fd12d872fd7::t_e4035d1ad36470 19-22
+  s_027fd12d872fd7::t_6bdcce36297f25 43
+backend/infra/persistence/postgres_status.py
+  s_027fd12d872fd7::t_5092bacffdd624 566-568
+  s_027fd12d872fd7::t_0e36e2486ede1d 1406
+  s_027fd12d872fd7::t_b41a099c463ad3 4,44-47,559-565,569-621,1400-1405,1408-1413
+  s_027fd12d872fd7::t_b383c13d9800a5 1407,1414-1415
+backend/infra/adapters/chat/slack.py
+  s_027fd12d872fd7::t_e1cdb050fb7f0d 86-89,95-97,100,103-113,118-136
+  s_027fd12d872fd7::t_38000e75a5b4af 137
+backend/tests/unit/test_concurrent_merge_passes.py
+  s_027fd12d872fd7::t_40faa45b5f366b 466-470
+  s_027fd12d872fd7::t_46000e06030684 1-18,20-91,93-210,212-278,280-365,369-433,436-459,462-465,471-566,570-726,728-805
+  s_027fd12d872fd7::t_82c77c7c8beed5 19,434-435,460-461,727
+  s_027fd12d872fd7::t_5092bacffdd624 92,211,279,366-368,567-569
+backend/core/application/cross_person_service.py
+  s_027fd12d872fd7::t_8228ec5170c222 165,179-181,251,254-256,547,549-554,558-560,562,567-568,587-590,742-744,777-779,859-866
+  s_027fd12d872fd7::t_7b930a89f2af1b 591-597
+  s_027fd12d872fd7::t_3e85139b239b77 867-868
+backend/infra/persistence/postgres_cross_person.py
+  s_027fd12d872fd7::t_9d949c5030a6e4 78-79,81-87,90,93,96
+backend/core/ports/repositories.py
+  s_027fd12d872fd7::t_5092bacffdd624 317-319
+  s_027fd12d872fd7::t_e7f5c707649de9 3,105-116,310-316,320-333
+  s_027fd12d872fd7::t_1efef566adae5c 334
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1eebeb5da67b516b285086e046d37f3dfdf52916",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
