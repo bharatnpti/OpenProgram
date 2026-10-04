@@ -279,6 +279,10 @@ class HeatmapCellView:
     source: StatusSource
     why: str
     source_ref: EntityRef
+    #: The node's name where the read knows it: every node of a tree it read,
+    #: the nodes a reason cites, and always a person in no team (N5). None
+    #: rather than a guess.
+    name: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -825,15 +829,23 @@ class PersonaViewService:
             if _needs_drivers(status)
             for node_id in context.cited_node_ids(status)
         }
+        # A person in no team is in no tree; their cell is named all the same.
+        outside = {status.entity_ref.id for status in statuses if is_outside_teams(status)}
         nodes = {node.id: node for node in tree.nodes} if tree is not None else {}
-        for node_id in sorted(wanted - nodes.keys()):
+        for node_id in sorted((wanted | outside) - nodes.keys()):
             node = await self._graph_repository.get_node(tenant_id, node_id)
             if node is not None:
                 nodes[node_id] = node
         context = context.with_labels(
             {node_id: _reason_label(nodes[node_id]) for node_id in wanted if node_id in nodes}
         )
-        return tuple(_heatmap_cell(status, context) for status in statuses)
+        return tuple(
+            replace(
+                _heatmap_cell(status, context),
+                name=node.name if (node := nodes.get(status.entity_ref.id)) else None,
+            )
+            for status in statuses
+        )
 
     async def node_trend(
         self,

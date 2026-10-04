@@ -2436,6 +2436,8 @@ export interface components {
       /** Why */
       why: string;
       source_ref: components["schemas"]["EntityRefDto"];
+      /** Name */
+      name?: string | null;
     };
     /** IdentityAutoMatchMemberDto */
     IdentityAutoMatchMemberDto: {

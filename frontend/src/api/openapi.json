@@ -9405,6 +9405,17 @@
           },
           "source_ref": {
             "$ref": "#/components/schemas/EntityRefDto"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
           }
         },
         "type": "object",
