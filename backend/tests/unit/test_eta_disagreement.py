@@ -403,6 +403,33 @@ async def test_one_person_alone_never_disagrees() -> None:
             None,
             IssueEta(label="within a few days", start=_DAY, day=date(2026, 10, 8)),
         ),
+        # N45, R5 live: a duration that looks ahead is a window from the check-in
+        # date, with or without another ETA word, in digits or in words.
+        (
+            "2-3 days to have the test plan reviewed and finalized",
+            "in review",
+            IssueEta(label="2-3 days", start=date(2026, 10, 6), day=date(2026, 10, 7)),
+        ),
+        (
+            "2-3 days to get it reviewed",
+            None,
+            IssueEta(label="2-3 days", start=date(2026, 10, 6), day=date(2026, 10, 7)),
+        ),
+        (
+            "Two to three days.",
+            None,
+            IssueEta(label="2-3 days", start=date(2026, 10, 6), day=date(2026, 10, 7)),
+        ),
+        ("In two days", None, IssueEta(label="in two days", day=date(2026, 10, 6))),
+        ("Needs a couple of days", None, IssueEta(label="a couple of days", day=date(2026, 10, 6))),
+        (
+            "In the next few days",
+            None,
+            IssueEta(label="in the next few days", start=date(2026, 10, 6), day=date(2026, 10, 8)),
+        ),
+        # A number of days that looks back is no ETA.
+        ("Took 2 days to fix the flaky test", "in review", None),
+        ("3 days in review, still waiting", "in review", None),
         # The answer to an ETA question can be the day alone.
         ("Monday", None, IssueEta(label="Monday", day=date(2026, 10, 5))),
         ("Monday EOD", "in review", IssueEta(label="Monday", day=date(2026, 10, 5))),
