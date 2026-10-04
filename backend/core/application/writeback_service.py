@@ -195,11 +195,13 @@ class WriteBackService:
         keys: set[str] = set()
         held: dict[str, tuple[str, ...]] = {}
         for claim in claims:
-            target_state = _target_state(claim)
+            target_state = _claim_target(claim)
             if target_state is None:
                 continue
             issue = await self._read_issue(tenant_id, claim.issue_key)
             if issue is None or _already_in_target_state(issue, target_state):
+                continue
+            if _only_moves_a_todo_issue(claim) and issue.state is not IssueState.TODO:
                 continue
             if await self._ownership_refusal(tenant_id, developer_id, issue) is not None:
                 continue
@@ -259,7 +261,7 @@ class WriteBackService:
 
         results: list[WriteBackAudit] = []
         for claim in claims:
-            target_state = _target_state(claim)
+            target_state = _claim_target(claim)
             if target_state is None:
                 continue
             existing = await self._audit.find_existing(
@@ -295,9 +297,16 @@ class WriteBackService:
     ) -> WriteBackAudit | None:
         """Apply or propose one claim whose consent gates already hold, or record why not."""
         row_source = "standing_consent" if consent is WriteBackConsent.AUTO_APPLY else source
+        # "Started" or "on track" with no state of its own moves only an issue
+        # that is still To Do (N21); on any other issue it is no change at all.
+        todo_only = _only_moves_a_todo_issue(claim)
         issue = await self._read_issue(tenant_id, claim.issue_key)
         if issue is None:
-            if await self._synced_copy_shows(tenant_id, claim.issue_key, target_state):
+            synced = await self._synced_state(tenant_id, claim.issue_key)
+            if synced is not None and (
+                synced is _issue_state_for(target_state)
+                or (todo_only and synced is not IssueState.TODO)
+            ):
                 # The read failed (R2: a network stall), but OpenProgram's own
                 # copy already shows the claim, so there was nothing to write:
                 # a no-op, not a failure (N14). No row, as for a live no-op.
@@ -316,6 +325,8 @@ class WriteBackService:
                 comment=None,
                 source=row_source,
             )
+        if todo_only and issue.state is not IssueState.TODO:
+            return None
         refusal = await self._ownership_refusal(tenant_id, developer_id, issue)
         if refusal is not None:
             return await self._refuse(
@@ -622,25 +633,24 @@ class WriteBackService:
         except (ProviderUnavailable, KeyError):
             return None
 
-    async def _synced_copy_shows(self, tenant_id: str, issue_key: str, target_state: str) -> bool:
-        """Whether OpenProgram's synced copy of the issue already shows ``target_state``.
+    async def _synced_state(self, tenant_id: str, issue_key: str) -> IssueState | None:
+        """The state OpenProgram's synced copy of the issue shows, or ``None``.
 
         Read only when the tracker cannot be read: the issue sync's task node
-        (its ``state``, read as ``_already_in_target_state`` reads the tracker).
-        False when no graph is wired, the issue was never synced, or the copy
-        shows another state -- the claim then still records the failed read.
+        ``state``. ``None`` when no graph is wired or the issue was never synced;
+        the claim then still records the failed read.
         """
         if self._graph is None:
-            return False
+            return None
         try:
-            target = WriteBackTarget(target_state)
             node = await self._graph.get_node(tenant_id, issue_key)
-        except (ValueError, ProviderUnavailable):
-            return False
-        if node is None:
-            return False
-        state = node.metadata.get("state")
-        return isinstance(state, str) and state == _TARGET_ISSUE_STATES[target].value
+        except ProviderUnavailable:
+            return None
+        state = node.metadata.get("state") if node is not None else None
+        try:
+            return IssueState(state) if isinstance(state, str) else None
+        except ValueError:
+            return None
 
     async def _record_written_issue(
         self, tenant_id: str, issue_key: str, written_state: str
@@ -1159,6 +1169,58 @@ def _target_state(claim: IssueClaim) -> str | None:
     return None
 
 
+# "Started", "working on", "on track": work on the issue is under way, though the
+# wording names no state of its own (N21: Asha "CHK-16 on track", Hana "outline
+# started", both To Do in Jira). Conservative: anything negated, planned, modal
+# or about a future start ("planning to start Monday", "will pick it up after
+# CHK-14", "starting next") is not a start.
+_WORK_STARTED = re.compile(
+    r"\b(?:started|on track|working on|work in progress|in progress|wip|underway|"
+    r"under way|ongoing|began|begun|picked up)\b"
+)
+_NOT_A_START = re.compile(
+    r"\b(?:will|shall|plan|plans|planned|planning|going to|about to|intend|intends|"
+    r"hope|hoping|expect|expects|expected|should|would|could|might|may|to start|"
+    r"to begin|to pick|start|starts|starting|tomorrow|next week|next sprint|later|"
+    r"blocked|stuck|on hold|waiting|awaiting|pending|done|finished|complete|completed|merged)\b"
+)
+
+
+def _claims_work_started(claim: IssueClaim) -> bool:
+    """Whether the claim clearly says work on the issue has started.
+
+    Reads the claimed state, or the parser's note when no state was claimed;
+    neither is ever written anywhere.
+    """
+    text = (
+        claim.claimed_state if claim.claimed_state and claim.claimed_state.strip() else claim.note
+    )
+    phrase = " ".join(_NON_WORD.split((text or "").lower())).strip()
+    if not phrase or not _WORK_STARTED.search(phrase):
+        return False
+    return not (
+        _NOT_A_START.search(phrase)
+        or _NOT_STARTED_WORDING.search(phrase)
+        or _NEGATED_STATE.search(phrase)
+    )
+
+
+def _only_moves_a_todo_issue(claim: IssueClaim) -> bool:
+    """A claim whose only target is "in progress, because work started" (N21)."""
+    return _target_state(claim) is None and _claims_work_started(claim)
+
+
+def _claim_target(claim: IssueClaim) -> str | None:
+    """The canonical target of a claim: its stated state, else in progress if work started.
+
+    The second case moves only an issue still To Do (``_only_moves_a_todo_issue``).
+    """
+    target = _target_state(claim)
+    if target is None and _claims_work_started(claim):
+        return WriteBackTarget.IN_PROGRESS.value
+    return target
+
+
 # Review statuses read as in progress (the tracker adapters map them so), so an
 # "in review" claim on an in-progress issue is no change OpenProgram can see.
 _TARGET_ISSUE_STATES: dict[WriteBackTarget, IssueState] = {
@@ -1178,6 +1240,14 @@ def _written_issue_state(written_state: str) -> IssueState | None:
         pass
     try:
         return IssueState(written_state)
+    except ValueError:
+        return None
+
+
+def _issue_state_for(target_state: str) -> IssueState | None:
+    """The issue state a canonical target reads as, ``None`` for older free text."""
+    try:
+        return _TARGET_ISSUE_STATES[WriteBackTarget(target_state)]
     except ValueError:
         return None
 
@@ -1235,6 +1305,8 @@ def _reported_phrase(claim: IssueClaim, to_state: str) -> str:
     wording = " ".join(_NON_WORD.split((claim.claimed_state or "").lower()))
     if target is WriteBackTarget.DONE and _MERGED_WORDING.search(wording):
         return "it merged"
+    if target is WriteBackTarget.IN_PROGRESS and _only_moves_a_todo_issue(claim):
+        return "work on it started"
     return _REPORTED_PHRASES[target]
 
 
@@ -1280,6 +1352,6 @@ def write_back_comment(
 def _claim_for(claims: Sequence[IssueClaim], proposal: WriteBackAudit) -> IssueClaim | None:
     """The check-in claim a proposal came from, when it still names the same target."""
     for claim in reversed(claims):
-        if claim.issue_key == proposal.issue_key and _target_state(claim) == proposal.target_state:
+        if claim.issue_key == proposal.issue_key and _claim_target(claim) == proposal.target_state:
             return claim
     return None
