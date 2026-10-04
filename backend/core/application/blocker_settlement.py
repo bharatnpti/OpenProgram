@@ -16,6 +16,10 @@ Resolving writes the rows with the reason ``reported_resolved`` (the
 counterpart or the tracker reported the wait over; the table's CHECK allows no
 other reason without a migration) and takes the blockers out of the person's
 latest status, so the rollup's flat-status fallback cannot bring them back.
+
+Each row resolves once (N24): the six per-repository syncs each run the merge
+pass, so the row is resolved by one conditional update, in one transaction
+with the status revision, and only the pass that changed it revises the status.
 """
 
 from __future__ import annotations
@@ -36,6 +40,7 @@ from core.domain.cross_person import (
     request_subject,
     subject_of_text,
 )
+from core.domain.status import DeveloperStatus
 from core.ports.repositories import StatusRepository
 
 __all__ = ["BlockerSettlement", "blocker_subject", "request_match_score"]
@@ -124,16 +129,16 @@ class BlockerSettlement:
             return ()
         rows = tuple(_resolved(blocker, resolved_at.date()) for blocker in blockers)
         day = max(row.resolved_on or row.last_seen_on for row in rows)
-        status = await self._status_repository.latest_developer_status(tenant_id, developer_id, day)
-        gone = {blocker.normalized_key for blocker in blockers}
-        if status is None or not any(_is_gone(text, gone) for text in status.blockers):
-            await self._status_repository.record_developer_blockers(tenant_id, rows)
-            return rows
-        remaining = tuple(text for text in status.blockers if not _is_gone(text, gone))
-        await self._status_repository.record_developer_status_with_blockers(
-            replace(status, blockers=remaining), rows
+        # One conditional update per row (N24): the six per-repository syncs
+        # each run a merge pass, and of two passes over the same blocker only
+        # the one that changed it gets it back and revises the status.
+        return await self._status_repository.resolve_developer_blockers(
+            tenant_id,
+            developer_id,
+            rows,
+            status_as_of=day,
+            revise_status=_without_resolved,
         )
-        return rows
 
 
 def blocker_subject(blocker: DeveloperBlocker) -> RequestSubject:
@@ -197,6 +202,18 @@ def _words(text: str) -> list[str]:
 def _stated_before(blocker: DeveloperBlocker, at: datetime) -> bool:
     """The person last stated it before ``at``: then ``at`` supersedes it."""
     return blocker.updated_at is None or blocker.updated_at < at
+
+
+def _without_resolved(
+    status: DeveloperStatus, resolved: Sequence[DeveloperBlocker]
+) -> DeveloperStatus | None:
+    """The person's status without the blockers just resolved; None when it has none of them."""
+    gone = {blocker.normalized_key for blocker in resolved}
+    if not any(_is_gone(text, gone) for text in status.blockers):
+        return None
+    return replace(
+        status, blockers=tuple(text for text in status.blockers if not _is_gone(text, gone))
+    )
 
 
 def _resolved(blocker: DeveloperBlocker, day: date) -> DeveloperBlocker:

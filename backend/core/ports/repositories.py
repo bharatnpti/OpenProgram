@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import date, datetime
 from typing import Protocol
 
@@ -102,7 +102,18 @@ class CrossPersonRequestRepository(Protocol):
         request_id: str,
         status: CrossPersonRequestStatus,
         updated_at: datetime,
-    ) -> CrossPersonRequest | None: ...
+        *,
+        from_statuses: Sequence[CrossPersonRequestStatus] | None = None,
+    ) -> CrossPersonRequest | None:
+        """Move a request to ``status``: one conditional update, a transition.
+
+        Only a request not in ``status`` already, and with ``from_statuses``
+        in one of them, changes. Returns the changed request, or None when
+        nothing changed: of two writers moving the same request to the same
+        status (two merge passes, a reply racing a merge) only one gets it
+        back, and only that one tells anybody.
+        """
+        ...
 
     async def record_notification(
         self,
@@ -295,6 +306,31 @@ class StatusRepository(Protocol):
     async def record_developer_status_with_blockers(
         self, status: DeveloperStatus, blockers: Sequence[DeveloperBlocker]
     ) -> None: ...
+
+    async def resolve_developer_blockers(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        blockers: Sequence[DeveloperBlocker],
+        *,
+        status_as_of: date,
+        revise_status: Callable[
+            [DeveloperStatus, Sequence[DeveloperBlocker]], DeveloperStatus | None
+        ],
+    ) -> tuple[DeveloperBlocker, ...]:
+        """Resolve open blockers of one person, each at most once.
+
+        ``blockers`` are rows as read, carrying their resolution
+        (``resolved_on``, ``resolved_reason``, ``last_seen_on``). Each row
+        changes in one conditional update, only while it is unresolved and
+        unchanged since it was read (``updated_at``): of two passes resolving
+        the same blocker only one changes it, and one the person restated in
+        between stays open. In the same transaction the person's latest
+        status as of ``status_as_of`` is read under a row lock and replaced
+        by ``revise_status(status, changed)``, unless that returns None, so
+        the status projection stays in step. Returns the rows changed here.
+        """
+        ...
 
     async def open_blockers(
         self, tenant_id: str, developer_id: str, as_of: date

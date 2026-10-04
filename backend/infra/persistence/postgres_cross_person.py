@@ -75,16 +75,25 @@ class PostgresCrossPersonRequestRepository:
         request_id: str,
         status: CrossPersonRequestStatus,
         updated_at: datetime,
+        *,
+        from_statuses: Sequence[CrossPersonRequestStatus] | None = None,
     ) -> CrossPersonRequest | None:
+        # One conditional UPDATE is the transition. A second writer that read
+        # the same row blocks on the row lock, then re-checks the WHERE against
+        # the committed row: the status has moved on, so it updates nothing,
+        # gets no row back and tells nobody.
+        clauses = ["tenant_id = %s", "id = %s", "status <> %s"]
+        params: list[object] = [status.value, updated_at, tenant_id, request_id, status.value]
+        _append_status_filter(clauses, params, from_statuses)
         with _tracer.start_as_current_span("postgres.cross_person.update_status"):
             rows = await self._executor.fetch(
-                """
+                f"""
                 UPDATE cross_person_requests
                 SET status = %s, updated_at = %s
-                WHERE tenant_id = %s AND id = %s
+                WHERE {" AND ".join(clauses)}
                 RETURNING *
                 """,
-                (status.value, updated_at, tenant_id, request_id),
+                tuple(params),
             )
         return _request_from_row(rows[0]) if rows else None
 
