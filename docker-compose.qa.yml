@@ -9,15 +9,23 @@
 # --env-file feeds the ${...} interpolation in docker-compose.yml; the override
 # below replaces each service's env_file. Both are needed: the shared .env stays
 # the mock demo for anything else (a host uvicorn, the test suite) that reads it.
+#
+# The QA stack runs no Langfuse. A blank host turns LLM tracing off, so /ready
+# reports llm_trace "disabled" instead of degrading on it. It is set here, not
+# in .env.qa, because docker-compose.yml's environment beats env_file.
 services:
   backend:
     env_file: !override
       - path: .env.qa
         required: true
+    environment:
+      OPENPROGRAM_LANGFUSE_HOST: ""
   worker:
     env_file: !override
       - path: .env.qa
         required: true
+    environment:
+      OPENPROGRAM_LANGFUSE_HOST: ""
 
   # GitLab CE, tuned for a laptop (~3 GB). The backend reaches it on the compose
   # network as http://gitlab:8929; a browser uses http://localhost:8929. Root's
