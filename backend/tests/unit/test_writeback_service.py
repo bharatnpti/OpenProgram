@@ -1625,6 +1625,17 @@ async def test_someone_elses_to_do_issue_is_not_moved_by_their_on_track() -> Non
         (None, "Still waiting on review"),
         (None, "On track, blocked on the API contract"),
         (None, ""),
+        # N28: a start that lies ahead stays not started.
+        (None, "Will start Monday"),
+        (None, "Picking up CHK-12 tomorrow"),
+        (None, "Planning to pick it up after CHK-11"),
+        (None, "Drafted? Not yet."),
+        # Zoe R4 CHK-12 before storefront-web !5 was opened: the parser's note
+        # also says the merge request is expected, and no merge request is open.
+        (
+            None,
+            "Being picked up today, MR expected shortly. Aiming for review by end of day tomorrow.",
+        ),
     ],
 )
 async def test_wording_that_does_not_clearly_say_work_started_moves_nothing(
@@ -1659,6 +1670,297 @@ async def test_a_started_claim_whose_read_fails_is_a_noop_unless_the_copy_is_to_
 
     assert results == []
     assert audit.audits == {}
+
+
+# --- N28: more start wording, and an open merge request as start evidence ---
+
+# R4 (2026-10-04), as the parser read them; both issues were To Do in Jira.
+_ASHA_R4_CHK16 = IssueClaim(
+    issue_key="CHK-16",
+    claimed_state="agenda and numbers drafted",
+    note=(
+        "Drafting work nearly complete, final pass pending. ETA unchanged, final pass this "
+        "week. Agenda and Q4 checkout numbers drafted, final pass remaining."
+    ),
+)
+_ZOE_R4_CHK12 = IssueClaim(
+    issue_key="CHK-12",
+    note="Being picked up today, MR expected shortly. Aiming for review by end of day tomorrow.",
+)
+
+
+def _storefront_mr5(*, state: str = "open") -> FactEvent:
+    # Zoe opened it at 06:05:54 on branch CHK-12-promo-code-validation.
+    return _merge_request_fact(
+        "5",
+        title="CHK-12 Promo code validation",
+        source_branch="CHK-12-promo-code-validation",
+        state=state,
+        repo="acme/storefront-web",
+        observed_at=datetime(2026, 10, 4, 6, 5, 54, tzinfo=UTC),
+    )
+
+
+async def _named_store(name: str) -> InMemoryGraphStore:
+    store = InMemoryGraphStore()
+    await store.upsert_node(Developer(tenant_id=_TENANT, id=_DEV, name=name))
+    return store
+
+
+@pytest.mark.parametrize(
+    ("claim", "name"),
+    [
+        pytest.param(_ASHA_R4_CHK16, "Asha Rao", id="asha-r4-agenda-drafted"),
+        pytest.param(
+            IssueClaim(issue_key="CHK-12", note="Picking up CHK-12 promo code validation today."),
+            "Zoe Almeida",
+            id="picking-up",
+        ),
+        pytest.param(
+            IssueClaim(issue_key="CHK-12", note="Working on the promo code rules."),
+            "Zoe Almeida",
+            id="working-on",
+        ),
+        pytest.param(
+            IssueClaim(issue_key="CHK-12", note="Started on the validation rules."),
+            "Zoe Almeida",
+            id="started-on",
+        ),
+        pytest.param(
+            IssueClaim(issue_key="CHK-12", note="Promo code validation in progress."),
+            "Zoe Almeida",
+            id="in-progress",
+        ),
+    ],
+)
+async def test_more_wording_that_says_work_began_moves_a_to_do_issue(
+    claim: IssueClaim, name: str
+) -> None:
+    tracker = _MovingIssueTracker(
+        issues={claim.issue_key: _issue(claim.issue_key, IssueState.TODO)}
+    )
+    service, _, _ = _build(tracker=tracker, default_enabled=True, graph=await _named_store(name))
+
+    [row] = await service.apply_from_checkin(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        claims=[claim],
+        reported_on=date(2026, 10, 4),
+    )
+
+    assert (row.status, row.target_state, row.before_state) == (
+        WriteBackStatus.APPLIED,
+        "in_progress",
+        "todo",
+    )
+    assert tracker.comments == [
+        (
+            _TENANT,
+            claim.issue_key,
+            f"Moved to In Progress by OpenProgram: {name} reported work on it started "
+            "in the 2026-10-04 check-in.",
+        )
+    ]
+
+
+async def test_zoes_picking_up_with_her_open_merge_request_moves_chk12() -> None:
+    tracker = _MovingIssueTracker(issues={"CHK-12": _issue("CHK-12", IssueState.TODO)})
+    facts = FakeTimeSeriesRepository(facts=[_storefront_mr5()])
+    service, _, _ = _build(
+        tracker=tracker,
+        default_enabled=True,
+        facts=facts,
+        graph=await _named_store("Zoe Almeida"),
+    )
+    dry_run = await service.dry_run(tenant_id=_TENANT, developer_id=_DEV, claims=[_ZOE_R4_CHK12])
+
+    [row] = await service.apply_from_checkin(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        claims=[_ZOE_R4_CHK12],
+        reported_on=date(2026, 10, 4),
+    )
+
+    assert dry_run.written == frozenset({"CHK-12"})
+    assert (row.status, row.target_state, row.before_state, row.source) == (
+        WriteBackStatus.APPLIED,
+        "in_progress",
+        "todo",
+        "standing_consent",
+    )
+    assert tracker.transitions == [(_TENANT, "CHK-12", "in_progress")]
+    assert tracker.comments == [
+        (
+            _TENANT,
+            "CHK-12",
+            "Moved to In Progress by OpenProgram: Zoe Almeida reported work on it "
+            "(acme/storefront-web !5) in the 2026-10-04 check-in.",
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("claimed_state", "note"),
+    [
+        (None, "Will start Monday"),
+        (None, "will start Monday, MR is a placeholder"),
+        (None, "Planning to pick it up after CHK-11"),
+        ("not started", ""),
+        ("to do", ""),
+        (None, "Not started yet"),
+        (None, "Blocked on CHK-17"),
+        (None, "Waiting on the API contract"),
+        (None, "No change"),
+        (None, "Almost done"),
+    ],
+)
+async def test_an_open_merge_request_does_not_move_an_issue_the_owner_says_is_not_started(
+    claimed_state: str | None, note: str
+) -> None:
+    tracker = FakeIssueTracker(issues={"CHK-12": _issue("CHK-12", IssueState.TODO)})
+    facts = FakeTimeSeriesRepository(facts=[_storefront_mr5()])
+    service, _, audit = _build(tracker=tracker, default_enabled=True, facts=facts)
+    claim = IssueClaim(issue_key="CHK-12", claimed_state=claimed_state, note=note)
+
+    results = await service.apply_from_checkin(
+        tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION, claims=[claim]
+    )
+
+    assert [row for row in results if row.target_state == "in_progress"] == []
+    assert tracker.transitions == []
+    assert [a for a in audit.audits.values() if a.target_state == "in_progress"] == []
+
+
+async def test_a_bare_mention_with_an_open_merge_request_waits_for_an_always_ask_yes() -> None:
+    tracker = _MovingIssueTracker(issues={"CHK-12": _issue("CHK-12", IssueState.TODO)})
+    facts = FakeTimeSeriesRepository(facts=[_storefront_mr5()])
+    service, _, _ = _build(
+        tracker=tracker,
+        default_enabled=True,
+        consent=WriteBackConsent.ALWAYS_ASK,
+        facts=facts,
+        graph=await _named_store("Zoe Almeida"),
+    )
+    claim = IssueClaim(issue_key="CHK-12", note="")
+
+    [proposed] = await service.apply_from_checkin(
+        tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION, claims=[claim]
+    )
+    assert tracker.transitions == []
+    [applied] = await service.resolve_consent_reply(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        reply_text="yes",
+        claims=[claim],
+        reported_on=date(2026, 10, 4),
+    )
+
+    assert (proposed.status, proposed.target_state) == (WriteBackStatus.PROPOSED, "in_progress")
+    assert (applied.status, applied.target_state) == (WriteBackStatus.APPLIED, "in_progress")
+    assert tracker.transitions == [(_TENANT, "CHK-12", "in_progress")]
+    assert tracker.comments[-1][2] == (
+        "Moved to In Progress by OpenProgram: Zoe Almeida reported work on it "
+        "(acme/storefront-web !5) in the 2026-10-04 check-in."
+    )
+
+
+@pytest.mark.parametrize(
+    ("state", "merge_request"),
+    [
+        pytest.param(IssueState.IN_PROGRESS, _storefront_mr5(), id="already-in-progress"),
+        pytest.param(IssueState.DONE, _storefront_mr5(), id="done"),
+        pytest.param(IssueState.TODO, _storefront_mr5(state="merged"), id="merged-not-open"),
+        pytest.param(IssueState.TODO, _storefront_mr5(state="closed"), id="closed"),
+    ],
+)
+async def test_an_open_merge_request_moves_only_a_to_do_issue_and_only_while_open(
+    state: IssueState, merge_request: FactEvent
+) -> None:
+    tracker = FakeIssueTracker(issues={"CHK-12": _issue("CHK-12", state)})
+    facts = FakeTimeSeriesRepository(facts=[merge_request])
+    service, _, audit = _build(tracker=tracker, default_enabled=True, facts=facts)
+
+    results = await service.apply_from_checkin(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        claims=[IssueClaim(issue_key="CHK-12", note="")],
+    )
+
+    assert results == []
+    assert tracker.transitions == []
+    assert audit.audits == {}
+
+
+async def test_someone_elses_to_do_issue_with_an_open_merge_request_is_not_moved() -> None:
+    tracker = FakeIssueTracker(
+        issues={"CHK-12": _issue("CHK-12", IssueState.TODO, assignee="dev-zoe")}
+    )
+    facts = FakeTimeSeriesRepository(facts=[_storefront_mr5()])
+    service, _, _ = _build(tracker=tracker, default_enabled=True, facts=facts)
+
+    [row] = await service.apply_from_checkin(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        claims=[IssueClaim(issue_key="CHK-12", note="Reviewing it later today.")],
+    )
+
+    assert (row.status, row.source) == (WriteBackStatus.DECLINED, NOT_OWNER_SOURCE)
+    assert tracker.transitions == []
+
+
+async def test_naming_the_open_merge_request_moves_the_issue_it_is_for() -> None:
+    tracker = _MovingIssueTracker(
+        issues={
+            "CHK-11": _issue("CHK-11", IssueState.IN_PROGRESS),
+            "CHK-12": _issue("CHK-12", IssueState.TODO),
+        }
+    )
+    facts = FakeTimeSeriesRepository(facts=[_storefront_mr5()])
+    service, _, _ = _build(
+        tracker=tracker,
+        default_enabled=True,
+        facts=facts,
+        graph=await _named_store("Zoe Almeida"),
+    )
+    claim = IssueClaim(issue_key="CHK-11", note="Still on it; opened storefront-web !5 meanwhile.")
+
+    rows = await service.apply_from_checkin(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        claims=[claim],
+        reported_on=date(2026, 10, 4),
+    )
+
+    assert [(row.issue_key, row.status, row.target_state) for row in rows] == [
+        ("CHK-12", WriteBackStatus.APPLIED, "in_progress")
+    ]
+    assert tracker.transitions == [(_TENANT, "CHK-12", "in_progress")]
+
+
+async def test_naming_someone_elses_open_merge_request_leaves_no_row() -> None:
+    tracker = FakeIssueTracker(
+        issues={
+            "CHK-11": _issue("CHK-11", IssueState.IN_PROGRESS),
+            "CHK-12": _issue("CHK-12", IssueState.TODO, assignee="dev-zoe"),
+        }
+    )
+    facts = FakeTimeSeriesRepository(facts=[_storefront_mr5()])
+    service, _, audit = _build(tracker=tracker, default_enabled=True, facts=facts)
+    claim = IssueClaim(issue_key="CHK-11", note="Reviewed storefront-web !5 for Zoe.")
+
+    results = await service.apply_from_checkin(
+        tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION, claims=[claim]
+    )
+
+    assert results == []
+    assert audit.audits == {}
+    assert tracker.transitions == []
 
 
 # --- G1: a consent answer, issue by issue ---

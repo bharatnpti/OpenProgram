@@ -12,7 +12,9 @@ import structlog
 
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.merge_request_links import (
+    ISSUE_KEY,
     MERGE_REQUEST_FACT_SOURCE,
+    MergeRequestIndex,
     is_merged_merge_request,
     is_open_merge_request,
     merge_request_label,
@@ -21,7 +23,9 @@ from core.application.merge_request_links import (
 )
 from core.application.sync_services import record_issue_as_synced
 from core.domain.auth import Principal, Role
+from core.domain.cross_person import merge_request_refs_in
 from core.domain.errors import ProviderUnavailable
+from core.domain.graph import FactEvent
 from core.domain.integrations import Issue, IssueState
 from core.domain.status import IssueClaim, WriteBackConsent
 from core.domain.writeback import (
@@ -214,8 +218,8 @@ class WriteBackService:
             return WriteBackDryRun()
         keys: set[str] = set()
         held: dict[str, tuple[str, ...]] = {}
-        for claim in claims:
-            target_state = _claim_target(claim)
+        for claim, _ in await self._with_mentioned_merge_requests(tenant_id, claims):
+            target_state = await self._target_for(tenant_id, claim)
             if target_state is None:
                 continue
             issue = await self._read_issue(tenant_id, claim.issue_key)
@@ -280,8 +284,8 @@ class WriteBackService:
             return []
 
         results: list[WriteBackAudit] = []
-        for claim in claims:
-            target_state = _claim_target(claim)
+        for claim, mention_only in await self._with_mentioned_merge_requests(tenant_id, claims):
+            target_state = await self._target_for(tenant_id, claim)
             if target_state is None:
                 continue
             existing = await self._audit.find_existing(
@@ -298,6 +302,7 @@ class WriteBackService:
                 consent=consent,
                 source=source,
                 reported_on=reported_on,
+                mention_only=mention_only,
             )
             if row is not None:
                 results.append(row)
@@ -314,13 +319,22 @@ class WriteBackService:
         consent: WriteBackConsent,
         source: str,
         reported_on: date | None = None,
+        mention_only: bool = False,
     ) -> WriteBackAudit | None:
-        """Apply or propose one claim whose consent gates already hold, or record why not."""
+        """Apply or propose one claim whose consent gates already hold, or record why not.
+
+        ``mention_only``: the check-in named only a merge request for the issue
+        (N28). Such a claim is never refused on the record: an issue that is
+        not the person's, or that cannot be read, is left alone with no row.
+        """
         row_source = "standing_consent" if consent is WriteBackConsent.AUTO_APPLY else source
-        # "Started" or "on track" with no state of its own moves only an issue
-        # that is still To Do (N21); on any other issue it is no change at all.
+        # "Started" or "on track" with no state of its own, or a mention of an
+        # issue an open merge request is for, moves only an issue that is still
+        # To Do (N21, N28); on any other issue it is no change at all.
         todo_only = _only_moves_a_todo_issue(claim)
         issue = await self._read_issue(tenant_id, claim.issue_key)
+        if issue is None and mention_only:
+            return None
         if issue is None:
             synced = await self._synced_state(tenant_id, claim.issue_key)
             if synced is not None and (
@@ -348,6 +362,8 @@ class WriteBackService:
         if todo_only and issue.state is not IssueState.TODO:
             return None
         refusal = await self._ownership_refusal(tenant_id, developer_id, issue)
+        if refusal is not None and mention_only:
+            return None
         if refusal is not None:
             return await self._refuse(
                 tenant_id, developer_id, correlation_id, issue, target_state, refusal
@@ -797,17 +813,80 @@ class WriteBackService:
         title, the latest fact of each request. Empty for every other target,
         and when no fact store is wired, so those writes behave as before.
         """
-        if target_state != WriteBackTarget.DONE.value or self._facts is None:
+        if target_state != WriteBackTarget.DONE.value:
             return ()
-        facts = await self._facts.list_recent_facts(
+        return await self._open_merge_requests_for(tenant_id, issue_key)
+
+    async def _open_merge_requests_for(self, tenant_id: str, issue_key: str) -> tuple[str, ...]:
+        """Open or draft merge requests naming the issue, as ``repo !id``; () without facts."""
+        if self._facts is None:
+            return ()
+        linked = merge_requests_by_issue_key(
+            await self._merge_request_facts(tenant_id), {issue_key}
+        ).get(issue_key, [])
+        return tuple(
+            sorted(merge_request_label(fact) for fact in linked if is_open_merge_request(fact))
+        )
+
+    async def _merge_request_facts(self, tenant_id: str) -> list[FactEvent]:
+        if self._facts is None:
+            return []
+        return await self._facts.list_recent_facts(
             tenant_id,
             sources=(MERGE_REQUEST_FACT_SOURCE,),
             limit=_MERGE_REQUEST_FACT_SCAN_LIMIT,
         )
-        linked = merge_requests_by_issue_key(facts, {issue_key}).get(issue_key, [])
-        return tuple(
-            sorted(merge_request_label(fact) for fact in linked if is_open_merge_request(fact))
-        )
+
+    async def _target_for(self, tenant_id: str, claim: IssueClaim) -> str | None:
+        """The claim's canonical target, with an open merge request as start evidence (N28).
+
+        A claim that names no state and does not say work started still targets
+        in progress when a merge request naming the issue is open (or a draft)
+        and its wording leaves a start open: in R4 Zoe named CHK-12 and opened
+        storefront-web !5 for it. Like any started claim it moves only a To Do
+        issue, behind every gate. Wording that says the start lies ahead or has
+        not happened, or that the issue is blocked, waiting or done, rules it out.
+        """
+        target = _claim_target(claim)
+        if target is not None or _rules_out_a_start(claim):
+            return target
+        if await self._open_merge_requests_for(tenant_id, claim.issue_key):
+            return WriteBackTarget.IN_PROGRESS.value
+        return None
+
+    async def _with_mentioned_merge_requests(
+        self, tenant_id: str, claims: Sequence[IssueClaim]
+    ) -> list[tuple[IssueClaim, bool]]:
+        """The claims, then a bare mention of each issue an open merge request they name is for.
+
+        Each comes with whether it is such a mention. "Opened storefront-web
+        !5" names the merge request, not its issue; the request's source or
+        title does ("CHK-12 Promo code validation"). An issue no claim names
+        gets a claim with no wording of its own, which only the open merge
+        request can give a target (``_target_for``). Only a merge request named
+        with its repository counts.
+        """
+        given = [(claim, False) for claim in claims]
+        refs = {
+            (ref.repo, ref.number)
+            for claim in claims
+            for ref in merge_request_refs_in(f"{claim.claimed_state or ''} {claim.note}")
+            if ref.repo is not None
+        }
+        if not refs or self._facts is None:
+            return given
+        index = MergeRequestIndex.from_facts(await self._merge_request_facts(tenant_id))
+        named = {claim.issue_key.strip().upper() for claim in claims}
+        mentioned: list[tuple[IssueClaim, bool]] = []
+        for ref in sorted(refs):
+            fact = index.by_ref.get(ref)
+            if fact is None or not is_open_merge_request(fact):
+                continue
+            for key in _issue_keys_named_by(fact):
+                if key not in named:
+                    named.add(key)
+                    mentioned.append((IssueClaim(issue_key=key), True))
+        return [*given, *mentioned]
 
     async def _tracker_account_ids(self, tenant_id: str, developer_id: str) -> set[str]:
         # A member whose id is the tracker account id itself, or the account the
@@ -1374,18 +1453,20 @@ def _target_state(claim: IssueClaim) -> str | None:
 
 # "Started", "working on", "on track": work on the issue is under way, though the
 # wording names no state of its own (N21: Asha "CHK-16 on track", Hana "outline
-# started", both To Do in Jira). Conservative: anything negated, planned, modal
-# or about a future start ("planning to start Monday", "will pick it up after
-# CHK-14", "starting next") is not a start.
+# started", both To Do in Jira; N28: Zoe "picking up CHK-12", Asha "agenda and
+# numbers drafted"). Conservative: anything negated, planned, modal or about a
+# future start ("planning to start Monday", "will pick it up after CHK-14",
+# "starting next") is not a start.
 _WORK_STARTED = re.compile(
-    r"\b(?:started|on track|working on|work in progress|in progress|wip|underway|"
-    r"under way|ongoing|began|begun|picked up)\b"
+    r"\b(?:started|started on|on track|working on|work in progress|in progress|wip|underway|"
+    r"under way|ongoing|began|begun|picked up|picking up|picking (?:it|this|that) up|drafted)\b"
 )
 _NOT_A_START = re.compile(
     r"\b(?:will|shall|plan|plans|planned|planning|going to|about to|intend|intends|"
     r"hope|hoping|expect|expects|expected|should|would|could|might|may|to start|"
     r"to begin|to pick|start|starts|starting|tomorrow|next week|next sprint|later|"
-    r"blocked|stuck|on hold|waiting|awaiting|pending|done|finished|complete|completed|merged)\b"
+    r"blocked|stuck|on hold|waiting|awaiting|pending|done|finished|complete|completed|merged|"
+    r"not yet|yet to)\b"
 )
 
 
@@ -1409,19 +1490,89 @@ def _claims_work_started(claim: IssueClaim) -> bool:
 
 
 def _only_moves_a_todo_issue(claim: IssueClaim) -> bool:
-    """A claim whose only target is "in progress, because work started" (N21)."""
-    return _target_state(claim) is None and _claims_work_started(claim)
+    """Whether a claim's in-progress target comes from the started rule (N21, N28).
+
+    Such a claim names no state of its own: it says work started, or it names
+    an issue an open merge request is for. Either way it moves only an issue
+    that is still To Do. Asked only of a claim that has a target.
+    """
+    return _target_state(claim) is None
 
 
-def _claim_target(claim: IssueClaim) -> str | None:
+def _claim_target(claim: IssueClaim, *, open_merge_request: bool = False) -> str | None:
     """The canonical target of a claim: its stated state, else in progress if work started.
 
     The second case moves only an issue still To Do (``_only_moves_a_todo_issue``).
+    ``open_merge_request``: a merge request naming the issue is open, which is
+    evidence of a start unless the wording rules one out (N28).
     """
     target = _target_state(claim)
-    if target is None and _claims_work_started(claim):
+    if target is None and (
+        _claims_work_started(claim) or (open_merge_request and not _rules_out_a_start(claim))
+    ):
         return WriteBackTarget.IN_PROGRESS.value
     return target
+
+
+# N28: what rules out reading an open merge request as a start. Narrower than
+# _NOT_A_START, which also refuses wording about something else in the future
+# ("MR expected shortly"): with the merge request open, only wording about the
+# start itself, or about another state, counts against it.
+_START_VERB = re.compile(
+    r"\b(?:start|starts|starting|started|begin|begins|beginning|began|begun|pick|picks|"
+    r"picking|picked|kick off|kicking off|work on|working on)\b"
+)
+_FUTURE_OR_MODAL = re.compile(
+    r"\b(?:will|shall|plan|plans|planned|planning|going to|about to|intend|intends|hope|"
+    r"hoping|expect|expects|expected|should|would|could|might|may|aim|aiming|tomorrow|"
+    r"tonight|next|later|soon|shortly|after|once|when|monday|tuesday|wednesday|thursday|"
+    r"friday|saturday|sunday)\b"
+)
+_OTHER_STATE = re.compile(
+    r"\b(?:blocked|stuck|on hold|waiting|awaiting|pending|done|finished|complete|completed|"
+    r"merged)\b"
+)
+_NO_CHANGE = re.compile(
+    r"\b(?:no change|no changes|unchanged|same as|as before|no update|nothing new|not yet)\b"
+)
+_CLAUSE_BREAK = re.compile(r"[.;:!?,]+|\b(?:and|but|then)\b")
+
+
+def _rules_out_a_start(claim: IssueClaim) -> bool:
+    """Whether the claim's wording says work has not started, or is not what is happening.
+
+    Reads the claimed state, or the parser's note when no state was claimed.
+    A start ahead is a start verb with a future or modal word in the same
+    clause ("will start Monday", "planning to pick it up"); "MR expected
+    shortly" beside "being picked up today" is about the merge request.
+    """
+    text = (
+        claim.claimed_state if claim.claimed_state and claim.claimed_state.strip() else claim.note
+    )
+    lowered = (text or "").lower()
+    phrase = " ".join(_NON_WORD.split(lowered)).strip()
+    if (
+        _NOT_STARTED_WORDING.search(phrase)
+        or _NEGATED_STATE.search(phrase)
+        or _OTHER_STATE.search(phrase)
+        or _NO_CHANGE.search(phrase)
+    ):
+        return True
+    for part in _CLAUSE_BREAK.split(lowered):
+        clause = " ".join(_NON_WORD.split(part)).strip()
+        if _START_VERB.search(clause) and _FUTURE_OR_MODAL.search(clause):
+            return True
+    return False
+
+
+def _issue_keys_named_by(fact: FactEvent) -> tuple[str, ...]:
+    """The issue keys a merge request's source branch or title names, upper case."""
+    text = " ".join(
+        value
+        for value in (fact.payload.get("source_branch"), fact.payload.get("title"))
+        if isinstance(value, str)
+    )
+    return tuple(sorted({match.upper() for match in ISSUE_KEY.findall(text)}))
 
 
 # Review statuses read as in progress (the tracker adapters map them so), so an
@@ -1509,7 +1660,8 @@ def _reported_phrase(claim: IssueClaim, to_state: str) -> str:
     if target is WriteBackTarget.DONE and _MERGED_WORDING.search(wording):
         return "it merged"
     if target is WriteBackTarget.IN_PROGRESS and _only_moves_a_todo_issue(claim):
-        return "work on it started"
+        # Said started; or only named, with its open merge request (N28).
+        return "work on it started" if _claims_work_started(claim) else "work on it"
     return _REPORTED_PHRASES[target]
 
 
@@ -1554,7 +1706,12 @@ def write_back_comment(
 
 def _claim_for(claims: Sequence[IssueClaim], proposal: WriteBackAudit) -> IssueClaim | None:
     """The check-in claim a proposal came from, when it still names the same target."""
+    # A proposal is made only where the claim had a target, so a claim that
+    # needed its open merge request for one (N28) is that proposal's claim too.
     for claim in reversed(claims):
-        if claim.issue_key == proposal.issue_key and _claim_target(claim) == proposal.target_state:
+        if (
+            claim.issue_key == proposal.issue_key
+            and _claim_target(claim, open_merge_request=True) == proposal.target_state
+        ):
             return claim
     return None
