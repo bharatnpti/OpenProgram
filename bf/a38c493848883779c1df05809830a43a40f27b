@@ -1,0 +1,31 @@
+backend/infra/adapters/readiness.py
+  s_027fd12d872fd7::t_ac0af13b77cf9e 11-12,15-16,26-38
+  s_027fd12d872fd7::t_7c9e054fb894a3 39-40
+backend/tests/unit/test_llm_trace_readiness.py
+  s_027fd12d872fd7::t_c3c48f512c0a87 1-98,100-115,118-120,123,127,130-148,154,156-171,177,179-182
+  s_027fd12d872fd7::t_90c896c1392323 149-153,155,172-176,178
+  s_027fd12d872fd7::t_295e59e6df1b42 99
+  s_027fd12d872fd7::t_6787af4799e457 116-117,121-122,124-126,128-129
+backend/infra/adapters/catalog.py
+  s_027fd12d872fd7::t_2895cbc8688230 63
+  s_027fd12d872fd7::t_f5a67af8240b29 389-390,393-394
+  s_027fd12d872fd7::t_9a95951c841c53 391-392
+  s_027fd12d872fd7::t_c2b771ddffe141 238,243-263
+  s_027fd12d872fd7::t_ca6c9ad612aade 264-266
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bfa38c493848883779c1df05809830a43a40f27b",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
