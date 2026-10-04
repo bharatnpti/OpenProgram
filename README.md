@@ -16,6 +16,28 @@ Three principles run through the whole system:
 - Low-level designs → [docs/lld/](docs/lld/)
 - Slack setup → [docs/ops/slack-setup.md](docs/ops/slack-setup.md)
 - Local demo with a populated tenant → [docs/ops/local-demo.md](docs/ops/local-demo.md)
+- Demo videos, English and Hindi → [Demo videos](#demo-videos)
+
+---
+
+## Demo videos
+
+A narrated walkthrough of one weekend on real tools: a Slack workspace, a Jira Cloud site and a self-hosted GitLab server. The eleven people in it are AI agents playing the team of a fictional company, Acme Digital, each signed in from its own browser; every message, ticket and merge request on screen is real.
+
+| Video | Length | Subtitles |
+| --- | --- | --- |
+| [▶ English](https://github.com/bharatnpti/OpenProgram/releases/download/demo-videos-2026-10/openprogram-demo-en.mp4) | 10:16 · 124 MB | [English](https://github.com/bharatnpti/OpenProgram/releases/download/demo-videos-2026-10/openprogram-demo-en.srt) |
+| [▶ Hindi (Hinglish)](https://github.com/bharatnpti/OpenProgram/releases/download/demo-videos-2026-10/openprogram-demo-hi.mp4) | 12:20 · 137 MB | [Hindi](https://github.com/bharatnpti/OpenProgram/releases/download/demo-videos-2026-10/openprogram-demo-hi.srt) · [English](https://github.com/bharatnpti/OpenProgram/releases/download/demo-videos-2026-10/openprogram-demo-hi.en.srt) |
+
+Each link downloads the MP4 (1080p, with its subtitles built in); the [release page](https://github.com/bharatnpti/OpenProgram/releases/tag/demo-videos-2026-10) lists every file with its checksum. Both videos show the same scenes, and only the narration differs. Each feature is named before it is shown:
+
+- check-in questions written from each person's own tickets and merge requests, and follow-ups that name the exact ticket;
+- Jira updated from a check-in, asking the person first by default or automatically for people who opted in, with every change in an audit log;
+- a wait on another team tracked as a dependency that clears itself when that work merges, and review requests routed to the reviewer;
+- a ticket moved to Done only when its merge request has merged, and only by its owner's own check-in;
+- reminders and escalation to the scrum master and manager when someone does not reply, with the silence recorded as inferred, never green;
+- what people say checked against GitLab, such as an "on track" ticket whose merge request has gone quiet;
+- the manager, scrum master, product owner and executive views, and asking the graph a question in plain language.
 
 ---
 
