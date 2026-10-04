@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -17,6 +17,7 @@ from core.application.writeback_service import (
     canonical_target_state,
     interpret_consent_reply,
     target_state_label,
+    write_back_comment,
 )
 from core.domain.auth import Principal
 from core.domain.errors import ProviderUnavailable
@@ -121,6 +122,12 @@ def _claims() -> list[IssueClaim]:
     return [IssueClaim(issue_key="PO-1", claimed_done=True, note="shipped it")]
 
 
+# What an applied PO-1 "done" posts: neutral, never the note ("shipped it").
+_PO1_DONE_COMMENT = (
+    "Moved to Done by OpenProgram: the assignee reported it done in the 2026-07-25 check-in."
+)
+
+
 async def test_system_gate_closed_is_a_noop() -> None:
     service, tracker, audit = _build(default_enabled=False, consent=WriteBackConsent.AUTO_APPLY)
     results = await service.apply_from_checkin(
@@ -170,13 +177,13 @@ async def test_auto_apply_transitions_comments_and_audits() -> None:
         claims=_claims(),
     )
     assert tracker.transitions == [(_TENANT, "PO-1", IssueState.DONE.value)]
-    assert tracker.comments == [(_TENANT, "PO-1", "shipped it")]
+    assert tracker.comments == [(_TENANT, "PO-1", _PO1_DONE_COMMENT)]
     assert len(results) == 1
     recorded = results[0]
     assert recorded.status is WriteBackStatus.APPLIED
     assert recorded.before_state == IssueState.IN_PROGRESS.value
     assert recorded.after_state == IssueState.DONE.value
-    assert recorded.comment == "shipped it"
+    assert recorded.comment == _PO1_DONE_COMMENT
     assert await audit.list_for_issue(_TENANT, "PO-1") == [recorded]
 
 
@@ -331,7 +338,7 @@ async def test_resolve_affirmative_applies_pending_proposal() -> None:
     assert results[0].status is WriteBackStatus.APPLIED
     assert results[0].source == "consent_reply"
     assert tracker.transitions == [(_TENANT, "PO-1", IssueState.DONE.value)]
-    assert tracker.comments == [(_TENANT, "PO-1", "shipped it")]
+    assert tracker.comments == [(_TENANT, "PO-1", _PO1_DONE_COMMENT)]
     assert await service.list_pending_proposals(_TENANT, _CORRELATION) == []
 
 
@@ -741,7 +748,14 @@ async def test_owners_done_claim_transitions_to_done() -> None:
         ],
     )
     assert tracker.transitions == [(_TENANT, "IDP-5", WriteBackTarget.DONE.value)]
-    assert tracker.comments == [(_TENANT, "IDP-5", "Fix merged, all acceptance criteria met.")]
+    assert tracker.comments == [
+        (
+            _TENANT,
+            "IDP-5",
+            "Moved to Done by OpenProgram: the assignee reported it merged "
+            "in the 2026-07-25 check-in.",
+        )
+    ]
     [row] = results
     assert row.status is WriteBackStatus.APPLIED
     assert (row.target_state, row.before_state, row.after_state) == (
@@ -1405,3 +1419,95 @@ async def test_a_failed_write_leaves_the_local_issue_alone() -> None:
     node = await store.get_node(_TENANT, "INS-3")
     assert node is not None and node.metadata["state"] == "in_progress"
     assert await _issue_facts(store) == facts_before
+
+
+# --- N20: the write-back comment is neutral and factual, never the person's words ---
+
+
+async def test_comment_names_person_merge_request_and_date_never_the_note() -> None:
+    # R3 Raj INS-3: the comment was "Merged on !2, Jira not updated yet.", which the
+    # write itself makes false, and it named no repository.
+    tracker = _MovingIssueTracker(issues={"INS-3": _ins3(IssueState.IN_PROGRESS)})
+    store = await _synced_store(tracker)
+    await store.append_fact(
+        _merge_request_fact("2", title="INS-3 dedupe", source_branch="INS-3", state="merged")
+    )
+    service, _, _ = _build(tracker=tracker, default_enabled=True, graph=store, facts=store)
+
+    [row] = await service.apply_from_checkin(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        claims=[
+            IssueClaim(
+                issue_key="INS-3",
+                claimed_done=True,
+                claimed_state="merged",
+                note="Merged on !2, Jira not updated yet.",
+            )
+        ],
+        reported_on=date(2026, 10, 4),
+    )
+
+    expected = (
+        "Moved to Done by OpenProgram: Raj Iyer reported it merged "
+        "(acme/insights-pipeline !2) in the 2026-10-04 check-in."
+    )
+    assert tracker.comments == [(_TENANT, "INS-3", expected)]
+    assert row.comment == expected
+
+
+async def test_review_claim_comment_names_the_state_jira_really_moved_to() -> None:
+    # No review state in the QA workflow: "in review" lands on In Progress.
+    tracker = _MovingIssueTracker(issues={"INS-3": _ins3(IssueState.TODO)})
+    store = await _synced_store(tracker)
+    await store.append_fact(
+        _merge_request_fact("4", title="INS-3 dedupe", source_branch="INS-3", state="open")
+    )
+    service, _, _ = _build(tracker=tracker, default_enabled=True, graph=store, facts=store)
+
+    await service.apply_from_checkin(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        claims=[IssueClaim(issue_key="INS-3", claimed_state="in review", note="PR is up")],
+        reported_on=date(2026, 10, 4),
+    )
+
+    assert tracker.comments == [
+        (
+            _TENANT,
+            "INS-3",
+            "Moved to In Progress by OpenProgram: Raj Iyer reported it in review "
+            "(acme/insights-pipeline !4) in the 2026-10-04 check-in.",
+        )
+    ]
+
+
+async def test_a_failed_comment_keeps_the_applied_write() -> None:
+    class _NoCommentTracker(_MovingIssueTracker):
+        async def add_comment(self, tenant_id: str, key: str, body: str) -> None:
+            raise ProviderUnavailable("comment rejected")
+
+    tracker = _NoCommentTracker(issues={"INS-3": _ins3(IssueState.IN_PROGRESS)})
+    service, _, _ = _build(tracker=tracker, default_enabled=True)
+
+    [row] = await service.apply_from_checkin(
+        tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION, claims=[_INS3_MERGED]
+    )
+
+    assert (row.status, row.after_state, row.comment) == (WriteBackStatus.APPLIED, "done", None)
+    assert tracker.transitions == [(_TENANT, "INS-3", "done")]
+
+
+def test_write_back_comment_wording() -> None:
+    assert write_back_comment(
+        destination="Done",
+        person="Raj Iyer",
+        reported="it merged",
+        merge_requests=("acme/insights-pipeline !2",),
+        reported_on=date(2026, 10, 4),
+    ) == (
+        "Moved to Done by OpenProgram: Raj Iyer reported it merged "
+        "(acme/insights-pipeline !2) in the 2026-10-04 check-in."
+    )
