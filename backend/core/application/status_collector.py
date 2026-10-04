@@ -49,6 +49,7 @@ from core.application.writeback_service import (
     OPEN_MR_SOURCE,
     OpenMergeRequestHold,
     WriteBackService,
+    canonical_target_state,
     target_state_label,
 )
 from core.domain.blockers import (
@@ -77,11 +78,12 @@ from core.domain.status import (
     CheckInSignals,
     CrossPersonMention,
     DeveloperStatus,
+    IssueClaim,
     StatusSource,
     local_date,
     resolve_timezone,
 )
-from core.domain.writeback import WriteBackAudit, WriteBackStatus
+from core.domain.writeback import WriteBackAudit, WriteBackStatus, WriteBackTarget
 from core.ports.chat import ChatProvider
 from core.ports.directory import DirectoryUserRepository
 from core.ports.issue_tracker import IssueTracker
@@ -658,6 +660,7 @@ class StatusCollector:
         ):
             return None
         partial_status: DeveloperStatus | None = None
+        merged: CheckInSignals | None = earlier
         if decision.signals is not None:
             merged = merge_checkin_signals(earlier, decision.signals)
             await self._hold_open_checkin_signals(checkin, merged)
@@ -676,7 +679,9 @@ class StatusCollector:
         await self._send_clarification(
             checkin=checkin,
             message=message,
-            question=decision.question,
+            question=_question_naming_issue(
+                decision.question, await self._follow_up_subject(checkin, merged)
+            ),
             clarification_number=clarification_count + 1,
         )
         return ReplyOutcome(kind="clarifying", status=partial_status)
@@ -704,10 +709,39 @@ class StatusCollector:
         await self._send_clarification(
             checkin=checkin,
             message=message,
-            question=_missing_required_status_question(missing_required),
+            question=_missing_required_status_question(
+                missing_required, await self._follow_up_subject(checkin, signals)
+            ),
             clarification_number=clarification_count + 1,
         )
         return ReplyOutcome(kind="clarifying", status=partial_status)
+
+    async def _follow_up_subject(
+        self, checkin: CheckIn, signals: CheckInSignals | None
+    ) -> _FollowUpSubject | None:
+        """The issues a follow-up is about, so the question names them (R1-9).
+
+        The check-in's own claims come first: the issues still under way, else
+        any not done. With no claim, the person's issues under way in the
+        tracker. Titles come from the tracker; when it cannot be read the
+        question names the keys alone. None when no issue is known at all.
+        """
+        try:
+            assignee = await self._resolve_issue_tracker_assignee_id(
+                checkin.tenant_id, checkin.developer_id
+            )
+            listed = await self._issue_tracker.list_active_for(
+                UserRef(tenant_id=checkin.tenant_id, external_id=assignee)
+            )
+        except Exception:  # best effort: the question still goes out, naming keys only
+            listed = []
+        keys = _follow_up_issue_keys(
+            signals.issue_updates if signals is not None else (), _prioritize_issues(listed)
+        )
+        if not keys:
+            return None
+        titles = {issue.key: issue.title for issue in listed}
+        return _FollowUpSubject(keys=keys, text=_issue_subject_text(keys, titles))
 
     async def _maybe_attribution_clarification(
         self,
@@ -2890,12 +2924,85 @@ def _eta_answered(signals: CheckInSignals) -> bool:
 
 def _missing_required_status_question(
     missing: tuple[Literal["blockers", "eta"], ...],
+    subject: _FollowUpSubject | None = None,
 ) -> str:
+    if subject is None:
+        if missing == ("blockers", "eta"):
+            return "Thanks. Any blockers on this work, and what is your ETA to finish it?"
+        if missing == ("blockers",):
+            return "Thanks. Any blockers on this work?"
+        return "Thanks. What is your ETA to finish it?"
+    pronoun = "it" if len(subject.keys) == 1 else "them"
     if missing == ("blockers", "eta"):
-        return "Thanks. Any blockers on this work, and what is your ETA to finish it?"
+        return f"Thanks. Any blockers on {subject.text}, and what is your ETA to finish {pronoun}?"
     if missing == ("blockers",):
-        return "Thanks. Any blockers on this work?"
-    return "Thanks. What is your ETA to finish it?"
+        return f"Thanks. Any blockers on {subject.text}?"
+    return f"Thanks. What is your ETA to finish {subject.text}?"
+
+
+@dataclass(frozen=True)
+class _FollowUpSubject:
+    """The issues a follow-up question is about: their keys, and how it names them."""
+
+    keys: tuple[str, ...]
+    text: str
+
+
+# A follow-up names at most this many issues, with titles only for one or two.
+_FOLLOW_UP_ISSUE_LIMIT = 3
+_FOLLOW_UP_TITLE_CHARS = 40
+_THANKS_LEAD = "Thanks. "
+
+
+def _follow_up_issue_keys(
+    claims: Iterable[IssueClaim], tracker_issues: Iterable[Issue]
+) -> tuple[str, ...]:
+    claimed = [claim for claim in claims if claim.issue_key]
+    states = {claim.issue_key: canonical_target_state(claim.claimed_state) for claim in claimed}
+    not_done = [
+        claim.issue_key
+        for claim in claimed
+        if not claim.claimed_done and states[claim.issue_key] is not WriteBackTarget.DONE
+    ]
+    under_way = [key for key in not_done if states[key] is not WriteBackTarget.TODO]
+    keys = (
+        under_way
+        or not_done
+        or [issue.key for issue in tracker_issues if issue.state in _ACTIVE_ISSUE_STATES]
+    )
+    return tuple(dict.fromkeys(keys))
+
+
+def _issue_subject_text(keys: Sequence[str], titles: Mapping[str, str]) -> str:
+    """``CHK-4 (Step-up flow)``; ``CHK-4, CHK-9 and 2 more`` once there are many."""
+    shown = list(keys[:_FOLLOW_UP_ISSUE_LIMIT])
+    if len(keys) <= 2:
+        shown = [
+            f"{key} ({_short_title(titles[key])})" if titles.get(key) else key for key in shown
+        ]
+    if len(keys) > len(shown):
+        shown.append(f"{len(keys) - len(shown)} more")
+    return _joined(shown)
+
+
+def _short_title(title: str) -> str:
+    title = " ".join(title.split())
+    if len(title) <= _FOLLOW_UP_TITLE_CHARS:
+        return title
+    return f"{title[: _FOLLOW_UP_TITLE_CHARS - 3].rstrip()}..."
+
+
+def _question_naming_issue(question: str, subject: _FollowUpSubject | None) -> str:
+    """A model-drafted follow-up that names no issue key gets the issues it is about.
+
+    "What is your ETA to finish it?" did not say which issue (R1-9); it becomes
+    "About CHK-4 (Step-up flow): What is your ETA to finish it?". A question
+    that already names a key is left as drafted.
+    """
+    if subject is None or _ISSUE_KEY_IN_TEXT.search(question):
+        return question
+    lead = _THANKS_LEAD if question.startswith(_THANKS_LEAD) else ""
+    return f"{lead}About {subject.text}: {question.removeprefix(lead)}"
 
 
 def _status_source_for_signals(signals: CheckInSignals) -> StatusSource:
