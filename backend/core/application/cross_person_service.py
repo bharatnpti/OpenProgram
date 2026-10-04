@@ -212,13 +212,82 @@ class CrossPersonRequestService:
                 resolved.append(updated)
         return tuple(resolved)
 
+    async def supersede_repeats(self, tenant_id: str) -> tuple[CrossPersonRequest, ...]:
+        """Dismiss the older open copies of an ask as superseded by its newest (N11b).
+
+        Copies recorded before asks were refreshed in place (N11) stay open
+        side by side while nothing resolves the ask: in qa2, Mina's R1 and R2
+        asks of Asha about CHK-10, and Noah's R2 ask of Liam about CHK-6 beside
+        his R3 one. Of the open or acknowledged requests with the same
+        requester, person and work (a clear match, never a vague ask), the
+        newest is kept and each older one is dismissed; its fact records the
+        transition as ``superseded`` and names the request kept. Nobody is
+        told: the ask stays open in the copy kept, and its people heard of it
+        when it was made. Dismissed, not resolved: a resolved copy would make
+        the kept request's own resolution silent (``_told_about_a_copy``).
+
+        A one-time cleanup that is safe on every pass: once the copies are
+        closed nothing is left to do, and of two passes at once only one
+        closes each copy and records it.
+        """
+        still_open = sorted(
+            (
+                request
+                for request in await self.repository.list_open(tenant_id)
+                if request.status in _STILL_OPEN
+            ),
+            key=lambda request: (request.created_at, request.updated_at, request.id),
+            reverse=True,
+        )
+        kept: list[CrossPersonRequest] = []
+        superseded: list[CrossPersonRequest] = []
+        for request in still_open:
+            newer = next(
+                (other for other in kept if is_repeat_of(request, other, vague_matches=False)),
+                None,
+            )
+            if newer is None:
+                kept.append(request)
+                continue
+            updated = await self.repository.update_status(
+                tenant_id,
+                request.id,
+                CrossPersonRequestStatus.DISMISSED,
+                max(self.clock(), request.updated_at),
+                from_statuses=_STILL_OPEN,
+            )
+            if updated is None:
+                # Closed since it was listed: resolved, or superseded by a
+                # pass running beside this one, which recorded it.
+                continue
+            await self._append_fact(updated, transition=_SUPERSEDED, superseded_by=newer.id)
+            _logger.info(
+                "cross_person_request_superseded",
+                tenant_id=tenant_id,
+                request_id=updated.id,
+                superseded_by=newer.id,
+            )
+            superseded.append(updated)
+        return tuple(superseded)
+
     async def settle_merged_work(self, tenant_id: str) -> tuple[CrossPersonRequest, ...]:
         """After a sync: resolve what merged merge requests have done.
 
-        Requests first (``resolve_merged_work``), then any open blocker whose
-        merge requests are all merged and that was last stated before the
-        merge, whether or not a request was ever raised for it.
+        Older copies of a still-open ask are superseded first
+        (``supersede_repeats``), so the pass works on one request per ask; then
+        requests (``resolve_merged_work``), then any open blocker whose merge
+        requests are all merged and that was last stated before the merge,
+        whether or not a request was ever raised for it.
         """
+        try:
+            await self.supersede_repeats(tenant_id)
+        except Exception as error:
+            # The cleanup must not stop the pass: the next sync runs it again.
+            _logger.warning(
+                "cross_person_supersede_failed",
+                tenant_id=tenant_id,
+                error=type(error).__name__,
+            )
         resolved = await self.resolve_merged_work(tenant_id)
         if self.blocker_settlement is not None and self.time_series_repository is not None:
             index = MergeRequestIndex.from_facts(
@@ -808,7 +877,13 @@ class CrossPersonRequestService:
                 return user.display_name.strip()
         return None
 
-    async def _append_fact(self, request: CrossPersonRequest, *, transition: str) -> None:
+    async def _append_fact(
+        self,
+        request: CrossPersonRequest,
+        *,
+        transition: str,
+        superseded_by: str | None = None,
+    ) -> None:
         if self.time_series_repository is None:
             return
         entity_ref = EntityRef(
@@ -835,6 +910,9 @@ class CrossPersonRequestService:
             "last_seen_at": request.updated_at.isoformat(),
             "needs_resolution": request.status is CrossPersonRequestStatus.NEEDS_RESOLUTION,
         }
+        if superseded_by is not None:
+            # The copy of the same ask that stays open in this one's place.
+            payload["superseded_by"] = superseded_by
         observed_at = (
             request.created_at
             if transition in {"opened", "needs_resolution"}
@@ -888,6 +966,9 @@ _CLOSED_STATUSES = frozenset(
 # Asked of a named person and not yet done: what a repeat refreshes, and what
 # a resolution, a copy's or a merge's, closes.
 _STILL_OPEN = (CrossPersonRequestStatus.OPEN, CrossPersonRequestStatus.ACKNOWLEDGED)
+# The transition a fact records for an older copy dismissed in favour of the
+# newest copy of the same ask (N11b); the request row itself says dismissed.
+_SUPERSEDED = "superseded"
 # Merge request facts read per pass; one fact per update, so a few thousand
 # cover every recent merge request of a tenant.
 _MERGE_REQUEST_FACT_SCAN_LIMIT = 5000
@@ -942,4 +1023,7 @@ def _fact_status(status: CrossPersonRequestStatus) -> str:
         return "resolved"
     if status is CrossPersonRequestStatus.NEEDS_RESOLUTION:
         return "stale"
+    if status is CrossPersonRequestStatus.DISMISSED:
+        # Closed without being done: a dismissed or superseded copy is not open.
+        return "dismissed"
     return "open"
