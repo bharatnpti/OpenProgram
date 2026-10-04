@@ -350,13 +350,14 @@ def issue_eta(claim: IssueClaim, stated_on: date) -> IssueEta | None:
     """The ETA a claim states for its issue, read deterministically from its words.
 
     The most specific wording wins: a date, then a weekday (the next one on or
-    after ``stated_on``; "next Tuesday" a week later), then a window of next
-    week ("early next week": its Monday to Wednesday), then a number of days
-    ("2-3 days" from ``stated_on``), then tomorrow or today, then the end of the
-    week (its Friday). On a weekend "this week" is the week ahead, so "next
-    week" is the one after it. ``stated_on`` is the check-in date in the
-    person's time zone. None when the claim names no day, when its words do
-    not look ahead, and for an issue said to be done.
+    after ``stated_on``; "next Tuesday" the Tuesday of next week), then a
+    window of next week ("early next week": its Monday to Wednesday), then a
+    number of days ("2-3 days" from ``stated_on``), then tomorrow or today,
+    then the end of the week (its Friday). On a weekday "this week" is the
+    week ``stated_on`` is in and "next week" the one after it; on a Saturday or
+    Sunday both are the coming Monday to Friday (N47). ``stated_on`` is the
+    check-in date in the person's time zone. None when the claim names no day,
+    when its words do not look ahead, and for an issue said to be done.
     """
     if claim.claimed_done or canonical_target_state(claim.claimed_state) is WriteBackTarget.DONE:
         return None
@@ -392,11 +393,16 @@ def _weekday_eta(text: str, stated_on: date) -> IssueEta | None:
     if match is None:
         return None
     weekday = _WEEKDAYS.index(match[2])
-    day = stated_on + timedelta(days=(weekday - stated_on.weekday()) % 7)
     label = match[2].capitalize()
     if match[1]:
-        return IssueEta(label=f"next {label}", day=day + timedelta(days=7))
-    return IssueEta(label=label, day=day)
+        # That day of next week, as "next week" reads: so "next Tuesday" and
+        # "early next week" agree on any day, a weekend's included.
+        return IssueEta(
+            label=f"next {label}", day=_next_week_monday(stated_on) + timedelta(days=weekday)
+        )
+    return IssueEta(
+        label=label, day=stated_on + timedelta(days=(weekday - stated_on.weekday()) % 7)
+    )
 
 
 def _next_week_eta(text: str, stated_on: date) -> IssueEta | None:
@@ -404,7 +410,7 @@ def _next_week_eta(text: str, stated_on: date) -> IssueEta | None:
     if match is None:
         return None
     first, last = _WINDOW_DAYS[match[1]]
-    monday = _week_monday(stated_on) + timedelta(days=7)
+    monday = _next_week_monday(stated_on)
     label = f"{match[1]} next week" if match[1] else "next week"
     return IssueEta(
         label=label, start=monday + timedelta(days=first), day=monday + timedelta(days=last)
@@ -474,11 +480,21 @@ def _relative_eta(text: str, stated_on: date) -> IssueEta | None:
 
 
 def _week_monday(stated_on: date) -> date:
-    """The Monday of the working week ``stated_on`` is in; on a weekend, the one ahead."""
+    """The Monday of "this week": the week ``stated_on`` is in; on a weekend, the one ahead."""
     weekday = stated_on.weekday()
     if weekday >= 5:
         return stated_on + timedelta(days=7 - weekday)
     return stated_on - timedelta(days=weekday)
+
+
+def _next_week_monday(stated_on: date) -> date:
+    """The Monday of "next week": the next Monday after ``stated_on``.
+
+    On a weekday that is the week after this one. On a Saturday or Sunday it
+    is the coming week, the same as "this week" then (N47: "early next week"
+    said on Sunday, Oct 4 is Oct 5 to Oct 7, not Oct 12 to Oct 14).
+    """
+    return stated_on + timedelta(days=7 - stated_on.weekday())
 
 
 def eta_stated_fact(
