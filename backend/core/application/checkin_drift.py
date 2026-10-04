@@ -18,9 +18,10 @@ to the other drift signals:
   ("early next week": Monday to Wednesday, N31). The drift read flags an issue
   only when the windows share no day, names both people and dates, and says
   the owner's ETA is the one used. Only people who own or work the issue are
-  compared (N43, :func:`eta_is_compared`): a coordinator's ETA for someone
-  else's issue stays recorded but is never a disagreement (R5: Ira, a scrum
-  master, said Noah's IDP-3 "should wrap this week", and Noah went amber).
+  compared (N43, :func:`eta_is_compared`): its assignee and anyone whose
+  branch, commit or merge request names it. Anyone else's ETA for it, a
+  manager's included, stays recorded but is never a disagreement (R5: Ira, a
+  scrum master, said Noah's IDP-3 "should wrap this week", and Noah went amber).
   Nothing else changes: each person's own status keeps their ETA.
 
 Merge requests are linked to issues with :mod:`merge_request_links`, the
@@ -41,7 +42,6 @@ from core.application.merge_request_links import (
     merge_requests_by_issue_key,
 )
 from core.application.status_summaries import day_label
-from core.application.team_context import coordinates_team
 from core.application.writeback_service import canonical_target_state
 from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.domain.status import IssueClaim, StatusSource
@@ -111,17 +111,41 @@ def code_work_keys(
     )
 
 
-def eta_is_compared(roles: frozenset[str], *, owner: bool) -> bool:
+def eta_is_compared(*, owner: bool, works_on_issue: bool) -> bool:
     """Whether an ETA a member states for an issue is compared with others' (N43).
 
-    Only people who own or work the issue are compared: its assignee
-    (``owner``), whatever their roles, and anyone who is not a coordinator.
-    A scrum master, product owner or exec without the dev role coordinates the
-    team's work and owes no ETA (N16, N33), so an ETA of theirs for someone
-    else's issue is a remark about it, never a disagreement. A member without
-    app roles is a developer (:func:`member_roles`).
+    Only people who own or actively work the issue are compared: its assignee
+    (``owner``) and anyone whose own branch, commit or merge request names it
+    (``works_on_issue``, see :func:`issue_workers`). Anyone else's ETA for the
+    issue -- a scrum master's, a product owner's, an exec's or a manager's,
+    whatever their roles -- is context, recorded but never a disagreement.
     """
-    return owner or DEVELOPER_ROLE in roles or not coordinates_team(roles)
+    return owner or works_on_issue
+
+
+def issue_workers(
+    keys: set[str], merge_request_facts: Iterable[FactEvent], commit_facts: Iterable[FactEvent]
+) -> dict[str, frozenset[str]]:
+    """The members whose own branch, commit or merge request names each of ``keys``.
+
+    A merge request names an issue by its source branch or title (the matcher
+    the write-back and ``merged_issue_open`` use), a commit by its message. Only
+    activity the git sync linked to a member (a developer entity) counts.
+    """
+    workers: dict[str, set[str]] = {}
+    for key, requests in merge_requests_by_issue_key(merge_request_facts, keys).items():
+        for fact in requests:
+            if fact.entity_ref.kind is NodeKind.DEVELOPER:
+                workers.setdefault(key, set()).add(fact.entity_ref.id)
+    upper = {key.upper(): key for key in keys}
+    for fact in commit_facts:
+        message = fact.payload.get("message")
+        if fact.entity_ref.kind is not NodeKind.DEVELOPER or not isinstance(message, str):
+            continue
+        for match in ISSUE_KEY.findall(message):
+            if (named := upper.get(match.upper())) is not None:
+                workers.setdefault(named, set()).add(fact.entity_ref.id)
+    return {key: frozenset(members) for key, members in workers.items()}
 
 
 def _keys_with_code_activity(
@@ -497,7 +521,7 @@ def checkin_drift_signals(
     merge_request_facts: Iterable[FactEvent],
     owners: Mapping[str, str] | None = None,
     is_code_work: Callable[[str, str], bool] | None = None,
-    roles_of: Callable[[str], frozenset[str]] | None = None,
+    workers: Mapping[str, Collection[str]] | None = None,
 ) -> list[CheckInDriftSignal]:
     """The check-in drift signals for ``issue_keys`` stated on ``as_of``.
 
@@ -506,7 +530,8 @@ def checkin_drift_signals(
     developer_id)`` says the review was not code work (N26), so a signal
     recorded before that rule clears on the next read. ETAs are compared per
     issue across people, each person's latest; ``owners`` maps an issue key to
-    its assignee. With ``roles_of`` (a member's app roles) only the ETAs of
+    its assignee. With ``workers`` (an issue key to the members whose branch,
+    commit or merge request names it, :func:`issue_workers`) only the ETAs of
     people who own or work the issue are compared (N43,
     :func:`eta_is_compared`), also for ETAs recorded before that rule.
     """
@@ -527,8 +552,8 @@ def checkin_drift_signals(
             if is_code_work is None or is_code_work(key, stated_by):
                 in_review[key] = fact
         elif kind == ETA_STATED and (speaker := _text(fact.payload, "developer_id")):
-            if roles_of is None or eta_is_compared(
-                roles_of(speaker), owner=owner_of.get(key) == speaker
+            if workers is None or eta_is_compared(
+                owner=owner_of.get(key) == speaker, works_on_issue=speaker in workers.get(key, ())
             ):
                 etas.setdefault(key, {})[speaker] = fact
     still_missing = set(keys_without_open_merge_request(list(in_review), merge_request_facts))
