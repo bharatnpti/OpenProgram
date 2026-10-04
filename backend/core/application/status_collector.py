@@ -401,6 +401,7 @@ class StatusCollector:
         )
         decision = await self._without_tracker_update_question(checkin, decision, earlier=earlier)
         decision = self._without_answered_follow_up(checkin, decision, earlier=earlier)
+        decision = await self._without_eta_question_for_others(checkin, decision)
         if not decision.is_status_update:
             await self._send_non_status_ack(checkin=checkin, message=message)
             span.set_attribute("openprogram.reply_classification", "non_status")
@@ -452,7 +453,9 @@ class StatusCollector:
             signals=signals,
             raw_reply=message.text,
         )
-        merged = merge_checkin_signals(earlier, signals)
+        merged = await self._without_eta_for_others_work(
+            checkin, merge_checkin_signals(earlier, signals)
+        )
         required_details_outcome = await self._maybe_required_details_clarification(
             checkin=checkin,
             message=message,
@@ -818,7 +821,9 @@ class StatusCollector:
             checkin=checkin,
             message=message,
             question=_missing_required_status_question(
-                missing_required, await self._follow_up_subject(checkin, signals)
+                missing_required,
+                # An ETA is asked only for the person's own issues (N33).
+                await self._follow_up_subject(checkin, signals, own_only="eta" in missing_required),
             ),
             clarification_number=clarification_count + 1,
         )
@@ -1019,7 +1024,7 @@ class StatusCollector:
         )
 
     async def _follow_up_subject(
-        self, checkin: CheckIn, signals: CheckInSignals | None
+        self, checkin: CheckIn, signals: CheckInSignals | None, *, own_only: bool = False
     ) -> _FollowUpSubject | None:
         """The issues a follow-up is about, so the question names them (R1-9).
 
@@ -1027,23 +1032,119 @@ class StatusCollector:
         any not done. With no claim, the person's issues under way in the
         tracker. Titles come from the tracker; when it cannot be read the
         question names the keys alone. None when no issue is known at all.
+        ``own_only`` leaves out issues assigned to someone else, for the ETA
+        question (N33).
         """
+        subject, _ = await self._follow_up_subject_and_others(checkin, signals, own_only=own_only)
+        return subject
+
+    async def _follow_up_subject_and_others(
+        self, checkin: CheckIn, signals: CheckInSignals | None, *, own_only: bool
+    ) -> tuple[_FollowUpSubject | None, set[str]]:
+        """:meth:`_follow_up_subject`, and the claimed issues it left out as someone else's."""
+        listed = await self._own_active_issues(checkin)
+        claims: Sequence[IssueClaim] = signals.issue_updates if signals is not None else ()
+        others: set[str] = set()
+        if own_only:
+            others = await self._issues_of_others(
+                checkin, (claim.issue_key for claim in claims), listed
+            )
+            claims = [claim for claim in claims if claim.issue_key not in others]
+        keys = _follow_up_issue_keys(claims, _prioritize_issues(listed))
+        if not keys:
+            return None, others
+        titles = {issue.key: issue.title for issue in listed}
+        return _FollowUpSubject(keys=keys, text=_issue_subject_text(keys, titles)), others
+
+    async def _own_active_issues(self, checkin: CheckIn) -> list[Issue]:
         try:
             assignee = await self._resolve_issue_tracker_assignee_id(
                 checkin.tenant_id, checkin.developer_id
             )
-            listed = await self._issue_tracker.list_active_for(
+            return await self._issue_tracker.list_active_for(
                 UserRef(tenant_id=checkin.tenant_id, external_id=assignee)
             )
         except Exception:  # best effort: the question still goes out, naming keys only
-            listed = []
-        keys = _follow_up_issue_keys(
-            signals.issue_updates if signals is not None else (), _prioritize_issues(listed)
+            return []
+
+    async def _issues_of_others(
+        self, checkin: CheckIn, keys: Iterable[str], own: Sequence[Issue]
+    ) -> set[str]:
+        """Those of ``keys`` assigned to someone else (graph assignees active today).
+
+        An issue the tracker lists as the person's own, or with no known
+        assignee, is not someone else's.
+        """
+        own_keys = {issue.key for issue in own}
+        wanted = {key for key in keys if key and key not in own_keys}
+        if not wanted or self._graph_repository is None:
+            return set()
+        today = checkin.checkin_date or datetime.now(tz=UTC).date()
+        assignees: dict[str, set[str]] = {}
+        for edge in await self._graph_repository.list_edges(
+            checkin.tenant_id, kind=EdgeKind.ASSIGNED_TO
+        ):
+            if edge.to_node_id in wanted and edge.is_active_on(today):
+                assignees.setdefault(edge.to_node_id, set()).add(edge.from_node_id)
+        return {
+            key
+            for key, people in assignees.items()
+            if people and checkin.developer_id not in people
+        }
+
+    async def _without_eta_for_others_work(
+        self, checkin: CheckIn, signals: CheckInSignals
+    ) -> CheckInSignals:
+        """No ETA is due from someone whose check-in is about others' issues only (N33).
+
+        Ira, a scrum master, summed up CHK-4 (Liam's) and IDP-3 (Noah's) and was
+        asked "What is your ETA to finish CHK-4 and IDP-3?". ETAs belong to
+        the assignees. When every claimed issue that is not done is someone
+        else's and the tracker lists no work of the person's own under way, the
+        ETA counts as answered, so it is neither asked for nor reported missing.
+        """
+        if _eta_answered(signals) or not signals.issue_updates:
+            return signals
+        subject, others = await self._follow_up_subject_and_others(checkin, signals, own_only=True)
+        if subject is not None or not others:
+            return signals
+        _logger.info(
+            "checkin_eta_not_due_for_others_issues",
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            correlation_id=checkin.correlation_id,
+            issue_keys=sorted(others),
         )
-        if not keys:
-            return None
-        titles = {issue.key: issue.title for issue in listed}
-        return _FollowUpSubject(keys=keys, text=_issue_subject_text(keys, titles))
+        return replace(signals, eta_answered=True)
+
+    async def _without_eta_question_for_others(
+        self, checkin: CheckIn, decision: ClarificationDecision
+    ) -> ClarificationDecision:
+        """Drop a model-drafted ETA question that names only others' issues (N33)."""
+        question = decision.question
+        if (
+            decision.sufficient
+            or question is None
+            or not decision.is_status_update
+            or not _asks_only_for_eta(question)
+        ):
+            return decision
+        named = set(_ISSUE_KEY_IN_TEXT.findall(question))
+        if not named:
+            return decision
+        others = await self._issues_of_others(
+            checkin, named, await self._own_active_issues(checkin)
+        )
+        if not named <= others:
+            return decision
+        _logger.info(
+            "eta_question_for_others_issues_dropped",
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            correlation_id=checkin.correlation_id,
+            issue_keys=sorted(named),
+        )
+        return replace(decision, sufficient=True, question=None)
 
     async def _maybe_late_clarification(
         self,
@@ -3566,6 +3667,15 @@ _ASKS_ABOUT_SOMETHING_ELSE = re.compile(
     r"done|closed|who|which)\b",
     re.IGNORECASE,
 )
+
+
+def _asks_only_for_eta(question: str) -> bool:
+    return bool(
+        _ASKS_FOR_ETA.search(question)
+        and not _ASKS_FOR_BLOCKERS.search(question)
+        and not _ASKS_FOR_PROGRESS.search(question)
+        and not _ASKS_ABOUT_SOMETHING_ELSE.search(question)
+    )
 
 
 def _follow_up_already_answered(question: str, earlier: CheckInSignals) -> bool:
