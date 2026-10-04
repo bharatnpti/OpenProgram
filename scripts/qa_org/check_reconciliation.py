@@ -10,7 +10,9 @@ API plus ``SELECT``s on the shared Postgres. It reports, per issue and per
 person, where two systems disagree, and the reconciliation a reader would
 expect (a merged MR on an open issue, a check-in claiming done on an open
 issue, ...) next to what OpenProgram flagged itself. A person's statement that
-names the state Jira shows ("not started" on a To Do issue) is agreement.
+names the state Jira shows ("not started" on a To Do issue) is agreement, and so
+is one that puts an In Progress issue in review ("pending review") while its
+merge request is open: Jira has no review state.
 
 The report names real people, workspace URLs and account ids, so it goes next to
 QA-ORG.md outside the repository, which is public. It never contains a token.
@@ -83,6 +85,40 @@ SAID_AS_CATEGORY: dict[str, str] = {
         ACTIVE,
     ),
 }
+# The review stage, as people put it. Jira has no review state (N14): an issue under
+# review is In Progress there, and its open merge request is what is being reviewed. So
+# such a statement agrees with In Progress only while the issue has an open merge request
+# that is not a draft; with none (the product asks for one, R1-10), or on a To Do or Done
+# issue, it stays on the list. Whole statements only, as above, but one may end by saying
+# when ("should be approved and merged by end of week").
+SAID_IN_REVIEW = frozenset(
+    {
+        "in review",
+        "in code review",
+        "under review",
+        "up for review",
+        "ready for review",
+        "pending review",
+        "review pending",
+        "awaiting review",
+        "waiting for review",
+        "waiting on review",
+        "code complete pending review",
+        "pending approval",
+        "awaiting approval",
+        "approved awaiting merge",
+        "ready to merge",
+        "should be approved and merged",
+        "mr open",
+        "mr opened",
+    }
+)
+# When a review statement says it should be over: "... by end of week", "... today".
+REVIEW_WHEN = re.compile(
+    r" (?:(?:by|on|before|until) )?(?:(?:early|late) )?(?:the )?"
+    r"(?:end of (?:the )?(?:day|week|sprint)|eod|eow|today|tonight|tomorrow|this week|next week"
+    r"|(?:mon|tues|wednes|thurs|fri|satur|sun)day)$"
+)
 NON_WORD = re.compile(r"[^a-z0-9]+")
 
 
@@ -182,6 +218,20 @@ def expected_pods(project_key: str, components: set[str], labels: set[str]) -> s
 def says_state_of(said: str, category: str) -> bool:
     """True when a person's whole statement names the state Jira shows for the issue."""
     return SAID_AS_CATEGORY.get(NON_WORD.sub(" ", said.lower()).strip()) == category
+
+
+def says_in_review(said: str) -> bool:
+    """True when a person's whole statement puts the issue in review, perhaps saying until when."""
+    words = NON_WORD.sub(" ", said.lower()).strip()
+    return words in SAID_IN_REVIEW or REVIEW_WHEN.sub("", words) in SAID_IN_REVIEW
+
+
+def agrees_with(said: str, category: str, *, open_mr: bool) -> bool:
+    """True when a statement agrees with Jira: it names Jira's state, or, for an In Progress
+    issue whose merge request is open and not a draft, it puts the issue in review."""
+    if says_state_of(said, category):
+        return True
+    return category == ACTIVE and open_mr and says_in_review(said)
 
 
 def blocker_count(blockers: dict[str, Any] | list[Any] | None) -> int:
@@ -420,6 +470,8 @@ def section_reconcile(
         mrs = mrs_by_key.get(key, [])
         merged = any(m["state"] == "merged" for m in mrs)
         open_mr = any(m["state"] in {"opened", "draft"} for m in mrs)
+        # What a review statement needs: an open merge request ready for review.
+        in_review = any(m["state"] == "opened" for m in mrs)
         expected = []
         if merged and category != DONE:
             expected.append("MR merged, issue not done")
@@ -431,7 +483,11 @@ def section_reconcile(
             said = claim.get("claimed_state") or ("done" if claim.get("claimed_done") else None)
             if said and claim.get("claimed_done") and category != DONE:
                 expected.append(f"{claim['who']} said done, Jira {status}")
-            elif said and not claim.get("claimed_done") and not says_state_of(said, category):
+            elif (
+                said
+                and not claim.get("claimed_done")
+                and not agrees_with(said, category, open_mr=in_review)
+            ):
                 expected.append(f"{claim['who']} said {said}, Jira {status}")
         if not expected and key not in flagged:
             continue
