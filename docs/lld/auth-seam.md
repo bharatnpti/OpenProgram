@@ -11,6 +11,7 @@
 class AuthProvider(Protocol):
     async def authenticate(self, token: str | None) -> Principal: ...
 
+
 class CurrentPrincipal(Protocol):
     async def get(self) -> Principal: ...
 ```
