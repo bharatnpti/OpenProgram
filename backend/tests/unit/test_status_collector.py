@@ -1521,6 +1521,15 @@ async def test_status_collector_timeout_finalizes_accumulated_clarification_repl
             observed_at=datetime(2026, 1, 10, 9, 7, tzinfo=UTC),
         )
     )
+    # The follow-up that was never answered: what makes this a clarification timeout.
+    await store.record_checkin_clarification(
+        CheckInClarification(
+            tenant_id="demo",
+            correlation_id="corr-1",
+            clarification_number=1,
+            question="Thanks. What is your ETA for the cache work?",
+        )
+    )
     parser_llm = SequenceLlmProvider(
         texts=[
             '{"progress_note":"Cache work is partly done","blockers":[],"eta_change_days":null,'

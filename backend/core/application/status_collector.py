@@ -33,6 +33,8 @@ from core.application.status_parsing import (
     StatusParser,
 )
 from core.application.status_summaries import (
+    NO_REPLY_BLOCKER,
+    NON_STATUS_REPLY_SUMMARY,
     UNKNOWN_SUMMARY,
     basis_status,
     inferred_summary,
@@ -113,6 +115,8 @@ COMPOSE_NUDGE_SYSTEM_PROMPT = (
 # Default outbound DM safety cap (prompt-echo + length guard); overridable via
 # Settings (outbound_dm_max_chars) through the StatusCollector constructor.
 OUTBOUND_DM_MAX_CHARS = 320
+# The one ack a check-in gets for replies that carry no status (N22).
+NON_STATUS_ACK_TEXT = "Thanks. I'll keep the check-in open for your status update."
 _PROMPT_ECHO_MARKERS = (
     "mock status summary:",
     "return only the message text",
@@ -1529,8 +1533,22 @@ class StatusCollector:
         *,
         checkin: CheckIn,
         message: InboundMessage,
-    ) -> str:
-        text = "Thanks. I'll keep the check-in open for your status update."
+    ) -> str | None:
+        """Say once per check-in that a reply carried no status (N22).
+
+        A second non-status message on the same check-in gets no second ack:
+        the first one still holds, and the close-out records no status for the
+        day without telling the person anything that contradicts it.
+        """
+        text = NON_STATUS_ACK_TEXT
+        earlier_turns = await self._conversation_turns_for_correlation(
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            correlation_id=checkin.correlation_id,
+            reference_at=message.received_at,
+        )
+        if any(_is_non_status_ack(turn) for turn in earlier_turns):
+            return None
         message_id = await self._chat_provider.send_dm(
             message.user,
             OutboundMessage(
@@ -2031,6 +2049,14 @@ class StatusCollector:
         user_turns = [turn for turn in turns if turn.role is ConversationRole.USER]
         if not user_turns:
             return None
+        clarified = (
+            await self._status_repository.checkin_clarification_count(tenant_id, correlation_id) > 0
+        )
+        if not clarified and checkin.signals is None and _answered_as_non_status(turns):
+            # Every message was read as carrying no status when it arrived, and
+            # the person was told so. Reading them again now can only disagree
+            # with that ack (N22: "no updates today" closed as partial).
+            return await self._record_non_status_reply_day(checkin, as_of)
 
         raw_reply = "\n".join(turn.content for turn in user_turns)
         prior_blockers = await self._prior_open_blockers(checkin, user_turns[-1].observed_at)
@@ -2049,6 +2075,8 @@ class StatusCollector:
             prior_blockers=prior_blockers,
         )
         if not decision.is_status_update:
+            if checkin.signals is None:
+                return await self._record_non_status_reply_day(checkin, as_of)
             return None
 
         signals = decision.signals or await self._parser.parse_reply(
@@ -2083,10 +2111,50 @@ class StatusCollector:
             raw_reply=raw_reply,
             signals=_signals_with_note(
                 signals,
-                "Finalized from accumulated replies after clarification timeout.",
+                (
+                    "Finalized from accumulated replies after clarification timeout."
+                    if clarified
+                    else "Finalized from accumulated replies at check-in close."
+                ),
             ),
             reconciliation=reconciliation,
         )
+
+    async def _record_non_status_reply_day(self, checkin: CheckIn, as_of: date) -> DeveloperStatus:
+        """Close a check-in whose replies carried no status: unknown for the day.
+
+        The person answered, so the summary says so instead of the non-response
+        wording, and nothing is inferred over what they said. It is never green
+        and never a partial status built from a re-reading of the replies.
+        Open blocker rows stay open, as for a stale day.
+        """
+        prior = await self._status_repository.latest_developer_status(
+            checkin.tenant_id, checkin.developer_id, as_of
+        )
+        open_rows = await self._blockers.open_blockers(
+            checkin.tenant_id,
+            checkin.developer_id,
+            as_of,
+            legacy_status=(
+                prior if prior is not None and prior.source is not StatusSource.UNKNOWN else None
+            ),
+        )
+        status = DeveloperStatus(
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            as_of=as_of,
+            source=StatusSource.UNKNOWN,
+            blockers=tuple(blocker.description for blocker in open_rows) or (NO_REPLY_BLOCKER,),
+            summary=NON_STATUS_REPLY_SUMMARY,
+        )
+        await self._status_repository.record_developer_status(status)
+        _logger.info(
+            "checkin_closed_without_status",
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            correlation_id=checkin.correlation_id,
+        )
+        return status
 
     async def _complete_llm(
         self,
@@ -2710,6 +2778,15 @@ def _single_correlation_or_log_ambiguous(
             values["chat_thread_ref"] = chat_thread_ref
         _logger.info("reply_correlation_ambiguous", **values)
     return None
+
+
+def _is_non_status_ack(turn: ConversationTurn) -> bool:
+    return turn.role is ConversationRole.AGENT and turn.content == NON_STATUS_ACK_TEXT
+
+
+def _answered_as_non_status(turns: Iterable[ConversationTurn]) -> bool:
+    """Whether the person was told that a reply of this check-in carried no status."""
+    return any(_is_non_status_ack(turn) for turn in turns)
 
 
 def _signals_with_note(signals: CheckInSignals, note: str) -> CheckInSignals:
