@@ -8,7 +8,11 @@ import httpx
 from opentelemetry import trace
 from redis.asyncio import Redis
 
+from core.ports.readiness import ReadinessReport
+
 _tracer = trace.get_tracer("openprogram.adapters.readiness")
+
+DISABLED_DETAIL = "disabled"
 
 
 @dataclass(frozen=True)
@@ -17,6 +21,21 @@ class StaticReadinessProbe:
 
     async def check(self) -> bool:
         return self.healthy
+
+
+@dataclass(frozen=True)
+class DisabledReadinessProbe:
+    """An optional dependency that is switched off: ready, and saying so.
+
+    Nothing waits on it, so it must not degrade ``/ready``; the detail tells
+    an operator it is off rather than up.
+    """
+
+    async def check(self) -> bool:
+        return True
+
+    async def report(self) -> ReadinessReport:
+        return ReadinessReport(ready=True, detail=DISABLED_DETAIL)
 
 
 class AsyncReadinessExecutor(Protocol):
