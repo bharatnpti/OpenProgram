@@ -13,9 +13,12 @@ to the other drift signals:
   asked about nor flagged, and a signal recorded before is dropped on read.
 - ``eta_disagreement``: two people gave different ETAs for one issue on the
   same day (N23: Ira said CHK-4 by Friday, its owner Liam by Tuesday). Each
-  check-in records the ETA it states per issue (``eta_stated``); the drift read
-  compares them, names both people and dates, and says the owner's ETA is the
-  one used. Nothing else changes: each person's own status keeps their ETA.
+  check-in records the ETA it states per issue (``eta_stated``) as a window of
+  days from the check-in date: one day ("Friday"), or a vague ETA's days
+  ("early next week": Monday to Wednesday, N31). The drift read flags an issue
+  only when the windows share no day, names both people and dates, and says
+  the owner's ETA is the one used. Nothing else changes: each person's own
+  status keeps their ETA.
 
 Merge requests are linked to issues with :mod:`merge_request_links`, the
 matcher the ``merged_issue_open`` drift and the write-back use. A fact carries
@@ -218,10 +221,20 @@ def review_without_merge_request_fact(
 
 @dataclass(frozen=True, kw_only=True)
 class IssueEta:
-    """An ETA a check-in states for one issue: as said, and the day it means."""
+    """An ETA a check-in states for one issue: as said, and the days it means.
+
+    ``day`` is the last day it means. A vague ETA is a window: "early next week"
+    starts on ``start`` (the Monday) and ends on ``day`` (the Wednesday). A
+    single day has no ``start``.
+    """
 
     label: str
     day: date
+    start: date | None = None
+
+    @property
+    def first_day(self) -> date:
+        return self.start or self.day
 
 
 _WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -232,32 +245,63 @@ _MONTH_DAY = re.compile(
     r"sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})"
     r"(?:st|nd|rd|th)?\b"
 )
-_WEEKDAY = re.compile(r"\b(next\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b")
+_WEEKDAY_NAMES = "monday|tuesday|wednesday|thursday|friday|saturday|sunday"
+_WEEKDAY = re.compile(rf"\b(next\s+)?({_WEEKDAY_NAMES})\b")
 _TOMORROW = re.compile(r"\btomorrow\b")
 _TODAY = re.compile(r"\b(?:today|tonight|eod|end of (?:the )?day)\b")
 _END_OF_WEEK = re.compile(r"\b(?:end of (?:the )?week|eow|this week)\b")
+# "early next week", "mid next week", "end of next week", "next week".
+_NEXT_WEEK = re.compile(r"\b(?:(early|mid|middle of|late|end of)\s+)?(?:the\s+)?next\s+week\b")
+# "2-3 days", "in 3 days", "within 2 days", "a couple of days", "a few days".
+_DAY_RANGE = re.compile(
+    r"\b(\d{1,2})\s*(?:-|–|to|or)\s*(\d{1,2})\s+(?:more\s+)?(?:business\s+|working\s+)?days?\b"
+)
+_IN_DAYS = re.compile(
+    r"\b(in|within|another)\s+(\d{1,2}|a couple of|a few|couple of|few)\s+"
+    r"(?:more\s+)?(?:business\s+|working\s+)?days?\b"
+)
 # A day is an ETA only when the words look ahead: "started today" or "reviewed
 # on Monday" names a day that is no ETA.
 _ETA_CUE = re.compile(
     r"\b(?:by|until|before|eta|due|target\w*|aim\w*|expect\w*|should|will|plan\w*|ready|"
     r"wrap\w*|finish\w*|complete|land\w*|ship\w*|deliver\w*|tomorrow|next|end of)\b"
 )
+# The answer to "What is your ETA?" can be the day alone: "Monday", "Monday EOD".
+_BARE_DAY = re.compile(
+    rf"^\W*(?:on\s+)?(?:eod\s+)?({_WEEKDAY_NAMES})"
+    r"(?:\s+(?:eod|end of day|morning|afternoon|evening))?\W*$"
+)
+_WINDOW_DAYS = {
+    None: (0, 4),
+    "early": (0, 2),
+    "mid": (1, 3),
+    "middle of": (1, 3),
+    "late": (3, 4),
+    "end of": (3, 4),
+}
+_FEW_DAYS = {"a couple of": (2, 2), "couple of": (2, 2), "a few": (2, 4), "few": (2, 4)}
 
 
 def issue_eta(claim: IssueClaim, stated_on: date) -> IssueEta | None:
     """The ETA a claim states for its issue, read deterministically from its words.
 
     The most specific wording wins: a date, then a weekday (the next one on or
-    after ``stated_on``; "next Tuesday" a week later), then tomorrow or today,
-    then the end of the week (its Friday). None when the claim names no day,
-    when its words do not look ahead, and for an issue said to be done.
+    after ``stated_on``; "next Tuesday" a week later), then a window of next
+    week ("early next week": its Monday to Wednesday), then a number of days
+    ("2-3 days" from ``stated_on``), then tomorrow or today, then the end of the
+    week (its Friday). On a weekend "this week" is the week ahead, so "next
+    week" is the one after it. ``stated_on`` is the check-in date in the
+    person's time zone. None when the claim names no day, when its words do
+    not look ahead, and for an issue said to be done.
     """
     if claim.claimed_done or canonical_target_state(claim.claimed_state) is WriteBackTarget.DONE:
         return None
     text = " ".join(part for part in (claim.note, claim.claimed_state or "") if part).lower()
-    if not text or not _ETA_CUE.search(text):
+    if not text or not (
+        _ETA_CUE.search(text) or _IN_DAYS.search(text) or _BARE_DAY.match(claim.note.lower())
+    ):
         return None
-    for read in (_dated_eta, _weekday_eta, _relative_eta):
+    for read in (_dated_eta, _weekday_eta, _next_week_eta, _days_eta, _relative_eta):
         eta = read(text, stated_on)
         if eta is not None:
             return eta
@@ -288,15 +332,53 @@ def _weekday_eta(text: str, stated_on: date) -> IssueEta | None:
     return IssueEta(label=label, day=day)
 
 
+def _next_week_eta(text: str, stated_on: date) -> IssueEta | None:
+    match = _NEXT_WEEK.search(text)
+    if match is None:
+        return None
+    first, last = _WINDOW_DAYS[match[1]]
+    monday = _week_monday(stated_on) + timedelta(days=7)
+    label = f"{match[1]} next week" if match[1] else "next week"
+    return IssueEta(
+        label=label, start=monday + timedelta(days=first), day=monday + timedelta(days=last)
+    )
+
+
+def _days_eta(text: str, stated_on: date) -> IssueEta | None:
+    if match := _DAY_RANGE.search(text):
+        low, high = sorted((int(match[1]), int(match[2])))
+        return _window(f"{low}-{high} days", stated_on, low, high)
+    if match := _IN_DAYS.search(text):
+        amount = match[2]
+        low, high = _FEW_DAYS.get(amount) or (int(amount), int(amount))
+        if match[1] == "within":
+            low = 0
+        return _window(f"{match[1]} {amount} days", stated_on, low, high)
+    return None
+
+
+def _window(label: str, stated_on: date, low: int, high: int) -> IssueEta:
+    start = stated_on + timedelta(days=low)
+    day = stated_on + timedelta(days=high)
+    return IssueEta(label=label, day=day, start=start if start != day else None)
+
+
 def _relative_eta(text: str, stated_on: date) -> IssueEta | None:
     if _TOMORROW.search(text):
         return IssueEta(label="tomorrow", day=stated_on + timedelta(days=1))
     if _TODAY.search(text):
         return IssueEta(label="today", day=stated_on)
     if _END_OF_WEEK.search(text):
-        friday = stated_on + timedelta(days=(4 - stated_on.weekday()) % 7)
-        return IssueEta(label="end of week", day=friday)
+        return IssueEta(label="end of week", day=_week_monday(stated_on) + timedelta(days=4))
     return None
+
+
+def _week_monday(stated_on: date) -> date:
+    """The Monday of the working week ``stated_on`` is in; on a weekend, the one ahead."""
+    weekday = stated_on.weekday()
+    if weekday >= 5:
+        return stated_on + timedelta(days=7 - weekday)
+    return stated_on - timedelta(days=weekday)
 
 
 def eta_stated_fact(
@@ -317,6 +399,8 @@ def eta_stated_fact(
         "developer_name": developer_name,
         "as_of": as_of.isoformat(),
         "eta_label": eta.label,
+        # The window's first and last day; one day has both the same.
+        "eta_start": eta.first_day.isoformat(),
         "eta_date": eta.day.isoformat(),
     }
     return FactEvent(
@@ -389,20 +473,28 @@ def checkin_drift_signals(
 def _eta_disagreement(
     issue_key: str, by_person: Mapping[str, FactEvent], owner_id: str | None
 ) -> CheckInDriftSignal | None:
-    """``ETAs disagree for CHK-4: Liam Chen (owner) said Tuesday, Oct 6; ...``."""
+    """``ETAs disagree for CHK-4: Liam Chen (owner) said Tuesday, Oct 6; ...``.
+
+    Each ETA is a window of days (one day, or "early next week": Monday to
+    Wednesday). They disagree only when the windows have no day in common
+    (N31): "end of week" and "Friday" agree, "end of week" and "early next
+    week" do not. A fact recorded before windows has its one day.
+    """
     stated = [
-        (person, fact, eta_day)
+        (person, fact, window)
         for person, fact in by_person.items()
-        if (eta_day := _text(fact.payload, "eta_date")) is not None
+        if (window := _eta_window(fact.payload)) is not None
     ]
-    if len({eta_day for _, _, eta_day in stated}) < 2:
+    if len(stated) < 2:
+        return None
+    if max(start for _, _, (start, _) in stated) <= min(end for _, _, (_, end) in stated):
         return None
     # The owner first, then the others in the order they said it.
     stated.sort(key=lambda item: (item[0] != owner_id, item[1].observed_at))
     parts = [
         f"{_speaker(fact.payload)}{' (owner)' if person == owner_id else ''} said "
-        f"{_eta_words(fact.payload, eta_day)}"
-        for person, fact, eta_day in stated
+        f"{_eta_words(fact.payload, window)}"
+        for person, fact, window in stated
     ]
     used = " The owner's ETA is the one used." if owner_id in by_person else ""
     return CheckInDriftSignal(
@@ -414,10 +506,27 @@ def _eta_disagreement(
     )
 
 
-def _eta_words(payload: Mapping[str, JsonScalar], eta_day: str) -> str:
-    day = day_label(date.fromisoformat(eta_day))
+def _eta_window(payload: Mapping[str, JsonScalar]) -> tuple[date, date] | None:
+    end = _date(payload, "eta_date")
+    if end is None:
+        return None
+    start = _date(payload, "eta_start") or end
+    return (min(start, end), end)
+
+
+def _date(payload: Mapping[str, JsonScalar], key: str) -> date | None:
+    value = _text(payload, key)
+    try:
+        return date.fromisoformat(value) if value is not None else None
+    except ValueError:
+        return None
+
+
+def _eta_words(payload: Mapping[str, JsonScalar], window: tuple[date, date]) -> str:
+    start, end = window
+    days = day_label(end) if start == end else f"{day_label(start)} to {day_label(end)}"
     label = _text(payload, "eta_label")
-    return day if label is None or label == day else f"{label}, {day}"
+    return days if label is None or label == days else f"{label}, {days}"
 
 
 def _month_day(stated_on: date, month: int, day: int) -> date | None:
