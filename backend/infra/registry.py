@@ -14,6 +14,7 @@ from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.availability import AvailabilityService
 from core.application.blocker_lifecycle import BlockerLifecycleService
 from core.application.blocker_resolution import BlockerResolutionService
+from core.application.blocker_settlement import BlockerSettlement
 from core.application.cross_person_service import CrossPersonRequestService
 from core.application.dead_letter_service import DeadLetterService
 from core.application.directory_sync_service import DirectorySyncService
@@ -964,6 +965,7 @@ class ServiceRegistry:
             directory_repository=self.directory_user_repository(),
             time_series_repository=self.time_series_repository(),
             llm_provider=self.llm_provider(),
+            blocker_settlement=BlockerSettlement(self.status_repository()),
             model=self.settings.litellm_model,
             auto_notify=self.settings.cross_person_auto_notify,
             notify_max_attempts=self.settings.cross_person_notify_max_attempts,

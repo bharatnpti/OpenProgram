@@ -1333,7 +1333,7 @@ DO UPDATE SET
 _DEVELOPER_BLOCKER_SELECT_SQL = """
 SELECT tenant_id, blocker_id, developer_id, description, normalized_key,
        work_item_id, pod_id, source, source_correlation_id, attribution_asked_at,
-       first_seen_on, last_seen_on, resolved_on, resolved_reason
+       first_seen_on, last_seen_on, resolved_on, resolved_reason, updated_at
 FROM developer_blockers
 """
 
@@ -1394,6 +1394,7 @@ def _developer_blocker_from_row(row: Mapping[str, object]) -> DeveloperBlocker:
             if isinstance(resolved_reason, str)
             else None
         ),
+        updated_at=_optional_datetime_field(row.get("updated_at"), "updated_at"),
     )
 
 

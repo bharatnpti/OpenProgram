@@ -272,6 +272,30 @@ async def test_an_ask_about_a_named_merge_request_resolves_when_it_merges() -> N
     assert "storefront-web !1 is merged" in chat.sent[0].text
 
 
+async def test_a_copy_resolved_after_its_ask_was_announced_tells_nobody_again() -> None:
+    service, store, chat = await _service()
+    # Before the fix: Noah's reply resolved the R3 copy and Zoe was told; the
+    # R2 copy stayed acknowledged. The merge then resolves the R2 copy.
+    r2 = await store.create(
+        _stored("xreq-r2", ZOE, NOAH, "Review storefront-web !1 for CHK-8", R2, chat_ref=ZOE)
+    )
+    await store.update_status("demo", r2.id, CrossPersonRequestStatus.ACKNOWLEDGED, R2)
+    r3 = await store.create(
+        _stored("xreq-r3", ZOE, NOAH, "review storefront-web !1 for CHK-8", R3, chat_ref=ZOE)
+    )
+    await store.update_status("demo", r3.id, CrossPersonRequestStatus.RESOLVED, R3)
+    await _merge_request(
+        store, "acme/storefront-web", "1", "CHK-8 Payment form validation UI", merged=True
+    )
+
+    resolved = await service.resolve_merged_work("demo")
+    late = await service.handle_counterpart_reply(_reply(NOAH, r2, "approved", R3), r2)
+
+    assert [request.id for request in resolved] == [r2.id]
+    assert late.status is CrossPersonRequestStatus.RESOLVED
+    assert chat.sent == []
+
+
 async def test_an_ask_with_no_merge_request_is_left_to_its_people() -> None:
     service, store, _ = await _service()
     await store.create(
@@ -430,7 +454,7 @@ class _StubRequests:
         self.fail = fail
         self.tenants: list[str] = []
 
-    async def resolve_merged_work(self, tenant_id: str) -> tuple[CrossPersonRequest, ...]:
+    async def settle_merged_work(self, tenant_id: str) -> tuple[CrossPersonRequest, ...]:
         self.tenants.append(tenant_id)
         if self.fail:
             raise RuntimeError("chat down")

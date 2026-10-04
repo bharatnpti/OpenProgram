@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import structlog
 
+from core.application.blocker_settlement import BlockerSettlement
 from core.application.counterpart_replies import (
     CounterpartReplyReading,
     eta_phrase,
@@ -54,6 +55,9 @@ class CrossPersonRequestService:
     directory_repository: DirectoryUserRepository
     time_series_repository: TimeSeriesRepository | None = None
     llm_provider: LlmProvider | None = None
+    # Closes the requester's blockers that a resolved request or a merged
+    # merge request has cleared; None leaves blockers to the next check-in.
+    blocker_settlement: BlockerSettlement | None = None
     model: str = "test-model"
     auto_notify: bool = True
     # Every counterpart DM attempt, the first one included, counts towards the
@@ -206,6 +210,27 @@ class CrossPersonRequestService:
                 resolved.append(updated)
         return tuple(resolved)
 
+    async def settle_merged_work(self, tenant_id: str) -> tuple[CrossPersonRequest, ...]:
+        """After a sync: resolve what merged merge requests have done.
+
+        Requests first (``resolve_merged_work``), then any open blocker whose
+        merge requests are all merged and that was last stated before the
+        merge, whether or not a request was ever raised for it.
+        """
+        resolved = await self.resolve_merged_work(tenant_id)
+        if self.blocker_settlement is not None and self.time_series_repository is not None:
+            index = MergeRequestIndex.from_facts(
+                await self.time_series_repository.list_recent_facts(
+                    tenant_id,
+                    sources=(MERGE_REQUEST_FACT_SOURCE,),
+                    limit=_MERGE_REQUEST_FACT_SCAN_LIMIT,
+                )
+            )
+            await self.blocker_settlement.settle_for_merged_work(
+                tenant_id, index, as_of=self.clock()
+            )
+        return resolved
+
     async def _resolve_by_merge(
         self,
         request: CrossPersonRequest,
@@ -225,12 +250,73 @@ class CrossPersonRequestService:
         if updated is None:
             return None
         await self._append_fact(updated, transition=CrossPersonRequestStatus.RESOLVED.value)
-        await self._notify_requester_resolved(
-            updated,
-            merged_labels=tuple(merge_request_label(fact) for fact in merged),
-        )
+        told = await self._told_about_a_copy(updated)
         await self._close_repeats(updated, updated.updated_at)
+        await self._settle_blockers(updated, updated.updated_at)
+        if told:
+            return updated
+        try:
+            await self._notify_requester_resolved(
+                updated,
+                merged_labels=tuple(merge_request_label(fact) for fact in merged),
+            )
+        except Exception as error:
+            # One requester's failed DM must not stop the pass for the others.
+            _logger.warning(
+                "cross_person_merge_notice_failed",
+                tenant_id=updated.tenant_id,
+                request_id=updated.id,
+                error=type(error).__name__,
+            )
         return updated
+
+    async def _told_about_a_copy(self, request: CrossPersonRequest) -> bool:
+        """Whether a copy of this ask was resolved before, so its requester was told.
+
+        Copies recorded before asks were refreshed in place can resolve one by
+        one -- Zoe's R3 copy by Noah's reply, her R2 copy later by the merge --
+        and the requester hears about the ask once. Asked before this
+        resolution closes its own copies, which are still open then.
+        """
+        return any(
+            is_repeat_of(request, other, vague_matches=False)
+            for other in await self.repository.list_for_requester(
+                request.tenant_id,
+                request.requester_id,
+                statuses=(CrossPersonRequestStatus.RESOLVED,),
+            )
+        )
+
+    async def _settle_blockers(self, request: CrossPersonRequest, resolved_at: datetime) -> None:
+        """Close the requester's blockers that waited on this request (N19).
+
+        Its copies are closed first and are no rival; any other request the
+        requester still has open is, so a blocker waiting on two people stays
+        open until both are done. A failure is logged and leaves the blocker
+        to the next merge pass or check-in: the request is resolved either way.
+        """
+        if self.blocker_settlement is None:
+            return
+        try:
+            others = [
+                other
+                for other in await self.repository.list_for_requester(
+                    request.tenant_id,
+                    request.requester_id,
+                    statuses=_STILL_OPEN,
+                )
+                if other.id != request.id and not is_repeat_of(request, other, vague_matches=False)
+            ]
+            await self.blocker_settlement.settle_for_request(
+                request, resolved_at=resolved_at, open_requests=others
+            )
+        except Exception as error:
+            _logger.warning(
+                "cross_person_blocker_settle_failed",
+                tenant_id=request.tenant_id,
+                request_id=request.id,
+                error=type(error).__name__,
+            )
 
     async def _settle(
         self,
@@ -456,8 +542,13 @@ class CrossPersonRequestService:
         stored = updated or request
         await self._append_fact(stored, transition=reading.status.value)
         if reading.status is CrossPersonRequestStatus.RESOLVED:
-            await self._notify_requester_resolved(stored)
+            # What the resolution settles is stored before anyone is told, so
+            # a failed DM cannot leave a copy or a blocker open behind it.
+            told = await self._told_about_a_copy(stored)
             await self._close_repeats(stored, message.received_at)
+            await self._settle_blockers(stored, message.received_at)
+            if not told:
+                await self._notify_requester_resolved(stored)
         elif reading.eta is not None and request.status is CrossPersonRequestStatus.OPEN:
             # The first acknowledgement that says when is worth a message;
             # a bare "on it", or a second ETA, the requester sees in the
@@ -485,8 +576,11 @@ class CrossPersonRequestService:
         if updated is not None:
             await self._append_fact(updated, transition=status.value)
             if status is CrossPersonRequestStatus.RESOLVED:
-                await self._notify_requester_resolved(updated)
+                told = await self._told_about_a_copy(updated)
                 await self._close_repeats(updated, updated.updated_at)
+                await self._settle_blockers(updated, updated.updated_at)
+                if not told:
+                    await self._notify_requester_resolved(updated)
         return updated
 
     async def get(
