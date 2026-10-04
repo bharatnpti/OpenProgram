@@ -15,6 +15,8 @@ from core.application.checkin_drift import (
 )
 from core.application.merge_request_links import (
     MERGE_REQUEST_FACT_SOURCE,
+    is_open_merge_request,
+    merge_request_label,
     merge_requests_by_issue_key,
 )
 from core.application.proof_links import pull_request_evidence
@@ -31,6 +33,7 @@ from core.domain.graph import (
 from core.domain.risk import (
     DriftFinding,
     DriftFindingKind,
+    OwnerDrift,
     RiskEvidence,
     RiskFinding,
     RiskFindingStatus,
@@ -83,8 +86,10 @@ class RiskService:
 
     Reads only facts and graph state already produced by the existing
     (polled) sync/fact pipeline -- no new ingestion. Findings are always
-    shown next to the owner's own human-reported status rather than
-    changing rollup RAG.
+    shown next to the owner's own human-reported status, and the open ones on
+    an owner's issues turn that owner's rollup cell amber (``owner_drift``,
+    N3); only ``said_done_no_pr`` and ``claimed_progress_no_activity`` ever
+    rewrite a stored status (the drift scan).
     """
 
     def __init__(
@@ -114,10 +119,47 @@ class RiskService:
         self, tenant_id: str, project_id: str, as_of: date
     ) -> list[RiskFinding]:
         await self._ensure_project(tenant_id, project_id)
-        return await self._load_open_findings(tenant_id, project_id=project_id, as_of=as_of)
+        findings = await self._load_open_findings(tenant_id, project_id=project_id, as_of=as_of)
+        return await self._without_settled_requests(tenant_id, findings)
 
     async def portfolio_risks(self, tenant_id: str, as_of: date) -> list[RiskFinding]:
-        return await self._load_open_findings(tenant_id, project_id=None, as_of=as_of)
+        findings = await self._load_open_findings(tenant_id, project_id=None, as_of=as_of)
+        return await self._without_settled_requests(tenant_id, findings)
+
+    async def _without_settled_requests(
+        self, tenant_id: str, findings: list[RiskFinding]
+    ) -> list[RiskFinding]:
+        """Open findings, less ``pr_age`` ones whose merge request has merged or closed since.
+
+        A finding is re-assessed once a day, but the merge request is synced
+        every 15 minutes: an ageing request that merged at noon is no longer
+        waiting on anyone, so neither the Signals list nor its owner's rollup
+        cell (``owner_drift``) counts it after the next sync. A request whose
+        latest fact is unknown keeps its finding.
+        """
+        if not any(finding.rule_id is RiskRuleId.PR_AGE for finding in findings):
+            return findings
+        latest = await self._latest_merge_requests(tenant_id)
+        return [
+            finding
+            for finding in findings
+            if finding.rule_id is not RiskRuleId.PR_AGE
+            or (fact := latest.get(_pull_request_ref(finding))) is None
+            or is_open_merge_request(fact)
+        ]
+
+    async def _latest_merge_requests(self, tenant_id: str) -> dict[tuple[str, str], FactEvent]:
+        """The latest fact of every synced merge request, by ``(repo, id)``."""
+        facts = await self._time_series_repository.list_recent_facts(
+            tenant_id, sources=(MERGE_REQUEST_FACT_SOURCE,), limit=_RISK_FACT_SCAN_LIMIT
+        )
+        latest: dict[tuple[str, str], FactEvent] = {}
+        for fact in sorted(facts, key=lambda item: (item.observed_at, item.ingested_at)):
+            repo = _payload_str(fact.payload, "repo")
+            pr_id = _payload_str(fact.payload, "id")
+            if repo is not None and pr_id is not None:
+                latest[(repo, pr_id)] = fact
+        return latest
 
     # ---- drift / watermelon read APIs -----------------------------------
 
@@ -133,6 +175,121 @@ class RiskService:
         for project in projects:
             findings.extend(await self._detect_project_drift(tenant_id, project.id, as_of))
         return findings
+
+    # ---- drift on its owner's rollup cell (N3) ---------------------------
+
+    async def owner_drift(self, tenant_id: str, as_of: date) -> dict[str, tuple[OwnerDrift, ...]]:
+        """Each owner's open drift signals on ``as_of``, for their rollup cell (N3).
+
+        The signals are the ones the Signals list shows, read the same way:
+        every project's drift findings but ``green_over_red`` (read from the
+        stored rollup, and about a workstream rather than an issue anyone
+        owns), and the open ``pr_age`` risks whose merge request is still open
+        (``_without_settled_requests``). ``merged_issue_open`` keeps its grace
+        day and ``said_in_review_no_mr`` counts only code work (N26), as the
+        drift read decides. A signal counts for the issue's assignee -- a work
+        item's ``owner_id`` -- and for nobody when the issue has none. A
+        ``pr_age`` risk sits on the issues its merge request names, matched
+        by ``merge_request_links``, and counts only while the owner has
+        disclosed no blocker on that issue. Each is placed in the pods a
+        blocker on the issue would count in. Read on every rollup, so a signal
+        that clears stops counting at the next one.
+        """
+        nodes_by_id = {node.id: node for node in await self._graph_repository.list_nodes(tenant_id)}
+        assignees: dict[str, set[str]] = {}
+        for edge in await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.ASSIGNED_TO):
+            if edge.is_active_on(as_of):
+                assignees.setdefault(edge.to_node_id, set()).add(edge.from_node_id)
+        tracker = "Jira" if self._provider_config.jira_base_url else "the issue tracker"
+        found: dict[tuple[str, str, str], tuple[EntityRef, str]] = {}
+        projects = sorted(node.id for node in nodes_by_id.values() if node.kind is NodeKind.PROJECT)
+        for project_id in projects:
+            for finding in await self._detect_project_drift(
+                tenant_id, project_id, as_of, green_over_red=False
+            ):
+                owner_id = finding.owner_id
+                issue = nodes_by_id.get(finding.entity_ref.id)
+                if owner_id is None or not _owns(owner_id, finding.entity_ref, issue, assignees):
+                    continue
+                label = _issue_label(issue, finding.entity_ref.id)
+                found.setdefault(
+                    (owner_id, finding.kind.value, finding.entity_ref.id),
+                    (finding.entity_ref, _drift_reason(finding.kind, label, tracker)),
+                )
+        for key, value in (
+            await self._pull_request_drift(tenant_id, as_of, nodes_by_id, assignees)
+        ).items():
+            found.setdefault(key, value)
+        placements: dict[tuple[str, str], tuple[tuple[str, ...], bool]] = {}
+        by_owner: dict[str, list[OwnerDrift]] = {}
+        for (owner_id, kind, issue_id), (issue_ref, reason) in found.items():
+            if (owner_id, issue_id) not in placements:
+                placements[(owner_id, issue_id)] = await self._blocker_resolution.issue_placement(
+                    tenant_id, owner_id, issue_id, as_of
+                )
+            pod_ids, unattributed = placements[(owner_id, issue_id)]
+            by_owner.setdefault(owner_id, []).append(
+                OwnerDrift(
+                    owner_id=owner_id,
+                    issue_ref=issue_ref,
+                    issue_label=_issue_label(nodes_by_id.get(issue_id), issue_id),
+                    kind=kind,
+                    reason=reason,
+                    pod_ids=pod_ids,
+                    unattributed=unattributed,
+                )
+            )
+        return {
+            owner_id: tuple(sorted(signals, key=lambda item: (item.issue_label, item.kind)))
+            for owner_id, signals in by_owner.items()
+        }
+
+    async def _pull_request_drift(
+        self,
+        tenant_id: str,
+        as_of: date,
+        nodes_by_id: Mapping[str, GraphNode],
+        assignees: Mapping[str, set[str]],
+    ) -> dict[tuple[str, str, str], tuple[EntityRef, str]]:
+        """The open ``pr_age`` risks, on their issues' owners: ``owner_drift``'s second half."""
+        findings = [
+            finding
+            for finding in await self.portfolio_risks(tenant_id, as_of)
+            if finding.rule_id is RiskRuleId.PR_AGE
+        ]
+        if not findings:
+            return {}
+        latest = await self._latest_merge_requests(tenant_id)
+        task_keys = {node.id for node in nodes_by_id.values() if node.kind is NodeKind.TASK}
+        blocker_cache: dict[str, tuple[ResolvedBlocker, ...]] = {}
+        found: dict[tuple[str, str, str], tuple[EntityRef, str]] = {}
+        for finding in findings:
+            fact = latest.get(_pull_request_ref(finding))
+            owned: list[tuple[str, GraphNode]] = []
+            item = nodes_by_id.get(finding.entity_ref.id)
+            if finding.entity_ref.kind is NodeKind.WORK_ITEM and item is not None:
+                item_owner = _string_metadata(item, "owner_id")
+                owned = [(item_owner, item)] if item_owner is not None else []
+            elif fact is not None:
+                for key in sorted(merge_requests_by_issue_key([fact], task_keys)):
+                    owned.extend(
+                        (owner_id, nodes_by_id[key]) for owner_id in sorted(assignees.get(key, ()))
+                    )
+            request = merge_request_label(fact) if fact is not None else finding.evidence.identifier
+            for owner_id, issue in owned:
+                if await self._owner_has_relevant_blockers(
+                    tenant_id, owner_id, issue.id, as_of, blocker_cache
+                ):
+                    continue
+                found.setdefault(
+                    (owner_id, RiskRuleId.PR_AGE.value, issue.id),
+                    (
+                        issue.ref,
+                        f"Signals disagree: {_issue_label(issue, issue.id)} has a merge request "
+                        f"open {finding.age_days} days ({request}).",
+                    ),
+                )
+        return found
 
     # ---- drift scan + persistence (scheduled openprogram_drift_scan) ----
 
@@ -518,7 +675,14 @@ class RiskService:
         tenant_id: str,
         project_id: str,
         as_of: date,
+        *,
+        green_over_red: bool = True,
     ) -> list[DriftFinding]:
+        """The project's drift findings; ``green_over_red=False`` leaves that structural one out.
+
+        ``green_over_red`` is read from the stored rollup, so the rollup's own
+        read of drift (``owner_drift``) skips it rather than read its last run.
+        """
         nodes = await self._graph_repository.list_nodes(tenant_id)
         nodes_by_id = {node.id: node for node in nodes}
         edges = await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
@@ -531,7 +695,7 @@ class RiskService:
         ]
         repo_scope = self._project_repo_scope(project_id, nodes_by_id, edges)
         activity_by_repo = await self._repo_activity(tenant_id, repo_scope)
-        rag_by_entity = await self._node_status_rag(tenant_id, as_of)
+        rag_by_entity = await self._node_status_rag(tenant_id, as_of) if green_over_red else {}
         owner_cache: dict[str, DeveloperStatus | None] = {}
         blocker_cache: dict[str, tuple[ResolvedBlocker, ...]] = {}
         findings: list[DriftFinding] = []
@@ -560,7 +724,8 @@ class RiskService:
                 if item_is_red and red_child is None:
                     red_child = item
             if (
-                workstream is not None
+                green_over_red
+                and workstream is not None
                 and rag_by_entity.get(workstream.id) is Rag.GREEN
                 and red_child is not None
             ):
@@ -1168,6 +1333,55 @@ _SEVERITY_RANK: dict[Rag, int] = {Rag.RED: 0, Rag.AMBER: 1, Rag.UNKNOWN: 2, Rag.
 
 def _risk_key(finding: RiskFinding) -> str:
     return f"{finding.rule_id.value}:{finding.entity_ref.kind.value}:{finding.entity_ref.id}"
+
+
+def _pull_request_ref(finding: RiskFinding) -> tuple[str, str]:
+    """The ``(repo, id)`` a ``pr_age`` finding is about, from its ``repo#id`` evidence."""
+    repo, _, pr_id = finding.evidence.identifier.rpartition("#")
+    return repo, pr_id
+
+
+def _owns(
+    owner_id: str,
+    entity_ref: EntityRef,
+    issue: GraphNode | None,
+    assignees: Mapping[str, set[str]],
+) -> bool:
+    """Whether ``owner_id`` is the issue's assignee: a task's, or a work item's ``owner_id``."""
+    if entity_ref.kind is NodeKind.WORK_ITEM:
+        return _string_metadata(issue, "owner_id") == owner_id
+    return owner_id in assignees.get(entity_ref.id, set())
+
+
+def _issue_label(issue: GraphNode | None, issue_id: str) -> str:
+    """An issue as a reason names it: its tracker key, else its name, else its id."""
+    if issue is None:
+        return issue_id
+    key = _string_metadata(issue, "key")
+    if key is not None:
+        return key.strip()
+    return issue_id if issue.kind is NodeKind.TASK else issue.name
+
+
+# What each drift kind says on its owner's rollup cell (N3), N2-short: the
+# issue's key and the disagreement, never anyone's reply.
+_DRIFT_REASONS: dict[DriftFindingKind, str] = {
+    DriftFindingKind.MERGED_ISSUE_OPEN: "{label} merged but still open in {tracker}",
+    DriftFindingKind.SAID_IN_REVIEW_NO_MR: (
+        "{label} said to be in review, but no open merge request names it"
+    ),
+    DriftFindingKind.ETA_DISAGREEMENT: "the ETAs given for {label} do not overlap",
+    DriftFindingKind.SAID_DONE_NO_PR: "{label} marked done with no merge request",
+    DriftFindingKind.CLAIMED_PROGRESS_NO_ACTIVITY: (
+        "{label} reported in progress with no Git activity"
+    ),
+}
+
+
+def _drift_reason(kind: DriftFindingKind, label: str, tracker: str) -> str:
+    """``Signals disagree: CHK-17 merged but still open in Jira.``"""
+    text = _DRIFT_REASONS.get(kind, "{label} does not match its signals")
+    return f"Signals disagree: {text.format(label=label, tracker=tracker)}."
 
 
 def _drift_key(finding: DriftFinding, project_id: str, as_of: date) -> str:

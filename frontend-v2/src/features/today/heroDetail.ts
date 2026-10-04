@@ -164,6 +164,7 @@ function share(hot: number, total: number, noun: string): string {
 
 type Reason =
   | "blocker"
+  | "drift"
   | "partial"
   | "inferred"
   | "stale"
@@ -175,6 +176,7 @@ type Reason =
 /** Short names for the rollup's reasons, in tie-break order. */
 const REASON_TEXT: Record<Reason, string> = {
   blocker: "open blockers",
+  drift: "signals that disagree",
   partial: "partial updates",
   inferred: "inferred statuses",
   stale: "stale updates",
@@ -195,6 +197,9 @@ function reasonOf(factor: Factor, byId: Map<string, TreeNode>): Reason | null {
   switch (factor.kind) {
     case "blocker":
       return "blocker";
+    // Signals that disagree with an owner's issue turn tiles amber (N3).
+    case "drift":
+      return "drift";
     case "task":
       return factor.contributes === "red" ? "blocked_task" : "task";
     case "target_date":

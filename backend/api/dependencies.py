@@ -238,6 +238,9 @@ def get_persona_view_service(request: Request) -> PersonaViewService:
         status_repository=registry.status_repository(),
         rollup_repository=registry.rollup_repository(),
         time_series_repository=registry.time_series_repository(),
+        # A day with no stored rollup is computed with the drift the stored
+        # ones carry (N3), read by the Signals list's own reader.
+        drift_signals=get_risk_service(request),
     )
 
 

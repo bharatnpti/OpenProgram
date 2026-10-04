@@ -369,6 +369,13 @@ class _HoldAfterFirstStatusRead(InMemoryGraphStore):
 @dataclass
 class _Settings:
     rollup_backfill_days: int = 0
+    # What the rollup's drift reader (N3) is configured with.
+    jira_base_url: str | None = None
+    github_base_url: str = "https://api.github.com"
+    risk_default_no_pr_days: int = 3
+    risk_default_pr_age_days: int = 3
+    risk_default_stale_days: int = 7
+    drift_no_activity_days: int = 3
 
 
 @dataclass
@@ -383,6 +390,9 @@ class _Registry:
         return self.store
 
     def status_repository(self) -> InMemoryGraphStore:
+        return self.store
+
+    def time_series_repository(self) -> InMemoryGraphStore:
         return self.store
 
     async def close(self) -> None:

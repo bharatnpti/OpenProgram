@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
-from core.application.rollup_service import RollupService, task_rag
+from core.application.rollup_service import DriftSignals, RollupService, task_rag
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
     EdgeKind,
@@ -316,14 +316,16 @@ class PersonaViewService:
         status_repository: StatusRepository,
         rollup_repository: RollupRepository,
         time_series_repository: TimeSeriesRepository,
+        drift_signals: DriftSignals | None = None,
     ) -> None:
+        """``drift_signals`` gives a rollup computed here, with nothing stored, its drift (N3)."""
         self._graph_repository = graph_repository
         self._status_repository = status_repository
         self._rollup_repository = rollup_repository
         self._time_series_repository = time_series_repository
         self._blocker_resolution = BlockerResolutionService(graph_repository, status_repository)
         self._rollup_service = RollupService(
-            status_repository, rollup_repository, self._blocker_resolution
+            status_repository, rollup_repository, self._blocker_resolution, drift_signals
         )
 
     async def focus(self, tenant_id: str, developer_id: str, as_of: date) -> FocusView:
@@ -1496,6 +1498,11 @@ class _ReasonContext:
                     ids.add(owner)
                 if factor.work_item_ref is not None:
                     ids.add(factor.work_item_ref.id)
+            elif factor.kind is FactorKind.DRIFT:
+                # A drift factor cites its owner, and the issue it is on.
+                ids.add(factor.source_ref.id)
+                if factor.work_item_ref is not None:
+                    ids.add(factor.work_item_ref.id)
             elif factor.kind is FactorKind.TASK:
                 ids.add(factor.source_ref.id)
         return ids
@@ -1558,9 +1565,10 @@ def _drivers_line(status: NodeStatus, context: _ReasonContext) -> str | None:
     E.g. "1 open blocker (CHK-8, Zoe Almeida); 2 partial updates." -- the
     drivers the Exec Today hero line names for the whole program, from the
     same rollup factors: each open blocker once, with its work item's key and
-    the person it is from; blocked tasks; how many people's updates are
-    partial, inferred, stale or missing; tasks needing attention; approaching
-    target dates. None when no factor says, and the cell keeps its first one.
+    the person it is from; blocked tasks; signals that disagree with an
+    owner's issue (N3); how many people's updates are partial, inferred,
+    stale or missing; tasks needing attention; approaching target dates. None
+    when no factor says, and the cell keeps its first one.
     """
     factors = [factor for factor in status.factors if factor.contributes is not Rag.GREEN]
     parts = [
@@ -1568,6 +1576,7 @@ def _drivers_line(status: NodeStatus, context: _ReasonContext) -> str | None:
         for part in (
             _blockers_part(factors, status.entity_ref, context),
             _tasks_part(factors, blocked=True, context=context),
+            _drift_part(factors, status.entity_ref, context),
             *_people_parts(factors, context),
             _tasks_part(factors, blocked=False, context=context),
             _target_dates_part(factors),
@@ -1664,6 +1673,53 @@ def _blockers_part(
     more = len(labels) - 2
     named = "; ".join(labels[:2]) + (f"; {more} more" if more > 0 else "")
     return f"{counted} ({named})"
+
+
+def _drift_part(
+    factors: Iterable[RollupFactor], cell: EntityRef, context: _ReasonContext
+) -> str | None:
+    """Signals that disagree with an owner's issues, as the rollup carries them (N3).
+
+    One signal reads as itself, with its owner on anyone else's cell: "signals
+    disagree: CHK-17 merged but still open in Jira (Omar Haddad)". Several
+    are counted by issue and grouped by owner, as blockers are: "signals
+    disagree on 3 issues (CHK-6 and IDP-3, Noah Weber; CHK-14, Sofia
+    Bergmann)".
+    """
+    drift: dict[tuple[str, str], RollupFactor] = {}
+    for factor in factors:
+        if factor.kind is FactorKind.DRIFT:
+            drift.setdefault((factor.source_ref.id, factor.description), factor)
+    if not drift:
+        return None
+
+    def owner(factor: RollupFactor) -> str | None:
+        own_cell = cell.kind is NodeKind.DEVELOPER and factor.source_ref.id == cell.id
+        return None if own_cell else context.label(factor.source_ref.id)
+
+    if len(drift) == 1:
+        (factor,) = drift.values()
+        name = owner(factor)
+        return f"{_clause(factor.description)} ({name})" if name else _clause(factor.description)
+    groups: dict[str | None, list[str]] = {}
+    issues: set[str] = set()
+    for factor in drift.values():
+        items = groups.setdefault(owner(factor), [])
+        if factor.work_item_ref is not None:
+            issues.add(factor.work_item_ref.id)
+            item = context.label(factor.work_item_ref.id)
+            if item is not None and item not in items:
+                items.append(item)
+    labels = [
+        label
+        for name, items in groups.items()
+        if (label := ", ".join(part for part in (_join_and(items), name) if part))
+    ]
+    counted = f"signals disagree on {_count(len(issues) or len(drift), ('issue', 'issues'))}"
+    if not labels:
+        return counted
+    more = len(labels) - 2
+    return f"{counted} ({'; '.join(labels[:2])}{f'; {more} more' if more > 0 else ''})"
 
 
 def _count(n: int, nouns: tuple[str, str]) -> str:

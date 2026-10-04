@@ -26,6 +26,11 @@ class FactorKind(StrEnum):
     # Another team's person waits on this node's work: a reason line, never
     # a blocker of its own, so it never changes the colour.
     DEPENDENCY = "dependency"
+    # Signals disagree with an issue its owner (the assignee) holds: merged but
+    # still open, in review with no merge request, ETAs that do not overlap,
+    # a merge request open too long. Amber, never red and never a blocker;
+    # scoped to pods like a blocker on the same issue.
+    DRIFT = "drift"
 
 
 @dataclass(frozen=True, kw_only=True)

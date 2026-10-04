@@ -220,6 +220,46 @@ describe("heroDetailLine", () => {
     );
   });
 
+  test("tiles amber only from drift say so, beside the drift they come from", () => {
+    // Omar's CHK-17 merged while the tracker kept it open: his cell, Platform
+    // and the projects holding Platform are amber, though everyone confirmed.
+    const drift: Factor = {
+      kind: "drift",
+      contributes: "amber",
+      description: "Signals disagree: CHK-17 merged but still open in Jira.",
+      blocker_id: null,
+      source_ref: { id: "u-omar" },
+      work_item_ref: { id: "CHK-17" },
+    };
+    const tree: RollupTree = {
+      status: "ready",
+      nodes: [
+        node("u-omar", "developer", "Omar Haddad", "confirmed", [drift]),
+        node("pod-1", "pod", "Platform Pod", "confirmed", [drift]),
+        node("project-1", "project", "Checkout", "confirmed", [drift]),
+        node("project-2", "project", "Identity", "confirmed", [drift]),
+      ],
+    };
+
+    const line = heroDetailLine(
+      input({
+        drift: [{ kind: "merged_issue_open" }],
+        tree,
+        tiles: {
+          pods: tiles("pod", ["amber", "green", "green", "green", "green"]),
+          projects: tiles("project", ["amber", "amber", "green"]),
+          workstreams: [],
+        },
+      }),
+    );
+
+    assert.equal(
+      line,
+      "1 of 5 pods and 2 of 3 projects amber, mostly from signals that disagree; " +
+        "1 ticket merged but still open in Jira.",
+    );
+  });
+
   test("on a tie with the named blockers, the other reason is the one given", () => {
     const tree: RollupTree = {
       status: "ready",

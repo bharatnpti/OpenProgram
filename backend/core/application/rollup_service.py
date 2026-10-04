@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from datetime import date
+from typing import Protocol
 
 from core.application.blocker_resolution import (
     BlockerProvenance,
@@ -10,9 +11,22 @@ from core.application.blocker_resolution import (
 )
 from core.application.status_summaries import NO_REPLY_BLOCKER
 from core.domain.graph import EdgeKind, EntityRef, GraphNode, GraphTree, JsonScalar, NodeKind
+from core.domain.risk import OwnerDrift
 from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import DeveloperStatus, StatusSource
 from core.ports.repositories import RollupRepository, StatusRepository
+
+# Factor kinds counted only in the pods they apply to: a blocker, and drift on
+# an issue, which is placed in the pods a blocker on that issue would be.
+_POD_SCOPED_KINDS = frozenset({FactorKind.BLOCKER, FactorKind.DRIFT})
+
+
+class DriftSignals(Protocol):
+    """Where a rollup reads each owner's open drift signals (``RiskService.owner_drift``)."""
+
+    async def owner_drift(
+        self, tenant_id: str, as_of: date
+    ) -> Mapping[str, tuple[OwnerDrift, ...]]: ...
 
 
 class RollupService:
@@ -33,6 +47,14 @@ class RollupService:
     is left out of its parent's, so a project whose people have all reported
     can be green although it also holds repos, sprints and open tickets. A
     node with nothing status-bearing beneath it stays unknown, never green.
+
+    Drift (N3): an open drift signal on an issue a person is assigned turns
+    that person amber with a "Signals disagree: ..." reason, scoped to the
+    pods a blocker on the issue would count in, and so reaches the pod,
+    project and program as amber. Never red on its own, never a blocker, and
+    never on a person with no status: silence stays unknown. The signals come
+    from ``drift_signals`` on every compute, so one that clears stops counting
+    at the next rollup.
     """
 
     def __init__(
@@ -40,10 +62,12 @@ class RollupService:
         status_repository: StatusRepository,
         rollup_repository: RollupRepository | None = None,
         blocker_resolution: BlockerResolutionService | None = None,
+        drift_signals: DriftSignals | None = None,
     ) -> None:
         self._status_repository = status_repository
         self._rollup_repository = rollup_repository
         self._blocker_resolution = blocker_resolution
+        self._drift_signals = drift_signals
 
     async def compute(self, tree: GraphTree, as_of: date) -> tuple[NodeStatus, ...]:
         index = _TreeIndex(tree)
@@ -52,6 +76,7 @@ class RollupService:
         neutral: set[str] = set()
         blockers: dict[str, tuple[ResolvedBlocker, ...]] = {}
         incoming = await self._incoming_dependencies(tree, as_of, blockers)
+        drift = await self._owner_drift(tree, as_of)
 
         async def rollup_node(node: GraphNode) -> NodeStatus | None:
             """Roll `node` up and return what it contributes to its parent.
@@ -66,7 +91,7 @@ class RollupService:
             if node.kind is NodeKind.TASK:
                 return _task_node_status(node, as_of)
             if node.kind is NodeKind.DEVELOPER:
-                status = await self._developer_status(node, as_of, blockers)
+                status = await self._developer_status(node, as_of, blockers, drift.get(node.id, ()))
                 statuses[node.id] = status
                 return status
             child_statuses = [
@@ -147,11 +172,22 @@ class RollupService:
             node.tenant_id, node.id, as_of
         )
 
+    async def _owner_drift(
+        self, tree: GraphTree, as_of: date
+    ) -> Mapping[str, tuple[OwnerDrift, ...]]:
+        """The open drift signals per owner, read once per compute; none without a source."""
+        if self._drift_signals is None or not any(
+            node.kind is NodeKind.DEVELOPER for node in tree.nodes
+        ):
+            return {}
+        return await self._drift_signals.owner_drift(tree.root.tenant_id, as_of)
+
     async def _developer_status(
         self,
         node: GraphNode,
         as_of: date,
         known_blockers: dict[str, tuple[ResolvedBlocker, ...]] | None = None,
+        drift: tuple[OwnerDrift, ...] = (),
     ) -> NodeStatus:
         status = await self._status_repository.latest_developer_status(
             node.tenant_id,
@@ -175,7 +211,7 @@ class RollupService:
             )
         known = (known_blockers or {}).get(node.id)
         blockers = known if known is not None else await self._open_blockers(node, as_of)
-        rag, factors = _developer_factors(node, status, blockers)
+        rag, factors = _with_drift(node, status, *_developer_factors(node, status, blockers), drift)
         return _node_status(node, rag, status.source, as_of, factors)
 
 
@@ -285,6 +321,44 @@ def _developer_factors(
     )
 
 
+def _with_drift(
+    node: GraphNode,
+    status: DeveloperStatus,
+    rag: Rag,
+    factors: tuple[RollupFactor, ...],
+    drift: tuple[OwnerDrift, ...],
+) -> tuple[Rag, tuple[RollupFactor, ...]]:
+    """A person's own reasons with the drift on their issues beside them (N3).
+
+    Each signal is an amber DRIFT factor, never a blocker, so drift alone
+    never makes anyone red; blockers still do. A confirmed person's "no
+    blockers" line gives way to it, as it does to a blocker: the stored status
+    stays confirmed, the cell reads amber. Silence keeps its colour: an unknown
+    status takes no drift (no status at all never reaches here).
+    """
+    if not drift or status.source is StatusSource.UNKNOWN:
+        return rag, factors
+    own = tuple(
+        factor
+        for factor in factors
+        if not (factor.kind is FactorKind.STATUS and factor.contributes is Rag.GREEN)
+    )
+    combined = own + tuple(_drift_factor(node, signal) for signal in drift)
+    return _rag_from_factors(combined), combined
+
+
+def _drift_factor(node: GraphNode, signal: OwnerDrift) -> RollupFactor:
+    return RollupFactor(
+        description=signal.reason,
+        contributes=Rag.AMBER,
+        source_ref=node.ref,
+        kind=FactorKind.DRIFT,
+        work_item_ref=signal.issue_ref,
+        applies_to_pod_ids=signal.pod_ids,
+        unattributed=signal.unattributed,
+    )
+
+
 def _blocker_description(blocker: ResolvedBlocker) -> str:
     """The blocker's reason line; a cross-team one says whose work it waits on.
 
@@ -376,17 +450,18 @@ def _legacy_status_blockers(
 
 
 def _effective_child_status(child: NodeStatus, pod_id: str) -> NodeStatus:
-    """Filter a child's blocker factors to the pod being aggregated.
+    """Filter a child's blocker and drift factors to the pod being aggregated.
 
-    Non-blocker factors always pass (person-global signals like staleness).
-    Blocker factors pass when they carry no pod scoping (legacy rows) or when
-    this pod is in scope — unattributed blockers already carry every pod the
-    developer belongs to, so they need no special case.
+    Other factors always pass (person-global signals like staleness). Blocker
+    and drift factors pass when they carry no pod scoping (legacy rows) or
+    when this pod is in scope — unattributed ones already carry every pod the
+    developer belongs to, so they need no special case. Drift on Omar's
+    Platform issue turns Platform amber, not the other pods he is in.
     """
     kept = tuple(
         factor
         for factor in child.factors
-        if factor.kind is not FactorKind.BLOCKER
+        if factor.kind not in _POD_SCOPED_KINDS
         or not factor.applies_to_pod_ids
         or pod_id in factor.applies_to_pod_ids
     )
