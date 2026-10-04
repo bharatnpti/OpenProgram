@@ -636,6 +636,7 @@ class RiskService:
                 issue_keys=set(tasks),
                 as_of=as_of,
                 merge_request_facts=merge_requests,
+                owners=assignees,
             )
         ]
 

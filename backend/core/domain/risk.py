@@ -31,6 +31,8 @@ class DriftFindingKind(StrEnum):
     MERGED_ISSUE_OPEN = "merged_issue_open"
     #: A check-in said an issue is in review, and no open merge request names it.
     SAID_IN_REVIEW_NO_MR = "said_in_review_no_mr"
+    #: Two people's check-ins gave different ETAs for the same issue on one day.
+    ETA_DISAGREEMENT = "eta_disagreement"
 
 
 class RiskFindingStatus(StrEnum):
