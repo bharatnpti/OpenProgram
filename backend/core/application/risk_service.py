@@ -8,9 +8,11 @@ from core.application.blocker_resolution import BlockerResolutionService, Resolv
 from core.application.checkin_drift import (
     CHECKIN_DRIFT_FACT_SOURCE,
     COMMIT_FACT_SOURCE,
+    ETA_STATED,
     SAID_IN_REVIEW_NO_MR,
     checkin_drift_signals,
     code_work_keys,
+    issue_workers,
     member_roles,
 )
 from core.application.merge_request_links import (
@@ -768,8 +770,9 @@ class RiskService:
         ``core/application/checkin_drift.py``). Structural like
         ``merged_issue_open``: nobody's status is downgraded for it. The owner
         is the issue's assignee, else the person who said it. ETAs are compared
-        only between people who own or work the issue, by their app roles here
-        (N43): a coordinator's ETA for someone else's issue is no disagreement.
+        only between people who own or work the issue (N43): its assignee and
+        anyone whose branch, commit or merge request names it. Anyone else's ETA,
+        a coordinator's or a manager's, is no disagreement.
         """
         tasks = _project_tasks(project_id, nodes_by_id, contains_edges)
         if not tasks:
@@ -794,7 +797,7 @@ class RiskService:
             if edge.to_node_id in tasks and edge.is_active_on(as_of)
         }
         commits: list[FactEvent] = []
-        if any(fact.payload.get("kind") == SAID_IN_REVIEW_NO_MR for fact in facts):
+        if any(fact.payload.get("kind") in (SAID_IN_REVIEW_NO_MR, ETA_STATED) for fact in facts):
             commits = await self._time_series_repository.list_recent_facts(
                 tenant_id, sources=(COMMIT_FACT_SOURCE,), limit=_RISK_FACT_SCAN_LIMIT
             )
@@ -837,7 +840,7 @@ class RiskService:
                 merge_request_facts=merge_requests,
                 owners=assignees,
                 is_code_work=is_code_work,
-                roles_of=roles_of,
+                workers=issue_workers(set(tasks), merge_requests, commits),
             )
         ]
 
