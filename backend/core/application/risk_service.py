@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
+from core.application.checkin_drift import CHECKIN_DRIFT_FACT_SOURCE, checkin_drift_signals
 from core.application.merge_request_links import (
     MERGE_REQUEST_FACT_SOURCE,
     merge_requests_by_issue_key,
@@ -578,7 +579,65 @@ class RiskService:
                 tenant_id, project_id, nodes_by_id, edges, repo_scope, as_of
             )
         )
+        findings.extend(await self._checkin_drift(tenant_id, project_id, nodes_by_id, edges, as_of))
         return findings
+
+    async def _checkin_drift(
+        self,
+        tenant_id: str,
+        project_id: str,
+        nodes_by_id: Mapping[str, GraphNode],
+        contains_edges: Sequence[GraphEdge],
+        as_of: date,
+    ) -> list[DriftFinding]:
+        """What check-ins of ``as_of`` said about the project's issues that the facts contradict.
+
+        Recorded by the status collector when a check-in is finalized (see
+        ``core/application/checkin_drift.py``). Structural like
+        ``merged_issue_open``: nobody's status is downgraded for it. The owner
+        is the issue's assignee, else the person who said it.
+        """
+        tasks = _project_tasks(project_id, nodes_by_id, contains_edges)
+        if not tasks:
+            return []
+        since = datetime.combine(as_of - timedelta(days=1), time.min, tzinfo=UTC)
+        facts = await self._time_series_repository.list_recent_facts(
+            tenant_id,
+            since=since,
+            sources=(CHECKIN_DRIFT_FACT_SOURCE,),
+            limit=_RISK_FACT_SCAN_LIMIT,
+        )
+        if not facts:
+            return []
+        merge_requests = await self._time_series_repository.list_recent_facts(
+            tenant_id, sources=(MERGE_REQUEST_FACT_SOURCE,), limit=_RISK_FACT_SCAN_LIMIT
+        )
+        assignees = {
+            edge.to_node_id: edge.from_node_id
+            for edge in await self._graph_repository.list_edges(
+                tenant_id, kind=EdgeKind.ASSIGNED_TO
+            )
+            if edge.to_node_id in tasks and edge.is_active_on(as_of)
+        }
+        return [
+            self._drift_finding(
+                tenant_id=tenant_id,
+                kind=DriftFindingKind(signal.kind),
+                severity=Rag.AMBER,
+                entity_ref=tasks[signal.issue_key].ref,
+                workstream_id=None,
+                reason=signal.reason,
+                owner_id=assignees.get(signal.issue_key) or signal.stated_by or None,
+                stated_source=signal.stated_source,
+                evidence=RiskEvidence(identifier=signal.issue_key),
+            )
+            for signal in checkin_drift_signals(
+                facts,
+                issue_keys=set(tasks),
+                as_of=as_of,
+                merge_request_facts=merge_requests,
+            )
+        ]
 
     async def _merged_issue_open_drift(
         self,
