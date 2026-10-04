@@ -2767,6 +2767,11 @@ export interface components {
       details: {
         [key: string]: string | number | boolean | null;
       };
+      /**
+       * Person Name
+       * @description Who entity_ref is, by name, when it is a person: the member's name, else the chat directory's, else 'a team member' -- never a raw chat id. Null when entity_ref is not a person.
+       */
+      person_name?: string | null;
     };
     /** PortfolioFeedResponse */
     PortfolioFeedResponse: {
@@ -2969,6 +2974,11 @@ export interface components {
       owner_status_has_blockers: boolean;
       /** Is Watermelon */
       is_watermelon: boolean;
+      /**
+       * Person Name
+       * @description Who entity_ref is, by name, when the finding is about a person (a merge request no work item claims is filed on its author): the member's name, else the chat directory's, else 'a team member' -- never a raw chat id. Null when entity_ref is not a person.
+       */
+      person_name?: string | null;
     };
     /** RollupFactorDto */
     RollupFactorDto: {

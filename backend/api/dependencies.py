@@ -13,6 +13,7 @@ from core.application.dead_letter_service import DeadLetterService
 from core.application.directory_sync_service import DirectorySyncService
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.graph_queries import GraphQueryService
+from core.application.person_names import PersonNames
 from core.application.persona_views import PersonaViewService
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.application.risk_service import RiskService
@@ -144,9 +145,19 @@ def get_flow_metrics_service(request: Request) -> FlowMetricsService:
     )
 
 
+def get_person_names(request: Request) -> PersonNames:
+    registry = get_registry(request)
+    return PersonNames(
+        graph_repository=registry.graph_repository(),
+        directory_repository=registry.directory_user_repository(),
+    )
+
+
 def get_portfolio_feed_service(request: Request) -> PortfolioFeedService:
     registry = get_registry(request)
-    return PortfolioFeedService(registry.time_series_repository())
+    return PortfolioFeedService(
+        registry.time_series_repository(), person_names=get_person_names(request)
+    )
 
 
 def get_narrative_brief_repository(request: Request) -> NarrativeBriefRepository:
