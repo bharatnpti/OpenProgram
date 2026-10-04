@@ -15,6 +15,7 @@ from core.application.writeback_service import (
     OpenMergeRequestHold,
     WriteBackService,
     canonical_target_state,
+    interpret_consent_answer,
     interpret_consent_reply,
     target_state_label,
     write_back_comment,
@@ -1658,3 +1659,87 @@ async def test_a_started_claim_whose_read_fails_is_a_noop_unless_the_copy_is_to_
 
     assert results == []
     assert audit.audits == {}
+
+
+# --- G1: a consent answer, issue by issue ---
+
+
+@pytest.mark.parametrize(
+    ("text", "keys", "expected"),
+    [
+        # Liam, R1 12:17:01.
+        (
+            "yes for CHK-3. CHK-4 I haven't actually started yet, so leave that one as is for now.",
+            ["CHK-3", "CHK-4"],
+            {"CHK-3": "affirm", "CHK-4": "decline"},
+        ),
+        ("yes", ["CHK-3", "CHK-4"], {"CHK-3": "affirm", "CHK-4": "affirm"}),
+        ("no", ["CHK-3", "CHK-4"], {"CHK-3": "decline", "CHK-4": "decline"}),
+        ("yes, do it", ["PO-1"], {"PO-1": "affirm"}),
+        (
+            "yes for CHK-3 and no for CHK-4",
+            ["CHK-3", "CHK-4"],
+            {"CHK-3": "affirm", "CHK-4": "decline"},
+        ),
+        ("yes for CHK-3 and CHK-4", ["CHK-3", "CHK-4"], {"CHK-3": "affirm", "CHK-4": "affirm"}),
+        ("CHK-3 yes, CHK-4 no", ["CHK-3", "CHK-4"], {"CHK-3": "affirm", "CHK-4": "decline"}),
+        ("only CHK-3", ["CHK-3", "CHK-4"], {"CHK-3": "affirm", "CHK-4": "decline"}),
+        ("yes but wait on CHK-4", ["CHK-3", "CHK-4"], {"CHK-3": "affirm", "CHK-4": "decline"}),
+        (
+            "leave CHK-4, go ahead with CHK-3",
+            ["CHK-3", "CHK-4"],
+            {"CHK-3": "affirm", "CHK-4": "decline"},
+        ),
+        # Unsure about one issue: that one stays pending.
+        ("Not sure about CHK-4, yes for CHK-3", ["CHK-3", "CHK-4"], {"CHK-3": "affirm"}),
+        ("yes for CHK-3", ["CHK-3", "CHK-4"], {"CHK-3": "affirm"}),
+        # Not an answer: nothing is decided.
+        ("yes but no", ["CHK-3"], {}),
+        ("hmm", ["CHK-3"], {}),
+        ("maybe later", ["CHK-3"], {}),
+        ("No blockers, CHK-3 still in review", ["CHK-3"], {}),
+        ("Yes, and CHK-5 is done now", ["CHK-3"], {}),
+    ],
+)
+def test_consent_answer_is_read_issue_by_issue(
+    text: str, keys: list[str], expected: dict[str, str]
+) -> None:
+    assert interpret_consent_answer(text, keys) == expected
+
+
+async def test_per_issue_answer_resolves_only_what_it_answers() -> None:
+    tracker = FakeIssueTracker(
+        issues={key: _issue(key, IssueState.TODO) for key in ("CHK-3", "CHK-4")}
+    )
+    service, _, _ = _build(
+        tracker=tracker, default_enabled=True, consent=WriteBackConsent.ALWAYS_ASK
+    )
+    await service.apply_from_checkin(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        claims=[
+            IssueClaim(issue_key="CHK-3", claimed_state="in review"),
+            IssueClaim(issue_key="CHK-4", claimed_state="in progress"),
+        ],
+    )
+
+    results = await service.resolve_consent_reply(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        reply_text="yes for CHK-3",
+    )
+
+    assert [(row.issue_key, row.status) for row in results] == [("CHK-3", WriteBackStatus.APPLIED)]
+    assert [
+        row.issue_key for row in await service.list_pending_proposals(_TENANT, _CORRELATION)
+    ] == ["CHK-4"]
+    expired = await service.expire_pending_proposals(
+        tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION
+    )
+    assert [(row.issue_key, row.status, row.source) for row in expired] == [
+        ("CHK-4", WriteBackStatus.EXPIRED, "checkin_closed")
+    ]
+    assert await service.list_pending_proposals(_TENANT, _CORRELATION) == []
+    assert tracker.transitions == [(_TENANT, "CHK-3", "in_review")]
