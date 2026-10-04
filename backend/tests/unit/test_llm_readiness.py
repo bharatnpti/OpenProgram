@@ -19,7 +19,7 @@ from core.ports.readiness import ReadinessProbe, ReadinessReport
 from infra import registry as registry_module
 from infra.adapters import catalog
 from infra.adapters.llm import readiness as llm_readiness
-from infra.adapters.llm.readiness import LlmEndpointReadinessProbe
+from infra.adapters.llm.readiness import LlmEndpointReadinessProbe, LlmReadinessHistory
 from infra.adapters.readiness import StaticReadinessProbe
 from infra.registry import ServiceRegistry
 
@@ -27,6 +27,12 @@ SECRET_KEY = "q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ="
 API_KEY = "sk-test-readiness-key-must-never-leak"
 MODEL_LIST = {"object": "list", "data": [{"id": "gpt-4.1", "object": "model"}]}
 MOCK_LLM_PATH = Path(__file__).resolve().parents[3] / "scripts" / "mock_llm.py"
+FLAKY_URL = "https://llm.example.test"
+TIMED_OUT = ReadinessReport(ready=False, detail="unreachable: no response within 2.5s")
+MISSED_TIMEOUT = (
+    "unconfirmed: this probe failed (unreachable: no response within 2.5s) after"
+    " a success; one more failure in a row reports degraded"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -265,6 +271,106 @@ async def test_a_standing_failure_logs_once_and_recovery_logs_again() -> None:
     assert "secret" not in repr(logs)
 
 
+async def _poll(history: LlmReadinessHistory, times: int) -> list[ReadinessReport]:
+    # A new probe per poll over one history, as the registry builds them per /ready call.
+    return [await _probe(FLAKY_URL, history=history).report() for _ in range(times)]
+
+
+@respx.mock
+async def test_a_lone_missed_probe_right_after_a_success_still_reports_ready() -> None:
+    # QA R5: two of four /ready polls timed out at 2.5 s, never two in a row,
+    # while every real LLM call in the same minutes succeeded.
+    respx.get(f"{FLAKY_URL}/v1/models").mock(
+        side_effect=[
+            httpx.Response(200, json=MODEL_LIST),
+            httpx.ReadTimeout("slow"),
+            httpx.Response(200, json=MODEL_LIST),
+            httpx.ReadTimeout("slow"),
+        ]
+    )
+
+    reports = await _poll(LlmReadinessHistory(), 4)
+
+    assert reports == [
+        ReadinessReport(ready=True),
+        ReadinessReport(ready=True, detail=MISSED_TIMEOUT),
+        ReadinessReport(ready=True),
+        ReadinessReport(ready=True, detail=MISSED_TIMEOUT),
+    ]
+
+
+@respx.mock
+async def test_the_second_failed_probe_in_a_row_reports_degraded() -> None:
+    respx.get(f"{FLAKY_URL}/v1/models").mock(
+        side_effect=[
+            httpx.Response(200, json=MODEL_LIST),
+            httpx.ReadTimeout("slow"),
+            httpx.ReadTimeout("slow"),
+            httpx.Response(503),
+        ]
+    )
+
+    with capture_logs() as logs:
+        reports = await _poll(LlmReadinessHistory(), 4)
+
+    assert reports[1:] == [
+        ReadinessReport(ready=True, detail=MISSED_TIMEOUT),
+        TIMED_OUT,
+        ReadinessReport(
+            ready=False, detail="upstream_error: the endpoint is reachable but failing (HTTP 503)"
+        ),
+    ]
+    assert [entry["event"] for entry in logs] == [
+        "llm_readiness_probe_missed",
+        "llm_readiness_degraded",
+        "llm_readiness_degraded",
+    ]
+    assert API_KEY not in repr(logs)
+
+
+@respx.mock
+async def test_a_success_between_failures_starts_the_count_again() -> None:
+    respx.get(f"{FLAKY_URL}/v1/models").mock(
+        side_effect=[
+            httpx.Response(200, json=MODEL_LIST),
+            httpx.ReadTimeout("slow"),
+            httpx.ReadTimeout("slow"),
+            httpx.Response(200, json=MODEL_LIST),
+            httpx.ReadTimeout("slow"),
+        ]
+    )
+    history = LlmReadinessHistory()
+
+    reports = await _poll(history, 5)
+
+    assert [report.ready for report in reports] == [True, True, False, True, True]
+    assert reports[4] == ReadinessReport(ready=True, detail=MISSED_TIMEOUT)
+    assert history.consecutive_failures == 1
+
+
+@respx.mock
+async def test_an_endpoint_never_reached_is_degraded_from_its_first_failure() -> None:
+    # Nothing to ride out before a first success: a fresh process pointed at a
+    # wrong key or a dead URL says so on its very first /ready.
+    respx.get(f"{FLAKY_URL}/v1/models").mock(
+        side_effect=[
+            httpx.ReadTimeout("slow"),
+            httpx.Response(401),
+            httpx.Response(200, json=MODEL_LIST),
+        ]
+    )
+
+    reports = await _poll(LlmReadinessHistory(), 3)
+
+    assert reports == [
+        TIMED_OUT,
+        ReadinessReport(
+            ready=False, detail="unauthorized: the endpoint rejected the API key (HTTP 401)"
+        ),
+        ReadinessReport(ready=True),
+    ]
+
+
 def _container_settings(**overrides: object) -> Settings:
     settings_factory = cast(Callable[..., Settings], Settings)
     base: dict[str, object] = {
@@ -314,6 +420,25 @@ def test_catalog_keeps_the_fake_llm_statically_ready() -> None:
     )
 
     assert isinstance(probes["llm_provider"], StaticReadinessProbe)
+
+
+def test_catalog_gives_the_llm_probe_the_history_it_is_handed() -> None:
+    settings = _container_settings(
+        llm_provider="litellm",
+        litellm_base_url="https://api.openai.test",
+        litellm_api_key=API_KEY,
+    )
+    history = LlmReadinessHistory()
+
+    shared = catalog.build_readiness_probes(
+        settings, _FakeExecutor, _FakeRedis, llm_history=history
+    )["llm_provider"]
+    alone = catalog.build_readiness_probes(settings, _FakeExecutor, _FakeRedis)["llm_provider"]
+
+    assert isinstance(shared, LlmEndpointReadinessProbe)
+    assert shared.history is history
+    assert isinstance(alone, LlmEndpointReadinessProbe)
+    assert alone.history is not history
 
 
 class _BoolProbe:
@@ -390,3 +515,54 @@ def test_ready_reports_no_details_when_everything_is_ready(settings: Settings) -
     assert body["status"] == "ok"
     assert body["details"] == {}
     assert all(body["dependencies"].values())
+
+
+def test_ready_rides_out_one_missed_llm_probe_across_calls(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Every /ready call builds new probes; the history the registry owns is
+    # what carries the earlier success over to the next call.
+    answers: list[httpx.Response | Exception] = [
+        httpx.Response(200, json=MODEL_LIST),
+        httpx.ReadTimeout("slow"),
+        httpx.ReadTimeout("slow"),
+    ]
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        outcome = answers.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    transport = httpx.MockTransport(answer)
+
+    def llm_only(
+        _settings: Settings,
+        *_factories: object,
+        llm_history: LlmReadinessHistory | None = None,
+        **_options: object,
+    ) -> dict[str, ReadinessProbe]:
+        assert llm_history is not None
+        probe = LlmEndpointReadinessProbe(
+            base_url=FLAKY_URL, api_key=API_KEY, transport=transport, history=llm_history
+        )
+        return {"llm_provider": probe}
+
+    monkeypatch.setattr(catalog, "build_readiness_probes", llm_only)
+    app = create_app(settings=settings, registry=ServiceRegistry(settings))
+
+    with TestClient(app) as client:
+        bodies = [client.get("/ready").json() for _ in range(3)]
+
+    assert [body["status"] for body in bodies] == ["ok", "ok", "degraded"]
+    assert [body["dependencies"] for body in bodies] == [
+        {"llm_provider": True},
+        {"llm_provider": True},
+        {"llm_provider": False},
+    ]
+    assert [body["details"] for body in bodies] == [
+        {},
+        {"llm_provider": MISSED_TIMEOUT},
+        {"llm_provider": "unreachable: no response within 2.5s"},
+    ]
+    assert not answers
