@@ -52,6 +52,11 @@ NO_CHANGE_SOURCE = "no_change"
 # because a merge request naming the issue is still open (or a draft): the work
 # is not merged, so the tracker stays where it is. No Jira call is made for it.
 OPEN_MR_SOURCE = "open_mr"
+# ``source`` of the ``declined`` row a person's "no" (for all, or for one issue)
+# records, and of the ``expired`` row that closes a proposal nobody answered
+# before the check-in closed. Neither makes a tracker call.
+CONSENT_REPLY_SOURCE = "consent_reply"
+CHECKIN_CLOSED_SOURCE = "checkin_closed"
 # How many synced merge request facts the open merge request check reads.
 _MERGE_REQUEST_FACT_SCAN_LIMIT = 5000
 
@@ -158,6 +163,21 @@ class WriteBackService:
         if not await self.system_gate_open(tenant_id):
             return False
         return await self._consent(tenant_id, developer_id) is WriteBackConsent.AUTO_APPLY
+
+    async def asks_before_writing(self, tenant_id: str, developer_id: str) -> bool:
+        """Whether this developer's claims are proposed and wait for their yes/no.
+
+        Read-only: the capability and system gates, and consent ``always_ask``
+        (the default when no preference is stored).
+        """
+        principal = Principal(
+            tenant_id=tenant_id, subject=developer_id, roles=frozenset({Role.DEV})
+        )
+        if not self._policy.can(principal, Capability.WRITE_ISSUE_TRACKER):
+            return False
+        if not await self.system_gate_open(tenant_id):
+            return False
+        return await self._consent(tenant_id, developer_id) is WriteBackConsent.ALWAYS_ASK
 
     async def auto_apply_issue_keys(
         self,
@@ -415,17 +435,22 @@ class WriteBackService:
         ``claims`` (the check-in's) word the comment of each applied write as
         the claim path does; ``reported_on`` is the check-in's date.
 
-        Returns the audit rows produced -- ``applied`` on an affirmative answer,
-        ``declined`` on a negative one, and nothing when the answer is unclear,
-        when there is no pending proposal, or when the gates have since closed
-        (idempotent: once a proposal is resolved it is no longer pending). All
-        writes still flow through the single audited ``_apply`` path.
+        The answer may differ per issue ("yes for CHK-3, leave CHK-4"): see
+        ``interpret_consent_answer``. Returns the audit rows produced --
+        ``applied`` for a yes, ``declined`` for a no, and nothing for an issue
+        the answer leaves unclear (it stays pending), when there is no pending
+        proposal, or when the gates have since closed (idempotent: once a
+        proposal is resolved it is no longer pending). All writes still flow
+        through the single audited ``_apply`` path, so the owner check, the
+        open merge request hold and the canonical target apply to every yes.
         """
         pending = await self.list_pending_proposals(tenant_id, correlation_id)
         if not pending:
             return []
-        intent = interpret_consent_reply(reply_text)
-        if intent == "unclear":
+        decisions = interpret_consent_answer(
+            reply_text, [proposal.issue_key for proposal in pending]
+        )
+        if not decisions:
             return []
         principal = Principal(
             tenant_id=tenant_id,
@@ -441,6 +466,9 @@ class WriteBackService:
 
         results: list[WriteBackAudit] = []
         for proposal in pending:
+            intent = decisions.get(proposal.issue_key)
+            if intent is None:
+                continue  # this issue's answer is still open
             if intent == "affirm":
                 results.append(
                     await self._apply_confirmed(
@@ -464,10 +492,56 @@ class WriteBackService:
                         before_state=proposal.before_state,
                         after_state=proposal.before_state,
                         comment=None,
-                        source="consent_reply",
+                        source=CONSENT_REPLY_SOURCE,
                     )
                 )
         return results
+
+    async def expire_pending_proposals(
+        self, *, tenant_id: str, developer_id: str, correlation_id: str
+    ) -> list[WriteBackAudit]:
+        """Close every proposal still waiting for a yes/no when the check-in closes.
+
+        Each gets an ``expired`` row with source ``checkin_closed``; nothing is
+        written to the tracker, and a later yes no longer finds it pending.
+        """
+        return [
+            await self._record(
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                correlation_id=correlation_id,
+                issue_key=proposal.issue_key,
+                target_state=proposal.target_state,
+                status=WriteBackStatus.EXPIRED,
+                before_state=proposal.before_state,
+                after_state=proposal.before_state,
+                comment=None,
+                source=CHECKIN_CLOSED_SOURCE,
+            )
+            for proposal in await self.list_pending_proposals(tenant_id, correlation_id)
+        ]
+
+    async def reply_outcomes(self, tenant_id: str, correlation_id: str) -> list[WriteBackAudit]:
+        """What the check-in's write-back did, for the reply: one row per issue.
+
+        The latest ``applied`` row, a ``declined`` row for an open merge request
+        or a person's no, or the ``expired`` row of a proposal the check-in
+        closed on. Refusals the person need not hear about (not their issue,
+        unassigned) and failed reads are left out.
+        """
+        rows = await self._audit.list_writeback_by_correlation(tenant_id, correlation_id)
+        latest: dict[str, WriteBackAudit] = {}
+        for row in sorted(rows, key=lambda item: item.created_at):
+            if (
+                row.status is WriteBackStatus.APPLIED
+                or (
+                    row.status is WriteBackStatus.DECLINED
+                    and row.source in (OPEN_MR_SOURCE, CONSENT_REPLY_SOURCE)
+                )
+                or (row.status is WriteBackStatus.EXPIRED and row.source == CHECKIN_CLOSED_SOURCE)
+            ):
+                latest[row.issue_key] = row
+        return list(latest.values())
 
     async def _apply_confirmed(
         self,
@@ -989,6 +1063,135 @@ def interpret_consent_reply(text: str) -> Literal["affirm", "decline", "unclear"
     if affirm == decline:
         return "unclear"
     return "affirm" if affirm else "decline"
+
+
+# A per-issue answer: "yes for CHK-3. CHK-4 I haven't started, so leave that one
+# as is" (Liam, R1). Clauses split on sentence ends, commas and "but".
+_CLAUSE_SPLIT = re.compile(r"[.;!?\n]+|,|\bbut\b|\bthough\b")
+_ANSWER_TOKEN = re.compile(
+    r"\b(?:"
+    r"(?P<unsure>not sure|unsure|maybe|perhaps|let me check|no idea)"
+    # Status wording, not an answer: "no blockers", "not started yet".
+    r"|(?P<status>no (?:blockers?|changes?|updates?|issues?|problems?|eta|news|movement|"
+    r"reviewers?|progress)|not (?:yet )?(?:started|blocked|done|merged|finished)|"
+    r"(?:haven t|hasn t|have not|has not) (?:\w+ )?(?:started|begun))"
+    r"|(?P<decline>don t|dont|do not|not now|not yet|hold off|as is|nope|nah|no|n|stop|"
+    r"cancel|decline|skip|leave|keep|hold|wait|untouched|not)"
+    r"|(?P<affirm>go ahead|do it|please do|sounds good|update it|move it|go for it|yes|y|"
+    r"yeah|yep|yup|sure|ok|okay|apply|confirm|confirmed|correct)"
+    r"|(?P<only>only|just)"
+    r")\b"
+)
+_ISSUE_KEY_TOKEN = re.compile(r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9_]*-\d+(?![0-9])")
+# A longer message is more status, not an answer to a yes/no question.
+_MAX_ANSWER_WORDS = 40
+
+_Answer = Literal["affirm", "decline", "unclear"]
+
+
+def interpret_consent_answer(
+    text: str, issue_keys: Sequence[str]
+) -> dict[str, Literal["affirm", "decline"]]:
+    """Read a reply to a write-back consent question, issue by issue.
+
+    Returns a decision for each of ``issue_keys`` the reply answers; an empty
+    dict when it answers none (unclear, or not an answer). Deterministic:
+
+    * An answer word decides the issues it is said about: "yes for CHK-3 and no
+      for CHK-4", "CHK-3 yes".
+    * A clause naming no issue decides the issues the clause before it named
+      ("CHK-4 I haven't started, so leave that one as is"), or, before any issue
+      is named, every issue ("yes", "no").
+    * "Only CHK-3" says yes to CHK-3 and no to the others.
+    * Mixed or unsure wording decides nothing, so the issue stays pending: an
+      unclear answer never writes.
+    * A reply naming an issue that is not pending, or a long one, is more status,
+      not an answer, so nothing is decided.
+    """
+    keys = {key.upper(): key for key in issue_keys}
+    if not _reads_as_an_answer(text, keys):
+        return {}
+    decided: dict[str, _Answer] = {}
+    everyone: set[_Answer] = set()
+    subject: list[str] = []
+    for clause in _CLAUSE_SPLIT.split(text):
+        clause_keys, keyless = _read_answer_clause(clause, keys, decided)
+        if clause_keys:
+            subject = clause_keys
+        elif keyless is not None and subject:
+            decided.update(dict.fromkeys(subject, keyless))
+        elif keyless is not None:
+            everyone.add(keyless)
+    if len(everyone) == 1:
+        (answer,) = everyone
+        for key in keys.values():
+            decided.setdefault(key, answer)
+    return {key: answer for key, answer in decided.items() if answer != "unclear"}
+
+
+def _reads_as_an_answer(text: str, keys: Mapping[str, str]) -> bool:
+    """Short, and naming no issue but the ones asked about."""
+    named = {match.upper() for match in _ISSUE_KEY_TOKEN.findall(text)}
+    return bool(keys) and named <= set(keys) and len(text.split()) <= _MAX_ANSWER_WORDS
+
+
+def _read_answer_clause(
+    clause: str, keys: Mapping[str, str], decided: dict[str, _Answer]
+) -> tuple[list[str], _Answer | None]:
+    """Decide the issues one clause names; return them, or the clause's answer if it names none.
+
+    "Only CHK-3" says yes to CHK-3 and no to every other issue asked about.
+    """
+    clause_keys: list[str] = []
+    waiting: list[str] = []
+    current: _Answer | None = None
+    seen: set[_Answer] = set()
+    only = False
+    for _, kind, value in _answer_tokens(clause, keys):
+        if kind == "key":
+            clause_keys.append(value)
+            if current is None:
+                waiting.append(value)
+            else:
+                decided[value] = current
+        elif kind == "only":
+            only = True
+        else:
+            current = _KIND_ANSWERS[kind]
+            seen.add(current)
+            decided.update(dict.fromkeys(waiting, current))
+            waiting = []
+    if clause_keys and only and seen <= {"affirm"}:
+        decided.update(
+            {key: "affirm" if key in clause_keys else "decline" for key in keys.values()}
+        )
+    if clause_keys or not seen:
+        return clause_keys, None
+    return [], (seen.pop() if len(seen) == 1 else "unclear")
+
+
+_KIND_ANSWERS: dict[str, _Answer] = {
+    "unsure": "unclear",
+    "affirm": "affirm",
+    "decline": "decline",
+}
+
+
+def _answer_tokens(clause: str, keys: Mapping[str, str]) -> list[tuple[int, str, str]]:
+    """The clause's issue keys and answer words, in the order they are written."""
+    # Same length as the clause, so token positions line up with the key matches.
+    blanked = _ISSUE_KEY_TOKEN.sub(lambda match: " " * len(match.group()), clause)
+    lowered = blanked.lower().replace("'", " ").replace("\u2019", " ")
+    tokens = [
+        (match.start(), "key", keys[match.group().upper()])
+        for match in _ISSUE_KEY_TOKEN.finditer(clause)
+    ]
+    tokens.extend(
+        (match.start(), match.lastgroup or "", match.group())
+        for match in _ANSWER_TOKEN.finditer(lowered)
+        if match.lastgroup != "status"
+    )
+    return sorted(tokens)
 
 
 # --- Canonical target states -------------------------------------------------

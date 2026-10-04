@@ -916,3 +916,323 @@ async def test_raj_r3_ins3_comment_is_neutral_and_names_the_merge_request() -> N
     # Nothing the person (or the parser) wrote reaches Jira.
     posted = " ".join(body for _, _, body in tracker.comments)
     assert "Jira not updated yet" not in posted and "Jira still shows" not in posted
+
+
+# --- G1 (R1-6): Liam (always_ask) answers the consent question, per issue ---
+
+_LIAM = "U-LIAM"
+_LIAM_CORRELATION = "corr-liam"
+# R1 12:15:08 and 12:17:01, verbatim.
+_LIAM_STATUS_TEXT = (
+    "CHK-3 is in review on checkout-api !1, nothing blocking. Starting CHK-4 (3-D Secure) "
+    "next, ETA unchanged."
+)
+_LIAM_ANSWER_TEXT = (
+    "yes for CHK-3. CHK-4 I haven't actually started yet, so leave that one as is for now."
+)
+# R1 proposed CHK-3 -> in review and CHK-4 -> starting. Under the R1-5 mapping that
+# exact parse proposes nothing (CHK-3 was already In Progress, "starting ... next" is
+# no target), so this replay keeps Liam's words but has CHK-3 still To Do and CHK-4
+# read as started: two real proposals, as Liam was shown.
+_LIAM_EVALUATION = _evaluation(
+    progress_note="CHK-3 in review on checkout-api !1; CHK-4 started; no blockers; ETA same",
+    issue_updates=[
+        {
+            "issue_key": "CHK-3",
+            "claimed_done": False,
+            "claimed_state": "in review",
+            "note": "PR open for review on checkout-api.",
+        },
+        {
+            "issue_key": "CHK-4",
+            "claimed_done": False,
+            "claimed_state": "started",
+            "note": "Work on CHK-4 has begun.",
+        },
+    ],
+    blockers_answered=True,
+    eta_answered=True,
+)
+_LIAM_PROMPT = (
+    "Want me to apply these issue-tracker updates: CHK-3 → In Review, CHK-4 → In Progress? "
+    "Reply yes or no, or per issue (e.g. “yes for CHK-3, no for CHK-4”)."
+)
+
+
+async def _liam_collector(
+    texts: list[str],
+) -> tuple[StatusCollector, FakeIssueTracker, FakeChatProvider, InMemoryGraphStore]:
+    """Liam on qa2 at R1: consent always_ask, CHK-3 and CHK-4 his and To Do."""
+    store = InMemoryGraphStore()
+    asked_at = datetime(2026, 10, 3, 12, 0, 15, tzinfo=UTC)
+    await store.upsert_node(Developer(tenant_id=_TENANT, id=_LIAM, name="Liam Chen"))
+    await store.record_checkin(
+        CheckIn(
+            tenant_id=_TENANT,
+            developer_id=_LIAM,
+            correlation_id=_LIAM_CORRELATION,
+            asked_at=asked_at,
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+            checkin_date=asked_at.date(),
+        )
+    )
+    await store.record_checkin_correlation(
+        CheckInCorrelation(
+            tenant_id=_TENANT,
+            developer_id=_LIAM,
+            correlation_id=_LIAM_CORRELATION,
+            chat_user_ref=_LIAM,
+            chat_thread_ref="dm-liam",
+            outbound_message_id="msg-question-liam",
+            asked_at=asked_at,
+        )
+    )
+    await store.record_checkin_preference(
+        CheckInPreference(
+            tenant_id=_TENANT, developer_id=_LIAM, write_back_consent=WriteBackConsent.ALWAYS_ASK
+        )
+    )
+    await store.upsert_identity_link(
+        IdentityLink(tenant_id=_TENANT, developer_id=_LIAM, jira_account_id="acct-liam")
+    )
+    await store.set_writeback_enabled(_TENANT, True)
+    liam = UserRef(tenant_id=_TENANT, external_id="acct-liam")
+    tracker = FakeIssueTracker(
+        issues={
+            key: Issue(
+                tenant_id=_TENANT, key=key, title=title, state=IssueState.TODO, assignee=liam
+            )
+            for key, title in (
+                ("CHK-3", "Payment intent API"),
+                ("CHK-4", "3-D Secure step-up flow"),
+            )
+        }
+    )
+    chat = FakeChatProvider()
+    collector = StatusCollector(
+        issue_tracker=tracker,
+        chat_provider=chat,
+        llm_provider=_ScriptedLlm(texts=list(texts)),
+        status_repository=store,
+        conversation_repository=store,
+        identity_link_repository=store,
+        write_back_service=WriteBackService(
+            issue_tracker=tracker,
+            audit_repository=store,
+            config_repository=store,
+            status_repository=store,
+            identity_link_repository=store,
+            time_series_repository=store,
+            graph_repository=store,
+        ),
+        model="test-model",
+    )
+    return collector, tracker, chat, store
+
+
+def _liam_says(text: str, message_id: str, at: datetime) -> InboundMessage:
+    return InboundMessage(
+        tenant_id=_TENANT,
+        user=ChatUserRef(tenant_id=_TENANT, external_id=_LIAM),
+        text=text,
+        thread_id="dm-liam",
+        message_id=message_id,
+        correlation_id=_LIAM_CORRELATION,
+        received_at=at,
+    )
+
+
+_LIAM_STATUS = _liam_says(
+    _LIAM_STATUS_TEXT, "msg-liam-status", datetime(2026, 10, 3, 12, 15, 8, tzinfo=UTC)
+)
+_LIAM_ANSWER = _liam_says(
+    _LIAM_ANSWER_TEXT, "msg-liam-answer", datetime(2026, 10, 3, 12, 17, 1, tzinfo=UTC)
+)
+
+
+async def _liam_rows(store: InMemoryGraphStore) -> dict[str, list[WriteBackAudit]]:
+    rows: dict[str, list[WriteBackAudit]] = {}
+    for row in await store.list_writeback_by_correlation(_TENANT, _LIAM_CORRELATION):
+        rows.setdefault(row.issue_key, []).append(row)
+    return rows
+
+
+async def test_liam_r1_consent_question_stays_open_and_his_per_issue_answer_is_applied() -> None:
+    collector, tracker, chat, store = await _liam_collector([_LIAM_EVALUATION])
+
+    first = await collector.handle_reply(_LIAM_STATUS)
+
+    # The question is the last word: no "recorded" a second later (R1 12:15:45).
+    assert first.kind == "clarifying"
+    assert _sent(chat, "writeback_consent_prompt") == [_LIAM_PROMPT]
+    assert _sent(chat, "status_ack") == []
+    open_checkin = await store.checkin_by_correlation(_TENANT, _LIAM_CORRELATION)
+    assert open_checkin is not None and open_checkin.replied_at is None
+    assert open_checkin.signals is not None
+    assert [c.issue_key for c in open_checkin.signals.issue_updates] == ["CHK-3", "CHK-4"]
+    assert first.status is not None and first.status.source is StatusSource.CONFIRMED
+    assert tracker.transitions == []
+    rows = await _liam_rows(store)
+    assert {key: [row.status for row in items] for key, items in rows.items()} == {
+        "CHK-3": [WriteBackStatus.PROPOSED],
+        "CHK-4": [WriteBackStatus.PROPOSED],
+    }
+
+    # His later answer reaches the proposals, issue by issue (R1: no log, no row).
+    second = await collector.handle_reply(_LIAM_ANSWER)
+
+    assert second.kind == "processed"
+    assert tracker.transitions == [(_TENANT, "CHK-3", "in_review")]
+    rows = await _liam_rows(store)
+    assert rows["CHK-3"][-1].status is WriteBackStatus.APPLIED
+    assert (rows["CHK-4"][-1].status, rows["CHK-4"][-1].source) == (
+        WriteBackStatus.DECLINED,
+        "consent_reply",
+    )
+    assert tracker.comments == [
+        (
+            _TENANT,
+            "CHK-3",
+            # No review state in the QA workflow: it lands on In Progress.
+            "Moved to In Progress by OpenProgram: Liam Chen reported it in review "
+            "in the 2026-10-03 check-in.",
+        )
+    ]
+    # Recorded once, after the answer, saying what was and was not done.
+    [ack] = _sent(chat, "status_ack")
+    assert "your update is recorded" in ack
+    assert "I updated CHK-3 to In Review in the issue tracker." in ack
+    assert "I left CHK-4 as is in the issue tracker, as you asked." in ack
+    final = await store.checkin_by_correlation(_TENANT, _LIAM_CORRELATION)
+    assert final is not None and final.replied_at == _LIAM_ANSWER.received_at
+    assert final.raw_reply == _LIAM_STATUS_TEXT  # the answer is not status
+    assert second.status is not None and second.status.source is StatusSource.CONFIRMED
+    assert (
+        await collector._write_back_service.list_pending_proposals(  # type: ignore[union-attr]
+            _TENANT, _LIAM_CORRELATION
+        )
+        == []
+    )
+
+
+async def test_an_answer_for_one_issue_asks_again_about_the_other() -> None:
+    collector, tracker, chat, store = await _liam_collector([_LIAM_EVALUATION])
+    await collector.handle_reply(_LIAM_STATUS)
+
+    partial = await collector.handle_reply(
+        _liam_says("yes for CHK-3", "msg-liam-2", datetime(2026, 10, 3, 12, 16, tzinfo=UTC))
+    )
+
+    assert partial.kind == "clarifying"
+    assert tracker.transitions == [(_TENANT, "CHK-3", "in_review")]
+    assert _sent(chat, "writeback_consent_prompt")[-1] == (
+        "Want me to update CHK-4 to “In Progress” in the issue tracker? Reply yes or no."
+    )
+    assert _sent(chat, "status_ack") == []
+
+    done = await collector.handle_reply(
+        _liam_says("no", "msg-liam-3", datetime(2026, 10, 3, 12, 17, tzinfo=UTC))
+    )
+
+    assert done.kind == "processed"
+    assert tracker.transitions == [(_TENANT, "CHK-3", "in_review")]
+    [ack] = _sent(chat, "status_ack")
+    assert "I updated CHK-3 to In Review" in ack and "I left CHK-4 as is" in ack
+
+
+async def test_the_close_out_closes_an_unanswered_consent_question() -> None:
+    collector, tracker, chat, store = await _liam_collector(
+        [_LIAM_EVALUATION, _LIAM_EVALUATION]  # the close-out reads the messages again
+    )
+    await collector.handle_reply(_LIAM_STATUS)
+
+    status = await collector.record_non_response(
+        tenant_id=_TENANT,
+        developer_id=_LIAM,
+        as_of=date(2026, 10, 3),
+        correlation_id=_LIAM_CORRELATION,
+    )
+
+    assert status.source is StatusSource.CONFIRMED
+    assert tracker.transitions == []
+    rows = await _liam_rows(store)
+    assert [(rows[key][-1].status, rows[key][-1].source) for key in ("CHK-3", "CHK-4")] == [
+        (WriteBackStatus.EXPIRED, "checkin_closed"),
+        (WriteBackStatus.EXPIRED, "checkin_closed"),
+    ]
+    assert len(_sent(chat, "writeback_consent_prompt")) == 1  # never asked again
+    [ack] = _sent(chat, "status_ack")
+    assert "The check-in closed before you answered about CHK-3 and CHK-4" in ack
+
+    # A yes after the close finds nothing pending and writes nothing.
+    late = await collector.handle_reply(
+        _liam_says("yes", "msg-liam-late", datetime(2026, 10, 3, 14, 0, tzinfo=UTC))
+    )
+    assert late.kind == "processed"
+    assert tracker.transitions == []
+
+
+async def test_always_ask_raj_says_yes_and_ins3_moves_while_ins2_stays_held() -> None:
+    collector, tracker, chat, store = await _raj_r2_collector(
+        [_RAJ_FIRST_EVALUATION, _RAJ_ANSWER_EVALUATION], consent=WriteBackConsent.ALWAYS_ASK
+    )
+    await collector.handle_reply(_RAJ_FIRST)
+    await collector.handle_reply(_RAJ_ANSWER)
+    assert _sent(chat, "status_ack") == []
+
+    outcome = await collector.handle_reply(
+        _raj_says("yes", "msg-raj-yes", datetime(2026, 10, 3, 18, 6, 30, tzinfo=UTC))
+    )
+
+    assert outcome.kind == "processed"
+    rows = await _rows_by_issue(store)
+    assert rows["INS-3"].status is WriteBackStatus.APPLIED
+    assert (rows["INS-2"].status, rows["INS-2"].source) == (WriteBackStatus.DECLINED, "open_mr")
+    assert tracker.transitions == [(_TENANT, "INS-3", "done")]
+    [ack] = _sent(chat, "status_ack")
+    assert "I updated INS-3 to Done in the issue tracker." in ack
+    assert _INS2_NOTE in ack
+
+
+async def test_a_yes_on_an_issue_since_reassigned_writes_nothing() -> None:
+    collector, tracker, chat, store = await _liam_collector([_LIAM_EVALUATION])
+    await collector.handle_reply(_LIAM_STATUS)
+    tracker.issues["CHK-3"] = Issue(
+        tenant_id=_TENANT,
+        key="CHK-3",
+        title="Payment intent API",
+        state=IssueState.TODO,
+        assignee=UserRef(tenant_id=_TENANT, external_id="acct-noah"),
+    )
+
+    outcome = await collector.handle_reply(
+        _liam_says("yes", "msg-liam-yes", datetime(2026, 10, 3, 12, 17, tzinfo=UTC))
+    )
+
+    assert outcome.kind == "processed"
+    assert tracker.transitions == [(_TENANT, "CHK-4", "in_progress")]
+    rows = await _liam_rows(store)
+    assert (rows["CHK-3"][-1].status, rows["CHK-3"][-1].source) == (
+        WriteBackStatus.DECLINED,
+        "not_owner",
+    )
+
+
+async def test_a_blocker_stated_with_the_status_is_kept_once_through_the_consent_answer() -> None:
+    blocked = json.loads(_LIAM_EVALUATION)
+    blocked["signals"]["blockers"] = ["CHK-3 waits on Noah's review of checkout-api !1"]
+    collector, _, _, store = await _liam_collector([json.dumps(blocked)])
+    await collector.handle_reply(_LIAM_STATUS)
+    held = await store.open_blockers(_TENANT, _LIAM, date(2026, 10, 3))
+
+    final = await collector.handle_reply(_LIAM_ANSWER)
+
+    after = await store.open_blockers(_TENANT, _LIAM, date(2026, 10, 3))
+    assert [row.description for row in held] == ["CHK-3 waits on Noah's review of checkout-api !1"]
+    assert [(row.blocker_id, row.description) for row in after] == [
+        (row.blocker_id, row.description) for row in held
+    ]
+    assert final.status is not None
+    assert final.status.blockers == ("CHK-3 waits on Noah's review of checkout-api !1",)
