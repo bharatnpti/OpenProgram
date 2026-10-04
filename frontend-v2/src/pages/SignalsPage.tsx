@@ -4,6 +4,7 @@ import { useState } from "react";
 import { apiClient } from "../api/client";
 import { useViewingDate } from "../app/viewingDate";
 import { FlowStrip } from "../features/signals/FlowStrip";
+import { entityLabel, feedCard } from "../features/signals/feedCard";
 import { SignalCard, type SignalCardData } from "../features/signals/SignalCard";
 import { toneForRag } from "../lib/status";
 import { cn } from "../lib/utils";
@@ -25,7 +26,7 @@ function riskCard(risk: RiskFindingResponse, index: number): SignalCardData {
     tone: toneForRag(risk.severity),
     title: risk.reason,
     category: "risk",
-    entityLabel: `${risk.entity_ref.kind} · ${risk.entity_ref.id}`,
+    entityLabel: entityLabel(risk),
     // "open Nd", not a bare "Nd". `age_days` is how old the finding is *now*
     // (days since detection plus its age when detected), while the reason text
     // states the age it had *when detected* -- both true, different measures.
@@ -45,7 +46,7 @@ function driftCard(drift: DriftFindingResponse, index: number): SignalCardData {
     tone: toneForRag(drift.severity),
     title: drift.reason,
     category: "drift",
-    entityLabel: `${drift.entity_ref.kind} · ${drift.entity_ref.id}`,
+    entityLabel: entityLabel(drift),
     ageLabel: new Date(drift.detected_at).toLocaleDateString(),
     ownerSays: drift.stated_source ? `Stated via ${drift.stated_source}` : "No stated status",
     signalsSay: drift.reason,
@@ -73,16 +74,7 @@ export function SignalsPage() {
 
   const riskCards = (risks.data?.risks ?? []).map(riskCard);
   const driftCards = (risks.data?.drift ?? []).map(driftCard);
-  const feedCards: SignalCardData[] = (feed.data?.items ?? []).map((item, index) => ({
-    id: `feed-${item.entity_ref.id}-${item.observed_at}-${index}`,
-    tone: "info",
-    title: item.summary,
-    category: "feed",
-    entityLabel: `${item.entity_ref.kind} · ${item.entity_ref.id}`,
-    ageLabel: new Date(item.observed_at).toLocaleDateString(),
-    signalsSay: `${item.source} · ${item.kind}`,
-    animateDelay: Math.min(index * 70, 420),
-  }));
+  const feedCards = (feed.data?.items ?? []).map(feedCard);
 
   const watermelons = (risks.data?.risks ?? []).filter((risk) => risk.is_watermelon).length;
 

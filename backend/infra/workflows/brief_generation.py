@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from core.application.narrative_brief_service import NarrativeBriefService
+from core.application.person_names import PersonNames
 from core.application.persona_views import PersonaViewService
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.domain.brief import BriefKind
@@ -78,7 +79,13 @@ def _brief_service(registry: ServiceRegistry) -> NarrativeBriefService:
     time_series_repository = registry.time_series_repository()
     return NarrativeBriefService(
         llm_provider=registry.llm_provider(),
-        feed_service=PortfolioFeedService(time_series_repository),
+        feed_service=PortfolioFeedService(
+            time_series_repository,
+            person_names=PersonNames(
+                graph_repository=registry.graph_repository(),
+                directory_repository=registry.directory_user_repository(),
+            ),
+        ),
         persona_view_service=PersonaViewService(
             graph_repository=registry.graph_repository(),
             status_repository=registry.status_repository(),
