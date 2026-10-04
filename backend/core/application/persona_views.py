@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
-from core.application.rollup_service import DriftSignals, RollupService, task_rag
+from core.application.rollup_service import (
+    DriftSignals,
+    RollupService,
+    is_outside_teams,
+    people_outside_teams,
+    task_rag,
+)
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
     EdgeKind,
@@ -755,6 +761,11 @@ class PersonaViewService:
         the model invented left a rollup behind -- and made stored history
         depend on who happened to open which screen. The rollup schedule
         (``connector="rollup"``) owns that write now.
+
+        People in no team (N5) are in no program tree: their own cells come
+        from their stored rows, which say so (``is_outside_teams``), or are
+        computed beside a computed tree. They sit on a "no pod" row and count
+        in nothing else on the map.
         """
         statuses = await self._rollup_repository.list_node_statuses(tenant_id, as_of)
         tree: GraphTree | None = None
@@ -767,6 +778,7 @@ class PersonaViewService:
                 except GraphNotFound:
                     return PortfolioHeatmapView(as_of=as_of, rows=(), columns=(), cells=())
                 statuses = list(await self._rollup_service.compute(tree, as_of))
+                statuses += await self._outside_teams(tenant_id, as_of)
         else:
             resolved_root_id = await self._first_program_id(tenant_id)
             if resolved_root_id is None:
@@ -778,9 +790,16 @@ class PersonaViewService:
             except GraphNotFound:
                 return PortfolioHeatmapView(as_of=as_of, rows=(), columns=(), cells=())
             tree_ids = {node.id for node in tree.nodes}
-            statuses = [status for status in statuses if status.entity_ref.id in tree_ids]
-            if not statuses:
+            in_tree = [status for status in statuses if status.entity_ref.id in tree_ids]
+            if in_tree:
+                statuses = in_tree + [
+                    status
+                    for status in statuses
+                    if status.entity_ref.id not in tree_ids and is_outside_teams(status)
+                ]
+            else:
                 statuses = list(await self._rollup_service.compute(tree, as_of))
+                statuses += await self._outside_teams(tenant_id, as_of)
         cells = await self._heatmap_cells(tenant_id, statuses, tree)
         rows = tuple(dict.fromkeys(cell.row for cell in cells))
         columns = tuple(dict.fromkeys(cell.column for cell in cells))
@@ -846,6 +865,11 @@ class PersonaViewService:
             end=end,
             points=points,
         )
+
+    async def _outside_teams(self, tenant_id: str, as_of: date) -> list[NodeStatus]:
+        """Computed own cells for the people in no team (N5), as the rollup records them."""
+        people = await people_outside_teams(self._graph_repository, tenant_id, as_of)
+        return list(await self._rollup_service.compute_outside_teams(people, as_of))
 
     async def _first_program_id(self, tenant_id: str) -> str | None:
         programs = await self._graph_repository.list_nodes(tenant_id, NodeKind.PROGRAM)
@@ -1434,7 +1458,20 @@ def _confidence_from_fact(fact: FactEvent | None) -> float | None:
     return None
 
 
+# The heat-map row a person in no team sits on (N5), apart from every team's.
+NO_POD_ROW = "no pod"
+
+
 def _heatmap_cell(status: NodeStatus, context: _ReasonContext) -> HeatmapCellView:
+    if is_outside_teams(status):
+        # Their check-in, read as anyone's, on a row of its own that says why
+        # no team's colour carries it.
+        own = replace(
+            status,
+            factors=tuple(f for f in status.factors if f.kind is not FactorKind.NO_POD),
+        )
+        cell = _heatmap_cell(own, context)
+        return replace(cell, row=NO_POD_ROW, why=f"No pod, outside team colours: {cell.why}")
     factor = status.factors[0] if status.factors else None
     first = factor.description if factor else "No rollup factors are available."
     drivers = _drivers_line(status, context) if _needs_drivers(status) else None
