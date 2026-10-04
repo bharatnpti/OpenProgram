@@ -1173,6 +1173,9 @@ class HeatmapCellDto(BaseModel):
     source: StatusSource
     why: str
     source_ref: EntityRefDto
+    # The node's name where the read knows it; always for a person in no team,
+    # whose cell sits on the "no pod" row. Optional, so older clients keep working.
+    name: str | None = None
 
     @classmethod
     def from_view(cls, cell: HeatmapCellView) -> HeatmapCellDto:
@@ -1192,6 +1195,7 @@ class HeatmapCellDto(BaseModel):
                 kind=cell.source_ref.kind,
                 id=cell.source_ref.id,
             ),
+            name=cell.name,
         )
 
 
