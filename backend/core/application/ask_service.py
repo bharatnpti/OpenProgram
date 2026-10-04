@@ -13,7 +13,6 @@ from core.application.flow_metrics_service import (
     PortfolioFlowView,
     WorkstreamFlowView,
 )
-from core.application.json_parsing import extract_json_object
 from core.application.persona_views import (
     PersonaViewService,
     PortfolioHeatmapView,
@@ -129,6 +128,60 @@ _CHECKIN_WORDS: Mapping[StatusSource, str] = {
 _NO_REPLY_SAYS = "No confirmed reply to the check-in."
 _BULLET = re.compile(r"^\s*[-*•]\s+")
 
+# The model is asked for a JSON object, yet a live reply can come back as
+# prose ending in a "References: [...]" line, the object can carry raw
+# newlines inside its strings or be cut off, and the answer can restate its
+# references. Each shape is taken apart here, so the reader always gets the
+# answer's own lines and the references always reach sources.
+_JSON = json.JSONDecoder(strict=False)
+_MAX_OBJECT_STARTS = 50
+_REFERENCE_WORD = r"(?:references?|refs|sources?|citations?)"
+# Only the plural ends a line, so "(source: Jira)" in a bullet stays.
+_REFERENCES_WORD = r"(?:references|refs|sources|citations)"
+# "References: a, b", "**Sources:** [a, b]", "- References (node ids):".
+_REFERENCES_LINE = re.compile(
+    rf"^\s*(?:[-*•]\s*)?[*_`]*{_REFERENCE_WORD}(?:\s*\([^)]*\))?[*_`]*\s*[:：]\s*[*_`]*"
+    r"(?P<items>.*?)[*_`]*\s*$",
+    re.IGNORECASE,
+)
+# "... green. (References: a, b)" or "... green. [Sources: a, b]".
+_TRAILING_REFERENCES = re.compile(
+    rf"\s*[(\[]\s*{_REFERENCES_WORD}\s*[:：]\s*(?P<items>[^()\[\]]*)[)\]]\s*\.?\s*$",
+    re.IGNORECASE,
+)
+# "... green. References: [a, b]".
+_TRAILING_REFERENCE_LIST = re.compile(
+    rf"\s*\b{_REFERENCES_WORD}\s*[:：]\s*(?P<items>\[[^\[\]]*\])\s*\.?\s*$",
+    re.IGNORECASE,
+)
+_LIST_ITEM = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(?P<item>.+?)\s*$")
+_ANSWER_LABEL = re.compile(r"^\s*[*_]*answer[*_]*\s*[:：]\s*", re.IGNORECASE)
+_FENCE_LINE = re.compile(r"^\s*```[\w-]*\s*$")
+# A JSON reply that does not decode: cut off, or with a trailing comma.
+_ANSWER_FIELD = re.compile(r'"answer"\s*:\s*"(?P<text>(?:[^"\\]|\\.)*)', re.IGNORECASE)
+_REFERENCES_FIELD = re.compile(
+    r'"(?:references|sources)"\s*:\s*(?P<items>\[[^\]]*\]?)', re.IGNORECASE
+)
+_ITEM_SPLIT = re.compile(r"\s*(?:[,;\n]|\s·\s)\s*")
+_ITEM_EDGES = " \t\"'`*_"
+# Text in brackets inside one item: "Zoe Almeida (U0AA1ZOE001)".
+_BRACKETED = re.compile(r"[(\[]\s*(?P<inner>[^()\[\]]+?)\s*[)\]]")
+# The node kinds an answer names, as the references rule lists them.
+_NAMED_KINDS = frozenset(
+    {
+        NodeKind.PROGRAM,
+        NodeKind.PROJECT,
+        NodeKind.WORKSTREAM,
+        NodeKind.POD,
+        NodeKind.DEVELOPER,
+        NodeKind.TASK,
+        NodeKind.WORK_ITEM,
+    }
+)
+_MIN_NAMED_LABEL = 3
+# What the answer says when the reply held no answer text at all.
+_NO_ANSWER = "No answer came back for this question. Please ask again."
+
 
 @dataclass(frozen=True, kw_only=True)
 class DateWindow:
@@ -178,8 +231,16 @@ class AskResponseView:
 
 @dataclass(frozen=True, kw_only=True)
 class ParsedAnswer:
+    """The model's reply taken apart, before any node is looked up.
+
+    ``references`` is the references array of a JSON reply, as the model sent
+    it. ``cited`` is what a "References: [...]" line listed instead -- a line
+    cut out of ``answer``, so it is never shown -- still to be matched to nodes.
+    """
+
     answer: str
     references: tuple[str, ...]
+    cited: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1040,12 +1101,15 @@ class AskService:
         response = await self._tool_agent.run(request, tools)
         parsed = _parse_answer(response.text)
         nodes = await _nodes_by_any_id(self._graph_repository, principal.tenant_id)
+        labelled = _nodes_by_label(nodes)
+        answer = _without_raw_ids(_tidy_lines(parsed.answer), nodes) or _NO_ANSWER
+        references = _references(parsed, nodes, labelled) or _named_in(answer, labelled)
         return AskResponseView(
-            answer=_without_raw_ids(_tidy_lines(parsed.answer), nodes),
-            references=parsed.references,
+            answer=answer,
+            references=references,
             tools_used=tuple(dict.fromkeys(calls)),
             trace_id=response.trace_id,
-            sources=tuple(_source(reference, nodes) for reference in parsed.references),
+            sources=tuple(_source(reference, nodes) for reference in references),
         )
 
     def _tools(self, principal: Principal, as_of: date) -> tuple[AgentTool, ...]:
@@ -1181,20 +1245,247 @@ def _prompt(question: str, as_of: date) -> str:
 
 
 def _parse_answer(text: str) -> ParsedAnswer:
-    # A fenced or prose-wrapped object used to be shown whole, braces and all.
-    parsed = extract_json_object(text)
-    if parsed is None:
-        return ParsedAnswer(answer=text.strip(), references=())
-    answer = parsed.get("answer")
-    references = parsed.get("references")
+    """Take a reply apart, whatever shape it came back in.
+
+    A JSON object -- fenced, wrapped in prose, or with raw newlines in its
+    strings -- gives the answer and its references; one that does not decode
+    still gives its answer field; anything else is the answer as written. In
+    each case a "References: [...]" line is cut out of the answer and its items
+    kept in ``cited``, so the reader never sees the line and sources still get
+    what it listed. A fenced or prose-wrapped object used to be shown whole,
+    and a prose reply showed its references line.
+    """
+    answer, references, beside = _reply_parts(text)
+    answer, cited = _clean_answer(answer)
+    _, cited_beside = _clean_answer(beside)
     return ParsedAnswer(
-        answer=answer.strip() if isinstance(answer, str) and answer.strip() else text.strip(),
-        references=(
-            tuple(dict.fromkeys(str(item).strip() for item in references if str(item).strip()))
-            if isinstance(references, list)
-            else ()
-        ),
+        answer=answer,
+        references=_unique(references),
+        cited=_unique((*cited, *cited_beside)),
     )
+
+
+def _reply_parts(text: str) -> tuple[str, list[str], str]:
+    """The answer text, the references array, and any prose beside the object."""
+    found = _answer_object(text)
+    if found is not None:
+        reply, beside = found
+        answer = _field_text(_field(reply, "answer"))
+        references = _field_items(_field(reply, "references", "sources"))
+        if answer:
+            return answer, references, beside
+        # An object of references only, after the answer in prose.
+        return beside, references, ""
+    salvaged = _ANSWER_FIELD.search(text) if "{" in text else None
+    if salvaged is not None:
+        listed = _REFERENCES_FIELD.search(text)
+        return (
+            _json_string(salvaged.group("text")),
+            _reference_items(listed.group("items")) if listed is not None else [],
+            "",
+        )
+    return text, [], ""
+
+
+def _answer_object(text: str) -> tuple[Mapping[str, object], str] | None:
+    """The first JSON object in a reply with an answer or references, and the rest.
+
+    Strings may hold raw newlines (``strict=False``): models write them, and
+    a strict decode dropped the whole object for one.
+    """
+    start = text.find("{")
+    for _ in range(_MAX_OBJECT_STARTS):
+        if start == -1:
+            break
+        try:
+            decoded, end = _JSON.raw_decode(text, start)
+        except json.JSONDecodeError:
+            pass
+        else:
+            if isinstance(decoded, dict) and any(
+                str(key).casefold() in {"answer", "references", "sources"} for key in decoded
+            ):
+                return decoded, f"{text[:start]}\n{text[end:]}"
+        start = text.find("{", start + 1)
+    return None
+
+
+def _field(reply: Mapping[str, object], *names: str) -> object:
+    folded = {str(key).casefold(): value for key, value in reply.items()}
+    return next((folded[name] for name in names if name in folded), None)
+
+
+def _field_text(value: object) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, list):
+        return "\n".join(line.strip() for line in value if isinstance(line, str) and line.strip())
+    return ""
+
+
+def _field_items(value: object) -> list[str]:
+    """A references value as strings: ids, ``{"id": ...}`` objects, or one listed string."""
+    if isinstance(value, str):
+        return _reference_items(value)
+    if not isinstance(value, list):
+        return []
+    items: list[str] = []
+    for entry in value:
+        item = entry.get("id") if isinstance(entry, Mapping) else entry
+        if isinstance(item, str | int) and not isinstance(item, bool) and str(item).strip():
+            items.append(str(item).strip())
+    return items
+
+
+def _json_string(raw: str) -> str:
+    """A JSON string's body as text, even when the reply was cut off inside it."""
+    try:
+        decoded = _JSON.decode(f'"{raw}"')
+    except json.JSONDecodeError:
+        decoded = raw.rstrip("\\").replace("\\n", "\n").replace('\\"', '"')
+    return decoded.strip() if isinstance(decoded, str) else ""
+
+
+def _reference_items(text: str) -> list[str]:
+    """The items of a written list: a JSON array, or entries split on commas."""
+    listed = text.strip().rstrip(".").strip(_ITEM_EDGES)
+    if listed.startswith("["):
+        try:
+            decoded = _JSON.decode(listed)
+        except json.JSONDecodeError:
+            decoded = None
+        if isinstance(decoded, list):
+            return _field_items(decoded)
+        listed = listed.strip("[]")
+    items = (item.strip(_ITEM_EDGES).rstrip(".") for item in _ITEM_SPLIT.split(listed))
+    return [item.strip(_ITEM_EDGES) for item in items if item.strip(_ITEM_EDGES)]
+
+
+def _clean_answer(text: str) -> tuple[str, list[str]]:
+    """The answer's own lines, and the items of every references line cut from it.
+
+    A line that starts with References, Refs, Sources or Citations and a colon
+    goes, with the list under it when it has none of its own; a trailing
+    "(References: ...)" or "References: [...]" goes from the end of a line.
+    Code fences and a leading "Answer:" go too.
+    """
+    kept: list[str] = []
+    cited: list[str] = []
+    listing = False
+    for line in text.splitlines():
+        if _FENCE_LINE.match(line):
+            continue
+        if listing:
+            entry = _LIST_ITEM.match(line)
+            if entry is not None or line.strip().startswith("[") or not line.strip():
+                cited.extend(_reference_items(entry.group("item") if entry else line))
+                continue
+            listing = False
+        heading = _REFERENCES_LINE.match(line)
+        if heading is not None:
+            cited.extend(_reference_items(heading.group("items")))
+            listing = not heading.group("items").strip()
+            continue
+        trailing = _TRAILING_REFERENCES.search(line) or _TRAILING_REFERENCE_LIST.search(line)
+        if trailing is not None:
+            cited.extend(_reference_items(trailing.group("items")))
+            line = line[: trailing.start()]
+        kept.append(line)
+    return _ANSWER_LABEL.sub("", "\n".join(kept).strip(), count=1).strip(), cited
+
+
+def _unique(items: Sequence[str]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(item.strip() for item in items if item.strip()))
+
+
+def _nodes_by_label(nodes: Mapping[str, GraphNode]) -> dict[str, GraphNode]:
+    """Each label exactly one node carries, casefolded; a shared label names nobody."""
+    owners: dict[str, dict[str, GraphNode]] = {}
+    for node in nodes.values():
+        label = node_label(node)
+        if label is not None and label.strip():
+            owners.setdefault(label.strip().casefold(), {})[node.id] = node
+    return {label: next(iter(found.values())) for label, found in owners.items() if len(found) == 1}
+
+
+def _node_id(
+    item: str, nodes: Mapping[str, GraphNode], labelled: Mapping[str, GraphNode]
+) -> str | None:
+    """The node an item names: its id as written, else the one node with that label.
+
+    "Zoe Almeida (U0AA1ZOE001)" is tried whole, then by the bracketed part,
+    then without it.
+    """
+    candidates = (
+        item,
+        *(match.group("inner") for match in _BRACKETED.finditer(item)),
+        _BRACKETED.sub("", item),
+    )
+    for candidate in (candidate.strip(_ITEM_EDGES) for candidate in candidates):
+        if not candidate:
+            continue
+        if candidate in nodes:
+            return candidate
+        node = labelled.get(candidate.casefold())
+        if node is not None:
+            return node.id
+    return None
+
+
+def _references(
+    parsed: ParsedAnswer, nodes: Mapping[str, GraphNode], labelled: Mapping[str, GraphNode]
+) -> tuple[str, ...]:
+    """The answer's references, as node ids wherever a node matches.
+
+    An id the model wrote stays as written; one it wrote as a label becomes
+    the id of the one node with that label. A references-array entry that
+    matches nothing stays, so it shows as an id rather than a guessed name; an
+    item of a References line that matches nothing is dropped, as that line is
+    free text. A line item adds only a node the array does not already name.
+    """
+    references = [_node_id(item, nodes, labelled) or item for item in parsed.references]
+    named = {nodes[reference].id for reference in references if reference in nodes}
+    for item in parsed.cited:
+        found = _node_id(item, nodes, labelled)
+        if found is not None and nodes[found].id not in named:
+            references.append(found)
+            named.add(nodes[found].id)
+    return tuple(dict.fromkeys(references))
+
+
+def _named_in(answer: str, labelled: Mapping[str, GraphNode]) -> tuple[str, ...]:
+    """The nodes an answer names by label, in the order it names them.
+
+    Only for a reply that gave no reference at all, so its sources are not
+    empty. A label counts only whole and as written, only when exactly one
+    node carries it, and only for the kinds the references rule lists; a
+    longer label wins over one inside it ("Digital Platform Program" over a
+    "Platform" pod).
+    """
+    found: list[tuple[int, str]] = []
+    taken: list[tuple[int, int]] = []
+    candidates = sorted(
+        (
+            (label, node)
+            for node in labelled.values()
+            if node.kind in _NAMED_KINDS
+            and (label := node_label(node)) is not None
+            and len(label) >= _MIN_NAMED_LABEL
+            and label in answer
+        ),
+        key=lambda pair: -len(pair[0]),
+    )
+    for label, node in candidates:
+        first: int | None = None
+        for match in re.finditer(rf"(?<![\w-]){re.escape(label)}(?![\w-])", answer):
+            start, end = match.span()
+            if any(start < other_end and other_start < end for other_start, other_end in taken):
+                continue
+            taken.append((start, end))
+            first = start if first is None else first
+        if first is not None:
+            found.append((first, node.id))
+    return tuple(dict.fromkeys(node_id for _, node_id in sorted(found)))
 
 
 def _tidy_lines(answer: str) -> str:
