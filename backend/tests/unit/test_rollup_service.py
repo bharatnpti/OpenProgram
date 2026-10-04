@@ -1031,6 +1031,13 @@ class _GraphRepository:
         assert root_id == self._tree.root.id
         return self._tree
 
+    # The heat map's computed path also reads who is in no team (N5).
+    async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
+        return [node for node in self._tree.nodes if kind is None or node.kind is kind]
+
+    async def list_edges(self, tenant_id: str, *, kind: EdgeKind | None = None) -> list[GraphEdge]:
+        return [edge for edge in self._tree.edges if kind is None or edge.kind is kind]
+
     async def pods_containing_developer(
         self, tenant_id: str, developer_id: str, as_of: date
     ) -> list[Pod]:

@@ -31,6 +31,10 @@ class FactorKind(StrEnum):
     # a merge request open too long. Amber, never red and never a blocker;
     # scoped to pods like a blocker on the same issue.
     DRIFT = "drift"
+    # The person is in no team (an exec, or someone not yet placed in a pod):
+    # their own cell shows their check-in, and no pod, project or program
+    # counts it. A green label line, so it never changes the cell's colour.
+    NO_POD = "no_pod"
 
 
 @dataclass(frozen=True, kw_only=True)
