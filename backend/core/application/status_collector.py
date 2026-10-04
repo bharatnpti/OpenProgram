@@ -40,7 +40,13 @@ from core.application.counterparts import (
     members_for_mention,
     name_words,
 )
-from core.application.merge_request_links import MERGE_REQUEST_FACT_SOURCE
+from core.application.merge_request_links import (
+    MERGE_REQUEST_FACT_SOURCE,
+    is_merged_merge_request,
+    is_open_merge_request,
+    merge_request_reference,
+    merge_requests_by_issue_key,
+)
 from core.application.risk_service import RISK_FACT_SOURCE
 from core.application.status_parsing import (
     ClarificationDecision,
@@ -141,6 +147,9 @@ COMPOSE_NUDGE_SYSTEM_PROMPT = (
 OUTBOUND_DM_MAX_CHARS = 320
 # The one ack a check-in gets for replies that carry no status (N22).
 NON_STATUS_ACK_TEXT = "Thanks. I'll keep the check-in open for your status update."
+# Opens the note a status gets for blockers carried from an earlier day. The
+# next check-in question leaves it out: those blockers may have resolved (N32).
+_CARRIED_FORWARD_LEAD = "Prior blockers carried forward until explicitly resolved:"
 _PROMPT_ECHO_MARKERS = (
     "mock status summary:",
     "return only the message text",
@@ -1627,26 +1636,73 @@ class StatusCollector:
         developer_name: str | None = None,
         include_status: bool = True,
     ) -> str:
+        """What the check-in question is composed from: today's facts, not a stale status.
+
+        N32, R4 live: Zoe was asked about "CHK-8 (waiting on Noah's review)" at
+        06:00, although storefront-web !1 had merged at 00:05 and the blocker
+        had resolved at 03:30; the context listed the last status's blocker
+        strings and its "carried forward" note. Blockers now come from the
+        blocker lifecycle as open today, the last summary loses its carried
+        forward note, each issue says what its merge requests are now
+        ("merge request acme/storefront-web !1 merged"), and a merge request
+        shows only by its latest state, never as an open one once merged.
+        """
         reference_at = datetime.now(tz=UTC)
         prioritized_issues, facts = await self._context_inputs(tenant_id, developer_id)
+        merge_requests = await self._merge_requests_for(
+            tenant_id, [issue.key for issue in prioritized_issues]
+        )
 
         lines: list[str] = []
         if include_status:
+            as_of = _local_date(reference_at, None, self._tenant_default_timezone)
             latest_status = await self._status_repository.latest_developer_status(
+                tenant_id, developer_id, as_of
+            )
+            open_blockers = await self._blockers.open_blockers(
                 tenant_id,
                 developer_id,
-                _local_date(reference_at, None, self._tenant_default_timezone),
+                as_of,
+                legacy_status=(
+                    latest_status
+                    if latest_status is not None
+                    and latest_status.source is not StatusSource.UNKNOWN
+                    else None
+                ),
             )
-            lines.extend(_status_context_lines(latest_status))
+            lines.extend(
+                _status_context_lines(
+                    latest_status,
+                    open_blockers=tuple(blocker.description for blocker in open_blockers),
+                )
+            )
         lines.extend(
-            _issue_context_lines(prioritized_issues, facts=facts, reference_at=reference_at)
+            _issue_context_lines(
+                prioritized_issues,
+                facts=facts,
+                reference_at=reference_at,
+                merge_requests=merge_requests,
+            )
         )
-        lines.extend(_fact_context_lines(facts))
+        lines.extend(_fact_context_lines(_current_merge_request_facts(facts)))
 
         if not lines:
             return _NO_CONTEXT
         heading = f"Developer: {developer_name or developer_id}"
         return "\n".join((heading, *lines))
+
+    async def _merge_requests_for(
+        self, tenant_id: str, issue_keys: Sequence[str]
+    ) -> dict[str, list[FactEvent]]:
+        """The latest fact of each merge request naming one of ``issue_keys``."""
+        if not issue_keys or self._time_series_repository is None:
+            return {}
+        facts = await self._time_series_repository.list_recent_facts(
+            tenant_id,
+            sources=(MERGE_REQUEST_FACT_SOURCE,),
+            limit=_MERGE_REQUEST_FACT_SCAN_LIMIT,
+        )
+        return merge_requests_by_issue_key(facts, set(issue_keys))
 
     async def _context_inputs(
         self, tenant_id: str, developer_id: str
@@ -1677,8 +1733,11 @@ class StatusCollector:
         prompt = (
             "Write one concise, conversational chat direct message asking for today's work "
             "status. Ask for progress, blockers, and ETA changes. Reference the specific "
-            "pending, blocked, or stale issue(s) and any carried-forward blocker from context "
-            "when useful, while staying within the character cap. Return only the message text.\n\n"
+            "pending, blocked, or stale issue(s) and any open blocker from context "
+            "when useful, while staying within the character cap. The context lists only "
+            "blockers still open and each merge request as it is now: never call an issue "
+            "waiting on review when its merge request is merged; say it is merged. "
+            "Return only the message text.\n\n"
             f"Developer: {state.get('developer_name', state['developer_id'])}\n"
             f"Context:\n{state['context']}"
         )
@@ -3448,7 +3507,7 @@ def _signals_with_open_blockers(
     note = signals.progress_note
     if reconciliation.carried:
         carried_text = ", ".join(blocker.description for blocker in reconciliation.carried)
-        note = f"{note} Prior blockers carried forward until explicitly resolved: {carried_text}."
+        note = f"{note} {_CARRIED_FORWARD_LEAD} {carried_text}."
     if open_descriptions == signals.blockers and note == signals.progress_note:
         return signals
     # replace() preserves every other field (issue_updates, parser_confident, ...).
@@ -3833,19 +3892,32 @@ def _local_date(at: datetime, timezone: str | None, tenant_default_timezone: str
     return local_date(at, resolve_timezone(timezone, tenant_default_timezone))
 
 
-def _status_context_lines(status: DeveloperStatus | None) -> list[str]:
+def _status_context_lines(
+    status: DeveloperStatus | None, *, open_blockers: Sequence[str] | None = None
+) -> list[str]:
+    """The last status, as far as it still holds.
+
+    ``open_blockers`` are the blockers open today (the blocker lifecycle);
+    without them the status's own blocker strings are used. The summary loses
+    its "carried forward" note, which names blockers as they were that day.
+    """
     if status is None or status.source is StatusSource.UNKNOWN:
         return []
     lines: list[str] = []
-    blockers = _open_blockers_from_status(status)
+    blockers = (
+        _open_blockers_from_status(status)
+        if open_blockers is None
+        else _open_blockers_from_status(replace(status, blockers=tuple(open_blockers)))
+    )
     if blockers:
         lines.append(
             f"Yesterday unresolved blockers from {status.as_of.isoformat()}: {'; '.join(blockers)}"
         )
     if status.source in {StatusSource.CONFIRMED, StatusSource.PARTIAL, StatusSource.STALE}:
+        summary = status.summary.split(f" {_CARRIED_FORWARD_LEAD}", 1)[0].strip()
         lines.append(
             f"Last {status.source.value} status from {status.as_of.isoformat()}: "
-            f"{_truncate_subject(status.summary)}"
+            f"{_truncate_subject(summary or status.summary)}"
         )
     return lines
 
@@ -3855,16 +3927,23 @@ def _issue_context_lines(
     *,
     facts: Iterable[FactEvent] = (),
     reference_at: datetime | None = None,
+    merge_requests: Mapping[str, Sequence[FactEvent]] | None = None,
 ) -> list[str]:
     reference_time = reference_at or datetime.now(tz=UTC)
     fact_tuple = tuple(facts)
-    return [_issue_context_line(issue, fact_tuple, reference_time) for issue in list(issues)[:8]]
+    return [
+        _issue_context_line(
+            issue, fact_tuple, reference_time, (merge_requests or {}).get(issue.key, ())
+        )
+        for issue in list(issues)[:8]
+    ]
 
 
 def _issue_context_line(
     issue: Issue,
     facts: tuple[FactEvent, ...],
     reference_at: datetime,
+    merge_requests: Sequence[FactEvent] = (),
 ) -> str:
     details = [issue.state.value]
     days_since_update = _days_since(issue.updated_at, reference_at)
@@ -3876,7 +3955,50 @@ def _issue_context_line(
         details.append("recent_git_activity=true")
     if days_since_update is not None and days_since_update >= 7:
         details.append("stale=true")
+    details.extend(
+        f"merge request {merge_request_reference(fact)} {_merge_request_state(fact)}"
+        for fact in merge_requests
+    )
     return f"Active issue {issue.key}: {issue.title} ({', '.join(details)})"
+
+
+def _merge_request_state(fact: FactEvent) -> str:
+    if is_merged_merge_request(fact):
+        return "merged"
+    if not is_open_merge_request(fact):
+        return "closed"
+    return "draft" if fact.payload.get("draft") is True else "open"
+
+
+def _current_merge_request_facts(facts: Sequence[FactEvent]) -> list[FactEvent]:
+    """``facts`` with each merge request shown once, by its latest state, unless merged.
+
+    A request merged since (Zoe's storefront-web !1) must not read as still
+    open from an older fact; a merged or closed one is named on its issue's
+    line instead.
+    """
+    latest: dict[tuple[str, str], FactEvent] = {}
+    for fact in facts:
+        key = _merge_request_key(fact)
+        if key is not None and (key not in latest or fact.observed_at > latest[key].observed_at):
+            latest[key] = fact
+    kept: list[FactEvent] = []
+    for fact in facts:
+        key = _merge_request_key(fact)
+        if key is None:
+            kept.append(fact)
+        elif latest[key] is fact and is_open_merge_request(fact):
+            kept.append(fact)
+    return kept
+
+
+def _merge_request_key(fact: FactEvent) -> tuple[str, str] | None:
+    if fact.source != MERGE_REQUEST_FACT_SOURCE:
+        return None
+    repo, pr_id = fact.payload.get("repo"), fact.payload.get("id")
+    if not isinstance(repo, str) or not isinstance(pr_id, str | int):
+        return None
+    return (repo, str(pr_id))
 
 
 def _fact_context_lines(facts: Iterable[FactEvent]) -> list[str]:
