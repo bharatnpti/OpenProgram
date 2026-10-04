@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 
 from core.application.persona_views import PersonaViewService
+from core.application.rollup_service import RollupService
 from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
@@ -648,9 +649,12 @@ async def test_portfolio_heatmap_names_what_drives_an_amber_parent() -> None:
 
     why = {cell.column: cell.why for cell in view.cells}
     assert why["program-platform"] == (
-        "1 open blocker (CHK-8, Zoe Almeida); 2 partial updates; 1 inferred status."
+        "1 open blocker (CHK-8, Zoe Almeida); 2 partial updates (Ira Novak; Sam Lee); "
+        "1 inferred status (Kai Berg)."
     )
-    assert why["pod-payments"] == "1 open blocker (CHK-8, Zoe Almeida); 1 partial update."
+    assert why["pod-payments"] == (
+        "1 open blocker (CHK-8, Zoe Almeida); 1 partial update (Ira Novak)."
+    )
     # A person with one reason keeps it: that reason is the whole story.
     assert why["U-ira"] == "Status is partial and needs blocker or ETA confirmation."
     assert why["U-zoe"] == "Blocker: CHK-8 waits on a review nobody has started."
@@ -725,7 +729,8 @@ async def test_portfolio_heatmap_sums_up_a_red_parent_from_the_computed_rollup()
     cells = {cell.column: cell for cell in view.cells}
     assert cells["program-alpha"].rag is Rag.RED
     assert cells["program-alpha"].why == (
-        "3 open blockers (Zoe Almeida; Omar Haddad); 1 blocked task (CHK-5); 1 partial update."
+        "3 open blockers (Zoe Almeida; Omar Haddad); 1 blocked task (CHK-5); "
+        "1 partial update (Ira Novak)."
     )
     assert cells["ws-refunds"].why == "1 blocked task (CHK-5)."
     # Red from two blockers that are amber alone: the count says why. Her own
@@ -735,6 +740,201 @@ async def test_portfolio_heatmap_sums_up_a_red_parent_from_the_computed_rollup()
     assert cells["U-omar"].why == "Blocker: waiting on vendor access"
     # Green and unknown cells keep their own reason.
     assert cells["U-ira"].why == "Status is partial and needs blocker or ETA confirmation."
+
+
+async def _omar_partial_org(as_of: date) -> InMemoryGraphStore:
+    """Live R5 (N44), with made-up ids: Omar sits in Platform and Data, and closes partial.
+
+    Platform is in Checkout Revamp, Data in Customer Insights, and both
+    projects in the program. Sofia, in Data too, confirmed.
+    """
+    store = InMemoryGraphStore()
+    program = Program(tenant_id="demo", id="program-acme", name="Acme")
+    checkout = Project(tenant_id="demo", id="project-checkout", name="Checkout Revamp")
+    insights = Project(tenant_id="demo", id="project-insights", name="Customer Insights")
+    platform = Pod(tenant_id="demo", id="pod-platform", name="Platform")
+    data = Pod(tenant_id="demo", id="pod-data", name="Data")
+    omar = Developer(tenant_id="demo", id="dev-omar", name="Omar Haddad")
+    sofia = Developer(tenant_id="demo", id="dev-sofia", name="Sofia Bergmann")
+    for node in (program, checkout, insights, platform, data, omar, sofia):
+        await store.upsert_node(node)
+    for parent, child in (
+        (program, checkout),
+        (program, insights),
+        (checkout, platform),
+        (insights, data),
+        (platform, omar),
+        (data, omar),
+        (data, sofia),
+    ):
+        await store.add_edge(
+            GraphEdge(
+                tenant_id="demo",
+                from_node_id=parent.id,
+                to_node_id=child.id,
+                kind=EdgeKind.CONTAINS,
+            )
+        )
+    for developer, source in ((omar, StatusSource.PARTIAL), (sofia, StatusSource.CONFIRMED)):
+        await store.record_developer_status(
+            DeveloperStatus(
+                tenant_id="demo",
+                developer_id=developer.id,
+                as_of=as_of,
+                source=source,
+                blockers=(),
+                summary="Working on the data export.",
+            )
+        )
+    return store
+
+
+@pytest.mark.parametrize("stored", [True, False], ids=["stored", "computed"])
+@pytest.mark.parametrize("program_root_id", ["program-acme", None], ids=["by-id", "tree"])
+async def test_portfolio_heatmap_names_the_person_behind_a_partial_update(
+    stored: bool, program_root_id: str | None
+) -> None:
+    """N44: Omar closed partial ("ETA was not provided"), and only his own cell said who.
+
+    Platform, Data, Checkout Revamp, Customer Insights and the program read
+    "1 partial update." while a blocker or drift cell names its person (N2,
+    N3). Each now names him the same way, whether the map reads the stored
+    rollup rows -- by id or through the tree -- or computes them.
+    """
+    as_of = date(2026, 10, 4)
+    store = await _omar_partial_org(as_of)
+    if stored:
+        tree = await store.get_program_tree("demo", "program-acme", as_of)
+        for status in await RollupService(store).compute(tree, as_of):
+            await store.record_node_status(status)
+    service = PersonaViewService(
+        graph_repository=store,
+        status_repository=store,
+        rollup_repository=store,
+        time_series_repository=store,
+    )
+
+    view = await service.portfolio_heatmap("demo", as_of, program_root_id)
+
+    cells = {cell.column: cell for cell in view.cells}
+    for node_id in (
+        "pod-platform",
+        "pod-data",
+        "project-checkout",
+        "project-insights",
+        "program-acme",
+    ):
+        assert cells[node_id].rag is Rag.AMBER, node_id
+        assert cells[node_id].why == "1 partial update (Omar Haddad).", node_id
+    # His own cell keeps its one reason, which is the whole story.
+    assert cells["dev-omar"].why == "Status is partial and needs blocker or ETA confirmation."
+    assert cells["dev-sofia"].rag is Rag.GREEN
+    assert not any("dev-omar" in cell.why for cell in view.cells)
+
+
+async def test_portfolio_heatmap_names_people_as_it_names_blockers() -> None:
+    """N44: two people named at most, then "; N more"; none on their own cell; never an id."""
+    store = InMemoryGraphStore()
+    as_of = date(2026, 10, 4)
+    for node in (
+        Developer(tenant_id="demo", id="dev-omar", name="Omar Haddad"),
+        Developer(tenant_id="demo", id="dev-sofia", name="Sofia Bergmann"),
+        Developer(tenant_id="demo", id="dev-raj", name="Raj Mehta"),
+        Developer(tenant_id="demo", id="dev-noah", name="Noah Weber"),
+        Developer(tenant_id="demo", id="dev-ira", name="Ira Novak"),
+        Task(tenant_id="demo", id="IDP-3", name="Token refresh", metadata={"key": "IDP-3"}),
+    ):
+        await store.upsert_node(node)
+    # dev-ghost has a status but no graph node, so no name to print.
+
+    def ref(kind: NodeKind, node_id: str) -> EntityRef:
+        return EntityRef(tenant_id="demo", kind=kind, id=node_id)
+
+    def partial(developer_id: str) -> RollupFactor:
+        return RollupFactor(
+            description="Status is partial and needs blocker or ETA confirmation.",
+            contributes=Rag.AMBER,
+            source_ref=ref(NodeKind.DEVELOPER, developer_id),
+            kind=FactorKind.STATUS,
+        )
+
+    missing = RollupFactor(
+        description="No developer status data is available.",
+        contributes=Rag.UNKNOWN,
+        source_ref=ref(NodeKind.DEVELOPER, "dev-raj"),
+        kind=FactorKind.STATUS,
+    )
+    drift = RollupFactor(
+        description="Signals disagree: ETAs given for IDP-3 do not overlap.",
+        contributes=Rag.AMBER,
+        source_ref=ref(NodeKind.DEVELOPER, "dev-noah"),
+        kind=FactorKind.DRIFT,
+        work_item_ref=ref(NodeKind.TASK, "IDP-3"),
+    )
+    stored = (
+        (ref(NodeKind.DEVELOPER, "dev-omar"), StatusSource.PARTIAL, (partial("dev-omar"),)),
+        (ref(NodeKind.DEVELOPER, "dev-sofia"), StatusSource.PARTIAL, (partial("dev-sofia"),)),
+        (ref(NodeKind.DEVELOPER, "dev-ira"), StatusSource.PARTIAL, (partial("dev-ira"),)),
+        (ref(NodeKind.DEVELOPER, "dev-ghost"), StatusSource.PARTIAL, (partial("dev-ghost"),)),
+        # Noah's own cell: partial, and drift on his issue.
+        (
+            ref(NodeKind.DEVELOPER, "dev-noah"),
+            StatusSource.PARTIAL,
+            (partial("dev-noah"), drift),
+        ),
+        (ref(NodeKind.POD, "pod-identity"), StatusSource.PARTIAL, (drift, partial("dev-omar"))),
+        (
+            ref(NodeKind.POD, "pod-data"),
+            StatusSource.UNKNOWN,
+            (partial("dev-ghost"), partial("dev-omar"), missing),
+        ),
+        (ref(NodeKind.POD, "pod-platform"), StatusSource.PARTIAL, (partial("dev-ghost"),)),
+        (
+            ref(NodeKind.PROGRAM, "program-acme"),
+            StatusSource.UNKNOWN,
+            (
+                partial("dev-omar"),
+                partial("dev-sofia"),
+                partial("dev-noah"),
+                partial("dev-ira"),
+            ),
+        ),
+    )
+    for entity_ref, source, factors in stored:
+        await store.record_node_status(
+            NodeStatus(
+                entity_ref=entity_ref,
+                rag=Rag.AMBER,
+                source=source,
+                factors=factors,
+                as_of=as_of,
+            )
+        )
+    service = PersonaViewService(
+        graph_repository=store,
+        status_repository=store,
+        rollup_repository=store,
+        time_series_repository=store,
+    )
+
+    view = await service.portfolio_heatmap("demo", as_of, "program-acme")
+
+    why = {cell.column: cell.why for cell in view.cells}
+    # Two named at most, as with blockers.
+    assert why["program-acme"] == "4 partial updates (Omar Haddad; Sofia Bergmann; 2 more)."
+    # The live R5 program: Noah's drift beside Omar's partial update.
+    assert why["pod-identity"] == (
+        "Signals disagree: ETAs given for IDP-3 do not overlap (Noah Weber); "
+        "1 partial update (Omar Haddad)."
+    )
+    # Counted all the same, but a person with no name to print is left unnamed.
+    assert why["pod-data"] == "2 partial updates (Omar Haddad); 1 missing update (Raj Mehta)."
+    assert why["pod-platform"] == "1 partial update."
+    # A person's own cell names nobody.
+    noah = "Signals disagree: ETAs given for IDP-3 do not overlap; 1 partial update."
+    assert why["dev-noah"] == noah
+    # Names only, never a node id.
+    assert not any("dev-" in reason for reason in why.values())
 
 
 async def test_node_trend_returns_daily_rag_history_in_window() -> None:
