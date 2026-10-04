@@ -390,6 +390,7 @@ class StatusCollector:
             tracker_write_back=await self._tracker_write_back_open(checkin),
         )
         decision = await self._without_tracker_update_question(checkin, decision, earlier=earlier)
+        decision = self._without_answered_follow_up(checkin, decision, earlier=earlier)
         if not decision.is_status_update:
             await self._send_non_status_ack(checkin=checkin, message=message)
             span.set_attribute("openprogram.reply_classification", "non_status")
@@ -680,6 +681,40 @@ class StatusCollector:
             developer_id=checkin.developer_id,
             correlation_id=checkin.correlation_id,
             issue_keys=sorted(handled),
+        )
+        return replace(decision, sufficient=True, question=None)
+
+    def _without_answered_follow_up(
+        self,
+        checkin: CheckIn,
+        decision: ClarificationDecision,
+        *,
+        earlier: CheckInSignals | None,
+    ) -> ClarificationDecision:
+        """Drop a model-drafted follow-up that asks for what an earlier message gave (N29).
+
+        The evaluator reads the latest message on its own, so in R4 it asked
+        Mina for the ETA she gave in her first message, Sofia whether she had
+        blockers after "No blockers.", and Asha for progress after "agenda and
+        numbers drafted". A question that only asks for the ETA, blockers or
+        progress is dropped when the merged signals of the check-in's
+        ``earlier`` messages (N8) already answer every one of them. What this
+        message itself says stays the evaluator's call, and a question about
+        anything else (the tracker, a merge request, a person) is kept.
+        """
+        if (
+            earlier is None
+            or decision.sufficient
+            or decision.question is None
+            or not decision.is_status_update
+            or not _follow_up_already_answered(decision.question, earlier)
+        ):
+            return decision
+        _logger.info(
+            "follow_up_already_answered",
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            correlation_id=checkin.correlation_id,
         )
         return replace(decision, sufficient=True, question=None)
 
@@ -3443,6 +3478,53 @@ def _missing_required_status_details(
 
 def _blockers_answered(signals: CheckInSignals) -> bool:
     return signals.blockers_answered or bool(signals.blockers)
+
+
+# What a model-drafted follow-up asks for, read from its words (N29).
+_ASKS_FOR_ETA = re.compile(
+    r"\b(?:etas?|deadline|timeline|target date|how long|when (?:will|do|can|should) you)\b",
+    re.IGNORECASE,
+)
+_ASKS_FOR_BLOCKERS = re.compile(
+    r"\b(?:blockers?|blocked|blocking|impediments?|stuck)\b", re.IGNORECASE
+)
+_ASKS_FOR_PROGRESS = re.compile(r"\b(?:progress|concrete|accomplished)\b", re.IGNORECASE)
+# A question about anything else is kept: a contradiction with the tracker or
+# Git, a merge request, who or which.
+_ASKS_ABOUT_SOMETHING_ELSE = re.compile(
+    r"\b(?:jira|tracker|ticket|merge request|mr|pull request|pr|branch|commit\w*|merged|"
+    r"done|closed|who|which)\b",
+    re.IGNORECASE,
+)
+
+
+def _follow_up_already_answered(question: str, earlier: CheckInSignals) -> bool:
+    """Whether every detail ``question`` asks for is in the ``earlier`` messages.
+
+    ETA and blockers count once any earlier message answered them (the merged
+    signals say so). Progress counts as given when an earlier message described
+    each issue the question names (any issue, if it names none).
+    """
+    if _ASKS_ABOUT_SOMETHING_ELSE.search(question):
+        return False
+    answered: list[bool] = []
+    if _ASKS_FOR_ETA.search(question):
+        answered.append(_eta_answered(earlier))
+    if _ASKS_FOR_BLOCKERS.search(question):
+        answered.append(_blockers_answered(earlier))
+    if _ASKS_FOR_PROGRESS.search(question):
+        answered.append(_progress_given(question, earlier))
+    return bool(answered) and all(answered)
+
+
+def _progress_given(question: str, earlier: CheckInSignals) -> bool:
+    described = {
+        claim.issue_key
+        for claim in earlier.issue_updates
+        if claim.issue_key and (claim.claimed_state or claim.note)
+    }
+    named = set(_ISSUE_KEY_IN_TEXT.findall(question))
+    return bool(described) and named <= described
 
 
 def _eta_answered(signals: CheckInSignals) -> bool:
