@@ -1,0 +1,34 @@
+backend/tests/unit/test_cross_team_blockers.py
+  s_027fd12d872fd7::t_efa86d0af3d220 12,17,19,79-81,142,145-151,202-206,222,236,238,244-246,249-254,267
+  s_027fd12d872fd7::t_752afc2a039cb8 93-108
+  s_027fd12d872fd7::t_5d4844a702df0c 18,161-194
+  s_027fd12d872fd7::t_b4435c26289b40 1-11,13-16,20-78,82-92,109-141,143-144,152-160,195-201,207-221,223-235,237,239-243,247-248,255-266,268-274
+backend/core/application/blocker_resolution.py
+  s_027fd12d872fd7::t_810e269077bc25 14-23,32,38-39,66-75,122-125,134-137,139,141,154-160,163-190,260-278,283-306
+  s_027fd12d872fd7::t_752afc2a039cb8 98-118
+  s_027fd12d872fd7::t_5d4844a702df0c 279-282
+  s_027fd12d872fd7::t_4475e3d1d65739 307-308
+backend/core/domain/rollup.py
+  s_027fd12d872fd7::t_c912939be2535e 26-28
+backend/core/application/rollup_service.py
+  s_027fd12d872fd7::t_752afc2a039cb8 132-140
+  s_027fd12d872fd7::t_c912939be2535e 53-54,69,86-87,109-131,141-155,176-177,235,288-297,299-342
+  s_027fd12d872fd7::t_709cddd65e7d58 298
+  s_027fd12d872fd7::t_68d44fa8e26811 343-344
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b80dd55c128f6d65770ea603b28e1bf2adae3977",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
