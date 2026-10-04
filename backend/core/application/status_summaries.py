@@ -23,6 +23,9 @@ from core.ports.repositories import StatusRepository
 NON_RESPONSE_LEAD = "No confirmed check-in after a nudge."
 INFERRED_LEAD = f"{NON_RESPONSE_LEAD} Inferred from "
 UNKNOWN_SUMMARY = f"{NON_RESPONSE_LEAD} Current status is unknown."
+# A day whose check-in replies carried no status ("no updates today", "thanks"):
+# the person answered, so it does not open with the non-response wording.
+NON_STATUS_REPLY_SUMMARY = "Replied without a status update. Current status is unknown."
 # Added to a non-response summary when the tracker lists the person's issues but
 # none is under way (all To Do): there is nothing to infer a status from.
 NO_ACTIVE_WORK_NOTE = "No active work to infer from."
