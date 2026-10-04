@@ -286,12 +286,21 @@ class InMemoryGraphStore:
         request_id: str,
         status: CrossPersonRequestStatus,
         updated_at: datetime,
+        *,
+        from_statuses: Sequence[CrossPersonRequestStatus] | None = None,
     ) -> CrossPersonRequest | None:
-        existing = await self.get(tenant_id, request_id)
-        if existing is None:
+        # Read, check and write with no await in between, like the claim below:
+        # of two coroutines making the same transition only one gets the row.
+        key = (tenant_id, request_id)
+        existing = self._cross_person_requests.get(key)
+        if (
+            existing is None
+            or existing.status is status
+            or (from_statuses is not None and existing.status not in from_statuses)
+        ):
             return None
         updated = replace(existing, status=status, updated_at=updated_at)
-        self._cross_person_requests[(tenant_id, request_id)] = updated
+        self._cross_person_requests[key] = updated
         return updated
 
     async def record_notification(
@@ -827,6 +836,56 @@ class InMemoryGraphStore:
     ) -> None:
         await self.record_developer_status(status)
         await self.record_developer_blockers(status.tenant_id, blockers)
+
+    async def resolve_developer_blockers(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        blockers: Sequence[DeveloperBlocker],
+        *,
+        status_as_of: date,
+        revise_status: Callable[
+            [DeveloperStatus, Sequence[DeveloperBlocker]], DeveloperStatus | None
+        ],
+    ) -> tuple[DeveloperBlocker, ...]:
+        # Check and write every row and the status with no await in between,
+        # as the Postgres transaction does under its row locks.
+        changed: list[DeveloperBlocker] = []
+        for blocker in blockers:
+            key = (tenant_id, blocker.blocker_id)
+            existing = self._developer_blockers.get(key)
+            if (
+                existing is None
+                or existing.developer_id != developer_id
+                or existing.resolved_on is not None
+                or existing.updated_at != blocker.updated_at
+            ):
+                continue
+            resolved = replace(
+                existing,
+                resolved_on=blocker.resolved_on,
+                resolved_reason=blocker.resolved_reason,
+                last_seen_on=max(existing.last_seen_on, blocker.last_seen_on),
+                updated_at=self.blocker_clock(),
+            )
+            self._developer_blockers[key] = resolved
+            changed.append(resolved)
+        if not changed:
+            return ()
+        statuses = [
+            status
+            for status in self._developer_statuses.values()
+            if status.tenant_id == tenant_id
+            and status.developer_id == developer_id
+            and status.as_of <= status_as_of
+        ]
+        if statuses:
+            revised = revise_status(max(statuses, key=lambda status: status.as_of), changed)
+            if revised is not None:
+                self._developer_statuses[
+                    (revised.tenant_id, revised.developer_id, revised.as_of)
+                ] = revised
+        return tuple(changed)
 
     async def open_blockers(
         self, tenant_id: str, developer_id: str, as_of: date

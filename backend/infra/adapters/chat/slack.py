@@ -83,25 +83,57 @@ class SlackChatAdapter:
     rate_limiter: RateLimiter
     conversation_cache: ConversationCache = field(default_factory=InMemoryConversationCache)
     send_once_store: SendOnceStore = field(default_factory=InMemorySendOnceStore)
+    # A sender that finds its key claimed by a send in flight waits for that
+    # send's ts, up to a little past the claim's lifetime, polling this often.
+    send_once_wait_seconds: float = 35.0
+    send_once_poll_seconds: float = 0.25
 
     async def send_dm(self, user: ChatUserRef, message: OutboundMessage) -> str:
         with _tracer.start_as_current_span("slack.send_dm"):
             # Honor idempotency_key so a workflow-step retry after a successful post
             # (but before the send was recorded) returns the first ts instead of
-            # posting a duplicate DM. chat.postMessage has no native dedup.
+            # posting a duplicate DM. chat.postMessage has no native dedup. The key
+            # is claimed before the post, so of two senders racing with one key
+            # only one posts and the other returns its ts.
             idempotency_key = _idempotency_key(message)
             if idempotency_key is not None:
-                existing = await self.send_once_store.get(self.tenant_id, idempotency_key)
+                existing = await self._claim_or_sent(idempotency_key)
                 if existing is not None:
                     return existing
-            await self.rate_limiter.acquire(f"chat:{self.tenant_id}:{user.external_id}")
-            channel_id = await self.conversation_cache.get(user.external_id)
-            if channel_id is None:
-                channel_id = await self.open_thread(user)
-            message_id = await self.http_client.post_message(channel_id, message.text)
+            try:
+                await self.rate_limiter.acquire(f"chat:{self.tenant_id}:{user.external_id}")
+                channel_id = await self.conversation_cache.get(user.external_id)
+                if channel_id is None:
+                    channel_id = await self.open_thread(user)
+                message_id = await self.http_client.post_message(channel_id, message.text)
+            except BaseException:
+                if idempotency_key is not None:
+                    # Nothing was posted that we know of: a retry may send.
+                    await self.send_once_store.release(self.tenant_id, idempotency_key)
+                raise
             if idempotency_key is not None:
                 await self.send_once_store.put(self.tenant_id, idempotency_key, message_id)
             return message_id
+
+    async def _claim_or_sent(self, idempotency_key: str) -> str | None:
+        """None once this sender holds the key; the first ts when it was sent already.
+
+        A key claimed by a send still in flight is waited for: its ts once it
+        is recorded, or the key itself once that send failed or its claim
+        lapsed. Raises ProviderUnavailable, nothing posted, if neither comes.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self.send_once_wait_seconds
+        while True:
+            if await self.send_once_store.claim(self.tenant_id, idempotency_key):
+                return None
+            existing = await self.send_once_store.get(self.tenant_id, idempotency_key)
+            if existing is not None:
+                return existing
+            if loop.time() >= deadline:
+                msg = "slack DM with this idempotency key is still being sent"
+                raise ProviderUnavailable(msg)
+            await asyncio.sleep(self.send_once_poll_seconds)
 
     async def open_thread(self, user: ChatUserRef) -> str:
         with _tracer.start_as_current_span("slack.open_thread"):
