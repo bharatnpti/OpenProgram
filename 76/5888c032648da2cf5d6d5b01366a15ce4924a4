@@ -3,10 +3,16 @@ backend/core/application/writeback_service.py
   s_027fd12d872fd7::t_c6c2f398c92eb4 132,143
   s_027fd12d872fd7::t_a7942dece7c0fc 35
   s_027fd12d872fd7::t_dfe91f86392f16 330-333
+  s_027fd12d872fd7::t_92f97a81a04c2d 55-59,167-181,438-445,450-453,469-471,495,500-545,1068-1194
 backend/tests/unit/test_writeback_service.py
   s_027fd12d872fd7::t_74c476f37b9bee 30,84,114,1197-1277
+  s_027fd12d872fd7::t_92f97a81a04c2d 18,1662-1745
 backend/infra/registry.py
   s_027fd12d872fd7::t_3a5378b1e8720c 995
+backend/core/application/status_collector.py
+  s_027fd12d872fd7::t_92f97a81a04c2d 59-60,65,352-356,511-520,540-557,1972,1974-1978,2021,2097,2104-2107,2110,2113-2122,2124-2130,2155,2157,2193-2198,2210-2376,2572,3037-3042,3078-3082,3120-3142,3301-3307
+backend/tests/unit/test_writeback_reply.py
+  s_027fd12d872fd7::t_92f97a81a04c2d 919-1238
 ---
 {
   "schema_version": "authorship/3.0.0",
