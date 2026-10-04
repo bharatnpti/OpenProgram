@@ -258,25 +258,9 @@ class IssueReadSyncService:
         member_id = (
             developers.get(issue.assignee.external_id) if issue.assignee is not None else None
         )
-        metadata: dict[str, JsonScalar] = {
-            **_scalar_mapping(issue.metadata),
-            "key": issue.key,
-            "state": issue.state.value,
-            "project_key": _project_key_for_issue(issue, parent.id),
-        }
-        if issue.assignee is not None and member_id is None:
-            # Nobody is linked to this tracker account yet. It stays on the issue,
-            # not as a person: a developer node would show up as a persona and be
-            # sent check-in DMs it can never receive.
-            metadata["unlinked_assignee_id"] = issue.assignee.external_id
-            metadata["unlinked_assignee_name"] = issue.assignee.display_name
+        project_key = _project_key_for_issue(issue, parent.id)
         await self._graph_repository.upsert_node(
-            Task(
-                tenant_id=issue.tenant_id,
-                id=issue.key,
-                name=issue.title,
-                metadata=metadata,
-            )
+            issue_task_node(issue, project_key=project_key, member_id=member_id)
         )
         await self._graph_repository.add_edge(
             GraphEdge(
@@ -295,39 +279,118 @@ class IssueReadSyncService:
                     kind=EdgeKind.ASSIGNED_TO,
                 )
             )
-
-        issue_observed_at = _issue_updated_at(issue, observed_at)
         await self._time_series_repository.append_fact_once(
-            FactEvent(
-                tenant_id=issue.tenant_id,
-                source=self.connector,
-                entity_ref=EntityRef(tenant_id=issue.tenant_id, kind=NodeKind.TASK, id=issue.key),
-                payload=_issue_fact_payload(issue, _project_key_for_issue(issue, parent.id)),
-                observed_at=issue_observed_at,
-                correlation_id=(
-                    f"{self.connector}:{issue.tenant_id}:{issue.key}:"
-                    f"{issue_observed_at.isoformat()}"
-                ),
-            )
+            issue_fact(issue, project_key=project_key, observed_at=observed_at)
         )
 
     async def _developers_by_tracker_account(self, tenant_id: str) -> dict[str, str]:
-        """Tracker account id -> member id: identity links, else a member with that id.
+        return await developers_by_tracker_account(
+            self._graph_repository, self._identity_link_repository, tenant_id
+        )
 
-        Members are keyed by their chat id; the tracker only knows its own
-        account ids. Without this map every assignee became a second developer
-        node beside the real member, and that member's own views never saw the
-        issue. An account that is not in the map is not a member.
-        """
-        members = {
-            node.id: node.id
-            for node in await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER)
-        }
-        if self._identity_link_repository is not None:
-            for link in await self._identity_link_repository.list_identity_links(tenant_id):
-                if link.jira_account_id:
-                    members[link.jira_account_id] = link.developer_id
-        return members
+
+ISSUE_FACT_SOURCE = IssueReadSyncService.connector
+
+
+def issue_task_node(issue: Issue, *, project_key: str, member_id: str | None) -> Task:
+    """The task node the issue sync stores for ``issue``."""
+    metadata: dict[str, JsonScalar] = {
+        **_scalar_mapping(issue.metadata),
+        "key": issue.key,
+        "state": issue.state.value,
+        "project_key": project_key,
+    }
+    if issue.assignee is not None and member_id is None:
+        # Nobody is linked to this tracker account yet. It stays on the issue,
+        # not as a person: a developer node would show up as a persona and be
+        # sent check-in DMs it can never receive.
+        metadata["unlinked_assignee_id"] = issue.assignee.external_id
+        metadata["unlinked_assignee_name"] = issue.assignee.display_name
+    return Task(tenant_id=issue.tenant_id, id=issue.key, name=issue.title, metadata=metadata)
+
+
+def issue_fact(issue: Issue, *, project_key: str, observed_at: datetime) -> FactEvent:
+    """The issue fact the sync appends, keyed so a re-read of the same update is one fact."""
+    issue_observed_at = _issue_updated_at(issue, observed_at)
+    return FactEvent(
+        tenant_id=issue.tenant_id,
+        source=ISSUE_FACT_SOURCE,
+        entity_ref=EntityRef(tenant_id=issue.tenant_id, kind=NodeKind.TASK, id=issue.key),
+        payload=_issue_fact_payload(issue, project_key),
+        observed_at=issue_observed_at,
+        correlation_id=(
+            f"{ISSUE_FACT_SOURCE}:{issue.tenant_id}:{issue.key}:{issue_observed_at.isoformat()}"
+        ),
+    )
+
+
+async def developers_by_tracker_account(
+    graph_repository: GraphRepository,
+    identity_link_repository: IdentityLinkRepository | None,
+    tenant_id: str,
+) -> dict[str, str]:
+    """Tracker account id -> member id: identity links, else a member with that id.
+
+    Members are keyed by their chat id; the tracker only knows its own
+    account ids. Without this map every assignee became a second developer
+    node beside the real member, and that member's own views never saw the
+    issue. An account that is not in the map is not a member.
+    """
+    members = {
+        node.id: node.id
+        for node in await graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER)
+    }
+    if identity_link_repository is not None:
+        for link in await identity_link_repository.list_identity_links(tenant_id):
+            if link.jira_account_id:
+                members[link.jira_account_id] = link.developer_id
+    return members
+
+
+async def record_issue_as_synced(
+    issue: Issue,
+    *,
+    graph_repository: GraphRepository,
+    time_series_repository: TimeSeriesRepository | None,
+    identity_link_repository: IdentityLinkRepository | None,
+    observed_at: datetime,
+) -> None:
+    """Store one issue read from the tracker exactly as the next issue sync will.
+
+    The same task node, assignment edge and issue fact (``append_fact_once`` on
+    the sync's key, so the sync later adds no second fact for the same update).
+    Only the containment edge is left alone: the issue keeps the project or
+    sprint the sync filed it under. Used right after OpenProgram writes to the
+    tracker, so its own copy does not wait for the next sync.
+    """
+    existing = await graph_repository.get_node(issue.tenant_id, issue.key)
+    fallback_key = existing.metadata.get("project_key") if existing is not None else None
+    project_key = _project_key_for_issue(
+        issue,
+        fallback_key
+        if isinstance(fallback_key, str) and fallback_key
+        else issue.key.rsplit("-", 1)[0],
+    )
+    developers = await developers_by_tracker_account(
+        graph_repository, identity_link_repository, issue.tenant_id
+    )
+    member_id = developers.get(issue.assignee.external_id) if issue.assignee is not None else None
+    await graph_repository.upsert_node(
+        issue_task_node(issue, project_key=project_key, member_id=member_id)
+    )
+    if member_id is not None:
+        await graph_repository.add_edge(
+            GraphEdge(
+                tenant_id=issue.tenant_id,
+                from_node_id=member_id,
+                to_node_id=issue.key,
+                kind=EdgeKind.ASSIGNED_TO,
+            )
+        )
+    if time_series_repository is not None:
+        await time_series_repository.append_fact_once(
+            issue_fact(issue, project_key=project_key, observed_at=observed_at)
+        )
 
 
 class VcsReadSyncService:
