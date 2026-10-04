@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
@@ -9,7 +10,7 @@ from core.application.blocker_resolution import BlockerResolutionService, Resolv
 from core.application.rollup_service import RollupService, task_rag
 from core.domain.errors import GraphNotFound
 from core.domain.graph import EdgeKind, EntityRef, FactEvent, GraphNode, GraphTree, NodeKind
-from core.domain.rollup import NodeStatus, Rag, RollupFactor
+from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import DeveloperStatus, StatusSource
 from core.ports.repositories import (
     GraphRepository,
@@ -741,6 +742,7 @@ class PersonaViewService:
         (``connector="rollup"``) owns that write now.
         """
         statuses = await self._rollup_repository.list_node_statuses(tenant_id, as_of)
+        tree: GraphTree | None = None
         if program_root_id is not None:
             if not statuses:
                 try:
@@ -764,10 +766,40 @@ class PersonaViewService:
             statuses = [status for status in statuses if status.entity_ref.id in tree_ids]
             if not statuses:
                 statuses = list(await self._rollup_service.compute(tree, as_of))
-        cells = tuple(_heatmap_cell(status) for status in statuses)
+        cells = await self._heatmap_cells(tenant_id, statuses, tree)
         rows = tuple(dict.fromkeys(cell.row for cell in cells))
         columns = tuple(dict.fromkeys(cell.column for cell in cells))
         return PortfolioHeatmapView(as_of=as_of, rows=rows, columns=columns, cells=cells)
+
+    async def _heatmap_cells(
+        self,
+        tenant_id: str,
+        statuses: Sequence[NodeStatus],
+        tree: GraphTree | None,
+    ) -> tuple[HeatmapCellView, ...]:
+        """One cell per status, each amber or red one naming what drives it.
+
+        A reason prints names and issue keys, never node ids. Only the nodes an
+        amber or red cell's reason names are looked up -- the people behind its
+        blockers and the work items and tasks those cite -- from the tree when
+        one was read, else one by one; a node not found is left unnamed.
+        """
+        context = _ReasonContext.from_statuses(statuses)
+        wanted = {
+            node_id
+            for status in statuses
+            if _needs_drivers(status)
+            for node_id in context.cited_node_ids(status)
+        }
+        nodes = {node.id: node for node in tree.nodes} if tree is not None else {}
+        for node_id in sorted(wanted - nodes.keys()):
+            node = await self._graph_repository.get_node(tenant_id, node_id)
+            if node is not None:
+                nodes[node_id] = node
+        context = context.with_labels(
+            {node_id: _reason_label(nodes[node_id]) for node_id in wanted if node_id in nodes}
+        )
+        return tuple(_heatmap_cell(status, context) for status in statuses)
 
     async def node_trend(
         self,
@@ -1356,14 +1388,251 @@ def _confidence_from_fact(fact: FactEvent | None) -> float | None:
     return None
 
 
-def _heatmap_cell(status: NodeStatus) -> HeatmapCellView:
+def _heatmap_cell(status: NodeStatus, context: _ReasonContext) -> HeatmapCellView:
     factor = status.factors[0] if status.factors else None
+    first = factor.description if factor else "No rollup factors are available."
+    drivers = _drivers_line(status, context) if _needs_drivers(status) else None
     return HeatmapCellView(
         row=status.entity_ref.kind.value,
         column=status.entity_ref.id,
         entity_ref=status.entity_ref,
         rag=status.rag,
         source=status.source,
-        why=factor.description if factor else "No rollup factors are available.",
+        why=drivers or first,
         source_ref=factor.source_ref if factor else status.entity_ref,
     )
+
+
+# What a heat-map reason may call a task or work item by: its tracker key.
+_ISSUE_KEY = re.compile(r"[A-Z][A-Z0-9]+-\d+")
+
+
+@dataclass(frozen=True)
+class _ReasonContext:
+    """What a cell's reason reads beyond its own factors.
+
+    ``statuses`` gives each person's status source, so a status factor is
+    counted by what the person's update was -- partial, inferred, stale --
+    never by its wording. ``owners`` maps each open blocker to the person it
+    is from, read off the people's own statuses, where every blocker starts.
+    ``labels`` holds the names and issue keys a reason may print.
+    """
+
+    statuses: Mapping[tuple[NodeKind, str], NodeStatus]
+    owners: Mapping[str, str]
+    labels: Mapping[str, str]
+
+    @classmethod
+    def from_statuses(cls, statuses: Iterable[NodeStatus]) -> _ReasonContext:
+        by_ref = {(status.entity_ref.kind, status.entity_ref.id): status for status in statuses}
+        owners: dict[str, str] = {}
+        for (kind, node_id), status in by_ref.items():
+            if kind is not NodeKind.DEVELOPER:
+                continue
+            for factor in status.factors:
+                if factor.kind is FactorKind.BLOCKER:
+                    owners.setdefault(_blocker_key(factor), node_id)
+        return cls(statuses=by_ref, owners=owners, labels={})
+
+    def with_labels(self, labels: Mapping[str, str]) -> _ReasonContext:
+        return _ReasonContext(statuses=self.statuses, owners=self.owners, labels=labels)
+
+    def owner_of(self, factor: RollupFactor) -> str | None:
+        owner = self.owners.get(_blocker_key(factor))
+        if owner is None and factor.source_ref.kind is NodeKind.DEVELOPER:
+            owner = factor.source_ref.id
+        return owner
+
+    def cited_node_ids(self, status: NodeStatus) -> set[str]:
+        """The nodes this cell's reason may name."""
+        ids: set[str] = set()
+        for factor in status.factors:
+            if factor.kind is FactorKind.BLOCKER:
+                if (owner := self.owner_of(factor)) is not None:
+                    ids.add(owner)
+                if factor.work_item_ref is not None:
+                    ids.add(factor.work_item_ref.id)
+            elif factor.kind is FactorKind.TASK:
+                ids.add(factor.source_ref.id)
+        return ids
+
+    def label(self, node_id: str) -> str | None:
+        """A node's name or issue key; None rather than its raw id."""
+        label = self.labels.get(node_id)
+        if label is None and _ISSUE_KEY.fullmatch(node_id):
+            return node_id
+        return label
+
+    def person_source(self, developer_id: str) -> StatusSource | None:
+        status = self.statuses.get((NodeKind.DEVELOPER, developer_id))
+        return status.source if status is not None else None
+
+
+def _reason_label(node: GraphNode) -> str:
+    """A person by name; a task or work item by its issue key where it has one."""
+    if node.kind is not NodeKind.DEVELOPER:
+        key = node.metadata.get("key")
+        if isinstance(key, str) and key.strip():
+            return key.strip()
+        if _ISSUE_KEY.fullmatch(node.id):
+            return node.id
+    return node.name
+
+
+def _blocker_key(factor: RollupFactor) -> str:
+    """A blocker's identity across the cells it reaches, as the rollup counts it."""
+    return factor.blocker_id or factor.description
+
+
+def _needs_drivers(status: NodeStatus) -> bool:
+    """Whether a cell's reason names its drivers rather than its first factor.
+
+    Every amber or red parent does: its first factor is one child's reason,
+    and "Status is partial" says nothing of the blocker beside it. A person
+    with one reason keeps it -- that reason is the whole story -- but one with
+    several, such as two blockers that together make them red, is summed up.
+    """
+    if status.rag not in {Rag.AMBER, Rag.RED}:
+        return False
+    return status.entity_ref.kind is not NodeKind.DEVELOPER or len(status.factors) > 1
+
+
+# How people's updates read in a reason, in the order a reason lists them.
+# None is a person whose own status was not read: their update needs confirming.
+_STATUS_REASON_TEXT: dict[StatusSource | None, tuple[str, str]] = {
+    StatusSource.PARTIAL: ("partial update", "partial updates"),
+    StatusSource.INFERRED: ("inferred status", "inferred statuses"),
+    StatusSource.STALE: ("stale update", "stale updates"),
+    StatusSource.UNKNOWN: ("missing update", "missing updates"),
+    None: ("update needing confirmation", "updates needing confirmation"),
+}
+
+
+def _drivers_line(status: NodeStatus, context: _ReasonContext) -> str | None:
+    """One short line naming what makes a cell amber or red.
+
+    E.g. "1 open blocker (CHK-8, Zoe Almeida); 2 partial updates." -- the
+    drivers the Exec Today hero line names for the whole program, from the
+    same rollup factors: each open blocker once, with its work item's key and
+    the person it is from; blocked tasks; how many people's updates are
+    partial, inferred, stale or missing; tasks needing attention; approaching
+    target dates. None when no factor says, and the cell keeps its first one.
+    """
+    factors = [factor for factor in status.factors if factor.contributes is not Rag.GREEN]
+    parts = [
+        part
+        for part in (
+            _blockers_part(factors, status.entity_ref, context),
+            _tasks_part(factors, blocked=True, context=context),
+            *_people_parts(factors, context),
+            _tasks_part(factors, blocked=False, context=context),
+            _target_dates_part(factors),
+        )
+        if part
+    ]
+    if not parts:
+        return None
+    line = "; ".join(parts)
+    return f"{line[:1].upper()}{line[1:]}."
+
+
+def _people_parts(factors: Iterable[RollupFactor], context: _ReasonContext) -> list[str]:
+    """How many people's updates are partial, inferred, stale or missing."""
+    people: dict[StatusSource | None, set[str]] = {}
+    for factor in factors:
+        if factor.kind is not FactorKind.STATUS or factor.source_ref.kind is not NodeKind.DEVELOPER:
+            continue
+        source = (
+            StatusSource.UNKNOWN
+            if factor.contributes is Rag.UNKNOWN
+            else context.person_source(factor.source_ref.id)
+        )
+        bucket = source if source in _STATUS_REASON_TEXT else None
+        people.setdefault(bucket, set()).add(factor.source_ref.id)
+    return [
+        _count(len(people[source]), nouns)
+        for source, nouns in _STATUS_REASON_TEXT.items()
+        if source in people
+    ]
+
+
+def _tasks_part(
+    factors: Iterable[RollupFactor], *, blocked: bool, context: _ReasonContext
+) -> str | None:
+    """Blocked tasks (red), or tasks needing attention (amber), with up to two named."""
+    tasks = [
+        factor
+        for factor in factors
+        if factor.kind is FactorKind.TASK and (factor.contributes is Rag.RED) is blocked
+    ]
+    if not tasks:
+        return None
+    nouns = ("blocked task", "blocked tasks") if blocked else _ATTENTION_TASK_NOUNS
+    labels = list(
+        dict.fromkeys(label for factor in tasks if (label := context.label(factor.source_ref.id)))
+    )
+    counted = _count(len({factor.source_ref.id for factor in tasks}), nouns)
+    return f"{counted} ({_join_and(labels)})" if labels else counted
+
+
+_ATTENTION_TASK_NOUNS = ("task needing attention", "tasks needing attention")
+
+
+def _target_dates_part(factors: Iterable[RollupFactor]) -> str | None:
+    target_dates = [factor for factor in factors if factor.kind is FactorKind.TARGET_DATE]
+    if len(target_dates) == 1:
+        return _clause(target_dates[0].description)
+    return f"{len(target_dates)} target dates approaching" if target_dates else None
+
+
+def _blockers_part(
+    factors: Iterable[RollupFactor], cell: EntityRef, context: _ReasonContext
+) -> str | None:
+    """E.g. "2 open blockers (CHK-8, Zoe Almeida; CHK-17, Omar Haddad)".
+
+    Each blocker counts once, however many children carry it, as the rollup
+    counts them. They are grouped by the person they are from, a person's own
+    cell does not name them, and two groups are named at most.
+    """
+    blockers: dict[str, RollupFactor] = {}
+    for factor in factors:
+        if factor.kind is FactorKind.BLOCKER:
+            blockers.setdefault(_blocker_key(factor), factor)
+    if not blockers:
+        return None
+    groups: dict[str | None, list[str]] = {}
+    for factor in blockers.values():
+        owner_id = context.owner_of(factor)
+        own_cell = cell.kind is NodeKind.DEVELOPER and owner_id == cell.id
+        owner = context.label(owner_id) if owner_id is not None and not own_cell else None
+        items = groups.setdefault(owner, [])
+        item = context.label(factor.work_item_ref.id) if factor.work_item_ref else None
+        if item is not None and item not in items:
+            items.append(item)
+    labels = [
+        label
+        for owner, items in groups.items()
+        if (label := ", ".join(part for part in (_join_and(items), owner) if part))
+    ]
+    counted = _count(len(blockers), ("open blocker", "open blockers"))
+    if not labels:
+        return counted
+    more = len(labels) - 2
+    named = "; ".join(labels[:2]) + (f"; {more} more" if more > 0 else "")
+    return f"{counted} ({named})"
+
+
+def _count(n: int, nouns: tuple[str, str]) -> str:
+    return f"{n} {nouns[0] if n == 1 else nouns[1]}"
+
+
+def _join_and(items: Sequence[str], limit: int = 2) -> str:
+    if len(items) > limit:
+        return f"{', '.join(items[:limit])} and {len(items) - limit} more"
+    return " and ".join(items)
+
+
+def _clause(description: str) -> str:
+    """A factor's own sentence as one part of a line: no capital, no full stop."""
+    text = description.strip().rstrip(".")
+    return f"{text[:1].lower()}{text[1:]}"
