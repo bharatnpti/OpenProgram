@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 
@@ -661,6 +662,10 @@ class FakeTimeSeriesRepository(TimeSeriesRepository):
 @dataclass
 class FakeRollupRepository:
     node_statuses: list[NodeStatus] = field(default_factory=list)
+
+    @asynccontextmanager
+    async def exclusive_day(self, tenant_id: str, as_of: date) -> AsyncIterator[None]:
+        yield
 
     async def record_node_status(self, status: NodeStatus) -> None:
         self.node_statuses.append(status)

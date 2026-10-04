@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 from typing import Protocol
 
 from core.domain.workflows import (
@@ -61,6 +62,19 @@ class WorkflowScheduler(Protocol):
         ...
 
     async def dispatch_sync(self, input: SyncDispatchInput) -> str: ...
+
+
+class RollupRefresher(Protocol):
+    async def refresh_rollup(self, tenant_id: str, as_of: date) -> None:
+        """Re-record the tenant's rollup for ``as_of`` soon, outside the hourly schedule.
+
+        For a change made outside a check-in (a blocker the merge pass, a
+        counterpart's reply or the console resolved): the hourly rollup may
+        have run just before it. Requests that arrive close together run once,
+        after the last of them, and the run reads what is stored then. Safe to
+        call from anywhere, a workflow step included.
+        """
+        ...
 
 
 class WorkflowWorker(Protocol):

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date
 
 from core.domain.workflows import (
     CheckinReconcileScheduleConfig,
@@ -72,6 +73,16 @@ class FakeWorkflowScheduler:
 
     async def dispatch_sync(self, input: SyncDispatchInput) -> str:
         return safe_workflow_id(f"fake-sync-{input.connector}-{input.scope}")
+
+
+@dataclass
+class FakeRollupRefresher:
+    """Records each refresh request; nothing runs."""
+
+    requests: list[tuple[str, date]] = field(default_factory=list)
+
+    async def refresh_rollup(self, tenant_id: str, as_of: date) -> None:
+        self.requests.append((tenant_id, as_of))
 
 
 class FakeWorkflowWorker:

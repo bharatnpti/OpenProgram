@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from contextlib import AbstractAsyncContextManager
 from datetime import date, datetime
 from typing import Protocol
 
@@ -403,6 +404,17 @@ class InboundChatEventRepository(Protocol):
 
 class RollupRepository(Protocol):
     async def record_node_status(self, status: NodeStatus) -> None: ...
+
+    def exclusive_day(self, tenant_id: str, as_of: date) -> AbstractAsyncContextManager[None]:
+        """Hold the tenant's rollup of ``as_of`` alone while it is read and recorded.
+
+        Two rollups of one day at once (the hourly one and a refresh after a
+        resolution, N27) each read the tree and the statuses and then write row
+        by row, so the slower one could leave rows from what it read earlier
+        over the newer ones. Held around the read and the writes, the second
+        waits, then reads what the first stored and what changed since.
+        """
+        ...
 
     async def latest_node_status(
         self, tenant_id: str, entity_ref: EntityRef, as_of: date

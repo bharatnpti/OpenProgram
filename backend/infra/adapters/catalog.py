@@ -14,7 +14,7 @@ from core.ports.llm import LlmProvider
 from core.ports.readiness import ReadinessProbe
 from core.ports.secrets import SecretStore
 from core.ports.vcs import VcsProvider
-from core.ports.workflows import WorkflowScheduler, WorkflowWorker
+from core.ports.workflows import RollupRefresher, WorkflowScheduler, WorkflowWorker
 from infra.adapters.calendar.google_adapter import GoogleCalendarAdapter
 from infra.adapters.chat.fake import FakeChatProvider, FakeChatWebhookMapper
 from infra.adapters.chat.mock_slack import (
@@ -67,16 +67,19 @@ from infra.adapters.readiness import (
     WorkflowBacklogReadinessProbe,
 )
 from infra.adapters.workflows.dbos import (
+    DbosRollupRefresher,
     DbosWorkflowReadinessProbe,
     DbosWorkflowScheduler,
     DbosWorkflowWorker,
 )
 from infra.adapters.workflows.fake import (
+    FakeRollupRefresher,
     FakeWorkflowReadinessProbe,
     FakeWorkflowScheduler,
     FakeWorkflowWorker,
 )
 from infra.adapters.workflows.temporal import (
+    TemporalRollupRefresher,
     TemporalWorkflowReadinessProbe,
     TemporalWorkflowScheduler,
     TemporalWorkflowWorker,
@@ -283,6 +286,21 @@ def build_workflow_scheduler(settings: Settings) -> WorkflowScheduler:
         tenant_id=settings.tenant_id,
         interval_seconds=settings.temporal_heartbeat_interval_seconds,
         reply_debounce_seconds=settings.reply_debounce_seconds,
+    )
+
+
+def build_rollup_refresher(settings: Settings) -> RollupRefresher:
+    """Re-records a day's rollup soon after a change made outside a check-in (N27)."""
+    if settings.workflow_provider == "fake":
+        return FakeRollupRefresher()
+    if settings.workflow_provider == "dbos":
+        return DbosRollupRefresher(
+            app_name=settings.dbos_app_name,
+            system_database_url=settings.resolved_dbos_system_database_url,
+        )
+    return TemporalRollupRefresher(
+        target=settings.temporal_target,
+        task_queue=settings.temporal_task_queue,
     )
 
 

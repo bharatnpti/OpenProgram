@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any, cast
 from uuid import uuid4
 
 import psycopg
 import structlog
-from dbos import DBOS, DBOSConfig, ScheduleInput, SetWorkflowID
+from dbos import DBOS, DBOSConfig, Debouncer, ScheduleInput, SetWorkflowID
 
 from core.application.reply_ingestion import run_reply_debounce
 from core.domain.workflows import (
@@ -73,7 +74,14 @@ from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import EscalationStepInput, NudgeInput, NudgeResult
 from infra.workflows.risk_assessment import RiskAssessmentInput, RiskAssessmentWorkflowResult
-from infra.workflows.rollup import RollupInput, RollupWorkflowResult
+from infra.workflows.rollup import (
+    ROLLUP_REFRESH_DEBOUNCE_SECONDS,
+    ROLLUP_REFRESH_MAX_WAIT_SECONDS,
+    RollupInput,
+    RollupWorkflowResult,
+    rollup_refresh_input,
+    rollup_refresh_key,
+)
 from infra.workflows.runtime_sync import (
     RuntimeSyncInput,
     RuntimeSyncPlan,
@@ -858,6 +866,55 @@ class DbosWorkflowScheduler:
             )
         )
         return await _start_sync_child_workflow(input, workflow_id=workflow_id)
+
+
+@dataclass(frozen=True)
+class DbosRollupRefresher:
+    """Debounces the existing rollup workflow for one tenant and day (N27).
+
+    Each request extends one DELAYED ``openprogram_rollup`` run keyed on the
+    tenant and the day, so the six per-repository merge passes of a sync run,
+    and anything else in the same burst, record the day once:
+    ``debounce_seconds`` after the last request, and at most
+    ``ROLLUP_REFRESH_MAX_WAIT_SECONDS`` after the first. Once that run has
+    started, DBOS frees the key, so a request made while it reads starts a
+    new run and nothing is lost.
+    """
+
+    app_name: str
+    system_database_url: str
+    debounce_seconds: float = ROLLUP_REFRESH_DEBOUNCE_SECONDS
+
+    async def refresh_rollup(self, tenant_id: str, as_of: date) -> None:
+        _ensure_dbos_runtime(
+            DbosRuntimeConfig(
+                app_name=self.app_name,
+                system_database_url=self.system_database_url,
+            )
+        )
+        # The requests come from inside DBOS steps (the repository sync's merge
+        # pass, a reply drain), and DBOS refuses to start a workflow in a step,
+        # which a retry would start again. A repeated debounce is harmless (it
+        # extends the same run, or records the same rows again), so it is made
+        # outside the step's context, as a request from outside any workflow.
+        await asyncio.to_thread(
+            contextvars.Context().run,
+            _debounce_rollup,
+            tenant_id,
+            as_of,
+            self.debounce_seconds,
+        )
+
+
+def _debounce_rollup(tenant_id: str, as_of: date, debounce_seconds: float) -> None:
+    debouncer = Debouncer.create_async(
+        dbos_rollup_workflow, debounce_timeout_sec=ROLLUP_REFRESH_MAX_WAIT_SECONDS
+    )
+    debouncer.debounce(
+        rollup_refresh_key(tenant_id, as_of),
+        debounce_seconds,
+        rollup_refresh_input(tenant_id, as_of),
+    )
 
 
 @dataclass(frozen=True)
