@@ -2075,6 +2075,7 @@ class StatusCollector:
                 developer_id=checkin.developer_id,
                 correlation_id=checkin.correlation_id,
                 claims=signals.issue_updates,
+                reported_on=checkin.checkin_date,
             )
         except Exception:  # pragma: no cover - defensive; write-back is best-effort
             _logger.warning(
@@ -2197,6 +2198,8 @@ class StatusCollector:
                 developer_id=checkin.developer_id,
                 correlation_id=checkin.correlation_id,
                 reply_text=message.text,
+                claims=checkin.signals.issue_updates if checkin.signals is not None else (),
+                reported_on=checkin.checkin_date,
             )
         except Exception:  # pragma: no cover - defensive; resolution is best-effort
             _logger.warning(

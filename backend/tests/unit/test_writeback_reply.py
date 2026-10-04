@@ -12,7 +12,7 @@ import pytest
 from core.application import status_collector as status_collector_module
 from core.application.status_collector import StatusCollector, asks_person_to_update_tracker
 from core.application.writeback_service import OpenMergeRequestHold, WriteBackService
-from core.domain.graph import EntityRef, FactEvent, NodeKind
+from core.domain.graph import Developer, EntityRef, FactEvent, NodeKind
 from core.domain.identity import IdentityLink
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse, TokenUsage
@@ -573,10 +573,11 @@ async def _raj_r2_collector(
     texts: list[str],
     *,
     consent: WriteBackConsent = WriteBackConsent.AUTO_APPLY,
+    asked_at: datetime = datetime(2026, 10, 3, 18, 0, 13, tzinfo=UTC),
 ) -> tuple[StatusCollector, FakeIssueTracker, FakeChatProvider, InMemoryGraphStore]:
     """Raj on qa2 before R2: INS-2 (!1 open), INS-3 (!2 merged) In Progress, INS-4 To Do."""
     store = InMemoryGraphStore()
-    asked_at = datetime(2026, 10, 3, 18, 0, 13, tzinfo=UTC)
+    await store.upsert_node(Developer(tenant_id=_TENANT, id=_RAJ, name="Raj Iyer"))
     await store.record_checkin(
         CheckIn(
             tenant_id=_TENANT,
@@ -586,6 +587,7 @@ async def _raj_r2_collector(
             replied_at=None,
             raw_reply=None,
             signals=None,
+            checkin_date=asked_at.date(),
         )
     )
     await store.record_checkin_correlation(
@@ -634,6 +636,7 @@ async def _raj_r2_collector(
             status_repository=store,
             identity_link_repository=store,
             time_series_repository=store,
+            graph_repository=store,
         ),
         model="test-model",
     )
@@ -701,7 +704,14 @@ async def test_raj_r2_answer_to_the_follow_up_keeps_ins2_and_ins3_from_his_first
     assert (rows["INS-2"].status, rows["INS-2"].source) == (WriteBackStatus.DECLINED, "open_mr")
     assert (rows["INS-3"].status, rows["INS-3"].target_state) == (WriteBackStatus.APPLIED, "done")
     assert tracker.transitions == [(_TENANT, "INS-3", "done")]
-    assert tracker.comments == [(_TENANT, "INS-3", "Merged in insights-pipeline !2.")]
+    assert tracker.comments == [
+        (
+            _TENANT,
+            "INS-3",
+            "Moved to Done by OpenProgram: Raj Iyer reported it merged "
+            "(acme/insights-pipeline !2) in the 2026-10-03 check-in.",
+        )
+    ]
 
     # The status and its summary carry both messages: no blockers (first), ETA (answer).
     status = second.status
@@ -846,3 +856,63 @@ async def test_close_out_of_an_unanswered_follow_up_keeps_the_first_replys_claim
     ]
     assert "clarification timeout" in status.summary
     assert tracker.transitions == [(_TENANT, "INS-3", "done")]
+
+
+# --- N20: Raj's R3 INS-3 write-back comment ---
+
+# R3 00:04, Raj's one message, and how the parser read it (checkins.signals).
+_RAJ_R3_TEXT = (
+    "Morning. INS-2 is still waiting on insights-pipeline !1, no reviewer picked it up yet "
+    "so no movement. INS-3 is merged on !2, but Jira still shows it In Progress. INS-4 not "
+    "started, plan is Monday after !1 lands. No blockers otherwise."
+)
+_RAJ_R3_EVALUATION = _evaluation(
+    progress_note=(
+        "INS-2 waiting on review of insights-pipeline !1; INS-3 merged on !2; INS-4 not "
+        "started, planned for Monday; no blockers"
+    ),
+    issue_updates=[
+        {
+            "issue_key": "INS-2",
+            "claimed_done": False,
+            "claimed_state": "waiting for review",
+            "note": "Code complete, waiting for insights-pipeline !1 review.",
+        },
+        {
+            "issue_key": "INS-3",
+            "claimed_done": True,
+            "claimed_state": "merged",
+            "note": "Merged on !2, Jira not updated yet.",
+        },
+        {
+            "issue_key": "INS-4",
+            "claimed_done": False,
+            "claimed_state": "not started",
+            "note": "Planned to start Monday after !1 merges.",
+        },
+    ],
+    blockers_answered=True,
+    eta_answered=True,
+)
+
+
+async def test_raj_r3_ins3_comment_is_neutral_and_names_the_merge_request() -> None:
+    collector, tracker, _, store = await _raj_r2_collector(
+        [_RAJ_R3_EVALUATION], asked_at=datetime(2026, 10, 4, 0, 0, 8, tzinfo=UTC)
+    )
+
+    outcome = await collector.handle_reply(
+        _raj_says(_RAJ_R3_TEXT, "msg-raj-r3", datetime(2026, 10, 4, 0, 4, 18, tzinfo=UTC))
+    )
+
+    assert outcome.kind == "processed"
+    assert tracker.transitions == [(_TENANT, "INS-3", "done")]
+    expected = (
+        "Moved to Done by OpenProgram: Raj Iyer reported it merged "
+        "(acme/insights-pipeline !2) in the 2026-10-04 check-in."
+    )
+    assert tracker.comments == [(_TENANT, "INS-3", expected)]
+    assert (await _rows_by_issue(store))["INS-3"].comment == expected
+    # Nothing the person (or the parser) wrote reaches Jira.
+    posted = " ".join(body for _, _, body in tracker.comments)
+    assert "Jira not updated yet" not in posted and "Jira still shows" not in posted

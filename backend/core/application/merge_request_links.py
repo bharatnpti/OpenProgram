@@ -61,6 +61,22 @@ def is_open_merge_request(fact: FactEvent) -> bool:
     return fact.payload.get("state") not in ("merged", "closed")
 
 
+def is_merged_merge_request(fact: FactEvent) -> bool:
+    """Merged, by the provider-neutral flag or state."""
+    return fact.payload.get("merged") is True or fact.payload.get("state") == "merged"
+
+
+def merge_request_reference(fact: FactEvent) -> str:
+    """The request with its full repository path: ``acme/insights-pipeline !2``."""
+    repo = _payload_str(fact.payload, "repo") or "repo"
+    return f"{repo.rstrip('/')} {_sigil(fact)}{_payload_str(fact.payload, 'id') or '?'}"
+
+
+def _sigil(fact: FactEvent) -> str:
+    web_url = _payload_str(fact.payload, "web_url") or ""
+    return "!" if "/merge_requests/" in web_url else "#"
+
+
 def merge_request_label(fact: FactEvent) -> str:
     """How a person names the request: ``insights-pipeline !1`` (GitLab) or ``api #4``."""
     repo = _payload_str(fact.payload, "repo") or "repo"
