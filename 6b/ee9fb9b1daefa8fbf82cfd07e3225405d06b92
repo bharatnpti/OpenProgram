@@ -1,0 +1,64 @@
+backend/core/application/risk_service.py
+  s_027fd12d872fd7::t_21e78f5ef3de9a 18-19,36,89-92,122-123,126-162,179-277,279-293,678-679,681-685,698,727-728,1338-1384
+  s_027fd12d872fd7::t_218b2ede88f3fc 278
+  s_027fd12d872fd7::t_9464c3cd25d453 1385-1386
+backend/api/dependencies.py
+  s_027fd12d872fd7::t_61f6925b6e5d16 241-243
+backend/core/application/rollup_service.py
+  s_027fd12d872fd7::t_218b2ede88f3fc 94
+  s_027fd12d872fd7::t_124b22127ae2ce 50-57,65,70,79
+  s_027fd12d872fd7::t_099c99f466ca66 214
+  s_027fd12d872fd7::t_ec8d3f1172cd30 453,455-459,464
+  s_027fd12d872fd7::t_8ff72f6da4f356 5,14,19-29
+  s_027fd12d872fd7::t_e39e5192abf500 175-184,190
+  s_027fd12d872fd7::t_8daab21a9c9be0 324-361
+  s_027fd12d872fd7::t_46ff34f3671ddc 30
+backend/core/application/persona_views.py
+  s_027fd12d872fd7::t_af84b6ed6bc6f7 1502,1504-1505
+  s_027fd12d872fd7::t_6bc712b7a0bac1 319,321,328
+  s_027fd12d872fd7::t_0732a69c37809b 1501,1503
+  s_027fd12d872fd7::t_74a2ee64c75760 1568-1571,1579
+  s_027fd12d872fd7::t_accf34685c1568 10
+  s_027fd12d872fd7::t_325b78b1875756 1678-1724
+backend/core/application/blocker_resolution.py
+  s_027fd12d872fd7::t_b731eb09cac5ab 98-114
+backend/core/domain/rollup.py
+  s_027fd12d872fd7::t_1c958ca304a0d9 29-33
+backend/tests/unit/test_rollup_refresh.py
+  s_027fd12d872fd7::t_00c9461940480f 372-378,395
+  s_027fd12d872fd7::t_ede2b9ca5a84f3 396-397
+backend/tests/unit/test_rollup_drift.py
+  s_027fd12d872fd7::t_dcc37228c87e9a 467-533
+  s_027fd12d872fd7::t_18206caeda77ad 14
+  s_027fd12d872fd7::t_6c64458a4d573e 1-13,15-17,19-373,381-466
+  s_027fd12d872fd7::t_a059c08354eed5 18
+  s_027fd12d872fd7::t_a20b9091114ce5 374-380
+frontend-v2/src/features/today/heroDetail.ts
+  s_027fd12d872fd7::t_14e321947c5fff 167,179,200-202
+backend/infra/workflows/rollup.py
+  s_027fd12d872fd7::t_cd23d6901a508d 135-154
+  s_027fd12d872fd7::t_0c790439e0f8dd 8,12
+  s_027fd12d872fd7::t_a6594c57977c6f 70,74-75
+backend/core/domain/risk.py
+  s_027fd12d872fd7::t_bfe46d98f4faaf 119-140
+  s_027fd12d872fd7::t_b319e17443cb28 55-59,99-102
+  s_027fd12d872fd7::t_3123a0255ef84c 118
+frontend-v2/src/features/today/heroDetail.test.ts
+  s_027fd12d872fd7::t_4e786427bd5be1 223-262
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6bee9fb9b1daefa8fbf82cfd07e3225405d06b92",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
