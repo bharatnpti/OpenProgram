@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
 
 from core.application.authorization import AuthorizationPolicy, Capability
+from core.application.sync_services import IssueReadSyncService
 from core.application.writeback_service import (
     NO_CHANGE_SOURCE,
     NOT_OWNER_SOURCE,
@@ -18,7 +20,7 @@ from core.application.writeback_service import (
 )
 from core.domain.auth import Principal
 from core.domain.errors import ProviderUnavailable
-from core.domain.graph import EntityRef, FactEvent, NodeKind, Task
+from core.domain.graph import Developer, EntityRef, FactEvent, NodeKind, Task
 from core.domain.identity import IdentityLink
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.status import CheckInPreference, IssueClaim, WriteBackConsent
@@ -76,7 +78,7 @@ def _build(
     policy: AuthorizationPolicy | None = None,
     developer_id: str = _DEV,
     identity_links: FakeIdentityLinkRepository | None = None,
-    facts: FakeTimeSeriesRepository | None = None,
+    facts: FakeTimeSeriesRepository | InMemoryGraphStore | None = None,
     graph: InMemoryGraphStore | None = None,
 ) -> tuple[WriteBackService, FakeIssueTracker, FakeWriteBackAuditRepository]:
     issue_tracker = tracker or FakeIssueTracker(
@@ -1251,3 +1253,155 @@ async def test_a_failed_read_is_still_recorded_when_the_claim_would_change_the_i
     assert [(row.status, row.before_state) for row in results] == [(WriteBackStatus.FAILED, None)]
     assert tracker.transitions == []
     assert tracker.comments == []
+
+
+# --- N9: OpenProgram's own copy of the issue follows a write right away ---
+
+_MOVED_AT = datetime(2026, 10, 4, 0, 4, 53, tzinfo=UTC)
+_STATUS_NAMES = {
+    IssueState.TODO: "To Do",
+    IssueState.IN_PROGRESS: "In Progress",
+    IssueState.DONE: "Done",
+    IssueState.BLOCKED: "Blocked",
+}
+
+
+class _MovingIssueTracker(FakeIssueTracker):
+    """A tracker whose transition really moves the issue, as Jira does (no review state)."""
+
+    async def transition(self, tenant_id: str, key: str, to_state: str) -> None:
+        await super().transition(tenant_id, key, to_state)
+        state = {
+            "todo": IssueState.TODO,
+            "in_progress": IssueState.IN_PROGRESS,
+            "in_review": IssueState.IN_PROGRESS,
+            "blocked": IssueState.BLOCKED,
+            "done": IssueState.DONE,
+        }[to_state]
+        issue = self.issues[key]
+        self.issues[key] = replace(
+            issue,
+            state=state,
+            updated_at=_MOVED_AT,
+            metadata={**issue.metadata, "status": _STATUS_NAMES[state]},
+        )
+
+
+def _ins3(state: IssueState) -> Issue:
+    return Issue(
+        tenant_id=_TENANT,
+        key="INS-3",
+        title="Duplicate events in hourly rollup",
+        state=state,
+        assignee=UserRef(tenant_id=_TENANT, external_id=_DEV),
+        updated_at=datetime(2026, 10, 2, 16, 41, tzinfo=UTC),
+        metadata={"project_key": "INS", "status": _STATUS_NAMES[state], "issue_type": "Task"},
+    )
+
+
+async def _synced_store(tracker: FakeIssueTracker) -> InMemoryGraphStore:
+    """A store the hourly issue sync has filled from ``tracker``."""
+    store = InMemoryGraphStore()
+    await store.upsert_node(Developer(tenant_id=_TENANT, id=_DEV, name="Raj Iyer"))
+    await IssueReadSyncService(
+        issue_tracker=tracker,
+        graph_repository=store,
+        time_series_repository=store,
+        cursor_repository=store,
+    ).sync_project(tenant_id=_TENANT, project_key="INS")
+    return store
+
+
+async def _issue_facts(store: InMemoryGraphStore) -> list[FactEvent]:
+    return await store.list_facts(
+        _TENANT, EntityRef(tenant_id=_TENANT, kind=NodeKind.TASK, id="INS-3")
+    )
+
+
+_INS3_MERGED = IssueClaim(issue_key="INS-3", claimed_done=True, claimed_state="merged")
+
+
+async def test_applied_write_updates_the_local_issue_as_the_next_sync_would() -> None:
+    # R3: INS-3 moved to Done at 00:04, but OpenProgram read In Progress (and kept the
+    # merged_issue_open drift) until the 01:00 sync.
+    tracker = _MovingIssueTracker(issues={"INS-3": _ins3(IssueState.IN_PROGRESS)})
+    store = await _synced_store(tracker)
+    service, _, _ = _build(tracker=tracker, default_enabled=True, graph=store, facts=store)
+
+    [row] = await service.apply_from_checkin(
+        tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION, claims=[_INS3_MERGED]
+    )
+
+    assert row.status is WriteBackStatus.APPLIED
+    node = await store.get_node(_TENANT, "INS-3")
+    assert node is not None and node.metadata["state"] == "done"
+    # Exactly what the next sync writes for the moved issue: same node, same fact key.
+    after_sync = await _synced_store(tracker)
+    assert node == await after_sync.get_node(_TENANT, "INS-3")
+    latest = (await _issue_facts(store))[-1]
+    [synced_fact] = await _issue_facts(after_sync)
+    assert (latest.correlation_id, latest.payload, latest.observed_at) == (
+        synced_fact.correlation_id,
+        synced_fact.payload,
+        synced_fact.observed_at,
+    )
+    assert latest.payload["state"] == "done"
+
+
+class _ReadOnceTracker(_MovingIssueTracker):
+    """Readable for the write itself, then down (the read-back fails)."""
+
+    reads = 0
+
+    async def get_issue(self, tenant_id: str, key: str) -> Issue:
+        self.reads += 1
+        if self.reads > 1:
+            raise ProviderUnavailable("tracker down after the write")
+        return await super().get_issue(tenant_id, key)
+
+
+async def test_a_failed_read_back_still_moves_the_local_state() -> None:
+    tracker = _ReadOnceTracker(issues={"INS-3": _ins3(IssueState.IN_PROGRESS)})
+    store = await _synced_store(
+        _MovingIssueTracker(issues={"INS-3": _ins3(IssueState.IN_PROGRESS)})
+    )
+    service, _, _ = _build(tracker=tracker, default_enabled=True, graph=store, facts=store)
+
+    await service.apply_from_checkin(
+        tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION, claims=[_INS3_MERGED]
+    )
+
+    node = await store.get_node(_TENANT, "INS-3")
+    assert node is not None
+    assert (node.metadata["state"], node.metadata["status"]) == ("done", "In Progress")
+
+
+async def test_revert_moves_the_local_issue_back() -> None:
+    tracker = _MovingIssueTracker(issues={"INS-3": _ins3(IssueState.IN_PROGRESS)})
+    store = await _synced_store(tracker)
+    service, _, _ = _build(tracker=tracker, default_enabled=True, graph=store, facts=store)
+    [applied] = await service.apply_from_checkin(
+        tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION, claims=[_INS3_MERGED]
+    )
+
+    reverted = await service.revert(applied)
+
+    assert reverted is not None and reverted.status is WriteBackStatus.REVERTED
+    node = await store.get_node(_TENANT, "INS-3")
+    assert node is not None and node.metadata["state"] == "in_progress"
+
+
+async def test_a_failed_write_leaves_the_local_issue_alone() -> None:
+    tracker = _FailingIssueTracker(issues={"INS-3": _ins3(IssueState.IN_PROGRESS)})
+    store = await _synced_store(tracker)
+    service, _, _ = _build(tracker=tracker, default_enabled=True, graph=store, facts=store)
+    facts_before = await _issue_facts(store)
+
+    [row] = await service.apply_from_checkin(
+        tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION, claims=[_INS3_MERGED]
+    )
+
+    assert row.status is WriteBackStatus.FAILED
+    node = await store.get_node(_TENANT, "INS-3")
+    assert node is not None and node.metadata["state"] == "in_progress"
+    assert await _issue_facts(store) == facts_before
