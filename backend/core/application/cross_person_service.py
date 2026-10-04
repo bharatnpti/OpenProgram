@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import structlog
 
-from core.application.blocker_settlement import BlockerSettlement
+from core.application.blocker_settlement import BlockerSettlement, cleared_by_merge
 from core.application.counterpart_replies import (
     CounterpartReplyReading,
     eta_phrase,
@@ -258,7 +258,7 @@ class CrossPersonRequestService:
         await self._append_fact(updated, transition=CrossPersonRequestStatus.RESOLVED.value)
         told = await self._told_about_a_copy(updated)
         await self._close_repeats(updated, updated.updated_at)
-        await self._settle_blockers(updated, updated.updated_at)
+        await self._settle_blockers(updated, updated.updated_at, merged=merged)
         if told:
             return updated
         try:
@@ -293,13 +293,22 @@ class CrossPersonRequestService:
             )
         )
 
-    async def _settle_blockers(self, request: CrossPersonRequest, resolved_at: datetime) -> None:
+    async def _settle_blockers(
+        self,
+        request: CrossPersonRequest,
+        resolved_at: datetime,
+        *,
+        merged: tuple[FactEvent, ...] = (),
+    ) -> None:
         """Close the requester's blockers that waited on this request (N19).
 
         Its copies are closed first and are no rival; any other request the
         requester still has open is, so a blocker waiting on two people stays
         open until both are done. A failure is logged and leaves the blocker
         to the next merge pass or check-in: the request is resolved either way.
+        ``merged`` are the merge requests that resolved it, if a merge did: the
+        requester's summary then says "CHK-17 merged" rather than that the
+        request was resolved (N34).
         """
         if self.blocker_settlement is None:
             return
@@ -314,7 +323,14 @@ class CrossPersonRequestService:
                 if other.id != request.id and not is_repeat_of(request, other, vague_matches=False)
             ]
             await self.blocker_settlement.settle_for_request(
-                request, resolved_at=resolved_at, open_requests=others
+                request,
+                resolved_at=resolved_at,
+                open_requests=others,
+                cleared_by=(
+                    cleared_by_merge(request_subject(request).issue_keys, merged)
+                    if merged
+                    else None
+                ),
             )
         except Exception as error:
             _logger.warning(
