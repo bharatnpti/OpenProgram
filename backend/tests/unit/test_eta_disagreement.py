@@ -35,7 +35,7 @@ from core.domain.graph import (
 from core.domain.messaging import ChatUserRef, InboundMessage
 from core.domain.risk import DriftFinding, DriftFindingKind, RiskProviderConfig
 from core.domain.rollup import Rag
-from core.domain.status import CheckIn, IssueClaim
+from core.domain.status import CheckIn, CheckInPreference, IssueClaim
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from tests.contract.fakes import FakeChatProvider, FakeIssueTracker
 from tests.unit.test_status_collector import SequenceLlmProvider
@@ -172,7 +172,12 @@ async def _seed(store: InMemoryGraphStore, *, ira_works_on_chk_4: bool = True) -
 
 
 async def _check_in(
-    store: InMemoryGraphStore, developer: str, evaluation: str, minute: int
+    store: InMemoryGraphStore,
+    developer: str,
+    evaluation: str,
+    minute: int,
+    *,
+    received_at: datetime | None = None,
 ) -> None:
     collector = StatusCollector(
         issue_tracker=FakeIssueTracker(),
@@ -193,7 +198,7 @@ async def _check_in(
             thread_id=f"thread-{developer}",
             message_id=f"msg-{developer}",
             correlation_id=f"corr-{developer}",
-            received_at=datetime(2026, 10, 4, 0, minute, tzinfo=UTC),
+            received_at=received_at or datetime(2026, 10, 4, 0, minute, tzinfo=UTC),
         )
     )
     assert outcome.kind == "processed"
@@ -345,7 +350,7 @@ async def test_owner_early_next_week_and_teammate_end_of_week_disagree() -> None
     findings = await _drift(store, "proj-idp")
 
     assert [finding.reason for finding in findings] == [
-        "ETAs disagree for IDP-3: Noah Weber (owner) said early next week, Oct 12 to Oct 14; "
+        "ETAs disagree for IDP-3: Noah Weber (owner) said early next week, Oct 5 to Oct 7; "
         "Ira Novak said end of week, Oct 9. The owner's ETA is the one used."
     ]
     assert findings[0].owner_id == _NOAH
@@ -353,7 +358,7 @@ async def test_owner_early_next_week_and_teammate_end_of_week_disagree() -> None
     assert {
         (fact.payload["developer_id"], fact.payload["eta_start"], fact.payload["eta_date"])
         for fact in facts
-    } == {(_NOAH, "2026-10-12", "2026-10-14"), (_IRA, "2026-10-09", "2026-10-09")}
+    } == {(_NOAH, "2026-10-05", "2026-10-07"), (_IRA, "2026-10-09", "2026-10-09")}
 
 
 async def test_overlapping_windows_do_not_disagree() -> None:
@@ -418,25 +423,25 @@ async def test_one_person_alone_never_disagrees() -> None:
         ("Should wrap up today", "in progress", IssueEta(label="today", day=_DAY)),
         ("Done tomorrow", None, IssueEta(label="tomorrow", day=date(2026, 10, 5))),
         ("", "ready by end of the week", IssueEta(label="end of week", day=date(2026, 10, 9))),
-        ("Next Monday", None, IssueEta(label="next Monday", day=date(2026, 10, 12))),
+        ("Next Monday", None, IssueEta(label="next Monday", day=date(2026, 10, 5))),
         ("ETA Oct 14", None, IssueEta(label="Oct 14", day=date(2026, 10, 14))),
         ("due 2026-10-20", None, IssueEta(label="Oct 20", day=date(2026, 10, 20))),
-        # N31, R4 live: vague ETAs are windows from the check-in date (a Sunday,
-        # so "this week" is the week ahead and "next week" the one after).
+        # N31, R4 live: vague ETAs are windows from the check-in date. It is a
+        # Sunday, so "this week" and "next week" are both the coming week (N47).
         (
             "Will close after identity-service !1 is reviewed, likely early next week",
             "pending review",
-            IssueEta(label="early next week", start=date(2026, 10, 12), day=date(2026, 10, 14)),
+            IssueEta(label="early next week", start=date(2026, 10, 5), day=date(2026, 10, 7)),
         ),
         (
             "Should land next week",
             None,
-            IssueEta(label="next week", start=date(2026, 10, 12), day=date(2026, 10, 16)),
+            IssueEta(label="next week", start=date(2026, 10, 5), day=date(2026, 10, 9)),
         ),
         (
             "Ready by end of next week",
             None,
-            IssueEta(label="end of next week", start=date(2026, 10, 15), day=date(2026, 10, 16)),
+            IssueEta(label="end of next week", start=date(2026, 10, 8), day=date(2026, 10, 9)),
         ),
         (
             "MR !4 is idle. ETA 2-3 days, reviewing with team",
@@ -494,6 +499,140 @@ def test_issue_eta_reads_the_day_a_claim_names(
     claim = IssueClaim(issue_key="CHK-4", claimed_state=state, note=note)
 
     assert issue_eta(claim, _DAY) == expected
+
+
+# N47, R5 live: on a weekday "this week" is that week and "next week" the one
+# after it; on a Saturday or Sunday both are the coming Monday to Friday. Each
+# row: the check-in date, then next week, early next week, this week's Friday
+# and next Tuesday.
+_WEEK_OF_OCT_5 = (date(2026, 10, 5), date(2026, 10, 9))
+_EARLY_WEEK_OF_OCT_5 = (date(2026, 10, 5), date(2026, 10, 7))
+_WEEK_OF_OCT_12 = (date(2026, 10, 12), date(2026, 10, 16))
+_EARLY_WEEK_OF_OCT_12 = (date(2026, 10, 12), date(2026, 10, 14))
+
+
+@pytest.mark.parametrize(
+    ("stated_on", "next_week", "early_next_week", "this_week", "next_tuesday"),
+    [
+        # Weekdays of the week of Sep 28: next week is the week of Oct 5.
+        (
+            date(2026, 9, 28),
+            _WEEK_OF_OCT_5,
+            _EARLY_WEEK_OF_OCT_5,
+            date(2026, 10, 2),
+            date(2026, 10, 6),
+        ),
+        (
+            date(2026, 9, 30),  # Wednesday: next Tuesday is not 13 days off
+            _WEEK_OF_OCT_5,
+            _EARLY_WEEK_OF_OCT_5,
+            date(2026, 10, 2),
+            date(2026, 10, 6),
+        ),
+        (
+            date(2026, 10, 2),
+            _WEEK_OF_OCT_5,
+            _EARLY_WEEK_OF_OCT_5,
+            date(2026, 10, 2),
+            date(2026, 10, 6),
+        ),
+        # The weekend: this week and next week are both the week of Oct 5.
+        (
+            date(2026, 10, 3),
+            _WEEK_OF_OCT_5,
+            _EARLY_WEEK_OF_OCT_5,
+            date(2026, 10, 9),
+            date(2026, 10, 6),
+        ),
+        (
+            date(2026, 10, 4),
+            _WEEK_OF_OCT_5,
+            _EARLY_WEEK_OF_OCT_5,
+            date(2026, 10, 9),
+            date(2026, 10, 6),
+        ),
+        # Monday Oct 5: this week is the week of Oct 5, next week the one after.
+        (
+            date(2026, 10, 5),
+            _WEEK_OF_OCT_12,
+            _EARLY_WEEK_OF_OCT_12,
+            date(2026, 10, 9),
+            date(2026, 10, 13),
+        ),
+    ],
+)
+def test_next_week_is_the_coming_week_on_a_weekend_and_the_week_after_on_a_weekday(
+    stated_on: date,
+    next_week: tuple[date, date],
+    early_next_week: tuple[date, date],
+    this_week: date,
+    next_tuesday: date,
+) -> None:
+    def read(note: str) -> IssueEta | None:
+        return issue_eta(IssueClaim(issue_key="CHK-4", claimed_state=None, note=note), stated_on)
+
+    assert read("Should land next week") == IssueEta(
+        label="next week", start=next_week[0], day=next_week[1]
+    )
+    assert read("Likely early next week") == IssueEta(
+        label="early next week", start=early_next_week[0], day=early_next_week[1]
+    )
+    assert read("Should wrap this week") == IssueEta(label="end of week", day=this_week)
+    assert read("Ready by end of week") == IssueEta(label="end of week", day=this_week)
+    assert read("Ready by next Tuesday") == IssueEta(label="next Tuesday", day=next_tuesday)
+
+
+async def test_early_next_week_on_a_sunday_is_the_coming_monday_to_wednesday() -> None:
+    # N47, R5 live: Noah, IDP-3's owner, said "likely early next week" on Sunday,
+    # Oct 4 (his local check-in date). It read as Oct 12 to Oct 14, so it missed
+    # a teammate's "Tuesday" (Oct 6) and turned Noah, Identity and the programme
+    # amber. It is Oct 5 to Oct 7, which a Tuesday ETA shares.
+    store = InMemoryGraphStore()
+    await _seed_identity(store, ira_roles="dev")
+    await _works_on(store, _IRA, "IDP-3", via="branch")
+
+    await _check_in(store, _NOAH, _NOAH_R5, 6)
+    await _check_in(store, _IRA, _eta_claim("IDP-3", None, "Should be merged by Tuesday"), 8)
+
+    assert await _drift(store, "proj-idp") == []
+    assert _NOAH not in await _risks(store).owner_drift(_TENANT, _DAY)
+    facts = await store.list_recent_facts(_TENANT, sources=("checkin_drift",))
+    assert {
+        (fact.payload["developer_id"], fact.payload["eta_start"], fact.payload["eta_date"])
+        for fact in facts
+        if fact.payload["kind"] == "eta_stated"
+    } == {(_NOAH, "2026-10-05", "2026-10-07"), (_IRA, "2026-10-06", "2026-10-06")}
+
+
+async def test_the_week_is_read_from_the_persons_local_check_in_date() -> None:
+    # N47: the week is counted from the check-in date in the person's time
+    # zone. Noah's Sunday evening in Los Angeles is already Monday in UTC, and
+    # "early next week" is still the coming Monday to Wednesday.
+    store = InMemoryGraphStore()
+    await store.upsert_node(Developer(tenant_id=_TENANT, id=_NOAH, name="Noah Weber"))
+    await store.record_checkin_preference(
+        CheckInPreference(tenant_id=_TENANT, developer_id=_NOAH, timezone="America/Los_Angeles")
+    )
+    await store.record_checkin(
+        CheckIn(
+            tenant_id=_TENANT,
+            developer_id=_NOAH,
+            correlation_id=f"corr-{_NOAH}",
+            asked_at=datetime(2026, 10, 5, 0, 0, tzinfo=UTC),  # Sun 17:00 local
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+
+    await _check_in(store, _NOAH, _NOAH_R5, 0, received_at=datetime(2026, 10, 5, 2, 0, tzinfo=UTC))
+
+    facts = await store.list_recent_facts(_TENANT, sources=("checkin_drift",))
+    assert [
+        (fact.payload["as_of"], fact.payload["eta_start"], fact.payload["eta_date"])
+        for fact in facts
+        if fact.payload["kind"] == "eta_stated"
+    ] == [("2026-10-04", "2026-10-05", "2026-10-07")]
 
 
 # N43, R5 live (checkins.signals, 2026-10-04 12:08): Ira, a scrum master, on
@@ -578,7 +717,7 @@ async def test_an_eta_from_someone_who_neither_owns_nor_works_the_issue_is_conte
         (fact.payload["developer_id"], fact.payload["eta_start"], fact.payload["eta_date"])
         for fact in facts
         if fact.payload["kind"] == "eta_stated"
-    } == {(_IRA, "2026-10-09", "2026-10-09"), (_NOAH, "2026-10-12", "2026-10-14")}
+    } == {(_IRA, "2026-10-09", "2026-10-09"), (_NOAH, "2026-10-05", "2026-10-07")}
 
 
 # A commit message, or a merge request's branch or title, naming IDP-3 makes
@@ -597,7 +736,7 @@ async def test_etas_of_two_people_who_work_the_issue_still_disagree(
     await _check_in(store, _NOAH, _NOAH_R5, 9)
 
     assert [finding.reason for finding in await _drift(store, "proj-idp")] == [
-        "ETAs disagree for IDP-3: Noah Weber (owner) said early next week, Oct 12 to Oct 14; "
+        "ETAs disagree for IDP-3: Noah Weber (owner) said early next week, Oct 5 to Oct 7; "
         "Ira Novak said end of week, Oct 9. The owner's ETA is the one used."
     ]
     owner_drift = await _risks(store).owner_drift(_TENANT, _DAY)
@@ -676,6 +815,6 @@ async def test_a_managers_eta_on_a_developers_issue_is_context_but_the_assignees
 
     assert [finding.reason for finding in findings] == [
         "ETAs disagree for IDP-3: Ira Novak (owner) said end of week, Oct 9; "
-        "Noah Weber said early next week, Oct 12 to Oct 14. The owner's ETA is the one used."
+        "Noah Weber said early next week, Oct 5 to Oct 7. The owner's ETA is the one used."
     ]
     assert findings[0].owner_id == _IRA
