@@ -967,6 +967,54 @@ async def test_auto_apply_issue_keys_is_empty_without_standing_consent() -> None
     assert keys == frozenset()
 
 
+async def test_dry_run_reports_what_an_always_ask_person_would_be_asked_about() -> None:
+    # N41 (R5): under always_ask the dry run used to report nothing, so the
+    # check-in kept asking Omar "is CHK-17 complete?" before the consent question.
+    service, tracker, audit = _build(
+        tracker=_team_tracker(),
+        default_enabled=True,
+        consent=WriteBackConsent.ALWAYS_ASK,
+        developer_id=_NOAH,
+        identity_links=_team_links(),
+    )
+    claims = [
+        IssueClaim(issue_key="IDP-5", claimed_done=True),  # his, would be proposed
+        IssueClaim(issue_key="CHK-6", claimed_state="in progress"),  # his, no change
+        IssueClaim(issue_key="CHK-15", claimed_state="in progress"),  # Sofia's
+    ]
+
+    dry_run = await service.dry_run(tenant_id=_TENANT, developer_id=_NOAH, claims=claims)
+    keys = await service.auto_apply_issue_keys(tenant_id=_TENANT, developer_id=_NOAH, claims=claims)
+
+    assert dry_run.proposed == frozenset({"IDP-5"})
+    assert dry_run.written == frozenset()
+    assert keys == frozenset()  # nothing is written without the yes
+    assert tracker.transitions == []
+    assert audit.audits == {}  # a dry run proposes nothing either
+
+
+async def test_dry_run_reports_nothing_for_consent_never() -> None:
+    service, _, _ = _build(
+        tracker=_team_tracker(),
+        default_enabled=True,
+        consent=WriteBackConsent.NEVER,
+        developer_id=_NOAH,
+        identity_links=_team_links(),
+    )
+
+    dry_run = await service.dry_run(
+        tenant_id=_TENANT,
+        developer_id=_NOAH,
+        claims=[IssueClaim(issue_key="IDP-5", claimed_done=True)],
+    )
+
+    assert (dry_run.written, dry_run.proposed, dict(dry_run.held_for_open_mr)) == (
+        frozenset(),
+        frozenset(),
+        {},
+    )
+
+
 def test_target_state_label_names_canonical_states_and_keeps_free_text() -> None:
     assert target_state_label("in_review") == "In Review"
     assert target_state_label("done") == "Done"
