@@ -64,6 +64,11 @@ from core.application.status_summaries import (
     stale_summary,
     with_no_active_work,
 )
+from core.application.team_context import (
+    coordinates_team,
+    gives_team_context,
+    with_team_context,
+)
 from core.application.tools.conversation_history import MAX_HISTORY_LIMIT, ConversationHistoryTool
 from core.application.tools.git_activity import GitActivityTool
 from core.application.tools.issue_tracker import IssueTrackerTool
@@ -147,6 +152,8 @@ COMPOSE_NUDGE_SYSTEM_PROMPT = (
 OUTBOUND_DM_MAX_CHARS = 320
 # The one ack a check-in gets for replies that carry no status (N22).
 NON_STATUS_ACK_TEXT = "Thanks. I'll keep the check-in open for your status update."
+# The blockers follow-up for a coordinator whose reply names no issue (N16).
+_TEAM_BLOCKERS_QUESTION = "Thanks. Is anything blocking your team?"
 # Opens the note a status gets for blockers carried from an earlier day. The
 # next check-in question leaves it out: those blockers may have resolved (N32).
 _CARRIED_FORWARD_LEAD = "Prior blockers carried forward until explicitly resolved:"
@@ -402,6 +409,14 @@ class StatusCollector:
         decision = await self._without_tracker_update_question(checkin, decision, earlier=earlier)
         decision = self._without_answered_follow_up(checkin, decision, earlier=earlier)
         decision = await self._without_eta_question_for_others(checkin, decision)
+        # A coordinator owes no ETA, and a reply of theirs that gives team
+        # context is their whole status (N16). None for anyone else.
+        coordinator = await self._coordinates_without_own_work(checkin)
+        messages_text = _checkin_messages_text(checkin, conversation_turns, message)
+        team_context = _coordinator_team_context(
+            coordinator, _merged_or_earlier(earlier, decision.signals), messages_text
+        )
+        decision = _without_coordinator_follow_up(checkin, decision, team_context)
         if not decision.is_status_update:
             await self._send_non_status_ack(checkin=checkin, message=message)
             span.set_attribute("openprogram.reply_classification", "non_status")
@@ -419,6 +434,7 @@ class StatusCollector:
             earlier=earlier,
             prior_blockers=prior_blockers,
             clarification_count=clarification_count,
+            team_context=team_context,
         )
         if insufficient_outcome is not None:
             await self._hold_cross_person_requests(
@@ -456,12 +472,16 @@ class StatusCollector:
         merged = await self._without_eta_for_others_work(
             checkin, merge_checkin_signals(earlier, signals)
         )
+        merged = _as_coordinator_signals(
+            merged, _coordinator_team_context(coordinator, merged, messages_text)
+        )
         required_details_outcome = await self._maybe_required_details_clarification(
             checkin=checkin,
             message=message,
             signals=merged,
             reconciliation=reconciliation,
             clarification_count=clarification_count,
+            coordinator=coordinator,
         )
         if required_details_outcome is not None:
             await self._hold_cross_person_requests(
@@ -750,6 +770,7 @@ class StatusCollector:
         earlier: CheckInSignals | None,
         prior_blockers: tuple[DeveloperBlocker, ...],
         clarification_count: int,
+        team_context: bool | None = None,
     ) -> ReplyOutcome | None:
         """Ask for what the reply left out, keeping hold of what it did say.
 
@@ -763,6 +784,7 @@ class StatusCollector:
         and its timeout finalizer still own the turn. What it said is merged with
         the ``earlier`` messages of the check-in and kept on the open check-in,
         so the answer to this question is merged with it in turn.
+        ``team_context`` is set for a coordinator (N16), who owes no ETA.
         """
         if (
             decision.sufficient
@@ -773,7 +795,9 @@ class StatusCollector:
         partial_status: DeveloperStatus | None = None
         merged: CheckInSignals | None = earlier
         if decision.signals is not None:
-            merged = merge_checkin_signals(earlier, decision.signals)
+            merged = _as_coordinator_signals(
+                merge_checkin_signals(earlier, decision.signals), team_context
+            )
             await self._hold_open_checkin_signals(checkin, merged)
             partial_status = await self._record_partial_checkin_status(
                 checkin=checkin,
@@ -805,6 +829,7 @@ class StatusCollector:
         signals: CheckInSignals,
         reconciliation: BlockerReconciliation,
         clarification_count: int,
+        coordinator: bool = False,
     ) -> ReplyOutcome | None:
         required_check_signals = _signals_with_open_blockers(signals, reconciliation)
         missing_required = _missing_required_status_details(required_check_signals)
@@ -817,14 +842,21 @@ class StatusCollector:
             signals=required_check_signals,
             reconciliation=reconciliation,
         )
+        # An ETA is asked only for the person's own issues (N33).
+        subject = await self._follow_up_subject(
+            checkin, signals, own_only="eta" in missing_required
+        )
+        question = (
+            # A coordinator owes no ETA (N16), so only blockers can be missing;
+            # with no issue to name they are the team's.
+            _TEAM_BLOCKERS_QUESTION
+            if coordinator and subject is None and missing_required == ("blockers",)
+            else _missing_required_status_question(missing_required, subject)
+        )
         await self._send_clarification(
             checkin=checkin,
             message=message,
-            question=_missing_required_status_question(
-                missing_required,
-                # An ETA is asked only for the person's own issues (N33).
-                await self._follow_up_subject(checkin, signals, own_only="eta" in missing_required),
-            ),
+            question=question,
             clarification_number=clarification_count + 1,
         )
         return ReplyOutcome(kind="clarifying", status=partial_status)
@@ -1066,6 +1098,30 @@ class StatusCollector:
             )
         except Exception:  # best effort: the question still goes out, naming keys only
             return []
+
+    async def _coordinates_without_own_work(self, checkin: CheckIn) -> bool:
+        """Whether the person coordinates a team and has no issue of their own under way (N16).
+
+        Decided by app role (scrum master, product owner, exec) together with
+        the tracker, never by the role alone: an issue of theirs in progress or
+        blocked still owes its ETA. A tracker that cannot be read decides
+        nothing, and the person is asked as before.
+        """
+        if self._graph_repository is None:
+            return False
+        node = await self._graph_repository.get_node(checkin.tenant_id, checkin.developer_id)
+        if node is None or not coordinates_team(member_roles(node.metadata)):
+            return False
+        try:
+            assignee = await self._resolve_issue_tracker_assignee_id(
+                checkin.tenant_id, checkin.developer_id
+            )
+            issues = await self._issue_tracker.list_active_for(
+                UserRef(tenant_id=checkin.tenant_id, external_id=assignee)
+            )
+        except Exception:
+            return False
+        return not any(issue.state in _ACTIVE_ISSUE_STATES for issue in issues)
 
     async def _issues_of_others(
         self, checkin: CheckIn, keys: Iterable[str], own: Sequence[Issue]
@@ -2829,6 +2885,12 @@ class StatusCollector:
                 merge_checkin_signals(checkin.signals, signals),
                 progress_note=signals.progress_note,
             )
+        signals = _as_coordinator_signals(
+            signals,
+            _coordinator_team_context(
+                await self._coordinates_without_own_work(checkin), signals, raw_reply
+            ),
+        )
         return await self._finalize_checkin_reply(
             checkin=checkin,
             replied_at=user_turns[-1].observed_at,
@@ -3792,6 +3854,59 @@ def _question_naming_issue(question: str, subject: _FollowUpSubject | None) -> s
         return question
     lead = _THANKS_LEAD if question.startswith(_THANKS_LEAD) else ""
     return f"{lead}About {subject.text}: {question.removeprefix(lead)}"
+
+
+def _merged_or_earlier(
+    earlier: CheckInSignals | None, later: CheckInSignals | None
+) -> CheckInSignals | None:
+    return earlier if later is None else merge_checkin_signals(earlier, later)
+
+
+def _coordinator_team_context(
+    coordinator: bool, signals: CheckInSignals | None, text: str
+) -> bool | None:
+    """Whether a coordinator's reply gives team context (N16); None for anyone else."""
+    return gives_team_context(signals, text) if coordinator else None
+
+
+def _as_coordinator_signals(signals: CheckInSignals, team_context: bool | None) -> CheckInSignals:
+    """``signals`` as recorded for a coordinator (N16); anyone else's stay as they are."""
+    if team_context is None:
+        return signals
+    return with_team_context(signals, team_context=team_context)
+
+
+def _without_coordinator_follow_up(
+    checkin: CheckIn, decision: ClarificationDecision, team_context: bool | None
+) -> ClarificationDecision:
+    """Drop a model-drafted follow-up that a coordinator's reply owes no answer to (N16).
+
+    No ETA is due from a coordinator, so a question asking for one is never
+    sent; if blockers are still missing, the required-details step asks for
+    those alone. A reply that gives team context is the whole status, so it
+    needs no blockers or progress follow-up either. A question about anything
+    else (the tracker, a merge request, a person) is kept. ``team_context`` is
+    None for anyone who is not a coordinator.
+    """
+    question = decision.question
+    if (
+        team_context is None
+        or decision.sufficient
+        or question is None
+        or not decision.is_status_update
+        or _ASKS_ABOUT_SOMETHING_ELSE.search(question)
+    ):
+        return decision
+    if not team_context and not _ASKS_FOR_ETA.search(question):
+        return decision
+    _logger.info(
+        "coordinator_follow_up_dropped",
+        tenant_id=checkin.tenant_id,
+        developer_id=checkin.developer_id,
+        correlation_id=checkin.correlation_id,
+        team_context=team_context,
+    )
+    return replace(decision, sufficient=True, question=None)
 
 
 def _status_source_for_signals(signals: CheckInSignals) -> StatusSource:
