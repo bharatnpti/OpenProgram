@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Literal
 from uuid import uuid4
+
+import structlog
 
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.merge_request_links import (
@@ -15,6 +17,7 @@ from core.application.merge_request_links import (
     merge_request_label,
     merge_requests_by_issue_key,
 )
+from core.application.sync_services import record_issue_as_synced
 from core.domain.auth import Principal, Role
 from core.domain.errors import ProviderUnavailable
 from core.domain.integrations import Issue, IssueState
@@ -49,6 +52,8 @@ NO_CHANGE_SOURCE = "no_change"
 OPEN_MR_SOURCE = "open_mr"
 # How many synced merge request facts the open merge request check reads.
 _MERGE_REQUEST_FACT_SCAN_LIMIT = 5000
+
+_logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -535,6 +540,7 @@ class WriteBackService:
                 comment=None,
                 source="revert",
             )
+        await self._record_written_issue(audit.tenant_id, audit.issue_key, audit.before_state)
         return await self._record(
             tenant_id=audit.tenant_id,
             developer_id=audit.developer_id,
@@ -610,6 +616,50 @@ class WriteBackService:
             return False
         state = node.metadata.get("state")
         return isinstance(state, str) and state == _TARGET_ISSUE_STATES[target].value
+
+    async def _record_written_issue(
+        self, tenant_id: str, issue_key: str, written_state: str
+    ) -> Issue | None:
+        """Bring OpenProgram's own copy of an issue up to date right after a write (N9).
+
+        The issue is read back from the tracker and stored exactly as the next
+        issue sync stores it (task node, assignment edge, issue fact on the sync's
+        key), so views and drift no longer wait up to an hour for that sync. If
+        the read-back fails, only the synced node's ``state`` moves to the state
+        written. Best-effort: the tracker write already happened and is audited,
+        so a failure here is logged and the next sync repairs the copy.
+        """
+        if self._graph is None:
+            return None
+        issue = await self._read_issue(tenant_id, issue_key)
+        try:
+            if issue is not None:
+                await record_issue_as_synced(
+                    issue,
+                    graph_repository=self._graph,
+                    time_series_repository=self._facts,
+                    identity_link_repository=self._identity_links,
+                    observed_at=self._clock(),
+                )
+            else:
+                await self._record_written_state(tenant_id, issue_key, written_state)
+        except Exception:  # pragma: no cover - defensive; the next sync repairs it
+            _logger.warning(
+                "writeback_local_issue_update_failed", tenant_id=tenant_id, issue_key=issue_key
+            )
+        return issue
+
+    async def _record_written_state(
+        self, tenant_id: str, issue_key: str, written_state: str
+    ) -> None:
+        assert self._graph is not None
+        node = await self._graph.get_node(tenant_id, issue_key)
+        state = _written_issue_state(written_state)
+        if node is None or state is None:
+            return
+        await self._graph.upsert_node(
+            replace(node, metadata={**node.metadata, "state": state.value})
+        )
 
     async def _ownership_refusal(
         self, tenant_id: str, developer_id: str, issue: Issue
@@ -713,6 +763,7 @@ class WriteBackService:
         comment = claim.note.strip() or None
         try:
             await self._issue_tracker.transition(tenant_id, claim.issue_key, to_state)
+            await self._record_written_issue(tenant_id, claim.issue_key, to_state)
             if comment is not None:
                 await self._issue_tracker.add_comment(tenant_id, claim.issue_key, comment)
         except ProviderUnavailable:
@@ -1015,6 +1066,18 @@ _TARGET_ISSUE_STATES: dict[WriteBackTarget, IssueState] = {
     WriteBackTarget.BLOCKED: IssueState.BLOCKED,
     WriteBackTarget.DONE: IssueState.DONE,
 }
+
+
+def _written_issue_state(written_state: str) -> IssueState | None:
+    """The issue state a written target (canonical, or a reverted prior state) reads as."""
+    try:
+        return _TARGET_ISSUE_STATES[WriteBackTarget(written_state)]
+    except ValueError:
+        pass
+    try:
+        return IssueState(written_state)
+    except ValueError:
+        return None
 
 
 def _already_in_target_state(issue: Issue, target_state: str) -> bool:
