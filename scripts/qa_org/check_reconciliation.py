@@ -2,17 +2,20 @@
 
     uv run python -m scripts.qa_org.check_reconciliation                     # today (UTC)
     uv run python -m scripts.qa_org.check_reconciliation --date 2026-10-05
-    uv run python -m scripts.qa_org.check_reconciliation --out FILE
+    uv run python -m scripts.qa_org.check_reconciliation --out PATH
 
 Everything is read, never written: Jira and GitLab through their REST APIs,
 Slack through the bot's own DM history (``im:history``), OpenProgram through its
 API plus ``SELECT``s on the shared Postgres. It reports, per issue and per
 person, where two systems disagree, and the reconciliation a reader would
 expect (a merged MR on an open issue, a check-in claiming done on an open
-issue, ...) next to what OpenProgram flagged itself.
+issue, ...) next to what OpenProgram flagged itself. A person's statement that
+names the state Jira shows ("not started" on a To Do issue) is agreement.
 
 The report names real people, workspace URLs and account ids, so it goes next to
 QA-ORG.md outside the repository, which is public. It never contains a token.
+Each run writes a new ``RECONCILIATION-<date>-<HHMM>.md`` (UTC time of the run),
+so earlier reports are kept; ``--out PATH`` writes exactly that file instead.
 """
 
 from __future__ import annotations
@@ -38,7 +41,49 @@ OUT_DIR = REPO_ROOT.parent / "openprogram-qa"
 TENANT = QA_TENANT
 POSTGRES = ("docker", "exec", "-i", "openprogram-postgres-1", "psql", "-U", "openprogram")
 JIRA_KEY = re.compile(r"\b(?:CHK|IDP|INS)-\d+\b")
+# Jira status category keys: "new" is To Do, "indeterminate" In Progress.
+TODO = "new"
+ACTIVE = "indeterminate"
 DONE = "done"
+# What OpenProgram stores for a person who has not replied. It is not a blocker.
+NO_REPLY = "no confirmed reply"
+# A person's own words for an issue's state, by the Jira category they name. Only a whole
+# statement counts ("not started", "in progress"); wording that merely mentions a state
+# ("starting", "on track", "waiting for review") is not agreement, so it stays on the list.
+SAID_AS_CATEGORY: dict[str, str] = {
+    **dict.fromkeys(
+        (
+            "to do",
+            "todo",
+            "backlog",
+            "open",
+            "new",
+            "not started",
+            "not started yet",
+            "not yet started",
+            "yet to start",
+            "hasn t started",
+            "haven t started",
+            "not begun",
+        ),
+        TODO,
+    ),
+    **dict.fromkeys(
+        (
+            "in progress",
+            "inprogress",
+            "wip",
+            "work in progress",
+            "ongoing",
+            "underway",
+            "in development",
+            "started",
+            "doing",
+        ),
+        ACTIVE,
+    ),
+}
+NON_WORD = re.compile(r"[^a-z0-9]+")
 
 
 @dataclass
@@ -132,6 +177,37 @@ def expected_pods(project_key: str, components: set[str], labels: set[str]) -> s
         elif scope.startswith("labels = ") and scope.removeprefix("labels = ") in labels:
             pods.add(pod.id)
     return pods
+
+
+def says_state_of(said: str, category: str) -> bool:
+    """True when a person's whole statement names the state Jira shows for the issue."""
+    return SAID_AS_CATEGORY.get(NON_WORD.sub(" ", said.lower()).strip()) == category
+
+
+def blocker_count(blockers: dict[str, Any] | list[Any] | None) -> int:
+    """Real blockers in a developer_statuses row.
+
+    The column holds ``{"items": [text, ...]}``, so ``len()`` of the object is 1 (its one
+    key) for everyone, with or without blockers. The placeholder stored for silence is
+    not a blocker either.
+    """
+    items = blockers.get("items") if isinstance(blockers, dict) else blockers
+    return sum(1 for item in items or [] if str(item).strip().lower() != NO_REPLY)
+
+
+def default_out(day: date, now: datetime) -> Path:
+    """A new report file for this run: ``RECONCILIATION-<day>-<HHMM>.md``, HHMM in UTC.
+
+    A report is never replaced by the default name: a second run in the same minute gets
+    ``-2``, ``-3``, ... after the time.
+    """
+    stem = f"RECONCILIATION-{day.isoformat()}-{now:%H%M}"
+    path = OUT_DIR / f"{stem}.md"
+    taken = 1
+    while path.exists():
+        taken += 1
+        path = OUT_DIR / f"{stem}-{taken}.md"
+    return path
 
 
 def _hhmm(ts: str | float) -> str:
@@ -355,7 +431,7 @@ def section_reconcile(
             said = claim.get("claimed_state") or ("done" if claim.get("claimed_done") else None)
             if said and claim.get("claimed_done") and category != DONE:
                 expected.append(f"{claim['who']} said done, Jira {status}")
-            elif said and not claim.get("claimed_done"):
+            elif said and not claim.get("claimed_done") and not says_state_of(said, category):
                 expected.append(f"{claim['who']} said {said}, Jira {status}")
         if not expected and key not in flagged:
             continue
@@ -476,7 +552,7 @@ def section_checkins(
                 len(user_msgs),
                 f"{events_row.get('done', 0)}/{events_row.get('n', 0)}",
                 row["source"] or "—",
-                len(row["blockers"] or []),
+                blocker_count(row["blockers"]),
                 _clip(row["summary"], 90),
             ]
         )
@@ -538,7 +614,7 @@ def section_rollups(day: date) -> list[str]:
     return ["## Rollups", "", *table(["Node", "RAG", "Factors"], rows), ""]
 
 
-def render(day: date) -> tuple[str, Findings]:
+def render(day: date, generated: datetime) -> tuple[str, Findings]:
     found = Findings()
     names = {
         row["id"]: row["name"]
@@ -555,7 +631,7 @@ def render(day: date) -> tuple[str, Findings]:
     head = [
         f"# QA org reconciliation, {day.isoformat()}",
         "",
-        f"Generated {datetime.now(UTC):%Y-%m-%d %H:%M} UTC by "
+        f"Generated {generated:%Y-%m-%d %H:%M} UTC by "
         "`uv run python -m scripts.qa_org.check_reconciliation`. Read-only. **Private.**",
         "",
         f"## {found.count()} disagreement(s)",
@@ -569,11 +645,18 @@ def render(day: date) -> tuple[str, Findings]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--date", type=date.fromisoformat, default=datetime.now(UTC).date())
-    parser.add_argument("--out", type=Path)
+    parser.add_argument(
+        "--out",
+        type=Path,
+        metavar="PATH",
+        help="write the report to exactly this file, replacing it if it exists; keep it outside "
+        "the repository (default: a new RECONCILIATION-<date>-<HHMM>.md next to QA-ORG.md)",
+    )
     args = parser.parse_args()
     day: date = args.date
-    out: Path = (args.out or OUT_DIR / f"RECONCILIATION-{day.isoformat()}.md").expanduser()
-    text, found = render(day)
+    started = datetime.now(UTC)
+    out: Path = args.out.expanduser() if args.out else default_out(day, started)
+    text, found = render(day, started)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text)
     out.chmod(0o600)
