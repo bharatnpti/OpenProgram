@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from math import sqrt
@@ -44,6 +44,10 @@ from core.domain.writeback import WriteBackAudit, WriteBackStatus
 from core.ports.directory import DirectoryUserRepository
 
 
+def _utc_now() -> datetime:
+    return datetime.now(tz=UTC)
+
+
 @dataclass
 class InMemoryGraphStore:
     _nodes: dict[tuple[str, str], GraphNode] = field(default_factory=dict)
@@ -74,6 +78,8 @@ class InMemoryGraphStore:
     _narrative_briefs: list[NarrativeBrief] = field(default_factory=list)
     _dead_letters: dict[tuple[str, str], DeadLetter] = field(default_factory=dict)
     _checkin_reply_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # Stamps a blocker row's updated_at on each write, as the Postgres upsert's now().
+    blocker_clock: Callable[[], datetime] = field(default_factory=lambda: _utc_now)
 
     async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
         return sorted(
@@ -814,7 +820,7 @@ class InMemoryGraphStore:
                     first_seen_on=existing.first_seen_on,
                     source_correlation_id=existing.source_correlation_id,
                 )
-            self._developer_blockers[key] = blocker
+            self._developer_blockers[key] = replace(blocker, updated_at=self.blocker_clock())
 
     async def record_developer_status_with_blockers(
         self, status: DeveloperStatus, blockers: Sequence[DeveloperBlocker]

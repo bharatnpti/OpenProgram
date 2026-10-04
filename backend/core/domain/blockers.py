@@ -14,7 +14,7 @@ read paths resolve to pods via the graph; a blocker with neither is
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from enum import StrEnum
 from uuid import uuid4
@@ -79,6 +79,11 @@ class DeveloperBlocker:
     last_seen_on: date
     resolved_on: date | None = None
     resolved_reason: BlockerResolutionReason | None = None
+    # When the row was last written: by the person stating it, or by a
+    # resolution. Read back from storage, never compared, and None for a row
+    # not stored yet. A request or a merge that happened after the person
+    # last stated an open blocker supersedes it; one before does not.
+    updated_at: datetime | None = field(default=None, compare=False)
 
     @property
     def is_attributed(self) -> bool:

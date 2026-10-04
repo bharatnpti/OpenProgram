@@ -52,7 +52,7 @@ async def _settle_merged_work(registry: ServiceRegistry, tenant_id: str) -> None
     facts are recorded, and the next sync settles anything this one missed.
     """
     try:
-        await registry.cross_person_request_service().resolve_merged_work(tenant_id)
+        await registry.cross_person_request_service().settle_merged_work(tenant_id)
     except Exception as error:
         import structlog
 
