@@ -55,7 +55,7 @@ from infra.adapters.integrations.fake import (
 from infra.adapters.jira.jira_adapter import JiraIssueTrackerAdapter
 from infra.adapters.llm.fake import FakeLlmProvider
 from infra.adapters.llm.litellm_provider import LangfuseTraceSink, LiteLlmProvider, NoopTraceSink
-from infra.adapters.llm.readiness import LlmEndpointReadinessProbe
+from infra.adapters.llm.readiness import LlmEndpointReadinessProbe, LlmReadinessHistory
 from infra.adapters.readiness import (
     AsyncReadinessExecutor,
     DatabaseExtensionsReadinessProbe,
@@ -334,7 +334,14 @@ def build_readiness_probes(
     executor_factory: Callable[[], AsyncReadinessExecutor],
     redis_client_factory: Callable[[], Redis],
     workflow_backlog_count: Callable[[], Awaitable[int]] | None = None,
+    llm_history: LlmReadinessHistory | None = None,
 ) -> dict[str, ReadinessProbe]:
+    """The probes for one ``/ready`` call.
+
+    ``llm_history`` outlives the call (the registry owns it), so a lone failed
+    LLM probe right after a success reports ready; without it every failure
+    degrades.
+    """
     backlog_probe: ReadinessProbe = (
         WorkflowBacklogReadinessProbe(
             workflow_backlog_count,
@@ -360,7 +367,7 @@ def build_readiness_probes(
         "slack_provider": _slack_provider_readiness_probe(settings),
         "workflow_provider": build_workflow_readiness_probe(settings),
         "workflow_backlog": backlog_probe,
-        "llm_provider": _llm_readiness_probe(settings),
+        "llm_provider": _llm_readiness_probe(settings, llm_history),
         "llm_trace": _llm_trace_readiness_probe(settings),
     }
     if settings.slack_socket_mode:
@@ -392,7 +399,9 @@ def _slack_socket_heartbeat(settings: Settings, redis_client: Redis) -> RedisSoc
     return RedisSocketHeartbeat(tenant_id=settings.tenant_id, client=redis_client)
 
 
-def _llm_readiness_probe(settings: Settings) -> ReadinessProbe:
+def _llm_readiness_probe(
+    settings: Settings, history: LlmReadinessHistory | None = None
+) -> ReadinessProbe:
     if settings.llm_provider == "fake":
         return StaticReadinessProbe()
     # Same base URL and key the adapter sends completions with, so the probe
@@ -400,6 +409,7 @@ def _llm_readiness_probe(settings: Settings) -> ReadinessProbe:
     return LlmEndpointReadinessProbe(
         base_url=settings.litellm_base_url,
         api_key=settings.litellm_api_key,
+        history=history if history is not None else LlmReadinessHistory(),
     )
 
 
