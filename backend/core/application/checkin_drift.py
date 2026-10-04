@@ -269,13 +269,36 @@ _TODAY = re.compile(r"\b(?:today|tonight|eod|end of (?:the )?day)\b")
 _END_OF_WEEK = re.compile(r"\b(?:end of (?:the )?week|eow|this week)\b")
 # "early next week", "mid next week", "end of next week", "next week".
 _NEXT_WEEK = re.compile(r"\b(?:(early|mid|middle of|late|end of)\s+)?(?:the\s+)?next\s+week\b")
+# A number of days, in digits or words: "2-3 days", "two to three days".
+_COUNT_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+}
+_COUNT = r"\d{1,2}|" + "|".join(_COUNT_WORDS)
+_FEW = r"a couple of|a few|couple of|few"
+_AMOUNT = rf"(?:{_COUNT})(?:\s*(?:-|–|to|or)\s*(?:{_COUNT}))?|{_FEW}"
+_DAYS = r"\s+(?:more\s+)?(?:business\s+|working\s+)?days?\b"
 # "2-3 days", "in 3 days", "within 2 days", "a couple of days", "a few days".
-_DAY_RANGE = re.compile(
-    r"\b(\d{1,2})\s*(?:-|–|to|or)\s*(\d{1,2})\s+(?:more\s+)?(?:business\s+|working\s+)?days?\b"
-)
-_IN_DAYS = re.compile(
-    r"\b(in|within|another)\s+(\d{1,2}|a couple of|a few|couple of|few)\s+"
-    r"(?:more\s+)?(?:business\s+|working\s+)?days?\b"
+_DAY_RANGE = re.compile(rf"\b({_COUNT})\s*(?:-|–|to|or)\s*({_COUNT}){_DAYS}")
+_IN_DAYS = re.compile(rf"\b((?:in|within|another)(?:\s+the\s+next)?)\s+({_COUNT}|{_FEW}){_DAYS}")
+# A number of days that looks ahead (N45): the answer alone ("2-3 days."), "2-3
+# days to have the test plan reviewed", "two more days left", "needs a couple of
+# days", "ETA 2 days". "Took 2 days to fix" or "3 days in review" looks back.
+_DAYS_AHEAD = re.compile(
+    rf"^\W*(?:about\s+|around\s+|roughly\s+|maybe\s+|probably\s+|likely\s+)?({_AMOUNT}){_DAYS}"
+    r"(?:\W*$|\s*[,;:.!])"
+    rf"|(?<!took )(?<!spent )\b({_AMOUNT}){_DAYS}"
+    r"\s+(?:to\s+(?!date\b)\w+|left|remaining|from now|more)\b"
+    r"|\b(?:needs?|takes?|another|about|around|roughly|approximately|maybe|probably|likely|"
+    rf"eta|estimated?)\s+({_AMOUNT}){_DAYS}(?!\s+ago)"
 )
 # A day is an ETA only when the words look ahead: "started today" or "reviewed
 # on Monday" names a day that is no ETA.
@@ -315,7 +338,10 @@ def issue_eta(claim: IssueClaim, stated_on: date) -> IssueEta | None:
         return None
     text = " ".join(part for part in (claim.note, claim.claimed_state or "") if part).lower()
     if not text or not (
-        _ETA_CUE.search(text) or _IN_DAYS.search(text) or _BARE_DAY.match(claim.note.lower())
+        _ETA_CUE.search(text)
+        or _IN_DAYS.search(text)
+        or _DAYS_AHEAD.search(text)
+        or _BARE_DAY.match(claim.note.lower())
     ):
         return None
     for read in (_dated_eta, _weekday_eta, _next_week_eta, _days_eta, _relative_eta):
@@ -362,16 +388,49 @@ def _next_week_eta(text: str, stated_on: date) -> IssueEta | None:
 
 
 def _days_eta(text: str, stated_on: date) -> IssueEta | None:
+    duration = _duration(text)
+    if duration is None:
+        return None
+    label, low, high = duration
+    return _window(label, stated_on, low, high)
+
+
+def eta_duration_days(text: str) -> tuple[int, int] | None:
+    """The fewest and most days from now a duration in ``text`` gives, when it looks ahead.
+
+    "2-3 days to have the test plan reviewed and finalized" gives (2, 3), "in
+    two days" (2, 2), "within 3 days" (0, 3). None when no number of days looks
+    ahead ("took 2 days", "pushed by 2 days"). It is the reading
+    :func:`issue_eta` makes of a claim's days, so a reply's duration and the
+    window its claim records agree (N45).
+    """
+    lowered = text.lower()
+    if not (_IN_DAYS.search(lowered) or _DAYS_AHEAD.search(lowered)):
+        return None
+    duration = _duration(lowered)
+    return None if duration is None else (duration[1], duration[2])
+
+
+def _duration(text: str) -> tuple[str, int, int] | None:
+    """The number of days the words name: its label and its fewest and most days on."""
     if match := _DAY_RANGE.search(text):
-        low, high = sorted((int(match[1]), int(match[2])))
-        return _window(f"{low}-{high} days", stated_on, low, high)
+        low, high = sorted((_count(match[1]), _count(match[2])))
+        return f"{low}-{high} days", low, high
     if match := _IN_DAYS.search(text):
         amount = match[2]
-        low, high = _FEW_DAYS.get(amount) or (int(amount), int(amount))
-        if match[1] == "within":
-            low = 0
-        return _window(f"{match[1]} {amount} days", stated_on, low, high)
+        low, high = _FEW_DAYS.get(amount) or (_count(amount), _count(amount))
+        return f"{match[1]} {amount} days", 0 if match[1].startswith("within") else low, high
+    if match := _DAYS_AHEAD.search(text):
+        amount = next(group for group in match.groups() if group)
+        if amount in _FEW_DAYS:
+            return f"{amount} days", *_FEW_DAYS[amount]
+        counts = sorted(_count(word) for word in re.findall(_COUNT, amount))
+        return f"{amount} days", counts[0], counts[-1]
     return None
+
+
+def _count(word: str) -> int:
+    return int(word) if word.isdigit() else _COUNT_WORDS[word]
 
 
 def _window(label: str, stated_on: date, low: int, high: int) -> IssueEta:
