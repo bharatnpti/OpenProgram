@@ -29,6 +29,7 @@ class DailyCheckInInput:
     checkin_date: date
     correlation_id: str
 
+
 @dataclass(frozen=True, kw_only=True)
 class NudgeInput:
     tenant_id: str
