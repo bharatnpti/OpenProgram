@@ -287,6 +287,32 @@ async def assert_status_repository_contract(repository: StatusRepository) -> Non
     consumed = await repository.checkin_correlation_by_id("demo", "corr-1")
     assert consumed is not None
     assert consumed.consumed_at == replied_at
+    # A consumed correlation is still the person's newest check-in (G9), and
+    # the window bounds which check-ins are read.
+    assert await repository.recent_checkin_correlations_for_user(
+        "demo",
+        "U123",
+        asked_from=datetime(2026, 1, 9, 0, 0, tzinfo=UTC),
+        asked_to=datetime(2026, 1, 11, 0, 0, tzinfo=UTC),
+    ) == [consumed]
+    assert (
+        await repository.recent_checkin_correlations_for_user(
+            "demo",
+            "U123",
+            asked_from=datetime(2026, 1, 9, 0, 0, tzinfo=UTC),
+            asked_to=datetime(2026, 1, 9, 23, 59, tzinfo=UTC),
+        )
+        == []
+    )
+    assert (
+        await repository.recent_checkin_correlations_for_user(
+            "demo",
+            "U999",
+            asked_from=datetime(2026, 1, 9, 0, 0, tzinfo=UTC),
+            asked_to=datetime(2026, 1, 11, 0, 0, tzinfo=UTC),
+        )
+        == []
+    )
     assert (
         await repository.unconsumed_checkin_correlations_for_user(
             "demo",

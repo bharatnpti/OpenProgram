@@ -60,6 +60,7 @@ from core.application.status_summaries import (
     basis_status,
     clarification_cap_note,
     inferred_summary,
+    late_update_summary,
     names_one_basis,
     stale_summary,
     with_no_active_work,
@@ -152,6 +153,11 @@ COMPOSE_NUDGE_SYSTEM_PROMPT = (
 OUTBOUND_DM_MAX_CHARS = 320
 # The one ack a check-in gets for replies that carry no status (N22).
 NON_STATUS_ACK_TEXT = "Thanks. I'll keep the check-in open for your status update."
+# The one ack a check-in gets for a status reply that came after it closed (G9).
+LATE_UPDATE_ACK_TEXT = "Thanks, recorded as a late update for today's check-in."
+# How far back a reply that no check-in of its local day matched looks for the
+# person's newest check-in (G9): a long weekend, not an old round.
+LATE_REPLY_LOOKBACK = timedelta(days=4)
 # The blockers follow-up for a coordinator whose reply names no issue (N16).
 _TEAM_BLOCKERS_QUESTION = "Thanks. Is anything blocking your team?"
 # Opens the note a status gets for blockers carried from an earlier day. The
@@ -595,11 +601,14 @@ class StatusCollector:
     ) -> ReplyOutcome | None:
         """What needs no reading of the reply as status, or ``None`` to read it.
 
-        A finalized check-in (a late consent answer, else a duplicate), a
-        redelivered message, or an answer to the open write-back question (G1).
+        A finalized check-in (a late consent answer, else a duplicate), one that
+        closed with no reply (a late update, G9), a redelivered message, or an
+        answer to the open write-back question (G1).
         """
         if checkin.replied_at is not None:
             return await self._handle_already_replied(checkin=checkin, message=message)
+        if await self._closed_without_reply(checkin):
+            return await self._record_late_update(checkin, message, allow_reprocess=allow_reprocess)
         if await self._register_reply_turn(checkin, message, allow_reprocess=allow_reprocess):
             return ReplyOutcome(kind="ignored")
         return await self._maybe_answer_write_back_consent(checkin=checkin, message=message)
@@ -1325,6 +1334,45 @@ class StatusCollector:
         user_matches = await self._unconsumed_user_local_matches(message)
         return _single_correlation_or_log_ambiguous(message, user_matches)
 
+    async def late_reply_correlation(self, message: InboundMessage) -> str | None:
+        """The check-in a reply belongs to when no check-in of its local day matched (G9).
+
+        Hana answered R1 at 00:11 her time, after it had closed and on the next
+        local day, so no correlation matched and the reply was dropped. Such a
+        reply goes to the person's newest check-in of the last few days: an open
+        one reads it as a reply as usual, a closed one records it as a late
+        update for its day. Only a top-level message in that check-in's DM is
+        taken (a thread reply answers whatever it is under), never while an open
+        check-in of the reply's own local day waits (that stays the local-day
+        resolution's, with its ambiguity rule), and never when those check-ins
+        belong to more than one member.
+        """
+        if await self._unconsumed_thread_local_matches(message):
+            return None
+        if await self._unconsumed_user_local_matches(message):
+            return None
+        recent = await self._status_repository.recent_checkin_correlations_for_user(
+            message.tenant_id,
+            message.user.external_id,
+            asked_from=message.received_at - LATE_REPLY_LOOKBACK,
+            asked_to=message.received_at,
+        )
+        if not recent:
+            return None
+        if len({correlation.developer_id for correlation in recent}) > 1:
+            _logger.info(
+                "late_reply_correlation_ambiguous",
+                tenant_id=message.tenant_id,
+                chat_user_ref=message.user.external_id,
+                message_id=message.message_id,
+                correlation_ids=[correlation.correlation_id for correlation in recent],
+            )
+            return None
+        newest = recent[0]
+        if message.thread_id != newest.chat_thread_ref:
+            return None
+        return newest.correlation_id
+
     async def _unconsumed_thread_local_matches(
         self,
         message: InboundMessage,
@@ -1635,6 +1683,33 @@ class StatusCollector:
         as_of: date,
         developer_name: str | None = None,
         correlation_id: str | None = None,
+    ) -> DeveloperStatus:
+        """Close a check-in at the end of its ladder, with the status of the day.
+
+        A reply on record is finalized; otherwise the day is inferred, stale or
+        unknown, never confirmed. Either way the check-in's correlation is
+        consumed: the check-in is closed, and a reply from now on is a late
+        update for its day (G9), never a reply to an open question.
+        """
+        status = await self._close_out_status(
+            tenant_id=tenant_id,
+            developer_id=developer_id,
+            as_of=as_of,
+            correlation_id=correlation_id,
+        )
+        if correlation_id is not None:
+            await self._status_repository.consume_checkin_correlation(
+                tenant_id, correlation_id, datetime.now(tz=UTC)
+            )
+        return status
+
+    async def _close_out_status(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        as_of: date,
+        correlation_id: str | None,
     ) -> DeveloperStatus:
         if correlation_id is not None:
             finalized = await self._finalize_accumulated_reply_on_timeout(
@@ -2722,6 +2797,249 @@ class StatusCollector:
             status=await self._recover_finalized_status(checkin),
         )
 
+    async def _closed_without_reply(self, checkin: CheckIn) -> bool:
+        """Whether an unanswered check-in has closed: its correlation is consumed (G9).
+
+        The close-out consumes it (``record_non_response``). A finalized reply
+        consumes it as well, but sets ``replied_at`` first, so a check-in that
+        was answered never reads as closed without a reply.
+        """
+        correlation = await self._status_repository.checkin_correlation_by_id(
+            checkin.tenant_id,
+            checkin.correlation_id,
+        )
+        return correlation is not None and correlation.consumed_at is not None
+
+    async def _record_late_update(
+        self,
+        checkin: CheckIn,
+        message: InboundMessage,
+        *,
+        allow_reprocess: bool,
+    ) -> ReplyOutcome:
+        """Record a reply that came after its check-in closed unanswered: a late update (G9).
+
+        Hana's reply to R1 came two hours after it closed and was dropped. Now
+        it is read like any reply and recorded for the check-in's day, merged
+        with what the check-in held (N8), confirmed or partial by what it says,
+        and marked late in the summary and the check-in fact. Nothing is asked:
+        the check-in is closed, so no close-out would ever finalize an answer,
+        and nobody is nudged or escalated. Write-backs pass the usual gates, and
+        an always_ask person's claims are not proposed: a consent question sent
+        after the close could not be answered. One ack says it was recorded. A
+        reply with no status is kept as a turn and changes nothing.
+        """
+        if await self._register_reply_turn(checkin, message, allow_reprocess=allow_reprocess):
+            return ReplyOutcome(kind="ignored")
+        requests = await self._request_ledger(checkin)
+        await self._settle_waiting_requests(checkin, requests, message.text)
+        turns = await self._recent_conversation_turns(
+            tenant_id=message.tenant_id,
+            developer_id=checkin.developer_id,
+            exclude_chat_message_id=message.message_id,
+            reference_at=message.received_at,
+        )
+        tools = self._agent_tools(
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            reference_at=message.received_at,
+        )
+        # Everything is read and recorded for the check-in's own day.
+        prior_blockers = await self._prior_open_blockers(checkin, checkin.asked_at)
+        decision = await self._clarification_evaluator.evaluate(
+            tenant_id=message.tenant_id,
+            developer_id=checkin.developer_id,
+            raw_reply=message.text,
+            correlation_id=message.correlation_id,
+            conversation_turns=turns,
+            tools=tools,
+            prior_blockers=prior_blockers,
+            tracker_write_back=await self._tracker_write_back_open(checkin),
+        )
+        if not decision.is_status_update:
+            _logger.info(
+                "late_reply_without_status",
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+                message_id=message.message_id,
+            )
+            return ReplyOutcome(kind="ignored", cross_person_requests=requests.outcome())
+        signals = decision.signals or await self._parser.parse_reply(
+            tenant_id=message.tenant_id,
+            developer_id=checkin.developer_id,
+            raw_reply=message.text,
+            correlation_id=message.correlation_id,
+            conversation_turns=turns,
+            tools=tools,
+            prior_blockers=prior_blockers,
+        )
+        reconciliation = await self._reconcile_reply_blockers(
+            checkin=checkin,
+            at=checkin.asked_at,
+            prior=prior_blockers,
+            signals=signals,
+            raw_reply=message.text,
+        )
+        raw_reply = _checkin_messages_text(checkin, turns, message)
+        merged = await self._without_eta_for_others_work(
+            checkin, merge_checkin_signals(checkin.signals, signals)
+        )
+        merged = _as_coordinator_signals(
+            merged,
+            _coordinator_team_context(
+                await self._coordinates_without_own_work(checkin), merged, raw_reply
+            ),
+        )
+        await self._resolve_cross_person_requests(
+            checkin=checkin,
+            signals=signals,
+            requests=requests,
+            clarification_count=self._checkin_max_clarifications,
+            ask=False,
+        )
+        status = await self._finalize_late_update(
+            checkin=checkin,
+            received_at=message.received_at,
+            raw_reply=raw_reply,
+            signals=merged,
+            reconciliation=reconciliation,
+        )
+        _logger.info(
+            "late_update_recorded",
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            correlation_id=checkin.correlation_id,
+            status_source=status.source.value,
+        )
+        return ReplyOutcome(
+            kind="processed",
+            status=status,
+            cross_person_requests=requests.outcome(),
+        )
+
+    async def _finalize_late_update(
+        self,
+        *,
+        checkin: CheckIn,
+        received_at: datetime,
+        raw_reply: str,
+        signals: CheckInSignals,
+        reconciliation: BlockerReconciliation,
+    ) -> DeveloperStatus:
+        """Record a late update as the check-in's reply, once, with its day's status (G9).
+
+        The same at-most-once write as an on-time reply: a racing late message
+        or a redelivery then finds the check-in answered, as a duplicate.
+        """
+        final_signals = _signals_with_open_blockers(signals, reconciliation)
+        updated = replace(
+            checkin,
+            replied_at=received_at,
+            raw_reply=raw_reply,
+            signals=final_signals,
+        )
+        if not await self._status_repository.record_checkin_reply_once(updated):
+            duplicate = await self._status_repository.checkin_by_correlation(
+                checkin.tenant_id,
+                checkin.correlation_id,
+            )
+            return await self._recover_finalized_status(duplicate or checkin)
+        status = DeveloperStatus(
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            as_of=await self._status_as_of_for_checkin(checkin, checkin.asked_at),
+            source=_status_source_for_signals(final_signals),
+            blockers=final_signals.blockers,
+            summary=late_update_summary(
+                _summary_with_missing_required_details(
+                    final_signals.progress_note,
+                    _missing_required_status_details(final_signals),
+                ),
+                received_at,
+            ),
+            eta_change_days=final_signals.eta_change_days,
+        )
+        await self._blockers.persist_with_status(status, reconciliation)
+        await self._append_checkin_fact(updated, status, reconciliation=reconciliation, late=True)
+        await self._append_blocker_resolved_facts(updated, status, reconciliation)
+        await self._record_review_without_merge_request(updated, status)
+        await self._record_issue_etas(updated, status)
+        written = await self._late_update_write_back(updated, final_signals)
+        await self._send_late_update_ack(checkin=updated, applied=written)
+        return status
+
+    async def _late_update_write_back(
+        self, checkin: CheckIn, signals: CheckInSignals
+    ) -> list[WriteBackAudit]:
+        """A late update's claims through the usual write-back gates, never asking (G9).
+
+        The owner, open merge request and canonical-target gates are the same.
+        An always_ask person would be asked before anything is written, but the
+        answer to a question sent after the check-in closed would read as a
+        duplicate of the finalized check-in (8ae421fb), so nothing is proposed
+        and the tracker is left as it is.
+        """
+        service = self._write_back_service
+        if service is None or not signals.issue_updates:
+            return []
+        try:
+            asks_first = await service.asks_before_writing(checkin.tenant_id, checkin.developer_id)
+        except Exception:  # pragma: no cover - defensive; write nothing
+            return []
+        if asks_first:
+            _logger.info(
+                "late_update_write_back_not_proposed",
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+            )
+            return []
+        return await self._maybe_write_back(checkin, signals)
+
+    async def _send_late_update_ack(
+        self, *, checkin: CheckIn, applied: Sequence[WriteBackAudit]
+    ) -> None:
+        """DM the one ack of a late update (G9), naming any tracker update it made.
+
+        Sent once: only the write that recorded the late update gets here, and
+        the provider's send-once key is the check-in's. Best-effort, like the
+        on-time ack.
+        """
+        if not self._checkin_ack_enabled:
+            return
+        correlation = await self._status_repository.checkin_correlation_by_id(
+            checkin.tenant_id,
+            checkin.correlation_id,
+        )
+        if correlation is None:
+            return
+        text = _compose_late_update_ack_text(
+            max_chars=self._outbound_dm_max_chars,
+            applied=applied,
+            held=await self._open_merge_request_holds(checkin, applied),
+        )
+        try:
+            await self._chat_provider.send_dm(
+                ChatUserRef(tenant_id=checkin.tenant_id, external_id=correlation.chat_user_ref),
+                OutboundMessage(
+                    tenant_id=checkin.tenant_id,
+                    text=text,
+                    correlation_id=checkin.correlation_id,
+                    metadata={
+                        "purpose": "status_late_update_ack",
+                        "idempotency_key": f"late-update-ack:{checkin.correlation_id}",
+                    },
+                ),
+            )
+        except Exception:  # pragma: no cover - defensive; ack is best-effort
+            _logger.warning(
+                "late_update_ack_failed",
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+            )
+
     async def _maybe_resolve_consent(
         self,
         *,
@@ -2958,6 +3276,8 @@ class StatusCollector:
         checkin: CheckIn,
         status: DeveloperStatus,
         reconciliation: BlockerReconciliation | None = None,
+        *,
+        late: bool = False,
     ) -> None:
         if self._time_series_repository is None or checkin.replied_at is None:
             return
@@ -2973,6 +3293,10 @@ class StatusCollector:
                 checkin.tenant_id, checkin.developer_id
             ),
         }
+        if late:
+            # A reply after the check-in closed (G9): the feed says so, and when.
+            payload["late_update"] = True
+            payload["late_update_at"] = checkin.replied_at.isoformat()
         if reconciliation is not None:
             payload["new_blocker_count"] = len(reconciliation.minted)
             payload["resolved_blocker_count"] = len(reconciliation.resolved)
@@ -3415,6 +3739,20 @@ def _compose_checkin_ack_text(
         *_open_merge_request_notes(held),
         _left_as_is_note(applied),
     ):
+        if note is not None and len(f"{text} {note}") <= max_chars:
+            text = f"{text} {note}"
+    return _cap_outbound_dm_text(text, max_chars)
+
+
+def _compose_late_update_ack_text(
+    *,
+    max_chars: int,
+    applied: Sequence[WriteBackAudit] = (),
+    held: Sequence[OpenMergeRequestHold] = (),
+) -> str:
+    """The one ack of a late update (G9), naming tracker updates made or held back."""
+    text = LATE_UPDATE_ACK_TEXT
+    for note in (_applied_write_back_note(applied), *_open_merge_request_notes(held)):
         if note is not None and len(f"{text} {note}") <= max_chars:
             text = f"{text} {note}"
     return _cap_outbound_dm_text(text, max_chars)

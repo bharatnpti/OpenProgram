@@ -15,7 +15,7 @@ carry.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from core.domain.status import DeveloperStatus, StatusSource
 from core.ports.repositories import StatusRepository
@@ -34,6 +34,9 @@ CONFIRMED_LEAD = "Confirmed the status"
 # still missing, and names it (N30): "Clarification cap reached: ETA was not
 # provided." A limit reached with every detail given adds nothing.
 CLARIFICATION_CAP_LEAD = "Clarification cap reached:"
+# Opens the summary of a status recorded from a reply that came after its
+# check-in closed, with the time it came (G9): "Late update 15:11 UTC: ...".
+LATE_UPDATE_LEAD = "Late update"
 # The placeholder blocker a non-response status carries when nothing is open.
 NO_REPLY_BLOCKER = "no confirmed reply"
 
@@ -59,6 +62,16 @@ def clarification_cap_note(missing_details_note: str | None) -> str | None:
     if missing_details_note is None:
         return None
     return f"{CLARIFICATION_CAP_LEAD} {missing_details_note}"
+
+
+def late_update_summary(summary: str, received_at: datetime) -> str:
+    """``summary`` marked as a late update that came at ``received_at`` (G9).
+
+    The console shows the summary, so the mark is what tells a reader the
+    status was given after its check-in closed, and when.
+    """
+    at = received_at.astimezone(UTC) if received_at.tzinfo is not None else received_at
+    return f"{LATE_UPDATE_LEAD} {at:%H:%M} UTC: {summary}"
 
 
 def inferred_summary(basis: str) -> str:

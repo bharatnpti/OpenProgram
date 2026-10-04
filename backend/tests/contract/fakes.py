@@ -277,6 +277,23 @@ class FakeStatusRepository:
         ]
         return sorted(matching, key=lambda correlation: correlation.asked_at, reverse=True)
 
+    async def recent_checkin_correlations_for_user(
+        self,
+        tenant_id: str,
+        chat_user_ref: str,
+        *,
+        asked_from: datetime,
+        asked_to: datetime,
+    ) -> list[CheckInCorrelation]:
+        matching = [
+            correlation
+            for correlation in self.checkin_correlations
+            if correlation.tenant_id == tenant_id
+            and correlation.chat_user_ref == chat_user_ref
+            and asked_from <= correlation.asked_at <= asked_to
+        ]
+        return sorted(matching, key=lambda correlation: correlation.asked_at, reverse=True)
+
     async def consume_checkin_correlation(
         self, tenant_id: str, correlation_id: str, consumed_at: datetime
     ) -> None:

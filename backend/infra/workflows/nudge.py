@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 from core.domain.escalation import (
@@ -403,6 +403,11 @@ async def close_checkin_non_response_activity(payload: NudgeInput) -> NudgeResul
             and existing_status.source
             in {StatusSource.INFERRED, StatusSource.STALE, StatusSource.UNKNOWN}
         ):
+            # The day was closed by an earlier check-in; this one closes too, so
+            # a reply from now on is a late update, not an answer (G9).
+            await repository.consume_checkin_correlation(
+                payload.tenant_id, payload.correlation_id, datetime.now(tz=UTC)
+            )
             return NudgeResult(
                 tenant_id=payload.tenant_id,
                 developer_id=checkin.developer_id,

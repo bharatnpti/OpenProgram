@@ -625,7 +625,11 @@ class ServiceRegistry:
                     status=updated.status.value,
                     message_id=message.message_id,
                 )
-            return ChatWebhookProcessResult(status="ignored", message_id=message.message_id)
+            # No check-in of the reply's local day: the person's newest check-in
+            # takes it, as a late update once that one has closed (G9).
+            resolved_correlation_id = await collector.late_reply_correlation(message)
+            if resolved_correlation_id is None:
+                return ChatWebhookProcessResult(status="ignored", message_id=message.message_id)
 
         checkin = await self.status_repository().checkin_by_correlation(
             message.tenant_id,
