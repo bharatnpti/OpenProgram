@@ -18,11 +18,12 @@ from core.application.writeback_service import (
 )
 from core.domain.auth import Principal
 from core.domain.errors import ProviderUnavailable
-from core.domain.graph import EntityRef, FactEvent, NodeKind
+from core.domain.graph import EntityRef, FactEvent, NodeKind, Task
 from core.domain.identity import IdentityLink
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.status import CheckInPreference, IssueClaim, WriteBackConsent
 from core.domain.writeback import WriteBackAudit, WriteBackStatus, WriteBackTarget
+from infra.persistence.in_memory_graph import InMemoryGraphStore
 from tests.contract.fakes import (
     FakeIdentityLinkRepository,
     FakeIssueTracker,
@@ -76,6 +77,7 @@ def _build(
     developer_id: str = _DEV,
     identity_links: FakeIdentityLinkRepository | None = None,
     facts: FakeTimeSeriesRepository | None = None,
+    graph: InMemoryGraphStore | None = None,
 ) -> tuple[WriteBackService, FakeIssueTracker, FakeWriteBackAuditRepository]:
     issue_tracker = tracker or FakeIssueTracker(
         issues={
@@ -105,6 +107,7 @@ def _build(
         status_repository=status,
         identity_link_repository=identity_links,
         time_series_repository=facts,
+        graph_repository=graph,
         authorization_policy=policy,
         writeback_enabled_default=default_enabled,
         clock=lambda: datetime(2026, 7, 25, 9, 0, tzinfo=UTC),
@@ -1167,3 +1170,84 @@ async def test_dry_run_holds_back_done_for_an_open_merge_request() -> None:
     assert keys == frozenset()
     assert tracker.transitions == []
     assert audit.audits == {}
+
+
+# --- N14: an "in review" claim the tracker already shows is a no-op, never a failure ---
+
+# R2 18:05:19, Noah IDP-3 and Omar IDP-6: "in review" on an In Progress issue in the
+# QA workflow (To Do / In Progress / Done, no review state).
+_IDP3_IN_REVIEW = IssueClaim(
+    issue_key="IDP-3",
+    claimed_state="in review",
+    note="Passkey enrolment in review on identity-service !1.",
+)
+
+
+@pytest.mark.parametrize("consent", [WriteBackConsent.AUTO_APPLY, WriteBackConsent.ALWAYS_ASK])
+async def test_in_review_on_an_in_progress_issue_is_a_noop_without_a_review_state(
+    consent: WriteBackConsent,
+) -> None:
+    tracker = FakeIssueTracker(issues={"IDP-3": _issue("IDP-3", IssueState.IN_PROGRESS)})
+    service, _, audit = _build(tracker=tracker, default_enabled=True, consent=consent)
+
+    results = await service.apply_from_checkin(
+        tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION, claims=[_IDP3_IN_REVIEW]
+    )
+
+    assert results == []
+    assert tracker.transitions == []
+    assert tracker.comments == []
+    assert audit.audits == {}
+    dry_run = await service.dry_run(tenant_id=_TENANT, developer_id=_DEV, claims=[_IDP3_IN_REVIEW])
+    assert dry_run.written == frozenset()
+
+
+async def _synced_graph(state: IssueState) -> InMemoryGraphStore:
+    graph = InMemoryGraphStore()
+    await graph.upsert_node(
+        Task(
+            tenant_id=_TENANT,
+            id="IDP-3",
+            name="Passkey enrolment",
+            metadata={"key": "IDP-3", "state": state.value, "project_key": "IDP"},
+        )
+    )
+    return graph
+
+
+async def test_in_review_claim_is_a_noop_when_the_read_fails_and_the_synced_copy_agrees() -> None:
+    # The R2 rows had no before_state: the Jira read itself failed in a network
+    # stall, so "failed" was recorded for a claim that needed no write at all.
+    tracker = _UnreadableIssueTracker()
+    service, _, audit = _build(
+        tracker=tracker,
+        default_enabled=True,
+        graph=await _synced_graph(IssueState.IN_PROGRESS),
+    )
+
+    results = await service.apply_from_checkin(
+        tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION, claims=[_IDP3_IN_REVIEW]
+    )
+
+    assert results == []
+    assert tracker.transitions == []
+    assert tracker.comments == []
+    assert audit.audits == {}
+
+
+@pytest.mark.parametrize("synced", [IssueState.TODO, None])
+async def test_a_failed_read_is_still_recorded_when_the_claim_would_change_the_issue(
+    synced: IssueState | None,
+) -> None:
+    graph = await _synced_graph(synced) if synced is not None else InMemoryGraphStore()
+    service, tracker, _ = _build(
+        tracker=_UnreadableIssueTracker(), default_enabled=True, graph=graph
+    )
+
+    results = await service.apply_from_checkin(
+        tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION, claims=[_IDP3_IN_REVIEW]
+    )
+
+    assert [(row.status, row.before_state) for row in results] == [(WriteBackStatus.FAILED, None)]
+    assert tracker.transitions == []
+    assert tracker.comments == []
