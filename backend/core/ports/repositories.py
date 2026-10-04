@@ -132,6 +132,23 @@ class CrossPersonRequestRepository(Protocol):
         """
         ...
 
+    async def refresh(
+        self,
+        tenant_id: str,
+        request_id: str,
+        *,
+        task_ref: EntityRef | None,
+        updated_at: datetime,
+    ) -> CrossPersonRequest | None:
+        """A repeated ask: mark a still-open request as asked again.
+
+        Only an open or acknowledged request changes: ``updated_at`` moves
+        forward and the issue link is filled where the request has none. Its
+        status, note and notification stay as they are, so nobody is told
+        twice. Returns the request, or None when it is closed or missing.
+        """
+        ...
+
     async def claim_notification_attempt(
         self,
         tenant_id: str,

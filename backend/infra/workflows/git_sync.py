@@ -38,9 +38,29 @@ async def sync_git_repo_activity(payload: GitSyncInput) -> GitSyncWorkflowResult
             container_ids=_csv_tuple(payload.container_ids),
             observed_at=_optional_datetime(payload.observed_at),
         )
+        await _settle_merged_work(registry, payload.tenant_id)
         return _workflow_result(result)
     finally:
         await registry.close()
+
+
+async def _settle_merged_work(registry: ServiceRegistry, tenant_id: str) -> None:
+    """Close what merged merge requests have done, after each repository sync.
+
+    A request for a review of a merge request that has since been merged is
+    done whether or not anyone answered its DM. Never fails the sync: the
+    facts are recorded, and the next sync settles anything this one missed.
+    """
+    try:
+        await registry.cross_person_request_service().resolve_merged_work(tenant_id)
+    except Exception as error:
+        import structlog
+
+        structlog.get_logger(__name__).warning(
+            "merged_work_settle_failed",
+            tenant_id=tenant_id,
+            error=type(error).__name__,
+        )
 
 
 def _workflow_result(result: SyncRunResult) -> GitSyncWorkflowResult:

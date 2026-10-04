@@ -148,6 +148,37 @@ class PostgresCrossPersonRequestRepository:
             )
         return _request_from_row(rows[0]) if rows else None
 
+    async def refresh(
+        self,
+        tenant_id: str,
+        request_id: str,
+        *,
+        task_ref: EntityRef | None,
+        updated_at: datetime,
+    ) -> CrossPersonRequest | None:
+        with _tracer.start_as_current_span("postgres.cross_person.refresh"):
+            rows = await self._executor.fetch(
+                """
+                UPDATE cross_person_requests
+                SET updated_at = GREATEST(updated_at, %s),
+                    task_kind = CASE WHEN task_id IS NULL THEN %s ELSE task_kind END,
+                    task_id = COALESCE(task_id, %s)
+                WHERE tenant_id = %s AND id = %s
+                  AND status IN (%s, %s)
+                RETURNING *
+                """,
+                (
+                    updated_at,
+                    task_ref.kind.value if task_ref is not None else None,
+                    task_ref.id if task_ref is not None else None,
+                    tenant_id,
+                    request_id,
+                    CrossPersonRequestStatus.OPEN.value,
+                    CrossPersonRequestStatus.ACKNOWLEDGED.value,
+                ),
+            )
+        return _request_from_row(rows[0]) if rows else None
+
     async def claim_notification_attempt(
         self,
         tenant_id: str,

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 
 from core.domain.graph import FactEvent, JsonScalar
 
@@ -84,6 +85,73 @@ def merge_request_label(fact: FactEvent) -> str:
     web_url = _payload_str(fact.payload, "web_url") or ""
     sigil = "!" if "/merge_requests/" in web_url else "#"
     return f"{repo.rstrip('/').rsplit('/', 1)[-1]} {sigil}{pr_id}"
+
+
+@dataclass(frozen=True, kw_only=True)
+class MergeRequestIndex:
+    """The latest fact of each synced merge request, by name and by issue key."""
+
+    by_ref: Mapping[tuple[str, str], FactEvent]
+    by_issue: Mapping[str, tuple[FactEvent, ...]]
+
+    @classmethod
+    def from_facts(cls, facts: Iterable[FactEvent]) -> MergeRequestIndex:
+        latest: dict[tuple[str, str], FactEvent] = {}
+        for fact in sorted(facts, key=lambda item: (item.observed_at, item.ingested_at)):
+            repo = _payload_str(fact.payload, "repo")
+            pr_id = _payload_str(fact.payload, "id")
+            if repo is not None and pr_id is not None:
+                latest[(_repo_short_name(repo), pr_id)] = fact
+        by_issue: dict[str, list[FactEvent]] = {}
+        for fact in latest.values():
+            text = " ".join(
+                value
+                for value in (
+                    _payload_str(fact.payload, "source_branch"),
+                    _payload_str(fact.payload, "title"),
+                )
+                if value
+            )
+            for key in {match.upper() for match in ISSUE_KEY.findall(text)}:
+                by_issue.setdefault(key, []).append(fact)
+        return cls(
+            by_ref=latest,
+            by_issue={key: tuple(items) for key, items in by_issue.items()},
+        )
+
+    def merged_work(
+        self,
+        *,
+        issue_keys: Iterable[str],
+        refs: Iterable[tuple[str, str]],
+    ) -> tuple[FactEvent, ...] | None:
+        """The merge requests an ask is about, when every one of them is merged.
+
+        ``refs`` are ``(repo, number)`` pairs the ask names; ``issue_keys``
+        bring in every merge request that names the issue. None when the ask
+        names none we know, or when any of them is still open or was closed
+        without merging: work that is not in has not happened.
+        """
+        named: dict[tuple[str, str], FactEvent] = {}
+        for repo, number in refs:
+            fact = self.by_ref.get((repo.casefold(), number))
+            if fact is not None:
+                named[(repo.casefold(), number)] = fact
+        for key in issue_keys:
+            for fact in self.by_issue.get(key.upper(), ()):
+                repo = _payload_str(fact.payload, "repo") or ""
+                named[(_repo_short_name(repo), _payload_str(fact.payload, "id") or "")] = fact
+        if not named or not all(is_merged_merge_request(fact) for fact in named.values()):
+            return None
+        return tuple(named[key] for key in sorted(named))
+
+
+def is_merged_merge_request(fact: FactEvent) -> bool:
+    return fact.payload.get("merged") is True or fact.payload.get("state") == "merged"
+
+
+def _repo_short_name(repo: str) -> str:
+    return repo.rstrip("/").rsplit("/", 1)[-1].casefold()
 
 
 def _payload_str(payload: Mapping[str, JsonScalar], key: str) -> str | None:
