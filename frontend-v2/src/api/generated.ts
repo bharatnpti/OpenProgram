@@ -1015,6 +1015,41 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/config/branding": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Branding */
+    get: operations["get_branding_config_branding_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/branding/logo": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Replace Branding Logo */
+    put: operations["replace_branding_logo_config_branding_logo_put"];
+    post?: never;
+    /** Delete Branding Logo */
+    delete: operations["delete_branding_logo_config_branding_logo_delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/ask": {
     parameters: {
       query?: never;
@@ -1710,6 +1745,13 @@ export interface components {
        * Format: date
        */
       first_seen_on: string;
+    };
+    /**
+     * BrandingResponse
+     * @description The tenant's branding. ``logo`` is null when the console shows its default mark.
+     */
+    BrandingResponse: {
+      logo: components["schemas"]["TenantLogoResponse"] | null;
     };
     /**
      * BriefKind
@@ -2490,6 +2532,11 @@ export interface components {
       /** Observed At */
       observed_at?: string | null;
     };
+    /**
+     * LogoContentType
+     * @enum {string}
+     */
+    LogoContentType: "image/png" | "image/jpeg" | "image/webp";
     /** LogoutResponse */
     LogoutResponse: {
       /** Success */
@@ -3126,6 +3173,47 @@ export interface components {
       deadline: string | null;
       /** Tracker Status */
       tracker_status?: string | null;
+    };
+    /**
+     * TenantLogoResponse
+     * @description The tenant's logo, inline as a data URL.
+     *
+     *     An ``<img>`` cannot send the API's auth headers, so the image travels inside
+     *     this authenticated response instead of behind an image URL of its own.
+     */
+    TenantLogoResponse: {
+      /** Data Url */
+      data_url: string;
+      content_type: components["schemas"]["LogoContentType"];
+      /** Sha256 */
+      sha256: string;
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+      /** Updated By */
+      updated_by: string;
+    };
+    /**
+     * TenantLogoUploadRequest
+     * @description A logo to upload: its declared type and its bytes, base64-encoded.
+     *
+     *     JSON rather than a multipart form, so the console's one authenticated,
+     *     CSRF-protected client sends it like any other change. The server checks the
+     *     bytes themselves; the declared type must match what they are.
+     */
+    TenantLogoUploadRequest: {
+      /**
+       * Content Type
+       * @description image/png, image/jpeg or image/webp. SVG is refused.
+       */
+      content_type: string;
+      /**
+       * Data Base64
+       * @description The file's bytes in standard base64, without a data: prefix. At most 256 KB once decoded.
+       */
+      data_base64: string;
     };
     /** TenantWritebackResponse */
     TenantWritebackResponse: {
@@ -6231,6 +6319,101 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["DirectoryItemResponse"][];
         };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_branding_config_branding_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BrandingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  replace_branding_logo_config_branding_logo_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TenantLogoUploadRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["BrandingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  delete_branding_logo_config_branding_logo_delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Validation Error */
       422: {

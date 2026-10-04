@@ -4723,6 +4723,148 @@
         }
       }
     },
+    "/config/branding": {
+      "get": {
+        "tags": ["branding"],
+        "summary": "Get Branding",
+        "operationId": "get_branding_config_branding_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/branding/logo": {
+      "put": {
+        "tags": ["branding"],
+        "summary": "Replace Branding Logo",
+        "operationId": "replace_branding_logo_config_branding_logo_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantLogoUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["branding"],
+        "summary": "Delete Branding Logo",
+        "operationId": "delete_branding_logo_config_branding_logo_delete",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ask": {
       "post": {
         "tags": ["ask"],
@@ -7152,6 +7294,24 @@
           "first_seen_on"
         ],
         "title": "BlockerDto"
+      },
+      "BrandingResponse": {
+        "properties": {
+          "logo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TenantLogoResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["logo"],
+        "title": "BrandingResponse",
+        "description": "The tenant's branding. ``logo`` is null when the console shows its default mark."
       },
       "BriefKind": {
         "type": "string",
@@ -9611,6 +9771,11 @@
         "required": ["tenant_id", "project_key"],
         "title": "JiraSyncDispatchRequest"
       },
+      "LogoContentType": {
+        "type": "string",
+        "enum": ["image/png", "image/jpeg", "image/webp"],
+        "title": "LogoContentType"
+      },
       "LogoutResponse": {
         "properties": {
           "success": {
@@ -11272,6 +11437,53 @@
         "type": "object",
         "required": ["id", "name", "rag", "source", "confidence", "deadline"],
         "title": "TaskProgressDto"
+      },
+      "TenantLogoResponse": {
+        "properties": {
+          "data_url": {
+            "type": "string",
+            "title": "Data Url"
+          },
+          "content_type": {
+            "$ref": "#/components/schemas/LogoContentType"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "type": "string",
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "required": ["data_url", "content_type", "sha256", "updated_at", "updated_by"],
+        "title": "TenantLogoResponse",
+        "description": "The tenant's logo, inline as a data URL.\n\nAn ``<img>`` cannot send the API's auth headers, so the image travels inside\nthis authenticated response instead of behind an image URL of its own."
+      },
+      "TenantLogoUploadRequest": {
+        "properties": {
+          "content_type": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Content Type",
+            "description": "image/png, image/jpeg or image/webp. SVG is refused."
+          },
+          "data_base64": {
+            "type": "string",
+            "title": "Data Base64",
+            "description": "The file's bytes in standard base64, without a data: prefix. At most 256 KB once decoded."
+          }
+        },
+        "type": "object",
+        "required": ["content_type", "data_base64"],
+        "title": "TenantLogoUploadRequest",
+        "description": "A logo to upload: its declared type and its bytes, base64-encoded.\n\nJSON rather than a multipart form, so the console's one authenticated,\nCSRF-protected client sends it like any other change. The server checks the\nbytes themselves; the declared type must match what they are."
       },
       "TenantWritebackResponse": {
         "properties": {

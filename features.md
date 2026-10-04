@@ -75,7 +75,8 @@ Functional requirements:
 - Admins shall set each member's identity links (chat, issue-tracker, and VCS IDs), fill missing chat IDs and issue-tracker emails from the directory without overwriting what an admin set, and see how many members have no chat ID.
 - Admins shall set a pod's escalation contacts (scrum master and manager) by picking members, the pod's own members listed first, instead of typing chat IDs.
 - Admins shall set each member's write-back consent, and the admin screen shall say whether write-back is switched on for the tenant (see 4.24).
-- The admin screen shall group this work into Entities, Links, Directory, Check-ins, and Data sources tabs.
+- Admins shall upload the tenant's logo and remove it again. A logo shall be a PNG, JPEG or WebP image of at most 256 KB, judged by the file's own bytes rather than its declared type; SVG shall be refused because it can carry script. A tenant shall have at most one logo, and the console shall record who replaced it last. Every signed-in person of the tenant may read the logo; only an admin may change it.
+- The admin screen shall group this work into Entities, Links, Directory, Check-ins, Data sources, and Branding tabs.
 - The system shall reject invalid configuration mutations such as duplicate links, self-links, wrong node kinds, missing references, and conflicting IDs.
 
 ### 4.3 Check-In Preference Management
@@ -352,6 +353,7 @@ Functional requirements:
 - The frontend shall use a typed API client generated from OpenAPI.
 - The frontend shall send a unique correlation ID header with API requests.
 - The header shall offer Today, Delivery, Signals, and Coordination, plus Chat when the backend serves the built-in chat (see 4.25). Signals shall be hidden from developers, who hold no aggregate read.
+- The header shall show the tenant's logo when an admin has uploaded one (see 4.2), and the OpenProgram mark otherwise; uploading or removing a logo shall update the header without a reload. The OpenProgram mark shall also be the console's favicon.
 - The avatar menu shall offer the member's own check-in schedule (see 4.3), the check-in chat when it is served, and Admin configuration for the admin role only; the Admin route shall send any other role back to Today.
 - On a dev-auth tenant, the avatar menu shall offer "View as" for the roles the acting person holds, and the console shall remember the chosen role in local storage.
 - On a local dev-auth tenant with demo mode on, the header shall carry a searchable person picker, grouped by each person's most senior role. Choosing a person shall re-issue every request as them, and changing person or role shall drop all cached data. The picker shall be absent under any real auth provider.

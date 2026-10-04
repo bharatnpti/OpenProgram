@@ -42,6 +42,7 @@ from core.ports.auth import (
     AuthSession,
     CurrentPrincipal,
 )
+from core.ports.branding import TenantLogoRepository
 from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
 from core.ports.directory import DirectoryProvider, DirectoryUserRepository
@@ -86,7 +87,9 @@ from infra.adapters.secrets.encrypted import (
     InMemoryEncryptedSecretRecordStore,
     PostgresEncryptedSecretRecordStore,
 )
+from infra.persistence.in_memory_branding import InMemoryTenantLogoRepository
 from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
+from infra.persistence.postgres_branding import PostgresTenantLogoRepository
 from infra.persistence.postgres_cross_person import PostgresCrossPersonRequestRepository
 from infra.persistence.postgres_directory import PostgresDirectoryUserRepository
 from infra.persistence.postgres_graph import (
@@ -154,6 +157,14 @@ class ServiceRegistry:
         init=False,
     )
     _postgres_dead_letter_repository: PostgresDeadLetterRepository | None = field(
+        default=None,
+        init=False,
+    )
+    _postgres_tenant_logo_repository: PostgresTenantLogoRepository | None = field(
+        default=None,
+        init=False,
+    )
+    _memory_tenant_logo_repository: InMemoryTenantLogoRepository | None = field(
         default=None,
         init=False,
     )
@@ -292,6 +303,15 @@ class ServiceRegistry:
 
     def dead_letter_service(self) -> DeadLetterService:
         return DeadLetterService(self.dead_letter_repository())
+
+    def tenant_logo_repository(self) -> TenantLogoRepository:
+        if self.settings.runtime_mode == "memory":
+            if self._memory_tenant_logo_repository is None:
+                self._memory_tenant_logo_repository = InMemoryTenantLogoRepository()
+            return self._memory_tenant_logo_repository
+        if self._postgres_tenant_logo_repository is None:
+            self._postgres_tenant_logo_repository = PostgresTenantLogoRepository(self._executor())
+        return self._postgres_tenant_logo_repository
 
     def auth_provider(self) -> AuthProvider:
         if self._auth_provider is None:
