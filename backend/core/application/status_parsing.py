@@ -57,7 +57,9 @@ CLARIFICATION_EVALUATOR_SYSTEM_PROMPT = (
     "Use available Jira and Git tools to verify issue-specific claims. If the reply contradicts "
     "the source of truth, for example says an issue is done while Jira is not done, set sufficient "
     "false and ask one targeted clarification. "
-    "If more information is needed, draft one concise follow-up question. Return only valid JSON."
+    "If more information is needed, draft one concise follow-up question. The question names "
+    "the issue key it is about (for example 'What is your ETA for CHK-4?'), never only 'it' or "
+    "'this work'. Return only valid JSON."
 )
 # Added to the clarification prompt when this person's claims on their own issues
 # are written to the tracker without asking (write-back on, consent auto_apply).
