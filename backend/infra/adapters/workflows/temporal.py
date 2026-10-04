@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -69,7 +69,13 @@ from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import EscalationStepInput, NudgeInput, NudgeResult
 from infra.workflows.risk_assessment import RiskAssessmentInput, RiskAssessmentWorkflowResult
-from infra.workflows.rollup import RollupInput, RollupWorkflowResult
+from infra.workflows.rollup import (
+    ROLLUP_REFRESH_DEBOUNCE_SECONDS,
+    RollupInput,
+    RollupWorkflowResult,
+    rollup_refresh_input,
+    rollup_refresh_key,
+)
 from infra.workflows.runtime_sync import RuntimeSyncInput, RuntimeSyncWorkflowResult
 
 SyncWorkflowResult = (
@@ -920,6 +926,39 @@ class TemporalWorkflowScheduler:
         else:
             raise ValueError(f"unsupported sync connector: {input.connector}")
         return workflow_id
+
+
+@dataclass(frozen=True)
+class TemporalRollupRefresher:
+    """Starts the existing rollup workflow for one tenant and day, once per window (N27).
+
+    Temporal has no debounce, so requests coalesce on a fixed window: one
+    workflow id per tenant, day and ``debounce_seconds`` window, started
+    ``debounce_seconds`` late. The run therefore starts after its window has
+    closed, so it reads what every request in the window asked about; a request
+    in the next window gets a run of its own.
+    """
+
+    target: str
+    task_queue: str
+    debounce_seconds: int = ROLLUP_REFRESH_DEBOUNCE_SECONDS
+
+    async def refresh_rollup(self, tenant_id: str, as_of: date) -> None:
+        from temporalio.exceptions import WorkflowAlreadyStartedError
+
+        client = await _connect_temporal(self.target)
+        window = int(datetime.now(tz=UTC).timestamp()) // max(1, self.debounce_seconds)
+        try:
+            await client.start_workflow(
+                RollupWorkflow.run,
+                rollup_refresh_input(tenant_id, as_of),
+                id=safe_workflow_id(f"{rollup_refresh_key(tenant_id, as_of)}-{window}"),
+                task_queue=self.task_queue,
+                start_delay=timedelta(seconds=self.debounce_seconds),
+            )
+        except WorkflowAlreadyStartedError:
+            # This window's refresh is already due; it will read this change too.
+            return
 
 
 @dataclass(frozen=True)

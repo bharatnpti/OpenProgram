@@ -67,7 +67,7 @@ from core.ports.repositories import (
 )
 from core.ports.secrets import SecretStore
 from core.ports.vcs import VcsProvider
-from core.ports.workflows import WorkflowScheduler, WorkflowWorker
+from core.ports.workflows import RollupRefresher, WorkflowScheduler, WorkflowWorker
 from infra.adapters import catalog
 from infra.adapters.auth.dev import AuthProviderCurrentPrincipal, DevAuthProvider
 from infra.adapters.auth.oidc import OidcBffAuthProvider, OidcBffService
@@ -965,7 +965,9 @@ class ServiceRegistry:
             directory_repository=self.directory_user_repository(),
             time_series_repository=self.time_series_repository(),
             llm_provider=self.llm_provider(),
-            blocker_settlement=BlockerSettlement(self.status_repository()),
+            blocker_settlement=BlockerSettlement(
+                self.status_repository(), rollup_refresher=self.rollup_refresher()
+            ),
             model=self.settings.litellm_model,
             auto_notify=self.settings.cross_person_auto_notify,
             notify_max_attempts=self.settings.cross_person_notify_max_attempts,
@@ -1031,6 +1033,9 @@ class ServiceRegistry:
 
     def workflow_worker(self) -> WorkflowWorker:
         return catalog.build_workflow_worker(self.settings)
+
+    def rollup_refresher(self) -> RollupRefresher:
+        return catalog.build_rollup_refresher(self.settings)
 
     def secret_store(self) -> SecretStore:
         record_store = (

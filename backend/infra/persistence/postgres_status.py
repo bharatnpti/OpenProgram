@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping, Sequence
-from contextlib import AbstractAsyncContextManager, suppress
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from datetime import date, datetime, time
 from typing import Protocol
 
@@ -36,6 +36,9 @@ from core.domain.status import (
 )
 
 _tracer = trace.get_tracer("openprogram.persistence.status")
+# How long a rollup waits for another rollup of the same day; a rollup takes
+# well under a second, so this only bounds a stuck one (the step then retries).
+_ROLLUP_LOCK_TIMEOUT = "120s"
 
 
 class AsyncSqlSession(Protocol):
@@ -773,6 +776,25 @@ class PostgresStatusRepository:
 class PostgresRollupRepository:
     def __init__(self, executor: AsyncSqlExecutor) -> None:
         self._executor = executor
+
+    @asynccontextmanager
+    async def exclusive_day(self, tenant_id: str, as_of: date) -> AsyncIterator[None]:
+        """A transaction-scoped advisory lock on (tenant, day) for one rollup (N27).
+
+        Taken on a connection of its own and held while the rollup reads on
+        others and records: a second rollup of the same day waits for the first
+        to commit, then reads what it stored. The lock goes with the
+        transaction, so a rollup that fails or loses its connection never leaves
+        it held. No table or migration: the key is the tenant and the date.
+        """
+        with _tracer.start_as_current_span("postgres.rollup.exclusive_day"):
+            async with self._executor.transaction() as session:
+                await session.execute(f"SET LOCAL lock_timeout = '{_ROLLUP_LOCK_TIMEOUT}'")
+                await session.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                    (f"openprogram:node_statuses:{tenant_id}:{as_of.isoformat()}",),
+                )
+                yield
 
     async def record_node_status(self, status: NodeStatus) -> None:
         with _tracer.start_as_current_span("postgres.rollup.record_node_status"):
