@@ -116,6 +116,7 @@ There is **one port per capability** (not per vendor):
 from typing import Protocol
 from core.domain.messaging import OutboundMessage, InboundMessage, ChatUserRef
 
+
 class ChatProvider(Protocol):
     async def send_dm(self, user: ChatUserRef, message: OutboundMessage) -> str: ...
     async def open_thread(self, user: ChatUserRef) -> str: ...
@@ -140,10 +141,9 @@ class SlackChatAdapter:  # structurally satisfies ChatProvider
         self._client = client
 
     async def send_dm(self, user: ChatUserRef, message: OutboundMessage) -> str:
-        resp = await self._client.chat_postMessage(
-            channel=user.external_id, text=message.text
-        )
+        resp = await self._client.chat_postMessage(channel=user.external_id, text=message.text)
         return resp["ts"]
+
     # ...maps Slack payloads -> domain InboundMessage
 ```
 
@@ -152,6 +152,7 @@ class SlackChatAdapter:  # structurally satisfies ChatProvider
 ```python
 # infra/registry.py
 CHAT_ADAPTERS = {"slack": build_slack_adapter, "teams": build_teams_adapter}
+
 
 def get_chat_provider(settings: Settings) -> ChatProvider:
     return CHAT_ADAPTERS[settings.chat_provider](settings)
