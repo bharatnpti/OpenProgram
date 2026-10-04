@@ -1,0 +1,24 @@
+backend/core/application/cross_person_service.py
+  s_027fd12d872fd7::t_d0f49ded14cf77 10-15,449,453,457-458,461-465,563,567-579,581,586,603-604,611-638
+backend/tests/unit/test_counterpart_replies.py
+  s_027fd12d872fd7::t_9f672879a170fb 1-244
+  s_027fd12d872fd7::t_5516b10f1911c9 245-246
+backend/core/application/counterpart_replies.py
+  s_027fd12d872fd7::t_ddd88c2b3d5edc 1-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "677a0f7c195caddfea1a06639ab753b58def8d4a",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

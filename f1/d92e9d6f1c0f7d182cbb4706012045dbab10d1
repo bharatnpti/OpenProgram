@@ -1,0 +1,49 @@
+backend/tests/unit/qa2_checkout_slice.py
+  s_027fd12d872fd7::t_03795ca00cfcd6 1-47,66-94,98-139
+  s_027fd12d872fd7::t_98e364c4ea5123 48-65,95-97
+backend/core/application/cross_person_service.py
+  s_027fd12d872fd7::t_de14a404e12c10 258-270,545-546
+  s_027fd12d872fd7::t_908b665e4dd21b 253,256-257,273-289,547,550-551,579,582-583
+  s_027fd12d872fd7::t_187738492c5e5e 10,58-60,213-233,255,290-320,549,581
+backend/infra/workflows/git_sync.py
+  s_027fd12d872fd7::t_187738492c5e5e 55
+backend/tests/unit/test_cross_person_repeats.py
+  s_027fd12d872fd7::t_908b665e4dd21b 275-298
+  s_027fd12d872fd7::t_187738492c5e5e 457
+backend/infra/registry.py
+  s_027fd12d872fd7::t_187738492c5e5e 968
+  s_027fd12d872fd7::t_fff5337c4d5b6e 17
+backend/infra/persistence/postgres_status.py
+  s_027fd12d872fd7::t_1720ef2d1809d8 1336,1397
+backend/core/domain/blockers.py
+  s_027fd12d872fd7::t_1720ef2d1809d8 17,82-86
+backend/core/application/blocker_settlement.py
+  s_027fd12d872fd7::t_de14a404e12c10 27,86-91,179-181,184
+  s_027fd12d872fd7::t_fff5337c4d5b6e 73,127
+  s_027fd12d872fd7::t_8131b9a32aa025 129,132,216-219
+  s_027fd12d872fd7::t_87e06db6cc5308 1-26,28-72,74-85,92-126,128,130-131,133-178,182-183,185-215,220-230
+backend/infra/persistence/in_memory_graph.py
+  s_027fd12d872fd7::t_2c74597ddcf85c 49-50
+  s_027fd12d872fd7::t_1720ef2d1809d8 81-82,823
+  s_027fd12d872fd7::t_a75c15b2a62ab2 5,47-48
+backend/tests/unit/test_blocker_settlement.py
+  s_027fd12d872fd7::t_98e364c4ea5123 49-51,53-59,82-88,91-97,107-109,113-116,122-124,126-131,138-140,160-163,186-188,279-281,313-315,319-321,341-343
+  s_027fd12d872fd7::t_c977479afe0a4a 1-12,15-25,27-48,52,60-81,89-90,98-106,110-112,117-121,125,132-137,141-159,164-185,189-196,216,232,239-256,264-278,282-312,316-318,322-340,344-361
+  s_027fd12d872fd7::t_de14a404e12c10 13-14,26,197-215,217-231,233-238,257-263
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f1d92e9d6f1c0f7d182cbb4706012045dbab10d1",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
