@@ -12,13 +12,16 @@ to the other drift signals:
   criteria review of CHK-10 has no merge request to find, so it is neither
   asked about nor flagged, and a signal recorded before is dropped on read.
 - ``eta_disagreement``: two people gave different ETAs for one issue on the
-  same day (N23: Ira said CHK-4 by Friday, its owner Liam by Tuesday). Each
+  same day (N23: CHK-4 by Friday, and by Tuesday from its owner Liam). Each
   check-in records the ETA it states per issue (``eta_stated``) as a window of
   days from the check-in date: one day ("Friday"), or a vague ETA's days
   ("early next week": Monday to Wednesday, N31). The drift read flags an issue
   only when the windows share no day, names both people and dates, and says
-  the owner's ETA is the one used. Nothing else changes: each person's own
-  status keeps their ETA.
+  the owner's ETA is the one used. Only people who own or work the issue are
+  compared (N43, :func:`eta_is_compared`): a coordinator's ETA for someone
+  else's issue stays recorded but is never a disagreement (R5: Ira, a scrum
+  master, said Noah's IDP-3 "should wrap this week", and Noah went amber).
+  Nothing else changes: each person's own status keeps their ETA.
 
 Merge requests are linked to issues with :mod:`merge_request_links`, the
 matcher the ``merged_issue_open`` drift and the write-back use. A fact carries
@@ -38,6 +41,7 @@ from core.application.merge_request_links import (
     merge_requests_by_issue_key,
 )
 from core.application.status_summaries import day_label
+from core.application.team_context import coordinates_team
 from core.application.writeback_service import canonical_target_state
 from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.domain.status import IssueClaim, StatusSource
@@ -105,6 +109,19 @@ def code_work_keys(
             and _project_uses_merge_requests(project_task_keys(key), merge_request_facts)
         )
     )
+
+
+def eta_is_compared(roles: frozenset[str], *, owner: bool) -> bool:
+    """Whether an ETA a member states for an issue is compared with others' (N43).
+
+    Only people who own or work the issue are compared: its assignee
+    (``owner``), whatever their roles, and anyone who is not a coordinator.
+    A scrum master, product owner or exec without the dev role coordinates the
+    team's work and owes no ETA (N16, N33), so an ETA of theirs for someone
+    else's issue is a remark about it, never a disagreement. A member without
+    app roles is a developer (:func:`member_roles`).
+    """
+    return owner or DEVELOPER_ROLE in roles or not coordinates_team(roles)
 
 
 def _keys_with_code_activity(
@@ -421,6 +438,7 @@ def checkin_drift_signals(
     merge_request_facts: Iterable[FactEvent],
     owners: Mapping[str, str] | None = None,
     is_code_work: Callable[[str, str], bool] | None = None,
+    roles_of: Callable[[str], frozenset[str]] | None = None,
 ) -> list[CheckInDriftSignal]:
     """The check-in drift signals for ``issue_keys`` stated on ``as_of``.
 
@@ -429,8 +447,11 @@ def checkin_drift_signals(
     developer_id)`` says the review was not code work (N26), so a signal
     recorded before that rule clears on the next read. ETAs are compared per
     issue across people, each person's latest; ``owners`` maps an issue key to
-    its assignee.
+    its assignee. With ``roles_of`` (a member's app roles) only the ETAs of
+    people who own or work the issue are compared (N43,
+    :func:`eta_is_compared`), also for ETAs recorded before that rule.
     """
+    owner_of = owners or {}
     in_review: dict[str, FactEvent] = {}
     etas: dict[str, dict[str, FactEvent]] = {}
     for fact in sorted(facts, key=lambda item: (item.observed_at, item.ingested_at)):
@@ -447,7 +468,10 @@ def checkin_drift_signals(
             if is_code_work is None or is_code_work(key, stated_by):
                 in_review[key] = fact
         elif kind == ETA_STATED and (speaker := _text(fact.payload, "developer_id")):
-            etas.setdefault(key, {})[speaker] = fact
+            if roles_of is None or eta_is_compared(
+                roles_of(speaker), owner=owner_of.get(key) == speaker
+            ):
+                etas.setdefault(key, {})[speaker] = fact
     still_missing = set(keys_without_open_merge_request(list(in_review), merge_request_facts))
     signals = [
         CheckInDriftSignal(
@@ -464,7 +488,7 @@ def checkin_drift_signals(
         if key in still_missing
     ]
     for key, by_person in sorted(etas.items()):
-        signal = _eta_disagreement(key, by_person, (owners or {}).get(key))
+        signal = _eta_disagreement(key, by_person, owner_of.get(key))
         if signal is not None:
             signals.append(signal)
     return signals
