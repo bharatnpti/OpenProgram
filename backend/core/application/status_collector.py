@@ -57,12 +57,14 @@ from core.application.status_summaries import (
     NO_REPLY_BLOCKER,
     NON_STATUS_REPLY_SUMMARY,
     UNKNOWN_SUMMARY,
+    TrackerUpdate,
     basis_status,
     clarification_cap_note,
     inferred_summary,
     late_update_summary,
     names_one_basis,
     stale_summary,
+    summary_with_tracker_updates,
     with_no_active_work,
 )
 from core.application.team_context import (
@@ -152,6 +154,8 @@ COMPOSE_NUDGE_SYSTEM_PROMPT = (
 # Default outbound DM safety cap (prompt-echo + length guard); overridable via
 # Settings (outbound_dm_max_chars) through the StatusCollector constructor.
 OUTBOUND_DM_MAX_CHARS = 320
+# How a status summary names the tracker when the deployment does not say (N48).
+DEFAULT_ISSUE_TRACKER_NAME = "the issue tracker"
 # The one ack a check-in gets for replies that carry no status (N22).
 NON_STATUS_ACK_TEXT = "Thanks. I'll keep the check-in open for your status update."
 # The one ack a check-in gets for a status reply that came after it closed (G9).
@@ -282,8 +286,11 @@ class StatusCollector:
         tenant_default_timezone: str = "UTC",
         outbound_dm_max_chars: int = OUTBOUND_DM_MAX_CHARS,
         recent_fact_lookback_days: int = RECENT_FACT_LOOKBACK_DAYS,
+        issue_tracker_name: str = DEFAULT_ISSUE_TRACKER_NAME,
     ) -> None:
         self._issue_tracker = issue_tracker
+        # How a status summary names the tracker a check-in's update went to (N48).
+        self._issue_tracker_name = issue_tracker_name
         self._chat_provider = chat_provider
         self._llm_provider = llm_provider
         self._status_repository = status_repository
@@ -2486,6 +2493,7 @@ class StatusCollector:
         await self._record_review_without_merge_request(updated, status)
         await self._record_issue_etas(updated, status)
         written = await self._maybe_write_back(updated, final_signals, closing=closing)
+        status = await self._with_tracker_updates(status, written)
         # Send exactly one "Got it" ack per accepted reply. Gated on the
         # record_checkin_reply_once success above, so a durable retry or a
         # duplicate delivery (which returns early) never double-acks (C3).
@@ -3029,6 +3037,7 @@ class StatusCollector:
         await self._record_review_without_merge_request(updated, status)
         await self._record_issue_etas(updated, status)
         written = await self._late_update_write_back(updated, final_signals)
+        status = await self._with_tracker_updates(status, written)
         await self._send_late_update_ack(checkin=updated, applied=written)
         return status
 
@@ -3148,7 +3157,74 @@ class StatusCollector:
                 {"issue_key": audit.issue_key, "status": audit.status.value} for audit in results
             ],
         )
+        await self._mark_finalized_checkin_tracker_updates(checkin, results)
         return ReplyOutcome(kind="acknowledged")
+
+    async def _mark_finalized_checkin_tracker_updates(
+        self, checkin: CheckIn, rows: Sequence[WriteBackAudit]
+    ) -> None:
+        """Mark a finalized check-in's status with the updates a later yes applied (N48).
+
+        Only the check-in's own day: a status of another day is that day's
+        record and keeps its words.
+        """
+        if checkin.replied_at is None or not _applied_rows(rows):
+            return
+        try:
+            as_of = await self._status_as_of_for_checkin(checkin, checkin.replied_at)
+            status = await self._status_repository.latest_developer_status(
+                checkin.tenant_id, checkin.developer_id, as_of
+            )
+        except Exception:  # pragma: no cover - defensive; the write-back is recorded
+            return
+        if status is not None and status.as_of == as_of:
+            await self._with_tracker_updates(status, rows)
+
+    async def _with_tracker_updates(
+        self, status: DeveloperStatus, rows: Sequence[WriteBackAudit]
+    ) -> DeveloperStatus:
+        """``status`` with its summary marking the tracker updates its check-in applied (N48).
+
+        R5: Omar said "CHK-17 code is merged but ticket not closed", answered
+        yes to closing it, and OpenProgram closed it in Jira in the same
+        check-in; his stored summary kept saying the ticket was not closed, so
+        Ask and the digests contradicted Jira. Each sentence naming an issue
+        the check-in moved now says so where it stands, by plain text rules and
+        no model (:func:`summary_with_tracker_updates`). ``rows`` are the
+        check-in's own write-back rows; only applied ones count. The day's
+        latest status is the one revised, so a blocker cleared meanwhile stays
+        cleared. Best-effort: the status is recorded already, and a failure
+        here leaves it as it was.
+        """
+        updates = [
+            TrackerUpdate(
+                issue_key=row.issue_key,
+                change=_tracker_change(row),
+                tracker=self._issue_tracker_name,
+                confirmed=row.source == CONSENT_REPLY_SOURCE,
+            )
+            for row in _applied_rows(rows)
+        ]
+        if not updates:
+            return status
+        try:
+            current = await self._status_repository.latest_developer_status(
+                status.tenant_id, status.developer_id, status.as_of
+            )
+            base = current if current is not None and current.as_of == status.as_of else status
+            summary = summary_with_tracker_updates(base.summary, updates)
+            if summary == base.summary:
+                return base
+            revised = replace(base, summary=summary)
+            await self._status_repository.record_developer_status(revised)
+        except Exception:  # pragma: no cover - defensive; the status is recorded already
+            _logger.warning(
+                "tracker_update_summary_failed",
+                tenant_id=status.tenant_id,
+                developer_id=status.developer_id,
+            )
+            return status
+        return revised
 
     async def _record_partial_checkin_status(
         self,
@@ -3880,6 +3956,21 @@ def open_merge_request_note(hold: OpenMergeRequestHold) -> str:
 
 def _open_merge_request_notes(held: Sequence[OpenMergeRequestHold]) -> list[str]:
     return [open_merge_request_note(hold) for hold in held]
+
+
+def _applied_rows(rows: Sequence[WriteBackAudit]) -> list[WriteBackAudit]:
+    """The write-back rows of a check-in that changed the tracker, the latest per issue."""
+    return list(
+        {row.issue_key: row for row in rows if row.status is WriteBackStatus.APPLIED}.values()
+    )
+
+
+def _tracker_change(row: WriteBackAudit) -> str:
+    """What an applied write-back did, for a summary: "closed", "moved to In Progress"."""
+    state = row.after_state or row.target_state
+    if state == WriteBackTarget.DONE.value:
+        return "closed"
+    return f"moved to {target_state_label(state)}"
 
 
 def _applied_write_back_note(applied: Sequence[WriteBackAudit]) -> str | None:

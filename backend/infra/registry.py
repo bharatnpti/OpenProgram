@@ -20,7 +20,7 @@ from core.application.dead_letter_service import DeadLetterService
 from core.application.directory_sync_service import DirectorySyncService
 from core.application.reply_ingestion import ReplyDrainResult, ReplyIngestionService
 from core.application.self_status_service import SelfStatusService
-from core.application.status_collector import StatusCollector
+from core.application.status_collector import DEFAULT_ISSUE_TRACKER_NAME, StatusCollector
 from core.application.sync_recording import provider_start_failure_message
 from core.application.sync_services import (
     CalendarReadSyncService,
@@ -1036,6 +1036,12 @@ class ServiceRegistry:
             tenant_default_timezone=self.settings.tenant_default_timezone,
             outbound_dm_max_chars=self.settings.outbound_dm_max_chars,
             recent_fact_lookback_days=self.settings.recent_fact_lookback_days,
+            # Every tracker but the fake one is the Jira adapter (catalog).
+            issue_tracker_name=(
+                DEFAULT_ISSUE_TRACKER_NAME
+                if self.settings.issue_tracker_provider == "fake"
+                else "Jira"
+            ),
         )
 
     def workflow_scheduler(self) -> WorkflowScheduler:
