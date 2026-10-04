@@ -286,6 +286,31 @@ class PostgresStatusRepository:
             )
         return [_checkin_correlation_from_row(row) for row in rows]
 
+    async def recent_checkin_correlations_for_user(
+        self,
+        tenant_id: str,
+        chat_user_ref: str,
+        *,
+        asked_from: datetime,
+        asked_to: datetime,
+    ) -> list[CheckInCorrelation]:
+        with _tracer.start_as_current_span("postgres.status.recent_checkin_correlations_for_user"):
+            rows = await self._executor.fetch(
+                """
+                SELECT tenant_id, correlation_id, developer_id, chat_user_ref, chat_thread_ref,
+                       outbound_message_id, asked_at, consumed_at
+                FROM checkin_correlations
+                WHERE tenant_id = %s
+                  AND chat_user_ref = %s
+                  AND asked_at >= %s
+                  AND asked_at <= %s
+                ORDER BY asked_at DESC
+                LIMIT 50
+                """,
+                (tenant_id, chat_user_ref, asked_from, asked_to),
+            )
+        return [_checkin_correlation_from_row(row) for row in rows]
+
     async def consume_checkin_correlation(
         self, tenant_id: str, correlation_id: str, consumed_at: datetime
     ) -> None:

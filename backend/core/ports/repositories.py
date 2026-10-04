@@ -262,6 +262,21 @@ class StatusRepository(Protocol):
         self, tenant_id: str, chat_user_ref: str, as_of: date
     ) -> list[CheckInCorrelation]: ...
 
+    async def recent_checkin_correlations_for_user(
+        self,
+        tenant_id: str,
+        chat_user_ref: str,
+        *,
+        asked_from: datetime,
+        asked_to: datetime,
+    ) -> list[CheckInCorrelation]:
+        """The person's check-ins asked in ``[asked_from, asked_to]``, newest first.
+
+        Consumed (closed or answered) correlations are included: the newest one
+        is where a reply with no check-in of its local day goes (G9).
+        """
+        ...
+
     async def consume_checkin_correlation(
         self, tenant_id: str, correlation_id: str, consumed_at: datetime
     ) -> None: ...

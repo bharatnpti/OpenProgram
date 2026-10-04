@@ -602,6 +602,50 @@ async def test_postgres_open_checkin_signals_is_one_update_that_skips_finalized_
     assert _signals_from_json(params[0]) == signals
 
 
+@dataclass
+class _FetchRecorder:
+    rows: list[dict[str, object]]
+    calls: list[tuple[str, tuple[object, ...]]] = field(default_factory=list)
+
+    async def fetch(self, query: str, params: tuple[object, ...]) -> list[dict[str, object]]:
+        self.calls.append((query, params))
+        return self.rows
+
+
+async def test_postgres_recent_checkin_correlations_read_consumed_ones_newest_first() -> None:
+    asked_at = datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+    executor = _FetchRecorder(
+        rows=[
+            {
+                "tenant_id": "demo",
+                "correlation_id": "corr-r1",
+                "developer_id": "dev-1",
+                "chat_user_ref": "U0123ABCD",
+                "chat_thread_ref": "D0123ABCD",
+                "outbound_message_id": "1001.0001",
+                "asked_at": asked_at,
+                "consumed_at": datetime(2026, 10, 3, 13, 5, tzinfo=UTC),
+            }
+        ]
+    )
+    window_start = datetime(2026, 9, 29, 15, 0, tzinfo=UTC)
+    window_end = datetime(2026, 10, 3, 15, 11, tzinfo=UTC)
+
+    (correlation,) = await PostgresStatusRepository(  # type: ignore[arg-type]
+        executor
+    ).recent_checkin_correlations_for_user(
+        "demo", "U0123ABCD", asked_from=window_start, asked_to=window_end
+    )
+
+    ((query, params),) = executor.calls
+    statement = " ".join(query.split())
+    assert "consumed_at IS NULL" not in statement
+    assert "AND asked_at >= %s AND asked_at <= %s ORDER BY asked_at DESC" in statement
+    assert params == ("demo", "U0123ABCD", window_start, window_end)
+    assert correlation.correlation_id == "corr-r1"
+    assert correlation.consumed_at is not None
+
+
 def test_signals_json_round_trip_preserves_blocker_reports_and_resolved_ids() -> None:
     signals = CheckInSignals(
         progress_note="Graph sync in progress",
