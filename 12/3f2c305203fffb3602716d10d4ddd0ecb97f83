@@ -1,0 +1,35 @@
+backend/tests/unit/test_eta_disagreement.py
+  s_027fd12d872fd7::t_377c8ebe69df37 424-429,433-564
+  s_027fd12d872fd7::t_8895f1a9543851 430-432
+  s_027fd12d872fd7::t_d6c7673813227e 250,252-253
+  s_027fd12d872fd7::t_6c82c627c44e31 6-10
+  s_027fd12d872fd7::t_fd61396a1fe58c 47
+  s_027fd12d872fd7::t_7c2f2b2201bbdd 157-158,168-172
+backend/core/application/checkin_drift.py
+  s_027fd12d872fd7::t_23f1c2bd938d92 471-474
+  s_027fd12d872fd7::t_7ecee0a5e3c56c 44
+  s_027fd12d872fd7::t_b4e9b83249a30a 114-126
+  s_027fd12d872fd7::t_188e168b4aa6f4 15,20-24
+  s_027fd12d872fd7::t_981940a410d4d8 441,450-452,454
+  s_027fd12d872fd7::t_5d3f6d24b39d15 491
+backend/core/application/risk_service.py
+  s_027fd12d872fd7::t_2459404f9c467f 770-772
+  s_027fd12d872fd7::t_c37fb825840168 840
+  s_027fd12d872fd7::t_e02398224081a1 803-806,814
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "123f2c305203fffb3602716d10d4ddd0ecb97f83",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
