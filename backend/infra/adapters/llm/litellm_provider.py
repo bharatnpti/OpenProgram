@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -26,6 +27,26 @@ _tracer = trace.get_tracer("openprogram.adapters.llm.litellm")
 _JSON_MODE_TEMPERATURE = 0.0
 _JSON_MODE_MAX_TOKENS = 1024
 _RESPONSE_COST_HEADER = "x-litellm-response-cost"
+
+# A completion once stalled ~60 s on a hung connection before an
+# httpx.ConnectError ended it and a workflow step retried it. Connecting is
+# now bounded at 5 s, reading, writing and the pool keep the 30 s they had,
+# and a request that got no response at all is tried again, briefly, before
+# its error is raised.
+_REQUEST_TIMEOUT = httpx.Timeout(30.0, connect=5.0)
+_MAX_ATTEMPTS = 3
+_RETRY_BACKOFF_SECONDS = (0.5, 1.0)
+# Failures that leave no response behind: no connection, or no answer in
+# time. A read timeout may repeat a completion the endpoint was still
+# working on, which costs tokens but runs nothing. RemoteProtocolError stays
+# out, as it is also raised for a response cut off midway, and an HTTP error
+# status is the endpoint's answer: neither is retried.
+_RETRYABLE_ERRORS: tuple[type[httpx.TransportError], ...] = (
+    httpx.ConnectError,
+    httpx.TimeoutException,
+)
+# Module-level so tests can skip the backoff.
+_sleep = asyncio.sleep
 
 # Trace-export failures are almost always one standing condition (the sink is
 # not running, or credentials are wrong), so the same warning would otherwise
@@ -147,31 +168,25 @@ class LiteLlmProvider:
             span.set_attribute("openprogram.tenant_id", request.tenant_id)
             started = perf_counter()
             headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
-            async with httpx.AsyncClient(base_url=self.base_url, timeout=30.0) as client:
-                # Tenant and correlation travel on the OTel span and the
-                # Langfuse trace, not in the request body: OpenAI rejects a
-                # top-level `metadata` unless `store` is enabled, and storing
-                # completions would leave check-in text with the provider --
-                # a retention decision that is not this adapter's to make.
-                body: dict[str, object] = {
-                    "model": request.model,
-                    "messages": _chat_messages(request),
-                }
-                if request.tools:
-                    body["tools"] = [_tool_payload(tool) for tool in request.tools]
-                if request.json_mode:
-                    body["response_format"] = {"type": "json_object"}
-                    body["temperature"] = _JSON_MODE_TEMPERATURE
-                    # `max_completion_tokens` is the field current chat models
-                    # accept; `max_tokens` is refused outright by newer ones.
-                    body["max_completion_tokens"] = _JSON_MODE_MAX_TOKENS
-                http_response = await client.post(
-                    "/v1/chat/completions",
-                    headers=headers,
-                    json=body,
-                )
-                http_response.raise_for_status()
-                payload = http_response.json()
+            # Tenant and correlation travel on the OTel span and the
+            # Langfuse trace, not in the request body: OpenAI rejects a
+            # top-level `metadata` unless `store` is enabled, and storing
+            # completions would leave check-in text with the provider --
+            # a retention decision that is not this adapter's to make.
+            body: dict[str, object] = {
+                "model": request.model,
+                "messages": _chat_messages(request),
+            }
+            if request.tools:
+                body["tools"] = [_tool_payload(tool) for tool in request.tools]
+            if request.json_mode:
+                body["response_format"] = {"type": "json_object"}
+                body["temperature"] = _JSON_MODE_TEMPERATURE
+                # `max_completion_tokens` is the field current chat models
+                # accept; `max_tokens` is refused outright by newer ones.
+                body["max_completion_tokens"] = _JSON_MODE_MAX_TOKENS
+            http_response = await self._post_completion(headers, body)
+            payload = http_response.json()
             latency_ms = (perf_counter() - started) * 1000
             cost_usd = _response_cost(http_response.headers, payload)
             response = _response_from_payload(request, payload, latency_ms, cost_usd)
@@ -186,6 +201,45 @@ class LiteLlmProvider:
                 finish_reason=response.finish_reason,
                 metadata=response.metadata,
             )
+
+    async def _post_completion(
+        self, headers: Mapping[str, str], body: Mapping[str, object]
+    ) -> httpx.Response:
+        """POST the completion, again after a failure that left no response.
+
+        Only this one HTTP request is retried, so a retry repeats nothing
+        else: tools run in the caller's tool loop once a response is back,
+        and the trace sink records each successful response once. A response
+        with an error status is raised as it came. When the last attempt
+        fails too, its own error is raised, so a workflow step's retry still
+        sees what it always did.
+        """
+        attempt = 1
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=_REQUEST_TIMEOUT) as client:
+            while True:
+                try:
+                    response = await client.post(
+                        "/v1/chat/completions",
+                        headers=headers,
+                        json=body,
+                    )
+                except _RETRYABLE_ERRORS as exc:
+                    if attempt >= _MAX_ATTEMPTS:
+                        raise
+                    backoff = _RETRY_BACKOFF_SECONDS[attempt - 1]
+                    # The error type only: the body carries check-in text.
+                    _logger.warning(
+                        "llm_request_retry",
+                        attempt=attempt,
+                        max_attempts=_MAX_ATTEMPTS,
+                        error_type=type(exc).__name__,
+                        backoff_seconds=backoff,
+                    )
+                    await _sleep(backoff)
+                    attempt += 1
+                    continue
+                response.raise_for_status()
+                return response
 
 
 def _response_from_payload(

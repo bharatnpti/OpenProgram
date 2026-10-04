@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 
 import httpx
+import pytest
 import respx
 
 from core.domain.llm import (
@@ -14,6 +16,7 @@ from core.domain.llm import (
     LlmToolResult,
     TokenUsage,
 )
+from infra.adapters.llm import litellm_provider
 from infra.adapters.llm.fake import FakeLlmProvider
 from infra.adapters.llm.litellm_provider import (
     LangfuseTraceSink,
@@ -377,3 +380,156 @@ async def test_fake_llm_provider_returns_scripted_responses() -> None:
 
     assert response == scripted
     assert provider.requests == [request]
+
+
+_LITELLM_COMPLETIONS = "https://litellm.test/v1/chat/completions"
+_COMPLETION = {
+    "id": "trace-llm",
+    "model": "test-model",
+    "choices": [{"message": {"content": "ok"}}],
+    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+}
+_PROMPT = "check-in text that must never reach a log"
+
+
+@dataclass
+class _CountingSink:
+    recorded: int = 0
+
+    async def record(self, request: LlmRequest, response: LlmResponse) -> str:
+        self.recorded += 1
+        return response.trace_id
+
+
+@dataclass
+class _RecordingLogger:
+    warnings: list[tuple[str, dict[str, object]]] = field(default_factory=list)
+
+    def warning(self, event: str, **fields: object) -> None:
+        self.warnings.append((event, fields))
+
+
+@pytest.fixture
+def backoffs(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """The backoff delays a provider waited, without the waiting."""
+    waited: list[float] = []
+
+    async def no_wait(seconds: float) -> None:
+        waited.append(seconds)
+
+    monkeypatch.setattr(litellm_provider, "_sleep", no_wait)
+    return waited
+
+
+@pytest.fixture
+def retry_log(monkeypatch: pytest.MonkeyPatch) -> _RecordingLogger:
+    logger = _RecordingLogger()
+    monkeypatch.setattr(litellm_provider, "_logger", logger)
+    return logger
+
+
+def _retry_request() -> LlmRequest:
+    return LlmRequest(tenant_id="demo", prompt=_PROMPT, model="test-model", correlation_id="c-1")
+
+
+@respx.mock
+async def test_litellm_retries_a_failed_connection_then_returns_the_response(
+    backoffs: list[float], retry_log: _RecordingLogger
+) -> None:
+    """A first-wave completion stalled ~60 s on a hung connection until a
+    ConnectError, and only a workflow step's retry recovered it."""
+    route = respx.post(_LITELLM_COMPLETIONS).mock(
+        side_effect=[
+            httpx.ConnectError,
+            httpx.ConnectError,
+            httpx.Response(200, json=_COMPLETION),
+        ]
+    )
+    sink = _CountingSink()
+    provider = LiteLlmProvider(base_url="https://litellm.test", trace_sink=sink)
+
+    response = await provider.complete(_retry_request())
+
+    assert response.text == "ok"
+    assert route.call_count == 3
+    assert backoffs == [0.5, 1.0]
+    # Traced once, for the one response.
+    assert sink.recorded == 1
+    assert [
+        (event, fields["attempt"], fields["error_type"]) for event, fields in retry_log.warnings
+    ] == [
+        ("llm_request_retry", 1, "ConnectError"),
+        ("llm_request_retry", 2, "ConnectError"),
+    ]
+    assert _PROMPT not in repr(retry_log.warnings)
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    "timed_out",
+    [httpx.ConnectTimeout, httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout],
+)
+async def test_litellm_retries_a_request_that_timed_out(
+    timed_out: type[httpx.TimeoutException], backoffs: list[float], retry_log: _RecordingLogger
+) -> None:
+    route = respx.post(_LITELLM_COMPLETIONS).mock(
+        side_effect=[timed_out, httpx.Response(200, json=_COMPLETION)]
+    )
+    provider = LiteLlmProvider(base_url="https://litellm.test", trace_sink=NoopTraceSink())
+
+    response = await provider.complete(_retry_request())
+
+    assert response.text == "ok"
+    assert route.call_count == 2
+    assert backoffs == [0.5]
+    assert retry_log.warnings[0][1]["error_type"] == timed_out.__name__
+
+
+@respx.mock
+async def test_litellm_raises_the_connect_error_after_three_attempts(
+    backoffs: list[float], retry_log: _RecordingLogger
+) -> None:
+    route = respx.post(_LITELLM_COMPLETIONS).mock(side_effect=httpx.ConnectError)
+    sink = _CountingSink()
+    provider = LiteLlmProvider(base_url="https://litellm.test", trace_sink=sink)
+
+    with pytest.raises(httpx.ConnectError):
+        await provider.complete(_retry_request())
+
+    assert route.call_count == 3
+    assert backoffs == [0.5, 1.0]
+    assert len(retry_log.warnings) == 2
+    assert sink.recorded == 0
+
+
+@respx.mock
+async def test_litellm_does_not_retry_an_error_status(
+    backoffs: list[float], retry_log: _RecordingLogger
+) -> None:
+    route = respx.post(_LITELLM_COMPLETIONS).mock(
+        return_value=httpx.Response(500, json={"error": "upstream"})
+    )
+    provider = LiteLlmProvider(base_url="https://litellm.test", trace_sink=NoopTraceSink())
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await provider.complete(_retry_request())
+
+    assert route.call_count == 1
+    assert backoffs == []
+    assert retry_log.warnings == []
+
+
+@respx.mock
+async def test_litellm_bounds_connecting_at_5s_and_keeps_30s_for_the_rest() -> None:
+    timeouts: list[object] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        timeouts.append(request.extensions["timeout"])
+        return httpx.Response(200, json=_COMPLETION)
+
+    respx.post(_LITELLM_COMPLETIONS).mock(side_effect=answer)
+    provider = LiteLlmProvider(base_url="https://litellm.test", trace_sink=NoopTraceSink())
+
+    await provider.complete(_retry_request())
+
+    assert timeouts == [{"connect": 5.0, "read": 30.0, "write": 30.0, "pool": 30.0}]
