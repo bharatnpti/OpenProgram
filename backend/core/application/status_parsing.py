@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 
 import structlog
 
 from core.application.agents.tool_loop import ToolCallingAgent
+from core.application.checkin_drift import eta_duration_days
 from core.application.conversation_history import llm_messages_from_turns
 from core.application.json_parsing import extract_json_object
 from core.domain.blockers import BlockerReport, DeveloperBlocker, normalize_blocker_key
@@ -39,6 +41,24 @@ _REQUEST_NOTE_RULE = (
 _REQUEST_NAME_RULE = (
     "A requests name is a person's name. A role or placeholder such as reviewer, someone, "
     "anyone, the team, QA, a dev or my lead names nobody: add no request for it."
+)
+# eta_change_days is an ETA that moved, never how long the work takes from now (N45).
+_ETA_CHANGE_RULE = (
+    "eta_change_days is only for an ETA the reply says moved: the days it moved by, positive "
+    "when later ('pushed by 2 days' is 2, 'slipped a day' is 1, 'moved from Tuesday to "
+    "Thursday' is 2). A time from now such as '2-3 days to finish', 'in 3 days' or 'a couple "
+    "of days' is an ETA, not a change: leave eta_change_days null, set eta_answered true and "
+    "keep the words in the issue_updates note of the issue it is for."
+)
+# An ETA that moved, in the person's words: "pushed by 2 days", "slipped a day",
+# "delayed by 2 days", "moved from Tuesday to Thursday", "2 days behind".
+_ETA_MOVED = re.compile(
+    r"\b(?:slip\w*|delay\w*|postpon\w*|resched\w*|defer\w*|overrun\w*|behind|"
+    r"push(?:ed|es|ing)?\s+(?:it\s+)?(?:back|out|by)|"
+    r"mov(?:ed|es|ing)\s+(?:it\s+)?(?:from|out|back|by)|"
+    r"(?:later|longer|more)\s+than|extra\s+days?|instead\s+of|rather\s+than|"
+    r"(?:eta|deadline|target|due date)\s+(?:is\s+|has\s+|was\s+)?(?:now\s+)?"
+    r"(?:moved|changed|shifted|pushed|slipped))\b"
 )
 
 PARSE_REPLY_SYSTEM_PROMPT = (
@@ -259,6 +279,7 @@ def _parser_prompt(raw_reply: str, *, prior_text: str = "") -> str:
         "Set blockers_answered true only when the reply explicitly says there are no blockers "
         "or names one or more blockers. Set eta_answered true only when the reply explicitly "
         "gives an ETA, ETA change, or says there is no ETA change. "
+        f"{_ETA_CHANGE_RULE} "
         "Only include a request when the reply explicitly needs a deliverable, review, "
         "or input from a specific named person. Use an empty requests array otherwise. "
         f"{_REQUEST_NAME_RULE} "
@@ -313,6 +334,7 @@ def _clarification_prompt(raw_reply: str, *, prior_text: str = "") -> str:
         "Set blockers_answered true only when the reply explicitly says there are no blockers "
         "or names one or more blockers. Set eta_answered true only when the reply explicitly "
         "gives an ETA, ETA change, or says there is no ETA change. "
+        f"{_ETA_CHANGE_RULE} "
         "When sufficient is false, question must ask only for the missing status detail."
         f"{prior_text}\n\n"
         f"Latest reply:\n{raw_reply}"
@@ -422,7 +444,16 @@ def _signals_from_json(
     resolved_blocker_ids = _resolved_blocker_ids(
         value.get("resolved_blocker_ids"), prior_blocker_handles
     )
+    issue_updates = _issue_claim_tuple(value.get("issue_updates"))
     eta_change_days = _optional_int(value.get("eta_change_days"))
+    eta_answered = eta_change_days is not None or _optional_bool(value.get("eta_answered"))
+    # Every caller passes the person's raw reply as the fallback note.
+    if eta_change_days is not None and _is_duration_from_now(
+        eta_change_days, (fallback_progress_note, *_claim_texts(issue_updates))
+    ):
+        # The duration is the ETA, which stays answered. Its window is read
+        # from the claim's words when the check-in records the issue's ETA.
+        eta_change_days = None
     return CheckInSignals(
         progress_note=progress_note.strip()
         if isinstance(progress_note, str) and progress_note.strip()
@@ -432,11 +463,38 @@ def _signals_from_json(
         blockers_answered=bool(blockers)
         or bool(resolved_blocker_ids)
         or _optional_bool(value.get("blockers_answered")),
-        eta_answered=eta_change_days is not None or _optional_bool(value.get("eta_answered")),
+        eta_answered=eta_answered,
         requests=_request_tuple(value.get("requests")),
-        issue_updates=_issue_claim_tuple(value.get("issue_updates")),
+        issue_updates=issue_updates,
         blocker_reports=blocker_reports,
         resolved_blocker_ids=resolved_blocker_ids,
+    )
+
+
+def _is_duration_from_now(eta_change_days: int, texts: Iterable[str]) -> bool:
+    """Whether the model's ETA change is a duration from now the reply gave (N45).
+
+    R5 live: asked for CHK-14's ETA, Sofia said "2-3 days to have the test plan
+    reviewed and finalized." The model gave eta_change_days 2, and the Signals
+    feed read "eta change +2d", as if the ETA had slipped two days. An ETA
+    change is an ETA that moved ("pushed by 2 days", "slipped a day", "moved
+    from Tuesday to Thursday"). So when no reply or claim words say it moved,
+    and a duration from now in them holds the number, the number is that
+    duration. Read deterministically; a real change is kept as the model gave it.
+    """
+    words = tuple(text.lower() for text in texts if text)
+    if eta_change_days <= 0 or any(_ETA_MOVED.search(text) for text in words):
+        return False
+    for text in words:
+        days = eta_duration_days(text)
+        if days is not None and days[0] <= eta_change_days <= days[1]:
+            return True
+    return False
+
+
+def _claim_texts(claims: Iterable[IssueClaim]) -> tuple[str, ...]:
+    return tuple(
+        part for claim in claims for part in (claim.note, claim.claimed_state or "") if part
     )
 
 

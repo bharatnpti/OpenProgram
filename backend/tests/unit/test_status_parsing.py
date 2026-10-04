@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
+import pytest
+
 from core.application.agents.tool_loop import ToolCallingAgent
+from core.application.checkin_drift import IssueEta, issue_eta
 from core.application.status_parsing import (
     GENERIC_CLARIFICATION_QUESTION,
     ClarificationDecision,
@@ -695,3 +699,113 @@ class StaticTool:
     async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
         self.calls.append(dict(arguments))
         return f"history: {arguments.get('limit', '')}"
+
+
+def _eta_evaluation(note: str, *, eta_change_days: int | None, eta_answered: bool) -> str:
+    return json.dumps(
+        {
+            "is_status_update": True,
+            "sufficient": True,
+            "question": None,
+            "signals": {
+                "progress_note": "CHK-14 test plan is under review.",
+                "blockers": [],
+                "eta_change_days": eta_change_days,
+                "blockers_answered": True,
+                "eta_answered": eta_answered,
+                "issue_updates": [
+                    {
+                        "issue_key": "CHK-14",
+                        "claimed_done": False,
+                        "claimed_state": "in review",
+                        "note": note,
+                    }
+                ],
+            },
+        }
+    )
+
+
+async def test_a_duration_from_now_is_an_eta_window_not_an_eta_change() -> None:
+    """N45, R5 live: Sofia's answer to "What is your ETA to finish CHK-14?"."""
+    reply = "2-3 days to have the test plan reviewed and finalized."
+    provider = CapturingLlmProvider(
+        text=_eta_evaluation(
+            "2-3 days to have the test plan reviewed and finalized",
+            eta_change_days=2,
+            eta_answered=True,
+        )
+    )
+
+    decision = await ClarificationEvaluator(provider, model="test-model").evaluate(
+        tenant_id="demo", developer_id="dev-sofia", raw_reply=reply, correlation_id="corr-1"
+    )
+
+    assert decision.signals is not None
+    assert decision.signals.eta_change_days is None
+    assert decision.signals.eta_answered is True
+    (claim,) = decision.signals.issue_updates
+    # The window from the check-in date (Sunday Oct 4): Oct 6 to Oct 7.
+    assert issue_eta(claim, date(2026, 10, 4)) == IssueEta(
+        label="2-3 days", start=date(2026, 10, 6), day=date(2026, 10, 7)
+    )
+    assert "eta_change_days is only for an ETA the reply says moved" in provider.requests[0].prompt
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Two to three days.",
+        "In 2 days",
+        "Within 3 days, once the review is in",
+        "A couple of days to finalize it",
+    ],
+)
+async def test_a_duration_alone_answers_the_eta_without_a_change(reply: str) -> None:
+    provider = CapturingLlmProvider(
+        text=json.dumps(
+            {
+                "progress_note": "Test plan under review.",
+                "blockers": [],
+                "eta_change_days": 2,
+                "blockers_answered": True,
+                "eta_answered": False,
+                "issue_updates": [],
+            }
+        )
+    )
+
+    signals = await StatusParser(provider, model="test-model").parse_reply(
+        tenant_id="demo", developer_id="dev-sofia", raw_reply=reply, correlation_id="corr-1"
+    )
+
+    assert signals.eta_change_days is None
+    assert signals.eta_answered is True
+    assert "eta_change_days is only for an ETA the reply says moved" in provider.requests[0].prompt
+
+
+@pytest.mark.parametrize(
+    ("reply", "note", "eta_change_days"),
+    [
+        ("CHK-14 pushed by 2 days", "Pushed by 2 days", 2),
+        ("CHK-14 moved from Tuesday to Thursday", "Moved from Tuesday to Thursday", 2),
+        ("Slipped a day, review is slower than hoped", "Slipped a day", 1),
+        ("Delayed by 2 days, so in 2 days now", "Delayed by 2 days", 2),
+        # A duration said together with a slip: the slip is the change.
+        ("CHK-14 slipped, needs another 2 days", "Needs another 2 days", 2),
+    ],
+)
+async def test_an_eta_that_moved_keeps_its_eta_change(
+    reply: str, note: str, eta_change_days: int
+) -> None:
+    provider = CapturingLlmProvider(
+        text=_eta_evaluation(note, eta_change_days=eta_change_days, eta_answered=True)
+    )
+
+    decision = await ClarificationEvaluator(provider, model="test-model").evaluate(
+        tenant_id="demo", developer_id="dev-sofia", raw_reply=reply, correlation_id="corr-1"
+    )
+
+    assert decision.signals is not None
+    assert decision.signals.eta_change_days == eta_change_days
+    assert decision.signals.eta_answered is True
