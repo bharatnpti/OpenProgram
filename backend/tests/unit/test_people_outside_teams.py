@@ -210,8 +210,14 @@ async def test_elena_appears_with_her_state_and_changes_no_team_colour(
     heatmap = await PersonaViewService(store, store, store, store).portfolio_heatmap(TENANT, DAY)
 
     cell = next(cell for cell in heatmap.cells if cell.entity_ref.id == ELENA)
-    assert (cell.row, cell.rag, cell.why) == ("no pod", rag, why)
+    assert (cell.row, cell.rag, cell.why, cell.name) == ("no pod", rag, why, "Elena Fischer")
     assert "no pod" in heatmap.rows
+    # The stored read for a named program walks no tree, and still names her.
+    by_program = await PersonaViewService(store, store, store, store).portfolio_heatmap(
+        TENANT, DAY, "program-platform"
+    )
+    named = {cell.entity_ref.id: (cell.row, cell.name) for cell in by_program.cells}
+    assert named[ELENA] == ("no pod", "Elena Fischer")
     team_cells = {cell.entity_ref.id: cell.rag for cell in heatmap.cells if cell.row != "no pod"}
     assert {node_id: team_cells[node_id] for node_id in teams_before} == teams_before
 

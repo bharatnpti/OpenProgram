@@ -11,6 +11,7 @@ import { ragSeverity, toneForRag, toneHex } from "../../lib/status";
 import { useViewingDate } from "../../app/viewingDate";
 import type { BriefKind, DirectoryItemResponse, Rag } from "../../api/schema";
 import { heroDetailLine, type RollupTree } from "./heroDetail";
+import { noPodTiles } from "./noPodRow";
 
 const HERO_BG: Record<string, string> = {
   danger: "bg-rag-red-bg",
@@ -83,6 +84,17 @@ export function ManagerExecToday() {
     heatRow("Workstreams", "workstream", workstreams.data),
     heatRow("Pods", "pod", pods.data),
   ];
+
+  // People in no team -- an exec, or someone not yet in a pod -- have their own
+  // cells on the heat map's "no pod" row: their check-in, which no pod, project
+  // or program counts. They get a row of their own below the teams and stay
+  // out of the headline, which reads the team rows only.
+  const heatmap = useQuery({
+    queryKey: ["persona", "heatmap", programId, asOf],
+    queryFn: () => apiClient.portfolioHeatmap(asOf, programId),
+    enabled: Boolean(programId),
+  });
+  const noPod = noPodTiles(heatmap.data?.cells, HEAT_COLUMNS);
 
   const worstRag = worstOf(
     [...(projects.data ?? []), ...(workstreams.data ?? []), ...(pods.data ?? [])].map((i) => i.rag),
@@ -233,6 +245,36 @@ export function ManagerExecToday() {
               })}
             </div>
           ))}
+          {noPod.tiles.length > 0 ? (
+            <div className="grid grid-cols-[110px_repeat(4,1fr)] items-center gap-2.5">
+              <div className="text-[13px] font-bold text-grey-secondary">
+                No pod
+                <span className="block text-[11px] font-bold uppercase tracking-wide">
+                  {noPod.total > noPod.tiles.length
+                    ? `worst ${noPod.tiles.length} of ${noPod.total}`
+                    : "not in team colours"}
+                </span>
+              </div>
+              {noPod.tiles.map((tile, index) => {
+                const tone = toneForRag(tile.rag);
+                return (
+                  <div
+                    key={tile.id}
+                    title={tile.why}
+                    style={{ animationDelay: `${index * 50}ms` }}
+                    className={cn("animate-op-pop h-[76px] rounded-2xl px-3 py-2", HERO_BG[tone])}
+                  >
+                    <div className={cn("truncate text-[14px] font-extrabold", HERO_TEXT[tone])}>
+                      {tile.name}
+                    </div>
+                    <div className={cn("mt-1 text-xs font-bold uppercase", HERO_TEXT[tone])}>
+                      {tile.state}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       </Card>
 
