@@ -1,0 +1,26 @@
+backend/core/application/writeback_service.py
+  s_027fd12d872fd7::t_4ff37aa30cff0c 712-713,716-717,719,720,772
+  s_027fd12d872fd7::t_c6c2f398c92eb4 132,143
+  s_027fd12d872fd7::t_a7942dece7c0fc 35
+  s_027fd12d872fd7::t_dfe91f86392f16 330-333
+backend/tests/unit/test_writeback_service.py
+  s_027fd12d872fd7::t_74c476f37b9bee 30,84,114,1197-1277
+backend/infra/registry.py
+  s_027fd12d872fd7::t_3a5378b1e8720c 995
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "765888c032648da2cf5d6d5b01366a15ce4924a4",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
