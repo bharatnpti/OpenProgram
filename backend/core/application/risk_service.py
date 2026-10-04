@@ -5,7 +5,14 @@ from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
 
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
-from core.application.checkin_drift import CHECKIN_DRIFT_FACT_SOURCE, checkin_drift_signals
+from core.application.checkin_drift import (
+    CHECKIN_DRIFT_FACT_SOURCE,
+    COMMIT_FACT_SOURCE,
+    SAID_IN_REVIEW_NO_MR,
+    checkin_drift_signals,
+    code_work_keys,
+    member_roles,
+)
 from core.application.merge_request_links import (
     MERGE_REQUEST_FACT_SOURCE,
     merge_requests_by_issue_key,
@@ -619,6 +626,28 @@ class RiskService:
             )
             if edge.to_node_id in tasks and edge.is_active_on(as_of)
         }
+        commits: list[FactEvent] = []
+        if any(fact.payload.get("kind") == SAID_IN_REVIEW_NO_MR for fact in facts):
+            commits = await self._time_series_repository.list_recent_facts(
+                tenant_id, sources=(COMMIT_FACT_SOURCE,), limit=_RISK_FACT_SCAN_LIMIT
+            )
+        project_keys = frozenset(tasks)
+
+        def is_code_work(issue_key: str, developer_id: str) -> bool:
+            # N26: a review that is not code work (Mina's, a PO's, on CHK-10) is
+            # no drift, also when it was recorded before that rule.
+            speaker = nodes_by_id.get(developer_id)
+            return bool(
+                code_work_keys(
+                    [issue_key],
+                    developer_id=developer_id,
+                    roles=member_roles(speaker.metadata if speaker is not None else None),
+                    merge_request_facts=merge_requests,
+                    commit_facts=commits,
+                    project_task_keys=lambda _key: project_keys,
+                )
+            )
+
         return [
             self._drift_finding(
                 tenant_id=tenant_id,
@@ -637,6 +666,7 @@ class RiskService:
                 as_of=as_of,
                 merge_request_facts=merge_requests,
                 owners=assignees,
+                is_code_work=is_code_work,
             )
         ]
 

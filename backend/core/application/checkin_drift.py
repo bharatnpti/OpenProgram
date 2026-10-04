@@ -8,6 +8,9 @@ to the other drift signals:
   review) and no open merge request names it (R1-10, SC6: Omar's IDP-6 "up for
   review" with only a branch). The merge requests are read again on every
   drift read, so the signal clears once a request for the issue is synced.
+  Only code work counts (N26, :func:`code_work_keys`): Mina's (PO) acceptance
+  criteria review of CHK-10 has no merge request to find, so it is neither
+  asked about nor flagged, and a signal recorded before is dropped on read.
 - ``eta_disagreement``: two people gave different ETAs for one issue on the
   same day (N23: Ira said CHK-4 by Friday, its owner Liam by Tuesday). Each
   check-in records the ETA it states per issue (``eta_stated``); the drift read
@@ -22,7 +25,7 @@ issue keys, ids, display names and dates only, never reply text.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
@@ -43,6 +46,88 @@ ETA_STATED = "eta_stated"
 ETA_DISAGREEMENT = "eta_disagreement"
 # The follow-up asked when an issue said to be in review has no open merge request.
 REVIEW_MR_QUESTION_LEAD = "I can't find a merge request for"
+COMMIT_FACT_SOURCE = "vcs_commit"
+# A member's app roles. A developer's review is code review; a product owner's,
+# scrum master's or exec's review is not (N26). A member without roles is a
+# developer, as sign-in reads them.
+DEVELOPER_ROLE = "dev"
+NON_CODE_REVIEW_ROLES = frozenset({"po", "sm", "exec"})
+# A project's issues "normally have" merge requests when at least this share of
+# them is named by one.
+_PROJECT_MERGE_REQUEST_SHARE = 0.5
+
+
+def member_roles(metadata: Mapping[str, JsonScalar] | None) -> frozenset[str]:
+    """The app roles on a member's node (``"mgr,admin"``); none means a developer."""
+    value = (metadata or {}).get("app_roles")
+    if not isinstance(value, str):
+        return frozenset({DEVELOPER_ROLE})
+    roles = frozenset(item.strip().lower() for item in value.split(",") if item.strip())
+    return roles or frozenset({DEVELOPER_ROLE})
+
+
+def code_work_keys(
+    keys: Sequence[str],
+    *,
+    developer_id: str,
+    roles: frozenset[str],
+    merge_request_facts: Sequence[FactEvent],
+    commit_facts: Sequence[FactEvent],
+    project_task_keys: Callable[[str], Collection[str]],
+) -> tuple[str, ...]:
+    """Those of ``keys`` whose "in review" is code work, so a merge request is expected.
+
+    A developer's review is always code work, and a product owner's, scrum
+    master's or exec's never is. For anyone else (a manager, say) an issue is
+    code work when a branch, commit or merge request has named it before, or
+    when its project's issues normally have merge requests and the person has
+    Git activity of their own. ``project_task_keys`` gives the keys of the
+    project an issue belongs to (empty when unknown).
+    """
+    if DEVELOPER_ROLE in roles:
+        return tuple(keys)
+    if roles & NON_CODE_REVIEW_ROLES or not keys:
+        return ()
+    with_code = _keys_with_code_activity(set(keys), merge_request_facts, commit_facts)
+    person_has_git_activity = any(
+        fact.entity_ref.kind is NodeKind.DEVELOPER and fact.entity_ref.id == developer_id
+        for fact in (*merge_request_facts, *commit_facts)
+    )
+    return tuple(
+        key
+        for key in keys
+        if key in with_code
+        or (
+            person_has_git_activity
+            and _project_uses_merge_requests(project_task_keys(key), merge_request_facts)
+        )
+    )
+
+
+def _keys_with_code_activity(
+    keys: set[str], merge_request_facts: Sequence[FactEvent], commit_facts: Sequence[FactEvent]
+) -> set[str]:
+    """The keys a merge request (any state, by branch or title) or a commit message names."""
+    found = set(merge_requests_by_issue_key(merge_request_facts, keys))
+    upper = {key.upper(): key for key in keys}
+    for fact in commit_facts:
+        message = fact.payload.get("message")
+        if isinstance(message, str):
+            found.update(
+                upper[match.upper()]
+                for match in ISSUE_KEY.findall(message)
+                if match.upper() in upper
+            )
+    return found
+
+
+def _project_uses_merge_requests(
+    task_keys: Collection[str], merge_request_facts: Sequence[FactEvent]
+) -> bool:
+    if not task_keys:
+        return False
+    named = merge_requests_by_issue_key(merge_request_facts, set(task_keys))
+    return len(named) >= _PROJECT_MERGE_REQUEST_SHARE * len(task_keys)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -251,12 +336,16 @@ def checkin_drift_signals(
     as_of: date,
     merge_request_facts: Iterable[FactEvent],
     owners: Mapping[str, str] | None = None,
+    is_code_work: Callable[[str, str], bool] | None = None,
 ) -> list[CheckInDriftSignal]:
     """The check-in drift signals for ``issue_keys`` stated on ``as_of``.
 
     A "said in review" signal, the latest per issue, is dropped once an open
-    merge request names the issue. ETAs are compared per issue across people,
-    each person's latest; ``owners`` maps an issue key to its assignee.
+    merge request names the issue, and when ``is_code_work(issue_key,
+    developer_id)`` says the review was not code work (N26), so a signal
+    recorded before that rule clears on the next read. ETAs are compared per
+    issue across people, each person's latest; ``owners`` maps an issue key to
+    its assignee.
     """
     in_review: dict[str, FactEvent] = {}
     etas: dict[str, dict[str, FactEvent]] = {}
@@ -270,7 +359,9 @@ def checkin_drift_signals(
         if key is None or key not in issue_keys:
             continue
         if kind == SAID_IN_REVIEW_NO_MR:
-            in_review[key] = fact
+            stated_by = _text(fact.payload, "developer_id") or ""
+            if is_code_work is None or is_code_work(key, stated_by):
+                in_review[key] = fact
         elif kind == ETA_STATED and (speaker := _text(fact.payload, "developer_id")):
             etas.setdefault(key, {})[speaker] = fact
     still_missing = set(keys_without_open_merge_request(list(in_review), merge_request_facts))
