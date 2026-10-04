@@ -56,10 +56,13 @@ from core.application.tools.conversation_history import MAX_HISTORY_LIMIT, Conve
 from core.application.tools.git_activity import GitActivityTool
 from core.application.tools.issue_tracker import IssueTrackerTool
 from core.application.writeback_service import (
+    CHECKIN_CLOSED_SOURCE,
+    CONSENT_REPLY_SOURCE,
     OPEN_MR_SOURCE,
     OpenMergeRequestHold,
     WriteBackService,
     canonical_target_state,
+    interpret_consent_answer,
     target_state_label,
 )
 from core.domain.blockers import (
@@ -346,10 +349,11 @@ class StatusCollector:
         span = trace.get_current_span()
         span.set_attribute("openprogram.reply_length", len(message.text))
 
-        if checkin.replied_at is not None:
-            return await self._handle_already_replied(checkin=checkin, message=message)
-        if await self._register_reply_turn(checkin, message, allow_reprocess=allow_reprocess):
-            return ReplyOutcome(kind="ignored")
+        handled = await self._reply_handled_before_reading(
+            checkin, message, allow_reprocess=allow_reprocess
+        )
+        if handled is not None:
+            return handled
         requests = await self._request_ledger(checkin)
         await self._settle_waiting_requests(checkin, requests, message.text)
         # What this person's earlier messages in this check-in said (stored as
@@ -504,6 +508,16 @@ class StatusCollector:
                 bool(late_outcome.status and late_outcome.status.blockers),
             )
             return replace(late_outcome, cross_person_requests=requests.outcome())
+        consent_question = await self._maybe_ask_write_back_consent(
+            checkin=checkin,
+            message=message,
+            signals=final_signals,
+            open_signals=merged,
+            reconciliation=reconciliation,
+        )
+        if consent_question is not None:
+            span.set_attribute("openprogram.reply_classification", "awaiting_consent")
+            return replace(consent_question, cross_person_requests=requests.outcome())
         status = await self._finalize_checkin_reply(
             checkin=checkin,
             replied_at=message.received_at,
@@ -522,6 +536,24 @@ class StatusCollector:
             status=status,
             cross_person_requests=requests.outcome(),
         )
+
+    async def _reply_handled_before_reading(
+        self,
+        checkin: CheckIn,
+        message: InboundMessage,
+        *,
+        allow_reprocess: bool,
+    ) -> ReplyOutcome | None:
+        """What needs no reading of the reply as status, or ``None`` to read it.
+
+        A finalized check-in (a late consent answer, else a duplicate), a
+        redelivered message, or an answer to the open write-back question (G1).
+        """
+        if checkin.replied_at is not None:
+            return await self._handle_already_replied(checkin=checkin, message=message)
+        if await self._register_reply_turn(checkin, message, allow_reprocess=allow_reprocess):
+            return ReplyOutcome(kind="ignored")
+        return await self._maybe_answer_write_back_consent(checkin=checkin, message=message)
 
     async def _register_reply_turn(
         self,
@@ -1937,7 +1969,13 @@ class StatusCollector:
         raw_reply: str,
         signals: CheckInSignals,
         reconciliation: BlockerReconciliation,
+        closing: bool = False,
     ) -> DeveloperStatus:
+        """Record the check-in's reply, status and facts, write back, and ack once.
+
+        ``closing`` is the close-out: a write-back question still open is closed
+        with the check-in (its proposals expire) and no new one is asked.
+        """
         final_signals = _signals_with_open_blockers(signals, reconciliation)
         updated = CheckIn(
             tenant_id=checkin.tenant_id,
@@ -1980,7 +2018,7 @@ class StatusCollector:
         await self._append_blocker_resolved_facts(updated, status, reconciliation)
         await self._record_review_without_merge_request(updated, status)
         await self._record_issue_etas(updated, status)
-        written = await self._maybe_write_back(updated, final_signals)
+        written = await self._maybe_write_back(updated, final_signals, closing=closing)
         # Send exactly one "Got it" ack per accepted reply. Gated on the
         # record_checkin_reply_once success above, so a durable retry or a
         # duplicate delivery (which returns early) never double-acks (C3).
@@ -2056,27 +2094,40 @@ class StatusCollector:
             return []
 
     async def _maybe_write_back(
-        self, checkin: CheckIn, signals: CheckInSignals
+        self, checkin: CheckIn, signals: CheckInSignals, *, closing: bool = False
     ) -> list[WriteBackAudit]:
         """Apply gated write-back for a finalized check-in's issue claims.
 
         The default-deny gates and audit live in ``WriteBackService``; here we
         only forward the claims. A write-back failure must never lose a recorded
         check-in, so any error is logged (without raw reply content) and swallowed.
-        Returns the rows that were applied, and the ``done`` claims an open merge
-        request held back, for the ack to name.
+        On the close-out (``closing``) every proposal still waiting for a yes/no
+        expires with the check-in and no consent question is sent. Returns what
+        the check-in's write-back did, one row per issue (applied, held for an
+        open merge request, declined by the person, expired), for the ack to name.
         """
         service = self._write_back_service
-        if service is None or not signals.issue_updates:
+        if service is None or (not signals.issue_updates and not closing):
             return []
         try:
-            results = await service.apply_from_checkin(
-                tenant_id=checkin.tenant_id,
-                developer_id=checkin.developer_id,
-                correlation_id=checkin.correlation_id,
-                claims=signals.issue_updates,
-                reported_on=checkin.checkin_date,
+            results = (
+                await service.apply_from_checkin(
+                    tenant_id=checkin.tenant_id,
+                    developer_id=checkin.developer_id,
+                    correlation_id=checkin.correlation_id,
+                    claims=signals.issue_updates,
+                    reported_on=checkin.checkin_date,
+                )
+                if signals.issue_updates
+                else []
             )
+            if closing:
+                await service.expire_pending_proposals(
+                    tenant_id=checkin.tenant_id,
+                    developer_id=checkin.developer_id,
+                    correlation_id=checkin.correlation_id,
+                )
+            outcomes = await service.reply_outcomes(checkin.tenant_id, checkin.correlation_id)
         except Exception:  # pragma: no cover - defensive; write-back is best-effort
             _logger.warning(
                 "writeback_failed",
@@ -2101,14 +2152,9 @@ class StatusCollector:
                 ],
             )
         proposed = [audit for audit in results if audit.status is WriteBackStatus.PROPOSED]
-        if proposed:
+        if proposed and not closing:
             await self._send_consent_prompt(checkin=checkin, proposals=proposed)
-        return [
-            audit
-            for audit in results
-            if audit.status is WriteBackStatus.APPLIED
-            or (audit.status is WriteBackStatus.DECLINED and audit.source == OPEN_MR_SOURCE)
-        ]
+        return outcomes
 
     async def _send_consent_prompt(
         self,
@@ -2144,7 +2190,12 @@ class StatusCollector:
                     correlation_id=checkin.correlation_id,
                     metadata={
                         "purpose": "writeback_consent_prompt",
-                        "idempotency_key": f"writeback-consent:{checkin.correlation_id}",
+                        # Per set of issues: a follow-up that asks only about the
+                        # issues an answer left open is a message of its own.
+                        "idempotency_key": (
+                            f"writeback-consent:{checkin.correlation_id}:"
+                            + "+".join(sorted({p.issue_key for p in proposals}))
+                        ),
                     },
                 ),
             )
@@ -2155,6 +2206,173 @@ class StatusCollector:
                 developer_id=checkin.developer_id,
                 correlation_id=checkin.correlation_id,
             )
+
+    async def _maybe_ask_write_back_consent(
+        self,
+        *,
+        checkin: CheckIn,
+        message: InboundMessage,
+        signals: CheckInSignals,
+        open_signals: CheckInSignals,
+        reconciliation: BlockerReconciliation,
+    ) -> ReplyOutcome | None:
+        """Ask an ``always_ask`` person to confirm tracker updates, keeping the check-in open.
+
+        G1: the yes/no question used to be followed a second later by "your
+        update is recorded", the check-in closed, and the person's answer then
+        reached nothing. Now the check-in stays open while a proposal waits:
+        the proposals are recorded (nothing is written), the check-in's signals
+        are held, the status is recorded as finalizing would record it, and the
+        question is the last message -- no "recorded" until it is answered or the
+        check-in closes. ``None`` when nothing needs asking (another consent, no
+        proposal); the check-in is then finalized as before.
+        """
+        service = self._write_back_service
+        if service is None or not signals.issue_updates:
+            return None
+        try:
+            if not await service.asks_before_writing(checkin.tenant_id, checkin.developer_id):
+                return None
+            await service.apply_from_checkin(
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+                claims=signals.issue_updates,
+                reported_on=checkin.checkin_date,
+            )
+            pending = await service.list_pending_proposals(
+                checkin.tenant_id, checkin.correlation_id
+            )
+        except Exception:  # pragma: no cover - defensive; the check-in still records
+            _logger.warning(
+                "writeback_consent_question_failed",
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+            )
+            return None
+        if not pending:
+            return None
+        await self._hold_open_checkin_signals(checkin, open_signals)
+        status = await self._record_status_awaiting_consent(
+            checkin=checkin,
+            as_of_at=message.received_at,
+            signals=signals,
+            reconciliation=reconciliation,
+        )
+        await self._send_consent_prompt(checkin=checkin, proposals=pending)
+        return ReplyOutcome(kind="clarifying", status=status)
+
+    async def _record_status_awaiting_consent(
+        self,
+        *,
+        checkin: CheckIn,
+        as_of_at: datetime,
+        signals: CheckInSignals,
+        reconciliation: BlockerReconciliation,
+    ) -> DeveloperStatus:
+        # The status is what the person said; only the tracker write waits for
+        # them, so it is recorded as finalizing would record it, not as partial.
+        final_signals = _signals_with_open_blockers(signals, reconciliation)
+        status = DeveloperStatus(
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            as_of=await self._status_as_of_for_checkin(checkin, as_of_at),
+            source=_status_source_for_signals(final_signals),
+            blockers=final_signals.blockers,
+            summary=_summary_with_missing_required_details(
+                final_signals.progress_note,
+                _missing_required_status_details(final_signals),
+            ),
+            eta_change_days=final_signals.eta_change_days,
+        )
+        await self._blockers.persist_with_status(status, reconciliation)
+        return status
+
+    async def _maybe_answer_write_back_consent(
+        self,
+        *,
+        checkin: CheckIn,
+        message: InboundMessage,
+    ) -> ReplyOutcome | None:
+        """Apply a yes/no to the open write-back question, then finalize the check-in.
+
+        Only while the check-in is open with proposals waiting, and only for a
+        reply that reads as an answer (``interpret_consent_answer``: per issue,
+        "yes for CHK-3, leave CHK-4"). Every write goes through
+        ``WriteBackService.resolve_consent_reply``, so the owner check, the open
+        merge request hold and the canonical target all still apply. Issues the
+        answer leaves open are asked about again; once none is left the check-in
+        is finalized from its held signals, and the ack says what was done. Any
+        other reply returns ``None`` and is read as status, as before.
+        """
+        service = self._write_back_service
+        held = checkin.signals
+        if service is None or held is None:
+            return None
+        try:
+            pending = await service.list_pending_proposals(
+                checkin.tenant_id, checkin.correlation_id
+            )
+            if not pending or not interpret_consent_answer(
+                message.text, [proposal.issue_key for proposal in pending]
+            ):
+                return None
+            results = await service.resolve_consent_reply(
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+                reply_text=message.text,
+                claims=held.issue_updates,
+                reported_on=checkin.checkin_date,
+            )
+            remaining = await service.list_pending_proposals(
+                checkin.tenant_id, checkin.correlation_id
+            )
+        except Exception:  # pragma: no cover - defensive; read the reply as status
+            _logger.warning(
+                "writeback_consent_resolution_failed",
+                tenant_id=checkin.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=checkin.correlation_id,
+            )
+            return None
+        _logger.info(
+            "writeback_consent_resolved",
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            correlation_id=checkin.correlation_id,
+            outcomes=[
+                {"issue_key": audit.issue_key, "status": audit.status.value} for audit in results
+            ],
+        )
+        if remaining and results:
+            await self._send_consent_prompt(checkin=checkin, proposals=remaining)
+            return ReplyOutcome(kind="clarifying")
+        turns = await self._recent_conversation_turns(
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            exclude_chat_message_id=message.message_id,
+            reference_at=message.received_at,
+        )
+        raw_reply = _checkin_status_text(checkin, turns) or held.progress_note
+        reconciliation = await self._reconcile_reply_blockers(
+            checkin=checkin,
+            at=message.received_at,
+            prior=await self._prior_open_blockers(checkin, message.received_at),
+            signals=held,
+            raw_reply=raw_reply,
+        )
+        status = await self._finalize_checkin_reply(
+            checkin=checkin,
+            replied_at=message.received_at,
+            raw_reply=raw_reply,
+            signals=held,
+            reconciliation=reconciliation,
+            # A clear answer the gates no longer let through closes the question too.
+            closing=bool(remaining),
+        )
+        return ReplyOutcome(kind="processed", status=status)
 
     async def _handle_already_replied(
         self,
@@ -2351,6 +2569,7 @@ class StatusCollector:
                 ),
             ),
             reconciliation=reconciliation,
+            closing=True,
         )
 
     async def _record_non_status_reply_day(self, checkin: CheckIn, as_of: date) -> DeveloperStatus:
@@ -2815,6 +3034,12 @@ def _compose_consent_prompt_text(
             f"{p.issue_key} → {target_state_label(p.target_state)}" for p in proposals
         )
         prompt = f"Want me to apply these issue-tracker updates: {diffs}? Reply yes or no."
+        per_issue = (
+            f"{prompt[: -len('Reply yes or no.')]}Reply yes or no, or per issue "
+            f"(e.g. “yes for {proposals[0].issue_key}, no for {proposals[1].issue_key}”)."
+        )
+        if len(per_issue) <= max_chars:
+            prompt = per_issue
     if len(prompt) > max_chars:
         return prompt[: max(0, max_chars - 1)].rstrip() + "…"
     return prompt
@@ -2850,7 +3075,11 @@ def _compose_checkin_ack_text(
         text = f"Got it \U0001f44d I recorded this as {recorded} — reply 'fix' if that's wrong."
         if len(text) > max_chars:
             return _cap_outbound_dm_text(_CHECKIN_ACK_LOW_CONFIDENCE_FALLBACK, max_chars)
-    for note in (_applied_write_back_note(applied), *_open_merge_request_notes(held)):
+    for note in (
+        _applied_write_back_note(applied),
+        *_open_merge_request_notes(held),
+        _left_as_is_note(applied),
+    ):
         if note is not None and len(f"{text} {note}") <= max_chars:
             text = f"{text} {note}"
     return _cap_outbound_dm_text(text, max_chars)
@@ -2886,6 +3115,29 @@ def _applied_write_back_note(applied: Sequence[WriteBackAudit]) -> str | None:
     if not updates:
         return None
     return f"I updated {_joined(updates)} in the issue tracker."
+
+
+def _left_as_is_note(rows: Sequence[WriteBackAudit]) -> str | None:
+    """Issues the person said no to, or never answered about before the check-in closed."""
+    declined = [
+        row.issue_key
+        for row in rows
+        if row.status is WriteBackStatus.DECLINED and row.source == CONSENT_REPLY_SOURCE
+    ]
+    expired = [
+        row.issue_key
+        for row in rows
+        if row.status is WriteBackStatus.EXPIRED and row.source == CHECKIN_CLOSED_SOURCE
+    ]
+    notes = []
+    if declined:
+        notes.append(f"I left {_joined(declined)} as is in the issue tracker, as you asked.")
+    if expired:
+        notes.append(
+            f"The check-in closed before you answered about {_joined(expired)}, "
+            "so I left the issue tracker as it is."
+        )
+    return " ".join(notes) or None
 
 
 def _recorded_status_phrase(signals: CheckInSignals) -> str:
@@ -3044,6 +3296,15 @@ def _checkin_messages_text(
     ]
     messages.append((message.received_at, message.text))
     return "\n".join(text for _, text in sorted(messages, key=lambda item: item[0]))
+
+
+def _checkin_status_text(checkin: CheckIn, other_turns: Iterable[ConversationTurn]) -> str:
+    """The person's earlier messages in this check-in, oldest first (no consent answer)."""
+    return "\n".join(
+        turn.content
+        for turn in sorted(other_turns, key=lambda item: item.observed_at)
+        if turn.role is ConversationRole.USER and turn.correlation_id == checkin.correlation_id
+    )
 
 
 def _reconcile_mode_for_reply(signals: CheckInSignals, raw_reply: str) -> ReconcileMode:
