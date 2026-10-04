@@ -12,6 +12,7 @@ from core.application.ask_service import (
     ANSWER_FORMAT_RULES,
     ASK_SYSTEM_PROMPT,
     FACT_PERIODS,
+    AskResponseView,
     AskService,
     AskSource,
     DateWindow,
@@ -1268,3 +1269,208 @@ def test_a_fenced_or_wrapped_answer_is_unwrapped() -> None:
     assert parsed.answer == "Program is red."
     assert parsed.references == ("program-platform",)
     assert _parse_answer("Plain text, no JSON.").answer == "Plain text, no JSON."
+
+
+# N25: in two of three live runs after deploy 6 the model answered in prose,
+# ending on "References: [...]". The line reached the reader -- its ids
+# swapped for labels by the raw-id backstop -- and sources came back empty.
+_LIVE_PROSE = (
+    "Digital Platform Program is amber because:\n"
+    "• Blocker: CHK-8 payment form validation is blocked until Noah reviews it "
+    "(Zoe Almeida).\n"
+    "Most pods and projects are green."
+)
+_LABELLED_SOURCES = (
+    AskSource(id="program-platform", kind=NodeKind.PROGRAM, label="Digital Platform Program"),
+    AskSource(id="CHK-8", kind=NodeKind.TASK, label="CHK-8"),
+    AskSource(id=_ZOE, kind=NodeKind.DEVELOPER, label="Zoe Almeida"),
+)
+
+
+async def _ask_once(store: InMemoryGraphStore, reply: str) -> AskResponseView:
+    llm = FakeLlmProvider(responses=[_llm_response(text=reply)])
+    return await _ask_service(store, llm).ask(
+        principal=_principal(Role.EXEC),
+        question="why Digital Platform Program needs attention",
+        correlation_id="ask-test",
+        as_of=AS_OF,
+    )
+
+
+@pytest.mark.parametrize(
+    "references_line",
+    [
+        # The ids, as the model was told to cite them.
+        f"References: [program-platform, CHK-8, {_ZOE}]",
+        f'References: ["program-platform", "CHK-8", "{_ZOE}"]',
+        # The labels, as the live line read.
+        "References: [Digital Platform Program, CHK-8, Zoe Almeida]",
+        f"**Sources:** program-platform; CHK-8; Zoe Almeida ({_ZOE}).",
+        f"References:\n- program-platform\n- CHK-8\n- {_ZOE}",
+    ],
+)
+async def test_a_plain_text_answer_loses_its_references_line_and_labels_its_sources(
+    references_line: str,
+) -> None:
+    store = await _attention_store()
+
+    view = await _ask_once(store, f"{_LIVE_PROSE}\n\n{references_line}")
+
+    assert view.answer == _LIVE_PROSE
+    assert view.references == ("program-platform", "CHK-8", _ZOE)
+    assert view.sources == _LABELLED_SOURCES
+
+
+async def test_a_references_line_keeps_only_what_names_a_node() -> None:
+    """A References line is free text: an item no node answers to is dropped,
+    and a label two nodes share names neither of them -- never a guess."""
+    store = await _attention_store()
+    await store.upsert_node(Pod(tenant_id="demo", id="pod-twin-a", name="Twin Pod"))
+    await store.upsert_node(Pod(tenant_id="demo", id="pod-twin-b", name="Twin Pod"))
+    reply = (
+        "Program is amber because of CHK-8. "
+        "(References: program-platform, status_reasons, Twin Pod, CHK-8, CHK-8)"
+    )
+
+    view = await _ask_once(store, reply)
+
+    assert view.answer == "Program is amber because of CHK-8."
+    assert view.references == ("program-platform", "CHK-8")
+    assert [source.label for source in view.sources] == ["Digital Platform Program", "CHK-8"]
+
+
+async def test_a_json_answer_keeps_its_references_and_cuts_a_restated_list() -> None:
+    """Raw newlines inside the answer string, as models write them, used to
+    fail the strict decode and show the whole object; a references list
+    restated inside the answer adds only what the array lacks."""
+    store = await _attention_store()
+    answer = f"{_LIVE_PROSE}\nReferences: [Digital Platform Program, Zoe Almeida, Data Pod]"
+    reply = (
+        "Here is the answer:\n```json\n"
+        + json.dumps({"answer": answer, "references": ["program-platform", "CHK-8", _ZOE]})
+        .replace("\\n", "\n")
+        .replace("\\u2022", "•")
+        + "\n```"
+    )
+
+    view = await _ask_once(store, reply)
+
+    assert view.answer == _LIVE_PROSE
+    assert view.references == ("program-platform", "CHK-8", _ZOE, "pod-data")
+    assert view.sources == (
+        *_LABELLED_SOURCES,
+        AskSource(id="pod-data", kind=NodeKind.POD, label="Data Pod"),
+    )
+
+
+async def test_a_json_reference_written_as_a_label_becomes_its_id() -> None:
+    store = await _attention_store()
+    reply = json.dumps(
+        {"answer": _LIVE_PROSE, "references": ["Digital Platform Program", "CHK-8", "zoe almeida"]}
+    )
+
+    view = await _ask_once(store, reply)
+
+    assert view.answer == _LIVE_PROSE
+    assert view.references == ("program-platform", "CHK-8", _ZOE)
+    assert view.sources == _LABELLED_SOURCES
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        _LIVE_PROSE,
+        json.dumps({"answer": _LIVE_PROSE, "references": []}),
+        json.dumps({"answer": _LIVE_PROSE}),
+    ],
+)
+async def test_an_answer_with_no_references_takes_its_sources_from_the_names_it_uses(
+    reply: str,
+) -> None:
+    store = await _attention_store()
+
+    view = await _ask_once(store, reply)
+
+    assert view.answer == _LIVE_PROSE
+    # In the order the answer names them; "Noah" is no member's whole name.
+    assert view.references == ("program-platform", "CHK-8", _ZOE)
+    assert view.sources == _LABELLED_SOURCES
+
+
+async def test_an_answer_naming_nothing_has_no_sources_and_a_longer_name_wins() -> None:
+    store = await _attention_store()
+    await store.upsert_node(Pod(tenant_id="demo", id="pod-platform", name="Platform"))
+
+    nothing = await _ask_once(store, "No status has been recorded for that yet.")
+    program = await _ask_once(store, "Digital Platform Program is green.")
+
+    assert nothing.answer == "No status has been recorded for that yet."
+    assert nothing.references == ()
+    assert nothing.sources == ()
+    assert program.references == ("program-platform",)
+
+
+async def test_an_empty_reply_says_no_answer_came_back() -> None:
+    view = await _ask_once(await _attention_store(), "")
+
+    assert view.answer == "No answer came back for this question. Please ask again."
+    assert view.references == ()
+    assert view.sources == ()
+
+
+@pytest.mark.parametrize(
+    ("reply", "answer", "references", "cited"),
+    [
+        # Cut off before the object closed.
+        (
+            '{"answer": "Program is red because:\\n• Blocker: CHK-8", '
+            '"references": ["program-platform", "CHK-8"',
+            "Program is red because:\n• Blocker: CHK-8",
+            ("program-platform", "CHK-8"),
+            (),
+        ),
+        # A trailing comma no decoder accepts.
+        (
+            '{"answer": "Program is red.", "references": ["program-platform",],}',
+            "Program is red.",
+            ("program-platform",),
+            (),
+        ),
+        # The answer in prose, the references in an object after it.
+        (
+            'Program is red because:\n• Blocker: CHK-8\n{"references": ["program-platform"]}',
+            "Program is red because:\n• Blocker: CHK-8",
+            ("program-platform",),
+            (),
+        ),
+        # Lines as a list, references as one string.
+        (
+            '{"answer": ["Program is red because:", "• Blocker: CHK-8"], '
+            '"references": "program-platform, CHK-8"}',
+            "Program is red because:\n• Blocker: CHK-8",
+            ("program-platform", "CHK-8"),
+            (),
+        ),
+        (
+            "Answer: Program is amber. References: [program-platform, CHK-8]",
+            "Program is amber.",
+            (),
+            ("program-platform", "CHK-8"),
+        ),
+        # A source named inside a bullet is the answer's own text.
+        (
+            "• 2 issues merged but still open (source: Jira)",
+            "• 2 issues merged but still open (source: Jira)",
+            (),
+            (),
+        ),
+    ],
+)
+def test_every_reply_shape_parses_to_an_answer_and_its_references(
+    reply: str, answer: str, references: tuple[str, ...], cited: tuple[str, ...]
+) -> None:
+    parsed = _parse_answer(reply)
+
+    assert parsed.answer == answer
+    assert parsed.references == references
+    assert parsed.cited == cited
