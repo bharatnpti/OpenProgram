@@ -8,12 +8,16 @@ recorded the gap. He opened sso-gateway !1 only after correcting himself.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, date, datetime
+
+import pytest
 
 from core.application.blocker_resolution import BlockerResolutionService
 from core.application.checkin_drift import (
     CHECKIN_DRIFT_FACT_SOURCE,
     in_review_claim_keys,
+    review_without_merge_request_fact,
     review_without_merge_request_question,
 )
 from core.application.risk_service import RiskService
@@ -273,3 +277,167 @@ def test_only_a_review_state_now_counts_as_in_review() -> None:
     assert review_without_merge_request_question(["IDP-6", "CHK-17"]) == (
         "I can't find a merge request for IDP-6 or CHK-17 yet. Are they opened?"
     )
+
+
+# N26, R4 live: Mina Patel (product owner) said CHK-10 was "still in review with
+# Asha", an acceptance criteria review with no code. She was asked for a merge
+# request, and an amber "said in review, no MR" drift showed for CHK-10.
+_MINA = "U-mina"
+_MINA_QUESTION = "I can't find a merge request for CHK-10 yet. Is it opened?"
+_MINA_IN_REVIEW = json.dumps(
+    {
+        "is_status_update": True,
+        "sufficient": True,
+        "question": None,
+        "signals": {
+            "progress_note": "CHK-10 still in review with Asha; wrapping up Monday EOD.",
+            "blockers": [],
+            "eta_change_days": None,
+            "blockers_answered": True,
+            "eta_answered": True,
+            "issue_updates": [
+                {
+                    "issue_key": "CHK-10",
+                    "claimed_done": False,
+                    "claimed_state": "in review",
+                    "note": "Aligned on the acceptance criteria outline; wrapping up Monday EOD.",
+                }
+            ],
+        },
+    }
+)
+
+
+async def _seed_checkout(store: InMemoryGraphStore, *, roles: str) -> None:
+    """Checkout with CHK-10 (no branch, commit or MR) and CHK-3 (merged MR)."""
+    await store.upsert_node(Project(tenant_id=_TENANT, id="proj-chk", name="Checkout"))
+    for key, title in (("CHK-10", "Refund policy acceptance criteria"), ("CHK-3", "Intent API")):
+        await store.upsert_node(
+            Task(
+                tenant_id=_TENANT,
+                id=key,
+                name=title,
+                metadata={"key": key, "state": "in_progress", "status": "In Progress"},
+            )
+        )
+        await store.add_edge(
+            GraphEdge(
+                tenant_id=_TENANT, from_node_id="proj-chk", to_node_id=key, kind=EdgeKind.CONTAINS
+            )
+        )
+    await store.upsert_node(
+        Developer(tenant_id=_TENANT, id=_MINA, name="Mina Patel", metadata={"app_roles": roles})
+    )
+    await store.add_edge(
+        GraphEdge(
+            tenant_id=_TENANT, from_node_id=_MINA, to_node_id="CHK-10", kind=EdgeKind.ASSIGNED_TO
+        )
+    )
+    await _merge_request(store, "checkout-api", "1", branch="CHK-3-intent-api", state="merged")
+    await store.record_checkin(
+        CheckIn(
+            tenant_id=_TENANT,
+            developer_id=_MINA,
+            correlation_id="corr-omar",
+            asked_at=datetime(2026, 10, 3, 12, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+
+
+def _mina_says(text: str) -> InboundMessage:
+    return replace(_message(text, "m1", 10), user=ChatUserRef(tenant_id=_TENANT, external_id=_MINA))
+
+
+async def test_product_owner_review_is_not_asked_for_a_merge_request() -> None:
+    store = InMemoryGraphStore()
+    await _seed_checkout(store, roles="po")
+    chat = FakeChatProvider()
+    collector = _collector(store, chat, [_MINA_IN_REVIEW])
+
+    outcome = await collector.handle_reply(
+        _mina_says("CHK-10 still in review with Asha. Wrapping up Monday EOD. No blockers.")
+    )
+
+    assert outcome.kind == "processed"
+    assert chat.sent == []
+    drift = await store.list_recent_facts(_TENANT, sources=(CHECKIN_DRIFT_FACT_SOURCE,))
+    assert [fact.payload["kind"] for fact in drift] == ["eta_stated"]
+    assert await _risks(store).project_drift(_TENANT, "proj-chk", _DAY) == []
+
+
+@pytest.mark.parametrize("roles", ["sm", "exec", "po,admin"])
+async def test_scrum_master_and_exec_reviews_are_not_code_work(roles: str) -> None:
+    store = InMemoryGraphStore()
+    await _seed_checkout(store, roles=roles)
+    chat = FakeChatProvider()
+    collector = _collector(store, chat, [_MINA_IN_REVIEW])
+
+    await collector.handle_reply(_mina_says("CHK-10 in review"))
+
+    assert chat.sent == []
+
+
+async def test_drift_recorded_for_a_product_owner_review_clears_on_the_next_read() -> None:
+    store = InMemoryGraphStore()
+    await _seed_checkout(store, roles="po")
+    # What R4 stored for Mina before the rule (fact 10194).
+    await store.append_fact(
+        review_without_merge_request_fact(
+            tenant_id=_TENANT,
+            issue_key="CHK-10",
+            developer_id=_MINA,
+            developer_name="Mina Patel",
+            as_of=_DAY,
+            status_source=StatusSource.CONFIRMED,
+            observed_at=datetime(2026, 10, 3, 12, 7, tzinfo=UTC),
+            correlation_id="corr-mina",
+        )
+    )
+
+    assert await _risks(store).project_drift(_TENANT, "proj-chk", _DAY) == []
+
+
+async def test_a_manager_is_asked_when_the_issue_had_a_branch_before() -> None:
+    store = InMemoryGraphStore()
+    await _seed_checkout(store, roles="mgr,admin")
+    await _merge_request(store, "checkout-api", "9", branch="CHK-10-refund-rules", state="closed")
+    chat = FakeChatProvider()
+    collector = _collector(store, chat, [_MINA_IN_REVIEW])
+
+    outcome = await collector.handle_reply(_mina_says("CHK-10 in review"))
+
+    assert outcome.kind == "clarifying"
+    assert [message.text for message in chat.sent] == [_MINA_QUESTION]
+
+
+async def test_a_manager_is_asked_in_a_project_of_merge_requests_only_when_active() -> None:
+    quiet = InMemoryGraphStore()
+    await _seed_checkout(quiet, roles="mgr")
+    quiet_chat = FakeChatProvider()
+    # Half of Checkout's issues have a merge request, but she has no activity there.
+    await _collector(quiet, quiet_chat, [_MINA_IN_REVIEW]).handle_reply(
+        _mina_says("CHK-10 in review")
+    )
+
+    active = InMemoryGraphStore()
+    await _seed_checkout(active, roles="mgr")
+    await active.append_fact(
+        FactEvent(
+            tenant_id=_TENANT,
+            source="vcs_commit",
+            entity_ref=EntityRef(tenant_id=_TENANT, kind=NodeKind.DEVELOPER, id=_MINA),
+            payload={"repo": "checkout-api", "sha": "abc", "message": "Tidy the README"},
+            observed_at=datetime(2026, 10, 3, 9, 0, tzinfo=UTC),
+            correlation_id="commit-abc",
+        )
+    )
+    active_chat = FakeChatProvider()
+    await _collector(active, active_chat, [_MINA_IN_REVIEW]).handle_reply(
+        _mina_says("CHK-10 in review")
+    )
+
+    assert quiet_chat.sent == []
+    assert [message.text for message in active_chat.sent] == [_MINA_QUESTION]
