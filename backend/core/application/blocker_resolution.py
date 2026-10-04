@@ -95,6 +95,23 @@ class BlockerResolutionService:
         )
         return await self._legacy_fallback(tenant_id, developer_id, status, as_of)
 
+    async def issue_placement(
+        self, tenant_id: str, developer_id: str, issue_id: str, as_of: date
+    ) -> tuple[tuple[str, ...], bool]:
+        """The pods a signal on the developer's own issue counts in, and whether that is a guess.
+
+        The rule a blocker on that issue follows (``_placement``): the issue's
+        pods, with the developer's pods added when they are in none of them;
+        with no pod for the issue, the developer's pods, as a guess. Drift on
+        an issue (N3) is placed this way, so it shows where its blocker would.
+        """
+        developer_pods = await self._graph_repository.pods_containing_developer(
+            tenant_id, developer_id, as_of
+        )
+        pods = tuple(await self._graph_repository.pods_for_task(tenant_id, issue_id, as_of))
+        _, pod_ids, unattributed = _placement([(issue_id, pods)], [], developer_pods)
+        return pod_ids, unattributed
+
     async def blockers_on_tasks(
         self, tenant_id: str, task_ids: Iterable[str], as_of: date
     ) -> tuple[tuple[GraphNode, ResolvedBlocker], ...]:

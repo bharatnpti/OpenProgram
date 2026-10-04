@@ -52,9 +52,11 @@ class RiskFinding:
     """A deterministic, signal-derived risk finding.
 
     Produced entirely from existing facts/graph state with no human input.
-    Always shown alongside the owner's human-reported status rather than
-    overriding rollup, so divergence (human green, signal risk) is visible
-    as a watermelon rather than silently changing RAG.
+    Always shown alongside the owner's human-reported status, which it never
+    rewrites, so divergence (human green, signal risk) is visible as a
+    watermelon. An open ``pr_age`` finding whose merge request is still open
+    and whose owner has no blocker on it also turns the owner's rollup cell
+    amber (N3, :class:`OwnerDrift`).
     """
 
     tenant_id: str
@@ -94,8 +96,10 @@ class DriftFinding:
     Produced by contrasting the owner's own stated status/confidence against
     hard signals already in the graph and fact store. Provider-neutral: carries
     no raw reply/DM content, only derived, sanitised fields safe for persona
-    views. Never overrides rollup RAG; shown alongside the stated status so the
-    divergence is explicit.
+    views. Shown alongside the stated status so the divergence is explicit; it
+    never rewrites that status, but an open one on an issue turns the issue
+    owner's rollup cell amber (N3, :class:`OwnerDrift`), ``green_over_red``
+    excepted.
     """
 
     tenant_id: str
@@ -109,6 +113,29 @@ class DriftFinding:
     stated_source: StatusSource | None = None
     evidence: RiskEvidence | None = None
     child_entity_ref: EntityRef | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class OwnerDrift:
+    """An open drift signal on one issue, as its owner's rollup cell counts it (N3).
+
+    The owner is the issue's assignee (a work item's ``owner_id``). The cell
+    turns amber with ``reason``; the pods it counts in are the ones a blocker
+    on the same issue would count in (``pod_ids``, a guess when
+    ``unattributed``). Derived on every read, so a signal that clears stops
+    counting at the next rollup.
+    """
+
+    owner_id: str
+    issue_ref: EntityRef
+    #: The issue as a reason names it: its tracker key, else its name.
+    issue_label: str
+    #: The drift kind (:class:`DriftFindingKind`) or risk rule (``pr_age``).
+    kind: str
+    #: One short line: "Signals disagree: CHK-17 merged but still open in Jira."
+    reason: str
+    pod_ids: tuple[str, ...] = ()
+    unattributed: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)

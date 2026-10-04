@@ -5,9 +5,11 @@ from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from core.application.blocker_resolution import BlockerResolutionService
+from core.application.risk_service import RiskService
 from core.application.rollup_service import RollupService
 from core.domain.errors import GraphNotFound
 from core.domain.graph import GraphNode, NodeKind
+from core.domain.risk import RiskProviderConfig
 from core.ports.repositories import RollupRepository
 
 if TYPE_CHECKING:
@@ -65,10 +67,12 @@ async def run_rollup_activity(payload: RollupInput) -> RollupWorkflowResult:
     try:
         graph = registry.graph_repository()
         rollups = registry.rollup_repository()
+        blockers = BlockerResolutionService(graph, registry.status_repository())
         service = RollupService(
             registry.status_repository(),
             rollups,
-            BlockerResolutionService(graph, registry.status_repository()),
+            blockers,
+            drift_signals=drift_signals(registry, blockers),
         )
         today = _as_of(payload.as_of)
         backfill_days = (
@@ -126,6 +130,26 @@ async def _days_to_record(
         if day not in recorded and day.weekday() in _WEEKDAYS
     )
     return sorted(set(days))
+
+
+def drift_signals(registry: ServiceRegistry, blockers: BlockerResolutionService) -> RiskService:
+    """The drift the rollup reads (N3): the Signals list's own reader, with its settings."""
+    settings = registry.settings
+    return RiskService(
+        graph_repository=registry.graph_repository(),
+        time_series_repository=registry.time_series_repository(),
+        status_repository=registry.status_repository(),
+        blocker_resolution=blockers,
+        rollup_repository=registry.rollup_repository(),
+        provider_config=RiskProviderConfig(
+            jira_base_url=settings.jira_base_url,
+            github_base_url=settings.github_base_url,
+            default_no_pr_days=settings.risk_default_no_pr_days,
+            default_pr_age_days=settings.risk_default_pr_age_days,
+            default_stale_days=settings.risk_default_stale_days,
+            default_no_activity_days=settings.drift_no_activity_days,
+        ),
+    )
 
 
 def _days_between(start: date, end: date) -> list[date]:
