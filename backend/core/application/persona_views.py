@@ -819,8 +819,9 @@ class PersonaViewService:
 
         A reason prints names and issue keys, never node ids. Only the nodes an
         amber or red cell's reason names are looked up -- the people behind its
-        blockers and the work items and tasks those cite -- from the tree when
-        one was read, else one by one; a node not found is left unnamed.
+        blockers, drift and updates, and the work items and tasks those cite --
+        from the tree when one was read, else one by one; a node not found is
+        left unnamed.
         """
         context = _ReasonContext.from_statuses(statuses)
         wanted = {
@@ -1554,6 +1555,9 @@ class _ReasonContext:
                     ids.add(factor.work_item_ref.id)
             elif factor.kind is FactorKind.TASK:
                 ids.add(factor.source_ref.id)
+            elif _is_person_update(factor):
+                # A person whose update is partial, inferred, stale or missing (N44).
+                ids.add(factor.source_ref.id)
         return ids
 
     def label(self, node_id: str) -> str | None:
@@ -1611,13 +1615,14 @@ _STATUS_REASON_TEXT: dict[StatusSource | None, tuple[str, str]] = {
 def _drivers_line(status: NodeStatus, context: _ReasonContext) -> str | None:
     """One short line naming what makes a cell amber or red.
 
-    E.g. "1 open blocker (CHK-8, Zoe Almeida); 2 partial updates." -- the
-    drivers the Exec Today hero line names for the whole program, from the
-    same rollup factors: each open blocker once, with its work item's key and
-    the person it is from; blocked tasks; signals that disagree with an
-    owner's issue (N3); how many people's updates are partial, inferred,
-    stale or missing; tasks needing attention; approaching target dates. None
-    when no factor says, and the cell keeps its first one.
+    E.g. "1 open blocker (CHK-8, Zoe Almeida); 2 partial updates (Omar
+    Haddad; Sofia Bergmann)." -- the drivers the Exec Today hero line names
+    for the whole program, from the same rollup factors: each open blocker
+    once, with its work item's key and the person it is from; blocked tasks;
+    signals that disagree with an owner's issue (N3); how many people's
+    updates are partial, inferred, stale or missing, and whose (N44); tasks
+    needing attention; approaching target dates. None when no factor says,
+    and the cell keeps its first one.
     """
     factors = [factor for factor in status.factors if factor.contributes is not Rag.GREEN]
     parts = [
@@ -1626,7 +1631,7 @@ def _drivers_line(status: NodeStatus, context: _ReasonContext) -> str | None:
             _blockers_part(factors, status.entity_ref, context),
             _tasks_part(factors, blocked=True, context=context),
             _drift_part(factors, status.entity_ref, context),
-            *_people_parts(factors, context),
+            *_people_parts(factors, status.entity_ref, context),
             _tasks_part(factors, blocked=False, context=context),
             _target_dates_part(factors),
         )
@@ -1638,11 +1643,28 @@ def _drivers_line(status: NodeStatus, context: _ReasonContext) -> str | None:
     return f"{line[:1].upper()}{line[1:]}."
 
 
-def _people_parts(factors: Iterable[RollupFactor], context: _ReasonContext) -> list[str]:
-    """How many people's updates are partial, inferred, stale or missing."""
-    people: dict[StatusSource | None, set[str]] = {}
+def _is_person_update(factor: RollupFactor) -> bool:
+    """Whether a factor is a person's own update that needs something: a people part."""
+    return (
+        factor.kind is FactorKind.STATUS
+        and factor.source_ref.kind is NodeKind.DEVELOPER
+        and factor.contributes is not Rag.GREEN
+    )
+
+
+def _people_parts(
+    factors: Iterable[RollupFactor], cell: EntityRef, context: _ReasonContext
+) -> list[str]:
+    """How many people's updates are partial, inferred, stale or missing, and whose.
+
+    E.g. "1 partial update (Omar Haddad)" (N44). The people are named as an
+    open blocker's are: two at most, then "; N more"; never on their own
+    cell; and a person whose name is not known is counted but left unnamed,
+    never shown by id.
+    """
+    people: dict[StatusSource | None, dict[str, None]] = {}
     for factor in factors:
-        if factor.kind is not FactorKind.STATUS or factor.source_ref.kind is not NodeKind.DEVELOPER:
+        if not _is_person_update(factor):
             continue
         source = (
             StatusSource.UNKNOWN
@@ -1650,12 +1672,19 @@ def _people_parts(factors: Iterable[RollupFactor], context: _ReasonContext) -> l
             else context.person_source(factor.source_ref.id)
         )
         bucket = source if source in _STATUS_REASON_TEXT else None
-        people.setdefault(bucket, set()).add(factor.source_ref.id)
-    return [
-        _count(len(people[source]), nouns)
-        for source, nouns in _STATUS_REASON_TEXT.items()
-        if source in people
-    ]
+        people.setdefault(bucket, {})[factor.source_ref.id] = None
+    parts: list[str] = []
+    for source, nouns in _STATUS_REASON_TEXT.items():
+        if source not in people:
+            continue
+        names = [
+            name
+            for person_id in people[source]
+            if not (cell.kind is NodeKind.DEVELOPER and person_id == cell.id)
+            and (name := context.label(person_id)) is not None
+        ]
+        parts.append(_named(_count(len(people[source]), nouns), names))
+    return parts
 
 
 def _tasks_part(
@@ -1716,12 +1745,7 @@ def _blockers_part(
         for owner, items in groups.items()
         if (label := ", ".join(part for part in (_join_and(items), owner) if part))
     ]
-    counted = _count(len(blockers), ("open blocker", "open blockers"))
-    if not labels:
-        return counted
-    more = len(labels) - 2
-    named = "; ".join(labels[:2]) + (f"; {more} more" if more > 0 else "")
-    return f"{counted} ({named})"
+    return _named(_count(len(blockers), ("open blocker", "open blockers")), labels)
 
 
 def _drift_part(
@@ -1765,14 +1789,24 @@ def _drift_part(
         if (label := ", ".join(part for part in (_join_and(items), name) if part))
     ]
     counted = f"signals disagree on {_count(len(issues) or len(drift), ('issue', 'issues'))}"
-    if not labels:
-        return counted
-    more = len(labels) - 2
-    return f"{counted} ({'; '.join(labels[:2])}{f'; {more} more' if more > 0 else ''})"
+    return _named(counted, labels)
 
 
 def _count(n: int, nouns: tuple[str, str]) -> str:
     return f"{n} {nouns[0] if n == 1 else nouns[1]}"
+
+
+def _named(counted: str, labels: Sequence[str], limit: int = 2) -> str:
+    """A count with whom or what it is about, e.g. "2 partial updates (Omar Haddad; Ira Novak)".
+
+    The one way a reason names people -- blockers, drift and updates alike:
+    labels apart by "; ", ``limit`` named at most, then "; N more". With no
+    label known, the count stands alone.
+    """
+    if not labels:
+        return counted
+    more = len(labels) - limit
+    return f"{counted} ({'; '.join(labels[:limit])}{f'; {more} more' if more > 0 else ''})"
 
 
 def _join_and(items: Sequence[str], limit: int = 2) -> str:
