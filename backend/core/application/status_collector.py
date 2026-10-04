@@ -18,7 +18,9 @@ from core.application.blocker_lifecycle import (
     reconciliation_with_updates,
 )
 from core.application.checkin_drift import (
+    eta_stated_fact,
     in_review_claim_keys,
+    issue_eta,
     keys_asked_for_merge_request,
     keys_without_open_merge_request,
     review_without_merge_request_fact,
@@ -788,6 +790,42 @@ class StatusCollector:
         if not facts:
             return ()
         return keys_without_open_merge_request(keys, facts)
+
+    async def _record_issue_etas(self, checkin: CheckIn, status: DeveloperStatus) -> None:
+        """Keep the ETA each claim states for its issue, to compare across people (N23).
+
+        Ira's summary said CHK-4 by Friday while its owner Liam said Tuesday,
+        and nothing noticed. Each finalized check-in records the day it gives
+        per issue; the drift read flags an issue whose ETAs disagree. This
+        person's own status and ETA are left exactly as recorded.
+        """
+        if (
+            self._time_series_repository is None
+            or checkin.replied_at is None
+            or checkin.signals is None
+        ):
+            return
+        etas = {
+            claim.issue_key: eta
+            for claim in checkin.signals.issue_updates
+            if claim.issue_key and (eta := issue_eta(claim, status.as_of)) is not None
+        }
+        if not etas:
+            return
+        name = await self._developer_display_name(checkin.tenant_id, checkin.developer_id)
+        for key, eta in etas.items():
+            await self._time_series_repository.append_fact_once(
+                eta_stated_fact(
+                    tenant_id=checkin.tenant_id,
+                    issue_key=key,
+                    eta=eta,
+                    developer_id=checkin.developer_id,
+                    developer_name=name,
+                    as_of=status.as_of,
+                    observed_at=checkin.replied_at,
+                    correlation_id=checkin.correlation_id,
+                )
+            )
 
     async def _record_review_without_merge_request(
         self, checkin: CheckIn, status: DeveloperStatus
@@ -1941,6 +1979,7 @@ class StatusCollector:
         await self._append_checkin_fact(updated, status, reconciliation=reconciliation)
         await self._append_blocker_resolved_facts(updated, status, reconciliation)
         await self._record_review_without_merge_request(updated, status)
+        await self._record_issue_etas(updated, status)
         written = await self._maybe_write_back(updated, final_signals)
         # Send exactly one "Got it" ack per accepted reply. Gated on the
         # record_checkin_reply_once success above, so a durable retry or a
