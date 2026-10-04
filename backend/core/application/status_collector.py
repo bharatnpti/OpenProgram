@@ -80,6 +80,7 @@ from core.application.writeback_service import (
     OpenMergeRequestHold,
     WriteBackService,
     canonical_target_state,
+    claim_reads_done,
     interpret_consent_answer,
     target_state_label,
 )
@@ -414,6 +415,7 @@ class StatusCollector:
         )
         decision = await self._without_tracker_update_question(checkin, decision, earlier=earlier)
         decision = self._without_answered_follow_up(checkin, decision, earlier=earlier)
+        decision = self._without_answered_completion_question(checkin, decision, earlier=earlier)
         decision = await self._without_eta_question_for_others(checkin, decision)
         # A coordinator owes no ETA, and a reply of theirs that gives team
         # context is their whole status (N16). None for anyone else.
@@ -696,9 +698,15 @@ class StatusCollector:
         the tracker when the check-in is recorded. A question that asks them to
         do that themselves ("Can you update the Jira ticket to Done?") is then
         wrong, so the reply counts as sufficient and the recorded claim is
-        written instead. The same holds for a ``done`` the write-back holds back
+        written instead. An ``always_ask`` person is asked the consent question
+        for it instead, and that question is where they confirm the write
+        (N41). The same holds for a ``done`` the write-back holds back
         because the issue's merge request is still open: moving it themselves
         would make the tracker wrong, and the ack says why it was left as it is.
+        A question asking an ``always_ask`` person to confirm that an issue they
+        said is done is complete ("Can you confirm if all work for CHK-17 is
+        complete?") is dropped the same way when the write-back proposes that
+        done: the consent question asks them exactly that.
         Every other question is kept: one naming an issue the write-back will
         not touch, and any question that asks for something else. The claims
         are the whole check-in's (``earlier`` messages merged with this one),
@@ -713,7 +721,9 @@ class StatusCollector:
         ):
             return decision
         claims = merge_checkin_signals(earlier, decision.signals).issue_updates
-        if not claims or not asks_person_to_update_tracker(decision.question):
+        updates_tracker = asks_person_to_update_tracker(decision.question)
+        confirms_done = _asks_only_to_confirm_done(decision.question)
+        if not claims or not (updates_tracker or confirms_done):
             return decision
         try:
             dry_run = await service.dry_run(
@@ -723,7 +733,13 @@ class StatusCollector:
             )
         except Exception:  # pragma: no cover - defensive; keep the question
             return decision
-        handled = dry_run.written | set(dry_run.held_for_open_mr)
+        if updates_tracker:
+            handled = dry_run.written | dry_run.proposed | set(dry_run.held_for_open_mr)
+        else:
+            # Only the consent question confirms a done for the person; an
+            # auto_apply person's remaining-work question stays the evaluator's.
+            said_done = {claim.issue_key for claim in claims if claim_reads_done(claim)}
+            handled = dry_run.proposed & said_done
         named = set(_ISSUE_KEY_IN_TEXT.findall(decision.question))
         if not handled or not named <= handled:
             return decision
@@ -767,6 +783,53 @@ class StatusCollector:
             tenant_id=checkin.tenant_id,
             developer_id=checkin.developer_id,
             correlation_id=checkin.correlation_id,
+        )
+        return replace(decision, sufficient=True, question=None)
+
+    def _without_answered_completion_question(
+        self,
+        checkin: CheckIn,
+        decision: ClarificationDecision,
+        *,
+        earlier: CheckInSignals | None,
+    ) -> ClarificationDecision:
+        """Drop a follow-up asking again whether an issue the person said is done is done (N41).
+
+        R5: Omar answered "Can you confirm if all work for CHK-17 is complete and
+        ready to close the ticket?" with "yes CHK-17 complete, OK to close" and
+        was asked the same again, because Jira still showed it in progress. That
+        spent his last follow-up, so his IDP-6 ETA was never asked. A question
+        that only asks the person to confirm an issue is complete is dropped
+        when the check-in's messages (``earlier`` merged with this one) already
+        say each issue it names is done, read as the write-back reads a claim.
+        The tracker is the write-back's job, and an ``always_ask`` person
+        confirms it in the consent question. The first message's follow-up
+        stays the evaluator's call (N29).
+        """
+        if (
+            earlier is None
+            or decision.sufficient
+            or decision.question is None
+            or not decision.is_status_update
+        ):
+            return decision
+        named = set(_ISSUE_KEY_IN_TEXT.findall(decision.question))
+        if not named or not _asks_only_to_confirm_done(decision.question):
+            return decision
+        merged = _merged_or_earlier(earlier, decision.signals)
+        said_done = {
+            claim.issue_key
+            for claim in (merged.issue_updates if merged is not None else ())
+            if claim_reads_done(claim)
+        }
+        if not named <= said_done:
+            return decision
+        _logger.info(
+            "completion_question_already_answered",
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            correlation_id=checkin.correlation_id,
+            issue_keys=sorted(named),
         )
         return replace(decision, sufficient=True, question=None)
 
@@ -3628,6 +3691,46 @@ def asks_person_to_update_tracker(question: str) -> bool:
         and _TRACKER_UPDATE_VERB.search(sentence)
         and _TRACKER_NOUN.search(sentence)
         for sentence in _SENTENCE_END.split(question)
+    )
+
+
+# A follow-up asking the person to confirm that an issue is finished (N41).
+_SENTENCE_WITH_END = re.compile(r"[^.?!\n]+[.?!]*")
+_COMPLETION_WORDING = re.compile(
+    r"\b(?:complete|completed|done|finished|resolved|closable|ready to (?:be )?clos(?:e|ed)|"
+    r"(?:can|could|should) be closed)\b",
+    re.IGNORECASE,
+)
+_ASKS_ABOUT_WORK_OR_PEOPLE = re.compile(
+    r"\b(?:merge request|mr|pull request|pr|branch|commit\w*|who|which)\b", re.IGNORECASE
+)
+
+
+def _asking_sentences(question: str) -> list[str]:
+    """The sentences of ``question`` that ask something: a question mark or an address."""
+    sentences = (match.group(0).strip() for match in _SENTENCE_WITH_END.finditer(question))
+    return [
+        sentence
+        for sentence in sentences
+        if sentence and (sentence.endswith("?") or _ADDRESSES_PERSON.search(sentence))
+    ]
+
+
+def _asks_only_to_confirm_done(question: str) -> bool:
+    """Whether every ask in ``question`` is to confirm that work is complete (N41).
+
+    "CHK-17 is still marked in progress in Jira. Can you confirm if all work for
+    CHK-17 is complete and ready to close?" is one: the first sentence is a
+    statement. An ask that also wants an ETA, blockers, a merge request, a
+    branch, a commit or a person is not.
+    """
+    asks = _asking_sentences(question)
+    return bool(asks) and all(
+        _COMPLETION_WORDING.search(sentence)
+        and not _ASKS_FOR_ETA.search(sentence)
+        and not _ASKS_FOR_BLOCKERS.search(sentence)
+        and not _ASKS_ABOUT_WORK_OR_PEOPLE.search(sentence)
+        for sentence in asks
     )
 
 

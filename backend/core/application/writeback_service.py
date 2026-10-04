@@ -77,13 +77,16 @@ def _log_warning(event: str, **fields: str) -> None:
 class WriteBackDryRun:
     """What ``apply_from_checkin`` would do right away for a person's claims.
 
-    ``written``: issue keys it would write. ``held_for_open_mr``: issue keys whose
-    ``done`` it would hold back, each with the open merge requests naming it
+    ``written``: issue keys it would write (``auto_apply``). ``proposed``: issue
+    keys it would ask an ``always_ask`` person about in the consent question,
+    pending their yes (N41). ``held_for_open_mr``: issue keys whose ``done`` it
+    would hold back, each with the open merge requests naming it
     (``insights-pipeline !1``).
     """
 
     written: frozenset[str] = frozenset()
     held_for_open_mr: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    proposed: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -215,12 +218,19 @@ class WriteBackService:
         developer_id: str,
         claims: Sequence[IssueClaim],
     ) -> WriteBackDryRun:
-        """The keys ``apply_from_checkin`` would write, and the ones an open MR holds back.
+        """The keys ``apply_from_checkin`` would write or propose, and the ones an open MR holds.
 
-        No write and no audit row, and only for a person whose own claims are
-        written without asking (``standing_consent_open``).
+        No write, no proposal and no audit row. The claims pass the same gates
+        and checks as the claim path. An ``auto_apply`` person's keys are
+        ``written``; an ``always_ask`` person's are ``proposed``, because the
+        consent question is where they confirm the write (N41: without them,
+        R5 asked Omar "is CHK-17 complete?" twice before that question).
+        ``never`` and a closed system or capability gate report nothing.
         """
-        if not claims or not await self.standing_consent_open(tenant_id, developer_id):
+        if not claims:
+            return WriteBackDryRun()
+        consent = await self._writing_consent(tenant_id, developer_id)
+        if consent is None:
             return WriteBackDryRun()
         keys: set[str] = set()
         held: dict[str, tuple[str, ...]] = {}
@@ -240,7 +250,24 @@ class WriteBackService:
                 held[claim.issue_key] = open_requests
             else:
                 keys.add(claim.issue_key)
-        return WriteBackDryRun(written=frozenset(keys), held_for_open_mr=held)
+        if consent is WriteBackConsent.AUTO_APPLY:
+            return WriteBackDryRun(written=frozenset(keys), held_for_open_mr=held)
+        return WriteBackDryRun(proposed=frozenset(keys), held_for_open_mr=held)
+
+    async def _writing_consent(self, tenant_id: str, developer_id: str) -> WriteBackConsent | None:
+        """This developer's consent when a claim of theirs can reach the tracker, else None.
+
+        Read-only: the capability and system gates, then a consent that is not ``never``.
+        """
+        principal = Principal(
+            tenant_id=tenant_id, subject=developer_id, roles=frozenset({Role.DEV})
+        )
+        if not self._policy.can(principal, Capability.WRITE_ISSUE_TRACKER):
+            return None
+        if not await self.system_gate_open(tenant_id):
+            return None
+        consent = await self._consent(tenant_id, developer_id)
+        return None if consent is WriteBackConsent.NEVER else consent
 
     async def open_merge_request_holds(
         self, tenant_id: str, rows: Sequence[WriteBackAudit]
@@ -1399,6 +1426,15 @@ def canonical_target_state(text: str | None) -> WriteBackTarget | None:
     """
     verdict = _classify_claimed_state(text or "")
     return verdict if isinstance(verdict, WriteBackTarget) else None
+
+
+def claim_reads_done(claim: IssueClaim) -> bool:
+    """Whether a claim says its issue is done, read as the write-back reads it.
+
+    Pure: the stated state decides, and the parser's ``claimed_done`` counts only
+    when the wording names no state ("not done yet" or "almost done" never does).
+    """
+    return _target_state(claim) == WriteBackTarget.DONE.value
 
 
 def _state_signals(phrase: str) -> set[WriteBackTarget]:
