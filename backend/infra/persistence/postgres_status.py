@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, suppress
 from datetime import date, datetime, time
 from typing import Protocol
@@ -40,6 +40,10 @@ _tracer = trace.get_tracer("openprogram.persistence.status")
 
 class AsyncSqlSession(Protocol):
     async def execute(self, query: str, params: Sequence[object] = ()) -> object: ...
+
+    async def fetch(
+        self, query: str, params: Sequence[object] = ()
+    ) -> Sequence[Mapping[str, object]]: ...
 
 
 class AsyncSqlExecutor(Protocol):
@@ -551,6 +555,69 @@ class PostgresStatusRepository:
                     await transaction.execute(
                         _DEVELOPER_BLOCKER_UPSERT_SQL, _developer_blocker_params(blocker)
                     )
+
+    async def resolve_developer_blockers(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        blockers: Sequence[DeveloperBlocker],
+        *,
+        status_as_of: date,
+        revise_status: Callable[
+            [DeveloperStatus, Sequence[DeveloperBlocker]], DeveloperStatus | None
+        ],
+    ) -> tuple[DeveloperBlocker, ...]:
+        # Each row is one conditional UPDATE. A second pass that read the same
+        # row blocks on its lock, then re-checks the WHERE against the
+        # committed row: it is resolved now, so nothing changes and nothing is
+        # returned. The status row is read FOR UPDATE in the same transaction,
+        # so two passes resolving different blockers of one person revise the
+        # status one after the other, each from the other's result.
+        if not blockers:
+            return ()
+        changed: list[DeveloperBlocker] = []
+        with _tracer.start_as_current_span("postgres.status.resolve_developer_blockers"):
+            async with self._executor.transaction() as transaction:
+                for blocker in blockers:
+                    if blocker.tenant_id != tenant_id:
+                        msg = "blocker tenant does not match the requested tenant"
+                        raise ValueError(msg)
+                    rows = await transaction.fetch(
+                        _DEVELOPER_BLOCKER_RESOLVE_SQL,
+                        (
+                            blocker.resolved_on,
+                            blocker.resolved_reason.value
+                            if blocker.resolved_reason is not None
+                            else None,
+                            blocker.last_seen_on,
+                            tenant_id,
+                            blocker.blocker_id,
+                            developer_id,
+                            blocker.updated_at,
+                        ),
+                    )
+                    changed.extend(_developer_blocker_from_row(row) for row in rows)
+                if not changed:
+                    return ()
+                rows = await transaction.fetch(
+                    """
+                    SELECT tenant_id, developer_id, as_of, source, blockers, summary,
+                           eta_change_days, developer_confirmed, confirmed_at
+                    FROM developer_statuses
+                    WHERE tenant_id = %s AND developer_id = %s AND as_of <= %s
+                    ORDER BY as_of DESC
+                    LIMIT 1
+                    FOR UPDATE
+                    """,
+                    (tenant_id, developer_id, status_as_of),
+                )
+                if rows:
+                    revised = revise_status(_developer_status_from_row(rows[0]), tuple(changed))
+                    if revised is not None:
+                        await transaction.execute(
+                            _DEVELOPER_STATUS_UPSERT_SQL, _developer_status_params(revised)
+                        )
+        return tuple(changed)
 
     async def open_blockers(
         self, tenant_id: str, developer_id: str, as_of: date
@@ -1328,6 +1395,22 @@ DO UPDATE SET
     resolved_on = EXCLUDED.resolved_on,
     resolved_reason = EXCLUDED.resolved_reason,
     updated_at = now()
+"""
+
+# Resolves a row only while it is unresolved and unchanged since it was read:
+# a concurrent pass that resolved it first, or the person restating it, wins.
+_DEVELOPER_BLOCKER_RESOLVE_SQL = """
+UPDATE developer_blockers
+SET resolved_on = %s,
+    resolved_reason = %s,
+    last_seen_on = GREATEST(last_seen_on, %s::date),
+    updated_at = now()
+WHERE tenant_id = %s AND blocker_id = %s AND developer_id = %s
+  AND resolved_on IS NULL
+  AND updated_at IS NOT DISTINCT FROM %s::timestamptz
+RETURNING tenant_id, blocker_id, developer_id, description, normalized_key,
+          work_item_id, pod_id, source, source_correlation_id, attribution_asked_at,
+          first_seen_on, last_seen_on, resolved_on, resolved_reason, updated_at
 """
 
 _DEVELOPER_BLOCKER_SELECT_SQL = """

@@ -162,6 +162,7 @@ class CrossPersonRequestService:
                 other.id,
                 CrossPersonRequestStatus.RESOLVED,
                 resolved_at,
+                from_statuses=_STILL_OPEN,
             )
             if updated is not None:
                 await self._append_fact(updated, transition=CrossPersonRequestStatus.RESOLVED.value)
@@ -175,8 +176,9 @@ class CrossPersonRequestService:
         request is checkout-api !1, is done once that merge request is merged,
         whether or not the reviewer answered the DM. Every merge request the
         ask names, or that names its issue, has to be merged: one still open
-        keeps the ask open. Safe to run after every sync: a resolved request
-        is never resolved, or announced, again.
+        keeps the ask open. Safe to run after every sync, and from the six
+        per-repository syncs at once: the resolve is one conditional update,
+        and only the pass that changed the request announces it (N24).
         """
         if self.time_series_repository is None:
             return ()
@@ -246,8 +248,12 @@ class CrossPersonRequestService:
             request.id,
             CrossPersonRequestStatus.RESOLVED,
             max(resolved_at, current.updated_at),
+            from_statuses=_STILL_OPEN,
         )
         if updated is None:
+            # Another pass resolved it since it was read: the sync of another
+            # repository, a reply or the console. That pass tells the requester
+            # (N24: Liam got the CHK-3 notice twice, a second apart).
             return None
         await self._append_fact(updated, transition=CrossPersonRequestStatus.RESOLVED.value)
         told = await self._told_about_a_copy(updated)
@@ -538,23 +544,28 @@ class CrossPersonRequestService:
             request.id,
             reading.status,
             message.received_at,
+            from_statuses=_STILL_OPEN,
         )
-        stored = updated or request
-        await self._append_fact(stored, transition=reading.status.value)
+        if updated is None:
+            # Nothing changed: the request is in that state already (a second
+            # "on it"), or the merge pass or another reply closed it since it
+            # was read, and that one told the requester.
+            return await self.repository.get(request.tenant_id, request.id) or request
+        await self._append_fact(updated, transition=reading.status.value)
         if reading.status is CrossPersonRequestStatus.RESOLVED:
             # What the resolution settles is stored before anyone is told, so
             # a failed DM cannot leave a copy or a blocker open behind it.
-            told = await self._told_about_a_copy(stored)
-            await self._close_repeats(stored, message.received_at)
-            await self._settle_blockers(stored, message.received_at)
+            told = await self._told_about_a_copy(updated)
+            await self._close_repeats(updated, message.received_at)
+            await self._settle_blockers(updated, message.received_at)
             if not told:
-                await self._notify_requester_resolved(stored)
+                await self._notify_requester_resolved(updated)
         elif reading.eta is not None and request.status is CrossPersonRequestStatus.OPEN:
             # The first acknowledgement that says when is worth a message;
             # a bare "on it", or a second ETA, the requester sees in the
             # console. Only an open request becomes acknowledged once.
-            await self._notify_requester_acknowledged(stored, reading.eta)
-        return stored
+            await self._notify_requester_acknowledged(updated, reading.eta)
+        return updated
 
     async def update_status(
         self,
@@ -573,14 +584,17 @@ class CrossPersonRequestService:
             status,
             datetime.now(tz=UTC),
         )
-        if updated is not None:
-            await self._append_fact(updated, transition=status.value)
-            if status is CrossPersonRequestStatus.RESOLVED:
-                told = await self._told_about_a_copy(updated)
-                await self._close_repeats(updated, updated.updated_at)
-                await self._settle_blockers(updated, updated.updated_at)
-                if not told:
-                    await self._notify_requester_resolved(updated)
+        if updated is None:
+            # Missing, or a concurrent call made this change first and has
+            # told the requester: the request as it is now.
+            return await self.repository.get(tenant_id, request_id)
+        await self._append_fact(updated, transition=status.value)
+        if status is CrossPersonRequestStatus.RESOLVED:
+            told = await self._told_about_a_copy(updated)
+            await self._close_repeats(updated, updated.updated_at)
+            await self._settle_blockers(updated, updated.updated_at)
+            if not told:
+                await self._notify_requester_resolved(updated)
         return updated
 
     async def get(
@@ -725,7 +739,9 @@ class CrossPersonRequestService:
                 correlation_id=f"xreq-acknowledged-{request.id}",
                 metadata={
                     "purpose": "cross_person_request_acknowledged",
-                    "idempotency_key": f"xreq-acknowledged:{request.id}",
+                    "idempotency_key": requester_notice_key(
+                        request.id, CrossPersonRequestStatus.ACKNOWLEDGED
+                    ),
                     "request_id": request.id,
                 },
             ),
@@ -758,7 +774,9 @@ class CrossPersonRequestService:
                 correlation_id=f"xreq-resolved-{request.id}",
                 metadata={
                     "purpose": "cross_person_request_resolved",
-                    "idempotency_key": f"xreq-resolved:{request.id}",
+                    "idempotency_key": requester_notice_key(
+                        request.id, CrossPersonRequestStatus.RESOLVED
+                    ),
                     "request_id": request.id,
                 },
             ),
@@ -836,6 +854,16 @@ def _request_id(
         ).encode("utf-8")
     ).hexdigest()[:16]
     return f"xreq-{digest}"
+
+
+def requester_notice_key(request_id: str, state: CrossPersonRequestStatus) -> str:
+    """The send-once key of a notice to the requester: the request and its new state.
+
+    The chat adapter posts a key once, so a retried or racing notice of the
+    same transition is not posted again, while each transition of a request
+    (acknowledged with an ETA, then resolved) gets its own notice.
+    """
+    return f"xreq-{state.value}:{request_id}"
 
 
 _CLOSED_STATUSES = frozenset(
