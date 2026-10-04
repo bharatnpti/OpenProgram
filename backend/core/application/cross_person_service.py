@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import structlog
 
+from core.application.counterpart_replies import (
+    CounterpartReplyReading,
+    eta_phrase,
+    read_counterpart_reply,
+)
+from core.application.json_parsing import extract_json_object
 from core.application.merge_request_links import (
     MERGE_REQUEST_FACT_SOURCE,
     MergeRequestIndex,
@@ -441,18 +446,23 @@ class CrossPersonRequestService:
             # A thanks or a second "done" after the fact must not reopen the
             # request or tell the requester again.
             return request
-        next_status = await self._classify_counterpart_reply(message, request)
+        reading = await self._read_counterpart_reply(message, request)
         updated = await self.repository.update_status(
             request.tenant_id,
             request.id,
-            next_status,
+            reading.status,
             message.received_at,
         )
         stored = updated or request
-        await self._append_fact(stored, transition=next_status.value)
-        if next_status is CrossPersonRequestStatus.RESOLVED:
+        await self._append_fact(stored, transition=reading.status.value)
+        if reading.status is CrossPersonRequestStatus.RESOLVED:
             await self._notify_requester_resolved(stored)
             await self._close_repeats(stored, message.received_at)
+        elif reading.eta is not None and request.status is CrossPersonRequestStatus.OPEN:
+            # The first acknowledgement that says when is worth a message;
+            # a bare "on it", or a second ETA, the requester sees in the
+            # console. Only an open request becomes acknowledged once.
+            await self._notify_requester_acknowledged(stored, reading.eta)
         return stored
 
     async def update_status(
@@ -550,21 +560,30 @@ class CrossPersonRequestService:
         )
         return candidates[0] if len(candidates) == 1 else None
 
-    async def _classify_counterpart_reply(
+    async def _read_counterpart_reply(
         self,
         message: InboundMessage,
         request: CrossPersonRequest,
-    ) -> CrossPersonRequestStatus:
-        if _reply_resolves(message.text):
-            return CrossPersonRequestStatus.RESOLVED
-        if _reply_acknowledges(message.text):
-            return CrossPersonRequestStatus.ACKNOWLEDGED
+    ) -> CounterpartReplyReading:
+        """What the counterpart's reply says: read directly, else by the model.
+
+        Short natural replies ("approved", "LGTM", "merged", "should merge
+        tomorrow") are read without the model. The model's answer is taken
+        from the first JSON object in its text, fenced or not; when there is
+        none the reply counts as an acknowledgement, as before. The ETA always
+        comes from the reply's own when-statement, never from the model.
+        """
+        direct = read_counterpart_reply(message.text)
+        if direct is not None:
+            return direct
+        eta = eta_phrase(message.text)
         if self.llm_provider is None:
-            return CrossPersonRequestStatus.ACKNOWLEDGED
+            return CounterpartReplyReading(status=CrossPersonRequestStatus.ACKNOWLEDGED, eta=eta)
         prompt = (
             "Classify this reply to a cross-person work request as JSON with one key, status. "
             "Use resolved only when the reply says the requested review/input/dependency is done. "
             "Use acknowledged when the reply only confirms ownership or gives a non-final update. "
+            "Answer with the JSON object only. "
             f"Request kind: {request.kind.value}. "
             f"Request note: {request.note}. Reply: {message.text}"
         )
@@ -581,20 +600,42 @@ class CrossPersonRequestService:
                 },
             )
         )
-        try:
-            parsed = json.loads(response.text)
-        except json.JSONDecodeError:
+        parsed = extract_json_object(response.text)
+        if parsed is None:
             _logger.warning(
                 "cross_person_reply_json_decode_failed",
                 tenant_id=message.tenant_id,
                 request_id=request.id,
                 trace_id=response.trace_id,
             )
-            return CrossPersonRequestStatus.ACKNOWLEDGED
-        status = parsed.get("status") if isinstance(parsed, dict) else None
-        if status == CrossPersonRequestStatus.RESOLVED.value:
-            return CrossPersonRequestStatus.RESOLVED
-        return CrossPersonRequestStatus.ACKNOWLEDGED
+            return CounterpartReplyReading(status=CrossPersonRequestStatus.ACKNOWLEDGED, eta=eta)
+        status = parsed.get("status")
+        if isinstance(status, str) and status.strip().casefold() == "resolved":
+            return CounterpartReplyReading(status=CrossPersonRequestStatus.RESOLVED)
+        return CounterpartReplyReading(status=CrossPersonRequestStatus.ACKNOWLEDGED, eta=eta)
+
+    async def _notify_requester_acknowledged(self, request: CrossPersonRequest, eta: str) -> None:
+        if request.requester_chat_ref is None:
+            return
+        counterpart = (
+            request.counterpart_display_name or request.counterpart_id or "The counterpart"
+        )
+        await self.chat_provider.send_dm(
+            ChatUserRef(tenant_id=request.tenant_id, external_id=request.requester_chat_ref),
+            OutboundMessage(
+                tenant_id=request.tenant_id,
+                text=(
+                    f"{counterpart} acknowledged your {request.kind.value} request and "
+                    f"expects it {eta}: {_fit_note(request.note, _RESOLVED_NOTE_CHARS)}"
+                ),
+                correlation_id=f"xreq-acknowledged-{request.id}",
+                metadata={
+                    "purpose": "cross_person_request_acknowledged",
+                    "idempotency_key": f"xreq-acknowledged:{request.id}",
+                    "request_id": request.id,
+                },
+            ),
+        )
 
     async def _notify_requester_resolved(
         self,
@@ -764,57 +805,3 @@ def _fact_status(status: CrossPersonRequestStatus) -> str:
     if status is CrossPersonRequestStatus.NEEDS_RESOLUTION:
         return "stale"
     return "open"
-
-
-def _reply_acknowledges(text: str) -> bool:
-    normalized = " ".join(text.casefold().split())
-    exact_acknowledgements = {
-        "ok",
-        "okay",
-        "ack",
-        "acknowledged",
-        "on it",
-        "looking",
-        "will do",
-    }
-    return normalized in exact_acknowledgements or any(
-        phrase in normalized
-        for phrase in (
-            "i'll take",
-            "i will take",
-            "i'll look",
-            "i will look",
-            "on it",
-            "will review",
-            "can review",
-        )
-    )
-
-
-def _reply_resolves(text: str) -> bool:
-    normalized = text.casefold()
-    negated = (
-        "not done",
-        "not resolved",
-        "not yet",
-        "still working",
-        "still reviewing",
-        "not ready",
-        "not finished",
-    )
-    if any(phrase in normalized for phrase in negated):
-        return False
-    resolved = (
-        "done",
-        "resolved",
-        "completed",
-        "finished",
-        "reviewed",
-        "approved",
-        "merged",
-        "sent",
-        "shared",
-        "provided",
-        "unblocked",
-    )
-    return any(phrase in normalized for phrase in resolved)
