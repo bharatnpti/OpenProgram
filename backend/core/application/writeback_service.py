@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import Enum
 from typing import Literal
 from uuid import uuid4
@@ -13,8 +13,10 @@ import structlog
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.merge_request_links import (
     MERGE_REQUEST_FACT_SOURCE,
+    is_merged_merge_request,
     is_open_merge_request,
     merge_request_label,
+    merge_request_reference,
     merge_requests_by_issue_key,
 )
 from core.application.sync_services import record_issue_as_synced
@@ -235,7 +237,13 @@ class WriteBackService:
         correlation_id: str,
         claims: Sequence[IssueClaim],
         source: str = "checkin",
+        reported_on: date | None = None,
     ) -> list[WriteBackAudit]:
+        """Write, propose or refuse each claim behind the four gates.
+
+        ``reported_on`` is the check-in's date, named in the comment an applied
+        write posts (the clock's date when not given).
+        """
         principal = Principal(
             tenant_id=tenant_id,
             subject=developer_id,
@@ -267,6 +275,7 @@ class WriteBackService:
                 target_state=target_state,
                 consent=consent,
                 source=source,
+                reported_on=reported_on,
             )
             if row is not None:
                 results.append(row)
@@ -282,6 +291,7 @@ class WriteBackService:
         target_state: str,
         consent: WriteBackConsent,
         source: str,
+        reported_on: date | None = None,
     ) -> WriteBackAudit | None:
         """Apply or propose one claim whose consent gates already hold, or record why not."""
         row_source = "standing_consent" if consent is WriteBackConsent.AUTO_APPLY else source
@@ -332,6 +342,7 @@ class WriteBackService:
                 target_state,
                 row_source,
                 before_state=issue.state.value,
+                reported_on=reported_on,
             )
         return await self._propose(  # WriteBackConsent.ALWAYS_ASK
             tenant_id,
@@ -385,8 +396,13 @@ class WriteBackService:
         developer_id: str,
         correlation_id: str,
         reply_text: str,
+        claims: Sequence[IssueClaim] = (),
+        reported_on: date | None = None,
     ) -> list[WriteBackAudit]:
         """Resolve pending write-back proposals from a developer's yes/no answer.
+
+        ``claims`` (the check-in's) word the comment of each applied write as
+        the claim path does; ``reported_on`` is the check-in's date.
 
         Returns the audit rows produced -- ``applied`` on an affirmative answer,
         ``declined`` on a negative one, and nothing when the answer is unclear,
@@ -416,7 +432,14 @@ class WriteBackService:
         for proposal in pending:
             if intent == "affirm":
                 results.append(
-                    await self._apply_confirmed(tenant_id, developer_id, correlation_id, proposal)
+                    await self._apply_confirmed(
+                        tenant_id,
+                        developer_id,
+                        correlation_id,
+                        proposal,
+                        claim=_claim_for(claims, proposal),
+                        reported_on=reported_on,
+                    )
                 )
             else:  # intent == "decline"
                 results.append(
@@ -441,6 +464,9 @@ class WriteBackService:
         developer_id: str,
         correlation_id: str,
         proposal: WriteBackAudit,
+        *,
+        claim: IssueClaim | None = None,
+        reported_on: date | None = None,
     ) -> WriteBackAudit:
         """Write a proposal the developer said yes to, re-checking owner and state.
 
@@ -496,20 +522,19 @@ class WriteBackService:
                 proposal.target_state,
                 OPEN_MR_SOURCE,
             )
-        claim = IssueClaim(
-            issue_key=proposal.issue_key,
-            claimed_state=proposal.target_state,
-            note=proposal.comment or "",
+        confirmed = claim or IssueClaim(
+            issue_key=proposal.issue_key, claimed_state=proposal.target_state
         )
         return await self._apply(
             tenant_id,
             developer_id,
             correlation_id,
-            claim,
+            confirmed,
             proposal.target_state,
             "consent_reply",
             before_state=issue.state.value,
             tracker_state=tracker_state,
+            reported_on=reported_on,
         )
 
     async def revert(self, audit: WriteBackAudit) -> WriteBackAudit | None:
@@ -629,9 +654,9 @@ class WriteBackService:
         written. Best-effort: the tracker write already happened and is audited,
         so a failure here is logged and the next sync repairs the copy.
         """
-        if self._graph is None:
-            return None
         issue = await self._read_issue(tenant_id, issue_key)
+        if self._graph is None:
+            return issue
         try:
             if issue is not None:
                 await record_issue_as_synced(
@@ -756,16 +781,13 @@ class WriteBackService:
         *,
         before_state: str | None,
         tracker_state: str | None = None,
+        reported_on: date | None = None,
     ) -> WriteBackAudit:
         # ``target_state`` keys the audit row; ``tracker_state`` (default: the
         # same) is what the tracker is asked to move to.
         to_state = tracker_state or target_state
-        comment = claim.note.strip() or None
         try:
             await self._issue_tracker.transition(tenant_id, claim.issue_key, to_state)
-            await self._record_written_issue(tenant_id, claim.issue_key, to_state)
-            if comment is not None:
-                await self._issue_tracker.add_comment(tenant_id, claim.issue_key, comment)
         except ProviderUnavailable:
             return await self._record(
                 tenant_id=tenant_id,
@@ -776,9 +798,27 @@ class WriteBackService:
                 status=WriteBackStatus.FAILED,
                 before_state=before_state,
                 after_state=before_state,
-                comment=comment,
+                comment=None,
                 source=source,
             )
+        written = await self._record_written_issue(tenant_id, claim.issue_key, to_state)
+        comment: str | None = await self._write_back_comment(
+            tenant_id,
+            developer_id,
+            claim,
+            to_state,
+            written=written,
+            reported_on=reported_on,
+        )
+        try:
+            await self._issue_tracker.add_comment(tenant_id, claim.issue_key, comment or "")
+        except ProviderUnavailable:
+            # The issue did move; only the note is missing. The row says so by
+            # carrying no comment, and the write stays applied (and revertible).
+            _logger.warning(
+                "writeback_comment_failed", tenant_id=tenant_id, issue_key=claim.issue_key
+            )
+            comment = None
         return await self._record(
             tenant_id=tenant_id,
             developer_id=developer_id,
@@ -791,6 +831,68 @@ class WriteBackService:
             comment=comment,
             source=source,
         )
+
+    async def _write_back_comment(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        claim: IssueClaim,
+        to_state: str,
+        *,
+        written: Issue | None,
+        reported_on: date | None,
+    ) -> str:
+        """The note an applied write posts: what moved, who reported it, when (N20).
+
+        Neutral and factual, built only from OpenProgram's own data: the state
+        the issue now has, the person's name, the canonical state they reported,
+        the merge requests that back it, and the check-in date. It never copies
+        the reply or the parser's note, which the write itself can make false
+        ("Jira not updated yet").
+        """
+        return write_back_comment(
+            destination=_destination_label(written, to_state),
+            person=await self._person_name(tenant_id, developer_id),
+            reported=_reported_phrase(claim, to_state),
+            merge_requests=await self._backing_merge_requests(tenant_id, claim.issue_key, to_state),
+            reported_on=reported_on or self._clock().date(),
+        )
+
+    async def _person_name(self, tenant_id: str, developer_id: str) -> str:
+        # The member record's name; never a raw chat or tracker id.
+        if self._graph is not None:
+            node = await self._graph.get_node(tenant_id, developer_id)
+            if node is not None and node.name and node.name != developer_id:
+                return node.name
+        return "the assignee"
+
+    async def _backing_merge_requests(
+        self, tenant_id: str, issue_key: str, to_state: str
+    ) -> tuple[str, ...]:
+        """The merge requests naming the issue that back the new state, as repo !id.
+
+        Merged ones for ``done``; open (or draft) ones for review and in progress;
+        none for any other state or when no fact store is wired.
+        """
+        if self._facts is None:
+            return ()
+        try:
+            target = WriteBackTarget(to_state)
+        except ValueError:
+            return ()
+        if target is WriteBackTarget.DONE:
+            backs = is_merged_merge_request
+        elif target in (WriteBackTarget.IN_REVIEW, WriteBackTarget.IN_PROGRESS):
+            backs = is_open_merge_request
+        else:
+            return ()
+        facts = await self._facts.list_recent_facts(
+            tenant_id,
+            sources=(MERGE_REQUEST_FACT_SOURCE,),
+            limit=_MERGE_REQUEST_FACT_SCAN_LIMIT,
+        )
+        linked = merge_requests_by_issue_key(facts, {issue_key}).get(issue_key, [])
+        return tuple(sorted(merge_request_reference(fact) for fact in linked if backs(fact)))
 
     async def _propose(
         self,
@@ -812,7 +914,7 @@ class WriteBackService:
             status=WriteBackStatus.PROPOSED,
             before_state=before_state,
             after_state=target_state,
-            comment=claim.note.strip() or None,
+            comment=None,
             source=source,
         )
 
@@ -1112,3 +1214,72 @@ def target_state_label(target_state: str) -> str:
         return _TARGET_LABELS[WriteBackTarget(target_state)]
     except ValueError:
         return target_state
+
+
+_REPORTED_PHRASES: dict[WriteBackTarget, str] = {
+    WriteBackTarget.TODO: "it not started",
+    WriteBackTarget.IN_PROGRESS: "it in progress",
+    WriteBackTarget.IN_REVIEW: "it in review",
+    WriteBackTarget.BLOCKED: "it blocked",
+    WriteBackTarget.DONE: "it done",
+}
+_MERGED_WORDING = re.compile(r"\bmerged?\b")
+
+
+def _reported_phrase(claim: IssueClaim, to_state: str) -> str:
+    """What the person reported, as a canonical phrase ("it merged"), never their words."""
+    try:
+        target = WriteBackTarget(_stored_target_for_tracker(to_state))
+    except ValueError:
+        return "a change"
+    wording = " ".join(_NON_WORD.split((claim.claimed_state or "").lower()))
+    if target is WriteBackTarget.DONE and _MERGED_WORDING.search(wording):
+        return "it merged"
+    return _REPORTED_PHRASES[target]
+
+
+def _destination_label(written: Issue | None, to_state: str) -> str:
+    """The state the issue now has: the tracker's own status name when read back."""
+    state = _written_issue_state(to_state)
+    if written is not None and written.state is state:
+        # Only a read-back that already shows the write names the status; a
+        # stale read would name the state the issue just left.
+        status = written.metadata.get("status")
+        if isinstance(status, str) and status.strip():
+            return status.strip()
+    if state is None:
+        return to_state
+    return {
+        IssueState.TODO: "To Do",
+        IssueState.IN_PROGRESS: "In Progress",
+        IssueState.BLOCKED: "Blocked",
+        IssueState.DONE: "Done",
+    }[state]
+
+
+def write_back_comment(
+    *,
+    destination: str,
+    person: str,
+    reported: str,
+    merge_requests: Sequence[str],
+    reported_on: date,
+) -> str:
+    """The tracker note for an applied write-back.
+
+    "Moved to Done by OpenProgram: Raj Iyer reported it merged
+    (acme/insights-pipeline !2) in the 2026-10-04 check-in."
+    """
+    backing = f" ({', '.join(merge_requests)})" if merge_requests else ""
+    return (
+        f"Moved to {destination} by OpenProgram: {person} reported {reported}{backing} "
+        f"in the {reported_on.isoformat()} check-in."
+    )
+
+
+def _claim_for(claims: Sequence[IssueClaim], proposal: WriteBackAudit) -> IssueClaim | None:
+    """The check-in claim a proposal came from, when it still names the same target."""
+    for claim in reversed(claims):
+        if claim.issue_key == proposal.issue_key and _target_state(claim) == proposal.target_state:
+            return claim
+    return None
