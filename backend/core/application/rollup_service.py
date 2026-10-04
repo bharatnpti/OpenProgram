@@ -14,11 +14,13 @@ from core.domain.graph import EdgeKind, EntityRef, GraphNode, GraphTree, JsonSca
 from core.domain.risk import OwnerDrift
 from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import DeveloperStatus, StatusSource
-from core.ports.repositories import RollupRepository, StatusRepository
+from core.ports.repositories import GraphRepository, RollupRepository, StatusRepository
 
 # Factor kinds counted only in the pods they apply to: a blocker, and drift on
 # an issue, which is placed in the pods a blocker on that issue would be.
 _POD_SCOPED_KINDS = frozenset({FactorKind.BLOCKER, FactorKind.DRIFT})
+# The line a person in no team carries on their own cell (N5).
+NO_POD_REASON = "In no pod, so counted in no pod, project or program."
 
 
 class DriftSignals(Protocol):
@@ -76,7 +78,7 @@ class RollupService:
         neutral: set[str] = set()
         blockers: dict[str, tuple[ResolvedBlocker, ...]] = {}
         incoming = await self._incoming_dependencies(tree, as_of, blockers)
-        drift = await self._owner_drift(tree, as_of)
+        drift = await self._owner_drift(tree.root.tenant_id, as_of, tree.nodes)
 
         async def rollup_node(node: GraphNode) -> NodeStatus | None:
             """Roll `node` up and return what it contributes to its parent.
@@ -126,10 +128,58 @@ class RollupService:
 
     async def compute_and_record(self, tree: GraphTree, as_of: date) -> tuple[NodeStatus, ...]:
         statuses = await self.compute(tree, as_of)
+        await self._record(statuses)
+        return statuses
+
+    async def compute_outside_teams(
+        self, people: Iterable[GraphNode], as_of: date
+    ) -> tuple[NodeStatus, ...]:
+        """Each person in no team gets their own cell (N5); no team rollup reads it.
+
+        An exec (Elena), or anyone not yet placed in a pod, is in no program
+        tree, so no rollup reached them and their check-in showed no colour
+        anywhere. Each now gets the person rule -- confirmed, partial, no
+        status, unknown; their blockers and drift -- with a NO_POD line saying
+        it counts in no pod, project or program. Nothing aggregates these
+        statuses, so they never change a team's colour.
+        """
+        developers = [person for person in people if person.kind is NodeKind.DEVELOPER]
+        if not developers:
+            return ()
+        drift = await self._owner_drift(developers[0].tenant_id, as_of, developers)
+        statuses: list[NodeStatus] = []
+        for person in developers:
+            status = await self._developer_status(person, as_of, None, drift.get(person.id, ()))
+            statuses.append(
+                NodeStatus(
+                    entity_ref=status.entity_ref,
+                    rag=status.rag,
+                    source=status.source,
+                    factors=(
+                        *status.factors,
+                        RollupFactor(
+                            description=NO_POD_REASON,
+                            contributes=Rag.GREEN,
+                            source_ref=person.ref,
+                            kind=FactorKind.NO_POD,
+                        ),
+                    ),
+                    as_of=status.as_of,
+                )
+            )
+        return tuple(statuses)
+
+    async def compute_and_record_outside_teams(
+        self, people: Iterable[GraphNode], as_of: date
+    ) -> tuple[NodeStatus, ...]:
+        statuses = await self.compute_outside_teams(people, as_of)
+        await self._record(statuses)
+        return statuses
+
+    async def _record(self, statuses: Iterable[NodeStatus]) -> None:
         if self._rollup_repository is not None:
             for status in statuses:
                 await self._rollup_repository.record_node_status(status)
-        return statuses
 
     async def _incoming_dependencies(
         self,
@@ -173,14 +223,14 @@ class RollupService:
         )
 
     async def _owner_drift(
-        self, tree: GraphTree, as_of: date
+        self, tenant_id: str, as_of: date, nodes: Iterable[GraphNode]
     ) -> Mapping[str, tuple[OwnerDrift, ...]]:
         """The open drift signals per owner, read once per compute; none without a source."""
         if self._drift_signals is None or not any(
-            node.kind is NodeKind.DEVELOPER for node in tree.nodes
+            node.kind is NodeKind.DEVELOPER for node in nodes
         ):
             return {}
-        return await self._drift_signals.owner_drift(tree.root.tenant_id, as_of)
+        return await self._drift_signals.owner_drift(tenant_id, as_of)
 
     async def _developer_status(
         self,
@@ -213,6 +263,31 @@ class RollupService:
         blockers = known if known is not None else await self._open_blockers(node, as_of)
         rag, factors = _with_drift(node, status, *_developer_factors(node, status, blockers), drift)
         return _node_status(node, rag, status.source, as_of, factors)
+
+
+async def people_outside_teams(
+    graph: GraphRepository, tenant_id: str, as_of: date
+) -> tuple[GraphNode, ...]:
+    """The members nothing contains on ``as_of``: no pod, so no rollup tree, holds them.
+
+    An exec with no pod (Elena), or someone not yet placed. A person a pod,
+    project or workstream contains is in a team's rollup and is not one.
+    """
+    nodes = await graph.list_nodes(tenant_id)
+    contained = {
+        edge.to_node_id
+        for edge in await graph.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+        if edge.is_active_on(as_of)
+    }
+    outside = (
+        node for node in nodes if node.kind is NodeKind.DEVELOPER and node.id not in contained
+    )
+    return tuple(sorted(outside, key=lambda node: (node.name, node.id)))
+
+
+def is_outside_teams(status: NodeStatus) -> bool:
+    """Whether a stored status is a person-in-no-team's own cell (N5)."""
+    return any(factor.kind is FactorKind.NO_POD for factor in status.factors)
 
 
 class _TreeIndex:

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from core.application.blocker_resolution import BlockerResolutionService
 from core.application.risk_service import RiskService
-from core.application.rollup_service import RollupService
+from core.application.rollup_service import RollupService, people_outside_teams
 from core.domain.errors import GraphNotFound
 from core.domain.graph import GraphNode, NodeKind
 from core.domain.risk import RiskProviderConfig
@@ -82,6 +82,9 @@ async def run_rollup_activity(payload: RollupInput) -> RollupWorkflowResult:
         )
         days_recorded = 0
         nodes_recorded = 0
+        # People in no team (N5) belong to no program: their own cells are
+        # recorded once per day, beside the first program's rollup of it.
+        outside_recorded: set[date] = set()
         for program in await graph.list_nodes(payload.tenant_id, NodeKind.PROGRAM):
             for day in await _days_to_record(rollups, program, today, backfill_days):
                 # The hourly rollup and a refresh after a resolution (N27) can
@@ -93,6 +96,11 @@ async def run_rollup_activity(payload: RollupInput) -> RollupWorkflowResult:
                     except GraphNotFound:
                         continue
                     statuses = await service.compute_and_record(tree, day)
+                    if day not in outside_recorded:
+                        outside_recorded.add(day)
+                        statuses += await service.compute_and_record_outside_teams(
+                            await people_outside_teams(graph, payload.tenant_id, day), day
+                        )
                 days_recorded += 1
                 nodes_recorded += len(statuses)
         return RollupWorkflowResult(
