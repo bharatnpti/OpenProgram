@@ -1,0 +1,27 @@
+backend/core/domain/risk.py
+  s_700a7231520d64::t_d5138e15807800 29-31
+backend/core/application/risk_service.py
+  s_700a7231520d64::t_d5138e15807800 3,47-51,574-648,651-679,1167-1183
+  s_700a7231520d64::t_0f52b1fe0a584f 1184-1185
+backend/tests/unit/test_drift_service.py
+  s_700a7231520d64::t_70dfc0ccb655e8 15,23,177-328
+  s_700a7231520d64::t_d61100b55cbd38 329-330
+docs/ops/real-integrations.md
+  s_700a7231520d64::t_0210515e6d2480 242-248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b8d6dec798374762bd2d886c8515b5e90464165d",
+  "prompts": {},
+  "sessions": {
+    "s_700a7231520d64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "36fa9789-4943-4fbd-be9c-cc918ee14b0f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

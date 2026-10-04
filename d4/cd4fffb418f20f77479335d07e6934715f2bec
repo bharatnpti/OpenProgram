@@ -1,0 +1,22 @@
+backend/tests/contract/test_jira_adapter.py
+  s_700a7231520d64::t_6fa344c5b2620f 21,96,98,100-131
+backend/infra/adapters/jira/jira_adapter.py
+  s_700a7231520d64::t_988bb1fcce1a62 3-6,19-26,43,191-198,200,202,431-434
+  s_700a7231520d64::t_e200ecf7201d28 435-436
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d4cd4fffb418f20f77479335d07e6934715f2bec",
+  "prompts": {},
+  "sessions": {
+    "s_700a7231520d64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "36fa9789-4943-4fbd-be9c-cc918ee14b0f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

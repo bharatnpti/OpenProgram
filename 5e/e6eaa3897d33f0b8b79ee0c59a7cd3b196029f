@@ -1,0 +1,38 @@
+backend/core/application/checkin_drift.py
+  s_027fd12d872fd7::t_20bb35af3c1e10 524
+  s_027fd12d872fd7::t_35fb5ddf82eccb 533-534
+  s_027fd12d872fd7::t_0ea1057a170776 555-556
+  s_027fd12d872fd7::t_b144d28cd768a6 114,117-121,123-145,148
+  s_027fd12d872fd7::t_f630f2de6a3785 21-24
+  s_027fd12d872fd7::t_6c5c029c9e1598 146-147
+backend/core/application/risk_service.py
+  s_027fd12d872fd7::t_8d0e09048403ba 11,15
+  s_027fd12d872fd7::t_24c87e7fa734be 773-775
+  s_027fd12d872fd7::t_84461cafb4c7a4 843
+  s_027fd12d872fd7::t_dde9d551cf2135 800
+backend/tests/unit/test_eta_disagreement.py
+  s_027fd12d872fd7::t_0cdd3ebb655aac 7-10
+  s_027fd12d872fd7::t_56f5eebbda9574 543,560-565
+  s_027fd12d872fd7::t_a454ba638b20ba 643
+  s_027fd12d872fd7::t_20fb2788fce960 94-138
+  s_027fd12d872fd7::t_19a80334fe7fa7 653-681
+  s_027fd12d872fd7::t_b1bdc750edc604 510-516
+  s_027fd12d872fd7::t_6dfa40fd4183aa 297-298,301
+  s_027fd12d872fd7::t_cdad181d0ef0a5 584-591,594
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5ee6eaa3897d33f0b8b79ee0c59a7cd3b196029f",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

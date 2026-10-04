@@ -1,0 +1,21 @@
+scripts/qa_org/check_reconciliation.py
+  s_700a7231520d64::t_4344cafa900f55 40
+  s_700a7231520d64::t_12717624bb7bc3 293,312-328
+  s_700a7231520d64::t_9dee6633ce5b06 329-330
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "54c125b32a7f09a575952f0f2caabb389da4ef93",
+  "prompts": {},
+  "sessions": {
+    "s_700a7231520d64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "36fa9789-4943-4fbd-be9c-cc918ee14b0f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

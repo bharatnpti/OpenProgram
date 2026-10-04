@@ -1,0 +1,23 @@
+backend/tests/unit/test_sync_status.py
+  s_700a7231520d64::t_6a2b5bd608ba3f 369-376
+backend/tests/unit/test_sync_targets.py
+  s_700a7231520d64::t_c95ae083889017 88-130
+backend/core/application/sync_targets.py
+  s_700a7231520d64::t_c95ae083889017 116,118-121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a6a7e2cdb62e586028eb37c3175d10a2e608ae72",
+  "prompts": {},
+  "sessions": {
+    "s_700a7231520d64": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "36fa9789-4943-4fbd-be9c-cc918ee14b0f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
