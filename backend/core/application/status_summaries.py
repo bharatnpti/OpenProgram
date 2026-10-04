@@ -30,6 +30,10 @@ NON_STATUS_REPLY_SUMMARY = "Replied without a status update. Current status is u
 # none is under way (all To Do): there is nothing to infer a status from.
 NO_ACTIVE_WORK_NOTE = "No active work to infer from."
 CONFIRMED_LEAD = "Confirmed the status"
+# Ends a status recorded at the follow-up limit only while a required detail is
+# still missing, and names it (N30): "Clarification cap reached: ETA was not
+# provided." A limit reached with every detail given adds nothing.
+CLARIFICATION_CAP_LEAD = "Clarification cap reached:"
 # The placeholder blocker a non-response status carries when nothing is open.
 NO_REPLY_BLOCKER = "no confirmed reply"
 
@@ -44,6 +48,17 @@ _BASIS_SOURCES = frozenset({StatusSource.CONFIRMED, StatusSource.PARTIAL, Status
 def day_label(day: date) -> str:
     """``Sep 29``: the date format inferred summaries already use."""
     return f"{day:%b} {day.day}"
+
+
+def clarification_cap_note(missing_details_note: str | None) -> str | None:
+    """The cap note for a status whose ``missing_details_note`` says what is missing.
+
+    None when nothing required is missing. The note contains the missing-details
+    note itself, so a summary never states the same gap twice.
+    """
+    if missing_details_note is None:
+        return None
+    return f"{CLARIFICATION_CAP_LEAD} {missing_details_note}"
 
 
 def inferred_summary(basis: str) -> str:
