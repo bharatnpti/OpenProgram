@@ -50,6 +50,8 @@ class RollupService:
         statuses: dict[str, NodeStatus] = {}
         # Recorded nodes that carry no health information for their parents.
         neutral: set[str] = set()
+        blockers: dict[str, tuple[ResolvedBlocker, ...]] = {}
+        incoming = await self._incoming_dependencies(tree, as_of, blockers)
 
         async def rollup_node(node: GraphNode) -> NodeStatus | None:
             """Roll `node` up and return what it contributes to its parent.
@@ -64,7 +66,7 @@ class RollupService:
             if node.kind is NodeKind.TASK:
                 return _task_node_status(node, as_of)
             if node.kind is NodeKind.DEVELOPER:
-                status = await self._developer_status(node, as_of)
+                status = await self._developer_status(node, as_of, blockers)
                 statuses[node.id] = status
                 return status
             child_statuses = [
@@ -81,6 +83,8 @@ class RollupService:
                 if node.kind is NodeKind.WORKSTREAM
                 else _aggregate_node(node, child_statuses, as_of)
             )
+            if node.kind is NodeKind.POD and child_statuses and incoming.get(node.id):
+                status = _with_incoming_dependencies(status, incoming[node.id])
             statuses[node.id] = status
             if not child_statuses:
                 # Nothing beneath it reports: unknown itself, neutral above.
@@ -102,7 +106,53 @@ class RollupService:
                 await self._rollup_repository.record_node_status(status)
         return statuses
 
-    async def _developer_status(self, node: GraphNode, as_of: date) -> NodeStatus:
+    async def _incoming_dependencies(
+        self,
+        tree: GraphTree,
+        as_of: date,
+        blockers: dict[str, tuple[ResolvedBlocker, ...]],
+    ) -> dict[str, tuple[RollupFactor, ...]]:
+        """Per pod in the tree: the other teams' people waiting on its work.
+
+        A cross-team blocker counts for the blocked person's pod. The pod it
+        waits on reads it as a reason line, never as its own blocker: it keeps
+        its colour, and no longer says it has nothing on it. Read once per
+        developer and kept in ``blockers`` for the developer's own status.
+        """
+        pods = {node.id for node in tree.nodes if node.kind is NodeKind.POD}
+        found: dict[str, list[RollupFactor]] = {}
+        for node in tree.nodes:
+            if node.kind is not NodeKind.DEVELOPER or not pods:
+                continue
+            blockers[node.id] = await self._open_blockers(node, as_of)
+            for blocker in blockers[node.id]:
+                for pod_id in blocker.depends_on_pod_ids:
+                    if pod_id in pods:
+                        found.setdefault(pod_id, []).append(_incoming_factor(node, blocker))
+        if tree.root.kind is NodeKind.POD and self._blocker_resolution is not None:
+            # A pod's own tree holds none of the other teams' people: find them
+            # through the blockers recorded on the pod's tasks.
+            tasks = [node.id for node in tree.nodes if node.kind is NodeKind.TASK]
+            for developer, blocker in await self._blocker_resolution.blockers_on_tasks(
+                tree.root.tenant_id, tasks, as_of
+            ):
+                if developer.id not in blockers and tree.root.id in blocker.depends_on_pod_ids:
+                    found.setdefault(tree.root.id, []).append(_incoming_factor(developer, blocker))
+        return {pod_id: _dedupe_factors(factors) for pod_id, factors in found.items()}
+
+    async def _open_blockers(self, node: GraphNode, as_of: date) -> tuple[ResolvedBlocker, ...]:
+        if self._blocker_resolution is None:
+            return ()
+        return await self._blocker_resolution.open_blockers_for_developer(
+            node.tenant_id, node.id, as_of
+        )
+
+    async def _developer_status(
+        self,
+        node: GraphNode,
+        as_of: date,
+        known_blockers: dict[str, tuple[ResolvedBlocker, ...]] | None = None,
+    ) -> NodeStatus:
         status = await self._status_repository.latest_developer_status(
             node.tenant_id,
             node.id,
@@ -123,18 +173,10 @@ class RollupService:
                     ),
                 ),
             )
-        blockers = await self._resolved_blockers(node, status, as_of)
+        known = (known_blockers or {}).get(node.id)
+        blockers = known if known is not None else await self._open_blockers(node, as_of)
         rag, factors = _developer_factors(node, status, blockers)
         return _node_status(node, rag, status.source, as_of, factors)
-
-    async def _resolved_blockers(
-        self, node: GraphNode, status: DeveloperStatus, as_of: date
-    ) -> tuple[ResolvedBlocker, ...]:
-        if self._blocker_resolution is not None:
-            return await self._blocker_resolution.open_blockers_for_developer(
-                node.tenant_id, node.id, as_of
-            )
-        return ()
 
 
 class _TreeIndex:
@@ -190,7 +232,7 @@ def _developer_factors(
         # aggregation later filters these factors to each pod's own scope.
         factors = tuple(
             RollupFactor(
-                description=f"Blocker: {blocker.description}",
+                description=_blocker_description(blocker),
                 contributes=Rag.RED if blocker.critical else Rag.AMBER,
                 source_ref=blocker.work_item_ref or node.ref,
                 kind=FactorKind.BLOCKER,
@@ -241,6 +283,63 @@ def _developer_factors(
             ),
         ),
     )
+
+
+def _blocker_description(blocker: ResolvedBlocker) -> str:
+    """The blocker's reason line; a cross-team one says whose work it waits on.
+
+    It travels up from the blocked person's pod to the project and the
+    program, which then read it as the cross-team dependency it is.
+    """
+    text = f"Blocker: {blocker.description}"
+    if not blocker.cross_team:
+        return text
+    teams = " and ".join(_team_name(name) for name in blocker.depends_on_pod_names)
+    return f"{text.rstrip().rstrip('.')}; cross-team dependency on {teams}."
+
+
+def _incoming_factor(developer: GraphNode, blocker: ResolvedBlocker) -> RollupFactor:
+    waited = blocker.depends_on_ref.id if blocker.depends_on_ref is not None else "its work"
+    blocked = (
+        f" for {blocker.work_item_ref.id}"
+        if blocker.work_item_ref is not None and blocker.work_item_ref.id != waited
+        else ""
+    )
+    return RollupFactor(
+        description=f"Incoming dependency: {developer.name} waits on {waited}{blocked}.",
+        contributes=Rag.GREEN,
+        source_ref=developer.ref,
+        kind=FactorKind.DEPENDENCY,
+        blocker_id=blocker.blocker_id,
+        work_item_ref=blocker.depends_on_ref,
+    )
+
+
+def _with_incoming_dependencies(
+    status: NodeStatus, incoming: tuple[RollupFactor, ...]
+) -> NodeStatus:
+    """A pod's status with the dependencies on it: same colour, one reason line each.
+
+    A green pod drops its "no blockers" line for them, which was no longer
+    the whole story; any other pod lists them after its own reasons.
+    """
+    own = tuple(
+        factor
+        for factor in status.factors
+        if not (status.rag is Rag.GREEN and factor.kind is FactorKind.AGGREGATE)
+    )
+    return NodeStatus(
+        entity_ref=status.entity_ref,
+        rag=status.rag,
+        source=status.source,
+        factors=own + incoming,
+        as_of=status.as_of,
+    )
+
+
+def _team_name(pod_name: str) -> str:
+    name = pod_name.strip()
+    return name[: -len(" Pod")] if name.endswith(" Pod") else name
 
 
 def _legacy_status_blockers(
