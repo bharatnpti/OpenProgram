@@ -17,6 +17,13 @@ from core.application.blocker_lifecycle import (
     BlockerLifecycleService,
     reconciliation_with_updates,
 )
+from core.application.checkin_drift import (
+    in_review_claim_keys,
+    keys_asked_for_merge_request,
+    keys_without_open_merge_request,
+    review_without_merge_request_fact,
+    review_without_merge_request_question,
+)
 from core.application.checkin_signals import merge_checkin_signals
 from core.application.conversation_history import llm_messages_from_turns
 from core.application.counterparts import (
@@ -26,6 +33,7 @@ from core.application.counterparts import (
     members_for_mention,
     name_words,
 )
+from core.application.merge_request_links import MERGE_REQUEST_FACT_SOURCE
 from core.application.risk_service import RISK_FACT_SOURCE
 from core.application.status_parsing import (
     ClarificationDecision,
@@ -103,6 +111,9 @@ from core.ports.tools import AgentTool
 RECENT_FACT_LOOKBACK_DAYS = 30
 RECENT_CONVERSATION_LOOKBACK = timedelta(hours=24)
 RECENT_CONVERSATION_TURN_LIMIT = 20
+# Merge request facts read to find the request an "in review" claim names (as
+# the write-back's open merge request gate reads them).
+_MERGE_REQUEST_FACT_SCAN_LIMIT = 5000
 _logger = structlog.get_logger(__name__)
 COMPOSE_CHECKIN_SYSTEM_PROMPT = (
     "Compose a concise daily check-in DM. Use prior conversation turns as context, but do not "
@@ -476,7 +487,7 @@ class StatusCollector:
                 status=person_partial_status,
                 cross_person_requests=requests.outcome(),
             )
-        attribution_outcome, reconciliation = await self._maybe_attribution_clarification(
+        late_outcome, reconciliation = await self._maybe_late_clarification(
             checkin=checkin,
             message=message,
             signals=final_signals,
@@ -484,10 +495,13 @@ class StatusCollector:
             reconciliation=reconciliation,
             clarification_count=clarification_count,
         )
-        if attribution_outcome is not None:
+        if late_outcome is not None:
             span.set_attribute("openprogram.reply_classification", "clarifying")
-            span.set_attribute("openprogram.has_blocker", True)
-            return replace(attribution_outcome, cross_person_requests=requests.outcome())
+            span.set_attribute(
+                "openprogram.has_blocker",
+                bool(late_outcome.status and late_outcome.status.blockers),
+            )
+            return replace(late_outcome, cross_person_requests=requests.outcome())
         status = await self._finalize_checkin_reply(
             checkin=checkin,
             replied_at=message.received_at,
@@ -716,6 +730,102 @@ class StatusCollector:
         )
         return ReplyOutcome(kind="clarifying", status=partial_status)
 
+    async def _review_without_merge_request_question(
+        self,
+        *,
+        checkin: CheckIn,
+        signals: CheckInSignals,
+        clarification_count: int,
+        reference_at: datetime,
+    ) -> str | None:
+        """Ask once for the merge request of an issue said to be in review (R1-10, SC6).
+
+        Omar said IDP-6 was "up for review" when only a branch existed, and the
+        check-in accepted it. When the check-in says an issue is in review or
+        ready for review and no open merge request names it, one short question
+        asks whether it is opened. It is a follow-up like any other, within the
+        same limit, and is never asked twice for an issue in one check-in; if
+        the check-in ends without the request, the finalize records the drift.
+        """
+        if clarification_count >= self._checkin_max_clarifications:
+            return None
+        missing = await self._in_review_without_open_merge_request(
+            checkin.tenant_id, signals.issue_updates
+        )
+        if not missing:
+            return None
+        turns = await self._conversation_turns_for_correlation(
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            correlation_id=checkin.correlation_id,
+            reference_at=reference_at,
+        )
+        asked = keys_asked_for_merge_request(
+            turn.content for turn in turns if turn.role is ConversationRole.AGENT
+        )
+        keys = [key for key in missing if key not in asked]
+        if not keys:
+            return None
+        return review_without_merge_request_question(keys)
+
+    async def _in_review_without_open_merge_request(
+        self, tenant_id: str, claims: Sequence[IssueClaim]
+    ) -> tuple[str, ...]:
+        """The issues claimed in review that no open merge request names.
+
+        Read from the synced merge request facts with the shared matcher. A
+        tenant with no merge request synced at all has nothing to compare with,
+        so nothing is reported.
+        """
+        keys = in_review_claim_keys(claims)
+        if not keys or self._time_series_repository is None:
+            return ()
+        facts = await self._time_series_repository.list_recent_facts(
+            tenant_id,
+            sources=(MERGE_REQUEST_FACT_SOURCE,),
+            limit=_MERGE_REQUEST_FACT_SCAN_LIMIT,
+        )
+        if not facts:
+            return ()
+        return keys_without_open_merge_request(keys, facts)
+
+    async def _record_review_without_merge_request(
+        self, checkin: CheckIn, status: DeveloperStatus
+    ) -> None:
+        """The drift "says in review, no MR" for a check-in that ends without the request."""
+        if (
+            self._time_series_repository is None
+            or checkin.replied_at is None
+            or checkin.signals is None
+        ):
+            return
+        missing = await self._in_review_without_open_merge_request(
+            checkin.tenant_id, checkin.signals.issue_updates
+        )
+        if not missing:
+            return
+        name = await self._developer_display_name(checkin.tenant_id, checkin.developer_id)
+        for key in missing:
+            await self._time_series_repository.append_fact_once(
+                review_without_merge_request_fact(
+                    tenant_id=checkin.tenant_id,
+                    issue_key=key,
+                    developer_id=checkin.developer_id,
+                    developer_name=name,
+                    as_of=status.as_of,
+                    status_source=status.source,
+                    observed_at=checkin.replied_at,
+                    correlation_id=checkin.correlation_id,
+                )
+            )
+        _logger.info(
+            "checkin_review_without_merge_request",
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            correlation_id=checkin.correlation_id,
+            issue_keys=list(missing),
+        )
+
     async def _follow_up_subject(
         self, checkin: CheckIn, signals: CheckInSignals | None
     ) -> _FollowUpSubject | None:
@@ -742,6 +852,52 @@ class StatusCollector:
             return None
         titles = {issue.key: issue.title for issue in listed}
         return _FollowUpSubject(keys=keys, text=_issue_subject_text(keys, titles))
+
+    async def _maybe_late_clarification(
+        self,
+        *,
+        checkin: CheckIn,
+        message: InboundMessage,
+        signals: CheckInSignals,
+        open_signals: CheckInSignals,
+        reconciliation: BlockerReconciliation,
+        clarification_count: int,
+    ) -> tuple[ReplyOutcome | None, BlockerReconciliation]:
+        """The follow-ups asked once the reply's details and requests are settled.
+
+        First the merge request of an issue said to be in review (R1-10), then
+        which pod or work item a blocker is on. ``signals`` is what would be
+        recorded now, ``open_signals`` what the open check-in keeps meanwhile.
+        """
+        review_question = await self._review_without_merge_request_question(
+            checkin=checkin,
+            signals=open_signals,
+            clarification_count=clarification_count,
+            reference_at=message.received_at,
+        )
+        if review_question is None:
+            return await self._maybe_attribution_clarification(
+                checkin=checkin,
+                message=message,
+                signals=signals,
+                open_signals=open_signals,
+                reconciliation=reconciliation,
+                clarification_count=clarification_count,
+            )
+        await self._hold_open_checkin_signals(checkin, open_signals)
+        partial_status = await self._record_partial_checkin_status(
+            checkin=checkin,
+            as_of_at=message.received_at,
+            signals=signals,
+            reconciliation=reconciliation,
+        )
+        await self._send_clarification(
+            checkin=checkin,
+            message=message,
+            question=review_question,
+            clarification_number=clarification_count + 1,
+        )
+        return ReplyOutcome(kind="clarifying", status=partial_status), reconciliation
 
     async def _maybe_attribution_clarification(
         self,
@@ -1784,6 +1940,7 @@ class StatusCollector:
         )
         await self._append_checkin_fact(updated, status, reconciliation=reconciliation)
         await self._append_blocker_resolved_facts(updated, status, reconciliation)
+        await self._record_review_without_merge_request(updated, status)
         written = await self._maybe_write_back(updated, final_signals)
         # Send exactly one "Got it" ack per accepted reply. Gated on the
         # record_checkin_reply_once success above, so a durable retry or a

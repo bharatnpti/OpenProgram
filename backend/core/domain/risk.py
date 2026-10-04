@@ -29,6 +29,8 @@ class DriftFindingKind(StrEnum):
     #: The issue tracker still shows an issue open after the merge request for it
     #: was merged: the tracker's stated state contradicts the code.
     MERGED_ISSUE_OPEN = "merged_issue_open"
+    #: A check-in said an issue is in review, and no open merge request names it.
+    SAID_IN_REVIEW_NO_MR = "said_in_review_no_mr"
 
 
 class RiskFindingStatus(StrEnum):
