@@ -10,11 +10,18 @@ models falls back to LiteLLM's unauthenticated ``/health/readiness``.
 Reasons are built from fixed text, HTTP status codes and exception type names
 only -- never a response body or exception message, either of which can echo
 the key back.
+
+One failed probe right after a successful one does not degrade ``/ready``: it
+reports ready with a note, and the second failure in a row reports degraded.
+A distant endpoint can miss the probe's short budget now and then while every
+real call, which waits much longer, succeeds. ``LlmReadinessHistory`` carries
+that count between ``/ready`` calls, which each build a fresh probe.
 """
 
 from __future__ import annotations
 
 import asyncio
+import threading
 from dataclasses import dataclass, field
 
 import httpx
@@ -36,9 +43,45 @@ DEFAULT_TIMEOUT_SECONDS = 2.5
 # 401 then names the missing scope rather than rejecting the key.
 _MISSING_SCOPE_MARKERS = ("missing scopes", "insufficient permissions")
 
+# /ready degrades on this many failed probes in a row. With 2, a lone failure
+# right after a success still reports ready, with a note saying so.
+FAILURES_BEFORE_DEGRADED = 2
+
 # Last outcome per endpoint origin, so a failing probe logs when the reason
 # changes instead of on every /ready poll.
 _last_outcome: dict[str, ReadinessReport] = {}
+
+
+@dataclass
+class LlmReadinessHistory:
+    """What earlier probes of the endpoint saw, kept between ``/ready`` calls.
+
+    The registry builds new probes for every ``/ready`` call and owns one
+    history for its lifetime, so a probe can tell a lone miss from an outage.
+    Nothing is tolerated before a first success: an endpoint this process has
+    never reached is degraded from its first failed probe on, so a fresh
+    process with a wrong key or URL shows it on the first ``/ready``.
+    """
+
+    failures_before_degraded: int = FAILURES_BEFORE_DEGRADED
+    consecutive_failures: int = 0
+    has_succeeded: bool = False
+    _lock: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False, compare=False
+    )
+
+    def judge(self, probed: ReadinessReport) -> ReadinessReport:
+        """Record one probe's outcome and return what ``/ready`` reports for it."""
+        with self._lock:
+            if probed.ready:
+                self.consecutive_failures = 0
+                self.has_succeeded = True
+                return probed
+            self.consecutive_failures += 1
+            failures_left = self.failures_before_degraded - self.consecutive_failures
+            if self.has_succeeded and failures_left > 0:
+                return ReadinessReport(ready=True, detail=_missed_detail(probed, failures_left))
+            return probed
 
 
 @dataclass(frozen=True)
@@ -47,15 +90,21 @@ class LlmEndpointReadinessProbe:
     api_key: str | None = field(default=None, repr=False)
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
     transport: httpx.AsyncBaseTransport | None = field(default=None, repr=False)
+    # A probe built on its own has no past: every failure it sees degrades.
+    history: LlmReadinessHistory = field(
+        default_factory=LlmReadinessHistory, repr=False, compare=False
+    )
 
     async def check(self) -> bool:
         return (await self.report()).ready
 
     async def report(self) -> ReadinessReport:
         with _tracer.start_as_current_span("readiness.llm") as span:
-            outcome = await self._probe()
+            probed = await self._probe()
+            outcome = self.history.judge(probed)
             span.set_attribute("readiness.ready", outcome.ready)
-            _log_change(self.base_url, outcome)
+            span.set_attribute("readiness.probe_ready", probed.ready)
+            _log_change(self.base_url, outcome, missed=outcome.ready and not probed.ready)
             return outcome
 
     async def _probe(self) -> ReadinessReport:
@@ -163,7 +212,17 @@ def _not_ready(detail: str) -> ReadinessReport:
     return ReadinessReport(ready=False, detail=detail)
 
 
-def _log_change(base_url: str, outcome: ReadinessReport) -> None:
+def _missed_detail(failed: ReadinessReport, failures_left: int) -> str:
+    # Fixed text around the failed probe's own (already safe) reason.
+    reason = failed.detail or "no reason given"
+    more = "one more failure" if failures_left == 1 else f"{failures_left} more failures"
+    return (
+        f"unconfirmed: this probe failed ({reason}) after a success;"
+        f" {more} in a row reports degraded"
+    )
+
+
+def _log_change(base_url: str, outcome: ReadinessReport, *, missed: bool = False) -> None:
     target = _origin(base_url)
     previous = _last_outcome.get(target)
     _last_outcome[target] = outcome
@@ -173,12 +232,13 @@ def _log_change(base_url: str, outcome: ReadinessReport) -> None:
         if previous is not None:
             _logger.info("llm_readiness_recovered", target=target)
         return
-    _logger.warning(
-        "llm_readiness_degraded" if not outcome.ready else "llm_readiness_unverified",
-        target=target,
-        ready=outcome.ready,
-        detail=outcome.detail,
-    )
+    if missed:
+        event = "llm_readiness_probe_missed"
+    elif not outcome.ready:
+        event = "llm_readiness_degraded"
+    else:
+        event = "llm_readiness_unverified"
+    _logger.warning(event, target=target, ready=outcome.ready, detail=outcome.detail)
 
 
 def _origin(base_url: str) -> str:

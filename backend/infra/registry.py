@@ -79,6 +79,7 @@ from infra.adapters.auth.session import (
 from infra.adapters.chat.mock_slack import MockSlackStore, slack_event_payload
 from infra.adapters.chat.slack_signing import verify_slack_signature
 from infra.adapters.chat.slack_socket import SlackSocketModeListener
+from infra.adapters.llm.readiness import LlmReadinessHistory
 from infra.adapters.redis_client import RedisClientProvider
 from infra.adapters.secrets.encrypted import (
     FernetSecretStore,
@@ -177,6 +178,11 @@ class ServiceRegistry:
     _auth_provider: AuthProvider | None = field(default=None, init=False)
     _auth_session_store: AuthSessionStore | None = field(default=None, init=False)
     _oidc_bff_service: OidcBffService | None = field(default=None, init=False)
+    # Outlives the probes built for each /ready call, so one missed LLM probe
+    # right after a success is not reported as an outage.
+    _llm_readiness_history: LlmReadinessHistory = field(
+        default_factory=LlmReadinessHistory, init=False
+    )
 
     def graph_repository(self) -> GraphRepository:
         if self.settings.runtime_mode == "memory":
@@ -1063,6 +1069,7 @@ class ServiceRegistry:
             self._executor,
             self._redis_client,
             workflow_backlog_count=self._open_dead_letter_count,
+            llm_history=self._llm_readiness_history,
         )
         results = await asyncio.gather(
             *(self._bounded_report(probe) for probe in probes.values()),
