@@ -2723,6 +2723,8 @@ export interface components {
       blocked: boolean;
       /** Open Blockers */
       open_blockers: components["schemas"]["PodTaskBlockerDto"][];
+      /** Tracker Status */
+      tracker_status?: string | null;
     };
     /** PodTaskOwnerDto */
     PodTaskOwnerDto: {
@@ -3118,6 +3120,8 @@ export interface components {
       confidence: number | null;
       /** Deadline */
       deadline: string | null;
+      /** Tracker Status */
+      tracker_status?: string | null;
     };
     /** TenantWritebackResponse */
     TenantWritebackResponse: {

@@ -230,6 +230,37 @@ async def test_pod_tasks_are_empty_for_a_pod_whose_members_hold_no_tasks() -> No
     assert view.tasks == ()
 
 
+async def test_pod_tasks_show_the_issue_trackers_own_status() -> None:
+    """N17: a manager moving a ticket to In Progress changed nothing a task row showed."""
+    store = InMemoryGraphStore()
+    pod = Pod(tenant_id="demo", id="pod-a", name="Payments Pod")
+    liam = Developer(tenant_id="demo", id="dev-liam", name="Liam")
+    await _add(store, pod, liam)
+    await _edge(store, pod.id, liam.id)
+    tasks: dict[str, dict[str, str]] = {
+        # As the issue sync writes it: the tracker's name beside its state.
+        "CHK-4": {"key": "CHK-4", "status": "In Progress", "state": "in_progress"},
+        # A tracker that gave no status name: its normalized state, named.
+        "GH-7": {"key": "GH-7", "state": "todo"},
+        # Seeded with a RAG word and no tracker state: the chip's colour, not a status.
+        "task-seeded": {"status": "at-risk"},
+    }
+    for task_id, metadata in tasks.items():
+        await _add(store, Task(tenant_id="demo", id=task_id, name=task_id, metadata=metadata))
+        await _edge(store, pod.id, task_id)
+        await _edge(store, liam.id, task_id, kind=EdgeKind.ASSIGNED_TO)
+
+    view = await _service(store).pod_tasks("demo", pod.id, AS_OF)
+
+    shown = {task.id: (task.tracker_status, task.rag) for task in view.tasks}
+    assert shown == {
+        # In progress has no colour: the tracker status is what moved.
+        "CHK-4": ("In Progress", Rag.UNKNOWN),
+        "GH-7": ("To Do", Rag.UNKNOWN),
+        "task-seeded": (None, Rag.AMBER),
+    }
+
+
 async def test_pod_tasks_refuse_a_node_that_is_not_a_pod() -> None:
     store = InMemoryGraphStore()
     await _add(store, Workstream(tenant_id="demo", id="ws-a", name="Stream"))
@@ -260,6 +291,8 @@ def test_pod_tasks_route_is_readable_only_with_pod_detail_access(settings: Setti
         # Liam's fixture blocker is a flat status string: unattributed, so it
         # marks no task even though it counts as one of the pod's blockers.
         assert body["tasks"][0]["open_blockers"] == []
+        # The fixture's tasks are not from a tracker: no tracker status.
+        assert [task["tracker_status"] for task in body["tasks"]] == [None, None]
         assert missing.status_code == 404
 
     for roles in ("dev", "po", "exec"):

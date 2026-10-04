@@ -191,6 +191,39 @@ async def test_project_progress_aggregates_tasks_when_no_rollup_status_exists() 
     assert view.source is StatusSource.INFERRED
 
 
+async def test_project_and_workstream_progress_show_each_tasks_tracker_status() -> None:
+    store = InMemoryGraphStore()
+    as_of = date(2026, 10, 3)
+    project = Project(tenant_id="demo", id="project-checkout", name="Checkout")
+    workstream = Workstream(tenant_id="demo", id="ws-payments", name="Payments")
+    synced = Task(
+        tenant_id="demo",
+        id="CHK-4",
+        name="3-D Secure step-up flow",
+        metadata={"key": "CHK-4", "status": "In Progress", "state": "in_progress"},
+    )
+    seeded = Task(tenant_id="demo", id="task-seeded", name="Seeded", metadata={"status": "green"})
+    for node in (project, workstream, synced, seeded):
+        await store.upsert_node(node)
+    for parent, child in ((project, workstream), (workstream, synced), (workstream, seeded)):
+        await store.add_edge(_contains(parent.id, child.id))
+    service = PersonaViewService(
+        graph_repository=store,
+        status_repository=store,
+        rollup_repository=store,
+        time_series_repository=store,
+    )
+
+    project_view = await service.project_progress("demo", project.id, as_of)
+    workstream_view = await service.workstream_progress("demo", workstream.id, as_of)
+
+    for view in (project_view, workstream_view):
+        assert {task.id: task.tracker_status for task in view.tasks} == {
+            "CHK-4": "In Progress",
+            "task-seeded": None,
+        }
+
+
 async def test_project_progress_excludes_tasks_reached_through_a_shared_pod() -> None:
     """A pod serving two projects must not lend one project the other's tasks.
 
