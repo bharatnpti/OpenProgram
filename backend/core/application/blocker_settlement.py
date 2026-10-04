@@ -51,6 +51,7 @@ from core.application.merge_request_links import (
     merge_request_label,
     merge_requests_by_issue_key,
 )
+from core.application.status_summaries import sentence_spans
 from core.domain.blockers import (
     BlockerResolutionReason,
     DeveloperBlocker,
@@ -89,9 +90,6 @@ _WAIT_WORDS = re.compile(
     r"|depend(?:s|ing|ent)?\s+on|dependency|pending|awaiting)\b",
     re.IGNORECASE,
 )
-# Where a summary sentence ends: its closing punctuation, then a space or the end.
-# "storefront-web !1" is not an end: no space follows the "!".
-_SENTENCE_END = re.compile(r"[.!?]+(?=\s|$)")
 
 # A request whose counterpart the blocker names, and which shares its issue
 # or merge request, matches best; sharing the work alone, next; naming the
@@ -370,7 +368,7 @@ def summary_with_cleared(
     sentence states gets a sentence of its own at the end. Nothing else
     changes, and a mark already there is not added again.
     """
-    spans = _sentence_spans(summary)
+    spans = sentence_spans(summary)
     open_keys: set[str] = set()
     open_refs: set[MergeRequestRef] = set()
     for text in still_open:
@@ -437,19 +435,6 @@ def _states(
     refs = {ref for ref in subject.merge_requests if ref.repo} - open_refs
     named_refs = {ref for ref in merge_request_refs_in(sentence) if ref.repo}
     return bool(issue_keys_in(sentence) & keys) or bool(named_refs & refs)
-
-
-def _sentence_spans(text: str) -> list[tuple[int, int]]:
-    """Where each sentence of ``text`` starts, and where it ends before its punctuation."""
-    spans: list[tuple[int, int]] = []
-    start = 0
-    for match in _SENTENCE_END.finditer(text):
-        if text[start : match.start()].strip():
-            spans.append((start, match.start()))
-        start = match.end()
-    if text[start:].strip():
-        spans.append((start, len(text.rstrip())))
-    return spans
 
 
 def _resolved(blocker: DeveloperBlocker, day: date) -> DeveloperBlocker:

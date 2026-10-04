@@ -10,13 +10,18 @@ non-response framing, so a confirmed status never says it wasn't confirmed.
 
 Every summary built here is assembled from summaries the system already
 holds plus their dates; nothing adds a detail the underlying status didn't
-carry.
+carry. The one mark added to a person's own words is what OpenProgram did in
+the tracker during that check-in (N48, :func:`summary_with_tracker_updates`).
 """
 
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
+from core.domain.cross_person import issue_keys_in
 from core.domain.status import DeveloperStatus, StatusSource
 from core.ports.repositories import StatusRepository
 
@@ -39,6 +44,13 @@ CLARIFICATION_CAP_LEAD = "Clarification cap reached:"
 LATE_UPDATE_LEAD = "Late update"
 # The placeholder blocker a non-response status carries when nothing is open.
 NO_REPLY_BLOCKER = "no confirmed reply"
+# Who made a tracker update a summary sentence is marked with (N48): "CHK-17
+# code is merged but ticket not closed (closed in Jira by OpenProgram after
+# confirmation)."
+TRACKER_UPDATE_BY = "by OpenProgram"
+# Where a summary sentence ends: its closing punctuation, then a space or the end.
+# "storefront-web !1" is not an end: no space follows the "!".
+_SENTENCE_END = re.compile(r"[.!?]+(?=\s|$)")
 
 # How far back a stale status is followed to the status it stands in for.
 BASIS_LOOKBACK = timedelta(days=90)
@@ -51,6 +63,66 @@ _BASIS_SOURCES = frozenset({StatusSource.CONFIRMED, StatusSource.PARTIAL, Status
 def day_label(day: date) -> str:
     """``Sep 29``: the date format inferred summaries already use."""
     return f"{day:%b} {day.day}"
+
+
+@dataclass(frozen=True, kw_only=True)
+class TrackerUpdate:
+    """A tracker update OpenProgram applied for one issue during a check-in (N48)."""
+
+    issue_key: str
+    # What was done, as said: "closed", "moved to In Progress".
+    change: str
+    # Where: "Jira", or "the issue tracker".
+    tracker: str
+    # The person said yes to it first (the consent question).
+    confirmed: bool
+
+
+def tracker_update_mark(update: TrackerUpdate, *, with_key: bool = False) -> str:
+    """``(closed in Jira by OpenProgram after confirmation)``; ``with_key`` names the issue."""
+    key = f"{update.issue_key} " if with_key else ""
+    after = " after confirmation" if update.confirmed else ""
+    return f"({key}{update.change} in {update.tracker} {TRACKER_UPDATE_BY}{after})"
+
+
+def summary_with_tracker_updates(summary: str, updates: Sequence[TrackerUpdate]) -> str:
+    """``summary`` with each sentence that names an updated issue marked with the update.
+
+    R5: Omar's summary said "CHK-17 code is merged but ticket not closed", he
+    said yes to closing it, and OpenProgram closed it in Jira in the same
+    check-in; the stored summary still said it was not closed. The mark closes
+    the sentence, as a cleared blocker's does (N34): "CHK-17 code is merged but
+    ticket not closed (closed in Jira by OpenProgram after confirmation)." A
+    sentence that names other issues as well names the issue in the mark. By
+    plain text rules and no model: nothing else changes, a sentence naming no
+    updated issue keeps its words, and a mark already there is not added again.
+    """
+    by_key = {update.issue_key.upper(): update for update in updates}
+    marks: dict[int, list[str]] = {}
+    for start, end in sentence_spans(summary):
+        sentence = summary[start:end]
+        named = issue_keys_in(sentence)
+        for key in sorted(named & by_key.keys()):
+            mark = tracker_update_mark(by_key[key], with_key=len(named) > 1)
+            if mark not in sentence and mark not in marks.get(end, []):
+                marks.setdefault(end, []).append(mark)
+    revised = summary
+    for end in sorted(marks, reverse=True):
+        revised = f"{revised[:end]} {' '.join(marks[end])}{revised[end:]}"
+    return revised
+
+
+def sentence_spans(text: str) -> list[tuple[int, int]]:
+    """Where each sentence of ``text`` starts, and where it ends before its punctuation."""
+    spans: list[tuple[int, int]] = []
+    start = 0
+    for match in _SENTENCE_END.finditer(text):
+        if text[start : match.start()].strip():
+            spans.append((start, match.start()))
+        start = match.end()
+    if text[start:].strip():
+        spans.append((start, len(text.rstrip())))
+    return spans
 
 
 def clarification_cap_note(missing_details_note: str | None) -> str | None:
