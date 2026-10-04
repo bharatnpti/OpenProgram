@@ -1388,6 +1388,14 @@ class PortfolioFeedItemResponse(BaseModel):
     entity_ref: EntityRefDto
     observed_at: datetime
     details: dict[str, str | int | float | bool | None]
+    person_name: str | None = Field(
+        default=None,
+        description=(
+            "Who entity_ref is, by name, when it is a person: the member's name, "
+            "else the chat directory's, else 'a team member' -- never a raw chat "
+            "id. Null when entity_ref is not a person."
+        ),
+    )
 
     @classmethod
     def from_view(cls, view: PortfolioFeedItemView) -> PortfolioFeedItemResponse:
@@ -1402,6 +1410,7 @@ class PortfolioFeedItemResponse(BaseModel):
             ),
             observed_at=view.observed_at,
             details=dict(view.details),
+            person_name=view.person_name,
         )
 
 
@@ -1482,9 +1491,20 @@ class RiskFindingResponse(BaseModel):
         ),
     )
     is_watermelon: bool
+    person_name: str | None = Field(
+        default=None,
+        description=(
+            "Who entity_ref is, by name, when the finding is about a person (a "
+            "merge request no work item claims is filed on its author): the "
+            "member's name, else the chat directory's, else 'a team member' -- "
+            "never a raw chat id. Null when entity_ref is not a person."
+        ),
+    )
 
     @classmethod
-    def from_domain(cls, finding: RiskFinding) -> RiskFindingResponse:
+    def from_domain(
+        cls, finding: RiskFinding, *, person_name: str | None = None
+    ) -> RiskFindingResponse:
         return cls(
             rule_id=finding.rule_id.value,
             severity=finding.severity,
@@ -1509,6 +1529,7 @@ class RiskFindingResponse(BaseModel):
             owner_status_as_of=finding.owner_status_as_of,
             owner_status_has_blockers=finding.owner_status_has_blockers,
             is_watermelon=finding.is_watermelon,
+            person_name=person_name,
         )
 
 

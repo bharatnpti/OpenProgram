@@ -10280,6 +10280,18 @@
             },
             "type": "object",
             "title": "Details"
+          },
+          "person_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Name",
+            "description": "Who entity_ref is, by name, when it is a person: the member's name, else the chat directory's, else 'a team member' -- never a raw chat id. Null when entity_ref is not a person."
           }
         },
         "type": "object",
@@ -10763,6 +10775,18 @@
           "is_watermelon": {
             "type": "boolean",
             "title": "Is Watermelon"
+          },
+          "person_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Person Name",
+            "description": "Who entity_ref is, by name, when the finding is about a person (a merge request no work item claims is filed on its author): the member's name, else the chat directory's, else 'a team member' -- never a raw chat id. Null when entity_ref is not a person."
           }
         },
         "type": "object",

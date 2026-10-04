@@ -162,6 +162,8 @@ export interface PortfolioFeedItemResponse {
   };
   observed_at: string;
   details: Record<string, unknown>;
+  /** Who entity_ref is, by name, when it is a person; never a raw chat id. */
+  person_name?: string | null;
 }
 
 export interface PortfolioFeedResponse {

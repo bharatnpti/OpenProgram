@@ -11,6 +11,7 @@ from api.dependencies import (
     get_current_principal,
     get_flow_metrics_service,
     get_narrative_brief_repository,
+    get_person_names,
     get_persona_view_service,
     get_portfolio_feed_service,
     get_risk_service,
@@ -44,6 +45,7 @@ from api.dtos import (
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.cross_person_service import CrossPersonRequestService
 from core.application.flow_metrics_service import FlowMetricsService
+from core.application.person_names import PersonNames, person_name
 from core.application.persona_views import PersonaViewService
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.application.risk_service import RiskService
@@ -53,6 +55,7 @@ from core.domain.brief import BriefKind
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
 from core.domain.errors import AuthorizationDenied, GraphNotFound
 from core.domain.graph import NodeKind
+from core.domain.risk import RiskFinding
 from core.ports.repositories import NarrativeBriefRepository
 
 router = APIRouter(tags=["personas"])
@@ -371,6 +374,7 @@ async def project_risks(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[RiskService, Depends(get_risk_service)],
+    person_names: Annotated[PersonNames, Depends(get_person_names)],
 ) -> ProjectRisksResponse:
     _ensure_aggregate(principal)
     try:
@@ -381,7 +385,7 @@ async def project_risks(
     return ProjectRisksResponse(
         project_id=project_id,
         as_of=as_of,
-        risks=[RiskFindingResponse.from_domain(finding) for finding in findings],
+        risks=await _risk_responses(principal.tenant_id, findings, person_names),
         drift=[DriftFindingResponse.from_domain(finding) for finding in drift],
     )
 
@@ -391,15 +395,37 @@ async def portfolio_risks(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[RiskService, Depends(get_risk_service)],
+    person_names: Annotated[PersonNames, Depends(get_person_names)],
 ) -> PortfolioRisksResponse:
     _ensure_aggregate(principal)
     findings = await service.portfolio_risks(principal.tenant_id, as_of)
     drift = await service.portfolio_drift(principal.tenant_id, as_of)
     return PortfolioRisksResponse(
         as_of=as_of,
-        risks=[RiskFindingResponse.from_domain(finding) for finding in findings],
+        risks=await _risk_responses(principal.tenant_id, findings, person_names),
         drift=[DriftFindingResponse.from_domain(finding) for finding in drift],
     )
+
+
+async def _risk_responses(
+    tenant_id: str, findings: list[RiskFinding], person_names: PersonNames
+) -> list[RiskFindingResponse]:
+    """Risk findings, each person they are about named rather than shown by chat id."""
+    people = [finding.entity_ref.id for finding in findings if _is_person(finding)]
+    names = await person_names.resolve(tenant_id, people)
+    return [
+        RiskFindingResponse.from_domain(
+            finding,
+            person_name=(
+                person_name(names, finding.entity_ref.id, None) if _is_person(finding) else None
+            ),
+        )
+        for finding in findings
+    ]
+
+
+def _is_person(finding: RiskFinding) -> bool:
+    return finding.entity_ref.kind is NodeKind.DEVELOPER
 
 
 def _ensure(principal: Principal, capability: Capability) -> None:

@@ -4,7 +4,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from core.domain.graph import EntityRef, FactEvent, JsonScalar
+from core.application.person_names import PersonNames, person_name
+from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.ports.repositories import TimeSeriesRepository
 
 DEFAULT_FEED_LOOKBACK_DAYS = 7
@@ -20,6 +21,13 @@ DEFAULT_FEED_SOURCES = (
 )
 
 
+# Canonical cross-person fact keys first, then the legacy aliases older facts carry.
+_REPORTER_ID_KEYS = ("reporter_id", "requester_id")
+_REPORTER_NAME_KEYS = ("reporter_name", "requester_name")
+_REFERENCED_PERSON_ID_KEYS = ("referenced_person_id", "counterpart_id")
+_REFERENCED_PERSON_NAME_KEYS = ("referenced_person_name", "counterpart_display_name")
+
+
 @dataclass(frozen=True, kw_only=True)
 class PortfolioFeedItemView:
     source: str
@@ -28,6 +36,8 @@ class PortfolioFeedItemView:
     entity_ref: EntityRef
     observed_at: datetime
     details: Mapping[str, JsonScalar]
+    # The person ``entity_ref`` names, when it names one; never a raw chat id.
+    person_name: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -38,8 +48,15 @@ class PortfolioFeedView:
 
 
 class PortfolioFeedService:
-    def __init__(self, time_series_repository: TimeSeriesRepository) -> None:
+    def __init__(
+        self,
+        time_series_repository: TimeSeriesRepository,
+        person_names: PersonNames | None = None,
+    ) -> None:
         self._time_series_repository = time_series_repository
+        # Without a member or directory source a person reads as the name
+        # recorded on the fact, else "a team member": never as their id.
+        self._person_names = person_names or PersonNames()
 
     async def feed(
         self,
@@ -56,22 +73,61 @@ class PortfolioFeedService:
             sources=sources or DEFAULT_FEED_SOURCES,
             limit=limit,
         )
+        ordered = sorted(
+            facts,
+            key=lambda fact: (fact.observed_at, fact.ingested_at, fact.correlation_id),
+            reverse=True,
+        )
+        names = await self._person_names.resolve(
+            tenant_id, (person_id for fact in ordered for person_id in _person_ids(fact))
+        )
         items = tuple(
             PortfolioFeedItemView(
                 source=fact.source,
                 kind=_kind_for_fact(fact),
-                summary=_summary_for_fact(fact),
+                summary=_summary_for_fact(fact, names),
                 entity_ref=fact.entity_ref,
                 observed_at=fact.observed_at,
-                details=_details_for_fact(fact),
+                details=_details_for_fact(fact, names),
+                person_name=_entity_person_name(fact, names),
             )
-            for fact in sorted(
-                facts,
-                key=lambda fact: (fact.observed_at, fact.ingested_at, fact.correlation_id),
-                reverse=True,
-            )
+            for fact in ordered
         )
         return PortfolioFeedView(as_of=as_of, since=since_at, items=items)
+
+
+def _person_ids(fact: FactEvent) -> tuple[str, ...]:
+    """Every person id the fact's feed item shows, the entity's included."""
+    ids: list[str] = []
+    if fact.entity_ref.kind is NodeKind.DEVELOPER:
+        ids.append(fact.entity_ref.id)
+    if fact.source == "cross_person_request":
+        for keys in (_REPORTER_ID_KEYS, _REFERENCED_PERSON_ID_KEYS):
+            person_id = _payload_string_any(fact.payload, keys)
+            if person_id is not None:
+                ids.append(person_id)
+    return tuple(ids)
+
+
+def _entity_person_name(fact: FactEvent, names: Mapping[str, str]) -> str | None:
+    """Who a person entity is, by name; ``None`` when the entity is not a person."""
+    if fact.entity_ref.kind is not NodeKind.DEVELOPER:
+        return None
+    person_id = fact.entity_ref.id
+    return person_name(names, person_id, _recorded_name(fact, person_id))
+
+
+def _recorded_name(fact: FactEvent, person_id: str) -> str | None:
+    """The name the fact itself recorded for ``person_id``, if any."""
+    payload = fact.payload
+    if fact.source == "checkin" and person_id == fact.entity_ref.id:
+        return _payload_string(payload, "developer_name")
+    if fact.source == "cross_person_request":
+        if person_id == _payload_string_any(payload, _REFERENCED_PERSON_ID_KEYS):
+            return _payload_string_any(payload, _REFERENCED_PERSON_NAME_KEYS)
+        if person_id == _payload_string_any(payload, _REPORTER_ID_KEYS):
+            return _payload_string_any(payload, _REPORTER_NAME_KEYS)
+    return None
 
 
 def _kind_for_fact(fact: FactEvent) -> str:
@@ -96,7 +152,7 @@ def _cross_person_feed_kind(fact: FactEvent) -> str:
     return f"cross_person_request_{transition}"
 
 
-def _summary_for_fact(fact: FactEvent) -> str:
+def _summary_for_fact(fact: FactEvent, names: Mapping[str, str]) -> str:
     payload = fact.payload
     if fact.source == "work_item":
         label = _payload_string(payload, "name") or fact.entity_ref.id
@@ -121,9 +177,11 @@ def _summary_for_fact(fact: FactEvent) -> str:
         title = _payload_string(payload, "title") or key
         return f"Issue {key} moved to {state}: {title}"
     if fact.source == "checkin":
-        # Prefer the name the collector recorded; fall back to the id so older
-        # facts still render.
-        developer = _payload_string(payload, "developer_name") or fact.entity_ref.id
+        # The member's name, else the directory's, else the one the collector
+        # recorded: an older fact recorded none, or only the id.
+        developer = person_name(
+            names, fact.entity_ref.id, _payload_string(payload, "developer_name")
+        )
         status_source = _payload_string(payload, "status_source") or "confirmed"
         blocker_count = _payload_int(payload, "blocker_count") or 0
         eta_change_days = _payload_int(payload, "eta_change_days")
@@ -135,7 +193,7 @@ def _summary_for_fact(fact: FactEvent) -> str:
     if fact.source == "risk":
         return _risk_summary(fact)
     if fact.source == "cross_person_request":
-        return _cross_person_summary(fact)
+        return _cross_person_summary(fact, names)
     return fact.source
 
 
@@ -147,21 +205,13 @@ def _risk_summary(fact: FactEvent) -> str:
     return f"Risk opened: {reason}"
 
 
-def _cross_person_summary(fact: FactEvent) -> str:
+def _cross_person_summary(fact: FactEvent, names: Mapping[str, str]) -> str:
     kind = _cross_person_kind_label(fact.payload)
     transition = _payload_string(fact.payload, "transition") or "opened"
-    # Names first, ids only as a fallback so facts recorded before the names
-    # were captured still render. The check-in summary above does the same.
-    requester = (
-        _payload_string_any(fact.payload, ("reporter_name", "requester_name"))
-        or _payload_string_any(fact.payload, ("reporter_id", "requester_id"))
-        or "someone"
-    )
-    counterpart = (
-        _payload_string_any(fact.payload, ("referenced_person_name", "counterpart_display_name"))
-        or _payload_string_any(fact.payload, ("referenced_person_id", "counterpart_id"))
-        or "unresolved counterpart"
-    )
+    # Names only, never ids, so a fact recorded before the names were captured
+    # still reads as a sentence about people. The check-in summary does the same.
+    requester = _reporter_name(fact.payload, names) or "someone"
+    counterpart = _referenced_person_name(fact.payload, names) or "unresolved counterpart"
     summary = _payload_string_any(fact.payload, ("summary", "note")) or "follow-up needed"
     if transition == "opened":
         return f"Cross-person {kind} opened: {requester} needs {counterpart} for {summary}"
@@ -174,7 +224,27 @@ def _cross_person_summary(fact: FactEvent) -> str:
     return f"Cross-person {kind} {transition}: {summary}"
 
 
-def _details_for_fact(fact: FactEvent) -> Mapping[str, JsonScalar]:
+def _reporter_name(payload: Mapping[str, JsonScalar], names: Mapping[str, str]) -> str | None:
+    """Who raised a cross-person request; ``None`` when the fact names no one."""
+    person_id = _payload_string_any(payload, _REPORTER_ID_KEYS)
+    recorded = _payload_string_any(payload, _REPORTER_NAME_KEYS)
+    if person_id is None and recorded is None:
+        return None
+    return person_name(names, person_id, recorded)
+
+
+def _referenced_person_name(
+    payload: Mapping[str, JsonScalar], names: Mapping[str, str]
+) -> str | None:
+    """Who a cross-person request is for; ``None`` while no counterpart is resolved."""
+    person_id = _payload_string_any(payload, _REFERENCED_PERSON_ID_KEYS)
+    recorded = _payload_string_any(payload, _REFERENCED_PERSON_NAME_KEYS)
+    if person_id is None and recorded is None:
+        return None
+    return person_name(names, person_id, recorded)
+
+
+def _details_for_fact(fact: FactEvent, names: Mapping[str, str]) -> Mapping[str, JsonScalar]:
     if fact.source == "checkin":
         return {
             "status_source": _payload_string(fact.payload, "status_source"),
@@ -217,11 +287,10 @@ def _details_for_fact(fact: FactEvent) -> Mapping[str, JsonScalar]:
     if fact.source == "cross_person_request":
         return {
             "request_id": _payload_string(fact.payload, "request_id"),
-            "reporter_id": _payload_string_any(fact.payload, ("reporter_id", "requester_id")),
-            "referenced_person_id": _payload_string_any(
-                fact.payload,
-                ("referenced_person_id", "counterpart_id"),
-            ),
+            "reporter_id": _payload_string_any(fact.payload, _REPORTER_ID_KEYS),
+            "reporter_name": _reporter_name(fact.payload, names),
+            "referenced_person_id": _payload_string_any(fact.payload, _REFERENCED_PERSON_ID_KEYS),
+            "referenced_person_name": _referenced_person_name(fact.payload, names),
             "dependency_kind": _payload_string_any(fact.payload, ("dependency_kind", "kind")),
             "dependency_status": _payload_string_any(
                 fact.payload,
