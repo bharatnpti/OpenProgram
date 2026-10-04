@@ -189,13 +189,19 @@ async def test_auto_apply_owner_is_not_told_to_update_jira_and_hears_it_was_done
     assert "never ask them to update the tracker" in llm.requests[0].prompt
 
 
-async def test_always_ask_person_keeps_the_follow_up_and_nothing_is_written() -> None:
+async def test_always_ask_person_is_asked_the_consent_question_instead_and_nothing_is_written() -> (
+    None
+):
     collector, tracker, chat, llm = await _noah_collector(consent=WriteBackConsent.ALWAYS_ASK)
 
-    outcome = await collector.handle_reply(_noah_reply())
+    await collector.handle_reply(_noah_reply())
 
-    assert outcome.kind == "clarifying"
-    assert _sent(chat, "status_clarification") == [_R1_QUESTION]
+    # N41: the consent question is where an always_ask person confirms the
+    # write, so the "update the Jira ticket to Done" follow-up is not sent.
+    assert _sent(chat, "status_clarification") == []
+    assert _sent(chat, "writeback_consent_prompt") == [
+        "Want me to update IDP-5 to “Done” in the issue tracker? Reply yes or no."
+    ]
     assert tracker.transitions == []
     assert "never ask them to update the tracker" not in llm.requests[0].prompt
 
