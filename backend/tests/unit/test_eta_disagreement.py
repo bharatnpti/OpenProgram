@@ -4,9 +4,10 @@ R3 live: Ira's scrum-master summary said CHK-4 would be ready for review on
 Friday, while its owner Liam said Tuesday. Both were stored and nothing
 flagged the mismatch.
 
-Only people who own or work the issue are compared (N43). Until the N43 tests
-at the end, Ira has no app roles, so she reads as a developer and her ETA
-counts; as a scrum master (``app_roles`` sm) it is a coordinator's remark and
+Only people who own or actively work the issue are compared (N43): its assignee
+and anyone whose own branch, commit or merge request names it. Until the N43
+tests at the end, a commit of Ira's names CHK-4, so she works it and her ETA
+counts; without such git activity her ETA, whatever her roles, is context and
 never a disagreement.
 """
 
@@ -90,7 +91,51 @@ _IRA_R3 = _evaluation(
 )
 
 
-async def _seed(store: InMemoryGraphStore) -> None:
+async def _works_on(
+    store: InMemoryGraphStore, developer: str, issue_key: str, *, via: str = "commit"
+) -> None:
+    """Git activity the sync linked to ``developer`` that names ``issue_key`` (N43).
+
+    ``via``: a commit message, or a merge request's source ``branch`` or ``title``.
+    """
+    author = EntityRef(tenant_id=_TENANT, kind=NodeKind.DEVELOPER, id=developer)
+    observed_at = datetime(2026, 10, 3, 15, 0, tzinfo=UTC)
+    ref = f"{developer}-{issue_key}"
+    if via == "commit":
+        await store.append_fact(
+            FactEvent(
+                tenant_id=_TENANT,
+                source="vcs_commit",
+                entity_ref=author,
+                payload={"repo": "acme/app", "sha": f"sha-{ref}", "message": f"{issue_key}: wip"},
+                observed_at=observed_at,
+                correlation_id=f"vcs:commit:{_TENANT}:acme/app:sha-{ref}",
+            )
+        )
+        return
+    await store.append_fact(
+        FactEvent(
+            tenant_id=_TENANT,
+            source="vcs_pull_request",
+            entity_ref=author,
+            payload={
+                "repo": "acme/app",
+                "id": ref,
+                "title": f"{issue_key}: first cut" if via == "title" else "First cut",
+                "merged": False,
+                "state": "opened",
+                "draft": False,
+                "source_branch": f"feature/{issue_key}" if via == "branch" else "feature/wip",
+            },
+            observed_at=observed_at,
+            correlation_id=f"vcs:pull_request:{_TENANT}:acme/app:{ref}",
+        )
+    )
+
+
+async def _seed(store: InMemoryGraphStore, *, ira_works_on_chk_4: bool = True) -> None:
+    if ira_works_on_chk_4:
+        await _works_on(store, _IRA, "CHK-4")
     await store.upsert_node(Project(tenant_id=_TENANT, id="proj-chk", name="Checkout"))
     await store.upsert_node(
         Task(
@@ -249,10 +294,11 @@ def _eta_claim(key: str, state: str | None, note: str) -> str:
 
 async def test_owner_early_next_week_and_teammate_end_of_week_disagree() -> None:
     # N31, R4 live: Ira said IDP-3 by end of week, its owner Noah "early next
-    # week"; Noah's vague ETA was not stored, so nothing was compared. (Ira has
-    # no app roles here; as a scrum master her ETA is not compared, N43.)
+    # week"; Noah's vague ETA was not stored, so nothing was compared. (A commit
+    # of Ira's names IDP-3 here; without it her ETA is context only, N43.)
     store = InMemoryGraphStore()
     await _seed(store)
+    await _works_on(store, _IRA, "IDP-3")
     await store.upsert_node(Project(tenant_id=_TENANT, id="proj-idp", name="Identity"))
     await store.upsert_node(
         Task(
@@ -461,8 +507,13 @@ _IRA_R5 = _eta_claim(
 _NOAH_R5 = _eta_claim("IDP-3", "pending review", "Will close after review, likely early next week.")
 
 
-async def _seed_identity(store: InMemoryGraphStore, *, ira_roles: str | None) -> None:
-    """R5's Identity: IDP-3 is Noah's, a developer's; Ira has ``ira_roles``."""
+async def _seed_identity(
+    store: InMemoryGraphStore, *, ira_roles: str | None, owner: str = _NOAH
+) -> None:
+    """R5's Identity: IDP-3 is ``owner``'s (Noah, a developer); Ira has ``ira_roles``.
+
+    No branch, commit or merge request names IDP-3 unless a test adds one.
+    """
     await _seed(store)
     await store.upsert_node(Project(tenant_id=_TENANT, id="proj-idp", name="Identity"))
     await store.upsert_node(
@@ -489,7 +540,7 @@ async def _seed_identity(store: InMemoryGraphStore, *, ira_roles: str | None) ->
             tenant_id=_TENANT, from_node_id="proj-idp", to_node_id="IDP-3", kind=EdgeKind.CONTAINS
         ),
         GraphEdge(
-            tenant_id=_TENANT, from_node_id=_NOAH, to_node_id="IDP-3", kind=EdgeKind.ASSIGNED_TO
+            tenant_id=_TENANT, from_node_id=owner, to_node_id="IDP-3", kind=EdgeKind.ASSIGNED_TO
         ),
     ):
         await store.add_edge(edge)
@@ -506,8 +557,12 @@ async def _seed_identity(store: InMemoryGraphStore, *, ira_roles: str | None) ->
     )
 
 
-@pytest.mark.parametrize("roles", ["sm", "po", "exec"])
-async def test_a_coordinators_eta_for_someone_elses_issue_is_no_disagreement(roles: str) -> None:
+# Whatever her roles, a coordinator's, a manager's or even a developer's: with
+# no branch, commit or merge request naming IDP-3, Ira neither owns nor works it.
+@pytest.mark.parametrize("roles", ["sm", "po", "exec", "mgr,admin", "dev", None])
+async def test_an_eta_from_someone_who_neither_owns_nor_works_the_issue_is_context(
+    roles: str | None,
+) -> None:
     store = InMemoryGraphStore()
     await _seed_identity(store, ira_roles=roles)
 
@@ -526,12 +581,17 @@ async def test_a_coordinators_eta_for_someone_elses_issue_is_no_disagreement(rol
     } == {(_IRA, "2026-10-09", "2026-10-09"), (_NOAH, "2026-10-12", "2026-10-14")}
 
 
-# Without app roles, with the dev role (also beside a coordinator role), or as
-# a manager, who is no coordinator (N16), a person works the issue.
-@pytest.mark.parametrize("roles", [None, "dev", "sm,dev", "mgr,admin"])
-async def test_etas_of_two_people_who_work_the_issue_still_disagree(roles: str | None) -> None:
+# A commit message, or a merge request's branch or title, naming IDP-3 makes
+# Ira someone who works it, whatever her roles.
+@pytest.mark.parametrize(
+    ("roles", "via"), [(None, "commit"), ("sm", "branch"), ("mgr,admin", "title")]
+)
+async def test_etas_of_two_people_who_work_the_issue_still_disagree(
+    roles: str | None, via: str
+) -> None:
     store = InMemoryGraphStore()
     await _seed_identity(store, ira_roles=roles)
+    await _works_on(store, _IRA, "IDP-3", via=via)
 
     await _check_in(store, _IRA, _IRA_R5, 8)
     await _check_in(store, _NOAH, _NOAH_R5, 9)
@@ -580,6 +640,7 @@ async def test_a_coordinator_who_owns_the_issue_still_counts() -> None:
         )
     )
 
+    await _works_on(store, _LIAM, "CHK-10", via="branch")
     await _check_in(store, _MINA, _eta_claim("CHK-10", "in review", "Wrapping up Monday EOD"), 6)
     await _check_in(store, _LIAM, _eta_claim("CHK-10", None, "Should be ready by Friday"), 8)
     findings = await _drift(store)
@@ -589,3 +650,32 @@ async def test_a_coordinator_who_owns_the_issue_still_counts() -> None:
         "Liam Chen said Friday, Oct 9. The owner's ETA is the one used."
     ]
     assert findings[0].owner_id == _MINA
+
+
+async def test_a_managers_eta_on_a_developers_issue_is_context_but_the_assignees_counts() -> None:
+    # N43 as decided: only the assignee and people whose branch, commit or merge
+    # request names the issue are compared, and a manager is no exception.
+    store = InMemoryGraphStore()
+    await _seed_identity(store, ira_roles="mgr,admin")
+
+    await _check_in(store, _IRA, _IRA_R5, 8)
+    await _check_in(store, _NOAH, _NOAH_R5, 9)
+
+    assert await _drift(store, "proj-idp") == []
+    assert _NOAH not in await _risks(store).owner_drift(_TENANT, _DAY)
+
+    # The same manager as the assignee: her ETA is the owner's, and it counts
+    # against a developer whose merge request names the issue.
+    owned = InMemoryGraphStore()
+    await _seed_identity(owned, ira_roles="mgr,admin", owner=_IRA)
+    await _works_on(owned, _NOAH, "IDP-3", via="branch")
+
+    await _check_in(owned, _IRA, _IRA_R5, 8)
+    await _check_in(owned, _NOAH, _NOAH_R5, 9)
+    findings = await _drift(owned, "proj-idp")
+
+    assert [finding.reason for finding in findings] == [
+        "ETAs disagree for IDP-3: Ira Novak (owner) said end of week, Oct 9; "
+        "Noah Weber said early next week, Oct 12 to Oct 14. The owner's ETA is the one used."
+    ]
+    assert findings[0].owner_id == _IRA
