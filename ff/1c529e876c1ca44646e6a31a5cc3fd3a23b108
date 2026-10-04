@@ -1,0 +1,26 @@
+backend/core/application/cross_person_service.py
+  s_027fd12d872fd7::t_609199523e3642 255-267
+  s_027fd12d872fd7::t_e208be64e93f75 525-526,529,559
+backend/core/application/blocker_settlement.py
+  s_027fd12d872fd7::t_2c96cd07ab299e 179-181,184
+  s_027fd12d872fd7::t_c46683986bf431 27,86-91
+backend/tests/unit/test_blocker_settlement.py
+  s_027fd12d872fd7::t_912edc096c728d 13-14,26,199-238,259-263
+  s_027fd12d872fd7::t_140fe957f93d95 264-265
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ff1c529e876c1ca44646e6a31a5cc3fd3a23b108",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
