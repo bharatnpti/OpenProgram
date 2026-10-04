@@ -1,0 +1,25 @@
+scripts/qa_org/check_reconciliation.py
+  s_027fd12d872fd7::t_cd37d52f3fb82b 434
+  s_027fd12d872fd7::t_cd65f2aa4b2937 634
+  s_027fd12d872fd7::t_cbedbda535a407 648-654,657-659
+  s_027fd12d872fd7::t_7f96c4a95f7e1a 617
+  s_027fd12d872fd7::t_4539461fe6708b 182-212
+  s_027fd12d872fd7::t_6cc95451564089 555
+  s_027fd12d872fd7::t_c042f62a924ebc 5,12-13,17-18,44-46,48-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6b657cac32fa7477e3c40f9106352b9e3c8f758d",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
