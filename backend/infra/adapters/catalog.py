@@ -60,6 +60,7 @@ from infra.adapters.readiness import (
     AsyncReadinessExecutor,
     DatabaseExtensionsReadinessProbe,
     DatabaseReadinessProbe,
+    DisabledReadinessProbe,
     HttpReadinessProbe,
     RedisReadinessProbe,
     StaticReadinessProbe,
@@ -232,19 +233,34 @@ def build_calendar_provider(
 def build_llm_provider(settings: Settings) -> LlmProvider:
     if settings.llm_provider == "fake":
         return FakeLlmProvider()
-    trace_sink = (
-        NoopTraceSink()
-        if settings.runtime_mode == "memory"
-        else LangfuseTraceSink(
-            host=settings.langfuse_host,
-            public_key=_required(settings.langfuse_public_key, "langfuse_public_key"),
-            secret_key=_required(settings.langfuse_secret_key, "langfuse_secret_key"),
-        )
-    )
     return LiteLlmProvider(
         base_url=settings.litellm_base_url,
-        trace_sink=trace_sink,
+        trace_sink=_langfuse_trace_sink(settings) or NoopTraceSink(),
         api_key=settings.litellm_api_key,
+    )
+
+
+def _langfuse_trace_sink(settings: Settings) -> LangfuseTraceSink | None:
+    """Where LLM calls are traced, or None when tracing is not configured.
+
+    Tracing needs a real LLM in container mode, a Langfuse host and both
+    Langfuse keys; the host alone says nothing, as it has a localhost default.
+    The llm_trace readiness probe asks this same question, so /ready checks
+    Langfuse exactly when calls are traced there and reports it disabled
+    otherwise.
+    """
+    public_key = settings.langfuse_public_key
+    secret_key = settings.langfuse_secret_key
+    if (
+        settings.runtime_mode == "memory"
+        or settings.llm_provider == "fake"
+        or not settings.langfuse_host.strip()
+        or not (public_key and public_key.strip())
+        or not (secret_key and secret_key.strip())
+    ):
+        return None
+    return LangfuseTraceSink(
+        host=settings.langfuse_host, public_key=public_key, secret_key=secret_key
     )
 
 
@@ -370,15 +386,12 @@ def _llm_readiness_probe(settings: Settings) -> ReadinessProbe:
 
 
 def _llm_trace_readiness_probe(settings: Settings) -> ReadinessProbe:
-    if settings.runtime_mode == "memory" or settings.llm_provider == "fake":
-        return StaticReadinessProbe()
-    return HttpReadinessProbe(settings.langfuse_host, "/api/public/health")
-
-
-def _required(value: str | None, name: str) -> str:
-    if not value:
-        raise ValueError(f"{name} is required when runtime_mode=container")
-    return value
+    sink = _langfuse_trace_sink(settings)
+    if sink is None:
+        # Nothing is traced, so there is nothing to wait for: tracing that is
+        # not configured must not leave /ready degraded.
+        return DisabledReadinessProbe()
+    return HttpReadinessProbe(sink.host, "/api/public/health")
 
 
 def _slack_http_client(settings: Settings) -> HttpSlackClient | DisabledSlackHttpClient:
