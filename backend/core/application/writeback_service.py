@@ -8,8 +8,6 @@ from enum import Enum
 from typing import Literal
 from uuid import uuid4
 
-import structlog
-
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.merge_request_links import (
     ISSUE_KEY,
@@ -64,7 +62,15 @@ CHECKIN_CLOSED_SOURCE = "checkin_closed"
 # How many synced merge request facts the open merge request check reads.
 _MERGE_REQUEST_FACT_SCAN_LIMIT = 5000
 
-_logger = structlog.get_logger(__name__)
+
+def _log_warning(event: str, **fields: str) -> None:
+    # Imported here, not at module load: the check-in drift read imports this
+    # module, the workflow definitions import the drift read, and the workflow
+    # runtime loads them inside a sandbox that refuses structlog's import-time
+    # randomness (through rich).
+    import structlog
+
+    structlog.get_logger(__name__).warning(event, **fields)
 
 
 @dataclass(frozen=True)
@@ -769,7 +775,7 @@ class WriteBackService:
             else:
                 await self._record_written_state(tenant_id, issue_key, written_state)
         except Exception:  # pragma: no cover - defensive; the next sync repairs it
-            _logger.warning(
+            _log_warning(
                 "writeback_local_issue_update_failed", tenant_id=tenant_id, issue_key=issue_key
             )
         return issue
@@ -978,9 +984,7 @@ class WriteBackService:
         except ProviderUnavailable:
             # The issue did move; only the note is missing. The row says so by
             # carrying no comment, and the write stays applied (and revertible).
-            _logger.warning(
-                "writeback_comment_failed", tenant_id=tenant_id, issue_key=claim.issue_key
-            )
+            _log_warning("writeback_comment_failed", tenant_id=tenant_id, issue_key=claim.issue_key)
             comment = None
         return await self._record(
             tenant_id=tenant_id,
