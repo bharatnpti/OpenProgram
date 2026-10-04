@@ -2,8 +2,10 @@ import { NavLink } from "react-router-dom";
 import { Search } from "lucide-react";
 
 import { useRole } from "../../app/role";
+import { useBranding } from "../../features/branding/useBranding";
 import { cn } from "../../lib/utils";
 import { AvatarMenu } from "./AvatarMenu";
+import { HeaderLogo } from "./HeaderLogo";
 import { PersonPicker } from "./PersonPicker";
 import { ViewingDateControl } from "./ViewingDate";
 
@@ -18,6 +20,7 @@ const NAV_ITEMS: NavItem[] = [
 
 export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {
   const { chatEnabled, canReadAggregate } = useRole();
+  const branding = useBranding();
   // Signals reads the whole portfolio, which a developer is not authorized for;
   // listing it would only lead to a screen of zeros. Chat is listed when served.
   const navItems: NavItem[] = [
@@ -27,9 +30,7 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {
   return (
     <header className="sticky top-0 z-40 flex h-[72px] items-center gap-4 border-b border-grey-border bg-white/94 px-6 backdrop-blur-sm">
       <div className="flex shrink-0 items-center gap-3">
-        <div className="grid h-10 w-10 place-items-center rounded-lg bg-magenta text-[22px] font-extrabold text-white">
-          T
-        </div>
+        <HeaderLogo logo={branding.data?.logo ?? null} loading={branding.isPending} />
         {/* The wordmark gives way below xl so the date control, person picker
             and avatar keep their room instead of pushing past the edge. */}
         <div className="hidden xl:block">

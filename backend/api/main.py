@@ -16,6 +16,7 @@ from api.routers import (
     admin,
     ask,
     auth,
+    branding,
     checkin,
     config,
     graph,
@@ -132,6 +133,7 @@ def create_app(
     app.include_router(admin.router)
     app.include_router(ops.router)
     app.include_router(config.router)
+    app.include_router(branding.router)
     app.include_router(ask.router)
     app.include_router(checkin.router)
     app.include_router(persona.router)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from datetime import date, datetime, time
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -48,6 +49,7 @@ from core.application.persona_views import (
     WorkstreamProgressView,
 )
 from core.application.portfolio_feed_service import PortfolioFeedItemView, PortfolioFeedView
+from core.domain.branding import LogoContentType, TenantLogo
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.cross_person import (
     CrossPersonDelivery,
@@ -2390,3 +2392,64 @@ class SelfCheckinPreferenceUpdateRequest(BaseModel):
         except ZoneInfoNotFoundError as exc:
             raise ValueError("timezone must be a valid IANA timezone") from exc
         return value
+
+
+class TenantLogoUploadRequest(BaseModel):
+    """A logo to upload: its declared type and its bytes, base64-encoded.
+
+    JSON rather than a multipart form, so the console's one authenticated,
+    CSRF-protected client sends it like any other change. The server checks the
+    bytes themselves; the declared type must match what they are.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    content_type: str = Field(
+        max_length=100,
+        description="image/png, image/jpeg or image/webp. SVG is refused.",
+    )
+    data_base64: str = Field(
+        description=(
+            "The file's bytes in standard base64, without a data: prefix. "
+            "At most 256 KB once decoded."
+        ),
+    )
+
+
+class TenantLogoResponse(BaseModel):
+    """The tenant's logo, inline as a data URL.
+
+    An ``<img>`` cannot send the API's auth headers, so the image travels inside
+    this authenticated response instead of behind an image URL of its own.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    data_url: str
+    content_type: LogoContentType
+    sha256: str
+    updated_at: datetime
+    updated_by: str
+
+    @classmethod
+    def from_domain(cls, logo: TenantLogo) -> TenantLogoResponse:
+        encoded = base64.b64encode(logo.data).decode("ascii")
+        return cls(
+            data_url=f"data:{logo.content_type.value};base64,{encoded}",
+            content_type=logo.content_type,
+            sha256=logo.sha256,
+            updated_at=logo.updated_at,
+            updated_by=logo.updated_by,
+        )
+
+
+class BrandingResponse(BaseModel):
+    """The tenant's branding. ``logo`` is null when the console shows its default mark."""
+
+    model_config = ConfigDict(frozen=True)
+
+    logo: TenantLogoResponse | None
+
+    @classmethod
+    def from_domain(cls, logo: TenantLogo | None) -> BrandingResponse:
+        return cls(logo=TenantLogoResponse.from_domain(logo) if logo is not None else None)
