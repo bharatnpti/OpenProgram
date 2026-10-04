@@ -16,7 +16,16 @@ from core.application.blocker_resolution import BlockerResolutionService
 from core.application.checkin_drift import IssueEta, issue_eta
 from core.application.risk_service import RiskService
 from core.application.status_collector import StatusCollector
-from core.domain.graph import Developer, EdgeKind, EntityRef, GraphEdge, NodeKind, Project, Task
+from core.domain.graph import (
+    Developer,
+    EdgeKind,
+    EntityRef,
+    FactEvent,
+    GraphEdge,
+    NodeKind,
+    Project,
+    Task,
+)
 from core.domain.messaging import ChatUserRef, InboundMessage
 from core.domain.risk import DriftFinding, DriftFindingKind, RiskProviderConfig
 from core.domain.rollup import Rag
@@ -29,6 +38,7 @@ _TENANT = "demo"
 _DAY = date(2026, 10, 4)  # R3, a Sunday
 _LIAM = "U-liam"
 _IRA = "U-ira"
+_NOAH = "U-noah"
 
 
 def _evaluation(claims: list[dict[str, object]], *, eta_change_days: int | None) -> str:
@@ -138,7 +148,7 @@ async def _check_in(
     assert outcome.kind == "processed"
 
 
-async def _drift(store: InMemoryGraphStore) -> list[DriftFinding]:
+async def _drift(store: InMemoryGraphStore, project_id: str = "proj-chk") -> list[DriftFinding]:
     service = RiskService(
         graph_repository=store,
         time_series_repository=store,
@@ -147,7 +157,7 @@ async def _drift(store: InMemoryGraphStore) -> list[DriftFinding]:
         rollup_repository=store,
         provider_config=RiskProviderConfig(),
     )
-    return await service.project_drift(_TENANT, "proj-chk", _DAY)
+    return await service.project_drift(_TENANT, project_id, _DAY)
 
 
 async def test_owner_and_scrum_master_etas_for_chk_4_disagree() -> None:
@@ -221,6 +231,112 @@ async def test_etas_that_mean_the_same_day_do_not_disagree() -> None:
     assert await _drift(store) == []
 
 
+def _eta_claim(key: str, state: str | None, note: str) -> str:
+    return _evaluation(
+        [{"issue_key": key, "claimed_done": False, "claimed_state": state, "note": note}],
+        eta_change_days=None,
+    )
+
+
+async def test_owner_early_next_week_and_scrum_master_end_of_week_disagree() -> None:
+    # N31, R4 live: Ira said IDP-3 by end of week, its owner Noah "early next
+    # week"; Noah's vague ETA was not stored, so nothing was compared.
+    store = InMemoryGraphStore()
+    await _seed(store)
+    await store.upsert_node(Project(tenant_id=_TENANT, id="proj-idp", name="Identity"))
+    await store.upsert_node(
+        Task(
+            tenant_id=_TENANT,
+            id="IDP-3",
+            name="Passkey enrolment",
+            metadata={"key": "IDP-3", "state": "in_progress", "status": "In Progress"},
+        )
+    )
+    await store.upsert_node(Developer(tenant_id=_TENANT, id=_NOAH, name="Noah Weber"))
+    for edge in (
+        GraphEdge(
+            tenant_id=_TENANT, from_node_id="proj-idp", to_node_id="IDP-3", kind=EdgeKind.CONTAINS
+        ),
+        GraphEdge(
+            tenant_id=_TENANT, from_node_id=_NOAH, to_node_id="IDP-3", kind=EdgeKind.ASSIGNED_TO
+        ),
+    ):
+        await store.add_edge(edge)
+    await store.record_checkin(
+        CheckIn(
+            tenant_id=_TENANT,
+            developer_id=_NOAH,
+            correlation_id=f"corr-{_NOAH}",
+            asked_at=datetime(2026, 10, 4, 0, 0, tzinfo=UTC),
+            replied_at=None,
+            raw_reply=None,
+            signals=None,
+        )
+    )
+    noah = _eta_claim(
+        "IDP-3",
+        "pending review",
+        "Will close after identity-service !1 is reviewed, likely early next week",
+    )
+    ira = _eta_claim(
+        "IDP-3",
+        "should be approved and merged by end of week",
+        "IDP-3 expected to be approved and merged by end of week.",
+    )
+
+    await _check_in(store, _NOAH, noah, 6)
+    await _check_in(store, _IRA, ira, 8)
+    findings = await _drift(store, "proj-idp")
+
+    assert [finding.reason for finding in findings] == [
+        "ETAs disagree for IDP-3: Noah Weber (owner) said early next week, Oct 12 to Oct 14; "
+        "Ira Novak said end of week, Oct 9. The owner's ETA is the one used."
+    ]
+    assert findings[0].owner_id == _NOAH
+    facts = await store.list_recent_facts(_TENANT, sources=("checkin_drift",))
+    assert {
+        (fact.payload["developer_id"], fact.payload["eta_start"], fact.payload["eta_date"])
+        for fact in facts
+    } == {(_NOAH, "2026-10-12", "2026-10-14"), (_IRA, "2026-10-09", "2026-10-09")}
+
+
+async def test_overlapping_windows_do_not_disagree() -> None:
+    store = InMemoryGraphStore()
+    await _seed(store)
+
+    await _check_in(store, _LIAM, _eta_claim("CHK-4", None, "Should land early next week"), 6)
+    await _check_in(store, _IRA, _eta_claim("CHK-4", None, "Ready by next Tuesday"), 8)
+
+    assert await _drift(store) == []
+
+
+async def test_a_fact_stored_before_windows_is_one_day() -> None:
+    store = InMemoryGraphStore()
+    await _seed(store)
+    await _check_in(store, _LIAM, _eta_claim("CHK-4", None, "Should land early next week"), 6)
+    # What R4 stored for Ira (no eta_start).
+    await store.append_fact(
+        FactEvent(
+            tenant_id=_TENANT,
+            source="checkin_drift",
+            entity_ref=EntityRef(tenant_id=_TENANT, kind=NodeKind.TASK, id="CHK-4"),
+            payload={
+                "kind": "eta_stated",
+                "as_of": _DAY.isoformat(),
+                "eta_date": "2026-10-09",
+                "eta_label": "Friday",
+                "issue_key": "CHK-4",
+                "developer_id": _IRA,
+                "developer_name": "Ira Novak",
+            },
+            observed_at=datetime(2026, 10, 4, 0, 8, tzinfo=UTC),
+            correlation_id="corr-ira-r4",
+        )
+    )
+
+    assert [finding.kind for finding in await _drift(store)] == [DriftFindingKind.ETA_DISAGREEMENT]
+
+
 async def test_one_person_alone_never_disagrees() -> None:
     store = InMemoryGraphStore()
     await _seed(store)
@@ -249,6 +365,37 @@ async def test_one_person_alone_never_disagrees() -> None:
         ("Next Monday", None, IssueEta(label="next Monday", day=date(2026, 10, 12))),
         ("ETA Oct 14", None, IssueEta(label="Oct 14", day=date(2026, 10, 14))),
         ("due 2026-10-20", None, IssueEta(label="Oct 20", day=date(2026, 10, 20))),
+        # N31, R4 live: vague ETAs are windows from the check-in date (a Sunday,
+        # so "this week" is the week ahead and "next week" the one after).
+        (
+            "Will close after identity-service !1 is reviewed, likely early next week",
+            "pending review",
+            IssueEta(label="early next week", start=date(2026, 10, 12), day=date(2026, 10, 14)),
+        ),
+        (
+            "Should land next week",
+            None,
+            IssueEta(label="next week", start=date(2026, 10, 12), day=date(2026, 10, 16)),
+        ),
+        (
+            "Ready by end of next week",
+            None,
+            IssueEta(label="end of next week", start=date(2026, 10, 15), day=date(2026, 10, 16)),
+        ),
+        (
+            "MR !4 is idle. ETA 2-3 days, reviewing with team",
+            "in progress",
+            IssueEta(label="2-3 days", start=date(2026, 10, 6), day=date(2026, 10, 7)),
+        ),
+        ("Should be merged in 3 days", None, IssueEta(label="in 3 days", day=date(2026, 10, 7))),
+        (
+            "Within a few days",
+            None,
+            IssueEta(label="within a few days", start=_DAY, day=date(2026, 10, 8)),
+        ),
+        # The answer to an ETA question can be the day alone.
+        ("Monday", None, IssueEta(label="Monday", day=date(2026, 10, 5))),
+        ("Monday EOD", "in review", IssueEta(label="Monday", day=date(2026, 10, 5))),
         ("Noah approved checkout-api !1, waiting on Asha to merge", "approved", None),
         ("We decided 5 things", None, None),
         # A day that does not look ahead is no ETA.
