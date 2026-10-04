@@ -639,6 +639,9 @@ _R1_TARGETS: list[tuple[str, bool, IssueState, str | None]] = [
     ("to do", False, IssueState.TODO, "todo"),
     ("To Do", False, IssueState.TODO, "todo"),
 ]
+# "On track" names no state, but on an issue that is still To Do it says work has
+# started, so the write moves it to In Progress (N21; Asha's R1 CHK-16).
+_R1_WRITE_TARGETS = {("on track", IssueState.TODO): "in_progress"}
 # What a canonical target means against the issue's state: the same state is no
 # change. A review status reads as in progress, so in_review on an in-progress
 # issue is no change either.
@@ -670,6 +673,7 @@ async def test_every_r1_target_is_a_valid_transition_or_an_explicit_noop(
         tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION, claims=[claim]
     )
 
+    target = _R1_WRITE_TARGETS.get((claimed_state, jira_state), target)
     if target is None or _SAME_STATE[target] is jira_state:
         # Explicit no-op: no transition, no comment, no audit row.
         assert tracker.transitions == []
@@ -765,8 +769,11 @@ async def test_owners_done_claim_transitions_to_done() -> None:
     )
 
 
-async def test_on_track_is_a_noop_with_no_comment() -> None:
-    tracker = FakeIssueTracker(issues={"CHK-16": _issue("CHK-16", IssueState.TODO)})
+@pytest.mark.parametrize("jira_state", [IssueState.IN_PROGRESS, IssueState.DONE])
+async def test_on_track_is_a_noop_with_no_comment_unless_the_issue_is_to_do(
+    jira_state: IssueState,
+) -> None:
+    tracker = FakeIssueTracker(issues={"CHK-16": _issue("CHK-16", jira_state)})
     service, _, audit = _build(tracker=tracker, default_enabled=True)
     results = await service.apply_from_checkin(
         tenant_id=_TENANT,
@@ -1511,3 +1518,143 @@ def test_write_back_comment_wording() -> None:
         "Moved to Done by OpenProgram: Raj Iyer reported it merged "
         "(acme/insights-pipeline !2) in the 2026-10-04 check-in."
     )
+
+
+# --- N21: "started" / "on track" on the owner's To Do issue moves it to In Progress ---
+
+# R3 (2026-10-04), as the parser read them: both issues were To Do in Jira.
+_ASHA_CHK16 = IssueClaim(
+    issue_key="CHK-16",
+    claimed_state="on track",
+    note=(
+        "Prep is on track, merging related MRs after review. Agenda and Q4 checkout "
+        "numbers are drafted, final pass remaining."
+    ),
+)
+_HANA_IDP9 = IssueClaim(
+    issue_key="IDP-9", note="Outline started, on track for end of week completion."
+)
+
+
+async def _people_store() -> InMemoryGraphStore:
+    store = InMemoryGraphStore()
+    await store.upsert_node(Developer(tenant_id=_TENANT, id=_DEV, name="Asha Rao"))
+    return store
+
+
+@pytest.mark.parametrize("claim", [_ASHA_CHK16, _HANA_IDP9], ids=["asha-chk16", "hana-idp9"])
+async def test_owner_saying_work_started_moves_a_to_do_issue_to_in_progress(
+    claim: IssueClaim,
+) -> None:
+    tracker = _MovingIssueTracker(
+        issues={claim.issue_key: _issue(claim.issue_key, IssueState.TODO)}
+    )
+    service, _, _ = _build(tracker=tracker, default_enabled=True, graph=await _people_store())
+
+    [row] = await service.apply_from_checkin(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        claims=[claim],
+        reported_on=date(2026, 10, 4),
+    )
+
+    assert (row.status, row.target_state, row.before_state) == (
+        WriteBackStatus.APPLIED,
+        "in_progress",
+        "todo",
+    )
+    assert tracker.transitions == [(_TENANT, claim.issue_key, "in_progress")]
+    assert tracker.comments == [
+        (
+            _TENANT,
+            claim.issue_key,
+            "Moved to In Progress by OpenProgram: Asha Rao reported work on it started "
+            "in the 2026-10-04 check-in.",
+        )
+    ]
+    dry_run = await service.dry_run(tenant_id=_TENANT, developer_id=_DEV, claims=[claim])
+    assert dry_run.written == frozenset()  # already applied: In Progress now
+
+
+async def test_always_ask_owner_is_asked_before_a_started_issue_moves() -> None:
+    tracker = FakeIssueTracker(issues={"CHK-16": _issue("CHK-16", IssueState.TODO)})
+    service, _, _ = _build(
+        tracker=tracker, default_enabled=True, consent=WriteBackConsent.ALWAYS_ASK
+    )
+
+    [row] = await service.apply_from_checkin(
+        tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION, claims=[_ASHA_CHK16]
+    )
+
+    assert (row.status, row.target_state, row.comment) == (
+        WriteBackStatus.PROPOSED,
+        "in_progress",
+        None,
+    )
+    assert tracker.transitions == []
+
+
+async def test_someone_elses_to_do_issue_is_not_moved_by_their_on_track() -> None:
+    tracker = FakeIssueTracker(
+        issues={"CHK-16": _issue("CHK-16", IssueState.TODO, assignee="dev-other")}
+    )
+    service, _, _ = _build(tracker=tracker, default_enabled=True)
+
+    [row] = await service.apply_from_checkin(
+        tenant_id=_TENANT, developer_id=_DEV, correlation_id=_CORRELATION, claims=[_ASHA_CHK16]
+    )
+
+    assert (row.status, row.source) == (WriteBackStatus.DECLINED, NOT_OWNER_SOURCE)
+    assert tracker.transitions == []
+    assert tracker.comments == []
+
+
+@pytest.mark.parametrize(
+    ("claimed_state", "note"),
+    [
+        # Raj R3 INS-4, Zoe R3 CHK-12, Sofia R3 CHK-15, Liam R1 CHK-4.
+        ("not started", "Planned to start Monday after !1 merges."),
+        (None, "Not started, planned for next week"),
+        (None, "Will start after CHK-14 is merged"),
+        ("starting", "Work on CHK-4 to begin next."),
+        (None, "planning to start Monday"),
+        (None, "Should start tomorrow, on track otherwise"),
+        (None, "Haven't started yet, still on track for Friday"),
+        (None, "Still waiting on review"),
+        (None, "On track, blocked on the API contract"),
+        (None, ""),
+    ],
+)
+async def test_wording_that_does_not_clearly_say_work_started_moves_nothing(
+    claimed_state: str | None, note: str
+) -> None:
+    tracker = FakeIssueTracker(issues={"CHK-12": _issue("CHK-12", IssueState.TODO)})
+    service, _, audit = _build(tracker=tracker, default_enabled=True)
+
+    results = await service.apply_from_checkin(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        claims=[IssueClaim(issue_key="CHK-12", claimed_state=claimed_state, note=note)],
+    )
+
+    assert [row for row in results if row.target_state == "in_progress"] == []
+    assert [t for t in tracker.transitions if t[2] == "in_progress"] == []
+
+
+async def test_a_started_claim_whose_read_fails_is_a_noop_unless_the_copy_is_to_do() -> None:
+    graph = await _synced_graph(IssueState.IN_PROGRESS)
+    service, tracker, audit = _build(
+        tracker=_UnreadableIssueTracker(), default_enabled=True, graph=graph
+    )
+
+    results = await service.apply_from_checkin(
+        tenant_id=_TENANT,
+        developer_id=_DEV,
+        correlation_id=_CORRELATION,
+        claims=[IssueClaim(issue_key="IDP-3", claimed_state="on track")],
+    )
+
+    assert results == []
+    assert audit.audits == {}
