@@ -23,6 +23,9 @@ class FactorKind(StrEnum):
     TASK = "task"
     TARGET_DATE = "target_date"
     AGGREGATE = "aggregate"
+    # Another team's person waits on this node's work: a reason line, never
+    # a blocker of its own, so it never changes the colour.
+    DEPENDENCY = "dependency"
 
 
 @dataclass(frozen=True, kw_only=True)
