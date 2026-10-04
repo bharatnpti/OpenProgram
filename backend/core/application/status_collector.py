@@ -18,11 +18,16 @@ from core.application.blocker_lifecycle import (
     reconciliation_with_updates,
 )
 from core.application.checkin_drift import (
+    COMMIT_FACT_SOURCE,
+    DEVELOPER_ROLE,
+    NON_CODE_REVIEW_ROLES,
+    code_work_keys,
     eta_stated_fact,
     in_review_claim_keys,
     issue_eta,
     keys_asked_for_merge_request,
     keys_without_open_merge_request,
+    member_roles,
     review_without_merge_request_fact,
     review_without_merge_request_question,
 )
@@ -79,7 +84,7 @@ from core.domain.cross_person import (
 )
 from core.domain.errors import ProviderUnavailable
 from core.domain.escalation import EscalationTarget
-from core.domain.graph import EntityRef, FactEvent, GraphNode, JsonScalar, NodeKind
+from core.domain.graph import EdgeKind, EntityRef, FactEvent, GraphNode, JsonScalar, NodeKind
 from core.domain.integrations import Issue, IssueState, UserRef
 from core.domain.llm import LlmRequest, LlmResponse
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
@@ -784,7 +789,7 @@ class StatusCollector:
         if clarification_count >= self._checkin_max_clarifications:
             return None
         missing = await self._in_review_without_open_merge_request(
-            checkin.tenant_id, signals.issue_updates
+            checkin.tenant_id, checkin.developer_id, signals.issue_updates
         )
         if not missing:
             return None
@@ -803,13 +808,15 @@ class StatusCollector:
         return review_without_merge_request_question(keys)
 
     async def _in_review_without_open_merge_request(
-        self, tenant_id: str, claims: Sequence[IssueClaim]
+        self, tenant_id: str, developer_id: str, claims: Sequence[IssueClaim]
     ) -> tuple[str, ...]:
-        """The issues claimed in review that no open merge request names.
+        """The issues claimed in review, as code work, that no open merge request names.
 
         Read from the synced merge request facts with the shared matcher. A
         tenant with no merge request synced at all has nothing to compare with,
-        so nothing is reported.
+        so nothing is reported. Only code work expects a merge request (N26):
+        Mina, a product owner, had CHK-10 "in review" for its acceptance
+        criteria, and was asked for a merge request that could not exist.
         """
         keys = in_review_claim_keys(claims)
         if not keys or self._time_series_repository is None:
@@ -821,7 +828,67 @@ class StatusCollector:
         )
         if not facts:
             return ()
-        return keys_without_open_merge_request(keys, facts)
+        missing = keys_without_open_merge_request(keys, facts)
+        if not missing:
+            return ()
+        return await self._code_work_keys(tenant_id, developer_id, missing, facts)
+
+    async def _code_work_keys(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        keys: Sequence[str],
+        merge_request_facts: Sequence[FactEvent],
+    ) -> tuple[str, ...]:
+        """Those of ``keys`` whose review is code work for this person (``code_work_keys``)."""
+        node = (
+            await self._graph_repository.get_node(tenant_id, developer_id)
+            if self._graph_repository is not None
+            else None
+        )
+        roles = member_roles(node.metadata if node is not None else None)
+        commits: Sequence[FactEvent] = ()
+        project_keys: dict[str, frozenset[str]] = {}
+        # Only a role that is neither decides by the activity: read it just then.
+        decided = DEVELOPER_ROLE in roles or bool(roles & NON_CODE_REVIEW_ROLES)
+        if not decided and self._time_series_repository is not None:
+            commits = await self._time_series_repository.list_recent_facts(
+                tenant_id, sources=(COMMIT_FACT_SOURCE,), limit=_MERGE_REQUEST_FACT_SCAN_LIMIT
+            )
+            project_keys = await self._project_task_keys(tenant_id)
+        return code_work_keys(
+            keys,
+            developer_id=developer_id,
+            roles=roles,
+            merge_request_facts=merge_request_facts,
+            commit_facts=commits,
+            project_task_keys=lambda key: project_keys.get(key, frozenset()),
+        )
+
+    async def _project_task_keys(self, tenant_id: str) -> dict[str, frozenset[str]]:
+        """Each task key with the keys of its project's tasks (directly or under a sprint)."""
+        if self._graph_repository is None:
+            return {}
+        nodes = {node.id: node for node in await self._graph_repository.list_nodes(tenant_id)}
+        edges = await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+        parent_of = {
+            edge.to_node_id: edge.from_node_id
+            for edge in edges
+            if (child := nodes.get(edge.to_node_id)) is not None
+            and child.kind in {NodeKind.TASK, NodeKind.SPRINT}
+        }
+        by_project: dict[str, set[str]] = {}
+        for task_id, parent in parent_of.items():
+            if nodes[task_id].kind is not NodeKind.TASK:
+                continue
+            project = parent
+            parent_node = nodes.get(parent)
+            if parent_node is not None and parent_node.kind is NodeKind.SPRINT:
+                project = parent_of.get(parent, parent)
+            by_project.setdefault(project, set()).add(task_id)
+        return {
+            task_id: frozenset(task_ids) for task_ids in by_project.values() for task_id in task_ids
+        }
 
     async def _record_issue_etas(self, checkin: CheckIn, status: DeveloperStatus) -> None:
         """Keep the ETA each claim states for its issue, to compare across people (N23).
@@ -870,7 +937,7 @@ class StatusCollector:
         ):
             return
         missing = await self._in_review_without_open_merge_request(
-            checkin.tenant_id, checkin.signals.issue_updates
+            checkin.tenant_id, checkin.developer_id, checkin.signals.issue_updates
         )
         if not missing:
             return
