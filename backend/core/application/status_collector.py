@@ -4154,9 +4154,11 @@ def _blockers_answered(signals: CheckInSignals) -> bool:
     return signals.blockers_answered or bool(signals.blockers)
 
 
-# What a model-drafted follow-up asks for, read from its words (N29).
+# What a model-drafted follow-up asks for, read from its words (N29). A
+# commitment to a date ("can you commit to a date for IDP-3?") is an ETA (N42).
 _ASKS_FOR_ETA = re.compile(
-    r"\b(?:etas?|deadline|timeline|target date|how long|when (?:will|do|can|should) you)\b",
+    r"\b(?:etas?|deadline|timeline|target date|how long|when (?:will|do|can|should) you|"
+    r"commit(?:ted|ting)? to|commitments?)\b",
     re.IGNORECASE,
 )
 _ASKS_FOR_BLOCKERS = re.compile(
@@ -4164,12 +4166,27 @@ _ASKS_FOR_BLOCKERS = re.compile(
 )
 _ASKS_FOR_PROGRESS = re.compile(r"\b(?:progress|concrete|accomplished)\b", re.IGNORECASE)
 # A question about anything else is kept: a contradiction with the tracker or
-# Git, a merge request, who or which.
+# Git, a merge request, a commit, who or which. "Commit to" a date is an ETA.
 _ASKS_ABOUT_SOMETHING_ELSE = re.compile(
-    r"\b(?:jira|tracker|ticket|merge request|mr|pull request|pr|branch|commit\w*|merged|"
-    r"done|closed|who|which)\b",
+    r"\b(?:jira|tracker|ticket|merge request|mr|pull request|pr|branch|"
+    r"commit(?:s|ted|ting)?(?!\s+to\b)|merged|done|closed|who|which)\b",
     re.IGNORECASE,
 )
+# The examples a question gives are not what it asks about (N42): Ira's "what
+# concrete progress ..., such as code committed, reviews completed, or issues
+# moved forward?" asks for progress, not about a commit.
+_EXAMPLES_IN_QUESTION = re.compile(
+    r"(?:\bsuch as\b|\be\.g\.|\bfor example\b|\bfor instance\b)[^?.!]*", re.IGNORECASE
+)
+
+
+def _asks_about_something_else(question: str) -> bool:
+    """Whether ``question`` asks about more than the ETA, blockers or progress.
+
+    Read without the examples it gives, so "such as code committed" in a progress
+    question is not an ask about a commit.
+    """
+    return bool(_ASKS_ABOUT_SOMETHING_ELSE.search(_EXAMPLES_IN_QUESTION.sub(" ", question)))
 
 
 def _asks_only_for_eta(question: str) -> bool:
@@ -4177,7 +4194,7 @@ def _asks_only_for_eta(question: str) -> bool:
         _ASKS_FOR_ETA.search(question)
         and not _ASKS_FOR_BLOCKERS.search(question)
         and not _ASKS_FOR_PROGRESS.search(question)
-        and not _ASKS_ABOUT_SOMETHING_ELSE.search(question)
+        and not _asks_about_something_else(question)
     )
 
 
@@ -4188,7 +4205,7 @@ def _follow_up_already_answered(question: str, earlier: CheckInSignals) -> bool:
     signals say so). Progress counts as given when an earlier message described
     each issue the question names (any issue, if it names none).
     """
-    if _ASKS_ABOUT_SOMETHING_ELSE.search(question):
+    if _asks_about_something_else(question):
         return False
     answered: list[bool] = []
     if _ASKS_FOR_ETA.search(question):
@@ -4326,8 +4343,9 @@ def _without_coordinator_follow_up(
     sent; if blockers are still missing, the required-details step asks for
     those alone. A reply that gives team context is the whole status, so it
     needs no blockers or progress follow-up either. A question about anything
-    else (the tracker, a merge request, a person) is kept. ``team_context`` is
-    None for anyone who is not a coordinator.
+    else (the tracker, a merge request, a person) is kept; the examples a
+    question gives ("such as code committed") are not what it asks about (N42).
+    ``team_context`` is None for anyone who is not a coordinator.
     """
     question = decision.question
     if (
@@ -4335,7 +4353,7 @@ def _without_coordinator_follow_up(
         or decision.sufficient
         or question is None
         or not decision.is_status_update
-        or _ASKS_ABOUT_SOMETHING_ELSE.search(question)
+        or _asks_about_something_else(question)
     ):
         return decision
     if not team_context and not _ASKS_FOR_ETA.search(question):
