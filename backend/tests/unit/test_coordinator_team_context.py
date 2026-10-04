@@ -17,7 +17,12 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from core.application.status_collector import NON_STATUS_ACK_TEXT, StatusCollector
+from core.application.status_collector import (
+    _ASKS_FOR_ETA,
+    NON_STATUS_ACK_TEXT,
+    StatusCollector,
+    _asks_about_something_else,
+)
 from core.application.team_context import gives_team_context
 from core.domain.graph import Developer
 from core.domain.integrations import Issue, IssueState, UserRef
@@ -169,6 +174,55 @@ async def test_a_first_team_summary_needs_no_progress_follow_up() -> None:
     assert chat.sent == []
     assert outcome.status is not None
     assert outcome.status.source is StatusSource.CONFIRMED
+
+
+_IRA_R5_QUESTION = (
+    "Can you specify what concrete progress was made on CHK-4 or IDP-3 since the last "
+    "check-in, such as code committed, reviews completed, or issues moved forward?"
+)
+_IRA_R5_REPLY = (
+    "Payments and Identity both tracking well, no new blockers. The teams have what they "
+    "need to keep moving forward."
+)
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # R5: "such as code committed" kept this one after her team summary (N42).
+        _IRA_R5_QUESTION,
+        # A commitment to a date is an ETA, which a coordinator does not owe.
+        "Can you commit to a date for IDP-3?",
+    ],
+)
+async def test_iras_r5_team_summary_draws_no_progress_or_commitment_follow_up(
+    question: str,
+) -> None:
+    store = await _store()
+    chat = FakeChatProvider()
+    collector = _collector(
+        store,
+        chat,
+        [_evaluation(note=_IRA_R5_REPLY, question=question, blockers_answered=True)],
+    )
+
+    outcome = await collector.handle_reply(_message(_IRA_R5_REPLY))
+
+    assert chat.sent == []
+    assert outcome.kind == "processed"
+    assert outcome.status is not None
+    assert outcome.status.source is StatusSource.CONFIRMED
+
+
+def test_examples_and_date_commitments_are_not_asks_about_something_else() -> None:
+    assert not _asks_about_something_else(_IRA_R5_QUESTION)
+    assert not _asks_about_something_else("Can you commit to a date for IDP-3?")
+    assert _ASKS_FOR_ETA.search("Can you commit to a date for IDP-3?")
+    # A commit, a merge request or a person is still what a question asks about.
+    assert _asks_about_something_else("Which commit fixed CHK-4?")
+    assert _asks_about_something_else("Have you committed the fix for CHK-4?")
+    assert _asks_about_something_else("Is the MR for CHK-4 merged, e.g. on main?")
+    assert _asks_about_something_else("Who is reviewing IDP-3, for example Noah?")
 
 
 async def test_a_bare_no_update_stays_a_reply_without_a_status() -> None:
