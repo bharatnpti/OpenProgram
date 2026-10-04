@@ -336,6 +336,29 @@ class InMemoryGraphStore:
         self._cross_person_requests[key] = opened
         return opened
 
+    async def refresh(
+        self,
+        tenant_id: str,
+        request_id: str,
+        *,
+        task_ref: EntityRef | None,
+        updated_at: datetime,
+    ) -> CrossPersonRequest | None:
+        key = (tenant_id, request_id)
+        existing = self._cross_person_requests.get(key)
+        if existing is None or existing.status not in {
+            CrossPersonRequestStatus.OPEN,
+            CrossPersonRequestStatus.ACKNOWLEDGED,
+        }:
+            return None
+        refreshed = replace(
+            existing,
+            updated_at=max(existing.updated_at, updated_at),
+            task_ref=existing.task_ref or task_ref,
+        )
+        self._cross_person_requests[key] = refreshed
+        return refreshed
+
     async def claim_notification_attempt(
         self,
         tenant_id: str,

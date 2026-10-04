@@ -8,13 +8,20 @@ from datetime import UTC, datetime, timedelta
 
 import structlog
 
+from core.application.merge_request_links import (
+    MERGE_REQUEST_FACT_SOURCE,
+    MergeRequestIndex,
+    merge_request_label,
+)
 from core.application.status_collector import OUTBOUND_DM_MAX_CHARS
 from core.domain.cross_person import (
     CrossPersonNotifyRetrySummary,
     CrossPersonRequest,
     CrossPersonRequestResolution,
     CrossPersonRequestStatus,
+    is_repeat_of,
     new_cross_person_request,
+    request_subject,
 )
 from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.domain.llm import LlmRequest
@@ -76,6 +83,10 @@ class CrossPersonRequestService:
                 resolution=resolution,
                 created_at=observed_at,
             )
+            repeated = await self._refresh_repeat(request)
+            if repeated is not None:
+                created.append(repeated)
+                continue
             stored = await self.repository.create(request)
             transition = (
                 "needs_resolution"
@@ -87,6 +98,134 @@ class CrossPersonRequestService:
                 stored = await self._notify_best_effort(stored)
             created.append(stored)
         return created
+
+    async def _refresh_repeat(self, request: CrossPersonRequest) -> CrossPersonRequest | None:
+        """The requester's open ask this one repeats, refreshed; None when it is new.
+
+        A check-in each round restates what is still pending ("still waiting
+        on Asha for CHK-10"). Read as a new request every time, it opened a
+        copy per round, DMed the counterpart again, and the older copies never
+        closed. The same requester asking the same person about the same work
+        now refreshes the open request instead: it is marked as asked again
+        and gains the issue link if it had none, and nobody is told twice.
+        A request with no counterpart yet has no one to compare and stays new.
+        """
+        if request.counterpart_id is None:
+            return None
+        for existing in await self.repository.list_for_requester(
+            request.tenant_id,
+            request.requester_id,
+            statuses=_STILL_OPEN,
+        ):
+            if is_repeat_of(request, existing, vague_matches=True):
+                refreshed = await self.repository.refresh(
+                    request.tenant_id,
+                    existing.id,
+                    task_ref=request.task_ref,
+                    updated_at=request.created_at,
+                )
+                if refreshed is not None:
+                    return refreshed
+        return None
+
+    async def _close_repeats(
+        self,
+        request: CrossPersonRequest,
+        resolved_at: datetime,
+    ) -> tuple[CrossPersonRequest, ...]:
+        """Resolve the still-open copies of an ask that has just been resolved.
+
+        Copies recorded before asks were refreshed in place (one per round)
+        would otherwise stay open after the ask itself was done. Only a clear
+        match closes: the same requester, person and work, never a vague ask.
+        The requester was told about the request itself, so not again here.
+        """
+        closed: list[CrossPersonRequest] = []
+        for other in await self.repository.list_for_requester(
+            request.tenant_id,
+            request.requester_id,
+            statuses=_STILL_OPEN,
+        ):
+            if not is_repeat_of(request, other, vague_matches=False):
+                continue
+            updated = await self.repository.update_status(
+                request.tenant_id,
+                other.id,
+                CrossPersonRequestStatus.RESOLVED,
+                resolved_at,
+            )
+            if updated is not None:
+                await self._append_fact(updated, transition=CrossPersonRequestStatus.RESOLVED.value)
+                closed.append(updated)
+        return tuple(closed)
+
+    async def resolve_merged_work(self, tenant_id: str) -> tuple[CrossPersonRequest, ...]:
+        """Resolve the open requests whose merge requests have all been merged.
+
+        A review asked for on "storefront-web !1", or on CHK-3 whose merge
+        request is checkout-api !1, is done once that merge request is merged,
+        whether or not the reviewer answered the DM. Every merge request the
+        ask names, or that names its issue, has to be merged: one still open
+        keeps the ask open. Safe to run after every sync: a resolved request
+        is never resolved, or announced, again.
+        """
+        if self.time_series_repository is None:
+            return ()
+        candidates = [
+            request
+            for request in await self.repository.list_open(tenant_id)
+            if request.status in _STILL_OPEN
+        ]
+        if not candidates:
+            return ()
+        index = MergeRequestIndex.from_facts(
+            await self.time_series_repository.list_recent_facts(
+                tenant_id,
+                sources=(MERGE_REQUEST_FACT_SOURCE,),
+                limit=_MERGE_REQUEST_FACT_SCAN_LIMIT,
+            )
+        )
+        resolved: list[CrossPersonRequest] = []
+        for request in candidates:
+            subject = request_subject(request)
+            merged = index.merged_work(
+                issue_keys=subject.issue_keys,
+                refs=[
+                    (ref.repo, ref.number) for ref in subject.merge_requests if ref.repo is not None
+                ],
+            )
+            if merged is None:
+                continue
+            updated = await self._resolve_by_merge(request, merged)
+            if updated is not None:
+                resolved.append(updated)
+        return tuple(resolved)
+
+    async def _resolve_by_merge(
+        self,
+        request: CrossPersonRequest,
+        merged: tuple[FactEvent, ...],
+    ) -> CrossPersonRequest | None:
+        current = await self.repository.get(request.tenant_id, request.id)
+        if current is None or current.status not in _STILL_OPEN:
+            # Resolved by a reply, or as a copy of another, since it was listed.
+            return None
+        resolved_at = max((fact.observed_at for fact in merged), default=self.clock())
+        updated = await self.repository.update_status(
+            request.tenant_id,
+            request.id,
+            CrossPersonRequestStatus.RESOLVED,
+            max(resolved_at, current.updated_at),
+        )
+        if updated is None:
+            return None
+        await self._append_fact(updated, transition=CrossPersonRequestStatus.RESOLVED.value)
+        await self._notify_requester_resolved(
+            updated,
+            merged_labels=tuple(merge_request_label(fact) for fact in merged),
+        )
+        await self._close_repeats(updated, updated.updated_at)
+        return updated
 
     async def _settle(
         self,
@@ -313,6 +452,7 @@ class CrossPersonRequestService:
         await self._append_fact(stored, transition=next_status.value)
         if next_status is CrossPersonRequestStatus.RESOLVED:
             await self._notify_requester_resolved(stored)
+            await self._close_repeats(stored, message.received_at)
         return stored
 
     async def update_status(
@@ -336,6 +476,7 @@ class CrossPersonRequestService:
             await self._append_fact(updated, transition=status.value)
             if status is CrossPersonRequestStatus.RESOLVED:
                 await self._notify_requester_resolved(updated)
+                await self._close_repeats(updated, updated.updated_at)
         return updated
 
     async def get(
@@ -455,20 +596,30 @@ class CrossPersonRequestService:
             return CrossPersonRequestStatus.RESOLVED
         return CrossPersonRequestStatus.ACKNOWLEDGED
 
-    async def _notify_requester_resolved(self, request: CrossPersonRequest) -> None:
+    async def _notify_requester_resolved(
+        self,
+        request: CrossPersonRequest,
+        *,
+        merged_labels: tuple[str, ...] = (),
+    ) -> None:
         if request.requester_chat_ref is None:
             return
         counterpart = (
             request.counterpart_display_name or request.counterpart_id or "The counterpart"
         )
+        note = _fit_note(request.note, _RESOLVED_NOTE_CHARS)
+        text = (
+            f"{_join_labels(merged_labels)} {'is' if len(merged_labels) == 1 else 'are'} "
+            f"merged, so I marked your {request.kind.value} request to {counterpart} "
+            f"resolved: {note}"
+            if merged_labels
+            else f"{counterpart} marked your {request.kind.value} request resolved: {note}"
+        )
         await self.chat_provider.send_dm(
             ChatUserRef(tenant_id=request.tenant_id, external_id=request.requester_chat_ref),
             OutboundMessage(
                 tenant_id=request.tenant_id,
-                text=(
-                    f"{counterpart} marked your {request.kind.value} "
-                    f"request resolved: {_fit_note(request.note, _RESOLVED_NOTE_CHARS)}"
-                ),
+                text=text,
                 correlation_id=f"xreq-resolved-{request.id}",
                 metadata={
                     "purpose": "cross_person_request_resolved",
@@ -555,6 +706,12 @@ def _request_id(
 _CLOSED_STATUSES = frozenset(
     {CrossPersonRequestStatus.RESOLVED, CrossPersonRequestStatus.DISMISSED}
 )
+# Asked of a named person and not yet done: what a repeat refreshes, and what
+# a resolution, a copy's or a merge's, closes.
+_STILL_OPEN = (CrossPersonRequestStatus.OPEN, CrossPersonRequestStatus.ACKNOWLEDGED)
+# Merge request facts read per pass; one fact per update, so a few thousand
+# cover every recent merge request of a tenant.
+_MERGE_REQUEST_FACT_SCAN_LIMIT = 5000
 _RESOLVED_NOTE_CHARS = 200
 _MIN_NOTE_CHARS = 40
 _ASK_LEAD = {
@@ -576,6 +733,12 @@ def _counterpart_message(request: CrossPersonRequest, requester_name: str | None
     head = f"{requester_name or 'A teammate'} {lead}: "
     room = max(OUTBOUND_DM_MAX_CHARS - len(head) - len(_REPLY_HINT), _MIN_NOTE_CHARS)
     return f"{head}{_fit_note(request.note, room)}{_REPLY_HINT}"
+
+
+def _join_labels(labels: tuple[str, ...]) -> str:
+    if len(labels) <= 2:
+        return " and ".join(labels)
+    return f"{', '.join(labels[:-1])} and {labels[-1]}"
 
 
 def _fit_note(note: str, limit: int) -> str:
