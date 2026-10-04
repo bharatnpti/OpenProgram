@@ -1,0 +1,38 @@
+backend/core/application/blocker_settlement.py
+  s_027fd12d872fd7::t_34efdf9d0987d0 48-53
+  s_027fd12d872fd7::t_de368b9685dc8b 193-195,197,199,209-210,224
+  s_027fd12d872fd7::t_c4435a42a6e5d7 20-27
+  s_027fd12d872fd7::t_f40fdbe15a7684 147
+  s_027fd12d872fd7::t_a14da62ba36578 402-414
+  s_027fd12d872fd7::t_8882060acbdfc0 68
+  s_027fd12d872fd7::t_6b2f2da1020a07 41-42,61,63-64,73-76,78-94
+  s_027fd12d872fd7::t_2034c81411afdf 175,186-188,191,196,198
+  s_027fd12d872fd7::t_6b38697c0fb2c9 77
+  s_027fd12d872fd7::t_86fd94b8b20dd5 148-154
+  s_027fd12d872fd7::t_9b7472d64aeed1 312-324,326-328,330-334,336-350,352-401,415-452
+  s_027fd12d872fd7::t_e7006e73646e70 130,136-137
+backend/core/application/cross_person_service.py
+  s_027fd12d872fd7::t_f9dd2777153fb6 326-333
+  s_027fd12d872fd7::t_4184ac5bd59267 10
+  s_027fd12d872fd7::t_21beff887a2a75 261
+  s_027fd12d872fd7::t_0961c49fe928d5 296-300,302
+  s_027fd12d872fd7::t_c027dd4e38274e 301,309-311
+backend/tests/unit/test_cleared_blocker_summary.py
+  s_027fd12d872fd7::t_6d6a0f080acb4c 1-319
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a984d09fd1e4fc6ad1354b3c5e86c24ef7b59f97",
+  "prompts": {},
+  "sessions": {
+    "s_027fd12d872fd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95022a8e-f51f-41ad-b4a7-f0d71cdaae5d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
