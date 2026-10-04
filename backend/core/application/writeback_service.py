@@ -27,6 +27,7 @@ from core.domain.writeback import (
 )
 from core.ports.issue_tracker import IssueTracker
 from core.ports.repositories import (
+    GraphRepository,
     IdentityLinkRepository,
     StatusRepository,
     TimeSeriesRepository,
@@ -116,6 +117,7 @@ class WriteBackService:
         status_repository: StatusRepository,
         identity_link_repository: IdentityLinkRepository | None = None,
         time_series_repository: TimeSeriesRepository | None = None,
+        graph_repository: GraphRepository | None = None,
         authorization_policy: AuthorizationPolicy | None = None,
         writeback_enabled_default: bool = False,
         clock: Callable[[], datetime] | None = None,
@@ -126,6 +128,7 @@ class WriteBackService:
         self._status = status_repository
         self._identity_links = identity_link_repository
         self._facts = time_series_repository
+        self._graph = graph_repository
         self._policy = authorization_policy or AuthorizationPolicy()
         self._default_enabled = writeback_enabled_default
         self._clock = clock or (lambda: datetime.now(tz=UTC))
@@ -279,6 +282,11 @@ class WriteBackService:
         row_source = "standing_consent" if consent is WriteBackConsent.AUTO_APPLY else source
         issue = await self._read_issue(tenant_id, claim.issue_key)
         if issue is None:
+            if await self._synced_copy_shows(tenant_id, claim.issue_key, target_state):
+                # The read failed (R2: a network stall), but OpenProgram's own
+                # copy already shows the claim, so there was nothing to write:
+                # a no-op, not a failure (N14). No row, as for a live no-op.
+                return None
             # Without the issue there is no owner to check, so nothing is
             # written or proposed; the row says the tracker read failed.
             return await self._record(
@@ -582,6 +590,26 @@ class WriteBackService:
             return await self._issue_tracker.get_issue(tenant_id, issue_key)
         except (ProviderUnavailable, KeyError):
             return None
+
+    async def _synced_copy_shows(self, tenant_id: str, issue_key: str, target_state: str) -> bool:
+        """Whether OpenProgram's synced copy of the issue already shows ``target_state``.
+
+        Read only when the tracker cannot be read: the issue sync's task node
+        (its ``state``, read as ``_already_in_target_state`` reads the tracker).
+        False when no graph is wired, the issue was never synced, or the copy
+        shows another state -- the claim then still records the failed read.
+        """
+        if self._graph is None:
+            return False
+        try:
+            target = WriteBackTarget(target_state)
+            node = await self._graph.get_node(tenant_id, issue_key)
+        except (ValueError, ProviderUnavailable):
+            return False
+        if node is None:
+            return False
+        state = node.metadata.get("state")
+        return isinstance(state, str) and state == _TARGET_ISSUE_STATES[target].value
 
     async def _ownership_refusal(
         self, tenant_id: str, developer_id: str, issue: Issue
