@@ -10156,6 +10156,17 @@
             },
             "type": "array",
             "title": "Open Blockers"
+          },
+          "tracker_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracker Status"
           }
         },
         "type": "object",
@@ -11210,6 +11221,17 @@
               }
             ],
             "title": "Deadline"
+          },
+          "tracker_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracker Status"
           }
         },
         "type": "object",

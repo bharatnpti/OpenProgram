@@ -9,7 +9,15 @@ from typing import Literal
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
 from core.application.rollup_service import RollupService, task_rag
 from core.domain.errors import GraphNotFound
-from core.domain.graph import EdgeKind, EntityRef, FactEvent, GraphNode, GraphTree, NodeKind
+from core.domain.graph import (
+    EdgeKind,
+    EntityRef,
+    FactEvent,
+    GraphNode,
+    GraphTree,
+    JsonScalar,
+    NodeKind,
+)
 from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import DeveloperStatus, StatusSource
 from core.ports.repositories import (
@@ -152,6 +160,8 @@ class PodTaskView:
     #: Red, or carrying an open blocker attributed to the task or its work item.
     blocked: bool
     open_blockers: tuple[PodTaskBlockerView, ...]
+    #: The issue tracker's own status name, e.g. "In Progress" (see `_tracker_status_name`).
+    tracker_status: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -170,6 +180,8 @@ class TaskProgressView:
     source: StatusSource
     confidence: float | None
     deadline: date | None
+    #: The issue tracker's own status name, e.g. "In Progress" (see `_tracker_status_name`).
+    tracker_status: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -533,6 +545,7 @@ class PersonaViewService:
                     ),
                     blocked=status.rag is Rag.RED or bool(open_blockers),
                     open_blockers=open_blockers,
+                    tracker_status=_tracker_status_name(node.metadata),
                 )
             )
         tasks.sort(key=lambda task: (not task.blocked, _TRIAGE_RANK[task.rag], task.name, task.id))
@@ -893,6 +906,7 @@ class PersonaViewService:
             source=status.source,
             confidence=status.confidence,
             deadline=_deadline(node),
+            tracker_status=_tracker_status_name(node.metadata),
         )
 
     async def _task_status(self, node: GraphNode, as_of: date) -> TaskStatusView:
@@ -1344,6 +1358,36 @@ def _deadline(node: GraphNode) -> date | None:
             except ValueError:
                 continue
     return None
+
+
+# A synced task's normalized workflow state, as a reader would name it, for a
+# tracker that gave no status name of its own.
+_TRACKER_STATE_NAMES: dict[str, str] = {
+    "todo": "To Do",
+    "in_progress": "In Progress",
+    "done": "Done",
+    "blocked": "Blocked",
+}
+
+
+def _tracker_status_name(values: Mapping[str, JsonScalar]) -> str | None:
+    """The issue tracker's own status for a task, e.g. "In Progress", or None.
+
+    A task's RAG says how the work is going, not where it is: an In Progress
+    ticket has no colour, so a manager moving one in Jira changed nothing a
+    task row showed. The issue sync copies the tracker's status name to
+    ``status`` beside its normalized ``state``; only a task carrying ``state``
+    came from a tracker. Without it, ``status`` is a RAG word a seed or a
+    person set -- already the chip's colour, not a tracker status. A synced
+    task whose tracker gave no status name shows its normalized state.
+    """
+    state = values.get("state")
+    if not isinstance(state, str) or not state.strip():
+        return None
+    status = values.get("status")
+    if isinstance(status, str) and status.strip():
+        return status.strip()
+    return _TRACKER_STATE_NAMES.get(state.strip().lower())
 
 
 def _rag_from_fact_or_metadata(fact: FactEvent | None, node: GraphNode) -> Rag:
