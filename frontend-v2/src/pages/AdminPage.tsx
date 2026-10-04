@@ -1,6 +1,6 @@
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, DatabaseZap, Link2, ShieldAlert, Settings2, UserPlus } from "lucide-react";
+import { Cable, DatabaseZap, Link2, Palette, ShieldAlert, Settings2, UserPlus } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { apiClient } from "../api/client";
@@ -11,6 +11,7 @@ import { DirectoryPanel } from "../features/admin/DirectoryPanel";
 import { EntitiesPanel } from "../features/admin/EntitiesPanel";
 import { RelationshipsPanel } from "../features/admin/RelationshipsPanel";
 import type { EntityKind } from "../features/admin/adminTypes";
+import { BrandingCard } from "../features/branding/BrandingCard";
 import { cn } from "../lib/utils";
 
 const TABS: { value: string; label: string; icon: typeof Settings2 }[] = [
@@ -19,6 +20,7 @@ const TABS: { value: string; label: string; icon: typeof Settings2 }[] = [
   { value: "directory", label: "Directory", icon: UserPlus },
   { value: "preferences", label: "Check-ins", icon: DatabaseZap },
   { value: "sources", label: "Data sources", icon: Cable },
+  { value: "branding", label: "Branding", icon: Palette },
 ];
 
 export function AdminPage() {
@@ -151,6 +153,10 @@ export function AdminPage() {
 
         <TabsPrimitive.Content value="sources">
           <DataSourcesPanel onOpenDirectory={() => setTab("directory")} />
+        </TabsPrimitive.Content>
+
+        <TabsPrimitive.Content value="branding">
+          <BrandingCard />
         </TabsPrimitive.Content>
       </TabsPrimitive.Root>
     </div>

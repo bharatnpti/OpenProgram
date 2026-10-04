@@ -66,6 +66,8 @@ import type {
   WorkstreamProgressResponse,
   WorkflowDispatchResponse,
   SyncStatusResponse,
+  BrandingResponse,
+  TenantLogoUploadRequest,
 } from "./schema";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -420,6 +422,10 @@ export const apiClient = {
       body,
     }),
   configTenantWriteback: () => requestJson<TenantWritebackResponse>("/config/tenant/writeback"),
+  branding: () => requestJson<BrandingResponse>("/config/branding"),
+  uploadBrandingLogo: (body: TenantLogoUploadRequest) =>
+    requestJson<BrandingResponse>("/config/branding/logo", { method: "PUT", body }),
+  removeBrandingLogo: () => requestJson<void>("/config/branding/logo", { method: "DELETE" }),
   configMemberIdentityLink: (memberId: string) =>
     requestJson<IdentityLinkResponse>(`/config/members/${memberId}/identity-link`),
   updateConfigMemberIdentityLink: (memberId: string, body: IdentityLinkUpdateRequest) =>

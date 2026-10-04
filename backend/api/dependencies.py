@@ -7,6 +7,7 @@ from fastapi import Header, HTTPException, Request, status
 from config.settings import Settings
 from core.application.ask_service import AskService
 from core.application.blocker_resolution import BlockerResolutionService
+from core.application.branding_service import BrandingService
 from core.application.config_service import ConfigService, DirectoryService
 from core.application.cross_person_service import CrossPersonRequestService
 from core.application.dead_letter_service import DeadLetterService
@@ -258,3 +259,8 @@ def get_persona_view_service(request: Request) -> PersonaViewService:
 def get_self_status_service(request: Request) -> SelfStatusService:
     registry = get_registry(request)
     return registry.self_status_service()
+
+
+def get_branding_service(request: Request) -> BrandingService:
+    registry = get_registry(request)
+    return BrandingService(repository=registry.tenant_logo_repository())
