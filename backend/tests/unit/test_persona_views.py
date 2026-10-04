@@ -25,7 +25,7 @@ from core.domain.graph import (
     WorkItem,
     Workstream,
 )
-from core.domain.rollup import NodeStatus, Rag, RollupFactor
+from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import DeveloperStatus, StatusSource
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 
@@ -532,6 +532,176 @@ async def test_portfolio_heatmap_uses_existing_rollups_without_graph_fallback() 
     assert view.cells[0].source_ref == view.cells[0].entity_ref
     assert view.cells[1].why == "Blocker: schema review"
     assert view.cells[1].source_ref == source_ref
+
+
+async def test_portfolio_heatmap_names_what_drives_an_amber_parent() -> None:
+    """N2: "Status is partial" was the program's whole reason beside an open blocker."""
+    store = InMemoryGraphStore()
+    as_of = date(2026, 10, 3)
+    for node in (
+        Developer(tenant_id="demo", id="U-zoe", name="Zoe Almeida"),
+        Developer(tenant_id="demo", id="U-ira", name="Ira Novak"),
+        Developer(tenant_id="demo", id="U-sam", name="Sam Lee"),
+        Developer(tenant_id="demo", id="U-kai", name="Kai Berg"),
+        Task(
+            tenant_id="demo",
+            id="CHK-8",
+            name="Payment form validation",
+            metadata={"key": "CHK-8", "status": "In Review", "state": "in_progress"},
+        ),
+    ):
+        await store.upsert_node(node)
+
+    def ref(kind: NodeKind, node_id: str) -> EntityRef:
+        return EntityRef(tenant_id="demo", kind=kind, id=node_id)
+
+    def partial(developer_id: str) -> RollupFactor:
+        return RollupFactor(
+            description="Status is partial and needs blocker or ETA confirmation.",
+            contributes=Rag.AMBER,
+            source_ref=ref(NodeKind.DEVELOPER, developer_id),
+            kind=FactorKind.STATUS,
+        )
+
+    blocker = RollupFactor(
+        description="Blocker: CHK-8 waits on a review nobody has started.",
+        contributes=Rag.AMBER,
+        source_ref=ref(NodeKind.TASK, "CHK-8"),
+        kind=FactorKind.BLOCKER,
+        blocker_id="blocker-chk-8",
+        work_item_ref=ref(NodeKind.TASK, "CHK-8"),
+    )
+    inferred = RollupFactor(
+        description="Status is inferred and needs confirmation.",
+        contributes=Rag.AMBER,
+        source_ref=ref(NodeKind.DEVELOPER, "U-kai"),
+        kind=FactorKind.STATUS,
+    )
+    stored = (
+        (ref(NodeKind.DEVELOPER, "U-zoe"), StatusSource.CONFIRMED, (blocker,)),
+        (ref(NodeKind.DEVELOPER, "U-ira"), StatusSource.PARTIAL, (partial("U-ira"),)),
+        (ref(NodeKind.DEVELOPER, "U-sam"), StatusSource.PARTIAL, (partial("U-sam"),)),
+        (ref(NodeKind.DEVELOPER, "U-kai"), StatusSource.INFERRED, (inferred,)),
+        (
+            ref(NodeKind.POD, "pod-payments"),
+            StatusSource.PARTIAL,
+            (partial("U-ira"), blocker),
+        ),
+        (
+            ref(NodeKind.PROGRAM, "program-platform"),
+            StatusSource.PARTIAL,
+            # The first factor is a partial update, as in the run.
+            (partial("U-ira"), blocker, partial("U-sam"), inferred),
+        ),
+    )
+    for entity_ref, source, factors in stored:
+        await store.record_node_status(
+            NodeStatus(
+                entity_ref=entity_ref,
+                rag=Rag.AMBER,
+                source=source,
+                factors=factors,
+                as_of=as_of,
+            )
+        )
+    service = PersonaViewService(
+        graph_repository=store,
+        status_repository=store,
+        rollup_repository=store,
+        time_series_repository=store,
+    )
+
+    view = await service.portfolio_heatmap("demo", as_of, "program-platform")
+
+    why = {cell.column: cell.why for cell in view.cells}
+    assert why["program-platform"] == (
+        "1 open blocker (CHK-8, Zoe Almeida); 2 partial updates; 1 inferred status."
+    )
+    assert why["pod-payments"] == "1 open blocker (CHK-8, Zoe Almeida); 1 partial update."
+    # A person with one reason keeps it: that reason is the whole story.
+    assert why["U-ira"] == "Status is partial and needs blocker or ETA confirmation."
+    assert why["U-zoe"] == "Blocker: CHK-8 waits on a review nobody has started."
+    # The cell still points at its first factor's source.
+    program_cell = next(cell for cell in view.cells if cell.column == "program-platform")
+    assert program_cell.source_ref == ref(NodeKind.DEVELOPER, "U-ira")
+    # Names and issue keys only, never a node id.
+    assert not any(
+        node_id in why["program-platform"] for node_id in ("U-zoe", "U-ira", "U-sam", "U-kai")
+    )
+
+
+async def test_portfolio_heatmap_sums_up_a_red_parent_from_the_computed_rollup() -> None:
+    store = InMemoryGraphStore()
+    as_of = date(2026, 10, 3)
+    program = Program(tenant_id="demo", id="program-alpha", name="Alpha")
+    project = Project(tenant_id="demo", id="project-alpha", name="Checkout")
+    pod = Pod(tenant_id="demo", id="pod-alpha", name="Payments")
+    workstream = Workstream(tenant_id="demo", id="ws-refunds", name="Refunds")
+    zoe = Developer(tenant_id="demo", id="U-zoe", name="Zoe Almeida")
+    omar = Developer(tenant_id="demo", id="U-omar", name="Omar Haddad")
+    ira = Developer(tenant_id="demo", id="U-ira", name="Ira Novak")
+    task = Task(
+        tenant_id="demo",
+        id="CHK-5",
+        name="Refund API",
+        metadata={"key": "CHK-5", "status": "On Hold", "state": "blocked"},
+    )
+    for node in (program, project, pod, workstream, zoe, omar, ira, task):
+        await store.upsert_node(node)
+    for parent, child in (
+        (program, project),
+        (project, pod),
+        (project, workstream),
+        (pod, zoe),
+        (pod, omar),
+        (pod, ira),
+        (workstream, task),
+    ):
+        await store.add_edge(
+            GraphEdge(
+                tenant_id="demo",
+                from_node_id=parent.id,
+                to_node_id=child.id,
+                kind=EdgeKind.CONTAINS,
+            )
+        )
+    for developer, source, blockers in (
+        (zoe, StatusSource.CONFIRMED, ("waiting on a review", "waiting on the client upgrade")),
+        (omar, StatusSource.CONFIRMED, ("waiting on vendor access",)),
+        (ira, StatusSource.PARTIAL, ()),
+    ):
+        await store.record_developer_status(
+            DeveloperStatus(
+                tenant_id="demo",
+                developer_id=developer.id,
+                as_of=as_of,
+                source=source,
+                blockers=blockers,
+                summary="Working on checkout.",
+            )
+        )
+    service = PersonaViewService(
+        graph_repository=store,
+        status_repository=store,
+        rollup_repository=store,
+        time_series_repository=store,
+    )
+
+    view = await service.portfolio_heatmap("demo", as_of, "program-alpha")
+
+    cells = {cell.column: cell for cell in view.cells}
+    assert cells["program-alpha"].rag is Rag.RED
+    assert cells["program-alpha"].why == (
+        "3 open blockers (Zoe Almeida; Omar Haddad); 1 blocked task (CHK-5); 1 partial update."
+    )
+    assert cells["ws-refunds"].why == "1 blocked task (CHK-5)."
+    # Red from two blockers that are amber alone: the count says why. Her own
+    # cell does not name her.
+    assert cells["U-zoe"].rag is Rag.RED
+    assert cells["U-zoe"].why == "2 open blockers."
+    assert cells["U-omar"].why == "Blocker: waiting on vendor access"
+    # Green and unknown cells keep their own reason.
+    assert cells["U-ira"].why == "Status is partial and needs blocker or ETA confirmation."
 
 
 async def test_node_trend_returns_daily_rag_history_in_window() -> None:
