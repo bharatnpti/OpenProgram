@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import AsyncIterator, Callable, Iterable, Sequence
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from math import sqrt
@@ -78,6 +79,8 @@ class InMemoryGraphStore:
     _narrative_briefs: list[NarrativeBrief] = field(default_factory=list)
     _dead_letters: dict[tuple[str, str], DeadLetter] = field(default_factory=dict)
     _checkin_reply_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # One rollup of a tenant's day at a time, as the Postgres advisory lock.
+    _rollup_day_locks: dict[tuple[str, date], asyncio.Lock] = field(default_factory=dict)
     # Stamps a blocker row's updated_at on each write, as the Postgres upsert's now().
     blocker_clock: Callable[[], datetime] = field(default_factory=lambda: _utc_now)
 
@@ -991,6 +994,12 @@ class InMemoryGraphStore:
             retained.append(checkin)
         self._checkins = retained
         return cleared
+
+    @asynccontextmanager
+    async def exclusive_day(self, tenant_id: str, as_of: date) -> AsyncIterator[None]:
+        lock = self._rollup_day_locks.setdefault((tenant_id, as_of), asyncio.Lock())
+        async with lock:
+            yield
 
     async def record_node_status(self, status: NodeStatus) -> None:
         self._node_statuses[

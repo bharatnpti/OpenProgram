@@ -15,12 +15,29 @@ if TYPE_CHECKING:
 
 _WEEKDAYS = frozenset({0, 1, 2, 3, 4})
 
+# A refresh of today's rollup (N27) runs this long after the last request for
+# it: the six per-repository syncs of one run end within a few seconds of each
+# other, so their merge passes ask once between them.
+ROLLUP_REFRESH_DEBOUNCE_SECONDS = 20
+# However often it is asked again, a refresh waits no longer than this.
+ROLLUP_REFRESH_MAX_WAIT_SECONDS = 120
+
 
 @dataclass(frozen=True, kw_only=True)
 class RollupInput:
     tenant_id: str
     as_of: str | None = None
     backfill_days: int | None = None
+
+
+def rollup_refresh_input(tenant_id: str, as_of: date) -> RollupInput:
+    """The rollup a refresh runs: that one day, no backfill."""
+    return RollupInput(tenant_id=tenant_id, as_of=as_of.isoformat(), backfill_days=0)
+
+
+def rollup_refresh_key(tenant_id: str, as_of: date) -> str:
+    """What the requests that coalesce into one refresh share: the tenant and the day."""
+    return f"rollup-refresh-{tenant_id}-{as_of.isoformat()}"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -39,6 +56,10 @@ async def run_rollup_activity(payload: RollupInput) -> RollupWorkflowResult:
     nobody looked at simply had no rollup -- and let any caller write a row for
     whatever ``as_of`` it asked about. Owning the write here lets those reads be
     reads.
+
+    Runs hourly, and as a refresh of today (``backfill_days=0``) shortly after
+    a change made outside a check-in (``RollupRefresher``). Idempotent: the
+    rows are upserted from what is stored when the day is read.
     """
     registry = _service_registry()
     try:
@@ -59,11 +80,15 @@ async def run_rollup_activity(payload: RollupInput) -> RollupWorkflowResult:
         nodes_recorded = 0
         for program in await graph.list_nodes(payload.tenant_id, NodeKind.PROGRAM):
             for day in await _days_to_record(rollups, program, today, backfill_days):
-                try:
-                    tree = await graph.get_program_tree(payload.tenant_id, program.id, day)
-                except GraphNotFound:
-                    continue
-                statuses = await service.compute_and_record(tree, day)
+                # The hourly rollup and a refresh after a resolution (N27) can
+                # run at once: each reads and records the day alone, so the
+                # rows left are those of the later read.
+                async with rollups.exclusive_day(payload.tenant_id, day):
+                    try:
+                        tree = await graph.get_program_tree(payload.tenant_id, program.id, day)
+                    except GraphNotFound:
+                        continue
+                    statuses = await service.compute_and_record(tree, day)
                 days_recorded += 1
                 nodes_recorded += len(statuses)
         return RollupWorkflowResult(

@@ -20,13 +20,21 @@ latest status, so the rollup's flat-status fallback cannot bring them back.
 Each row resolves once (N24): the six per-repository syncs each run the merge
 pass, so the row is resolved by one conditional update, in one transaction
 with the status revision, and only the pass that changed it revises the status.
+
+A resolution here changes what today's rollup shows, outside any check-in, so
+the pass that changed a row asks for today's rollup to be recorded again (N27:
+in R4 the 06:15 rollup ran 3 s before the merge pass resolved Zoe's CHK-11
+wait, and Storefront, Checkout and the program read amber on it until 07:15).
+The requests of one burst of passes run as one rollup.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+
+import structlog
 
 from core.application.merge_request_links import MergeRequestIndex, is_merged_merge_request
 from core.domain.blockers import (
@@ -42,6 +50,7 @@ from core.domain.cross_person import (
 )
 from core.domain.status import DeveloperStatus
 from core.ports.repositories import StatusRepository
+from core.ports.workflows import RollupRefresher
 
 __all__ = ["BlockerSettlement", "blocker_subject", "request_match_score"]
 
@@ -52,10 +61,26 @@ _NAMED_AND_SHARED = 3
 _SHARED = 2
 _NAMED = 1
 
+_logger = structlog.get_logger(__name__)
+
+
+def _utc_now() -> datetime:
+    return datetime.now(tz=UTC)
+
 
 class BlockerSettlement:
-    def __init__(self, status_repository: StatusRepository) -> None:
+    def __init__(
+        self,
+        status_repository: StatusRepository,
+        *,
+        rollup_refresher: RollupRefresher | None = None,
+        clock: Callable[[], datetime] = _utc_now,
+    ) -> None:
         self._status_repository = status_repository
+        # Records today's rollup again after a pass changed a blocker; None
+        # leaves the change to the next hourly rollup.
+        self._rollup_refresher = rollup_refresher
+        self._clock = clock
 
     async def settle_for_request(
         self,
@@ -132,13 +157,34 @@ class BlockerSettlement:
         # One conditional update per row (N24): the six per-repository syncs
         # each run a merge pass, and of two passes over the same blocker only
         # the one that changed it gets it back and revises the status.
-        return await self._status_repository.resolve_developer_blockers(
+        changed = await self._status_repository.resolve_developer_blockers(
             tenant_id,
             developer_id,
             rows,
             status_as_of=day,
             revise_status=_without_resolved,
         )
+        if changed:
+            await self._refresh_rollup(tenant_id)
+        return changed
+
+    async def _refresh_rollup(self, tenant_id: str) -> None:
+        """Ask for today's rollup again: the blockers it counted have changed (N27).
+
+        Only the pass that changed a row asks, and the requests of one burst
+        run once. Never fails the resolution, which is stored already: the
+        hourly rollup records it otherwise.
+        """
+        if self._rollup_refresher is None:
+            return
+        try:
+            await self._rollup_refresher.refresh_rollup(tenant_id, self._clock().date())
+        except Exception as error:
+            _logger.warning(
+                "rollup_refresh_request_failed",
+                tenant_id=tenant_id,
+                error=type(error).__name__,
+            )
 
 
 def blocker_subject(blocker: DeveloperBlocker) -> RequestSubject:
