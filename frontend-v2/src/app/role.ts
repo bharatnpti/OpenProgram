@@ -51,6 +51,14 @@ export type RoleContextValue = {
    * admin. Not the executive: check-ins and blockers are per-person.
    */
   canReadPodDetail: boolean;
+  /** Mirrors `SET_PROJECT_DATES`: product owner, manager, admin. */
+  canSetProjectDates: boolean;
+  /** Mirrors `SET_POD_DATES`: scrum master (own pods only), manager, admin. */
+  canSetPodDates: boolean;
+  /** Mirrors `EDIT_GATES`: everyone but the executive. Sign-off is per gate kind. */
+  canEditGates: boolean;
+  /** The roles the current lens acts with, for per-kind sign-off. */
+  lensRoles: AppRole[];
   canAccessAdmin: boolean;
   canAccessRole: (role: AppRole) => boolean;
   defaultRoute: string;

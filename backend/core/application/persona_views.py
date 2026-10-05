@@ -1110,6 +1110,29 @@ def _sorted_nodes(nodes: tuple[GraphNode, ...]) -> tuple[GraphNode, ...]:
     return tuple(sorted(nodes, key=lambda node: (node.kind.value, node.name, node.id)))
 
 
+async def owned_project_tasks(
+    graph_repository: GraphRepository, tenant_id: str, project_ids: Sequence[str], as_of: date
+) -> dict[str, tuple[GraphNode, ...]]:
+    """The tasks each project owns on ``as_of``, by the same rule its progress uses.
+
+    Read for many projects at once, so the tenant's nodes and ``contains``
+    edges are listed once. A project id that is not a project is left out.
+    """
+    nodes = {node.id: node for node in await graph_repository.list_nodes(tenant_id)}
+    parents: dict[str, list[str]] = {}
+    for edge in await graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS):
+        if edge.is_active_on(as_of):
+            parents.setdefault(edge.to_node_id, []).append(edge.from_node_id)
+    owned: dict[str, tuple[GraphNode, ...]] = {}
+    for project_id in project_ids:
+        project = nodes.get(project_id)
+        if project is None or project.kind is not NodeKind.PROJECT:
+            continue
+        tree = await graph_repository.get_program_tree(tenant_id, project_id, as_of)
+        owned[project_id] = _owned_tasks(tree, nodes, parents)
+    return owned
+
+
 def _owned_tasks(
     tree: GraphTree,
     nodes: Mapping[str, GraphNode],

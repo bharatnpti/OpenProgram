@@ -44,6 +44,7 @@ from infra.workflows import (
     conversation_purge,
     cross_person_notify_retry,
     daily_checkin,
+    delivery_reports,
     directory_sync,
     drift_scan,
     git_sync,
@@ -57,6 +58,14 @@ from infra.workflows import (
 from infra.workflows.brief_generation import BriefGenerationInput, BriefGenerationResult
 from infra.workflows.calendar_sync import CalendarSyncInput, CalendarSyncWorkflowResult
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
+from infra.workflows.delivery_reports import (
+    DayReportDispatchInput,
+    DayReportDispatchResult,
+    DeliverySnapshotInput,
+    DeliverySnapshotResult,
+    GateScanInput,
+    GateScanResult,
+)
 from infra.workflows.dispatch import (
     daily_checkin_input,
     safe_workflow_id,
@@ -88,6 +97,9 @@ SyncWorkflowResult = (
     | RollupWorkflowResult
     | DriftScanWorkflowResult
     | BriefGenerationResult
+    | DeliverySnapshotResult
+    | DayReportDispatchResult
+    | GateScanResult
 )
 
 if TYPE_CHECKING:
@@ -349,6 +361,58 @@ class BriefGenerationWorkflow:
         )
 
 
+@activity.defn
+async def run_delivery_snapshot_activity(
+    payload: DeliverySnapshotInput,
+) -> DeliverySnapshotResult:
+    return await delivery_reports.run_delivery_snapshot_activity(payload)
+
+
+@workflow.defn
+class DeliverySnapshotWorkflow:
+    @workflow.run
+    async def run(self, payload: DeliverySnapshotInput) -> DeliverySnapshotResult:
+        return await workflow.execute_activity(
+            run_delivery_snapshot_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=10),
+        )
+
+
+@activity.defn
+async def run_day_report_dispatch_activity(
+    payload: DayReportDispatchInput,
+) -> DayReportDispatchResult:
+    return await delivery_reports.run_day_report_dispatch_activity(payload)
+
+
+@workflow.defn
+class DayReportDispatchWorkflow:
+    @workflow.run
+    async def run(self, payload: DayReportDispatchInput) -> DayReportDispatchResult:
+        return await workflow.execute_activity(
+            run_day_report_dispatch_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=10),
+        )
+
+
+@activity.defn
+async def run_gate_scan_activity(payload: GateScanInput) -> GateScanResult:
+    return await delivery_reports.run_gate_scan_activity(payload)
+
+
+@workflow.defn
+class GateScanWorkflow:
+    @workflow.run
+    async def run(self, payload: GateScanInput) -> GateScanResult:
+        return await workflow.execute_activity(
+            run_gate_scan_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=20),
+        )
+
+
 @workflow.defn
 class ScheduledSyncWorkflow:
     @workflow.run
@@ -554,7 +618,10 @@ async def _execute_sync_activity(
     | RiskAssessmentInput
     | DriftScanInput
     | BriefGenerationInput
-    | RollupInput,
+    | RollupInput
+    | DeliverySnapshotInput
+    | DayReportDispatchInput
+    | GateScanInput,
 ) -> SyncWorkflowResult:
     if isinstance(payload, JiraSyncInput):
         return await workflow.execute_activity(
@@ -586,6 +653,11 @@ async def _execute_sync_activity(
             payload,
             start_to_close_timeout=timedelta(minutes=5),
         )
+    return await _execute_derived_activity(payload)
+
+
+async def _execute_derived_activity(payload: object) -> SyncWorkflowResult:
+    """The activities that derive from stored state rather than read a provider."""
     if isinstance(payload, RollupInput):
         return await workflow.execute_activity(
             run_rollup_activity,
@@ -609,6 +681,24 @@ async def _execute_sync_activity(
             run_brief_generation_activity,
             payload,
             start_to_close_timeout=timedelta(minutes=10),
+        )
+    if isinstance(payload, DeliverySnapshotInput):
+        return await workflow.execute_activity(
+            run_delivery_snapshot_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=10),
+        )
+    if isinstance(payload, DayReportDispatchInput):
+        return await workflow.execute_activity(
+            run_day_report_dispatch_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=10),
+        )
+    if isinstance(payload, GateScanInput):
+        return await workflow.execute_activity(
+            run_gate_scan_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=20),
         )
     raise ValueError("unsupported sync payload")
 
@@ -895,7 +985,14 @@ class TemporalWorkflowScheduler:
                 id=workflow_id,
                 task_queue=self.task_queue,
             )
-        elif isinstance(workflow_input, RollupInput):
+        else:
+            await self._start_derived_workflow(client, workflow_input, workflow_id, input.connector)
+        return workflow_id
+
+    async def _start_derived_workflow(
+        self, client: Client, workflow_input: object, workflow_id: str, connector: str
+    ) -> None:
+        if isinstance(workflow_input, RollupInput):
             await client.start_workflow(
                 RollupWorkflow.run,
                 workflow_input,
@@ -923,9 +1020,29 @@ class TemporalWorkflowScheduler:
                 id=workflow_id,
                 task_queue=self.task_queue,
             )
+        elif isinstance(workflow_input, DeliverySnapshotInput):
+            await client.start_workflow(
+                DeliverySnapshotWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
+        elif isinstance(workflow_input, DayReportDispatchInput):
+            await client.start_workflow(
+                DayReportDispatchWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
+        elif isinstance(workflow_input, GateScanInput):
+            await client.start_workflow(
+                GateScanWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
         else:
-            raise ValueError(f"unsupported sync connector: {input.connector}")
-        return workflow_id
+            raise ValueError(f"unsupported sync connector: {connector}")
 
 
 @dataclass(frozen=True)
@@ -989,6 +1106,9 @@ class TemporalWorkflowWorker:
                 RollupWorkflow,
                 DriftScanWorkflow,
                 BriefGenerationWorkflow,
+                DeliverySnapshotWorkflow,
+                DayReportDispatchWorkflow,
+                GateScanWorkflow,
                 ScheduledSyncWorkflow,
                 DailyCheckinWorkflow,
                 NudgeWorkflow,
@@ -1010,6 +1130,9 @@ class TemporalWorkflowWorker:
                 run_rollup_activity,
                 run_drift_scan_activity,
                 run_brief_generation_activity,
+                run_delivery_snapshot_activity,
+                run_day_report_dispatch_activity,
+                run_gate_scan_activity,
                 start_daily_checkin_activity,
                 send_checkin_nudge_activity,
                 send_escalation_step_activity,

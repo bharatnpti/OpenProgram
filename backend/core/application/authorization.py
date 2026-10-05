@@ -20,6 +20,13 @@ class Capability(StrEnum):
     WRITE_ISSUE_TRACKER = "write_issue_tracker"
     DISPATCH_WORKFLOWS = "dispatch_workflows"
     MANAGE_CONFIG = "manage_config"
+    #: Commit a project's or a release's delivery date, and define releases.
+    SET_PROJECT_DATES = "set_project_dates"
+    #: Commit a pod's part of a project; a scrum master only for their own pods.
+    SET_POD_DATES = "set_pod_dates"
+    #: Confirm, add and track gate items and questions. Signing an item off is
+    #: further limited to the roles its gate names for the item's kind.
+    EDIT_GATES = "edit_gates"
 
 
 class SensitiveField(StrEnum):
@@ -42,12 +49,16 @@ class AuthorizationPolicy:
                     # enforced by WriteBackService (claims come from the developer's
                     # own finalized check-in). Admin is short-circuited above.
                     Capability.WRITE_ISSUE_TRACKER,
+                    Capability.EDIT_GATES,
                 }
             ),
             Role.PO: frozenset(
                 {
                     Capability.READ_TEAM_AGGREGATE,
                     Capability.READ_PROJECT_PROGRESS,
+                    # The product owner owns the date the project promises.
+                    Capability.SET_PROJECT_DATES,
+                    Capability.EDIT_GATES,
                 }
             ),
             Role.SM: frozenset(
@@ -55,6 +66,9 @@ class AuthorizationPolicy:
                     Capability.READ_TEAM_AGGREGATE,
                     Capability.READ_POD_BLOCKERS,
                     Capability.READ_POD_CHECKINS,
+                    # The scrum master owns the date of the pod's part.
+                    Capability.SET_POD_DATES,
+                    Capability.EDIT_GATES,
                 }
             ),
             Role.MGR: frozenset(
@@ -69,6 +83,9 @@ class AuthorizationPolicy:
                     # to open the pod they are escalated about.
                     Capability.READ_POD_BLOCKERS,
                     Capability.READ_POD_CHECKINS,
+                    Capability.SET_PROJECT_DATES,
+                    Capability.SET_POD_DATES,
+                    Capability.EDIT_GATES,
                 }
             ),
             Role.EXEC: frozenset(

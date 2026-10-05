@@ -70,6 +70,14 @@ _WRITERS: dict[Capability, frozenset[Role]] = {
     Capability.WRITE_CONNECTOR_SECRET: frozenset({Role.ADMIN}),
     Capability.DISPATCH_WORKFLOWS: frozenset({Role.ADMIN}),
     Capability.MANAGE_CONFIG: frozenset({Role.ADMIN}),
+    # Delivery dates: the project's owners commit the project and its
+    # releases; the scrum master commits the pod's part (their own pods only,
+    # enforced where the date is set).
+    Capability.SET_PROJECT_DATES: frozenset({Role.PO, Role.MGR, Role.ADMIN}),
+    Capability.SET_POD_DATES: frozenset({Role.SM, Role.MGR, Role.ADMIN}),
+    # Everyone who works the requirements confirms and tracks gate items; the
+    # executive only reads them. Sign-off is limited per kind by the gate.
+    Capability.EDIT_GATES: frozenset({Role.DEV, Role.SM, Role.PO, Role.MGR, Role.ADMIN}),
 }
 
 

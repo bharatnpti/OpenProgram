@@ -1,14 +1,32 @@
 import * as TabsPrimitive from "@radix-ui/react-tabs";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cable, DatabaseZap, Link2, Palette, ShieldAlert, Settings2, UserPlus } from "lucide-react";
+import {
+  Cable,
+  DatabaseZap,
+  Layers,
+  Link2,
+  ListChecks,
+  Mail,
+  Palette,
+  PlugZap,
+  ShieldAlert,
+  Settings2,
+  TrendingUp,
+  UserPlus,
+} from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { apiClient } from "../api/client";
 import type { ConfigNodeResponse, UnmappedMemberResponse } from "../api/schema";
 import { CheckinPreferencesPanel } from "../features/admin/CheckinPreferencesPanel";
 import { DataSourcesPanel } from "../features/admin/DataSourcesPanel";
+import { DayReportsPanel } from "../features/admin/DayReportsPanel";
+import { DeliveryStagesPanel } from "../features/admin/DeliveryStagesPanel";
 import { DirectoryPanel } from "../features/admin/DirectoryPanel";
 import { EntitiesPanel } from "../features/admin/EntitiesPanel";
+import { EscalationPanel } from "../features/admin/EscalationPanel";
+import { GatesPanel } from "../features/admin/GatesPanel";
+import { IntegrationsPanel } from "../features/admin/IntegrationsPanel";
 import { RelationshipsPanel } from "../features/admin/RelationshipsPanel";
 import type { EntityKind } from "../features/admin/adminTypes";
 import { BrandingCard } from "../features/branding/BrandingCard";
@@ -19,7 +37,12 @@ const TABS: { value: string; label: string; icon: typeof Settings2 }[] = [
   { value: "relationships", label: "Links", icon: Link2 },
   { value: "directory", label: "Directory", icon: UserPlus },
   { value: "preferences", label: "Check-ins", icon: DatabaseZap },
+  { value: "integrations", label: "Integrations", icon: PlugZap },
   { value: "sources", label: "Data sources", icon: Cable },
+  { value: "stages", label: "Delivery stages", icon: Layers },
+  { value: "gates", label: "Gates", icon: ListChecks },
+  { value: "reports", label: "Day reports", icon: Mail },
+  { value: "escalation", label: "Escalation", icon: TrendingUp },
   { value: "branding", label: "Branding", icon: Palette },
 ];
 
@@ -72,8 +95,8 @@ export function AdminPage() {
       <div>
         <h1 className="text-[28px] font-extrabold">Configuration</h1>
         <p className="mt-1 max-w-[640px] text-[15px] text-grey-secondary">
-          Manage hierarchy, directory onboarding, graph links, assignments, check-in timing, and
-          data source sync.
+          Manage hierarchy, directory onboarding, graph links, assignments, check-in timing, the
+          systems OpenProgram connects to, delivery stages, gates, day reports and escalation.
         </p>
       </div>
 
@@ -151,8 +174,28 @@ export function AdminPage() {
           />
         </TabsPrimitive.Content>
 
+        <TabsPrimitive.Content value="integrations">
+          <IntegrationsPanel />
+        </TabsPrimitive.Content>
+
         <TabsPrimitive.Content value="sources">
           <DataSourcesPanel onOpenDirectory={() => setTab("directory")} />
+        </TabsPrimitive.Content>
+
+        <TabsPrimitive.Content value="stages">
+          <DeliveryStagesPanel />
+        </TabsPrimitive.Content>
+
+        <TabsPrimitive.Content value="gates">
+          <GatesPanel />
+        </TabsPrimitive.Content>
+
+        <TabsPrimitive.Content value="reports">
+          <DayReportsPanel projects={projects.data ?? []} members={members.data ?? []} />
+        </TabsPrimitive.Content>
+
+        <TabsPrimitive.Content value="escalation">
+          <EscalationPanel projects={projects.data ?? []} members={members.data ?? []} />
         </TabsPrimitive.Content>
 
         <TabsPrimitive.Content value="branding">

@@ -74,6 +74,17 @@ async def ensure_workflow_schedules(
     else:
         for brief in narrative_brief_schedule_configs(settings):
             results.append(await scheduler.remove_schedule(brief.schedule_id))
+    # Snapshots always run: the requirements view reads them. Reports follow
+    # their switch, and a report's own time decides when it goes out.
+    sync_configs = (*sync_configs, delivery_snapshot_schedule_config(settings))
+    if settings.day_report_enabled:
+        sync_configs = (*sync_configs, day_report_schedule_config(settings))
+    else:
+        results.append(await scheduler.remove_schedule(settings.day_report_dispatch_schedule_id))
+    if settings.gate_scan_enabled:
+        sync_configs = (*sync_configs, gate_scan_schedule_config(settings))
+    else:
+        results.append(await scheduler.remove_schedule(settings.gate_scan_schedule_id))
     results.extend(await scheduler.ensure_sync_schedules(sync_configs))
     return results
 
@@ -201,6 +212,39 @@ def narrative_brief_schedule_configs(settings: Settings) -> tuple[SyncScheduleCo
             payload={"kind": "exec"},
             cron=settings.narrative_brief_exec_cron,
         ),
+    )
+
+
+def delivery_snapshot_schedule_config(settings: Settings) -> SyncScheduleConfig:
+    return SyncScheduleConfig(
+        schedule_id=settings.delivery_snapshot_schedule_id,
+        tenant_id=settings.tenant_id,
+        connector="delivery_snapshot",
+        scope="requirements",
+        payload={},
+        cron=settings.delivery_snapshot_cron,
+    )
+
+
+def day_report_schedule_config(settings: Settings) -> SyncScheduleConfig:
+    return SyncScheduleConfig(
+        schedule_id=settings.day_report_dispatch_schedule_id,
+        tenant_id=settings.tenant_id,
+        connector="day_report",
+        scope="dispatch",
+        payload={},
+        cron=settings.day_report_dispatch_cron,
+    )
+
+
+def gate_scan_schedule_config(settings: Settings) -> SyncScheduleConfig:
+    return SyncScheduleConfig(
+        schedule_id=settings.gate_scan_schedule_id,
+        tenant_id=settings.tenant_id,
+        connector="gate_scan",
+        scope="issues",
+        payload={},
+        cron=settings.gate_scan_cron,
     )
 
 

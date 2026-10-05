@@ -547,6 +547,9 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
         ("brief", "daily_pod"),
         ("brief", "weekly_project"),
         ("brief", "exec"),
+        ("delivery_snapshot", "requirements"),
+        ("day_report", "dispatch"),
+        ("gate_scan", "issues"),
     ]
     assert [result.schedule_id for result in results] == [
         "heartbeat-test",
@@ -616,6 +619,25 @@ async def test_ensure_workflow_schedules_removes_narrative_briefs_when_disabled(
     assert brief_ids
     assert registry.scheduler.removed == brief_ids
     assert not {c.schedule_id for c in registry.scheduler.sync_configs} & set(brief_ids)
+
+
+async def test_ensure_workflow_schedules_removes_day_reports_when_disabled() -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        heartbeat_schedule_id="heartbeat-test",
+        day_report_enabled=False,
+    )
+    registry = _ScheduleBootstrapRegistry(settings)
+
+    await schedule.ensure_workflow_schedules(registry)
+
+    assert registry.scheduler.removed == [settings.day_report_dispatch_schedule_id]
+    scheduled = {c.connector for c in registry.scheduler.sync_configs}
+    # Requirement snapshots keep running: the requirements view reads them.
+    assert "delivery_snapshot" in scheduled
+    assert "day_report" not in scheduled
 
 
 @pytest.mark.parametrize(
@@ -1044,7 +1066,10 @@ def test_dbos_resolve_runtime_sync_does_not_dispatch() -> None:
 
 
 def test_dbos_dispatch_sync_starts_a_workflow_for_every_connector() -> None:
-    started = dbos_workflows._start_sync_child_workflow.__code__.co_names
+    started = (
+        *dbos_workflows._start_sync_child_workflow.__code__.co_names,
+        *dbos_workflows._start_derived_workflow.__code__.co_names,
+    )
 
     for workflow_name in (
         "dbos_jira_sync_workflow",
@@ -1055,8 +1080,24 @@ def test_dbos_dispatch_sync_starts_a_workflow_for_every_connector() -> None:
         "dbos_risk_assessment_workflow",
         "dbos_drift_scan_workflow",
         "dbos_brief_generation_workflow",
+        "dbos_delivery_snapshot_workflow",
+        "dbos_day_report_dispatch_workflow",
+        "dbos_gate_scan_workflow",
     ):
         assert workflow_name in started, workflow_name
+
+
+def test_temporal_delivery_workflows_are_registered() -> None:
+    worker_source = temporal_workflows.TemporalWorkflowWorker.run.__code__.co_names
+    derived_source = (
+        temporal_workflows.TemporalWorkflowScheduler._start_derived_workflow.__code__.co_names
+    )
+
+    for name in ("DeliverySnapshotWorkflow", "DayReportDispatchWorkflow", "GateScanWorkflow"):
+        assert name in worker_source
+        assert name in derived_source
+    assert "run_delivery_snapshot_activity" in worker_source
+    assert "run_day_report_dispatch_activity" in worker_source
 
 
 def test_temporal_runtime_sync_workflow_is_registered() -> None:

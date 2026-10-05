@@ -19,7 +19,7 @@ without that a broken source would read as "never synced".
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 
 from core.application.directory_sync_service import (
@@ -77,11 +77,15 @@ class SyncStatusService:
         cursor_repository: SyncCursorRepository,
         time_series_repository: TimeSeriesRepository,
         config: SyncStatusConfig,
+        provider_overrides: Callable[[str], Awaitable[Mapping[SyncSource, str]]] | None = None,
     ) -> None:
         self._graph_repository = graph_repository
         self._cursor_repository = cursor_repository
         self._time_series_repository = time_series_repository
         self._config = config
+        # The provider a tenant's own connection switched on, per source; it
+        # wins over the server's choice in ``config``.
+        self._provider_overrides = provider_overrides
 
     async def status(self, tenant_id: str, *, now: datetime | None = None) -> SyncStatusReport:
         generated_at = _aware(now or datetime.now(tz=UTC))
@@ -89,6 +93,10 @@ class SyncStatusService:
         runtime_targets, config_error = await self._runtime_targets(tenant_id)
         names = await self._node_names(tenant_id)
         config = self._config
+        overrides = await self._provider_overrides(tenant_id) if self._provider_overrides else {}
+        issue_provider = overrides.get(SyncSource.ISSUE_TRACKER, config.issue_tracker_provider)
+        vcs_provider = overrides.get(SyncSource.VCS, config.vcs_provider)
+        calendar_provider = overrides.get(SyncSource.CALENDAR, config.calendar_provider)
 
         issue_targets, issue_origin = _effective_targets(
             runtime_targets.issue_dispatches if runtime_targets else (),
@@ -105,8 +113,8 @@ class SyncStatusService:
             sources=(
                 _source_status(
                     SyncSource.ISSUE_TRACKER,
-                    provider=config.issue_tracker_provider,
-                    simulated=config.issue_tracker_provider in config.simulated_providers,
+                    provider=issue_provider,
+                    simulated=issue_provider in config.simulated_providers,
                     schedule=config.issue_sync_cron,
                     origin=issue_origin,
                     targets=_dispatch_targets(
@@ -123,8 +131,8 @@ class SyncStatusService:
                 ),
                 _source_status(
                     SyncSource.VCS,
-                    provider=config.vcs_provider,
-                    simulated=config.vcs_provider in config.simulated_providers,
+                    provider=vcs_provider,
+                    simulated=vcs_provider in config.simulated_providers,
                     schedule=config.vcs_sync_cron,
                     origin=vcs_origin,
                     targets=_dispatch_targets(
@@ -140,8 +148,8 @@ class SyncStatusService:
                     provider_error=config.provider_start_errors.get(SyncSource.VCS),
                 ),
                 _calendar_status(
-                    config.calendar_provider,
-                    simulated=config.calendar_provider in config.simulated_providers,
+                    calendar_provider,
+                    simulated=calendar_provider in config.simulated_providers,
                 ),
                 _source_status(
                     SyncSource.DIRECTORY,

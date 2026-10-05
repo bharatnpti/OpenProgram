@@ -19,10 +19,16 @@ from api.routers import (
     branding,
     checkin,
     config,
+    delivery,
+    escalation,
+    forecast,
+    gates,
     graph,
     health,
+    integrations,
     ops,
     persona,
+    reports,
     test_support,
     webhooks,
 )
@@ -134,6 +140,13 @@ def create_app(
     app.include_router(ops.router)
     app.include_router(config.router)
     app.include_router(branding.router)
+    app.include_router(integrations.router)
+    app.include_router(delivery.router)
+    app.include_router(forecast.router)
+    app.include_router(gates.router)
+    app.include_router(reports.router)
+    app.include_router(reports.project_router)
+    app.include_router(escalation.router)
     app.include_router(ask.router)
     app.include_router(checkin.router)
     app.include_router(persona.router)
