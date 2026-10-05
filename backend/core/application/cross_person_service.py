@@ -667,7 +667,7 @@ class CrossPersonRequestService:
             tenant_id,
             request_id,
             status,
-            datetime.now(tz=UTC),
+            self.clock(),
         )
         if updated is None:
             # Missing, or a concurrent call made this change first and has
