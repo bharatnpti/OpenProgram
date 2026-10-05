@@ -6,10 +6,9 @@ import { useBranding } from "../../features/branding/useBranding";
 import { cn } from "../../lib/utils";
 import { AvatarMenu } from "./AvatarMenu";
 import { HeaderLogo } from "./HeaderLogo";
+import { NavMenu, type NavItem } from "./NavMenu";
 import { PersonPicker } from "./PersonPicker";
 import { ViewingDateControl } from "./ViewingDate";
-
-type NavItem = { label: string; to: string; needsAggregate?: boolean };
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Today", to: "/today" },
@@ -28,7 +27,7 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {
     ...(chatEnabled ? [{ label: "Chat", to: "/chat" }] : []),
   ];
   return (
-    <header className="sticky top-0 z-40 flex h-[72px] items-center gap-4 border-b border-grey-border bg-white/94 px-6 backdrop-blur-sm">
+    <header className="sticky top-0 z-40 flex h-[72px] items-center gap-3 border-b border-grey-border bg-white/94 px-4 backdrop-blur-sm sm:gap-4 sm:px-6">
       <div className="flex shrink-0 items-center gap-3">
         <HeaderLogo logo={branding.data?.logo ?? null} loading={branding.isPending} />
         {/* The wordmark gives way below xl so the date control, person picker
@@ -39,7 +38,10 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {
         </div>
       </div>
 
-      <nav aria-label="Primary" className="flex h-full items-center gap-2">
+      {/* Below lg the pages fold into one menu, so the controls on the right
+          never push past the edge on a tablet or a phone. */}
+      <NavMenu items={navItems} onOpenPalette={onOpenPalette} />
+      <nav aria-label="Primary" className="hidden h-full items-center gap-2 lg:flex">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
@@ -66,7 +68,7 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {
         ))}
       </nav>
 
-      <div className="ml-auto flex min-w-0 flex-none items-center gap-3">
+      <div className="ml-auto flex min-w-0 flex-none items-center gap-2 sm:gap-3">
         <button
           type="button"
           onClick={onOpenPalette}
@@ -78,7 +80,10 @@ export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {
             ⌘K
           </span>
         </button>
-        <ViewingDateControl />
+        {/* Below sm the date lives in the menu; the banner says when it is past. */}
+        <div className="hidden sm:block">
+          <ViewingDateControl />
+        </div>
         <PersonPicker />
         <AvatarMenu />
       </div>

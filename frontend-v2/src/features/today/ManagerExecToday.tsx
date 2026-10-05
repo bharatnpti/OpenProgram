@@ -201,9 +201,9 @@ export function ManagerExecToday() {
           {heatRows.map((row) => (
             <div
               key={row.kind}
-              className="grid grid-cols-[110px_repeat(4,1fr)] items-center gap-2.5"
+              className="grid grid-cols-2 items-center gap-2.5 sm:grid-cols-[110px_repeat(4,minmax(0,1fr))]"
             >
-              <div className="text-[13px] font-bold text-grey-secondary">
+              <div className="col-span-2 text-[13px] font-bold text-grey-secondary sm:col-span-1">
                 {row.label}
                 {row.total > row.items.length ? (
                   <span className="block text-[11px] font-bold uppercase tracking-wide">
@@ -238,8 +238,8 @@ export function ManagerExecToday() {
             </div>
           ))}
           {noPod.tiles.length > 0 ? (
-            <div className="grid grid-cols-[110px_repeat(4,1fr)] items-center gap-2.5">
-              <div className="text-[13px] font-bold text-grey-secondary">
+            <div className="grid grid-cols-2 items-center gap-2.5 sm:grid-cols-[110px_repeat(4,minmax(0,1fr))]">
+              <div className="col-span-2 text-[13px] font-bold text-grey-secondary sm:col-span-1">
                 No pod
                 <span className="block text-[11px] font-bold uppercase tracking-wide">
                   {noPod.total > noPod.tiles.length
