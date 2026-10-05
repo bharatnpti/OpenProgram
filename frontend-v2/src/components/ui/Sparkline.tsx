@@ -13,7 +13,7 @@ export function Sparkline({
   stroke?: string;
 }) {
   if (points.length < 2) {
-    return <div style={{ width, height }} />;
+    return <div style={{ width, height, maxWidth: "100%" }} />;
   }
   const scores = points.map((p) => p.score);
   const min = Math.min(...scores);
@@ -30,7 +30,13 @@ export function Sparkline({
     .join(" ");
 
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+    // Never wider than its container; the viewBox keeps the shape as it narrows.
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      className="block h-auto max-w-full"
+    >
       <path
         d={path}
         fill="none"
