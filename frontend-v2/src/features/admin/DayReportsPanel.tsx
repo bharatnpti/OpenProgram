@@ -102,9 +102,10 @@ export function DayReportsPanel({
         <div>
           <h2 className="text-[18px] font-bold">Day reports</h2>
           <p className="mt-1 max-w-[680px] text-[13px] text-grey-secondary">
-            A project&apos;s progress, requirements by stage, blockers, dependencies and risk
-            signals, each with who resolves it, sent once a day at the time you set. Destinations
-            use the connections on the Integrations tab.
+            A project&apos;s day, read like a status mail: in short, where it stands, what matters
+            most, what is needed from whom (escalated as the Escalation tab sets), and the open
+            questions. Sent once a day at the time you set; destinations use the connections on the
+            Integrations tab.
           </p>
         </div>
         <Pill size="sm" onClick={() => setEditing("new")} disabled={projects.length === 0}>
