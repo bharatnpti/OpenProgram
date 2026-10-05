@@ -116,7 +116,7 @@ export function ProgramDetail({
         ) : null}
       </Card>
 
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1.4fr_1fr]">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <Card padding="p-0" className={cn(!canReadRollup && "lg:col-span-2")}>
           <div className="flex items-baseline justify-between gap-4 px-6 pt-6 pb-2">
             <h3 className="text-[18px] font-bold">Projects</h3>

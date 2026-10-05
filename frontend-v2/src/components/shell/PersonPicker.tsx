@@ -66,7 +66,7 @@ export function PersonPicker() {
           setQuery("");
         }}
         className={cn(
-          "flex h-12 items-center gap-2.5 rounded-full border bg-white pl-2 pr-3.5 text-left",
+          "flex h-12 items-center gap-2.5 rounded-full border bg-white pl-2 pr-2 text-left sm:pr-3.5",
           open ? "border-magenta" : "border-grey-border hover:border-grey-disabled",
         )}
       >
@@ -81,11 +81,13 @@ export function PersonPicker() {
             Acting as · {actingAs ? rolesLabel(actingAs.roles) : "nobody"}
           </span>
         </span>
-        <ChevronDown size={16} className="shrink-0 text-grey-secondary" />
+        <ChevronDown size={16} className="hidden shrink-0 text-grey-secondary sm:block" />
       </button>
 
       {open ? (
-        <div className="animate-op-pop absolute right-0 top-14 z-50 w-[340px] overflow-hidden rounded-2xl border border-grey-border bg-white shadow-op-menu">
+        // On a phone the list spans the screen; anchored to the button it would
+        // run off the left edge.
+        <div className="animate-op-pop fixed inset-x-4 top-[76px] z-50 overflow-hidden rounded-2xl border border-grey-border bg-white shadow-op-menu sm:absolute sm:inset-x-auto sm:right-0 sm:top-14 sm:w-[340px]">
           <div className="flex items-center gap-2 border-b border-grey-fill px-3.5 py-3">
             <Search size={15} className="shrink-0 text-grey-secondary" />
             <input

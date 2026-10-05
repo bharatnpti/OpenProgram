@@ -45,7 +45,7 @@ export function DeliveryPage() {
           Explore the program graph and drill into any project, workstream, or pod.
         </p>
       </div>
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
         <DeliveryNavigator
           programs={lists.programs}
           projects={lists.projects}
