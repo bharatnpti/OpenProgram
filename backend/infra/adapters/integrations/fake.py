@@ -9,6 +9,7 @@ from core.domain.integrations import (
     Commit,
     Issue,
     IssueState,
+    IssueText,
     Project,
     PullRequest,
     Repo,
@@ -26,6 +27,7 @@ class FakeIssueTracker:
     sprints: list[Sprint] = field(default_factory=list)
     # email -> tracker account id, for find_user_by_email
     user_emails: dict[str, str] = field(default_factory=dict)
+    texts: dict[str, IssueText] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.projects:
@@ -111,6 +113,20 @@ class FakeIssueTracker:
             if issue.tenant_id == tenant_id and issue.key == key:
                 return issue
         raise ProviderUnavailable(f"issue {key} not found")
+
+    async def get_issue_text(self, tenant_id: str, key: str) -> IssueText:
+        """The sample tracker's issue text: what ``texts`` holds for the key, else nothing."""
+        issue = await self.get_issue(tenant_id, key)
+        stored = self.texts.get(key)
+        if stored is not None:
+            return stored
+        return IssueText(
+            tenant_id=tenant_id,
+            key=key,
+            state=issue.state,
+            description="",
+            updated_at=issue.updated_at,
+        )
 
     async def list_active_for(self, assignee: UserRef) -> list[Issue]:
         return [

@@ -11,6 +11,11 @@ import { useRole } from "../../app/role";
 import { cn } from "../../lib/utils";
 import { PodTasks } from "./PodTasks";
 import { ProgramDetail } from "./ProgramDetail";
+import { DeliveryForecastCard } from "../forecast/DeliveryForecastCard";
+import { PodDeliveryCard } from "../forecast/PodDeliveryCard";
+import { ProjectGates } from "../gates/ProjectGates";
+import { DayReportNoteCard } from "../reports/DayReportNoteCard";
+import { RequirementsCard } from "../requirements/RequirementsCard";
 import { RollupReasonsCard } from "./RollupReasonsCard";
 import { leadReason, reasonsAddToLead } from "./rollupReasons";
 import { useNodeReasons } from "./useNodeReasons";
@@ -199,6 +204,19 @@ export function DeliveryDetail({
       {reasons.state.status === "ready" &&
       reasonsAddToLead(rag ?? "unknown", reasons.state.reasons) ? (
         <RollupReasonsCard rag={rag ?? "unknown"} noun={selection.kind} state={reasons.state} />
+      ) : null}
+
+      {selection.kind === "project" && mayReadDetail ? (
+        <>
+          <DeliveryForecastCard projectId={selection.id} asOf={asOf} />
+          <DayReportNoteCard projectId={selection.id} />
+          <RequirementsCard projectId={selection.id} asOf={asOf} />
+          <ProjectGates projectId={selection.id} asOf={asOf} />
+        </>
+      ) : null}
+
+      {selection.kind === "pod" && mayReadDetail ? (
+        <PodDeliveryCard podId={selection.id} asOf={asOf} />
       ) : null}
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1.4fr_1fr]">

@@ -4,7 +4,7 @@ import asyncio
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from cryptography.fernet import Fernet
 from redis.asyncio import Redis
@@ -15,11 +15,20 @@ from core.application.availability import AvailabilityService
 from core.application.blocker_lifecycle import BlockerLifecycleService
 from core.application.blocker_resolution import BlockerResolutionService
 from core.application.blocker_settlement import BlockerSettlement
+from core.application.connection_service import ConnectionService, StoredConnections
 from core.application.cross_person_service import CrossPersonRequestService
+from core.application.day_report_builder import DayReportBuilder
+from core.application.day_report_service import DayReportService
 from core.application.dead_letter_service import DeadLetterService
+from core.application.delivery_service import DeliveryService
 from core.application.directory_sync_service import DirectorySyncService
+from core.application.escalation_matrix_service import EscalationMatrixService
+from core.application.forecast_service import ForecastService
+from core.application.gate_extraction import ModelItemFinder
+from core.application.gate_service import GateService
 from core.application.persona_views import ProviderNames
 from core.application.reply_ingestion import ReplyDrainResult, ReplyIngestionService
+from core.application.risk_service import RiskService
 from core.application.self_status_service import SelfStatusService
 from core.application.status_collector import DEFAULT_ISSUE_TRACKER_NAME, StatusCollector
 from core.application.sync_recording import provider_start_failure_message
@@ -31,8 +40,11 @@ from core.application.sync_services import (
 from core.application.sync_status_service import SyncStatusService
 from core.application.writeback_service import WriteBackService
 from core.domain.errors import ProviderUnavailable
+from core.domain.graph import NodeKind
 from core.domain.inbound import InboundChatEvent, conversation_key
 from core.domain.messaging import InboundMessage
+from core.domain.risk import RiskProviderConfig
+from core.domain.status import resolve_timezone
 from core.domain.sync_status import SyncSource, SyncStatusConfig
 from core.domain.workflows import InboundSweeperResult
 from core.ports.auth import (
@@ -46,11 +58,22 @@ from core.ports.auth import (
 from core.ports.branding import TenantLogoRepository
 from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
+from core.ports.connections import ConnectionRepository, ConnectorCatalog
+from core.ports.delivery import DeliverySettingsRepository, RequirementsSnapshotRepository
 from core.ports.directory import DirectoryProvider, DirectoryUserRepository
+from core.ports.escalation_matrix import EscalationMatrixRepository
+from core.ports.forecast import CommitmentRepository, ReleaseRepository
+from core.ports.gates import (
+    GateItemRepository,
+    GateTemplateRepository,
+    IssueScanRepository,
+    QuestionRepository,
+)
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
 from core.ports.readiness import ReadinessProbe, ReadinessReport, ReportingReadinessProbe
 from core.ports.reply_processing import ReplyProcessingOutcome
+from core.ports.reports import DayReportRepository
 from core.ports.repositories import (
     ConversationRepository,
     CrossPersonRequestRepository,
@@ -79,26 +102,66 @@ from infra.adapters.auth.session import (
     RedisAuthSessionStore,
 )
 from infra.adapters.chat.mock_slack import MockSlackStore, slack_event_payload
+from infra.adapters.chat.slack_connection import SIGNING_SECRET
 from infra.adapters.chat.slack_signing import verify_slack_signature
 from infra.adapters.chat.slack_socket import SlackSocketModeListener
+from infra.adapters.connections.resolver import CachedConnectionResolver
+from infra.adapters.connections.routing import enabled_connector
+from infra.adapters.connections.specs import SettingsConnectorCatalog
+from infra.adapters.connections.testers import HttpConnectionTester
 from infra.adapters.llm.readiness import LlmReadinessHistory
 from infra.adapters.redis_client import RedisClientProvider
+from infra.adapters.reports.sender import ConnectionReportSender
 from infra.adapters.secrets.encrypted import (
     FernetSecretStore,
     InMemoryEncryptedSecretRecordStore,
     PostgresEncryptedSecretRecordStore,
 )
 from infra.persistence.in_memory_branding import InMemoryTenantLogoRepository
+from infra.persistence.in_memory_connections import InMemoryConnectionRepository
+from infra.persistence.in_memory_delivery import (
+    InMemoryDeliverySettingsRepository,
+    InMemoryRequirementsSnapshotRepository,
+)
+from infra.persistence.in_memory_escalation import InMemoryEscalationMatrixRepository
+from infra.persistence.in_memory_forecast import (
+    InMemoryCommitmentRepository,
+    InMemoryReleaseRepository,
+)
+from infra.persistence.in_memory_gates import (
+    InMemoryGateItemRepository,
+    InMemoryGateTemplateRepository,
+    InMemoryIssueScanRepository,
+    InMemoryQuestionRepository,
+)
 from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
+from infra.persistence.in_memory_reports import InMemoryDayReportRepository
 from infra.persistence.postgres_branding import PostgresTenantLogoRepository
+from infra.persistence.postgres_connections import PostgresConnectionRepository
 from infra.persistence.postgres_cross_person import PostgresCrossPersonRequestRepository
+from infra.persistence.postgres_delivery import (
+    PostgresDeliverySettingsRepository,
+    PostgresRequirementsSnapshotRepository,
+)
 from infra.persistence.postgres_directory import PostgresDirectoryUserRepository
+from infra.persistence.postgres_escalation import PostgresEscalationMatrixRepository
+from infra.persistence.postgres_forecast import (
+    PostgresCommitmentRepository,
+    PostgresReleaseRepository,
+)
+from infra.persistence.postgres_gates import (
+    PostgresGateItemRepository,
+    PostgresGateTemplateRepository,
+    PostgresIssueScanRepository,
+    PostgresQuestionRepository,
+)
 from infra.persistence.postgres_graph import (
     PostgresGraphRepository,
     PostgresTimeSeriesRepository,
     PostgresVectorStore,
 )
 from infra.persistence.postgres_inbound import PostgresInboundChatEventRepository
+from infra.persistence.postgres_reports import PostgresDayReportRepository
 from infra.persistence.postgres_status import (
     PostgresConversationRepository,
     PostgresDeadLetterRepository,
@@ -169,6 +232,24 @@ class ServiceRegistry:
         default=None,
         init=False,
     )
+    _connection_repository: ConnectionRepository | None = field(default=None, init=False)
+    _delivery_settings_repository: DeliverySettingsRepository | None = field(
+        default=None, init=False
+    )
+    _requirements_snapshot_repository: RequirementsSnapshotRepository | None = field(
+        default=None, init=False
+    )
+    _day_report_repository: DayReportRepository | None = field(default=None, init=False)
+    _escalation_matrix_repository: EscalationMatrixRepository | None = field(
+        default=None, init=False
+    )
+    _commitment_repository: CommitmentRepository | None = field(default=None, init=False)
+    _release_repository: ReleaseRepository | None = field(default=None, init=False)
+    _gate_repositories: (
+        tuple[GateTemplateRepository, GateItemRepository, QuestionRepository, IssueScanRepository]
+        | None
+    ) = field(default=None, init=False)
+    _connection_resolver: CachedConnectionResolver | None = field(default=None, init=False)
     _redis_provider: RedisClientProvider | None = field(default=None, init=False)
     _issue_tracker: IssueTracker | None = field(default=None, init=False)
     _vcs_provider: VcsProvider | None = field(default=None, init=False)
@@ -314,6 +395,257 @@ class ServiceRegistry:
             self._postgres_tenant_logo_repository = PostgresTenantLogoRepository(self._executor())
         return self._postgres_tenant_logo_repository
 
+    def connection_repository(self) -> ConnectionRepository:
+        if self._connection_repository is None:
+            self._connection_repository = (
+                InMemoryConnectionRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresConnectionRepository(self._executor())
+            )
+        return self._connection_repository
+
+    def delivery_settings_repository(self) -> DeliverySettingsRepository:
+        if self._delivery_settings_repository is None:
+            self._delivery_settings_repository = (
+                InMemoryDeliverySettingsRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresDeliverySettingsRepository(self._executor())
+            )
+        return self._delivery_settings_repository
+
+    def requirements_snapshot_repository(self) -> RequirementsSnapshotRepository:
+        if self._requirements_snapshot_repository is None:
+            self._requirements_snapshot_repository = (
+                InMemoryRequirementsSnapshotRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresRequirementsSnapshotRepository(self._executor())
+            )
+        return self._requirements_snapshot_repository
+
+    def delivery_service(self) -> DeliveryService:
+        return DeliveryService(
+            graph_repository=self.graph_repository(),
+            settings_repository=self.delivery_settings_repository(),
+            snapshot_repository=self.requirements_snapshot_repository(),
+            release_repository=self.release_repository(),
+            today=self._tenant_today,
+        )
+
+    def commitment_repository(self) -> CommitmentRepository:
+        if self._commitment_repository is None:
+            self._commitment_repository = (
+                InMemoryCommitmentRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresCommitmentRepository(self._executor())
+            )
+        return self._commitment_repository
+
+    def release_repository(self) -> ReleaseRepository:
+        if self._release_repository is None:
+            self._release_repository = (
+                InMemoryReleaseRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresReleaseRepository(self._executor())
+            )
+        return self._release_repository
+
+    def forecast_service(self) -> ForecastService:
+        return ForecastService(
+            graph_repository=self.graph_repository(),
+            delivery_service=self.delivery_service(),
+            commitment_repository=self.commitment_repository(),
+            release_repository=self.release_repository(),
+            time_series_repository=self.time_series_repository(),
+            today=self._tenant_today,
+        )
+
+    def gate_repositories(
+        self,
+    ) -> tuple[GateTemplateRepository, GateItemRepository, QuestionRepository, IssueScanRepository]:
+        if self._gate_repositories is None:
+            if self.settings.runtime_mode == "memory":
+                self._gate_repositories = (
+                    InMemoryGateTemplateRepository(),
+                    InMemoryGateItemRepository(),
+                    InMemoryQuestionRepository(),
+                    InMemoryIssueScanRepository(),
+                )
+            else:
+                executor = self._executor()
+                self._gate_repositories = (
+                    PostgresGateTemplateRepository(executor),
+                    PostgresGateItemRepository(executor),
+                    PostgresQuestionRepository(executor),
+                    PostgresIssueScanRepository(executor),
+                )
+        return self._gate_repositories
+
+    def gate_service(self) -> GateService:
+        templates, items, questions, scans = self.gate_repositories()
+        finder = (
+            ModelItemFinder(self.llm_provider(), model=self.settings.default_llm_model)
+            if self.settings.gate_text_model_enabled and self.settings.llm_provider != "fake"
+            else None
+        )
+        return GateService(
+            template_repository=templates,
+            item_repository=items,
+            question_repository=questions,
+            scan_repository=scans,
+            delivery_service=self.delivery_service(),
+            issue_tracker=self.issue_tracker(),
+            model_finder=finder,
+            graph_repository=self.graph_repository(),
+        )
+
+    def _tenant_today(self) -> date:
+        zone = resolve_timezone(None, self.settings.tenant_default_timezone)
+        return datetime.now(tz=zone).date()
+
+    def day_report_repository(self) -> DayReportRepository:
+        if self._day_report_repository is None:
+            self._day_report_repository = (
+                InMemoryDayReportRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresDayReportRepository(self._executor())
+            )
+        return self._day_report_repository
+
+    def risk_service(self) -> RiskService:
+        settings = self.settings
+        return RiskService(
+            graph_repository=self.graph_repository(),
+            time_series_repository=self.time_series_repository(),
+            status_repository=self.status_repository(),
+            blocker_resolution=BlockerResolutionService(
+                self.graph_repository(), self.status_repository()
+            ),
+            rollup_repository=self.rollup_repository(),
+            provider_config=RiskProviderConfig(
+                jira_base_url=settings.jira_base_url,
+                github_base_url=settings.github_base_url,
+                default_no_pr_days=settings.risk_default_no_pr_days,
+                default_pr_age_days=settings.risk_default_pr_age_days,
+                default_stale_days=settings.risk_default_stale_days,
+                default_no_activity_days=settings.drift_no_activity_days,
+            ),
+        )
+
+    def escalation_matrix_repository(self) -> EscalationMatrixRepository:
+        if self._escalation_matrix_repository is None:
+            self._escalation_matrix_repository = (
+                InMemoryEscalationMatrixRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresEscalationMatrixRepository(self._executor())
+            )
+        return self._escalation_matrix_repository
+
+    def escalation_matrix_service(self) -> EscalationMatrixService:
+        return EscalationMatrixService(
+            repository=self.escalation_matrix_repository(),
+            graph_repository=self.graph_repository(),
+        )
+
+    def day_report_builder(self) -> DayReportBuilder:
+        return DayReportBuilder(
+            graph_repository=self.graph_repository(),
+            delivery_service=self.delivery_service(),
+            rollup_repository=self.rollup_repository(),
+            blocker_resolution=BlockerResolutionService(
+                self.graph_repository(), self.status_repository()
+            ),
+            risk_service=self.risk_service(),
+            cross_person_repository=self.cross_person_request_repository(),
+            forecast_service=self.forecast_service(),
+            gate_service=self.gate_service(),
+            escalation_service=self.escalation_matrix_service(),
+            console_base_url=self.settings.auth_frontend_url,
+        )
+
+    def day_report_service(self) -> DayReportService:
+        return DayReportService(
+            repository=self.day_report_repository(),
+            sender=self._day_report_sender(),
+            builder=self.day_report_builder(),
+            graph_repository=self.graph_repository(),
+        )
+
+    def _day_report_sender(self) -> ConnectionReportSender:
+        connections = self._adapter_connections()
+        channel_poster = None
+        if self.settings.chat_provider == "slack" and connections is not None:
+            channel_poster = catalog.slack_channel_poster(self.settings, connections)
+        return ConnectionReportSender(
+            connections=connections,
+            chat_provider=self.chat_provider,
+            channel_poster=channel_poster,
+            member_chat_id=self._member_chat_id,
+        )
+
+    async def report_destination_options(self, tenant_id: str) -> list[tuple[str, bool, str]]:
+        """Each destination kind, whether it can be used now, and why not."""
+        connections = self._adapter_connections()
+        slack_chat = self.settings.chat_provider == "slack"
+        email = connections is not None and await connections.resolve(tenant_id, "email")
+        teams = connections is not None and await connections.resolve(tenant_id, "teams")
+        memory_note = "Not available while the server runs in memory mode."
+        return [
+            (
+                "chat_channel",
+                slack_chat and connections is not None,
+                "" if slack_chat else "Needs Slack as the chat provider.",
+            ),
+            ("person", True, ""),
+            (
+                "email",
+                bool(email),
+                "" if email else (memory_note if connections is None else "Set up Email first."),
+            ),
+            (
+                "teams",
+                bool(teams),
+                "" if teams else (memory_note if connections is None else "Set up Teams first."),
+            ),
+        ]
+
+    async def _member_chat_id(self, tenant_id: str, member_id: str) -> str | None:
+        """Where a member's direct messages go: their linked chat id, else their member id."""
+        member = await self.graph_repository().get_node(tenant_id, member_id)
+        if member is None or member.kind is not NodeKind.DEVELOPER:
+            return None
+        link = await self.identity_link_repository().get_identity_link(tenant_id, member_id)
+        return link.chat_user_id if link is not None and link.chat_user_id else member_id
+
+    def connector_catalog(self) -> ConnectorCatalog:
+        return SettingsConnectorCatalog(self.settings)
+
+    def connection_resolver(self) -> CachedConnectionResolver:
+        """The tenant connections adapters read, cached briefly in this process."""
+        if self._connection_resolver is None:
+            self._connection_resolver = CachedConnectionResolver(
+                StoredConnections(
+                    repository=self.connection_repository(),
+                    secret_store=self.secret_store(),
+                    catalog=self.connector_catalog(),
+                )
+            )
+        return self._connection_resolver
+
+    def _adapter_connections(self) -> CachedConnectionResolver | None:
+        """The connections adapters follow: none in memory mode, which stays credential-free."""
+        if self.settings.runtime_mode != "container":
+            return None
+        return self.connection_resolver()
+
+    def connection_service(self) -> ConnectionService:
+        return ConnectionService(
+            repository=self.connection_repository(),
+            secret_store=self.secret_store(),
+            catalog=self.connector_catalog(),
+            tester=HttpConnectionTester(self.settings),
+            on_change=self.connection_resolver().invalidate,
+        )
+
     def auth_provider(self) -> AuthProvider:
         if self._auth_provider is None:
             if self.settings.auth_provider == "dev":
@@ -379,7 +711,9 @@ class ServiceRegistry:
             if self.settings.chat_provider == _CHAT_SIMULATOR_PROVIDER
             else None
         )
-        return catalog.build_chat_provider(self.settings, redis_client, mock_store)
+        return catalog.build_chat_provider(
+            self.settings, redis_client, mock_store, self._adapter_connections()
+        )
 
     def chat_webhook_mapper(self, provider: str) -> ChatWebhookMapper | None:
         return catalog.build_chat_webhook_mapper(self.settings, provider)
@@ -390,7 +724,7 @@ class ServiceRegistry:
         mapper = self.chat_webhook_mapper(provider)
         return mapper.map_webhook(payload, correlation_id) if mapper else None
 
-    def chat_webhook_signature_valid(
+    async def chat_webhook_signature_valid(
         self,
         provider: str,
         headers: Mapping[str, str],
@@ -404,8 +738,12 @@ class ServiceRegistry:
             return True
         if self.settings.chat_provider != "slack":
             return True
+        # The tenant's signing secret set in the console wins over the server's.
+        signing_secret = await catalog.slack_credentials(
+            self.settings, self.connection_resolver()
+        ).value(SIGNING_SECRET)
         return verify_slack_signature(
-            self.settings.slack_signing_secret,
+            signing_secret,
             headers.get("x-slack-request-timestamp"),
             headers.get("x-slack-signature"),
             body,
@@ -440,6 +778,7 @@ class ServiceRegistry:
             lambda payload, correlation_id: self.accept_chat_event(
                 "slack", payload, correlation_id
             ),
+            self._adapter_connections(),
         )
 
     async def enqueue_inbound_chat_event(
@@ -878,7 +1217,7 @@ class ServiceRegistry:
         if self._issue_tracker is None:
             self._issue_tracker = catalog.build_issue_tracker(
                 self.settings,
-                self.secret_store(),
+                self._adapter_connections(),
             )
         return self._issue_tracker
 
@@ -886,7 +1225,7 @@ class ServiceRegistry:
         if self._vcs_provider is None:
             self._vcs_provider = catalog.build_vcs_provider(
                 self.settings,
-                self.secret_store(),
+                self._adapter_connections(),
             )
         return self._vcs_provider
 
@@ -894,13 +1233,15 @@ class ServiceRegistry:
         if self._calendar_provider is None:
             self._calendar_provider = catalog.build_calendar_provider(
                 self.settings,
-                self.secret_store(),
+                self._adapter_connections(),
             )
         return self._calendar_provider
 
     def directory_provider(self) -> DirectoryProvider:
         if self._directory_provider is None:
-            self._directory_provider = catalog.build_directory_provider(self.settings)
+            self._directory_provider = catalog.build_directory_provider(
+                self.settings, self._adapter_connections()
+            )
         return self._directory_provider
 
     def directory_user_repository(self) -> DirectoryUserRepository:
@@ -963,7 +1304,25 @@ class ServiceRegistry:
                 simulated_providers=frozenset({"fake", _CHAT_SIMULATOR_PROVIDER}),
                 provider_start_errors=self.sync_provider_start_errors(),
             ),
+            provider_overrides=(
+                self._connected_providers if self._adapter_connections() is not None else None
+            ),
         )
+
+    async def _connected_providers(self, tenant_id: str) -> dict[SyncSource, str]:
+        """The provider each synced source uses because the tenant switched it on."""
+        connections = self.connection_resolver()
+        choices = (
+            (SyncSource.ISSUE_TRACKER, ("jira",)),
+            (SyncSource.VCS, ("gitlab", "github")),
+            (SyncSource.CALENDAR, ("google_calendar",)),
+        )
+        providers: dict[SyncSource, str] = {}
+        for source, connectors in choices:
+            connector = await enabled_connector(connections, tenant_id, connectors)
+            if connector is not None:
+                providers[source] = "google" if connector == "google_calendar" else connector
+        return providers
 
     def sync_provider_start_errors(self) -> dict[SyncSource, str]:
         """Sanitised reasons for each synced source whose provider can't be built.
@@ -1101,6 +1460,7 @@ class ServiceRegistry:
             self._redis_client,
             workflow_backlog_count=self._open_dead_letter_count,
             llm_history=self._llm_readiness_history,
+            connections=self._adapter_connections(),
         )
         results = await asyncio.gather(
             *(self._bounded_report(probe) for probe in probes.values()),

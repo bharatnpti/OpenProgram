@@ -13,6 +13,11 @@ from core.domain.workflows import (
 from infra.workflows.brief_generation import BriefGenerationInput
 from infra.workflows.calendar_sync import CalendarSyncInput
 from infra.workflows.daily_checkin import DailyCheckinInput
+from infra.workflows.delivery_reports import (
+    DayReportDispatchInput,
+    DeliverySnapshotInput,
+    GateScanInput,
+)
 from infra.workflows.drift_scan import DriftScanInput
 from infra.workflows.git_sync import GitSyncInput
 from infra.workflows.jira_sync import JiraSyncInput
@@ -30,6 +35,9 @@ type SyncWorkflowInput = (
     | DriftScanInput
     | BriefGenerationInput
     | RollupInput
+    | DeliverySnapshotInput
+    | DayReportDispatchInput
+    | GateScanInput
 )
 
 
@@ -139,30 +147,45 @@ def _derived_workflow_input(
             kind=_required_str(input.payload, "kind"),
             observed_at=_optional_str(input.payload, "observed_at"),
         )
+    if connector == "delivery_snapshot":
+        return DeliverySnapshotInput(
+            tenant_id=input.tenant_id,
+            observed_at=_optional_str(input.payload, "observed_at"),
+        )
+    if connector == "day_report":
+        return DayReportDispatchInput(
+            tenant_id=input.tenant_id,
+            observed_at=_optional_str(input.payload, "observed_at"),
+        )
+    if connector == "gate_scan":
+        return GateScanInput(
+            tenant_id=input.tenant_id,
+            observed_at=_optional_str(input.payload, "observed_at"),
+        )
     return None
 
 
+_WORKFLOW_NAMES = {
+    "issue": "jira",
+    "vcs": "git",
+    "calendar": "calendar",
+    "directory": "directory",
+    "runtime": "runtime",
+    "risk": "risk",
+    "rollup": "rollup",
+    "drift": "drift",
+    "brief": "brief",
+    "delivery_snapshot": "delivery-snapshot",
+    "day_report": "day-report",
+    "gate_scan": "gate-scan",
+}
+
+
 def sync_workflow_name(input: SyncDispatchInput) -> str:
-    connector = _connector(input.connector)
-    if connector == "issue":
-        return "jira"
-    if connector == "vcs":
-        return "git"
-    if connector == "calendar":
-        return "calendar"
-    if connector == "directory":
-        return "directory"
-    if connector == "runtime":
-        return "runtime"
-    if connector == "risk":
-        return "risk"
-    if connector == "rollup":
-        return "rollup"
-    if connector == "drift":
-        return "drift"
-    if connector == "brief":
-        return "brief"
-    raise ValueError(f"unsupported sync connector: {input.connector}")
+    name = _WORKFLOW_NAMES.get(_connector(input.connector))
+    if name is None:
+        raise ValueError(f"unsupported sync connector: {input.connector}")
+    return name
 
 
 def safe_workflow_id(value: str) -> str:
@@ -170,27 +193,29 @@ def safe_workflow_id(value: str) -> str:
     return normalized.strip("-") or "workflow"
 
 
+_CONNECTOR_ALIASES = {
+    alias: connector
+    for connector, aliases in {
+        "issue": ("issue", "jira"),
+        "vcs": ("vcs", "git", "github"),
+        "calendar": ("calendar", "google_calendar"),
+        "directory": ("directory", "directory_users"),
+        "runtime": ("runtime", "runtime_issue", "runtime_vcs", "runtime_sync"),
+        "risk": ("risk", "risk_assessment"),
+        "rollup": ("rollup", "node_rollup", "rollup_statuses"),
+        "drift": ("drift", "drift_scan"),
+        "brief": ("brief", "brief_generation", "narrative_brief"),
+        "delivery_snapshot": ("delivery_snapshot", "requirement_snapshot"),
+        "day_report": ("day_report", "day_report_dispatch"),
+        "gate_scan": ("gate_scan", "issue_text_scan"),
+    }.items()
+    for alias in aliases
+}
+
+
 def _connector(value: str) -> str:
     normalized = value.strip().lower()
-    if normalized in {"issue", "jira"}:
-        return "issue"
-    if normalized in {"vcs", "git", "github"}:
-        return "vcs"
-    if normalized in {"calendar", "google_calendar"}:
-        return "calendar"
-    if normalized in {"directory", "directory_users"}:
-        return "directory"
-    if normalized in {"runtime", "runtime_issue", "runtime_vcs", "runtime_sync"}:
-        return "runtime"
-    if normalized in {"risk", "risk_assessment"}:
-        return "risk"
-    if normalized in {"rollup", "node_rollup", "rollup_statuses"}:
-        return "rollup"
-    if normalized in {"drift", "drift_scan"}:
-        return "drift"
-    if normalized in {"brief", "brief_generation", "narrative_brief"}:
-        return "brief"
-    return normalized
+    return _CONNECTOR_ALIASES.get(normalized, normalized)
 
 
 def _required_str(payload: Mapping[str, object], key: str) -> str:

@@ -7,6 +7,7 @@ import httpx
 import pytest
 import respx
 
+from core.domain.connections import ConnectionValues
 from core.domain.errors import ProviderUnavailable
 from core.domain.integrations import IssueState, SyncCursor, UserRef
 from infra.adapters.jira.jira_adapter import JiraIssueTrackerAdapter, _resolve_transition_id
@@ -359,3 +360,310 @@ async def test_jira_adapter_find_user_by_email_refuses_to_guess() -> None:
     assert await adapter.find_user_by_email("demo", "x@example.com") is None
     assert await adapter.find_user_by_email("demo", "x@example.com") is None
     assert await adapter.find_user_by_email("demo", "x@example.com") is None
+
+
+# --- Jira Data Center and connections set up in admin --------------------------
+
+
+class _Connection:
+    def __init__(self, values: dict[str, str] | None) -> None:
+        self._values = values
+
+    async def resolve(self, tenant_id: str, connector: str) -> ConnectionValues | None:
+        del tenant_id
+        if self._values is None or connector != "jira":
+            return None
+        return ConnectionValues(connector="jira", values=self._values)
+
+
+_DATA_CENTER = {
+    "deployment": "data_center",
+    "base_url": "https://jira.corp.example",
+    "auth_method": "personal_access_token",
+    "personal_access_token": "pat-1",
+    "story_points_field": "customfield_10002",
+}
+
+
+def _data_center_issue(key: str) -> dict[str, object]:
+    payload = _issue_payload(key)
+    fields = dict(payload["fields"])  # type: ignore[call-overload]
+    fields.update(
+        {
+            "assignee": {"name": "asha", "key": "JIRAUSER1", "displayName": "Asha"},
+            "duedate": "2026-11-14",
+            "fixVersions": [
+                {"name": "R1", "releaseDate": "2026-11-01"},
+                {"name": "R2", "releaseDate": "2026-11-20"},
+            ],
+            "labels": ["checkout", "payments"],
+            "priority": {"name": "High"},
+            "created": "2026-01-02T08:00:00.000+0000",
+            "resolutiondate": None,
+            "customfield_10002": 5,
+        }
+    )
+    return {**payload, "fields": fields}
+
+
+@respx.mock
+async def test_data_center_searches_by_offset_on_the_v2_api_with_a_bearer_token() -> None:
+    adapter = JiraIssueTrackerAdapter(connections=_Connection(_DATA_CENTER))
+    search = respx.get("https://jira.corp.example/rest/api/2/search").mock(
+        side_effect=[
+            httpx.Response(
+                200,
+                json={
+                    "startAt": 0,
+                    "total": 3,
+                    "issues": [_data_center_issue("PO-1"), _data_center_issue("PO-2")],
+                },
+            ),
+            httpx.Response(
+                200, json={"startAt": 2, "total": 3, "issues": [_data_center_issue("PO-3")]}
+            ),
+        ]
+    )
+
+    issues = await adapter.list_issues_for_query("demo", 'project = "PO"', SyncCursor())
+
+    assert [issue.key for issue in issues] == ["PO-1", "PO-2", "PO-3"]
+    first, second = search.calls
+    assert first.request.headers["authorization"] == "Bearer pat-1"
+    assert first.request.url.params["startAt"] == "0"
+    assert second.request.url.params["startAt"] == "2"
+    assert first.request.url.params["fields"].endswith(",customfield_10002")
+    assert issues[0].assignee == UserRef(tenant_id="demo", external_id="asha", display_name="Asha")
+
+
+@respx.mock
+async def test_the_extra_fields_land_in_the_issue_metadata() -> None:
+    adapter = JiraIssueTrackerAdapter(connections=_Connection(_DATA_CENTER))
+    respx.get("https://jira.corp.example/rest/api/2/issue/PO-1").mock(
+        return_value=httpx.Response(200, json=_data_center_issue("PO-1"))
+    )
+
+    issue = await adapter.get_issue("demo", "PO-1")
+
+    assert issue.metadata["due_date"] == "2026-11-14"
+    assert issue.metadata["fix_versions"] == "R1, R2"
+    assert issue.metadata["fix_version_release_date"] == "2026-11-20"
+    assert issue.metadata["labels"] == "checkout, payments"
+    assert issue.metadata["priority"] == "High"
+    assert issue.metadata["story_points"] == 5.0
+    assert issue.metadata["resolved_at"] is None
+    assert str(issue.metadata["created_at"]).startswith("2026-01-02T08:00:00")
+
+
+@respx.mock
+async def test_data_center_lists_projects_comments_in_plain_text_and_finds_users_by_username() -> (
+    None
+):
+    adapter = JiraIssueTrackerAdapter(
+        connections=_Connection(
+            {**_DATA_CENTER, "auth_method": "basic", "username": "svc", "password": "pw"}
+        )
+    )
+    projects = respx.get("https://jira.corp.example/rest/api/2/project").mock(
+        return_value=httpx.Response(200, json=[{"id": "1", "key": "PO", "name": "OpenProgram"}])
+    )
+    comment = respx.post("https://jira.corp.example/rest/api/2/issue/PO-1/comment").mock(
+        return_value=httpx.Response(201, json={"id": "9"})
+    )
+    users = respx.get("https://jira.corp.example/rest/api/2/user/search").mock(
+        return_value=httpx.Response(
+            200, json=[{"name": "asha", "displayName": "Asha", "emailAddress": "asha@corp.example"}]
+        )
+    )
+
+    listed = await adapter.list_projects("demo")
+    await adapter.add_comment("demo", "PO-1", "shipped it")
+    user = await adapter.find_user_by_email("demo", "asha@corp.example")
+
+    assert [project.key for project in listed] == ["PO"]
+    assert projects.calls.last.request.headers["authorization"].startswith("Basic ")
+    assert json.loads(comment.calls.last.request.content) == {"body": "shipped it"}
+    assert users.calls.last.request.url.params["username"] == "asha@corp.example"
+    assert user is not None and user.external_id == "asha"
+
+
+@respx.mock
+async def test_an_admin_connection_wins_over_the_server_settings() -> None:
+    adapter = JiraIssueTrackerAdapter(
+        base_url="https://env-jira.test",
+        email="env@example.com",
+        api_token="env-token",
+        connections=_Connection(
+            {
+                "deployment": "cloud",
+                "base_url": "https://admin.atlassian.net",
+                "auth_method": "api_token",
+                "email": "admin@example.com",
+                "api_token": "admin-token",
+            }
+        ),
+    )
+    route = respx.get("https://admin.atlassian.net/rest/api/3/issue/PO-1").mock(
+        return_value=httpx.Response(200, json=_issue_payload("PO-1"))
+    )
+
+    await adapter.get_issue("demo", "PO-1")
+
+    assert route.called
+
+
+@respx.mock
+async def test_without_an_admin_connection_the_server_settings_are_used() -> None:
+    adapter = JiraIssueTrackerAdapter(
+        base_url="https://env-jira.test",
+        email="env@example.com",
+        api_token="env-token",
+        connections=_Connection(None),
+    )
+    route = respx.get("https://env-jira.test/rest/api/3/issue/PO-1").mock(
+        return_value=httpx.Response(200, json=_issue_payload("PO-1"))
+    )
+
+    await adapter.get_issue("demo", "PO-1")
+
+    assert route.called
+
+
+async def test_no_connection_and_no_server_settings_is_unavailable() -> None:
+    adapter = JiraIssueTrackerAdapter(connections=_Connection(None))
+
+    with pytest.raises(ProviderUnavailable, match="not configured"):
+        await adapter.get_issue("demo", "PO-1")
+
+
+# --- Issue text for gates and questions ------------------------------------------------
+
+
+def _adf(*content: dict[str, object]) -> dict[str, object]:
+    return {"type": "doc", "version": 1, "content": list(content)}
+
+
+def _text(value: str) -> dict[str, object]:
+    return {"type": "text", "text": value}
+
+
+@respx.mock
+async def test_cloud_issue_text_flattens_adf_with_headings_lists_tasks_and_mentions() -> None:
+    adapter = JiraIssueTrackerAdapter(
+        base_url="https://jira.test", email="agent@example.com", api_token="token"
+    )
+    respx.get("https://jira.test/rest/api/3/issue/PO-1").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "key": "PO-1",
+                "fields": {
+                    "status": {"name": "In Progress", "statusCategory": {"key": "indeterminate"}},
+                    "updated": "2026-10-05T08:00:00.000+0000",
+                    "description": _adf(
+                        {
+                            "type": "heading",
+                            "attrs": {"level": 2},
+                            "content": [_text("Acceptance criteria")],
+                        },
+                        {
+                            "type": "bulletList",
+                            "content": [
+                                {
+                                    "type": "listItem",
+                                    "content": [
+                                        {
+                                            "type": "paragraph",
+                                            "content": [_text("Page loads under 1s")],
+                                        }
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            "type": "taskList",
+                            "content": [
+                                {
+                                    "type": "taskItem",
+                                    "attrs": {"state": "DONE"},
+                                    "content": [_text("Receipt sent once")],
+                                },
+                            ],
+                        },
+                    ),
+                    "comment": {
+                        "comments": [
+                            {
+                                "id": "10001",
+                                "author": {"accountId": "acc-qa", "displayName": "Kim"},
+                                "created": "2026-10-05T09:00:00.000+0000",
+                                "body": _adf(
+                                    {
+                                        "type": "paragraph",
+                                        "content": [
+                                            {
+                                                "type": "mention",
+                                                "attrs": {"id": "acc-po", "text": "@Maria"},
+                                            },
+                                            _text(" which coupons count as test orders?"),
+                                        ],
+                                    }
+                                ),
+                            }
+                        ]
+                    },
+                },
+            },
+        )
+    )
+
+    text = await adapter.get_issue_text("demo", "PO-1")
+
+    assert (
+        text.description == "## Acceptance criteria\n- Page loads under 1s\n[x] Receipt sent once"
+    )
+    (comment,) = text.comments
+    assert comment.body == "@Maria which coupons count as test orders?"
+    assert comment.mentions == (
+        UserRef(tenant_id="demo", external_id="acc-po", display_name="Maria"),
+    )
+    assert comment.author is not None and comment.author.external_id == "acc-qa"
+    assert text.state is IssueState.IN_PROGRESS
+
+
+@respx.mock
+async def test_data_center_issue_text_reads_wiki_markup_and_its_mentions() -> None:
+    adapter = JiraIssueTrackerAdapter(connections=_Connection(_DATA_CENTER))
+    respx.get("https://jira.corp.example/rest/api/2/issue/PO-2").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "key": "PO-2",
+                "fields": {
+                    "status": {"name": "Done", "statusCategory": {"key": "done"}},
+                    "description": (
+                        "h3. Test cases\n# Pay with a saved card\n## With 3-D Secure\n* *Bold* note"
+                    ),
+                    "comment": {
+                        "comments": [
+                            {
+                                "id": "7",
+                                "author": {"name": "kim", "displayName": "Kim"},
+                                "created": "2026-10-05T09:00:00.000+0000",
+                                "body": "[~maria] is this in scope?",
+                            }
+                        ]
+                    },
+                },
+            },
+        )
+    )
+
+    text = await adapter.get_issue_text("demo", "PO-2")
+
+    assert text.description == (
+        "### Test cases\n1. Pay with a saved card\n  1. With 3-D Secure\n- *Bold* note"
+    )
+    assert text.comments[0].body == "@maria is this in scope?"
+    assert text.comments[0].mentions[0].external_id == "maria"
+    assert text.state is IssueState.DONE
