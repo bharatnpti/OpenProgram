@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from core.application.brief_facts import (
     BriefFacts,
@@ -15,25 +15,44 @@ from core.application.brief_facts import (
     pod_status,
     project_status,
 )
-from core.application.brief_grounding import ground_brief
-from core.application.persona_views import PersonaViewService
+from core.application.brief_grounding import compose_brief, fallback_brief
+from core.application.persona_views import NO_POD_ROW, PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.errors import GraphNotFound
 from core.domain.graph import EdgeKind, GraphNode, GraphTree, NodeKind
 from core.domain.llm import LlmMessage, LlmRequest
+from core.domain.status import CheckInDay
 from core.ports.llm import LlmProvider
 from core.ports.repositories import GraphRepository, NarrativeBriefRepository, StatusRepository
 
 BRIEF_SYSTEM_PROMPT = (
-    "You write concise, descriptive program-management briefs for leaders. "
-    "Summarize ONLY the delivery facts, feed items, and status rollups provided. "
-    "Do not invent details, do not add recommendations, and never include raw "
-    "chat, DM, or reply content. Write two to four short sentences of plain prose. "
-    "Name only the issues and people the facts name. Call an issue done or "
-    "completed only when the facts say the tracker shows it done: a merged merge "
-    "request on an open ticket is 'merged, ticket still open'. State blockers as "
-    "the facts give them, cleared ones included. Never say that anything was "
+    "You write the brief a director reads in ten seconds. Use ONLY the delivery "
+    "facts, feed items and status rollups provided; do not invent details, and "
+    "never include raw chat, DM, or reply content. "
+    'Answer with JSON only: {"verdict": "...", "bullets": ["...", "..."]}. '
+    "The verdict is one plain sentence of at most 20 words: the overall state and "
+    "its main cause. When the facts give the day's headline, the verdict says the "
+    "same thing with the same counts: team members, not people outside the teams. "
+    "Then 2 to 4 bullets, each one sentence of at most 20 words, about what matters "
+    "today: who needs to act (name, what, by when), what is at risk, what changed. "
+    "No bullet repeats the verdict. "
+    "Leave out what finished or cleared before today unless someone must act on it "
+    "now; say nothing about blockers when none is open. Never count statuses, cells "
+    "or colours ('20 amber statuses'): say who or what is amber and why, in plain "
+    "words. Write no clock times: the page shows them on its reader's clock. "
+    "Name a merge request by its repository, "
+    "number and ticket, as the facts write it ('insights-pipeline !1 (INS-2)'), never "
+    "by its number alone. Name the people and ticket ids the facts name; no filler, "
+    "no advice beyond who must act on what the facts show. "
+    "Call an issue done or completed only when the facts say the tracker shows it "
+    "done: a merged merge request on an open ticket is 'merged, ticket still "
+    "open'. A blocker you mention is stated as the facts give it, and only as the "
+    "blocker of the person whose check-in reported it. Say who merged "
+    "a merge request only as the facts name its merger; the person who opened it "
+    "did not merge it unless the facts say so. Mention an ETA change only as an "
+    "'ETA changes reported' line gives it, for that person and that check-in; "
+    "with none reported, leave ETAs out. Never say that anything was "
     "rescheduled, postponed or cancelled unless a fact says so."
 )
 
@@ -59,6 +78,9 @@ _LABELS: dict[BriefKind, str] = {
 class _ScopedStatus:
     scope: BriefScope
     status: StatusFacts
+    #: The people in a team, whose check-ins the day's line counts: for the
+    #: exec brief, everyone but the people in no team (N5), as the hero counts.
+    team_ids: frozenset[str] | None = None
 
 
 class NarrativeBriefService:
@@ -71,9 +93,12 @@ class NarrativeBriefService:
         brief_repository: NarrativeBriefRepository,
         model: str,
         status_repository: StatusRepository | None = None,
+        provider_names: ProviderNames | None = None,
     ) -> None:
         """``status_repository`` says which blockers are open now; without it a
-        brief states the blockers check-ins reported, never whether they cleared."""
+        brief states the blockers check-ins reported, never whether they cleared.
+        ``provider_names`` names the tracker and code host in the exec brief's
+        headline, as Exec Today names them."""
         self._llm_provider = llm_provider
         self._feed_service = feed_service
         self._persona_view_service = persona_view_service
@@ -81,6 +106,7 @@ class NarrativeBriefService:
         self._brief_repository = brief_repository
         self._model = model
         self._status_repository = status_repository
+        self._provider_names = provider_names
 
     async def generate(
         self,
@@ -143,6 +169,7 @@ class NarrativeBriefService:
         person_ids = (
             scoped.scope.member_ids if scoped.scope.member_ids is not None else frozenset(people)
         )
+        team_ids = scoped.team_ids if scoped.team_ids is not None else person_ids
         return build_brief_facts(
             BriefInputs(
                 label=_LABELS[kind],
@@ -157,6 +184,8 @@ class NarrativeBriefService:
                 repos=repos,
                 open_blockers=await self._open_blockers(tenant_id, person_ids, as_of.date()),
                 scope_ref=_scope_ref(kind, scope_id),
+                checkins_today=await self._checkins_today(tenant_id, team_ids, as_of.date()),
+                headline=await self._headline(tenant_id, kind, as_of),
             )
         )
 
@@ -170,7 +199,6 @@ class NarrativeBriefService:
         facts: BriefFacts,
     ) -> str:
         context = facts.context
-        fallback = _fallback_body(context)
         request = LlmRequest(
             tenant_id=tenant_id,
             prompt=f"{title}\n\n{context}",
@@ -178,6 +206,7 @@ class NarrativeBriefService:
             correlation_id=f"brief-{kind.value}-{scope_id or 'portfolio'}-{as_of.isoformat()}",
             system=BRIEF_SYSTEM_PROMPT,
             messages=(LlmMessage(role="user", content=context),),
+            json_mode=True,
             metadata={
                 "agent": "narrative_brief_service",
                 "purpose": "narrative_brief",
@@ -187,11 +216,12 @@ class NarrativeBriefService:
         try:
             response = await self._llm_provider.complete(request)
         except Exception:
-            return fallback
-        # Checked against the facts, sentence by sentence: what no fact
-        # supports is corrected or dropped, never trusted to the prompt alone.
-        grounded = ground_brief(response.text, facts)
-        return grounded.body or fallback
+            return fallback_brief(facts).body
+        if not response.text.strip():
+            return fallback_brief(facts).body
+        # A verdict and 3-5 bullets, each checked against the facts: what no
+        # fact supports is corrected or dropped, never trusted to the prompt.
+        return compose_brief(response.text, facts).body
 
     async def _scoped_status(
         self,
@@ -206,7 +236,14 @@ class NarrativeBriefService:
             if kind is BriefKind.WEEKLY_PROJECT:
                 return await self._project_scope(tenant_id, scope_id, as_of)
             heatmap = await self._persona_view_service.portfolio_heatmap(tenant_id, as_of)
-            return _ScopedStatus(scope=BriefScope(), status=heatmap_status(heatmap.cells))
+            team = frozenset(
+                cell.entity_ref.id
+                for cell in heatmap.cells
+                if cell.entity_ref.kind is NodeKind.DEVELOPER and cell.row != NO_POD_ROW
+            )
+            return _ScopedStatus(
+                scope=BriefScope(), status=heatmap_status(heatmap.cells), team_ids=team
+            )
         except GraphNotFound:
             return _ScopedStatus(scope=BriefScope.empty(), status=no_status())
 
@@ -270,6 +307,38 @@ class NarrativeBriefService:
             ),
             status=project_status(progress),
         )
+
+    async def _headline(self, tenant_id: str, kind: BriefKind, as_of: datetime) -> str | None:
+        """The exec brief's day as Exec Today's hero says it: the same cause, the same counts."""
+        if kind is not BriefKind.EXEC:
+            return None
+        try:
+            view = await self._persona_view_service.portfolio_attention(
+                tenant_id,
+                as_of.date(),
+                None,
+                None,
+                today=as_of.date(),
+                zone=UTC,
+                names=self._provider_names,
+                clock=False,
+            )
+        except GraphNotFound:
+            return None
+        return view.headline
+
+    async def _checkins_today(
+        self, tenant_id: str, person_ids: Iterable[str], day: date
+    ) -> list[CheckInDay] | None:
+        """Who in scope was asked the day's check-in, and who answered; None unread."""
+        if self._status_repository is None:
+            return None
+        wanted = set(person_ids)
+        return [
+            checkin
+            for checkin in await self._status_repository.checkins_on_day(tenant_id, day)
+            if checkin.developer_id in wanted
+        ]
 
     async def _open_blockers(
         self, tenant_id: str, person_ids: Iterable[str], as_of: date
@@ -355,10 +424,3 @@ def _title_for(kind: BriefKind, scope_name: str) -> str:
     if kind is BriefKind.WEEKLY_PROJECT:
         return f"Weekly project update: {scope_name}"
     return "Executive portfolio brief"
-
-
-def _fallback_body(context: str) -> str:
-    # Deterministic, privacy-safe summary used when the model output is empty or
-    # unusable. Collapses the descriptive context into a single line.
-    collapsed = " ".join(line.strip("- ").strip() for line in context.splitlines() if line.strip())
-    return collapsed or "No activity to report for this period."

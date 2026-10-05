@@ -1454,3 +1454,11 @@ class _FailingGraphRepository:
         as_of: date,
     ) -> GraphTree:
         raise AssertionError("existing rollups should avoid graph fallback")
+
+    # The cell reasons count who is in each team from the flat node and edge
+    # lists, read once; they never walk the tree.
+    async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
+        return []
+
+    async def list_edges(self, tenant_id: str, **_: object) -> list[GraphEdge]:
+        return []

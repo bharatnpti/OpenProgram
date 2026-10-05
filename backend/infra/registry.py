@@ -18,6 +18,7 @@ from core.application.blocker_settlement import BlockerSettlement
 from core.application.cross_person_service import CrossPersonRequestService
 from core.application.dead_letter_service import DeadLetterService
 from core.application.directory_sync_service import DirectorySyncService
+from core.application.persona_views import ProviderNames
 from core.application.reply_ingestion import ReplyDrainResult, ReplyIngestionService
 from core.application.self_status_service import SelfStatusService
 from core.application.status_collector import DEFAULT_ISSUE_TRACKER_NAME, StatusCollector
@@ -1063,6 +1064,10 @@ class ServiceRegistry:
                 else "Jira"
             ),
         )
+
+    def provider_names(self) -> ProviderNames:
+        """How reasons and briefs name the configured tracker and code host."""
+        return catalog.build_provider_names(self.settings)
 
     def workflow_scheduler(self) -> WorkflowScheduler:
         return catalog.build_workflow_scheduler(self.settings)

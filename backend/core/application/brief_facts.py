@@ -9,6 +9,13 @@ instead, keeps the ones inside the brief's scope and aggregates them: one line
 per issue saying what the tracker says, per request, per person. The model
 writes from those lines, and ``brief_grounding`` checks what it wrote against
 the same ``BriefFacts``.
+
+The lines say who did what, so a sentence can be checked for it (N51-N53):
+who reported each blocker and whom they waited on, who opened and who merged
+each merge request (the merge commit's author), and each ETA change with the
+check-in that gave it -- counted only when the parser that recorded it told an
+ETA that moved from a duration (``eta_change_checked``, N45), since an older
+fact's number cannot be told apart without the reply's text.
 """
 
 from __future__ import annotations
@@ -20,6 +27,7 @@ from datetime import UTC, datetime
 
 from core.application.merge_request_links import ISSUE_KEY as _FACT_ISSUE_KEY
 from core.application.persona_views import (
+    NO_POD_ROW,
     HeatmapCellView,
     PodCheckinsView,
     ProjectProgressView,
@@ -27,6 +35,7 @@ from core.application.persona_views import (
 from core.application.portfolio_feed_service import PortfolioFeedItemView
 from core.domain.graph import GraphNode, JsonScalar, NodeKind
 from core.domain.rollup import Rag
+from core.domain.status import CheckInDay
 
 # The heat-map cells that carry a status of their own. A repository, a sprint
 # or a workstream cell is unknown by construction (N38: '14 unknown cells').
@@ -54,7 +63,7 @@ _REQUEST_KIND_LABELS = {
     "waiting_on": "dependency",
 }
 _KIND_NOUNS: dict[NodeKind, tuple[str, str]] = {
-    NodeKind.DEVELOPER: ("person", "people"),
+    NodeKind.DEVELOPER: ("team member", "team members"),
     NodeKind.POD: ("pod", "pods"),
     NodeKind.PROJECT: ("project", "projects"),
     NodeKind.PROGRAM: ("program", "programs"),
@@ -64,6 +73,19 @@ _MAX_NOT_GREEN = 10
 _MAX_PER_SECTION = 12
 _MAX_EARLIER_BLOCKED = 3
 _MAX_SOURCES = 20
+# A merge commit names its merge request: GitLab's "See merge request
+# group/repo!7", GitHub's "Merge pull request #7 from ...". Its author merged it.
+_GITLAB_MERGE = re.compile(r"See merge request (?P<repo>[\w.\-/]+)!(?P<id>\d+)")
+_GITHUB_MERGE = re.compile(r"Merge pull request #(?P<id>\d+)\b")
+# Request kinds that say the reporter is waiting on someone: a blocker's owner.
+_WAIT_KINDS = frozenset({"waiting_on", "blocked_by"})
+# A merge request named by its number alone ("merge !1", "PR #4"): a reader
+# cannot tell which repository's it is, so a line says which it was.
+BARE_MERGE_REQUEST = re.compile(
+    r"(?:\b(?:merge|pull)\s+requests?\s+|\b(?:merge|MR|PR|review)\s+)?(?<![\w/.\-])[!#](\d+)\b"
+)
+# The heat-map cell line a person in no team carries (persona_views): said apart.
+_NO_POD_LEAD = "No pod, outside team colours: "
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -127,6 +149,12 @@ class BriefInputs:
     open_blockers: Mapping[str, int] | None = None
     #: The ref the brief is about ("pod:pod-1"), cited first.
     scope_ref: str | None = None
+    #: The brief's day's check-ins of the people in scope: who was asked and
+    #: who answered; ``None`` when they could not be read.
+    checkins_today: Sequence[CheckInDay] | None = None
+    #: The day's headline as Exec Today shows it (``attention``), for the
+    #: exec brief: the same cause and the same team counts as the hero.
+    headline: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -180,10 +208,56 @@ class BriefFacts:
     #: Whether any ETA moved later in the window.
     eta_slips: bool
     sources: tuple[str, ...]
+    #: Who a blocker may be said to be of: the people whose check-ins of the
+    #: window reported one, and those with one open now.
+    blocker_people: frozenset[str] = frozenset()
+    #: The window's merge requests: who opened each and who merged it.
+    merges: tuple[MergeFact, ...] = ()
+    #: Each person's ETA changes of the window, by name, oldest first.
+    eta_changes: Mapping[str, tuple[EtaChange, ...]] = field(default_factory=dict)
+    #: The verdict a brief stands on when the model's is unusable: the day's
+    #: headline when there is one, else the status sentence.
+    verdict_fallback: str = ""
+    #: Short sentences, true by construction, saying who needs to act on what
+    #: today, for a brief whose bullets ran short.
+    action_lines: tuple[str, ...] = ()
 
     @property
     def context(self) -> str:
         return "\n".join(self.lines)
+
+
+@dataclass(frozen=True, kw_only=True)
+class MergeFact:
+    """A merge request of the window, as a sentence may name it and its people."""
+
+    #: How a reader names it: "insights-pipeline !1" (GitLab), "api #4" (GitHub).
+    label: str
+    #: Its number and repository as people write them ("7", "web").
+    number: str
+    repo: str
+    #: The issue keys it names.
+    keys: frozenset[str]
+    merged: bool
+    #: Who opened it, and who merged it (the merge commit's author), when known.
+    author: str | None
+    merger: str | None
+
+    @property
+    def named(self) -> str:
+        """Its name with its ticket: "insights-pipeline !1 (INS-2)"."""
+        keys = sorted(self.keys, key=_key_order)
+        return f"{self.label} ({', '.join(keys)})" if keys else self.label
+
+
+@dataclass(frozen=True, kw_only=True)
+class EtaChange:
+    """An ETA change one check-in reported, in days (later is positive)."""
+
+    days: int
+    at: datetime
+    #: Whether it came with the person's latest check-in of the window.
+    latest: bool
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -205,16 +279,22 @@ def heatmap_status(cells: Iterable[HeatmapCellView]) -> StatusFacts:
 
     People, pods, projects and the program carry a status; a repository, a
     sprint or a workstream cell is unknown by construction, so counting it
-    reported 'unknown' for what has no status at all.
+    reported 'unknown' for what has no status at all. A person in no team (the
+    heat map's "no pod" row) counts in no team's colour, so they are said
+    apart, by name, and never counted: the counts are the hero's.
     """
-    bearing = [cell for cell in cells if cell.entity_ref.kind in STATUS_BEARING_KINDS]
+    status_bearing = [cell for cell in cells if cell.entity_ref.kind in STATUS_BEARING_KINDS]
+    bearing = [cell for cell in status_bearing if cell.row != NO_POD_ROW]
+    outside = [cell for cell in status_bearing if cell.row == NO_POD_ROW]
     counts = {rag.value: 0 for rag in _RAG_ORDER}
     for cell in bearing:
         counts[cell.rag.value] = counts.get(cell.rag.value, 0) + 1
+    outside_lines = tuple(_outside_line(cell) for cell in outside)
     if not bearing:
         return StatusFacts(
             sentence="No status is recorded yet for people, pods, projects or the program.",
             counts=counts,
+            detail_lines=outside_lines,
         )
     kinds: dict[NodeKind, int] = {}
     for cell in bearing:
@@ -227,15 +307,39 @@ def heatmap_status(cells: Iterable[HeatmapCellView]) -> StatusFacts:
     summary = ", ".join(
         f"{counts[rag.value]} {rag.value}" for rag in _RAG_ORDER if counts[rag.value]
     )
-    details = tuple(
-        f"{cell.rag.value.capitalize()}: {cell.name or 'unnamed ' + cell.entity_ref.kind.value}"
-        + (f" ({cell.why.rstrip('.')})" if cell.why else "")
-        + "."
-        for cell in bearing
-        if cell.rag is not Rag.GREEN
-    )[:_MAX_NOT_GREEN]
+    details = _not_green_lines(bearing)[:_MAX_NOT_GREEN] + outside_lines
     return StatusFacts(
         sentence=f"Status of {covered}: {summary}.", counts=counts, detail_lines=details
+    )
+
+
+def _not_green_lines(cells: Sequence[HeatmapCellView]) -> tuple[str, ...]:
+    """What is not green and why: people with the same reason on one line, then each team."""
+    people: dict[tuple[Rag, str], list[str]] = {}
+    teams: list[str] = []
+    for cell in cells:
+        if cell.rag is Rag.GREEN:
+            continue
+        why = cell.why.rstrip(".") if cell.why else ""
+        if cell.entity_ref.kind is NodeKind.DEVELOPER:
+            people.setdefault((cell.rag, why), []).append(cell.name or "a team member")
+            continue
+        name = cell.name or "unnamed " + cell.entity_ref.kind.value
+        teams.append(f"{cell.rag.value.capitalize()}: {name}" + (f" ({why})" if why else "") + ".")
+    grouped = [
+        f"{rag.value.capitalize()} ({why or 'no reason recorded'}): {_join_and(names)}."
+        for (rag, why), names in people.items()
+    ]
+    return (*grouped, *teams)
+
+
+def _outside_line(cell: HeatmapCellView) -> str:
+    why = cell.why.removeprefix(_NO_POD_LEAD).rstrip(".") if cell.why else ""
+    name = cell.name or "a team member"
+    return (
+        f"In no team, so in none of the counts: {name}, {cell.rag.value}"
+        + (f" ({why})" if why else "")
+        + "."
     )
 
 
@@ -298,9 +402,15 @@ def build_brief_facts(inputs: BriefInputs) -> BriefFacts:
         collected.add(item)
     issues = _issue_facts(inputs, reader, collected.issue_moves, collected.merge_requests)
     blockers = _blocker_facts(
-        inputs, collected.checkins, collected.checkin_names, collected.resolved_requests
+        inputs,
+        collected.checkins,
+        collected.checkin_names,
+        collected.resolved_requests,
+        collected.waits,
     )
-    lines = _context_lines(inputs, collected, issues, blockers)
+    merges = _merge_facts(collected.merge_requests, collected.mergers, reader)
+    lines = _context_lines(inputs, collected, issues, blockers, merges)
+    actions = _action_lines(inputs, collected, issues, merges)
     context = "\n".join(lines)
     known_people = frozenset(
         name for person_id, name in inputs.people.items() if _usable_person(name, person_id)
@@ -322,6 +432,11 @@ def build_brief_facts(inputs: BriefInputs) -> BriefFacts:
         blockers_open=blockers.open_now,
         eta_slips=collected.eta_slips,
         sources=_sources(inputs.scope_ref, collected.cited),
+        blocker_people=blockers.people,
+        merges=merges,
+        eta_changes=_eta_changes(collected.checkins, collected.checkin_names),
+        verdict_fallback=inputs.headline or inputs.status.sentence,
+        action_lines=actions,
     )
 
 
@@ -330,22 +445,29 @@ def _context_lines(
     collected: _Collected,
     issues: Mapping[str, IssueFact],
     blockers: _BlockerFacts,
+    merges: Sequence[MergeFact],
 ) -> tuple[str, ...]:
     lines: list[str] = [
         f"{inputs.label} for {inputs.scope_name}.",
         f"Window: since {_clock(inputs.since, inputs.as_of)}.",
+        *(
+            [f"The day's headline, as Exec Today shows it: {inputs.headline}"]
+            if inputs.headline
+            else []
+        ),
         inputs.status.sentence,
         *inputs.status.detail_lines,
+        *_checkin_day_lines(inputs),
     ]
     if inputs.scope.member_names:
         lines.append(f"Members: {', '.join(inputs.scope.member_names)}.")
     activity = [
         *_issue_lines(issues),
-        *_merge_request_lines(collected.merge_requests, inputs.as_of),
+        *_merge_request_lines(collected.merge_requests, merges, inputs.as_of),
         *_checkin_lines(
             collected.checkins, collected.checkin_names, inputs.as_of, _people_in_scope(inputs)
         ),
-        *_request_lines(collected.requests, inputs.as_of),
+        *_request_lines(collected.requests, inputs.as_of, merges),
         *_risk_lines(collected.risks),
         *_work_item_lines(collected.work_items),
         *_commit_lines(collected.commits),
@@ -355,6 +477,28 @@ def _context_lines(
     # from a window whose check-ins reported one (N38).
     lines.append(f"Blockers: {blockers.line}")
     return tuple(lines)
+
+
+def _checkin_day_lines(inputs: BriefInputs) -> list[str]:
+    """The brief's own day's check-in: how many were asked, when, and how many answered.
+
+    A window's check-ins say who answered at some point in the week; this says
+    whether today's statuses come from answers at all.
+    """
+    day = inputs.checkins_today
+    if not day:
+        return []
+    answered = sum(1 for checkin in day if checkin.answered)
+    first = min(checkin.first_asked_at for checkin in day)
+    on = f"{inputs.as_of.astimezone(UTC).day} {inputs.as_of.astimezone(UTC):%b}"
+    if answered == 0:
+        tail = "none answered yet; their statuses for the day are inferred or carried over"
+    elif answered == len(day):
+        tail = "all answered"
+    else:
+        tail = f"{answered} answered"
+    who = _count(len(day), ("team member", "team members"))
+    return [f"Check-in of {on}: {who} asked (first at {_clock(first, inputs.as_of)}), {tail}."]
 
 
 def _tracked_issues(
@@ -390,6 +534,10 @@ class _Collected:
     commits: dict[str, int] = field(default_factory=dict)
     risks: dict[tuple[str, str], PortfolioFeedItemView] = field(default_factory=dict)
     work_items: dict[str, PortfolioFeedItemView] = field(default_factory=dict)
+    #: Who merged each merge request, (repo, number): its merge commit's author.
+    mergers: dict[tuple[str, str], str] = field(default_factory=dict)
+    #: Whom each person waited on in the window, by person id: "Ben Okafor for SHOP-2".
+    waits: dict[str, list[str]] = field(default_factory=dict)
     #: The ref behind each aggregated line, by the slot it fills, with when.
     cites: dict[tuple[str, str], tuple[datetime, str]] = field(default_factory=dict)
 
@@ -435,21 +583,37 @@ class _Collected:
             self.requests.pop(request_id, None)
             self.cites.pop((item.source, request_id), None)
             return None
+        self._wait(item, reporter_id)
         if not self.reader.request_in_scope(item):
             return None
         self.requests[request_id] = _Request(item=item, transition=transition)
         return request_id
 
+    def _wait(self, item: PortfolioFeedItemView, reporter_id: str | None) -> None:
+        """Whom a person waits on, from their dependency asks: who owns their blocker."""
+        kind = _detail_str(item.details, "dependency_kind")
+        counterpart = _detail_str(item.details, "referenced_person_name")
+        if reporter_id is None or kind not in _WAIT_KINDS or counterpart is None:
+            return
+        keys = sorted(self.reader.named_keys(_detail_str(item.details, "summary") or ""))
+        wait = f"{counterpart} for {_join_and(keys)}" if keys else counterpart
+        waits = self.waits.setdefault(reporter_id, [])
+        if wait not in waits:
+            waits.append(wait)
+
     def _checkin(self, item: PortfolioFeedItemView) -> str | None:
         person_id = item.entity_ref.id
         if not self.reader.member(person_id):
             return None
+        # Only a parser that tells an ETA that moved from a duration (N45)
+        # marks the fact; an older number may be a duration ("2-3 days").
+        checked = item.details.get("eta_change_checked") is True
         self.checkins.setdefault(person_id, []).append(
             _Checkin(
                 at=item.observed_at,
                 source=_detail_str(item.details, "status_source") or "confirmed",
                 blockers=_detail_int(item.details, "blocker_count") or 0,
-                eta_change_days=_detail_int(item.details, "eta_change_days"),
+                eta_change_days=_detail_int(item.details, "eta_change_days") if checked else None,
             )
         )
         self.checkin_names[person_id] = item.person_name or self.people.get(person_id, "")
@@ -471,7 +635,14 @@ class _Collected:
 
     def _commit(self, item: PortfolioFeedItemView) -> str | None:
         repo = _detail_str(item.details, "repo")
-        if repo is not None and self.reader.code_in_scope(item, repo):
+        if repo is None:
+            return None
+        merged = _merged_request(item.summary, repo)
+        if merged is not None and item.person_name:
+            # The merge commit's author is who merged it; the request's own
+            # fact only knows who opened it (N52).
+            self.mergers[merged] = item.person_name
+        if self.reader.code_in_scope(item, repo):
             self.commits[repo] = self.commits.get(repo, 0) + 1
         return None
 
@@ -601,7 +772,7 @@ def _issue_facts(
         for key in sorted(reader.named_keys(item.summary)):
             named.add(key)
             if item.details.get("merged") is True:
-                merged.setdefault(key, []).append(_merge_request_label(repo, number))
+                merged.setdefault(key, []).append(_merge_request_label(repo, number, item))
     facts: dict[str, IssueFact] = {}
     for key in sorted(named, key=_key_order):
         tracked = _tracked_issue(key, task_by_key.get(key))
@@ -672,21 +843,45 @@ def issue_sentence(issue: IssueFact) -> str:
     return f"{issue.key} ({issue.title}) is {issue.tracker_label} in the tracker, not done."
 
 
+def _merge_facts(
+    merge_requests: Mapping[tuple[str, str], PortfolioFeedItemView],
+    mergers: Mapping[tuple[str, str], str],
+    reader: _ScopeReader,
+) -> tuple[MergeFact, ...]:
+    return tuple(
+        MergeFact(
+            label=_merge_request_label(repo, number, item),
+            number=number,
+            repo=_repo_short_name(repo),
+            keys=reader.named_keys(item.summary),
+            merged=item.details.get("merged") is True,
+            author=item.person_name,
+            merger=mergers.get((repo, number)) or mergers.get((_repo_short_name(repo), number)),
+        )
+        for (repo, number), item in sorted(merge_requests.items())
+    )
+
+
 def _merge_request_lines(
     merge_requests: Mapping[tuple[str, str], PortfolioFeedItemView],
+    merges: Sequence[MergeFact],
     as_of: datetime,
 ) -> list[str]:
+    by_label = {merge.label: merge for merge in merges}
     merged: list[str] = []
     unmerged: list[str] = []
     for (repo, number), item in sorted(
         merge_requests.items(), key=lambda entry: entry[1].observed_at
     ):
-        label = _merge_request_label(repo, number)
+        label = _merge_request_label(repo, number, item)
         title = _merge_request_title(item)
-        author = f" by {item.person_name}" if item.person_name else ""
+        author = f" opened by {item.person_name}" if item.person_name else ""
         when = _clock(item.observed_at, as_of)
         if item.details.get("merged") is True:
-            merged.append(f"{label} '{title}'{author} merged {when}")
+            merge = by_label.get(label)
+            merger = merge.merger if merge is not None else None
+            by = f", merged by {merger}" if merger else ", merged (who merged it is not recorded)"
+            merged.append(f"{label} '{title}'{author}{by} at {when}")
         else:
             unmerged.append(f"{label} '{title}'{author}, not merged (updated {when})")
     lines: list[str] = []
@@ -723,7 +918,8 @@ def _checkin_lines(
     moves = [
         f"{names.get(person_id) or 'a team member'} {checkin.eta_change_days:+d} "
         f"{'day' if abs(checkin.eta_change_days) == 1 else 'days'} "
-        f"({_clock(checkin.at, as_of)})"
+        f"(check-in at {_clock(checkin.at, as_of)}"
+        f"{'' if checkin is history[-1] else ', not their latest'})"
         for person_id, history in sorted(
             checkins.items(), key=lambda entry: names.get(entry[0], "")
         )
@@ -731,8 +927,27 @@ def _checkin_lines(
         if checkin.eta_change_days
     ]
     if moves:
-        lines.append("ETA changes: " + "; ".join(moves[:_MAX_PER_SECTION]) + ".")
+        lines.append("ETA changes reported: " + "; ".join(moves[:_MAX_PER_SECTION]) + ".")
+    else:
+        lines.append("ETA changes reported: none.")
     return lines
+
+
+def _eta_changes(
+    checkins: Mapping[str, Sequence[_Checkin]], names: Mapping[str, str]
+) -> dict[str, tuple[EtaChange, ...]]:
+    """Each named person's ETA changes of the window, oldest first."""
+    changes: dict[str, tuple[EtaChange, ...]] = {}
+    for person_id, history in checkins.items():
+        name = names.get(person_id)
+        moved = tuple(
+            EtaChange(days=checkin.eta_change_days, at=checkin.at, latest=checkin is history[-1])
+            for checkin in history
+            if checkin.eta_change_days
+        )
+        if name and moved:
+            changes[name] = moved
+    return changes
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -743,6 +958,8 @@ class _BlockerFacts:
     line: str
     reported: int
     open_now: int
+    #: Everyone a blocker may be said to be of, by name.
+    people: frozenset[str] = frozenset()
 
 
 def _blocker_facts(
@@ -750,6 +967,7 @@ def _blocker_facts(
     checkins: Mapping[str, Sequence[_Checkin]],
     names: Mapping[str, str],
     resolved_requests: Mapping[str, Sequence[datetime]],
+    waits: Mapping[str, Sequence[str]],
 ) -> _BlockerFacts:
     """Blockers as the facts give them: reported, cleared and open now (N38).
 
@@ -760,20 +978,31 @@ def _blocker_facts(
     check-in reported no blockers' cannot read as true.
     """
     known_open = inputs.open_blockers
-    reports = [
-        _person_blockers(
-            names.get(person_id) or "a team member",
-            blocked,
-            history,
-            None if known_open is None else known_open.get(person_id, 0),
-            resolved_requests.get(person_id, ()),
-            inputs.as_of,
-        )
+    reporters = [
+        (person_id, blocked)
         for person_id, history in sorted(
             checkins.items(), key=lambda entry: names.get(entry[0], "")
         )
         if (blocked := [checkin for checkin in history if checkin.blockers > 0])
     ]
+    reports = [
+        _person_blockers(
+            names.get(person_id) or "a team member",
+            blocked,
+            checkins[person_id],
+            None if known_open is None else known_open.get(person_id, 0),
+            resolved_requests.get(person_id, ()),
+            inputs.as_of,
+            waits.get(person_id, ()),
+        )
+        for person_id, blocked in reporters
+    ]
+    people = frozenset(
+        name
+        for person_id in {person for person, _ in reporters}
+        | {person for person, count in (known_open or {}).items() if count}
+        if (name := names.get(person_id) or inputs.people.get(person_id))
+    )
     open_total = sum((known_open or {}).values())
     open_people = [
         f"{names.get(person_id) or inputs.people.get(person_id) or 'a team member'} {count}"
@@ -789,17 +1018,22 @@ def _blocker_facts(
     if reports:
         said = "; ".join(text for text, _ in reports) + "."
         listed = "; ".join(text + earlier for text, earlier in reports) + "."
+        # Said outright, so a blocker is never read as anyone else's (N51).
+        nobody_else = "Nobody else reported a blocker in the window."
         return _BlockerFacts(
             sentence=f"{said} {now}".strip(),
-            line=f"{listed} {now}".strip(),
+            line=f"{listed} {now} {nobody_else}".replace("  ", " ").strip(),
             reported=len(reports),
             open_now=open_total,
+            people=people,
         )
     if known_open is not None and not open_total:
         sentence = "No check-in in the window reported a blocker, and none is open now."
     else:
         sentence = f"No check-in in the window reported a blocker. {now}".strip()
-    return _BlockerFacts(sentence=sentence, line=sentence, reported=0, open_now=open_total)
+    return _BlockerFacts(
+        sentence=sentence, line=sentence, reported=0, open_now=open_total, people=people
+    )
 
 
 def _person_blockers(
@@ -809,12 +1043,14 @@ def _person_blockers(
     open_now: int | None,
     resolutions: Sequence[datetime],
     as_of: datetime,
+    waits: Sequence[str] = (),
 ) -> tuple[str, str]:
     """A person's last report of the window and what became of it, and their earlier ones."""
     last = blocked[-1]
+    waiting = f" (waiting on {_join_and(waits)})" if waits else ""
     text = (
         f"{name}'s check-in at {_clock(last.at, as_of)} reported "
-        f"{_count(last.blockers, ('blocker', 'blockers'))}"
+        f"{_count(last.blockers, ('blocker', 'blockers'))}{waiting}"
     )
     if open_now:
         text += f", {open_now} still open"
@@ -845,7 +1081,9 @@ def _cleared_at(
     return min(signs) if signs else None
 
 
-def _request_lines(requests: Mapping[str, _Request], as_of: datetime) -> list[str]:
+def _request_lines(
+    requests: Mapping[str, _Request], as_of: datetime, merges: Sequence[MergeFact] = ()
+) -> list[str]:
     grouped: dict[str, list[str]] = {}
     for request in sorted(requests.values(), key=lambda entry: entry.item.observed_at):
         details = request.item.details
@@ -857,6 +1095,9 @@ def _request_lines(requests: Mapping[str, _Request], as_of: datetime) -> list[st
         text = f"{reporter}'s {kind} request to {counterpart}"
         if summary:
             text += f' ("{summary}")'
+            meant = resolve_bare_merge_request(summary, {reporter, counterpart}, merges)
+            if meant is not None:
+                text += f", that is {meant.named}"
         if request.transition == "resolved":
             text += f", {_clock(request.item.observed_at, as_of)}"
         state = request.transition if request.transition in _REQUEST_STATE_LABELS else "opened"
@@ -866,6 +1107,65 @@ def _request_lines(requests: Mapping[str, _Request], as_of: datetime) -> list[st
         for state in _REQUEST_STATE_ORDER
         if state in grouped
     ]
+
+
+def resolve_bare_merge_request(
+    text: str, people: set[str], merges: Sequence[MergeFact]
+) -> MergeFact | None:
+    """The one merge request a text names by number alone ("merge !1"), if it can be told.
+
+    Of the window's merge requests with that number, the one the text's people
+    opened or merged; with none of theirs, the only one with that number.
+    """
+    match = BARE_MERGE_REQUEST.search(text)
+    if match is None:
+        return None
+    before = text[: match.start()].rstrip().rsplit(" ", 1)[-1].casefold()
+    if before and any(before == merge.repo for merge in merges):
+        return None
+    numbered = [merge for merge in merges if merge.number == match.group(1)]
+    theirs = [merge for merge in numbered if {merge.author, merge.merger} & people]
+    candidates = theirs or numbered
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _action_lines(
+    inputs: BriefInputs,
+    collected: _Collected,
+    issues: Mapping[str, IssueFact],
+    merges: Sequence[MergeFact],
+) -> tuple[str, ...]:
+    """Who needs to act on what today, as short sentences built from the facts only."""
+    lines: list[str] = []
+    day = inputs.checkins_today or ()
+    silent = sum(1 for checkin in day if not checkin.answered)
+    if day and silent:
+        lines.append(
+            f"{silent} of {_count(len(day), ('team member', 'team members'))} "
+            "have not answered the day's check-in."
+        )
+    for request in collected.requests.values():
+        if request.transition != "needs_resolution":
+            continue
+        details = request.item.details
+        reporter = _detail_str(details, "reporter_name") or "Someone"
+        kind_value = _detail_str(details, "dependency_kind") or "request"
+        kind = _REQUEST_KIND_LABELS.get(kind_value, kind_value.replace("_", " "))
+        meant = resolve_bare_merge_request(
+            _detail_str(details, "summary") or "", {reporter}, merges
+        )
+        about = f" for {meant.named}" if meant is not None else ""
+        lines.append(f"{reporter}'s {kind} request{about} needs a PM to resolve it.")
+    for person_id, count in sorted((inputs.open_blockers or {}).items()):
+        name = inputs.people.get(person_id)
+        if count and name:
+            lines.append(f"{name} has {_count(count, ('open blocker', 'open blockers'))}.")
+    lines.extend(
+        f"{issue.key} is merged but still open in the tracker."
+        for issue in issues.values()
+        if issue.merged_ticket_open
+    )
+    return tuple(lines)
 
 
 def _risk_lines(risks: Mapping[tuple[str, str], PortfolioFeedItemView]) -> list[str]:
@@ -897,9 +1197,28 @@ def _commit_lines(commits: Mapping[str, int]) -> list[str]:
     ]
 
 
-def _merge_request_label(repo: str, number: str) -> str:
-    # Provider-neutral: the feed does not say whether the host writes !1 or #1.
-    return f"merge request {number} in {repo.rstrip('/').rsplit('/', 1)[-1]}"
+def _merged_request(summary: str, repo: str) -> tuple[str, str] | None:
+    """The (repo, number) a merge commit's message names, if it is one."""
+    if (match := _GITLAB_MERGE.search(summary)) is not None:
+        return match.group("repo"), match.group("id")
+    if (match := _GITHUB_MERGE.search(summary)) is not None:
+        return repo, match.group("id")
+    return None
+
+
+def _merge_request_label(repo: str, number: str, item: PortfolioFeedItemView | None = None) -> str:
+    """How a person names a merge request: "insights-pipeline !1" (GitLab), "api #4" (GitHub).
+
+    Its web address says which host writes which; without one, it is said
+    provider-neutrally, "merge request 1 in insights-pipeline".
+    """
+    short = repo.rstrip("/").rsplit("/", 1)[-1]
+    url = (_detail_str(item.details, "web_url") or "") if item is not None else ""
+    if "/merge_requests/" in url:
+        return f"{short} !{number}"
+    if "/pull/" in url:
+        return f"{short} #{number}"
+    return f"merge request {number} in {short}"
 
 
 def _merge_request_title(item: PortfolioFeedItemView) -> str:

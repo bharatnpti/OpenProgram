@@ -3,9 +3,16 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime, time, timedelta
-from typing import Literal
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
+from typing import Literal, Protocol
 
+from core.application.attention import (
+    AttentionDay,
+    AttentionView,
+    TeamGraph,
+    attention_view,
+    cell_reasons,
+)
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
 from core.application.rollup_service import (
     DriftSignals,
@@ -24,6 +31,7 @@ from core.domain.graph import (
     JsonScalar,
     NodeKind,
 )
+from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import DeveloperStatus, StatusSource
 from core.ports.repositories import (
@@ -34,6 +42,22 @@ from core.ports.repositories import (
 )
 
 TASK_FACT_LOOKBACK_DAYS = 30
+
+
+class PortfolioFindings(Protocol):
+    """Where the attention read takes the open risk and drift findings (``RiskService``)."""
+
+    async def portfolio_risks(self, tenant_id: str, as_of: date) -> list[RiskFinding]: ...
+
+    async def portfolio_drift(self, tenant_id: str, as_of: date) -> list[DriftFinding]: ...
+
+
+@dataclass(frozen=True, kw_only=True)
+class ProviderNames:
+    """How a reason names where an inferred status comes from, e.g. the tracker and VCS."""
+
+    tracker: str = "the issue tracker"
+    vcs: str = "Git"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -283,6 +307,10 @@ class HeatmapCellView:
     #: the nodes a reason cites, and always a person in no team (N5). None
     #: rather than a guess.
     name: str | None = None
+    #: A few words for under the cell's colour ("3 of 4 unanswered today"),
+    #: and every reason behind it, for a tooltip (``attention.cell_reasons``).
+    reason: str | None = None
+    reasons: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -756,6 +784,9 @@ class PersonaViewService:
         tenant_id: str,
         as_of: date,
         program_root_id: str | None = None,
+        *,
+        today: date | None = None,
+        names: ProviderNames | None = None,
     ) -> PortfolioHeatmapView:
         """Heat for one day, computed on the fly when nothing is stored yet.
 
@@ -770,6 +801,68 @@ class PersonaViewService:
         from their stored rows, which say so (``is_outside_teams``), or are
         computed beside a computed tree. They sit on a "no pod" row and count
         in nothing else on the map.
+
+        Each cell also carries a short reason and every reason behind it
+        (``attention.cell_reasons``), counted against who is in each team on
+        the day and who answered the day's check-in: the tenant's nodes and
+        edges read once, never the program tree walked.
+        """
+        loaded = await self._heatmap_statuses(tenant_id, as_of, program_root_id)
+        if loaded is None:
+            return PortfolioHeatmapView(as_of=as_of, rows=(), columns=(), cells=())
+        statuses, tree = loaded
+        day = await self._attention_day(
+            tenant_id, statuses, as_of, today or datetime.now(tz=UTC).date(), names
+        )
+        cells = await self._heatmap_cells(tenant_id, statuses, tree, day)
+        rows = tuple(dict.fromkeys(cell.row for cell in cells))
+        columns = tuple(dict.fromkeys(cell.column for cell in cells))
+        return PortfolioHeatmapView(as_of=as_of, rows=rows, columns=columns, cells=cells)
+
+    async def portfolio_attention(
+        self,
+        tenant_id: str,
+        as_of: date,
+        program_root_id: str | None,
+        findings: PortfolioFindings | None,
+        *,
+        today: date,
+        zone: tzinfo = UTC,
+        names: ProviderNames | None = None,
+        clock: bool = True,
+    ) -> AttentionView:
+        """What a director should know about the program on ``as_of``, in one read.
+
+        The headline's sentence and its second line, the day's check-in counts
+        for the people in the teams, and up to five signals worth acting on:
+        from the same statuses the heat map shows, the open risk and drift
+        findings (``findings``; none read without it), and how long each open
+        blocker has stood.
+        """
+        program_id = program_root_id or await self._first_program_id(tenant_id)
+        loaded = await self._heatmap_statuses(tenant_id, as_of, program_id)
+        statuses = loaded[0] if loaded is not None else []
+        day = await self._attention_day(tenant_id, statuses, as_of, today, names)
+        risks = await findings.portfolio_risks(tenant_id, as_of) if findings else []
+        drift = await findings.portfolio_drift(tenant_id, as_of) if findings else []
+        people = sorted(node_id for (kind, node_id) in day.statuses if kind is NodeKind.DEVELOPER)
+        ages = {
+            blocker.blocker_id: max((as_of - blocker.first_seen_on).days, 0)
+            for blocker in await self._status_repository.open_blockers_for_developers(
+                tenant_id, people, as_of
+            )
+        }
+        return attention_view(
+            day, program_id, risks=risks, drift=drift, blocker_ages=ages, zone=zone, clock=clock
+        )
+
+    async def _heatmap_statuses(
+        self, tenant_id: str, as_of: date, program_root_id: str | None
+    ) -> tuple[list[NodeStatus], GraphTree | None] | None:
+        """The day's statuses the heat map shows, and the tree when one was read.
+
+        None when there is no program to show. Stored rows are read as they
+        are; a day with none is computed (never recorded).
         """
         statuses = await self._rollup_repository.list_node_statuses(tenant_id, as_of)
         tree: GraphTree | None = None
@@ -780,40 +873,61 @@ class PersonaViewService:
                         tenant_id, program_root_id, as_of
                     )
                 except GraphNotFound:
-                    return PortfolioHeatmapView(as_of=as_of, rows=(), columns=(), cells=())
+                    return None
                 statuses = list(await self._rollup_service.compute(tree, as_of))
                 statuses += await self._outside_teams(tenant_id, as_of)
+            return statuses, tree
+        resolved_root_id = await self._first_program_id(tenant_id)
+        if resolved_root_id is None:
+            return None
+        try:
+            tree = await self._graph_repository.get_program_tree(tenant_id, resolved_root_id, as_of)
+        except GraphNotFound:
+            return None
+        tree_ids = {node.id for node in tree.nodes}
+        in_tree = [status for status in statuses if status.entity_ref.id in tree_ids]
+        if in_tree:
+            statuses = in_tree + [
+                status
+                for status in statuses
+                if status.entity_ref.id not in tree_ids and is_outside_teams(status)
+            ]
         else:
-            resolved_root_id = await self._first_program_id(tenant_id)
-            if resolved_root_id is None:
-                return PortfolioHeatmapView(as_of=as_of, rows=(), columns=(), cells=())
-            try:
-                tree = await self._graph_repository.get_program_tree(
-                    tenant_id, resolved_root_id, as_of
-                )
-            except GraphNotFound:
-                return PortfolioHeatmapView(as_of=as_of, rows=(), columns=(), cells=())
-            tree_ids = {node.id for node in tree.nodes}
-            in_tree = [status for status in statuses if status.entity_ref.id in tree_ids]
-            if in_tree:
-                statuses = in_tree + [
-                    status
-                    for status in statuses
-                    if status.entity_ref.id not in tree_ids and is_outside_teams(status)
-                ]
-            else:
-                statuses = list(await self._rollup_service.compute(tree, as_of))
-                statuses += await self._outside_teams(tenant_id, as_of)
-        cells = await self._heatmap_cells(tenant_id, statuses, tree)
-        rows = tuple(dict.fromkeys(cell.row for cell in cells))
-        columns = tuple(dict.fromkeys(cell.column for cell in cells))
-        return PortfolioHeatmapView(as_of=as_of, rows=rows, columns=columns, cells=cells)
+            statuses = list(await self._rollup_service.compute(tree, as_of))
+            statuses += await self._outside_teams(tenant_id, as_of)
+        return statuses, tree
+
+    async def _attention_day(
+        self,
+        tenant_id: str,
+        statuses: Sequence[NodeStatus],
+        as_of: date,
+        today: date,
+        names: ProviderNames | None,
+    ) -> AttentionDay:
+        """The day as the reasons read it: statuses, teams on the day, its check-ins."""
+        provider = names or ProviderNames()
+        graph = TeamGraph.from_graph(
+            await self._graph_repository.list_nodes(tenant_id),
+            await self._graph_repository.list_edges(tenant_id),
+            as_of,
+        )
+        return AttentionDay.build(
+            as_of=as_of,
+            today=today,
+            statuses=statuses,
+            graph=graph,
+            checkins=await self._status_repository.checkins_on_day(tenant_id, as_of),
+            tracker=provider.tracker,
+            vcs=provider.vcs,
+        )
 
     async def _heatmap_cells(
         self,
         tenant_id: str,
         statuses: Sequence[NodeStatus],
         tree: GraphTree | None,
+        day: AttentionDay,
     ) -> tuple[HeatmapCellView, ...]:
         """One cell per status, each amber or red one naming what drives it.
 
@@ -840,13 +954,23 @@ class PersonaViewService:
         context = context.with_labels(
             {node_id: _reason_label(nodes[node_id]) for node_id in wanted if node_id in nodes}
         )
-        return tuple(
-            replace(
-                _heatmap_cell(status, context),
-                name=node.name if (node := nodes.get(status.entity_ref.id)) else None,
+        cells: list[HeatmapCellView] = []
+        for status in statuses:
+            no_pod = is_outside_teams(status)
+            reasons = cell_reasons(
+                day,
+                _without_no_pod(status) if no_pod else status,
+                outside_teams=no_pod,
             )
-            for status in statuses
-        )
+            cells.append(
+                replace(
+                    _heatmap_cell(status, context),
+                    name=node.name if (node := nodes.get(status.entity_ref.id)) else None,
+                    reason=reasons.reason,
+                    reasons=reasons.reasons,
+                )
+            )
+        return tuple(cells)
 
     async def node_trend(
         self,
@@ -1473,6 +1597,13 @@ def _confidence_from_fact(fact: FactEvent | None) -> float | None:
 
 # The heat-map row a person in no team sits on (N5), apart from every team's.
 NO_POD_ROW = "no pod"
+
+
+def _without_no_pod(status: NodeStatus) -> NodeStatus:
+    """A person in no team's own status, without the line that says so (N5)."""
+    return replace(
+        status, factors=tuple(f for f in status.factors if f.kind is not FactorKind.NO_POD)
+    )
 
 
 def _heatmap_cell(status: NodeStatus, context: _ReasonContext) -> HeatmapCellView:

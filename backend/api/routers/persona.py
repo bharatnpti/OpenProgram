@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from enum import StrEnum
 from typing import Annotated
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -14,6 +15,7 @@ from api.dependencies import (
     get_person_names,
     get_persona_view_service,
     get_portfolio_feed_service,
+    get_provider_names,
     get_risk_service,
     get_write_back_service,
 )
@@ -30,6 +32,7 @@ from api.dtos import (
     PodCheckinsResponse,
     PodRollupResponse,
     PodTasksResponse,
+    PortfolioAttentionResponse,
     PortfolioFeedResponse,
     PortfolioFlowResponse,
     PortfolioHeatmapResponse,
@@ -46,7 +49,7 @@ from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.cross_person_service import CrossPersonRequestService
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.person_names import PersonNames, person_name
-from core.application.persona_views import PersonaViewService
+from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.application.risk_service import RiskService
 from core.application.writeback_service import WriteBackService
@@ -191,11 +194,57 @@ async def portfolio_heatmap(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+    names: Annotated[ProviderNames, Depends(get_provider_names)],
     program_root_id: Annotated[str | None, Query()] = None,
 ) -> PortfolioHeatmapResponse:
     _ensure(principal, Capability.READ_PORTFOLIO_HEATMAP)
-    view = await persona_service.portfolio_heatmap(principal.tenant_id, as_of, program_root_id)
+    view = await persona_service.portfolio_heatmap(
+        principal.tenant_id, as_of, program_root_id, names=names
+    )
     return PortfolioHeatmapResponse.from_view(view)
+
+
+@router.get("/portfolio/attention", response_model=PortfolioAttentionResponse)
+async def portfolio_attention(
+    as_of: Annotated[date, Query(default_factory=date.today)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+    risk_service: Annotated[RiskService, Depends(get_risk_service)],
+    names: Annotated[ProviderNames, Depends(get_provider_names)],
+    program_root_id: Annotated[str | None, Query()] = None,
+    tz: Annotated[
+        str | None,
+        Query(description="The reader's IANA time zone, for the times a sentence names."),
+    ] = None,
+) -> PortfolioAttentionResponse:
+    """Exec Today's headline, its next drivers and the top signals for one day.
+
+    The heat map's read (the same colours and reasons) with the portfolio's
+    risk and drift findings, so it needs both: manager, exec and admin hold them.
+    """
+    _ensure(principal, Capability.READ_PORTFOLIO_HEATMAP)
+    _ensure_aggregate(principal)
+    zone = _zone(tz)
+    view = await persona_service.portfolio_attention(
+        principal.tenant_id,
+        as_of,
+        program_root_id,
+        risk_service,
+        today=datetime.now(tz=zone).date(),
+        zone=zone,
+        names=names,
+    )
+    return PortfolioAttentionResponse.from_view(view)
+
+
+def _zone(name: str | None) -> ZoneInfo:
+    """The reader's zone, else UTC: a bad name never fails the read."""
+    if name:
+        try:
+            return ZoneInfo(name)
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    return ZoneInfo("UTC")
 
 
 @router.get("/persona/{level}/{entity_id}/trend", response_model=NodeTrendResponse)

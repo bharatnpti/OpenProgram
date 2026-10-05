@@ -732,3 +732,76 @@ def test_factor_from_json_tolerates_legacy_rows() -> None:
     assert legacy_status.unattributed is False
     assert unknown_kind is not None
     assert unknown_kind.kind is FactorKind.STATUS
+
+
+async def test_in_memory_checkins_on_day_give_each_persons_first_ask_and_reply() -> None:
+    """Who was asked a day's check-in and who answered: counts and times, no reply text."""
+    store = InMemoryGraphStore()
+    day = date(2026, 3, 9)
+    first = datetime(2026, 3, 9, 7, 46, tzinfo=UTC)
+
+    def checkin(
+        person: str,
+        asked: datetime,
+        replied: datetime | None,
+        *,
+        tenant: str = "demo",
+        checkin_date: date | None = day,
+    ) -> CheckIn:
+        return CheckIn(
+            tenant_id=tenant,
+            developer_id=person,
+            correlation_id=f"corr-{tenant}-{person}-{asked.isoformat()}",
+            asked_at=asked,
+            replied_at=replied,
+            raw_reply=None,
+            signals=None,
+            checkin_date=checkin_date,
+        )
+
+    for row in (
+        # Asked twice, the second answered: the first ask, and the first reply.
+        checkin("dev-ada", first, None),
+        checkin("dev-ada", first.replace(hour=12), first.replace(hour=12, minute=5)),
+        checkin("dev-ben", first, None),
+        # A legacy row without a local day counts on its ask's UTC day.
+        checkin("dev-cy", first, first.replace(minute=50), checkin_date=None),
+        checkin("dev-dee", first.replace(day=8), None, checkin_date=date(2026, 3, 8)),
+        checkin("dev-ada", first, first, tenant="other"),
+    ):
+        await store.record_checkin(row)
+
+    days = await store.checkins_on_day("demo", day)
+
+    assert [(d.developer_id, d.first_asked_at, d.first_replied_at) for d in days] == [
+        ("dev-ada", first, first.replace(hour=12, minute=5)),
+        ("dev-ben", first, None),
+        ("dev-cy", first, first.replace(minute=50)),
+    ]
+    assert [d.answered for d in days] == [True, False, True]
+
+
+async def test_postgres_checkins_on_day_reads_one_row_per_person_for_the_local_day() -> None:
+    asked = datetime(2026, 3, 9, 7, 46, tzinfo=UTC)
+    executor = _FetchRecorder(
+        rows=[
+            {"developer_id": "dev-ada", "first_asked_at": asked, "first_replied_at": None},
+            {
+                "developer_id": "dev-ben",
+                "first_asked_at": asked,
+                "first_replied_at": asked.replace(minute=50),
+            },
+        ]
+    )
+
+    days = await PostgresStatusRepository(executor).checkins_on_day(  # type: ignore[arg-type]
+        "demo", date(2026, 3, 9)
+    )
+
+    ((query, params),) = executor.calls
+    statement = " ".join(query.split())
+    assert "min(asked_at) AS first_asked_at, min(replied_at) AS first_replied_at" in statement
+    assert "checkin_date = %s OR ( checkin_date IS NULL" in statement
+    assert "GROUP BY developer_id" in statement
+    assert params == ("demo", date(2026, 3, 9), date(2026, 3, 9), date(2026, 3, 9))
+    assert [(d.developer_id, d.answered) for d in days] == [("dev-ada", False), ("dev-ben", True)]

@@ -1289,6 +1289,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/portfolio/attention": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Portfolio Attention
+     * @description Exec Today's headline, its next drivers and the top signals for one day.
+     *
+     *     The heat map's read (the same colours and reasons) with the portfolio's
+     *     risk and drift findings, so it needs both: manager, exec and admin hold them.
+     */
+    get: operations["portfolio_attention_portfolio_attention_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/persona/{level}/{entity_id}/trend": {
     parameters: {
       query?: never;
@@ -1636,6 +1659,50 @@ export interface components {
       kind?: components["schemas"]["NodeKind"] | null;
       /** Label */
       label?: string | null;
+    };
+    /**
+     * AttentionCheckinsDto
+     * @description The day's check-in for the people in the teams: how many were asked and answered.
+     */
+    AttentionCheckinsDto: {
+      /** People */
+      people: number;
+      /** Asked */
+      asked: number;
+      /** Answered */
+      answered: number;
+      /** First Asked At */
+      first_asked_at: string | null;
+    };
+    /**
+     * AttentionLinkDto
+     * @description Where a signal leads: a delivery page by node kind and id, or the Signals page.
+     */
+    AttentionLinkDto: {
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "program" | "project" | "workstream" | "pod" | "signals";
+      /** Id */
+      id?: string | null;
+    };
+    /** AttentionSignalDto */
+    AttentionSignalDto: {
+      /**
+       * Kind
+       * @description What the signal is: blocker, blocked_task, unanswered, partial, inferred, stale, missing, attention_task, target_date, drift, drift:<kind> or risk:<rule>.
+       */
+      kind: string;
+      severity: components["schemas"]["Rag"];
+      /**
+       * Title
+       * @description One line saying what needs acting on, naming people.
+       */
+      title: string;
+      /** Age Days */
+      age_days: number;
+      link: components["schemas"]["AttentionLinkDto"];
     };
     /** AuthStatusResponse */
     AuthStatusResponse: {
@@ -2480,6 +2547,16 @@ export interface components {
       source_ref: components["schemas"]["EntityRefDto"];
       /** Name */
       name?: string | null;
+      /**
+       * Reason
+       * @description A few words for under the cell's colour, e.g. '3 of 4 unanswered today' or 'Blocker on SHOP-8 (Ada)'; for an unknown cell, why it has no status. Names people, never ids. Optional, so older clients keep working.
+       */
+      reason?: string | null;
+      /**
+       * Reasons
+       * @description Every reason behind the cell's colour, worst first, for a tooltip.
+       */
+      reasons?: string[];
     };
     /** IdentityAutoMatchMemberDto */
     IdentityAutoMatchMemberDto: {
@@ -2599,6 +2676,16 @@ export interface components {
       generated_at: string;
       /** Sources */
       sources: string[];
+      /**
+       * Verdict
+       * @description The one-line verdict of a structured brief; null for an older free-text brief, which a reader splits into sentences instead.
+       */
+      verdict?: string | null;
+      /**
+       * Bullets
+       * @description A structured brief's bullets: what changed, what is at risk, who acts.
+       */
+      bullets?: string[];
     };
     /** NarrativeBriefsResponse */
     NarrativeBriefsResponse: {
@@ -2787,6 +2874,31 @@ export interface components {
       as_of: string;
       /** Tasks */
       tasks: components["schemas"]["PodTaskDto"][];
+    };
+    /**
+     * PortfolioAttentionResponse
+     * @description What a director should know about a program on one day (Exec Today).
+     *
+     *     ``headline`` is one plain sentence with the colour and its cause; ``detail``
+     *     the next drivers, or null. ``signals`` are at most five items to act on,
+     *     worst and oldest first; empty only when nothing needs attention.
+     */
+    PortfolioAttentionResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Program Id */
+      program_id: string | null;
+      rag: components["schemas"]["Rag"];
+      /** Headline */
+      headline: string;
+      /** Detail */
+      detail: string | null;
+      checkins: components["schemas"]["AttentionCheckinsDto"];
+      /** Signals */
+      signals: components["schemas"]["AttentionSignalDto"][];
     };
     /** PortfolioFeedItemResponse */
     PortfolioFeedItemResponse: {
@@ -6929,6 +7041,42 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PortfolioHeatmapResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  portfolio_attention_portfolio_attention_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        program_root_id?: string | null;
+        /** @description The reader's IANA time zone, for the times a sentence names. */
+        tz?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PortfolioAttentionResponse"];
         };
       };
       /** @description Validation Error */

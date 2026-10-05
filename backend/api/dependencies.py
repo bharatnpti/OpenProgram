@@ -15,7 +15,7 @@ from core.application.directory_sync_service import DirectorySyncService
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.graph_queries import GraphQueryService
 from core.application.person_names import PersonNames
-from core.application.persona_views import PersonaViewService
+from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
 from core.application.risk_service import RiskService
 from core.application.self_status_service import SelfStatusService
@@ -254,6 +254,11 @@ def get_persona_view_service(request: Request) -> PersonaViewService:
         # ones carry (N3), read by the Signals list's own reader.
         drift_signals=get_risk_service(request),
     )
+
+
+def get_provider_names(request: Request) -> ProviderNames:
+    """How a reason names the configured tracker and code host: "Jira", "GitLab"."""
+    return get_registry(request).provider_names()
 
 
 def get_self_status_service(request: Request) -> SelfStatusService:

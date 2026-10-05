@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 
 from core.application.narrative_brief_service import NarrativeBriefService
@@ -120,8 +121,11 @@ async def test_generate_falls_back_to_deterministic_body_when_llm_empty() -> Non
 
     brief = await service.generate("demo", BriefKind.WEEKLY_PROJECT, "proj-x", as_of=AS_OF)
 
-    assert brief.body.strip()
-    assert "Weekly project update" in brief.body
+    # Built from the facts alone, still a verdict and bullets.
+    structure = brief.structure
+    assert structure is not None
+    assert structure.verdict == "No rollup status is available yet."
+    assert structure.bullets == ("No check-in in the window reported a blocker.",)
 
 
 async def test_exec_brief_uses_portfolio_scope() -> None:
@@ -304,6 +308,8 @@ async def _seed_portfolio(store: InMemoryGraphStore) -> None:
             status_source="confirmed",
             blocker_count=0,
             eta_change_days=1,
+            # Read by the parser that tells an ETA that moved from a duration (N45).
+            eta_change_checked=True,
         ),
         _fact(
             "checkin",
@@ -457,8 +463,14 @@ async def test_exec_brief_context_counts_status_cells_and_states_tickets_and_blo
     brief = await _scoped_service(store, llm).generate("demo", BriefKind.EXEC, "", as_of=BRIEF_AT)
 
     context = llm.requests[-1].messages[0].content
-    # Only people, pods, projects and the program carry a status of their own.
-    assert "Status of 3 people, 2 pods, 1 project and the program: 7 green." in context
+    # Only people, pods, projects and the program carry a status of their own;
+    # the people counted are the team members, as the hero counts them.
+    assert "Status of 3 team members, 2 pods, 1 project and the program: 7 green." in context
+    # The day's headline, from the builder Exec Today's hero uses, without a clock.
+    assert (
+        "The day's headline, as Exec Today shows it: Green: all 3 people confirmed with no "
+        "open blockers."
+    ) in context
     assert "unknown" not in context
     # A merged merge request on an open ticket is not a finished issue.
     assert "Issues done in the tracker: SHOP-1 Checkout form; SHOP-4 Payment retries." in context
@@ -468,22 +480,36 @@ async def test_exec_brief_context_counts_status_cells_and_states_tickets_and_blo
     ) in context
     # Ada's blocker is reported, cleared one minute later by Ben's merge.
     assert (
-        "Blockers: Ada Lind's check-in at 06:05 UTC reported 1 blocker, cleared at 06:06 UTC. "
-        "No blocker is open now."
+        "Blockers: Ada Lind's check-in at 06:05 UTC reported 1 blocker (waiting on Ben Okafor "
+        "for SHOP-2), cleared at 06:06 UTC. No blocker is open now. Nobody else reported a "
+        "blocker in the window."
     ) in context
+    # Who opened the merge request, and that nobody recorded who merged it.
+    assert (
+        "merge request 7 in web 'SHOP-2 Upgrade HTTP client' opened by Ben Okafor, merged "
+        "(who merged it is not recorded)"
+    ) in context
+    assert "ETA changes reported: Ben Okafor +1 day (check-in at 06:05 UTC)." in context
     # The superseded copy of Cy's ask is bookkeeping, not an event.
     assert "superseded" not in context and "Review of the refund flow" not in context
 
-    sentences = brief.body.split(". ")
-    assert "Status of 3 people, 2 pods, 1 project and the program: 7 green" in sentences
-    assert "4 unknown" not in brief.body
-    assert not any("SHOP-2" in sentence and "complet" in sentence for sentence in sentences)
-    assert "SHOP-2 (Upgrade HTTP client) is merged in merge request 7 in web" in brief.body
-    assert "ticket still open (In Progress in the tracker)" in brief.body
-    assert "SHOP-1 (Checkout form) is done in the tracker." in brief.body
-    assert "report no blockers" not in brief.body
-    assert "reported 1 blocker, cleared at 06:06 UTC" in brief.body
-    assert "One team member has an ETA adjustment of +1 day." in brief.body
+    # The model answered in prose, not JSON: its sentences, grounded, are the
+    # bullets, under the day's headline as the verdict. The colour count goes
+    # (jargon), the done claim and the blocker denial are restated from the
+    # facts, without their clock times.
+    structure = brief.structure
+    assert structure is not None
+    assert structure.verdict == "Green: all 3 people confirmed with no open blockers."
+    assert structure.bullets == (
+        "SHOP-1 (Checkout form) is done in the tracker.",
+        "SHOP-2 (Upgrade HTTP client) is merged in merge request 7 in web, ticket still open "
+        "(In Progress in the tracker).",
+        "Ada Lind's check-in reported 1 blocker (waiting on Ben Okafor for SHOP-2), cleared. "
+        "No blocker is open now.",
+        "One team member has an ETA adjustment of +1 day.",
+    )
+    assert "green" not in " ".join(structure.bullets)
+    assert "UTC" not in brief.body
 
 
 async def test_pod_brief_reads_only_its_own_members_and_issues() -> None:
@@ -493,9 +519,17 @@ async def test_pod_brief_reads_only_its_own_members_and_issues() -> None:
     llm = FakeLlmProvider(
         responses=[
             _reply(
-                "Both members confirmed check-ins. SHOP-1 is done in the tracker. "
-                "SHOP-4 payment retries were completed. Cy Morales confirmed his check-in. "
-                "Two cross-person reviews were superseded and rescheduled."
+                json.dumps(
+                    {
+                        "verdict": "Both members confirmed check-ins.",
+                        "bullets": [
+                            "SHOP-1 is done in the tracker.",
+                            "SHOP-4 payment retries were completed.",
+                            "Cy Morales confirmed his check-in.",
+                            "Two cross-person reviews were superseded and rescheduled.",
+                        ],
+                    }
+                )
             )
         ]
     )
@@ -511,18 +545,22 @@ async def test_pod_brief_reads_only_its_own_members_and_issues() -> None:
     for foreign in ("SHOP-3", "SHOP-4", "acme/pay", "pay !3", "Cy Morales", "refund"):
         assert foreign not in context
     assert "Ada Lind's dependency request to Ben Okafor" in context
-    assert "reported 1 blocker, cleared at 06:06 UTC" in context
+    assert "reported 1 blocker (waiting on Ben Okafor for SHOP-2), cleared at 06:06 UTC" in context
     assert not {"task:SHOP-3", "task:SHOP-4"} & set(brief.sources)
     assert brief.sources[0] == "pod:pod-web"
     assert "task:SHOP-1" in brief.sources
 
-    assert brief.body.startswith("Both members confirmed check-ins. SHOP-1 is done in the tracker.")
+    assert llm.requests[-1].json_mode
+    structure = brief.structure
+    assert structure is not None
+    assert structure.verdict == "Both members confirmed check-ins."
     for invented in ("SHOP-4", "Cy Morales", "rescheduled"):
         assert invented not in brief.body
-    # The blocker the pod's check-ins reported is stated even though the model left it out.
-    assert brief.body.endswith(
-        "Ada Lind's check-in at 06:05 UTC reported 1 blocker, cleared at 06:06 UTC. "
-        "No blocker is open now."
+    # The blocker cleared before the brief, so the brief need not say it; the
+    # bullets that ran short are filled from who-must-act lines of the facts.
+    assert structure.bullets == (
+        "SHOP-1 is done in the tracker.",
+        "SHOP-2 is merged but still open in the tracker.",
     )
 
     payments = await _scoped_service(store, FakeLlmProvider()).facts(

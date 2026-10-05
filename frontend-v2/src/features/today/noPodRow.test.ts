@@ -37,8 +37,37 @@ describe("noPodTiles", () => {
         rag: "green",
         state: "confirmed",
         why: "No pod, outside team colours: Confirmed status has no blockers.",
+        reason: null,
+        reasons: ["No pod, outside team colours: Confirmed status has no blockers."],
       },
     ]);
+  });
+
+  test("carries the backend's reason and every reason for the tooltip", () => {
+    const { tiles } = noPodTiles(
+      [
+        cell({
+          id: "u-fay",
+          name: "Fay Moreau",
+          rag: "amber",
+          source: "inferred",
+          reason: "Check-in unanswered today",
+          reasons: ["Hasn't answered today's check-in.", "In no pod."],
+        }),
+      ],
+      4,
+    );
+
+    assert.deepEqual(
+      tiles.map((tile) => [tile.state, tile.reason, tile.reasons]),
+      [
+        [
+          "inferred",
+          "Check-in unanswered today",
+          ["Hasn't answered today's check-in.", "In no pod."],
+        ],
+      ],
+    );
   });
 
   test("worst first, silence as no status, and never an id for a name", () => {
