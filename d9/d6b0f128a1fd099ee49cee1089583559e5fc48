@@ -1,0 +1,19 @@
+frontend-v2/src/features/admin/DayReportsPanel.tsx
+  s_239b3b1319ec3a::t_fe14667b368b8a 105-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d9d6b0f128a1fd099ee49cee1089583559e5fc48",
+  "prompts": {},
+  "sessions": {
+    "s_239b3b1319ec3a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "edb8c1f2-3037-41fd-a1b3-6261f7f7734c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
