@@ -50,6 +50,7 @@ import type {
   NodeKind,
   NodeTrendResponse,
   PortfolioHeatmapResponse,
+  PortfolioAttentionResponse,
   PortfolioFeedResponse,
   PortfolioFlowResponse,
   PortfolioRisksResponse,
@@ -209,6 +210,15 @@ export const apiClient = {
   portfolioHeatmap: (asOf?: string, programRootId?: string) =>
     requestJson<PortfolioHeatmapResponse>(
       withQuery("/portfolio/heatmap", { as_of: asOf, program_root_id: programRootId }),
+    ),
+  /** Exec Today's headline, next drivers and top signals; times on the reader's clock. */
+  portfolioAttention: (asOf?: string, programRootId?: string, timeZone?: string) =>
+    requestJson<PortfolioAttentionResponse>(
+      withQuery("/portfolio/attention", {
+        as_of: asOf,
+        program_root_id: programRootId,
+        tz: timeZone,
+      }),
     ),
   nodeTrend: (
     level: NodeKind,

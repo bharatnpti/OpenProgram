@@ -35,6 +35,7 @@ from core.domain.status import (
     CheckIn,
     CheckInClarification,
     CheckInCorrelation,
+    CheckInDay,
     CheckInNudge,
     CheckInPreference,
     CheckInScheduleRun,
@@ -995,6 +996,9 @@ class InMemoryGraphStore:
         }
         return sorted(known_developer_ids - replied_developer_ids)
 
+    async def checkins_on_day(self, tenant_id: str, day: date) -> list[CheckInDay]:
+        return checkins_on_day(self._checkins, tenant_id, day)
+
     async def purge_checkin_raw_replies_older_than(self, tenant_id: str, cutoff: datetime) -> int:
         cleared = 0
         retained: list[CheckIn] = []
@@ -1500,3 +1504,38 @@ def _checkin_with_last_accessed_at(checkin: CheckIn) -> CheckIn:
 
 def _checkin_last_accessed_at(checkin: CheckIn) -> datetime:
     return checkin.last_accessed_at or checkin.replied_at or checkin.asked_at
+
+
+def checkins_on_day(checkins: list[CheckIn], tenant_id: str, day: date) -> list[CheckInDay]:
+    """Each person's check-ins of ``day``: their first ask, and their first reply.
+
+    A check-in's day is its local ``checkin_date``; a legacy one without it
+    counts on its ask's UTC day, as the Postgres repository reads it.
+    """
+    asked: dict[str, datetime] = {}
+    replied: dict[str, datetime] = {}
+    for checkin in checkins:
+        if checkin.tenant_id != tenant_id:
+            continue
+        asked_at = checkin.asked_at
+        checkin_day = (
+            checkin.checkin_date
+            if checkin.checkin_date is not None
+            else (asked_at if asked_at.tzinfo else asked_at.replace(tzinfo=UTC))
+            .astimezone(UTC)
+            .date()
+        )
+        if checkin_day != day:
+            continue
+        person = checkin.developer_id
+        asked[person] = min(asked.get(person, checkin.asked_at), checkin.asked_at)
+        if checkin.replied_at is not None:
+            replied[person] = min(replied.get(person, checkin.replied_at), checkin.replied_at)
+    return [
+        CheckInDay(
+            developer_id=person,
+            first_asked_at=asked[person],
+            first_replied_at=replied.get(person),
+        )
+        for person in sorted(asked)
+    ]

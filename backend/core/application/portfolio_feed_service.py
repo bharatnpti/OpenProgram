@@ -250,6 +250,8 @@ def _details_for_fact(fact: FactEvent, names: Mapping[str, str]) -> Mapping[str,
             "status_source": _payload_string(fact.payload, "status_source"),
             "blocker_count": _payload_int(fact.payload, "blocker_count"),
             "eta_change_days": _payload_int(fact.payload, "eta_change_days"),
+            # Set on facts whose ETA change was told apart from a duration (N45).
+            "eta_change_checked": _payload_bool(fact.payload, "eta_change_checked"),
         }
     if fact.source == "work_item":
         return {
@@ -265,6 +267,8 @@ def _details_for_fact(fact: FactEvent, names: Mapping[str, str]) -> Mapping[str,
             "repo": _payload_string(fact.payload, "repo"),
             "id": _payload_string(fact.payload, "id"),
             "merged": _payload_bool(fact.payload, "merged"),
+            # Says whether the host writes "!1" or "#1" when a brief names it.
+            "web_url": _payload_string(fact.payload, "web_url"),
         }
     if fact.source == "vcs_commit":
         return {

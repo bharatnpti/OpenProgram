@@ -96,6 +96,7 @@ def _brief_service(registry: ServiceRegistry) -> NarrativeBriefService:
         brief_repository=registry.narrative_brief_repository(),
         model=registry.settings.default_llm_model,
         status_repository=registry.status_repository(),
+        provider_names=registry.provider_names(),
     )
 
 

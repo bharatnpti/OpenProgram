@@ -112,6 +112,23 @@ class CheckIn:
 
 
 @dataclass(frozen=True, kw_only=True)
+class CheckInDay:
+    """One person's check-ins on one day: when they were first asked, and first replied.
+
+    Identifiers and times only, never a reply's text, so a count of who has
+    answered a day's check-in can be shown to anyone who reads the heat map.
+    """
+
+    developer_id: str
+    first_asked_at: datetime
+    first_replied_at: datetime | None = None
+
+    @property
+    def answered(self) -> bool:
+        return self.first_replied_at is not None
+
+
+@dataclass(frozen=True, kw_only=True)
 class CheckInCorrelation:
     tenant_id: str
     correlation_id: str
