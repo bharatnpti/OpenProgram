@@ -487,6 +487,9 @@ async def test_status_collector_handles_reply_by_correlation(
         "blocker_count": 1,
         "has_eta_change": True,
         "eta_change_days": 1,
+        # Read by the parser that tells an ETA that moved from a duration (N45),
+        # so a brief may state the change.
+        "eta_change_checked": True,
         "new_blocker_count": 1,
         "resolved_blocker_count": 0,
         "unattributed_blocker_count": 1,

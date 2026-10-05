@@ -5818,6 +5818,98 @@
         }
       }
     },
+    "/portfolio/attention": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Portfolio Attention",
+        "description": "Exec Today's headline, its next drivers and the top signals for one day.\n\nThe heat map's read (the same colours and reasons) with the portfolio's\nrisk and drift findings, so it needs both: manager, exec and admin hold them.",
+        "operationId": "portfolio_attention_portfolio_attention_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "program_root_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Program Root Id"
+            }
+          },
+          {
+            "name": "tz",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The reader's IANA time zone, for the times a sentence names.",
+              "title": "Tz"
+            },
+            "description": "The reader's IANA time zone, for the times a sentence names."
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortfolioAttentionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/persona/{level}/{entity_id}/trend": {
       "get": {
         "tags": ["personas"],
@@ -6972,6 +7064,89 @@
         "required": ["id"],
         "title": "AskSourceResponse",
         "description": "A reference with the words a reader knows it by; label is None when no node matches."
+      },
+      "AttentionCheckinsDto": {
+        "properties": {
+          "people": {
+            "type": "integer",
+            "title": "People"
+          },
+          "asked": {
+            "type": "integer",
+            "title": "Asked"
+          },
+          "answered": {
+            "type": "integer",
+            "title": "Answered"
+          },
+          "first_asked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Asked At"
+          }
+        },
+        "type": "object",
+        "required": ["people", "asked", "answered", "first_asked_at"],
+        "title": "AttentionCheckinsDto",
+        "description": "The day's check-in for the people in the teams: how many were asked and answered."
+      },
+      "AttentionLinkDto": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["program", "project", "workstream", "pod", "signals"],
+            "title": "Kind"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "AttentionLinkDto",
+        "description": "Where a signal leads: a delivery page by node kind and id, or the Signals page."
+      },
+      "AttentionSignalDto": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "What the signal is: blocker, blocked_task, unanswered, partial, inferred, stale, missing, attention_task, target_date, drift, drift:<kind> or risk:<rule>."
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "One line saying what needs acting on, naming people."
+          },
+          "age_days": {
+            "type": "integer",
+            "title": "Age Days"
+          },
+          "link": {
+            "$ref": "#/components/schemas/AttentionLinkDto"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "severity", "title", "age_days", "link"],
+        "title": "AttentionSignalDto"
       },
       "AuthStatusResponse": {
         "properties": {
@@ -9576,6 +9751,26 @@
               }
             ],
             "title": "Name"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "A few words for under the cell's colour, e.g. '3 of 4 unanswered today' or 'Blocker on SHOP-8 (Ada)'; for an unknown cell, why it has no status. Names people, never ids. Optional, so older clients keep working."
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "description": "Every reason behind the cell's colour, worst first, for a tooltip."
           }
         },
         "type": "object",
@@ -9924,6 +10119,26 @@
             },
             "type": "array",
             "title": "Sources"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict",
+            "description": "The one-line verdict of a structured brief; null for an older free-text brief, which a reader splits into sentences instead."
+          },
+          "bullets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Bullets",
+            "description": "A structured brief's bullets: what changed, what is at risk, who acts."
           }
         },
         "type": "object",
@@ -10400,6 +10615,58 @@
         "type": "object",
         "required": ["pod_id", "pod_name", "as_of", "tasks"],
         "title": "PodTasksResponse"
+      },
+      "PortfolioAttentionResponse": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "program_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Program Id"
+          },
+          "rag": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "headline": {
+            "type": "string",
+            "title": "Headline"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "checkins": {
+            "$ref": "#/components/schemas/AttentionCheckinsDto"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/AttentionSignalDto"
+            },
+            "type": "array",
+            "title": "Signals"
+          }
+        },
+        "type": "object",
+        "required": ["as_of", "program_id", "rag", "headline", "detail", "checkins", "signals"],
+        "title": "PortfolioAttentionResponse",
+        "description": "What a director should know about a program on one day (Exec Today).\n\n``headline`` is one plain sentence with the colour and its cause; ``detail``\nthe next drivers, or null. ``signals`` are at most five items to act on,\nworst and oldest first; empty only when nothing needs attention."
       },
       "PortfolioFeedItemResponse": {
         "properties": {

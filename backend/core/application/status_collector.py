@@ -3426,6 +3426,10 @@ class StatusCollector:
             "blocker_count": len(status.blockers),
             "has_eta_change": signals.eta_change_days is not None if signals else False,
             "eta_change_days": signals.eta_change_days if signals else None,
+            # The reply was read by the parser that tells an ETA that moved
+            # from a duration (N45), so a brief may state this number as an ETA
+            # change; an older fact's number may be a duration ("2-3 days").
+            "eta_change_checked": True,
             # Readable name for the activity feed, which would otherwise render
             # the raw developer id. Falls back to the id when unknown.
             "developer_name": await self._developer_display_name(

@@ -1568,6 +1568,42 @@ def test_portfolio_heatmap_accepts_program_root_id(settings: Settings) -> None:
     assert response.json()["as_of"] == "2026-06-15"
 
 
+def test_portfolio_attention_serves_exec_today_and_cells_say_why(settings: Settings) -> None:
+    """Exec Today's headline and signals; every heat cell's reason beside its colour."""
+    exec_app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "exec"}))
+    with TestClient(exec_app) as client:
+        _populate_graph_fixture(exec_app, settings)
+        attention = client.get(
+            "/portfolio/attention?as_of=2026-06-15&program_root_id=program-platform&tz=Asia/Kolkata"
+        )
+        bad_zone = client.get("/portfolio/attention?as_of=2026-06-15&tz=Not/AZone")
+        heatmap = client.get("/portfolio/heatmap?as_of=2026-06-15&program_root_id=program-platform")
+    dev_app = create_app(settings=settings.model_copy(update={"dev_principal_roles": "dev"}))
+    with TestClient(dev_app) as client:
+        denied = client.get("/portfolio/attention?as_of=2026-06-15")
+
+    assert attention.status_code == 200
+    body = attention.json()
+    assert body["program_id"] == "program-platform"
+    assert body["headline"].startswith(f"{body['rag'].capitalize()}:") or body[
+        "headline"
+    ].startswith("No status yet")
+    assert len(body["signals"]) <= 5
+    assert all(
+        set(signal) >= {"kind", "severity", "title", "age_days", "link"}
+        for signal in body["signals"]
+    )
+    assert set(body["checkins"]) == {"people", "asked", "answered", "first_asked_at"}
+    # A zone that does not exist reads as UTC, never as a failed read.
+    assert bad_zone.status_code == 200
+    cells = heatmap.json()["cells"]
+    assert cells and all(cell["reason"] for cell in cells)
+    assert all(isinstance(cell["reasons"], list) for cell in cells)
+    # The read names who has not answered and whose blockers are open: aggregate
+    # roles only, like the heat map and the portfolio risks it is built from.
+    assert denied.status_code == 403
+
+
 def test_admin_config_crud_populates_directory_and_dashboards(settings: Settings) -> None:
     app = create_app(
         settings=settings.model_copy(

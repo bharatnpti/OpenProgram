@@ -184,7 +184,8 @@ def test_grounding_drops_sentences_naming_what_the_pod_facts_do_not() -> None:
     assert grounded.body == (
         "Ada Lind and Ben Okafor checked in. SHOP-1 is done in the tracker. "
         "The SHA-256 checksum step was added. "
-        "Ada Lind's check-in at 06:05 UTC reported 1 blocker, cleared at 06:06 UTC. "
+        "Ada Lind's check-in at 06:05 UTC reported 1 blocker (waiting on Ben Okafor for "
+        "SHOP-2), cleared at 06:06 UTC. "
         "No blocker is open now."
     )
     reasons = [reason.split(":")[0] for reason in grounded.dropped]
@@ -205,7 +206,8 @@ def test_grounding_corrects_done_claims_blocker_denials_and_counts() -> None:
         "(In Progress in the tracker)."
     )
     blockers = (
-        "Ada Lind's check-in at 06:05 UTC reported 1 blocker, cleared at 06:06 UTC. "
+        "Ada Lind's check-in at 06:05 UTC reported 1 blocker (waiting on Ben Okafor for "
+        "SHOP-2), cleared at 06:06 UTC. "
         "No blocker is open now."
     )
 
@@ -236,7 +238,9 @@ def test_grounding_corrects_done_claims_blocker_denials_and_counts() -> None:
 def test_grounding_replaces_no_blockers_while_one_is_open() -> None:
     facts = _web_pod_facts(ada_open_blockers=1)
     assert facts.blocker_sentence == (
-        "Ada Lind's check-in at 06:05 UTC reported 1 blocker, 1 still open. Open now: Ada Lind 1."
+        "Ada Lind's check-in at 06:05 UTC reported 1 blocker (waiting on Ben Okafor for "
+        "SHOP-2), 1 still open. "
+        "Open now: Ada Lind 1."
     )
 
     grounded = ground_brief("No open blockers remain. SHOP-1 is done in the tracker.", facts)

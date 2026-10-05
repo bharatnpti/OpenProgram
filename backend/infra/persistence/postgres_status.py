@@ -24,6 +24,7 @@ from core.domain.status import (
     CheckIn,
     CheckInClarification,
     CheckInCorrelation,
+    CheckInDay,
     CheckInNudge,
     CheckInPreference,
     CheckInScheduleRun,
@@ -766,6 +767,41 @@ class PostgresStatusRepository:
                 (tenant_id, tenant_id, tenant_id, tenant_id, as_of, as_of, as_of),
             )
         return [str(row["developer_id"]) for row in rows]
+
+    async def checkins_on_day(self, tenant_id: str, day: date) -> list[CheckInDay]:
+        # A row is the person's local day (checkin_date); a legacy row without
+        # one counts on its ask's UTC day, as developers_without_checkin does.
+        with _tracer.start_as_current_span("postgres.status.checkins_on_day"):
+            rows = await self._executor.fetch(
+                """
+                SELECT developer_id,
+                       min(asked_at) AS first_asked_at,
+                       min(replied_at) AS first_replied_at
+                FROM checkins
+                WHERE tenant_id = %s
+                  AND (
+                    checkin_date = %s
+                    OR (
+                      checkin_date IS NULL
+                      AND asked_at >= %s::date
+                      AND asked_at < (%s::date + INTERVAL '1 day')
+                    )
+                  )
+                GROUP BY developer_id
+                ORDER BY developer_id
+                """,
+                (tenant_id, day, day, day),
+            )
+        return [
+            CheckInDay(
+                developer_id=str(row["developer_id"]),
+                first_asked_at=_datetime_field(row.get("first_asked_at"), "first_asked_at"),
+                first_replied_at=_optional_datetime_field(
+                    row.get("first_replied_at"), "first_replied_at"
+                ),
+            )
+            for row in rows
+        ]
 
     async def purge_checkin_raw_replies_older_than(self, tenant_id: str, cutoff: datetime) -> int:
         with _tracer.start_as_current_span("postgres.status.purge_checkin_raw_replies_older_than"):

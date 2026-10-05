@@ -374,3 +374,57 @@ def test_portfolio_risks_name_a_person_entity(settings: Settings) -> None:
     assert response.status_code == 200
     named = {risk["entity_ref"]["id"]: risk["person_name"] for risk in response.json()["risks"]}
     assert named == {MEMBER_ID: "Rosa Lind", "wi-1": None}
+
+
+async def test_feed_details_say_how_a_brief_may_read_eta_changes_and_merge_requests() -> None:
+    """A check-in's ETA change carries whether the N45 parser read it; a merge
+    request its address, which says whether its host writes "!1" or "#1"."""
+    store = InMemoryGraphStore()
+    now = datetime.now(tz=UTC)
+    person = EntityRef(tenant_id=TENANT, kind=NodeKind.DEVELOPER, id="dev-1")
+    for fact in (
+        FactEvent(
+            tenant_id=TENANT,
+            source="checkin",
+            entity_ref=person,
+            payload={
+                "status_source": "confirmed",
+                "blocker_count": 0,
+                "eta_change_days": 2,
+                "eta_change_checked": True,
+            },
+            observed_at=now,
+            correlation_id="checkin-new",
+        ),
+        FactEvent(
+            tenant_id=TENANT,
+            source="checkin",
+            entity_ref=person,
+            # Recorded before the marker: its number may be a duration.
+            payload={"status_source": "confirmed", "blocker_count": 0, "eta_change_days": 2},
+            observed_at=now - timedelta(days=1),
+            correlation_id="checkin-old",
+        ),
+        FactEvent(
+            tenant_id=TENANT,
+            source="vcs_pull_request",
+            entity_ref=person,
+            payload={
+                "repo": "acme/web",
+                "id": "4",
+                "merged": False,
+                "title": "SHOP-11 Cart breakdown",
+                "web_url": "https://git.example.test/acme/web/-/merge_requests/4",
+            },
+            observed_at=now - timedelta(hours=1),
+            correlation_id="pr-4",
+        ),
+    ):
+        await store.append_fact(fact)
+
+    feed = await PortfolioFeedService(store).feed(TENANT, sources=("checkin", "vcs_pull_request"))
+
+    new, request, old = feed.items
+    assert new.details["eta_change_checked"] is True
+    assert old.details["eta_change_checked"] is None
+    assert request.details["web_url"] == "https://git.example.test/acme/web/-/merge_requests/4"

@@ -6,12 +6,25 @@ import type { PortfolioHeatmapResponse, Rag, StatusSource } from "../../api/sche
 type Cell = Pick<
   PortfolioHeatmapResponse["cells"][number],
   "row" | "rag" | "source" | "why" | "name"
-> & { entity_ref: { id: string } };
+> &
+  Partial<Pick<PortfolioHeatmapResponse["cells"][number], "reason" | "reasons">> & {
+    entity_ref: { id: string };
+  };
 
 /** The heat map's row for people in no team (N5), as the backend names it. */
 export const NO_POD_ROW = "no pod";
 
-export type NoPodTile = { id: string; name: string; rag: Rag; state: string; why: string };
+export type NoPodTile = {
+  id: string;
+  name: string;
+  rag: Rag;
+  state: string;
+  why: string;
+  /** The backend's short reason, e.g. "Check-in unanswered today"; null from an older one. */
+  reason: string | null;
+  /** Every reason, one per line, for the tooltip; the cell's why when it has none. */
+  reasons: string[];
+};
 
 // Worst first, as the team rows sort; silence is not a clean bill of health.
 const SEVERITY: Record<Rag, number> = { red: 3, amber: 2, unknown: 1, green: 0 };
@@ -44,6 +57,8 @@ export function noPodTiles(
       rag: cell.rag,
       state: STATE[cell.source] ?? cell.source,
       why: cell.why,
+      reason: cell.reason ?? null,
+      reasons: cell.reasons && cell.reasons.length > 0 ? cell.reasons : [cell.why],
     }))
     .sort((a, b) => SEVERITY[b.rag] - SEVERITY[a.rag] || a.name.localeCompare(b.name));
   return { tiles: people.slice(0, limit), total: people.length };

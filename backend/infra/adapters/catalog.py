@@ -5,6 +5,7 @@ from collections.abc import Awaitable, Callable
 from redis.asyncio import Redis
 
 from config.settings import Settings
+from core.application.persona_views import ProviderNames
 from core.domain.errors import ProviderConfigurationError
 from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
@@ -264,6 +265,18 @@ def _langfuse_trace_sink(settings: Settings) -> LangfuseTraceSink | None:
         return None
     return LangfuseTraceSink(
         host=settings.langfuse_host, public_key=public_key, secret_key=secret_key
+    )
+
+
+_TRACKER_NAMES = {"jira": "Jira"}
+_VCS_NAMES = {"gitlab": "GitLab", "github": "GitHub"}
+
+
+def build_provider_names(settings: Settings) -> ProviderNames:
+    """How a reason or brief names the configured tracker and code host: "Jira", "GitLab"."""
+    return ProviderNames(
+        tracker=_TRACKER_NAMES.get(settings.issue_tracker_provider, "the issue tracker"),
+        vcs=_VCS_NAMES.get(settings.vcs_provider, "Git"),
     )
 
 

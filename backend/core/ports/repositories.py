@@ -28,6 +28,7 @@ from core.domain.status import (
     CheckIn,
     CheckInClarification,
     CheckInCorrelation,
+    CheckInDay,
     CheckInNudge,
     CheckInPreference,
     CheckInScheduleRun,
@@ -367,6 +368,10 @@ class StatusRepository(Protocol):
     ) -> DeveloperStatus | None: ...
 
     async def developers_without_checkin(self, tenant_id: str, as_of: date) -> list[str]: ...
+
+    async def checkins_on_day(self, tenant_id: str, day: date) -> list[CheckInDay]:
+        """Who was asked a check-in of ``day`` (their local day), when, and their first reply."""
+        ...
 
     async def purge_checkin_raw_replies_older_than(
         self, tenant_id: str, cutoff: datetime

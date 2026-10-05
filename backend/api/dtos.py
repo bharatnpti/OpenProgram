@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from core.application.ask_service import AskResponseView
+from core.application.attention import AttentionSignal, AttentionView, CheckinCount
 from core.application.config_service import (
     DirectoryItemView,
     DirectoryPersonView,
@@ -1178,6 +1179,18 @@ class HeatmapCellDto(BaseModel):
     # The node's name where the read knows it; always for a person in no team,
     # whose cell sits on the "no pod" row. Optional, so older clients keep working.
     name: str | None = None
+    reason: str | None = Field(
+        default=None,
+        description=(
+            "A few words for under the cell's colour, e.g. '3 of 4 unanswered today' or "
+            "'Blocker on SHOP-8 (Ada)'; for an unknown cell, why it has no status. Names "
+            "people, never ids. Optional, so older clients keep working."
+        ),
+    )
+    reasons: list[str] = Field(
+        default_factory=list,
+        description="Every reason behind the cell's colour, worst first, for a tooltip.",
+    )
 
     @classmethod
     def from_view(cls, cell: HeatmapCellView) -> HeatmapCellDto:
@@ -1198,6 +1211,8 @@ class HeatmapCellDto(BaseModel):
                 id=cell.source_ref.id,
             ),
             name=cell.name,
+            reason=cell.reason,
+            reasons=list(cell.reasons),
         )
 
 
@@ -1216,6 +1231,102 @@ class PortfolioHeatmapResponse(BaseModel):
             rows=list(view.rows),
             columns=list(view.columns),
             cells=[HeatmapCellDto.from_view(cell) for cell in view.cells],
+        )
+
+
+AttentionLinkKind = Literal["program", "project", "workstream", "pod", "signals"]
+_ATTENTION_LINK_KINDS: dict[str, AttentionLinkKind] = {
+    "program": "program",
+    "project": "project",
+    "workstream": "workstream",
+    "pod": "pod",
+    "signals": "signals",
+}
+
+
+class AttentionLinkDto(BaseModel):
+    """Where a signal leads: a delivery page by node kind and id, or the Signals page."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: AttentionLinkKind
+    id: str | None = None
+
+
+class AttentionSignalDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    kind: str = Field(
+        description=(
+            "What the signal is: blocker, blocked_task, unanswered, partial, inferred, "
+            "stale, missing, attention_task, target_date, drift, drift:<kind> or risk:<rule>."
+        ),
+    )
+    severity: Rag
+    title: str = Field(description="One line saying what needs acting on, naming people.")
+    age_days: int
+    link: AttentionLinkDto
+
+    @classmethod
+    def from_view(cls, signal: AttentionSignal) -> AttentionSignalDto:
+        link_kind = _ATTENTION_LINK_KINDS.get(signal.link.kind, "signals")
+        return cls(
+            kind=signal.kind,
+            severity=signal.severity,
+            title=signal.title,
+            age_days=signal.age_days,
+            link=AttentionLinkDto(kind=link_kind, id=signal.link.id),
+        )
+
+
+class AttentionCheckinsDto(BaseModel):
+    """The day's check-in for the people in the teams: how many were asked and answered."""
+
+    model_config = ConfigDict(frozen=True)
+
+    people: int
+    asked: int
+    answered: int
+    first_asked_at: datetime | None
+
+    @classmethod
+    def from_view(cls, count: CheckinCount) -> AttentionCheckinsDto:
+        return cls(
+            people=count.people,
+            asked=count.asked,
+            answered=count.answered,
+            first_asked_at=count.first_asked_at,
+        )
+
+
+class PortfolioAttentionResponse(BaseModel):
+    """What a director should know about a program on one day (Exec Today).
+
+    ``headline`` is one plain sentence with the colour and its cause; ``detail``
+    the next drivers, or null. ``signals`` are at most five items to act on,
+    worst and oldest first; empty only when nothing needs attention.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    as_of: date
+    program_id: str | None
+    rag: Rag
+    headline: str
+    detail: str | None
+    checkins: AttentionCheckinsDto
+    signals: list[AttentionSignalDto]
+
+    @classmethod
+    def from_view(cls, view: AttentionView) -> PortfolioAttentionResponse:
+        return cls(
+            as_of=view.as_of,
+            program_id=view.program_id,
+            rag=view.rag,
+            headline=view.headline,
+            detail=view.detail,
+            checkins=AttentionCheckinsDto.from_view(view.checkins),
+            signals=[AttentionSignalDto.from_view(signal) for signal in view.signals],
         )
 
 
@@ -1441,9 +1552,21 @@ class NarrativeBriefResponse(BaseModel):
     body: str
     generated_at: datetime
     sources: list[str]
+    verdict: str | None = Field(
+        default=None,
+        description=(
+            "The one-line verdict of a structured brief; null for an older free-text "
+            "brief, which a reader splits into sentences instead."
+        ),
+    )
+    bullets: list[str] = Field(
+        default_factory=list,
+        description="A structured brief's bullets: what changed, what is at risk, who acts.",
+    )
 
     @classmethod
     def from_domain(cls, brief: NarrativeBrief) -> NarrativeBriefResponse:
+        structure = brief.structure
         return cls(
             kind=brief.kind,
             scope_id=brief.scope_id,
@@ -1451,6 +1574,8 @@ class NarrativeBriefResponse(BaseModel):
             body=brief.body,
             generated_at=brief.generated_at,
             sources=list(brief.sources),
+            verdict=structure.verdict if structure is not None else None,
+            bullets=list(structure.bullets) if structure is not None else [],
         )
 
 
