@@ -59,6 +59,16 @@
   --op-info: #2238df;
   --op-info-bg: #d3d7f9;
 
+  /* Delivery stages: one ordinal blue ramp from raised to business testing
+     (validated: monotone lightness, every step gap >= 0.06, light end 2.1:1 on
+     white), and the brand magenta for production, the stage that means done. */
+  --op-stage-raised: #86b6ef;
+  --op-stage-groomed: #5598e7;
+  --op-stage-in-development: #2a78d6;
+  --op-stage-in-testing: #1c5cab;
+  --op-stage-business-testing: #104281;
+  --op-stage-production: #e20074;
+
   /* Shadows */
   --op-shadow-menu: 0 16px 48px rgba(0, 0, 0, 0.14);
   --op-shadow-palette: 0 32px 80px rgba(0, 0, 0, 0.3);

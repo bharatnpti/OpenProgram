@@ -9,10 +9,16 @@ from core.application.ask_service import AskService
 from core.application.blocker_resolution import BlockerResolutionService
 from core.application.branding_service import BrandingService
 from core.application.config_service import ConfigService, DirectoryService
+from core.application.connection_service import ConnectionService
 from core.application.cross_person_service import CrossPersonRequestService
+from core.application.day_report_service import DayReportService
 from core.application.dead_letter_service import DeadLetterService
+from core.application.delivery_service import DeliveryService
 from core.application.directory_sync_service import DirectorySyncService
+from core.application.escalation_matrix_service import EscalationMatrixService
 from core.application.flow_metrics_service import FlowMetricsService
+from core.application.forecast_service import ForecastService
+from core.application.gate_service import GateService
 from core.application.graph_queries import GraphQueryService
 from core.application.person_names import PersonNames
 from core.application.persona_views import PersonaViewService, ProviderNames
@@ -269,3 +275,27 @@ def get_self_status_service(request: Request) -> SelfStatusService:
 def get_branding_service(request: Request) -> BrandingService:
     registry = get_registry(request)
     return BrandingService(repository=registry.tenant_logo_repository())
+
+
+def get_connection_service(request: Request) -> ConnectionService:
+    return get_registry(request).connection_service()
+
+
+def get_delivery_service(request: Request) -> DeliveryService:
+    return get_registry(request).delivery_service()
+
+
+def get_day_report_service(request: Request) -> DayReportService:
+    return get_registry(request).day_report_service()
+
+
+def get_forecast_service(request: Request) -> ForecastService:
+    return get_registry(request).forecast_service()
+
+
+def get_gate_service(request: Request) -> GateService:
+    return get_registry(request).gate_service()
+
+
+def get_escalation_matrix_service(request: Request) -> EscalationMatrixService:
+    return get_registry(request).escalation_matrix_service()

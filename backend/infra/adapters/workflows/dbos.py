@@ -49,6 +49,7 @@ from infra.workflows import (
     conversation_purge,
     cross_person_notify_retry,
     daily_checkin,
+    delivery_reports,
     directory_sync,
     drift_scan,
     git_sync,
@@ -62,6 +63,14 @@ from infra.workflows import (
 from infra.workflows.brief_generation import BriefGenerationInput, BriefGenerationResult
 from infra.workflows.calendar_sync import CalendarSyncInput, CalendarSyncWorkflowResult
 from infra.workflows.daily_checkin import DailyCheckinInput, DailyCheckinResult
+from infra.workflows.delivery_reports import (
+    DayReportDispatchInput,
+    DayReportDispatchResult,
+    DeliverySnapshotInput,
+    DeliverySnapshotResult,
+    GateScanInput,
+    GateScanResult,
+)
 from infra.workflows.dispatch import (
     daily_checkin_input,
     safe_workflow_id,
@@ -100,6 +109,9 @@ SyncWorkflowResult = (
     | RiskAssessmentWorkflowResult
     | DriftScanWorkflowResult
     | BriefGenerationResult
+    | DeliverySnapshotResult
+    | DayReportDispatchResult
+    | GateScanResult
 )
 
 
@@ -349,6 +361,46 @@ async def dbos_brief_generation_workflow(
     payload: BriefGenerationInput,
 ) -> BriefGenerationResult:
     return await dbos_run_brief_generation_step(payload)
+
+
+@DBOS.step(name="openprogram_run_delivery_snapshot", retries_allowed=True)
+async def dbos_run_delivery_snapshot_step(
+    payload: DeliverySnapshotInput,
+) -> DeliverySnapshotResult:
+    return await delivery_reports.run_delivery_snapshot_activity(payload)
+
+
+@DBOS.workflow(name="openprogram_delivery_snapshot")
+async def dbos_delivery_snapshot_workflow(
+    payload: DeliverySnapshotInput,
+) -> DeliverySnapshotResult:
+    return await dbos_run_delivery_snapshot_step(payload)
+
+
+# Retries are safe: each report claims its local day before it is sent, so a
+# retried step skips every report the failed attempt already claimed.
+@DBOS.step(name="openprogram_run_day_report_dispatch", retries_allowed=True)
+async def dbos_run_day_report_dispatch_step(
+    payload: DayReportDispatchInput,
+) -> DayReportDispatchResult:
+    return await delivery_reports.run_day_report_dispatch_activity(payload)
+
+
+@DBOS.workflow(name="openprogram_day_report_dispatch")
+async def dbos_day_report_dispatch_workflow(
+    payload: DayReportDispatchInput,
+) -> DayReportDispatchResult:
+    return await dbos_run_day_report_dispatch_step(payload)
+
+
+@DBOS.step(name="openprogram_run_gate_scan", retries_allowed=True)
+async def dbos_run_gate_scan_step(payload: GateScanInput) -> GateScanResult:
+    return await delivery_reports.run_gate_scan_activity(payload)
+
+
+@DBOS.workflow(name="openprogram_gate_scan")
+async def dbos_gate_scan_workflow(payload: GateScanInput) -> GateScanResult:
+    return await dbos_run_gate_scan_step(payload)
 
 
 @DBOS.workflow(name="openprogram_scheduled_sync")
@@ -622,6 +674,11 @@ async def _run_sync_dispatch(
         return await dbos_sync_directory_step(workflow_input)
     if isinstance(workflow_input, RuntimeSyncInput):
         return await _fan_out_runtime_sync(workflow_input)
+    return await _run_derived_step(workflow_input, input.connector)
+
+
+async def _run_derived_step(workflow_input: object, connector: str) -> SyncWorkflowResult:
+    """The steps that derive from stored state rather than read a provider."""
     if isinstance(workflow_input, RiskAssessmentInput):
         return await dbos_run_risk_assessment_step(workflow_input)
     if isinstance(workflow_input, RollupInput):
@@ -630,7 +687,13 @@ async def _run_sync_dispatch(
         return await dbos_run_drift_scan_step(workflow_input)
     if isinstance(workflow_input, BriefGenerationInput):
         return await dbos_run_brief_generation_step(workflow_input)
-    raise ValueError(f"unsupported sync connector: {input.connector}")
+    if isinstance(workflow_input, DeliverySnapshotInput):
+        return await dbos_run_delivery_snapshot_step(workflow_input)
+    if isinstance(workflow_input, DayReportDispatchInput):
+        return await dbos_run_day_report_dispatch_step(workflow_input)
+    if isinstance(workflow_input, GateScanInput):
+        return await dbos_run_gate_scan_step(workflow_input)
+    raise ValueError(f"unsupported sync connector: {connector}")
 
 
 async def _start_sync_child_workflow(input: SyncDispatchInput, *, workflow_id: str) -> str:
@@ -647,17 +710,28 @@ async def _start_sync_child_workflow(input: SyncDispatchInput, *, workflow_id: s
             await DBOS.start_workflow_async(dbos_directory_sync_workflow, workflow_input)
         elif isinstance(workflow_input, RuntimeSyncInput):
             await DBOS.start_workflow_async(dbos_runtime_config_sync_workflow, workflow_input)
-        elif isinstance(workflow_input, RiskAssessmentInput):
-            await DBOS.start_workflow_async(dbos_risk_assessment_workflow, workflow_input)
-        elif isinstance(workflow_input, RollupInput):
-            await DBOS.start_workflow_async(dbos_rollup_workflow, workflow_input)
-        elif isinstance(workflow_input, DriftScanInput):
-            await DBOS.start_workflow_async(dbos_drift_scan_workflow, workflow_input)
-        elif isinstance(workflow_input, BriefGenerationInput):
-            await DBOS.start_workflow_async(dbos_brief_generation_workflow, workflow_input)
         else:
-            raise ValueError(f"unsupported sync connector: {input.connector}")
+            await _start_derived_workflow(workflow_input, input.connector)
     return workflow_id
+
+
+async def _start_derived_workflow(workflow_input: object, connector: str) -> None:
+    if isinstance(workflow_input, RiskAssessmentInput):
+        await DBOS.start_workflow_async(dbos_risk_assessment_workflow, workflow_input)
+    elif isinstance(workflow_input, RollupInput):
+        await DBOS.start_workflow_async(dbos_rollup_workflow, workflow_input)
+    elif isinstance(workflow_input, DriftScanInput):
+        await DBOS.start_workflow_async(dbos_drift_scan_workflow, workflow_input)
+    elif isinstance(workflow_input, BriefGenerationInput):
+        await DBOS.start_workflow_async(dbos_brief_generation_workflow, workflow_input)
+    elif isinstance(workflow_input, DeliverySnapshotInput):
+        await DBOS.start_workflow_async(dbos_delivery_snapshot_workflow, workflow_input)
+    elif isinstance(workflow_input, DayReportDispatchInput):
+        await DBOS.start_workflow_async(dbos_day_report_dispatch_workflow, workflow_input)
+    elif isinstance(workflow_input, GateScanInput):
+        await DBOS.start_workflow_async(dbos_gate_scan_workflow, workflow_input)
+    else:
+        raise ValueError(f"unsupported sync connector: {connector}")
 
 
 def _apply_active_schedules(schedules: Sequence[ScheduleInput]) -> None:

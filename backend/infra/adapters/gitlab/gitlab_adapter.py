@@ -9,10 +9,10 @@ from urllib.parse import quote
 import httpx
 from opentelemetry import trace
 
-from core.domain.errors import ProviderUnavailable, SecretNotFound
+from core.domain.errors import ProviderUnavailable
 from core.domain.graph import JsonScalar
 from core.domain.integrations import Commit, PullRequest, Repo, SyncCursor, UserRef
-from core.ports.secrets import SecretRef, SecretStore
+from core.ports.connections import ConnectionResolver
 
 _tracer = trace.get_tracer("openprogram.adapters.vcs.gitlab")
 
@@ -29,7 +29,7 @@ class GitLabVcsAdapter:
     base_url: str = "https://gitlab.com/api/v4"
     token: str | None = None
     namespace_id: str | None = None
-    secret_store: SecretStore | None = None
+    connections: ConnectionResolver | None = None
     timeout_seconds: float = 10.0
 
     async def list_repos(self, tenant_id: str) -> list[Repo]:
@@ -133,21 +133,20 @@ class GitLabVcsAdapter:
             raise ProviderUnavailable("VCS request failed") from exc
 
     async def _credentials(self, tenant_id: str) -> GitLabCredentials:
+        # The tenant's connection set up in admin wins over the server's settings.
+        if self.connections is not None:
+            values = await self.connections.resolve(tenant_id, "gitlab")
+            if values is not None:
+                return GitLabCredentials(
+                    base_url=gitlab_api_url(values.get("base_url") or "https://gitlab.com"),
+                    token=values.get("token"),
+                    namespace_id=values.get("namespace_id"),
+                )
         return GitLabCredentials(
-            base_url=(self.base_url or await self._secret(tenant_id, "base_url") or "").rstrip("/"),
-            token=self.token or await self._secret(tenant_id, "token"),
-            namespace_id=self.namespace_id or await self._secret(tenant_id, "namespace_id"),
+            base_url=(self.base_url or "").rstrip("/"),
+            token=self.token,
+            namespace_id=self.namespace_id,
         )
-
-    async def _secret(self, tenant_id: str, key: str) -> str | None:
-        if self.secret_store is None:
-            return None
-        try:
-            return await self.secret_store.get(
-                SecretRef(tenant_id=tenant_id, connector="gitlab", key=key)
-            )
-        except SecretNotFound:
-            return None
 
 
 def _map_repo(tenant_id: str, payload: Mapping[str, object]) -> Repo:
@@ -218,6 +217,12 @@ def _map_merge_request(
             }
         ),
     )
+
+
+def gitlab_api_url(base_url: str) -> str:
+    """The REST API root for a GitLab address, with or without /api/v4 already on it."""
+    trimmed = base_url.rstrip("/")
+    return trimmed if trimmed.endswith("/api/v4") else f"{trimmed}/api/v4"
 
 
 def _project_id(repo: str) -> str:

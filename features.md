@@ -33,7 +33,7 @@ The application replaces manual status chasing and meeting-driven reporting with
 | Product Owner | Track project progress, task health, and delivery risk indicators. | Today with project selector, progress ring, task breakdown, and a needs-your-attention list; Delivery project and workstream panels; Signals; Coordination. |
 | Manager | Review team/program health across multiple delivery layers. | Portfolio Today (verdict, momentum, executive brief, heat, top signals); Delivery at every level, including pod check-ins, blockers, and tasks; Signals; Coordination and Ask the graph. |
 | Executive | View portfolio health at a glance without raw developer-message access. | The same portfolio Today as the manager; Delivery program, project, and workstream panels, but not pod check-ins or blockers; Signals; Coordination and Ask the graph. |
-| Admin | Configure hierarchy, members, links, assignments, check-ins, and workflow dispatch. | Admin screen (Entities, Links, Directory, Check-ins, Data sources), config APIs, directory sync/import, workflow dispatch and ops APIs. |
+| Admin | Configure hierarchy, members, links, assignments, check-ins, the systems OpenProgram connects to, delivery stages, day reports, and workflow dispatch. | Admin screen (Entities, Links, Directory, Check-ins, Integrations, Data sources, Delivery stages, Day reports, Branding), config APIs, directory sync/import, workflow dispatch and ops APIs. |
 
 ## 4. Current Implemented Feature Set
 
@@ -76,7 +76,7 @@ Functional requirements:
 - Admins shall set a pod's escalation contacts (scrum master and manager) by picking members, the pod's own members listed first, instead of typing chat IDs.
 - Admins shall set each member's write-back consent, and the admin screen shall say whether write-back is switched on for the tenant (see 4.24).
 - Admins shall upload the tenant's logo and remove it again. A logo shall be a PNG, JPEG or WebP image of at most 256 KB, judged by the file's own bytes rather than its declared type; SVG shall be refused because it can carry script. A tenant shall have at most one logo, and the console shall record who replaced it last. Every signed-in person of the tenant may read the logo; only an admin may change it.
-- The admin screen shall group this work into Entities, Links, Directory, Check-ins, Data sources, and Branding tabs.
+- The admin screen shall group this work into Entities, Links, Directory, Check-ins, Integrations, Data sources, Delivery stages, Day reports, and Branding tabs.
 - The system shall reject invalid configuration mutations such as duplicate links, self-links, wrong node kinds, missing references, and conflicting IDs.
 
 ### 4.3 Check-In Preference Management
@@ -313,6 +313,10 @@ Functional requirements:
 - The system shall provide workflow scheduler/worker adapters for fake, DBOS, and Temporal modes.
 - The system shall use Redis for rate limiting and chat conversation caching when not in memory mode.
 - The system shall use encrypted secret storage for connector credentials.
+- Admins shall set up each integrated system from the Integrations tab, including how it signs in: Jira (Cloud with email and API token, or Data Center and Server with a personal access token or user name and password), GitLab or GitHub (one code host at a time), Slack (bot, app-level and signing tokens), email over SMTP, a Microsoft Teams channel webhook, and Google Calendar. Secrets shall be stored encrypted, never returned by any API, kept unless typed over or cleared, and removed with the connection.
+- An admin shall test a connection, saved or not, before relying on it. A test shall answer with a fixed sentence and what the system reported (server, signed-in account, and for Jira its number fields to pick story points from), never an error's own text; only a test of the saved values shall be recorded. Testing Teams posts one test message.
+- A connection the tenant turned on shall win over the server's own settings, from the next call and without a restart; a connector the tenant has not turned on shall keep using the server's settings. Memory mode shall stay credential-free and never use tenant connections.
+- Jira Data Center and Server shall be read through the v2 REST API, paged by offset; Jira Cloud shall keep the enhanced search endpoint. Issue sync shall also read due dates, fix versions and their release dates, labels, priority, created and resolved times, and story points from the configured field, and each issue fact shall keep the tracker's status name, type and points.
 
 ### 4.16 Observability, Health, and Readiness
 
@@ -470,6 +474,68 @@ Functional requirements:
 - A message asking someone for a review or input shall offer a Reply action. Replying shall post in that message's thread, as in a real chat workspace, and shall show under the message it answers. It acknowledges the request, or resolves it when the text says the work is done, and is never opened as a check-in or read as a status update. A thread reply under any other message is kept in the conversation and otherwise ignored.
 - The same surface shall be available to scripts through test-support endpoints.
 - The Chat screen and its nav entry shall be absent when the backend does not serve the built-in chat.
+
+### 4.26 Requirements by Delivery Stage
+
+**Business requirement:** Product owners, managers and executives shall see how many of a project's requirements sit in each delivery stage, and how that changed over time.
+
+Functional requirements:
+
+- Requirements shall move through six stages: raised, groomed, in development, in testing, business testing, and production. Admins shall place each tracker status in one stage, or mark it not counted (won't do, duplicate), on the Delivery stages tab, which lists every status the synced issues carry. Admins may limit which issue types count as requirements.
+- A status no stage names shall be counted by its broad state (to do as raised, in progress or blocked as in development, done as production) and shown as unplaced, both to the admin and on the project's requirements view.
+- A project's requirements shall be the tracker issues it owns, by the same rule its progress uses. Today's counts shall be read live; a snapshot of every project shall be kept each day, so an earlier day reads what was true then.
+- The project's Delivery panel shall show completion (by story points when every requirement has them, else by count), the count in each stage with its change since the previous snapshot, a daily timeline of the stages over the last 30 days with a table view, what moved since the previous snapshot, and each requirement with its stage, status, assignee and the day it entered its stage. It shall be served to whoever may read the project's progress.
+
+### 4.27 Day Reports
+
+**Business requirement:** The people who act on a project shall receive its state at the end of each day, laid out as a status mail is read: the short version, where things stand, what matters most, what is needed from whom, and the open questions.
+
+Functional requirements:
+
+- Admins shall define day reports on the Day reports tab: one project, or one release of it, a local send time, timezone and weekdays, and where it goes: chat channels, people by direct message, email addresses or mailing lists, and the Teams channel. Destinations shall use the connections on the Integrations tab; one that is not set up shall be offered as unavailable, with the reason.
+- The project's product owner or a manager may write a note for the day's report on the project's Delivery page; it opens that day's report only, with the writer's name.
+- A report shall have five sections:
+  - In short: the day's note, the delivery date with what the forecast and the team's dates say of it, and the asks needed most.
+  - Where we stand: progress against the previous snapshot, requirements by stage with their change, what changed and why (requirements that moved, scope added or removed, the delivery date moved, with who and why), and how requirements stand against each gate.
+  - Most important: what threatens the delivery date (the forecast's reasons when at risk or off track, requirements that moved on without passing a gate, red risk signals).
+  - What we need, and from whom: every ask grouped by the person who can do it, each a fix, a decision, an answer or a review, with how long it has waited and whom it escalated to (see 4.30).
+  - Open questions: the questions kept from Jira comments with the ticket, what was asked, of whom, when, and whether they answered.
+- An ask's owner shall be: for a blocker waiting on another team's issue, that issue's assignee or that team's scrum master; for any other blocker, its team's scrum master or the person who reported it; for a person waiting on the project's issue, its assignee; for a request, the person asked; for a signal, the issue's owner; for a gate item, the project's decision owner when the product owner or a manager signs that kind off, else the issue's assignee; for a question, the person asked. A requirement waiting at a gate shall ask for its sign-offs, its suggestions to keep, and any kind still missing; one already past it only for sign-offs and failures. Reports describe work, never rank or score people, and never carry the text of anyone's reply.
+- A report on a release shall count only the release's issues and what is on them.
+- A scheduled report shall go out once per local day, from its send time for three hours; its day shall be claimed before anything is sent, so a repeated or retried tick never sends a second copy. Admins may preview a report, send it now, and see each send with how every destination fared, as fixed sentences.
+
+### 4.28 Delivery Dates and Forecast
+
+**Business requirement:** Everyone looking at a project shall see the date it is committed to, whether that date will be met, and why.
+
+Functional requirements:
+
+- A project's delivery date shall be set by its product owner or a manager, a pod's part of it by the pod's scrum master or a manager, and a release's by the product owner or a manager; a release without a date of its own shall use its Jira release date. A task's date shall come from Jira.
+- A release shall be defined by a Jira fix version or label, chosen from those the project's issues carry.
+- Every change of a date shall be kept with who made it, when and why, so a date that moved shows how often and by how many days.
+- The forecast shall put two answers side by side: what the last weeks' completion rate says (a throughput simulation, 85% and 50% likely dates, needing ten days of history), and what the team's own dates say (check-in estimates, else Jira due dates). The verdict (on track, at risk, off track) shall name its reasons: who committed the date, how it moved, a disagreement of more than five working days between the two answers, pods planned later than the project, and a Jira release date that differs from the committed one.
+
+### 4.29 Acceptance Gates, Test Cases and Questions
+
+**Business requirement:** A requirement shall not reach production without the business's acceptance criteria met and engineering's test cases passed, and the questions holding it up shall be visible until answered.
+
+Functional requirements:
+
+- Admins shall define gates on the Gates tab. Each gate guards one delivery stage and lists the kinds of item it needs, who signs each kind off, whether a kind is met only with a link to its evidence, and the headings under which Jira issues write them. A tenant starts with two gates: business acceptance before production (signed off by the product owner or a manager) and engineering delivery before business testing (test cases, signed off by a developer or scrum master, with evidence). A gate may apply to some issue types only, and may be switched off.
+- OpenProgram shall read each requirement's Jira description and comments, only when the issue changed since its last read, and suggest the items written under a gate's headings, as lists, checklists or a short paragraph, and Given/When/Then scenarios where a kind reads them. A language model, when one is configured, may point at criteria in text without headings; only what it quotes word for word from the text is kept.
+- A suggestion shall count only once a person keeps it; a dismissed suggestion shall not be suggested again. Items may also be added by hand. Only the roles a gate names, or an admin, shall mark an item met, failed or waived.
+- The project shall show each requirement against each gate, flag one that reached a stage without passing the gate before it, and count the suggestions waiting for a person.
+- A comment that mentions someone and asks a question, or starts with "Question:", shall be tracked with who asked, whom, when, and whether they have answered: answered once the person asked comments after it, closed unanswered if the issue is done first. A question read from Jira shall be listed once a person keeps it, and a status a person sets shall not be changed by a later read.
+
+### 4.30 Escalation Matrix
+
+**Business requirement:** An ask that waits too long shall go up to someone who can unblock it, by rules each project can set.
+
+Functional requirements:
+
+- Admins shall set escalation on the Escalation tab: the tenant's matrix, which every project uses until it has its own, and a project's own, which can be dropped to go back to the tenant's. A tenant starts with the team's scrum master after two days (three for answers) and the team's manager after four to six.
+- A matrix shall name who decides, usually the product owner, and up to five levels above the ask's owner. Each level goes to the ask's team's scrum master, its team's manager, or a named member, and says after how many days each kind of ask (fix, decision, answer, review) reaches it; a kind left empty never does. A higher level shall never be reached sooner than the one below it.
+- A report shall name the highest level an ask reached whose contact is someone other than its owner.
 
 ## 5. Key Business Data Flows
 

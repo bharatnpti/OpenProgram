@@ -15,6 +15,8 @@ class EncryptedSecretRecordStore(Protocol):
 
     async def get_ciphertext(self, ref: SecretRef) -> bytes: ...
 
+    async def delete_ciphertext(self, ref: SecretRef) -> None: ...
+
 
 @dataclass
 class InMemoryEncryptedSecretRecordStore:
@@ -28,6 +30,9 @@ class InMemoryEncryptedSecretRecordStore:
             return self._records[ref]
         except KeyError as exc:
             raise SecretNotFound(f"secret {ref.connector}/{ref.key} not found") from exc
+
+    async def delete_ciphertext(self, ref: SecretRef) -> None:
+        self._records.pop(ref, None)
 
 
 class AsyncSecretExecutor(Protocol):
@@ -71,6 +76,15 @@ class PostgresEncryptedSecretRecordStore:
             return ciphertext
         raise SecretNotFound(f"secret {ref.connector}/{ref.key} had invalid ciphertext")
 
+    async def delete_ciphertext(self, ref: SecretRef) -> None:
+        await self.executor.execute(
+            """
+            DELETE FROM connector_secrets
+            WHERE tenant_id = %s AND connector = %s AND key = %s
+            """,
+            (ref.tenant_id, ref.connector, ref.key),
+        )
+
 
 @dataclass(frozen=True)
 class FernetSecretStore:
@@ -90,3 +104,6 @@ class FernetSecretStore:
                 f"secret {ref.connector}/{ref.key} could not be decrypted"
             ) from exc
         return plaintext.decode("utf-8")
+
+    async def delete(self, ref: SecretRef) -> None:
+        await self.record_store.delete_ciphertext(ref)

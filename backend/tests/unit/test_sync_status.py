@@ -589,12 +589,13 @@ def _container_settings(**overrides: object) -> Settings:
     return Settings(**values)  # type: ignore[arg-type]
 
 
-def test_registry_reports_a_chat_directory_without_a_token_as_unable_to_start() -> None:
+def test_registry_builds_a_chat_directory_without_a_server_token() -> None:
+    # The bot token can be set in the console, after the server started, so a
+    # missing server setting no longer stops the provider from being built: the
+    # first sync reports the missing token instead.
     registry = ServiceRegistry(_container_settings(directory_provider="slack"))
 
-    errors = registry.sync_provider_start_errors()
-
-    assert errors == {SyncSource.DIRECTORY: _DIRECTORY_START_ERROR}
+    assert registry.sync_provider_start_errors() == {}
 
 
 def test_registry_reports_no_start_error_when_the_chat_token_is_set() -> None:
@@ -606,14 +607,26 @@ def test_registry_reports_no_start_error_when_the_chat_token_is_set() -> None:
 
 
 def test_registry_reports_each_provider_that_fails_to_build_by_error_type_only() -> None:
-    # An unusable secret key breaks the secret store, and with it both external
-    # sync providers that are built around it -- the same way for each.
-    registry = ServiceRegistry(Settings(_env_file=None, secret_key="k" * 44, runtime_mode="memory"))
+    # An unusable secret key breaks the secret store, and with it every synced
+    # provider that reads the tenant's connections -- the same way for each.
+    registry = ServiceRegistry(_container_settings(secret_key="k" * 44, directory_provider="slack"))
 
     errors = registry.sync_provider_start_errors()
 
     expected = "Provider could not start: unexpected error (ValueError)"
-    assert errors == {SyncSource.ISSUE_TRACKER: expected, SyncSource.VCS: expected}
+    assert errors == {
+        SyncSource.ISSUE_TRACKER: expected,
+        SyncSource.VCS: expected,
+        SyncSource.DIRECTORY: expected,
+    }
+
+
+def test_memory_mode_providers_never_read_the_secret_store() -> None:
+    # Memory mode stays credential-free: no provider is built around the
+    # tenant's connections, so even an unusable secret key breaks none of them.
+    registry = ServiceRegistry(Settings(_env_file=None, secret_key="k" * 44, runtime_mode="memory"))
+
+    assert registry.sync_provider_start_errors() == {}
 
 
 # --- API -------------------------------------------------------------------
@@ -676,7 +689,7 @@ def test_sync_status_endpoint_is_admin_only(settings: Settings) -> None:
 def test_sync_status_endpoint_shows_a_provider_that_cannot_start_as_failing(
     settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def _cannot_start(_settings: Settings) -> None:
+    def _cannot_start(*_args: object) -> None:
         raise ProviderConfigurationError(LEAKY_MESSAGE)
 
     monkeypatch.setattr(catalog, "build_directory_provider", _cannot_start)
@@ -702,10 +715,16 @@ def test_sync_status_endpoint_shows_a_provider_that_cannot_start_as_failing(
 
 
 def test_sync_status_endpoint_never_returns_the_value_that_broke_a_provider(
-    settings: Settings,
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     broken_key = "k" * 44
-    app = create_app(settings=settings.model_copy(update={"secret_key": broken_key}))
+
+    def _broken(*_args: object) -> None:
+        raise ValueError(f"Fernet key must be 32 url-safe base64-encoded bytes: {broken_key}")
+
+    monkeypatch.setattr(catalog, "build_issue_tracker", _broken)
+    monkeypatch.setattr(catalog, "build_vcs_provider", _broken)
+    app = create_app(settings=settings)
     with TestClient(app) as client:
         response = client.get("/admin/ops/sync-status")
 

@@ -9,11 +9,11 @@ from core.application.persona_views import ProviderNames
 from core.domain.errors import ProviderConfigurationError
 from core.ports.calendar import CalendarProvider
 from core.ports.chat import ChatProvider, ChatWebhookMapper
+from core.ports.connections import ConnectionResolver
 from core.ports.directory import DirectoryProvider
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
 from core.ports.readiness import ReadinessProbe
-from core.ports.secrets import SecretStore
 from core.ports.vcs import VcsProvider
 from core.ports.workflows import RollupRefresher, WorkflowScheduler, WorkflowWorker
 from infra.adapters.calendar.google_adapter import GoogleCalendarAdapter
@@ -37,11 +37,23 @@ from infra.adapters.chat.slack import (
     RedisConversationCache,
     SlackChatAdapter,
 )
+from infra.adapters.chat.slack_connection import (
+    APP_TOKEN,
+    SIGNING_SECRET,
+    ConnectionSlackHttpClient,
+    SlackCredentialSource,
+    SlackCredentialsReadinessProbe,
+)
 from infra.adapters.chat.slack_socket import (
     ChatEventSink,
     RedisSocketHeartbeat,
     SlackSocketModeListener,
     SocketHeartbeatReadinessProbe,
+)
+from infra.adapters.connections.routing import (
+    TenantRoutedCalendarProvider,
+    TenantRoutedIssueTracker,
+    TenantRoutedVcsProvider,
 )
 from infra.adapters.directory.fake import FakeDirectoryProvider
 from infra.adapters.directory.mock_slack import MockSlackDirectoryProvider
@@ -91,6 +103,7 @@ def build_chat_provider(
     settings: Settings,
     redis_client: Redis | None = None,
     mock_slack_store: MockSlackStore | None = None,
+    connections: ConnectionResolver | None = None,
 ) -> ChatProvider:
     if settings.chat_provider == "fake":
         return FakeChatProvider(tenant_id=settings.tenant_id)
@@ -100,7 +113,7 @@ def build_chat_provider(
             store=mock_slack_store or build_mock_slack_store(settings, redis_client),
             rate_limiter=_chat_rate_limiter(settings, redis_client),
         )
-    http_client = _slack_http_client(settings)
+    http_client = _slack_http_client(settings, connections)
     conversation_cache = (
         InMemoryConversationCache()
         if settings.runtime_mode == "memory"
@@ -135,13 +148,15 @@ def effective_directory_provider(settings: Settings) -> str:
     return "slack"
 
 
-def build_directory_provider(settings: Settings) -> DirectoryProvider:
+def build_directory_provider(
+    settings: Settings, connections: ConnectionResolver | None = None
+) -> DirectoryProvider:
     provider = effective_directory_provider(settings)
     if provider == "mock_slack":
         return MockSlackDirectoryProvider()
     if provider == "fake":
         return FakeDirectoryProvider()
-    return SlackDirectoryProvider(http_client=_slack_http_client(settings))
+    return SlackDirectoryProvider(http_client=_slack_http_client(settings, connections))
 
 
 def build_chat_webhook_mapper(settings: Settings, provider: str) -> ChatWebhookMapper | None:
@@ -158,24 +173,66 @@ def build_slack_socket_listener(
     settings: Settings,
     redis_client: Redis | None,
     sink: ChatEventSink,
+    connections: ConnectionResolver | None = None,
 ) -> SlackSocketModeListener | None:
-    """Socket Mode intake for real Slack, or None when events arrive another way."""
+    """Socket Mode intake for real Slack, or None when events arrive another way.
+
+    With tenant connections the app token is read at every (re)connect, so one
+    saved in the console is used from the next reconnect; until one is set the
+    listener reports the missing token and keeps retrying at its slowest pace.
+    """
     if not settings.slack_socket_mode or settings.runtime_mode != "container":
         return None
-    if not settings.slack_app_token or not settings.slack_app_token.strip():
-        raise ProviderConfigurationError(
-            "slack_app_token (xapp-, scope connections:write) is required when "
-            "slack_inbound_transport=socket"
+    url_opener: HttpSlackClient | ConnectionSlackHttpClient
+    if connections is not None:
+        url_opener = ConnectionSlackHttpClient(
+            credentials=slack_credentials(settings, connections),
+            token_key=APP_TOKEN,
+            base_url=settings.slack_api_base_url,
+            retry_attempts=settings.slack_retry_attempts,
+            retry_backoff_seconds=settings.slack_retry_backoff_seconds,
         )
-    return SlackSocketModeListener(
-        url_opener=HttpSlackClient(
+    else:
+        if not settings.slack_app_token or not settings.slack_app_token.strip():
+            raise ProviderConfigurationError(
+                "slack_app_token (xapp-, scope connections:write) is required when "
+                "slack_inbound_transport=socket"
+            )
+        url_opener = HttpSlackClient(
             bot_token=settings.slack_app_token,
             base_url=settings.slack_api_base_url,
             retry_attempts=settings.slack_retry_attempts,
             retry_backoff_seconds=settings.slack_retry_backoff_seconds,
-        ),
+        )
+    return SlackSocketModeListener(
+        url_opener=url_opener,
         sink=sink,
         heartbeat=_slack_socket_heartbeat(settings, _required_redis(redis_client)),
+    )
+
+
+def slack_channel_poster(
+    settings: Settings, connections: ConnectionResolver
+) -> Callable[[str, str], Awaitable[str]]:
+    """Post a message to a Slack channel with the tenant's (or the server's) bot token."""
+    client = ConnectionSlackHttpClient(
+        credentials=slack_credentials(settings, connections),
+        base_url=settings.slack_api_base_url,
+        retry_attempts=settings.slack_retry_attempts,
+        retry_backoff_seconds=settings.slack_retry_backoff_seconds,
+    )
+    return client.post_message
+
+
+def slack_credentials(
+    settings: Settings, connections: ConnectionResolver | None
+) -> SlackCredentialSource:
+    return SlackCredentialSource(
+        tenant_id=settings.tenant_id,
+        connections=connections,
+        bot_token=settings.slack_bot_token,
+        app_token=settings.slack_app_token,
+        signing_secret=settings.slack_signing_secret,
     )
 
 
@@ -190,47 +247,74 @@ def build_mock_slack_store(
 
 def build_issue_tracker(
     settings: Settings,
-    secret_store: SecretStore | None = None,
+    connections: ConnectionResolver | None = None,
 ) -> IssueTracker:
-    if settings.issue_tracker_provider == "fake":
-        return FakeIssueTracker(tenant_id=settings.tenant_id)
-    return JiraIssueTrackerAdapter(
-        base_url=settings.jira_base_url,
+    jira = JiraIssueTrackerAdapter(
+        base_url=settings.jira_base_url if settings.issue_tracker_provider == "jira" else None,
         email=settings.jira_email,
         api_token=settings.jira_api_token,
-        secret_store=secret_store,
+        deployment=settings.jira_deployment,
+        story_points_field=settings.jira_story_points_field,
+        connections=connections,
     )
+    if settings.issue_tracker_provider != "fake":
+        return jira
+    fake = FakeIssueTracker(tenant_id=settings.tenant_id)
+    if connections is None:
+        return fake
+    # A demo tenant keeps the sample tracker until an admin turns Jira on.
+    return TenantRoutedIssueTracker(fallback=fake, routes={"jira": jira}, connections=connections)
 
 
-def build_vcs_provider(settings: Settings, secret_store: SecretStore | None = None) -> VcsProvider:
-    if settings.vcs_provider == "fake":
-        return FakeVcsProvider(tenant_id=settings.tenant_id)
-    if settings.vcs_provider == "gitlab":
-        return GitLabVcsAdapter(
-            base_url=settings.gitlab_base_url,
-            token=settings.gitlab_token,
-            namespace_id=settings.gitlab_namespace_id,
-            secret_store=secret_store,
-        )
-    return GitHubVcsAdapter(
+def build_vcs_provider(
+    settings: Settings, connections: ConnectionResolver | None = None
+) -> VcsProvider:
+    gitlab = GitLabVcsAdapter(
+        base_url=settings.gitlab_base_url,
+        token=settings.gitlab_token if settings.vcs_provider == "gitlab" else None,
+        namespace_id=settings.gitlab_namespace_id,
+        connections=connections,
+    )
+    github = GitHubVcsAdapter(
         base_url=settings.github_base_url,
-        token=settings.github_token,
+        token=settings.github_token if settings.vcs_provider == "github" else None,
         owner=settings.github_owner,
-        secret_store=secret_store,
+        connections=connections,
+    )
+    fallback: VcsProvider
+    if settings.vcs_provider == "fake":
+        fallback = FakeVcsProvider(tenant_id=settings.tenant_id)
+    elif settings.vcs_provider == "gitlab":
+        fallback = gitlab
+    else:
+        fallback = github
+    if connections is None:
+        return fallback
+    # GitLab and GitHub are alternatives: whichever the tenant turned on wins.
+    return TenantRoutedVcsProvider(
+        fallback=fallback,
+        routes={"gitlab": gitlab, "github": github},
+        connections=connections,
     )
 
 
 def build_calendar_provider(
     settings: Settings,
-    secret_store: SecretStore | None = None,
+    connections: ConnectionResolver | None = None,
 ) -> CalendarProvider:
-    if settings.calendar_provider == "fake":
-        return FakeCalendarProvider(tenant_id=settings.tenant_id)
-    return GoogleCalendarAdapter(
+    google = GoogleCalendarAdapter(
         base_url=settings.google_calendar_base_url,
         token=settings.google_calendar_token,
         calendar_id=settings.google_calendar_id,
-        secret_store=secret_store,
+        connections=connections,
+    )
+    if settings.calendar_provider != "fake":
+        return google
+    fake = FakeCalendarProvider(tenant_id=settings.tenant_id)
+    if connections is None:
+        return fake
+    return TenantRoutedCalendarProvider(
+        fallback=fake, routes={"google_calendar": google}, connections=connections
     )
 
 
@@ -348,6 +432,7 @@ def build_readiness_probes(
     redis_client_factory: Callable[[], Redis],
     workflow_backlog_count: Callable[[], Awaitable[int]] | None = None,
     llm_history: LlmReadinessHistory | None = None,
+    connections: ConnectionResolver | None = None,
 ) -> dict[str, ReadinessProbe]:
     """The probes for one ``/ready`` call.
 
@@ -377,7 +462,7 @@ def build_readiness_probes(
         "database": DatabaseReadinessProbe(executor_factory()),
         "database_extensions": DatabaseExtensionsReadinessProbe(executor_factory()),
         "redis": RedisReadinessProbe(redis_client_factory()),
-        "slack_provider": _slack_provider_readiness_probe(settings),
+        "slack_provider": _slack_provider_readiness_probe(settings, connections),
         "workflow_provider": build_workflow_readiness_probe(settings),
         "workflow_backlog": backlog_probe,
         "llm_provider": _llm_readiness_probe(settings, llm_history),
@@ -390,22 +475,19 @@ def build_readiness_probes(
     return probes
 
 
-def _slack_provider_readiness_probe(settings: Settings) -> ReadinessProbe:
+def _slack_provider_readiness_probe(
+    settings: Settings, connections: ConnectionResolver | None = None
+) -> ReadinessProbe:
     slack_selected = settings.chat_provider == "slack" or settings.directory_provider == "slack"
+    if not slack_selected:
+        return StaticReadinessProbe(healthy=True)
     # The bot token sends DMs either way; the second credential authenticates
-    # inbound events and so follows the transport.
-    inbound_credential = (
-        settings.slack_app_token
-        if settings.slack_inbound_transport == "socket"
-        else settings.slack_signing_secret
+    # inbound events and so follows the transport. Each may come from the
+    # tenant's connection or from the server's settings.
+    inbound_key = APP_TOKEN if settings.slack_inbound_transport == "socket" else SIGNING_SECRET
+    return SlackCredentialsReadinessProbe(
+        credentials=slack_credentials(settings, connections), inbound_key=inbound_key
     )
-    slack_credentials_present = bool(
-        settings.slack_bot_token
-        and settings.slack_bot_token.strip()
-        and inbound_credential
-        and inbound_credential.strip()
-    )
-    return StaticReadinessProbe(healthy=not slack_selected or slack_credentials_present)
 
 
 def _slack_socket_heartbeat(settings: Settings, redis_client: Redis) -> RedisSocketHeartbeat:
@@ -435,7 +517,17 @@ def _llm_trace_readiness_probe(settings: Settings) -> ReadinessProbe:
     return HttpReadinessProbe(sink.host, "/api/public/health")
 
 
-def _slack_http_client(settings: Settings) -> HttpSlackClient | DisabledSlackHttpClient:
+def _slack_http_client(
+    settings: Settings, connections: ConnectionResolver | None = None
+) -> HttpSlackClient | DisabledSlackHttpClient | ConnectionSlackHttpClient:
+    if connections is not None and settings.runtime_mode == "container":
+        # The token may be set in the console at any time: read it per call.
+        return ConnectionSlackHttpClient(
+            credentials=slack_credentials(settings, connections),
+            base_url=settings.slack_api_base_url,
+            retry_attempts=settings.slack_retry_attempts,
+            retry_backoff_seconds=settings.slack_retry_backoff_seconds,
+        )
     if settings.slack_bot_token:
         return HttpSlackClient(
             bot_token=settings.slack_bot_token,

@@ -23,7 +23,7 @@ async def chat_webhook(
     registry: Annotated[ServiceRegistry, Depends(get_registry)],
 ) -> ChatWebhookResponse | JSONResponse:
     raw_body = await request.body()
-    if not registry.chat_webhook_signature_valid(provider, request.headers, raw_body):
+    if not await registry.chat_webhook_signature_valid(provider, request.headers, raw_body):
         return JSONResponse(
             status_code=401,
             content={"detail": "invalid webhook signature"},

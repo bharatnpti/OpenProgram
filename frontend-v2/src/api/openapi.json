@@ -4865,6 +4865,2876 @@
         }
       }
     },
+    "/config/integrations": {
+      "get": {
+        "tags": ["integrations"],
+        "summary": "List Connections",
+        "operationId": "list_connections_config_integrations_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectionResponse"
+                  },
+                  "title": "Response List Connections Config Integrations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/integrations/{connector}": {
+      "get": {
+        "tags": ["integrations"],
+        "summary": "Get Connection",
+        "operationId": "get_connection_config_integrations__connector__get",
+        "parameters": [
+          {
+            "name": "connector",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connector"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["integrations"],
+        "summary": "Save Connection",
+        "operationId": "save_connection_config_integrations__connector__put",
+        "parameters": [
+          {
+            "name": "connector",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connector"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["integrations"],
+        "summary": "Remove Connection",
+        "operationId": "remove_connection_config_integrations__connector__delete",
+        "parameters": [
+          {
+            "name": "connector",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connector"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/integrations/{connector}/test": {
+      "post": {
+        "tags": ["integrations"],
+        "summary": "Test Connection",
+        "operationId": "test_connection_config_integrations__connector__test_post",
+        "parameters": [
+          {
+            "name": "connector",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Connector"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ConnectionTestRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionTestResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/requirements": {
+      "get": {
+        "tags": ["delivery"],
+        "summary": "Project Requirements",
+        "operationId": "project_requirements_projects__project_id__requirements_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 180,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One release of the project.",
+              "title": "Release Id"
+            },
+            "description": "One release of the project."
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequirementsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/delivery/stages": {
+      "get": {
+        "tags": ["delivery"],
+        "summary": "Get Delivery Stages",
+        "operationId": "get_delivery_stages_config_delivery_stages_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryStagesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["delivery"],
+        "summary": "Save Delivery Stages",
+        "operationId": "save_delivery_stages_config_delivery_stages_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliveryStagesUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryStagesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/delivery/statuses": {
+      "get": {
+        "tags": ["delivery"],
+        "summary": "Observed Statuses",
+        "description": "Every status the synced issues carry, placed by the saved mapping.",
+        "operationId": "observed_statuses_config_delivery_statuses_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ObservedStatusResponse"
+                  },
+                  "title": "Response Observed Statuses Config Delivery Statuses Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/delivery/statuses/preview": {
+      "post": {
+        "tags": ["delivery"],
+        "summary": "Preview Observed Statuses",
+        "description": "The same statuses placed by an unsaved mapping. Nothing is stored.",
+        "operationId": "preview_observed_statuses_config_delivery_statuses_preview_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliveryStagesUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ObservedStatusResponse"
+                  },
+                  "title": "Response Preview Observed Statuses Config Delivery Statuses Preview Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/delivery": {
+      "get": {
+        "tags": ["delivery"],
+        "summary": "Project Delivery",
+        "operationId": "project_delivery_projects__project_id__delivery_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDeliveryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/delivery-date": {
+      "put": {
+        "tags": ["delivery"],
+        "summary": "Set Project Date",
+        "operationId": "set_project_date_projects__project_id__delivery_date_put",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliveryDateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/releases/{release_id}/delivery-date": {
+      "put": {
+        "tags": ["delivery"],
+        "summary": "Set Release Date",
+        "operationId": "set_release_date_projects__project_id__releases__release_id__delivery_date_put",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Release Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliveryDateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/pods/{pod_id}/delivery-date": {
+      "put": {
+        "tags": ["delivery"],
+        "summary": "Set Pod Date",
+        "operationId": "set_pod_date_projects__project_id__pods__pod_id__delivery_date_put",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliveryDateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pods/{pod_id}/delivery": {
+      "get": {
+        "tags": ["delivery"],
+        "summary": "Pod Delivery",
+        "operationId": "pod_delivery_pods__pod_id__delivery_get",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PodDeliveryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/releases": {
+      "get": {
+        "tags": ["delivery"],
+        "summary": "List Releases",
+        "operationId": "list_releases_projects__project_id__releases_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReleaseResponse"
+                  },
+                  "title": "Response List Releases Projects  Project Id  Releases Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["delivery"],
+        "summary": "Create Release",
+        "operationId": "create_release_projects__project_id__releases_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/release-candidates": {
+      "get": {
+        "tags": ["delivery"],
+        "summary": "Release Candidates",
+        "description": "The fix versions and labels the project's requirements carry, to define releases from.",
+        "operationId": "release_candidates_projects__project_id__release_candidates_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReleaseCandidateResponse"
+                  },
+                  "title": "Response Release Candidates Projects  Project Id  Release Candidates Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/releases/{release_id}": {
+      "put": {
+        "tags": ["delivery"],
+        "summary": "Update Release",
+        "operationId": "update_release_projects__project_id__releases__release_id__put",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Release Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["delivery"],
+        "summary": "Delete Release",
+        "operationId": "delete_release_projects__project_id__releases__release_id__delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Release Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/gates": {
+      "get": {
+        "tags": ["gates"],
+        "summary": "List Templates",
+        "operationId": "list_templates_config_gates_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GateTemplatesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["gates"],
+        "summary": "Save Template",
+        "description": "Create a gate (empty template_id) or replace the one with that id.",
+        "operationId": "save_template_config_gates_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GateTemplateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GateTemplateDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/gates/{template_id}": {
+      "delete": {
+        "tags": ["gates"],
+        "summary": "Delete Template",
+        "operationId": "delete_template_config_gates__template_id__delete",
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Template Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/gates": {
+      "get": {
+        "tags": ["gates"],
+        "summary": "Gate Board",
+        "operationId": "gate_board_projects__project_id__gates_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Release Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GateBoardResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/gates/scan": {
+      "post": {
+        "tags": ["gates"],
+        "summary": "Scan Now",
+        "operationId": "scan_now_projects__project_id__gates_scan_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Release Id"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Read every issue, changed or not.",
+              "default": false,
+              "title": "Force"
+            },
+            "description": "Read every issue, changed or not."
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GateScanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/issues/{issue_key}/gate-items": {
+      "post": {
+        "tags": ["gates"],
+        "summary": "Add Item",
+        "operationId": "add_item_issues__issue_key__gate_items_post",
+        "parameters": [
+          {
+            "name": "issue_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Issue Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GateItemCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GateItemResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/gate-items/{item_id}/confirm": {
+      "post": {
+        "tags": ["gates"],
+        "summary": "Confirm Item",
+        "operationId": "confirm_item_gate_items__item_id__confirm_post",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GateItemResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/gate-items/{item_id}/dismiss": {
+      "post": {
+        "tags": ["gates"],
+        "summary": "Dismiss Item",
+        "operationId": "dismiss_item_gate_items__item_id__dismiss_post",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GateItemResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/gate-items/{item_id}/sign-off": {
+      "put": {
+        "tags": ["gates"],
+        "summary": "Sign Off",
+        "operationId": "sign_off_gate_items__item_id__sign_off_put",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GateItemSignOffRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GateItemResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/questions/{question_id}": {
+      "put": {
+        "tags": ["gates"],
+        "summary": "Update Question",
+        "operationId": "update_question_questions__question_id__put",
+        "parameters": [
+          {
+            "name": "question_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Question Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackedQuestionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/issues/{issue_key}/questions": {
+      "post": {
+        "tags": ["gates"],
+        "summary": "Add Question",
+        "operationId": "add_question_issues__issue_key__questions_post",
+        "parameters": [
+          {
+            "name": "issue_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Issue Key"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackedQuestionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/reports": {
+      "get": {
+        "tags": ["reports"],
+        "summary": "List Reports",
+        "operationId": "list_reports_config_reports_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DayReportResponse"
+                  },
+                  "title": "Response List Reports Config Reports Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["reports"],
+        "summary": "Create Report",
+        "operationId": "create_report_config_reports_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DayReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayReportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/reports/destinations": {
+      "get": {
+        "tags": ["reports"],
+        "summary": "Destination Options",
+        "operationId": "destination_options_config_reports_destinations_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReportDestinationOptionResponse"
+                  },
+                  "title": "Response Destination Options Config Reports Destinations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/reports/{report_id}": {
+      "get": {
+        "tags": ["reports"],
+        "summary": "Get Report",
+        "operationId": "get_report_config_reports__report_id__get",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayReportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["reports"],
+        "summary": "Update Report",
+        "operationId": "update_report_config_reports__report_id__put",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DayReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayReportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["reports"],
+        "summary": "Delete Report",
+        "operationId": "delete_report_config_reports__report_id__delete",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/reports/{report_id}/preview": {
+      "post": {
+        "tags": ["reports"],
+        "summary": "Preview Report",
+        "operationId": "preview_report_config_reports__report_id__preview_post",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportPreviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/reports/{report_id}/send": {
+      "post": {
+        "tags": ["reports"],
+        "summary": "Send Report Now",
+        "operationId": "send_report_now_config_reports__report_id__send_post",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/reports/{report_id}/runs": {
+      "get": {
+        "tags": ["reports"],
+        "summary": "Report Runs",
+        "operationId": "report_runs_config_reports__report_id__runs_get",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReportRunResponse"
+                  },
+                  "title": "Response Report Runs Config Reports  Report Id  Runs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/day-reports": {
+      "get": {
+        "tags": ["reports"],
+        "summary": "Project Reports",
+        "description": "The project's reports and the note each opens with today.",
+        "operationId": "project_reports_projects__project_id__day_reports_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectDayReportResponse"
+                  },
+                  "title": "Response Project Reports Projects  Project Id  Day Reports Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/day-reports/{report_id}/note": {
+      "put": {
+        "tags": ["reports"],
+        "summary": "Write Note",
+        "description": "Write the note today's report opens with; an empty text removes it.",
+        "operationId": "write_note_day_reports__report_id__note_put",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Report Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DayReportNoteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDayReportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/escalation": {
+      "get": {
+        "tags": ["escalation"],
+        "summary": "Overview",
+        "operationId": "overview_config_escalation_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EscalationOverviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/escalation/projects/{project_id}": {
+      "get": {
+        "tags": ["escalation"],
+        "summary": "Project Matrix",
+        "description": "The matrix the project's asks escalate by, and where it comes from.",
+        "operationId": "project_matrix_config_escalation_projects__project_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EscalationMatrixResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["escalation"],
+        "summary": "Save Project Matrix",
+        "operationId": "save_project_matrix_config_escalation_projects__project_id__put",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EscalationMatrixRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EscalationMatrixResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["escalation"],
+        "summary": "Remove Project Matrix",
+        "description": "Go back to the tenant's matrix.",
+        "operationId": "remove_project_matrix_config_escalation_projects__project_id__delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/escalation/tenant": {
+      "put": {
+        "tags": ["escalation"],
+        "summary": "Save Tenant Matrix",
+        "operationId": "save_tenant_matrix_config_escalation_tenant_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EscalationMatrixRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EscalationMatrixResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ask": {
       "post": {
         "tags": ["ask"],
@@ -8108,6 +10978,64 @@
         "title": "CheckinPreferenceUpdateRequest",
         "description": "An admin's change to a member's check-in preference.\n\nA field left out keeps what is stored. A field sent as ``null`` is cleared,\nso the member follows the team default for it again."
       },
+      "CommitmentResponse": {
+        "properties": {
+          "target_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Date"
+          },
+          "original_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Date"
+          },
+          "times_moved": {
+            "type": "integer",
+            "title": "Times Moved"
+          },
+          "moved_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moved Days"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/DateChangeResponse"
+            },
+            "type": "array",
+            "title": "Changes"
+          }
+        },
+        "type": "object",
+        "required": ["target_date", "original_date", "times_moved", "moved_days", "changes"],
+        "title": "CommitmentResponse"
+      },
+      "CommitmentScopeKind": {
+        "type": "string",
+        "enum": ["project", "pod", "release"],
+        "title": "CommitmentScopeKind"
+      },
       "ConfigEdgeResponse": {
         "properties": {
           "from_node_id": {
@@ -8528,6 +11456,374 @@
         "type": "object",
         "title": "ConfigNodeUpdateRequest"
       },
+      "ConnectionDetailDto": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": ["label", "value"],
+        "title": "ConnectionDetailDto"
+      },
+      "ConnectionResponse": {
+        "properties": {
+          "connector": {
+            "type": "string",
+            "title": "Connector"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "purposes": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorPurpose"
+            },
+            "type": "array",
+            "title": "Purposes"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorFieldDto"
+            },
+            "type": "array",
+            "title": "Fields"
+          },
+          "exclusive_group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusive Group"
+          },
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "settings": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Settings"
+          },
+          "secrets_set": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Secrets Set"
+          },
+          "environment_configured": {
+            "type": "boolean",
+            "title": "Environment Configured",
+            "description": "The server's own settings configure this connector. They are used while the tenant has no enabled connection of its own."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          },
+          "last_test": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConnectionTestOutcomeDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "connector",
+          "name",
+          "description",
+          "purposes",
+          "fields",
+          "exclusive_group",
+          "configured",
+          "enabled",
+          "settings",
+          "secrets_set",
+          "environment_configured",
+          "updated_at",
+          "updated_by",
+          "last_test"
+        ],
+        "title": "ConnectionResponse",
+        "description": "One connector and the tenant's connection to it.\n\nSecret values are never returned: ``secrets_set`` names the secret fields\nthat hold a stored value, so the console can show \"set\" next to them."
+      },
+      "ConnectionTestOutcomeDto": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "tested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Tested At"
+          }
+        },
+        "type": "object",
+        "required": ["ok", "message", "tested_at"],
+        "title": "ConnectionTestOutcomeDto"
+      },
+      "ConnectionTestRequest": {
+        "properties": {
+          "settings": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Settings"
+          },
+          "secrets": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Secrets"
+          }
+        },
+        "type": "object",
+        "title": "ConnectionTestRequest",
+        "description": "Optional unsaved values to test over the stored ones.\n\nA secret left out or blank uses the stored one. Leave the whole body out to\ntest what is saved; only that test is recorded on the connection."
+      },
+      "ConnectionTestResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "details": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionDetailDto"
+            },
+            "type": "array",
+            "title": "Details"
+          },
+          "suggestions": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/ConnectorFieldOptionDto"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Suggestions"
+          },
+          "tested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Tested At"
+          },
+          "recorded": {
+            "type": "boolean",
+            "title": "Recorded"
+          }
+        },
+        "type": "object",
+        "required": ["ok", "message", "details", "suggestions", "tested_at", "recorded"],
+        "title": "ConnectionTestResponse"
+      },
+      "ConnectionUpdateRequest": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "settings": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Settings"
+          },
+          "secrets": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Secrets"
+          }
+        },
+        "type": "object",
+        "required": ["enabled"],
+        "title": "ConnectionUpdateRequest",
+        "description": "Save a connection.\n\n``settings`` replaces the plain settings (a blank or null value clears a\nfield). ``secrets`` only changes the secrets it names: a value stores it, a\nblank or null clears it, and a secret left out keeps its stored value."
+      },
+      "ConnectorFieldDto": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FieldKind"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required"
+          },
+          "help": {
+            "type": "string",
+            "title": "Help"
+          },
+          "placeholder": {
+            "type": "string",
+            "title": "Placeholder"
+          },
+          "default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorFieldOptionDto"
+            },
+            "type": "array",
+            "title": "Options"
+          },
+          "shown_when": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FieldConditionDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "kind",
+          "required",
+          "help",
+          "placeholder",
+          "default",
+          "options",
+          "shown_when"
+        ],
+        "title": "ConnectorFieldDto"
+      },
+      "ConnectorFieldOptionDto": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "shown_when": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FieldConditionDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["value", "label"],
+        "title": "ConnectorFieldOptionDto"
+      },
+      "ConnectorPurpose": {
+        "type": "string",
+        "enum": ["issue_tracker", "code", "chat", "calendar", "report_delivery"],
+        "title": "ConnectorPurpose",
+        "description": "What OpenProgram uses a connector for."
+      },
+      "ContactSource": {
+        "type": "string",
+        "enum": ["team_scrum_master", "team_manager", "member"],
+        "title": "ContactSource"
+      },
       "CrossPersonDelivery": {
         "type": "string",
         "enum": ["sent", "retrying", "not_delivered"],
@@ -8671,6 +11967,214 @@
         "required": ["requests"],
         "title": "CrossPersonRequestsResponse"
       },
+      "DateChangeResponse": {
+        "properties": {
+          "target_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Date"
+          },
+          "changed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Changed At"
+          },
+          "changed_by": {
+            "type": "string",
+            "title": "Changed By"
+          },
+          "changed_by_name": {
+            "type": "string",
+            "title": "Changed By Name"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": ["target_date", "changed_at", "changed_by", "changed_by_name", "note"],
+        "title": "DateChangeResponse"
+      },
+      "DayReportNoteRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Text",
+            "description": "Empty removes the note.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "DayReportNoteRequest"
+      },
+      "DayReportNoteResponse": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id"
+          },
+          "report_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Report Date"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "author": {
+            "type": "string",
+            "title": "Author"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": ["report_id", "report_date", "text", "author", "updated_at"],
+        "title": "DayReportNoteResponse"
+      },
+      "DayReportRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Name"
+          },
+          "project_id": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Project Id"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/ReportScheduleDto"
+          },
+          "destinations": {
+            "items": {
+              "$ref": "#/components/schemas/ReportDestinationDto"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Destinations"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id",
+            "description": "Report on one release of the project only."
+          }
+        },
+        "type": "object",
+        "required": ["name", "project_id", "schedule"],
+        "title": "DayReportRequest"
+      },
+      "DayReportResponse": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/ReportScheduleDto"
+          },
+          "destinations": {
+            "items": {
+              "$ref": "#/components/schemas/ReportDestinationDto"
+            },
+            "type": "array",
+            "title": "Destinations"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "type": "string",
+            "title": "Updated By"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "last_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportRunResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id",
+          "name",
+          "project_id",
+          "enabled",
+          "schedule",
+          "destinations",
+          "updated_at",
+          "updated_by"
+        ],
+        "title": "DayReportResponse"
+      },
       "DeadLetterResponse": {
         "properties": {
           "id": {
@@ -8764,6 +12268,169 @@
         "type": "object",
         "required": ["dead_letters"],
         "title": "DeadLettersResponse"
+      },
+      "DeliveryDateRequest": {
+        "properties": {
+          "target_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Date",
+            "description": "Null clears the committed date."
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": ["target_date"],
+        "title": "DeliveryDateRequest"
+      },
+      "DeliveryOutcomeResponse": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/DestinationKind"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "target", "ok", "detail"],
+        "title": "DeliveryOutcomeResponse"
+      },
+      "DeliveryStage": {
+        "type": "string",
+        "enum": [
+          "raised",
+          "groomed",
+          "in_development",
+          "in_testing",
+          "business_testing",
+          "production"
+        ],
+        "title": "DeliveryStage"
+      },
+      "DeliveryStagesResponse": {
+        "properties": {
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/StageStatusesDto"
+            },
+            "type": "array",
+            "title": "Stages"
+          },
+          "excluded_statuses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Excluded Statuses"
+          },
+          "requirement_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Requirement Types",
+            "description": "Issue types that count as requirements. Empty counts every type."
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stages",
+          "excluded_statuses",
+          "requirement_types",
+          "is_default",
+          "updated_at",
+          "updated_by"
+        ],
+        "title": "DeliveryStagesResponse",
+        "description": "Which tracker statuses count as which delivery stage."
+      },
+      "DeliveryStagesUpdateRequest": {
+        "properties": {
+          "stages": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/DeliveryStage"
+            },
+            "type": "object",
+            "title": "Stages"
+          },
+          "excluded_statuses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Excluded Statuses"
+          },
+          "requirement_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Requirement Types"
+          }
+        },
+        "type": "object",
+        "required": ["stages"],
+        "title": "DeliveryStagesUpdateRequest"
+      },
+      "DestinationKind": {
+        "type": "string",
+        "enum": ["chat_channel", "person", "email", "teams"],
+        "title": "DestinationKind"
       },
       "DevUserResponse": {
         "properties": {
@@ -9373,6 +13040,178 @@
         "title": "EscalationContactUpdateDto",
         "description": "Pick a member. A bare chat id is kept only if it is a member's or already stored."
       },
+      "EscalationLevelDto": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ContactSource"
+          },
+          "member_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Id"
+          },
+          "after_days": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/NeedType"
+            },
+            "type": "object",
+            "title": "After Days",
+            "description": "Days an ask of each kind waits before it reaches this level; a kind left out never reaches it."
+          }
+        },
+        "type": "object",
+        "required": ["label", "source"],
+        "title": "EscalationLevelDto"
+      },
+      "EscalationMatrixRequest": {
+        "properties": {
+          "decision_owner_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Owner Id",
+            "description": "Who owns a decision nothing else names an owner for: the product owner."
+          },
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/EscalationLevelDto"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Levels",
+            "description": "Level 2 first; level 1 is always the ask's owner."
+          }
+        },
+        "type": "object",
+        "required": ["levels"],
+        "title": "EscalationMatrixRequest"
+      },
+      "EscalationMatrixResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "Empty for the tenant's own matrix."
+          },
+          "source": {
+            "$ref": "#/components/schemas/MatrixSource"
+          },
+          "decision_owner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Owner Id"
+          },
+          "levels": {
+            "items": {
+              "$ref": "#/components/schemas/EscalationLevelDto"
+            },
+            "type": "array",
+            "title": "Levels"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "source",
+          "decision_owner_id",
+          "levels",
+          "updated_at",
+          "updated_by"
+        ],
+        "title": "EscalationMatrixResponse"
+      },
+      "EscalationOverviewResponse": {
+        "properties": {
+          "tenant": {
+            "$ref": "#/components/schemas/EscalationMatrixResponse"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/EscalationMatrixResponse"
+            },
+            "type": "array",
+            "title": "Projects"
+          }
+        },
+        "type": "object",
+        "required": ["tenant", "projects"],
+        "title": "EscalationOverviewResponse"
+      },
+      "FieldConditionDto": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Values"
+          }
+        },
+        "type": "object",
+        "required": ["field", "values"],
+        "title": "FieldConditionDto",
+        "description": "The field (or option) applies only while ``field`` holds one of ``values``."
+      },
+      "FieldKind": {
+        "type": "string",
+        "enum": ["text", "url", "email", "number", "select", "secret"],
+        "title": "FieldKind"
+      },
       "FocusItemDto": {
         "properties": {
           "kind": {
@@ -9544,6 +13383,325 @@
         "type": "object",
         "required": ["id", "name", "rag", "source", "confidence", "deadline"],
         "title": "FocusTaskDto"
+      },
+      "GateBoardResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/GateTemplateDto"
+            },
+            "type": "array",
+            "title": "Templates"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/IssueGatesResponse"
+            },
+            "type": "array",
+            "title": "Issues"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/TrackedQuestionResponse"
+            },
+            "type": "array",
+            "title": "Questions"
+          },
+          "actor_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Actor Names"
+          }
+        },
+        "type": "object",
+        "required": ["project_id", "release_id", "templates", "issues", "questions"],
+        "title": "GateBoardResponse",
+        "description": "A project's (or release's) requirements against their gates, and open questions."
+      },
+      "GateEvaluationResponse": {
+        "properties": {
+          "template_id": {
+            "type": "string",
+            "title": "Template Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/GateState"
+          },
+          "met": {
+            "type": "integer",
+            "title": "Met"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "suggested": {
+            "type": "integer",
+            "title": "Suggested"
+          },
+          "missing_kinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Kinds"
+          }
+        },
+        "type": "object",
+        "required": ["template_id", "state", "met", "total", "suggested", "missing_kinds"],
+        "title": "GateEvaluationResponse"
+      },
+      "GateItemCreateRequest": {
+        "properties": {
+          "template_id": {
+            "type": "string",
+            "title": "Template Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": ["template_id", "kind", "text"],
+        "title": "GateItemCreateRequest"
+      },
+      "GateItemResponse": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id"
+          },
+          "issue_key": {
+            "type": "string",
+            "title": "Issue Key"
+          },
+          "template_id": {
+            "type": "string",
+            "title": "Template Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ItemStatus"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ItemSource"
+          },
+          "source_ref": {
+            "type": "string",
+            "title": "Source Ref"
+          },
+          "created_by": {
+            "type": "string",
+            "title": "Created By"
+          },
+          "signed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed By"
+          },
+          "signed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signed At"
+          },
+          "evidence_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Url"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "issue_key",
+          "template_id",
+          "kind",
+          "text",
+          "status",
+          "source",
+          "source_ref",
+          "created_by",
+          "signed_by",
+          "signed_at",
+          "evidence_url",
+          "note"
+        ],
+        "title": "GateItemResponse"
+      },
+      "GateItemSignOffRequest": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ItemStatus"
+          },
+          "evidence_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Url"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "GateItemSignOffRequest"
+      },
+      "GateScanResponse": {
+        "properties": {
+          "read": {
+            "type": "integer",
+            "title": "Read"
+          },
+          "unchanged": {
+            "type": "integer",
+            "title": "Unchanged"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "suggested_items": {
+            "type": "integer",
+            "title": "Suggested Items"
+          },
+          "questions": {
+            "type": "integer",
+            "title": "Questions"
+          }
+        },
+        "type": "object",
+        "required": ["read", "unchanged", "failed", "suggested_items", "questions"],
+        "title": "GateScanResponse"
+      },
+      "GateState": {
+        "type": "string",
+        "enum": ["passed", "open", "failed", "missing"],
+        "title": "GateState"
+      },
+      "GateTemplateDto": {
+        "properties": {
+          "template_id": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Template Id",
+            "default": ""
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "guards_stage": {
+            "$ref": "#/components/schemas/DeliveryStage"
+          },
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/ItemKindDto"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Kinds"
+          },
+          "issue_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Issue Types"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": ["name", "guards_stage", "kinds"],
+        "title": "GateTemplateDto"
+      },
+      "GateTemplatesResponse": {
+        "properties": {
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/GateTemplateDto"
+            },
+            "type": "array",
+            "title": "Templates"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default"
+          }
+        },
+        "type": "object",
+        "required": ["templates", "is_default"],
+        "title": "GateTemplatesResponse"
       },
       "GithubSyncDispatchRequest": {
         "properties": {
@@ -9777,6 +13935,72 @@
         "required": ["row", "column", "entity_ref", "rag", "source", "why", "source_ref"],
         "title": "HeatmapCellDto"
       },
+      "HistoryForecastResponse": {
+        "properties": {
+          "p50": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50"
+          },
+          "p85": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P85"
+          },
+          "remaining": {
+            "type": "number",
+            "title": "Remaining"
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit"
+          },
+          "sample_days": {
+            "type": "integer",
+            "title": "Sample Days"
+          },
+          "completed_in_sample": {
+            "type": "number",
+            "title": "Completed In Sample"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "p50",
+          "p85",
+          "remaining",
+          "unit",
+          "sample_days",
+          "completed_in_sample",
+          "reason"
+        ],
+        "title": "HistoryForecastResponse"
+      },
       "IdentityAutoMatchMemberDto": {
         "properties": {
           "id": {
@@ -9928,6 +14152,111 @@
         "type": "object",
         "title": "IdentityLinkUpdateRequest"
       },
+      "IssueGatesResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/DeliveryStage"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/GateEvaluationResponse"
+            },
+            "type": "array",
+            "title": "Evaluations"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GateItemResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "passed_without": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Passed Without",
+            "description": "Gates whose stage the issue reached without passing them."
+          }
+        },
+        "type": "object",
+        "required": ["key", "title", "stage", "status", "evaluations", "items", "passed_without"],
+        "title": "IssueGatesResponse"
+      },
+      "ItemKindDto": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Label"
+          },
+          "sign_off_roles": {
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "type": "array",
+            "title": "Sign Off Roles"
+          },
+          "evidence_required": {
+            "type": "boolean",
+            "title": "Evidence Required",
+            "default": false
+          },
+          "headings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Headings"
+          },
+          "gherkin": {
+            "type": "boolean",
+            "title": "Gherkin",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["key", "label", "sign_off_roles"],
+        "title": "ItemKindDto"
+      },
+      "ItemSource": {
+        "type": "string",
+        "enum": ["description", "comment", "manual"],
+        "title": "ItemSource"
+      },
+      "ItemStatus": {
+        "type": "string",
+        "enum": ["suggested", "dismissed", "pending", "met", "failed", "waived"],
+        "title": "ItemStatus"
+      },
       "JiraSyncDispatchRequest": {
         "properties": {
           "tenant_id": {
@@ -9989,6 +14318,11 @@
         "type": "object",
         "required": ["success", "message", "redirect_url"],
         "title": "LogoutResponse"
+      },
+      "MatrixSource": {
+        "type": "string",
+        "enum": ["project", "tenant", "default"],
+        "title": "MatrixSource"
       },
       "MemberFromDirectoryRequest": {
         "properties": {
@@ -10159,6 +14493,11 @@
         "required": ["briefs"],
         "title": "NarrativeBriefsResponse"
       },
+      "NeedType": {
+        "type": "string",
+        "enum": ["fix", "decision", "answer", "review"],
+        "title": "NeedType"
+      },
       "NodeKind": {
         "type": "string",
         "enum": [
@@ -10204,6 +14543,44 @@
         "type": "object",
         "required": ["entity_ref", "window_days", "start", "end", "points"],
         "title": "NodeTrendResponse"
+      },
+      "ObservedStatusResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "issues": {
+            "type": "integer",
+            "title": "Issues"
+          },
+          "issue_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Issue Types"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when the status is not counted."
+          },
+          "mapped": {
+            "type": "boolean",
+            "title": "Mapped",
+            "description": "False when no stage names the status and its broad state placed it."
+          }
+        },
+        "type": "object",
+        "required": ["status", "issues", "issue_types", "stage", "mapped"],
+        "title": "ObservedStatusResponse"
       },
       "PersonaTreeEdgeDto": {
         "properties": {
@@ -10358,6 +14735,29 @@
         ],
         "title": "PodCheckinsResponse"
       },
+      "PodDeliveryResponse": {
+        "properties": {
+          "pod_id": {
+            "type": "string",
+            "title": "Pod Id"
+          },
+          "can_set_dates": {
+            "type": "boolean",
+            "title": "Can Set Dates"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/PodProjectDeliveryResponse"
+            },
+            "type": "array",
+            "title": "Projects"
+          }
+        },
+        "type": "object",
+        "required": ["pod_id", "can_set_dates", "projects"],
+        "title": "PodDeliveryResponse",
+        "description": "A pod's part of each project it works on: what its scrum master commits."
+      },
       "PodEscalationContactsResponse": {
         "properties": {
           "pod_id": {
@@ -10426,6 +14826,36 @@
         "type": "object",
         "required": ["role"],
         "title": "PodMemberLinkRequest"
+      },
+      "PodProjectDeliveryResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name"
+          },
+          "project_target": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Target"
+          },
+          "pod": {
+            "$ref": "#/components/schemas/ScopeDeliveryResponse"
+          }
+        },
+        "type": "object",
+        "required": ["project_id", "project_name", "project_target", "pod"],
+        "title": "PodProjectDeliveryResponse"
       },
       "PodRollupResponse": {
         "properties": {
@@ -10927,6 +15357,86 @@
         "required": ["root_id", "as_of", "nodes", "edges"],
         "title": "ProgramTreeResponse"
       },
+      "ProjectDayReportResponse": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/ReportScheduleDto"
+          },
+          "destination_count": {
+            "type": "integer",
+            "title": "Destination Count"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayReportNoteResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id",
+          "name",
+          "enabled",
+          "release_id",
+          "schedule",
+          "destination_count",
+          "note"
+        ],
+        "title": "ProjectDayReportResponse",
+        "description": "A project's day report as its product owner or manager sees it: when, and today's note."
+      },
+      "ProjectDeliveryResponse": {
+        "properties": {
+          "project": {
+            "$ref": "#/components/schemas/ScopeDeliveryResponse"
+          },
+          "pods": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeDeliveryResponse"
+            },
+            "type": "array",
+            "title": "Pods"
+          },
+          "releases": {
+            "items": {
+              "$ref": "#/components/schemas/ScopeDeliveryResponse"
+            },
+            "type": "array",
+            "title": "Releases"
+          }
+        },
+        "type": "object",
+        "required": ["project", "pods", "releases"],
+        "title": "ProjectDeliveryResponse"
+      },
       "ProjectProgressResponse": {
         "properties": {
           "project_id": {
@@ -11056,6 +15566,68 @@
         "required": ["project_id", "as_of", "risks"],
         "title": "ProjectRisksResponse"
       },
+      "QuestionCreateRequest": {
+        "properties": {
+          "asked_to": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Asked To"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Summary"
+          }
+        },
+        "type": "object",
+        "required": ["asked_to", "summary"],
+        "title": "QuestionCreateRequest"
+      },
+      "QuestionStatus": {
+        "type": "string",
+        "enum": ["not_yet", "partly", "answered", "closed_unanswered"],
+        "title": "QuestionStatus"
+      },
+      "QuestionUpdateRequest": {
+        "properties": {
+          "confirmed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed"
+          },
+          "dismissed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuestionStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "QuestionUpdateRequest"
+      },
       "Rag": {
         "type": "string",
         "enum": ["green", "amber", "red", "unknown"],
@@ -11085,6 +15657,732 @@
         "type": "object",
         "required": ["status", "dependencies"],
         "title": "ReadyResponse"
+      },
+      "ReleaseCandidateResponse": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ReleaseMatchKind"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "issues": {
+            "type": "integer",
+            "title": "Issues"
+          },
+          "release_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Date"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "value", "issues", "release_date"],
+        "title": "ReleaseCandidateResponse"
+      },
+      "ReleaseMatchKind": {
+        "type": "string",
+        "enum": ["fix_version", "label"],
+        "title": "ReleaseMatchKind"
+      },
+      "ReleaseRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "match_kind": {
+            "$ref": "#/components/schemas/ReleaseMatchKind"
+          },
+          "match_value": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Match Value"
+          }
+        },
+        "type": "object",
+        "required": ["name", "match_kind", "match_value"],
+        "title": "ReleaseRequest"
+      },
+      "ReleaseResponse": {
+        "properties": {
+          "release_id": {
+            "type": "string",
+            "title": "Release Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "match_kind": {
+            "$ref": "#/components/schemas/ReleaseMatchKind"
+          },
+          "match_value": {
+            "type": "string",
+            "title": "Match Value"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "type": "string",
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "release_id",
+          "project_id",
+          "name",
+          "match_kind",
+          "match_value",
+          "updated_at",
+          "updated_by"
+        ],
+        "title": "ReleaseResponse"
+      },
+      "ReportDestinationDto": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/DestinationKind"
+          },
+          "target": {
+            "type": "string",
+            "maxLength": 320,
+            "title": "Target",
+            "description": "A chat channel id, a member id, or an email address (a person or a mailing list). Empty for Teams, which posts to the Teams connection's channel.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "ReportDestinationDto"
+      },
+      "ReportDestinationOptionResponse": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/DestinationKind"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "label", "available", "note"],
+        "title": "ReportDestinationOptionResponse"
+      },
+      "ReportGroupResponse": {
+        "properties": {
+          "heading": {
+            "type": "string",
+            "title": "Heading"
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": ["heading", "lines"],
+        "title": "ReportGroupResponse"
+      },
+      "ReportPreviewResponse": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "report_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Report Date"
+          },
+          "rag": {
+            "$ref": "#/components/schemas/Rag"
+          },
+          "headline": {
+            "type": "string",
+            "title": "Headline"
+          },
+          "percent_complete": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Complete"
+          },
+          "progress_line": {
+            "type": "string",
+            "title": "Progress Line"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ReportSectionResponse"
+            },
+            "type": "array",
+            "title": "Sections"
+          },
+          "console_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Console Url"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "report_date",
+          "rag",
+          "headline",
+          "percent_complete",
+          "progress_line",
+          "sections",
+          "console_url",
+          "text"
+        ],
+        "title": "ReportPreviewResponse",
+        "description": "What the report would say if it were sent now. Nothing is sent or stored."
+      },
+      "ReportRunResponse": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "report_id": {
+            "type": "string",
+            "title": "Report Id"
+          },
+          "report_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Report Date"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/RunTrigger"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "outcomes": {
+            "items": {
+              "$ref": "#/components/schemas/DeliveryOutcomeResponse"
+            },
+            "type": "array",
+            "title": "Outcomes"
+          },
+          "actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "report_id",
+          "report_date",
+          "trigger",
+          "status",
+          "started_at",
+          "finished_at",
+          "title",
+          "outcomes",
+          "actor"
+        ],
+        "title": "ReportRunResponse"
+      },
+      "ReportScheduleDto": {
+        "properties": {
+          "local_time": {
+            "type": "string",
+            "format": "time",
+            "title": "Local Time"
+          },
+          "timezone": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Timezone"
+          },
+          "weekdays": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Weekdays",
+            "description": "0 is Monday, 6 is Sunday."
+          }
+        },
+        "type": "object",
+        "required": ["local_time", "timezone", "weekdays"],
+        "title": "ReportScheduleDto"
+      },
+      "ReportSectionResponse": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ReportGroupResponse"
+            },
+            "type": "array",
+            "title": "Groups"
+          },
+          "table": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportTableResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "empty_text": {
+            "type": "string",
+            "title": "Empty Text"
+          }
+        },
+        "type": "object",
+        "required": ["title", "lines", "empty_text"],
+        "title": "ReportSectionResponse"
+      },
+      "ReportTableResponse": {
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": ["columns", "rows"],
+        "title": "ReportTableResponse"
+      },
+      "RequirementMoveResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "from_stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for a requirement new in scope."
+          },
+          "to_stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for one that left the scope."
+          }
+        },
+        "type": "object",
+        "required": ["key", "title", "from_stage", "to_stage"],
+        "title": "RequirementMoveResponse"
+      },
+      "RequirementResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/DeliveryStage"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "mapped": {
+            "type": "boolean",
+            "title": "Mapped"
+          },
+          "assignee_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Name"
+          },
+          "story_points": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Story Points"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "in_stage_since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Stage Since"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "stage",
+          "status",
+          "mapped",
+          "assignee_name",
+          "story_points",
+          "due_date",
+          "in_stage_since"
+        ],
+        "title": "RequirementResponse"
+      },
+      "RequirementStageCountResponse": {
+        "properties": {
+          "stage": {
+            "$ref": "#/components/schemas/DeliveryStage"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "points": {
+            "type": "number",
+            "title": "Points"
+          },
+          "change": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change"
+          }
+        },
+        "type": "object",
+        "required": ["stage", "label", "count", "points", "change"],
+        "title": "RequirementStageCountResponse"
+      },
+      "RequirementTimelinePointResponse": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/DeliveryStage"
+            },
+            "type": "object",
+            "title": "Counts"
+          }
+        },
+        "type": "object",
+        "required": ["day", "counts"],
+        "title": "RequirementTimelinePointResponse"
+      },
+      "RequirementsResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name"
+          },
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "release_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Name"
+          },
+          "live": {
+            "type": "boolean",
+            "title": "Live"
+          },
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done"
+          },
+          "percent_complete": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent Complete"
+          },
+          "has_points": {
+            "type": "boolean",
+            "title": "Has Points"
+          },
+          "points_total": {
+            "type": "number",
+            "title": "Points Total"
+          },
+          "points_done": {
+            "type": "number",
+            "title": "Points Done"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementStageCountResponse"
+            },
+            "type": "array",
+            "title": "Stages"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementTimelinePointResponse"
+            },
+            "type": "array",
+            "title": "Timeline"
+          },
+          "moves": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementMoveResponse"
+            },
+            "type": "array",
+            "title": "Moves"
+          },
+          "previous_day": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Day"
+          },
+          "unmapped_statuses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unmapped Statuses"
+          },
+          "excluded": {
+            "type": "integer",
+            "title": "Excluded"
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementResponse"
+            },
+            "type": "array",
+            "title": "Requirements"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "project_name",
+          "as_of",
+          "release_id",
+          "release_name",
+          "live",
+          "available",
+          "total",
+          "done",
+          "percent_complete",
+          "has_points",
+          "points_total",
+          "points_done",
+          "stages",
+          "timeline",
+          "moves",
+          "previous_day",
+          "unmapped_statuses",
+          "excluded",
+          "requirements"
+        ],
+        "title": "RequirementsResponse",
+        "description": "A project's requirements by delivery stage, with counts over time."
       },
       "RiskEvidenceDto": {
         "properties": {
@@ -11241,6 +16539,11 @@
         ],
         "title": "RiskFindingResponse"
       },
+      "Role": {
+        "type": "string",
+        "enum": ["dev", "po", "sm", "mgr", "exec", "admin"],
+        "title": "Role"
+      },
       "RollupFactorDto": {
         "properties": {
           "description": {
@@ -11303,6 +16606,117 @@
         ],
         "title": "RollupFactorDto"
       },
+      "RunStatus": {
+        "type": "string",
+        "enum": ["sending", "sent", "partial", "failed"],
+        "title": "RunStatus"
+      },
+      "RunTrigger": {
+        "type": "string",
+        "enum": ["schedule", "manual"],
+        "title": "RunTrigger"
+      },
+      "ScopeDeliveryResponse": {
+        "properties": {
+          "scope_kind": {
+            "$ref": "#/components/schemas/CommitmentScopeKind"
+          },
+          "scope_id": {
+            "type": "string",
+            "title": "Scope Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "commitment": {
+            "$ref": "#/components/schemas/CommitmentResponse"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "target_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["committed", "jira_release"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Source"
+          },
+          "jira_release_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jira Release Date"
+          },
+          "history": {
+            "$ref": "#/components/schemas/HistoryForecastResponse"
+          },
+          "team": {
+            "$ref": "#/components/schemas/TeamForecastResponse"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/Verdict"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scope_kind",
+          "scope_id",
+          "project_id",
+          "name",
+          "commitment",
+          "target",
+          "target_source",
+          "jira_release_date",
+          "history",
+          "team",
+          "verdict",
+          "reasons",
+          "total",
+          "open"
+        ],
+        "title": "ScopeDeliveryResponse",
+        "description": "One scope's committed date and forecast: a project, a pod's part, or a release."
+      },
       "SelfCheckinPreferenceUpdateRequest": {
         "properties": {
           "timezone": {
@@ -11335,6 +16749,27 @@
         "type": "object",
         "title": "SelfCheckinPreferenceUpdateRequest",
         "description": "The part of their own check-in preference a person may change.\n\nOnly the days they are asked and their time zone. The reply windows stay\nwith an admin (``PUT /config/members/{id}/checkin-preference``) because they\ndecide when a missed check-in reaches the scrum master and manager. The\ncheck-in time is left out because check-ins go out at one tenant-wide time,\nso a personal time would change nothing. A request carrying any other field\nis rejected, never silently ignored. A field sent as ``null`` goes back to\nthe team default."
+      },
+      "StageStatusesDto": {
+        "properties": {
+          "stage": {
+            "$ref": "#/components/schemas/DeliveryStage"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "statuses": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Statuses"
+          }
+        },
+        "type": "object",
+        "required": ["stage", "label", "statuses"],
+        "title": "StageStatusesDto"
       },
       "StatusCorrectionRequest": {
         "properties": {
@@ -11705,6 +17140,44 @@
         "required": ["id", "name", "rag", "source", "confidence", "deadline"],
         "title": "TaskProgressDto"
       },
+      "TeamForecastResponse": {
+        "properties": {
+          "latest": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest"
+          },
+          "latest_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Key"
+          },
+          "dated": {
+            "type": "integer",
+            "title": "Dated"
+          },
+          "undated": {
+            "type": "integer",
+            "title": "Undated"
+          }
+        },
+        "type": "object",
+        "required": ["latest", "latest_key", "dated", "undated"],
+        "title": "TeamForecastResponse"
+      },
       "TenantLogoResponse": {
         "properties": {
           "data_url": {
@@ -11776,6 +17249,86 @@
         "type": "object",
         "required": ["enabled"],
         "title": "TenantWritebackUpdateRequest"
+      },
+      "TrackedQuestionResponse": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "title": "Question Id"
+          },
+          "issue_key": {
+            "type": "string",
+            "title": "Issue Key"
+          },
+          "comment_ref": {
+            "type": "string",
+            "title": "Comment Ref"
+          },
+          "asked_by": {
+            "type": "string",
+            "title": "Asked By"
+          },
+          "asked_by_name": {
+            "type": "string",
+            "title": "Asked By Name"
+          },
+          "asked_to": {
+            "type": "string",
+            "title": "Asked To"
+          },
+          "asked_to_name": {
+            "type": "string",
+            "title": "Asked To Name"
+          },
+          "asked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Asked At"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "status": {
+            "$ref": "#/components/schemas/QuestionStatus"
+          },
+          "confirmed": {
+            "type": "boolean",
+            "title": "Confirmed"
+          },
+          "status_set_by_person": {
+            "type": "boolean",
+            "title": "Status Set By Person"
+          },
+          "answered_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered Ref"
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "issue_key",
+          "comment_ref",
+          "asked_by",
+          "asked_by_name",
+          "asked_to",
+          "asked_to_name",
+          "asked_at",
+          "summary",
+          "status",
+          "confirmed",
+          "status_set_by_person",
+          "answered_ref"
+        ],
+        "title": "TrackedQuestionResponse"
       },
       "TrendPointDto": {
         "properties": {
@@ -11856,6 +17409,11 @@
         "type": "object",
         "required": ["loc", "msg", "type"],
         "title": "ValidationError"
+      },
+      "Verdict": {
+        "type": "string",
+        "enum": ["on_track", "at_risk", "off_track", "done", "no_date", "not_enough_data"],
+        "title": "Verdict"
       },
       "WorkItemCreateRequest": {
         "properties": {

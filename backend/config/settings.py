@@ -124,6 +124,20 @@ class Settings(BaseSettings):
     narrative_brief_daily_schedule_id: str = "openprogram-narrative-brief-daily"
     narrative_brief_weekly_schedule_id: str = "openprogram-narrative-brief-weekly"
     narrative_brief_exec_schedule_id: str = "openprogram-narrative-brief-exec"
+    # Day reports: each report's own local time decides when it goes out; this
+    # tick only checks which are due. Requirement snapshots are what the
+    # reports and the console's requirements timeline read.
+    day_report_enabled: bool = True
+    day_report_dispatch_cron: str = "*/10 * * * *"
+    day_report_dispatch_schedule_id: str = "openprogram-day-report-dispatch"
+    delivery_snapshot_cron: str = "50 * * * *"
+    delivery_snapshot_schedule_id: str = "openprogram-delivery-snapshot"
+    # Reads changed requirements' Jira text for gate items and questions.
+    gate_scan_enabled: bool = True
+    gate_scan_cron: str = "40 * * * *"
+    gate_scan_schedule_id: str = "openprogram-gate-scan"
+    # Ask the language model for items in text with no headings (quotes only).
+    gate_text_model_enabled: bool = True
     temporal_target: str = "localhost:7233"
     temporal_task_queue: str = "openprogram-foundation"
     temporal_schedule_id: str = "openprogram-heartbeat"
@@ -175,6 +189,9 @@ class Settings(BaseSettings):
     jira_base_url: str | None = None
     jira_email: str | None = None
     jira_api_token: str | None = None
+    # Used only while the tenant has no Jira connection set up in admin.
+    jira_deployment: Literal["cloud", "data_center"] = "cloud"
+    jira_story_points_field: str | None = None
     github_base_url: str = "https://api.github.com"
     github_token: str | None = None
     github_owner: str | None = None
@@ -401,6 +418,12 @@ class Settings(BaseSettings):
         "narrative_brief_daily_schedule_id",
         "narrative_brief_weekly_schedule_id",
         "narrative_brief_exec_schedule_id",
+        "day_report_dispatch_cron",
+        "day_report_dispatch_schedule_id",
+        "delivery_snapshot_cron",
+        "delivery_snapshot_schedule_id",
+        "gate_scan_cron",
+        "gate_scan_schedule_id",
         "auth_public_backend_url",
         "auth_frontend_url",
         "auth_cookie_name",

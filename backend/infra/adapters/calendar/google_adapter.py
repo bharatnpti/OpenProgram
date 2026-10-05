@@ -9,10 +9,10 @@ from urllib.parse import quote
 import httpx
 from opentelemetry import trace
 
-from core.domain.errors import ProviderUnavailable, SecretNotFound
+from core.domain.errors import ProviderUnavailable
 from core.domain.graph import JsonScalar
 from core.domain.integrations import CalendarEvent, UserRef
-from core.ports.secrets import SecretRef, SecretStore
+from core.ports.connections import ConnectionResolver
 
 _tracer = trace.get_tracer("openprogram.adapters.calendar.google")
 
@@ -30,7 +30,7 @@ class GoogleCalendarAdapter:
     token: str | None = None
     token_factory: Callable[[], str] | None = None
     calendar_id: str | None = None
-    secret_store: SecretStore | None = None
+    connections: ConnectionResolver | None = None
     timeout_seconds: float = 10.0
 
     async def list_events(self, user: UserRef, start: date, end: date) -> list[CalendarEvent]:
@@ -76,27 +76,24 @@ class GoogleCalendarAdapter:
         return cast(Mapping[str, object], payload)
 
     async def _credentials(self, tenant_id: str) -> GoogleCalendarCredentials:
-        base_url = self.base_url or await self._secret(tenant_id, "base_url")
+        # The tenant's connection set up in admin wins over the server's settings.
+        if self.connections is not None:
+            values = await self.connections.resolve(tenant_id, "google_calendar")
+            if values is not None and values.get("token"):
+                return GoogleCalendarCredentials(
+                    base_url=(values.get("base_url") or self.base_url).rstrip("/"),
+                    token=values.get("token") or "",
+                    calendar_id=values.get("calendar_id"),
+                )
+        base_url = self.base_url
         token = self.token_factory() if self.token_factory is not None else self.token
-        token = token or await self._secret(tenant_id, "token")
-        calendar_id = self.calendar_id or await self._secret(tenant_id, "calendar_id")
         if not base_url or not token:
             raise ProviderUnavailable("calendar credentials are not configured")
         return GoogleCalendarCredentials(
             base_url=base_url.rstrip("/"),
             token=token,
-            calendar_id=calendar_id,
+            calendar_id=self.calendar_id,
         )
-
-    async def _secret(self, tenant_id: str, key: str) -> str | None:
-        if self.secret_store is None:
-            return None
-        try:
-            return await self.secret_store.get(
-                SecretRef(tenant_id=tenant_id, connector="google_calendar", key=key)
-            )
-        except SecretNotFound:
-            return None
 
 
 def _map_event(user: UserRef, payload: Mapping[str, object]) -> CalendarEvent:
