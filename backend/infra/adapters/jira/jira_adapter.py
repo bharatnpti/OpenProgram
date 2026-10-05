@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import math
-from collections.abc import Callable, Mapping, Sequence
+import re
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import cast
@@ -9,17 +11,39 @@ from typing import cast
 import httpx
 from opentelemetry import trace
 
-from core.domain.errors import ProviderUnavailable, SecretNotFound
+from core.domain.connections import ConnectionValues
+from core.domain.errors import ProviderUnavailable
 from core.domain.graph import JsonScalar
-from core.domain.integrations import Issue, IssueState, Project, Sprint, SyncCursor, UserRef
-from core.ports.secrets import SecretRef, SecretStore
+from core.domain.integrations import (
+    Issue,
+    IssueComment,
+    IssueState,
+    IssueText,
+    Project,
+    Sprint,
+    SyncCursor,
+    UserRef,
+)
+from core.ports.connections import ConnectionResolver
 
 _tracer = trace.get_tracer("openprogram.adapters.issue_tracker.jira")
-_ISSUE_FIELDS = "summary,status,assignee,updated,project,issuetype,parent"
+_ISSUE_FIELDS = (
+    "summary,status,assignee,updated,project,issuetype,parent,"
+    "duedate,fixVersions,labels,priority,created,resolutiondate"
+)
 # JQL dates have minute precision and are read in the API user's profile timezone,
 # so the incremental filter is a relative window, widened by this much to absorb
 # rounding and clock skew; issues the cursor already covers are dropped afterwards.
 _CURSOR_OVERLAP = timedelta(minutes=2)
+_PAGE_SIZE = 100
+
+#: Jira Cloud. Searches use the enhanced /rest/api/3/search/jql endpoint.
+DEPLOYMENT_CLOUD = "cloud"
+#: Jira Data Center or Server: the v2 REST API, paged by startAt, plain-text comments.
+DEPLOYMENT_DATA_CENTER = "data_center"
+AUTH_API_TOKEN = "api_token"
+AUTH_PERSONAL_ACCESS_TOKEN = "personal_access_token"
+AUTH_BASIC = "basic"
 
 
 def _utc_now() -> datetime:
@@ -29,23 +53,78 @@ def _utc_now() -> datetime:
 @dataclass(frozen=True)
 class JiraCredentials:
     base_url: str
-    email: str | None
-    api_token: str
+    #: The user for HTTP basic auth; None sends ``token`` as a bearer token.
+    user: str | None
+    token: str
+    deployment: str = DEPLOYMENT_CLOUD
+    story_points_field: str | None = None
+
+    @property
+    def api(self) -> str:
+        return "/rest/api/3" if self.deployment == DEPLOYMENT_CLOUD else "/rest/api/2"
+
+    @property
+    def data_center(self) -> bool:
+        return self.deployment == DEPLOYMENT_DATA_CENTER
+
+    def request_auth(self) -> tuple[dict[str, str], httpx.Auth | None]:
+        if self.user:
+            return {}, httpx.BasicAuth(self.user, self.token)
+        return {"Authorization": f"Bearer {self.token}"}, None
+
+
+def credentials_from_connection(values: ConnectionValues) -> JiraCredentials:
+    """Jira credentials from an admin-set connection (field keys in the connector spec)."""
+    base_url = values.get("base_url")
+    deployment = values.get("deployment") or DEPLOYMENT_CLOUD
+    method = values.get("auth_method") or AUTH_API_TOKEN
+    user: str | None
+    if method == AUTH_BASIC:
+        user, token = values.get("username"), values.get("password")
+    elif method == AUTH_PERSONAL_ACCESS_TOKEN:
+        user, token = None, values.get("personal_access_token")
+    else:
+        user, token = values.get("email"), values.get("api_token")
+    if not base_url or not token or (method != AUTH_PERSONAL_ACCESS_TOKEN and not user):
+        raise ProviderUnavailable("issue tracker connection is incomplete")
+    return JiraCredentials(
+        base_url=base_url.rstrip("/"),
+        user=user,
+        token=token,
+        deployment=deployment,
+        story_points_field=values.get("story_points_field"),
+    )
 
 
 @dataclass(frozen=True)
 class JiraIssueTrackerAdapter:
+    """Jira Cloud or Data Center, read through its REST API.
+
+    The tenant's connection set up in admin wins; without an enabled one the
+    adapter uses the server's own settings (``base_url``, ``email``,
+    ``api_token``, ``deployment``), so a deployment configured by environment
+    keeps working.
+    """
+
     base_url: str | None = None
     email: str | None = None
     api_token: str | None = None
-    secret_store: SecretStore | None = None
+    deployment: str = DEPLOYMENT_CLOUD
+    story_points_field: str | None = None
+    connections: ConnectionResolver | None = None
     timeout_seconds: float = 10.0
     clock: Callable[[], datetime] = field(default=_utc_now)
 
     async def list_projects(self, tenant_id: str) -> list[Project]:
         with _tracer.start_as_current_span("jira.list_projects"):
-            payload = await self._get(tenant_id, "/rest/api/3/project/search")
-            return [_map_project(tenant_id, item) for item in _items(payload, "values")]
+            credentials = await self._credentials(tenant_id)
+            if credentials.data_center:
+                payload = await self._get_json(tenant_id, f"{credentials.api}/project")
+                items = _list_items(payload)
+            else:
+                payload = await self._get(tenant_id, f"{credentials.api}/project/search")
+                items = _items(payload, "values")
+            return [_map_project(tenant_id, item) for item in items]
 
     async def list_issues_updated_since(
         self, tenant_id: str, project_key: str, cursor: SyncCursor
@@ -71,12 +150,48 @@ class JiraIssueTrackerAdapter:
 
     async def get_issue(self, tenant_id: str, key: str) -> Issue:
         with _tracer.start_as_current_span("jira.get_issue"):
+            credentials = await self._credentials(tenant_id)
             payload = await self._get(
                 tenant_id,
-                f"/rest/api/3/issue/{key}",
-                params={"fields": _ISSUE_FIELDS},
+                f"{credentials.api}/issue/{key}",
+                params={"fields": _fields(credentials)},
             )
-            return _map_issue(tenant_id, payload)
+            return _map_issue(tenant_id, payload, credentials.story_points_field)
+
+    async def get_issue_text(self, tenant_id: str, key: str) -> IssueText:
+        """The description and comments as plain text, from Cloud's ADF or DC's wiki markup."""
+        with _tracer.start_as_current_span("jira.get_issue_text"):
+            credentials = await self._credentials(tenant_id)
+            payload = await self._get(
+                tenant_id,
+                f"{credentials.api}/issue/{key}",
+                params={"fields": "description,comment,status,updated"},
+            )
+            fields = _mapping_field(payload, "fields")
+            status = _optional_mapping(fields, "status") or {}
+            comment_block = _optional_mapping(fields, "comment") or {}
+            comments: list[IssueComment] = []
+            for item in _items(comment_block, "comments"):
+                text, mentions = _rich_text(tenant_id, item.get("body"))
+                author = _optional_mapping(item, "author")
+                comments.append(
+                    IssueComment(
+                        id=_string_field(item, "id", default=""),
+                        author=_map_user(tenant_id, author) if author else None,
+                        created_at=_datetime_field(item, "created"),
+                        body=text,
+                        mentions=mentions,
+                    )
+                )
+            description, _mentions = _rich_text(tenant_id, fields.get("description"))
+            return IssueText(
+                tenant_id=tenant_id,
+                key=_string_field(payload, "key", default=key),
+                state=_issue_state(status),
+                description=description,
+                comments=tuple(comments),
+                updated_at=_datetime_field(fields, "updated"),
+            )
 
     async def list_active_for(self, assignee: UserRef) -> list[Issue]:
         with _tracer.start_as_current_span("jira.list_active_for"):
@@ -90,28 +205,35 @@ class JiraIssueTrackerAdapter:
 
     async def transition(self, tenant_id: str, key: str, to_state: str) -> None:
         with _tracer.start_as_current_span("jira.transition"):
-            payload = await self._get(tenant_id, f"/rest/api/3/issue/{key}/transitions")
+            credentials = await self._credentials(tenant_id)
+            payload = await self._get(tenant_id, f"{credentials.api}/issue/{key}/transitions")
             transition_id = _resolve_transition_id(payload, to_state)
             if transition_id is None:
                 raise ProviderUnavailable(f"issue tracker has no transition to state {to_state!r}")
             await self._post(
                 tenant_id,
-                f"/rest/api/3/issue/{key}/transitions",
+                f"{credentials.api}/issue/{key}/transitions",
                 json={"transition": {"id": transition_id}},
             )
 
     async def add_comment(self, tenant_id: str, key: str, body: str) -> None:
         with _tracer.start_as_current_span("jira.add_comment"):
+            credentials = await self._credentials(tenant_id)
+            # The v2 API takes plain text; v3 takes an Atlassian Document Format doc.
+            comment: object = body if credentials.data_center else _adf_document(body)
             await self._post(
                 tenant_id,
-                f"/rest/api/3/issue/{key}/comment",
-                json={"body": _adf_document(body)},
+                f"{credentials.api}/issue/{key}/comment",
+                json={"body": comment},
             )
 
     async def find_user_by_email(self, tenant_id: str, email: str) -> UserRef | None:
         with _tracer.start_as_current_span("jira.find_user_by_email"):
+            credentials = await self._credentials(tenant_id)
+            # Data Center searches user name, display name and email by "username".
+            parameter = "username" if credentials.data_center else "query"
             payload = await self._get_json(
-                tenant_id, "/rest/api/3/user/search", params={"query": email}
+                tenant_id, f"{credentials.api}/user/search", params={parameter: email}
             )
             return _single_user_for_email(tenant_id, payload, email)
 
@@ -135,12 +257,8 @@ class JiraIssueTrackerAdapter:
         params: Mapping[str, str] | None = None,
     ) -> object:
         credentials = await self._credentials(tenant_id)
-        headers = {"Accept": "application/json"}
-        auth: httpx.Auth | None = None
-        if credentials.email:
-            auth = httpx.BasicAuth(credentials.email, credentials.api_token)
-        else:
-            headers["Authorization"] = f"Bearer {credentials.api_token}"
+        auth_headers, auth = credentials.request_auth()
+        headers = {"Accept": "application/json", **auth_headers}
 
         try:
             async with httpx.AsyncClient(
@@ -150,7 +268,7 @@ class JiraIssueTrackerAdapter:
                 response = await client.get(path, headers=headers, auth=auth, params=params)
                 response.raise_for_status()
                 payload: object = response.json()
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, ValueError) as exc:
             raise ProviderUnavailable("issue tracker request failed") from exc
         return payload
 
@@ -162,12 +280,12 @@ class JiraIssueTrackerAdapter:
         json: Mapping[str, object],
     ) -> None:
         credentials = await self._credentials(tenant_id)
-        headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        auth: httpx.Auth | None = None
-        if credentials.email:
-            auth = httpx.BasicAuth(credentials.email, credentials.api_token)
-        else:
-            headers["Authorization"] = f"Bearer {credentials.api_token}"
+        auth_headers, auth = credentials.request_auth()
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            **auth_headers,
+        }
 
         try:
             async with httpx.AsyncClient(
@@ -202,13 +320,16 @@ class JiraIssueTrackerAdapter:
         return [issue for issue in issues if issue.updated_at is None or issue.updated_at > since]
 
     async def _search_issues_for_jql(self, tenant_id: str, jql: str) -> list[Issue]:
+        credentials = await self._credentials(tenant_id)
+        if credentials.data_center:
+            return await self._search_issues_by_offset(tenant_id, jql, credentials)
         issues: list[Issue] = []
         next_page_token: str | None = None
         while True:
             params = {
                 "jql": jql,
-                "fields": _ISSUE_FIELDS,
-                "maxResults": "100",
+                "fields": _fields(credentials),
+                "maxResults": str(_PAGE_SIZE),
             }
             if next_page_token is not None:
                 params["nextPageToken"] = next_page_token
@@ -217,32 +338,60 @@ class JiraIssueTrackerAdapter:
                 "/rest/api/3/search/jql",
                 params=params,
             )
-            issues.extend(_map_issue(tenant_id, item) for item in _items(payload, "issues"))
+            issues.extend(
+                _map_issue(tenant_id, item, credentials.story_points_field)
+                for item in _items(payload, "issues")
+            )
             next_page_token = _optional_string(payload, "nextPageToken")
             if next_page_token is None:
                 return issues
 
+    async def _search_issues_by_offset(
+        self, tenant_id: str, jql: str, credentials: JiraCredentials
+    ) -> list[Issue]:
+        """Data Center search: /rest/api/2/search, paged by startAt until total is reached."""
+        issues: list[Issue] = []
+        start_at = 0
+        while True:
+            payload = await self._get(
+                tenant_id,
+                f"{credentials.api}/search",
+                params={
+                    "jql": jql,
+                    "fields": _fields(credentials),
+                    "startAt": str(start_at),
+                    "maxResults": str(_PAGE_SIZE),
+                },
+            )
+            page = _items(payload, "issues")
+            issues.extend(
+                _map_issue(tenant_id, item, credentials.story_points_field) for item in page
+            )
+            start_at += len(page)
+            total = payload.get("total")
+            if not page or not isinstance(total, int) or start_at >= total:
+                return issues
+
     async def _credentials(self, tenant_id: str) -> JiraCredentials:
-        base_url = self.base_url or await self._secret(tenant_id, "base_url")
-        api_token = self.api_token or await self._secret(tenant_id, "api_token")
-        email = self.email or await self._secret(tenant_id, "email")
-        if not base_url or not api_token:
+        if self.connections is not None:
+            values = await self.connections.resolve(tenant_id, "jira")
+            if values is not None:
+                return credentials_from_connection(values)
+        if not self.base_url or not self.api_token:
             raise ProviderUnavailable("issue tracker credentials are not configured")
         return JiraCredentials(
-            base_url=base_url.rstrip("/"),
-            email=email,
-            api_token=api_token,
+            base_url=self.base_url.rstrip("/"),
+            user=self.email,
+            token=self.api_token,
+            deployment=self.deployment,
+            story_points_field=self.story_points_field,
         )
 
-    async def _secret(self, tenant_id: str, key: str) -> str | None:
-        if self.secret_store is None:
-            return None
-        try:
-            return await self.secret_store.get(
-                SecretRef(tenant_id=tenant_id, connector="jira", key=key)
-            )
-        except SecretNotFound:
-            return None
+
+def _fields(credentials: JiraCredentials) -> str:
+    if credentials.story_points_field:
+        return f"{_ISSUE_FIELDS},{credentials.story_points_field}"
+    return _ISSUE_FIELDS
 
 
 def _map_project(tenant_id: str, payload: Mapping[str, object]) -> Project:
@@ -273,13 +422,19 @@ def _map_sprint(tenant_id: str, board_id: str, payload: Mapping[str, object]) ->
     )
 
 
-def _map_issue(tenant_id: str, payload: Mapping[str, object]) -> Issue:
+def _map_issue(
+    tenant_id: str,
+    payload: Mapping[str, object],
+    story_points_field: str | None = None,
+) -> Issue:
     fields = _mapping_field(payload, "fields")
     status = _mapping_field(fields, "status")
     assignee_payload = _optional_mapping(fields, "assignee")
     project = _optional_mapping(fields, "project")
     issue_type = _optional_mapping(fields, "issuetype")
     parent = _optional_mapping(fields, "parent")
+    priority = _optional_mapping(fields, "priority")
+    versions = _items(fields, "fixVersions")
     return Issue(
         tenant_id=tenant_id,
         key=_string_field(payload, "key"),
@@ -296,9 +451,59 @@ def _map_issue(tenant_id: str, payload: Mapping[str, object]) -> Issue:
                 "issue_type": issue_type.get("name") if issue_type else None,
                 "parent_key": parent.get("key") if parent else None,
                 "container_id": parent.get("key") if parent else None,
+                "due_date": _optional_string(fields, "duedate"),
+                "fix_versions": _joined(_optional_string(item, "name") for item in versions),
+                "fix_version_release_date": _latest(
+                    _optional_string(item, "releaseDate") for item in versions
+                ),
+                "fix_version_dates": _version_dates(versions),
+                "labels": _joined(_strings(fields.get("labels"))),
+                "priority": priority.get("name") if priority else None,
+                "created_at": _iso(_datetime_field(fields, "created")),
+                "resolved_at": _iso(_datetime_field(fields, "resolutiondate")),
+                "story_points": (
+                    _number(fields.get(story_points_field)) if story_points_field else None
+                ),
             }
         ),
     )
+
+
+def _version_dates(versions: Sequence[Mapping[str, object]]) -> str | None:
+    """Each fix version's release date as JSON, for releases defined by fix version."""
+    dates = {
+        name: released
+        for item in versions
+        if (name := _optional_string(item, "name")) is not None
+        and (released := _optional_string(item, "releaseDate")) is not None
+    }
+    return json.dumps(dates, sort_keys=True) if dates else None
+
+
+def _joined(values: Iterable[str | None]) -> str | None:
+    names = [value for value in values if value]
+    return ", ".join(names) if names else None
+
+
+def _latest(values: Iterable[str | None]) -> str | None:
+    dates = sorted(value for value in values if value)
+    return dates[-1] if dates else None
+
+
+def _strings(value: object) -> list[str]:
+    if not isinstance(value, Sequence) or isinstance(value, str | bytes):
+        return []
+    return [item for item in value if isinstance(item, str) and item]
+
+
+def _number(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)
+
+
+def _iso(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
 
 
 def _map_user(tenant_id: str, payload: Mapping[str, object]) -> UserRef:
@@ -363,7 +568,10 @@ def _status_category(status: Mapping[str, object]) -> str | None:
 
 
 def _items(payload: Mapping[str, object], key: str) -> list[Mapping[str, object]]:
-    value = payload.get(key)
+    return _list_items(payload.get(key))
+
+
+def _list_items(value: object) -> list[Mapping[str, object]]:
     if not isinstance(value, Sequence) or isinstance(value, str | bytes):
         return []
     return [cast(Mapping[str, object], item) for item in value if isinstance(item, Mapping)]
@@ -522,6 +730,140 @@ def _canonical_transition_id(transitions: list[Mapping[str, object]], wanted: st
         if transition_id is not None:
             return transition_id
     return None
+
+
+_DC_MENTION = re.compile(r"\[~(?:accountid:)?([^\]]+)\]")
+_WIKI_HEADING = re.compile(r"^(\s*)h([1-6])\.\s+", re.MULTILINE)
+_WIKI_NUMBERED = re.compile(r"^(\s*)(#+)\s+", re.MULTILINE)
+_WIKI_BULLET = re.compile(r"^(\s*)(\*+)\s+", re.MULTILINE)
+
+
+def _wiki_text(value: str) -> str:
+    """Wiki markup written the way ADF is flattened, where '#' starts a heading, not a list."""
+    text = _WIKI_NUMBERED.sub(lambda match: "  " * (len(match.group(2)) - 1) + "1. ", value)
+    text = _WIKI_BULLET.sub(lambda match: "  " * (len(match.group(2)) - 1) + "- ", text)
+    return _WIKI_HEADING.sub(lambda match: "#" * int(match.group(2)) + " ", text)
+
+
+def _rich_text(tenant_id: str, value: object) -> tuple[str, tuple[UserRef, ...]]:
+    """Plain text and the people it mentions, from ADF (Cloud) or wiki markup (DC)."""
+    if isinstance(value, str):
+        mentions = tuple(
+            UserRef(tenant_id=tenant_id, external_id=match.group(1))
+            for match in _DC_MENTION.finditer(value)
+        )
+        text = _DC_MENTION.sub(lambda match: f"@{match.group(1)}", _wiki_text(value))
+        return text, mentions
+    if not isinstance(value, Mapping):
+        return "", ()
+    lines: list[str] = []
+    found: list[UserRef] = []
+    _adf_blocks(cast(Mapping[str, object], value), lines, found, tenant_id, prefix="")
+    text = "\n".join(line.rstrip() for line in lines)
+    return text.strip(), tuple(found)
+
+
+def _adf_blocks(
+    node: Mapping[str, object],
+    lines: list[str],
+    mentions: list[UserRef],
+    tenant_id: str,
+    *,
+    prefix: str,
+) -> None:
+    kind = node.get("type")
+    children = _list_items(node.get("content"))
+    if kind in {"paragraph", "heading", "codeBlock", "blockquote"} and all(
+        child.get("type") not in _ADF_BLOCKS for child in children
+    ):
+        text = "".join(_adf_inline(child, mentions, tenant_id) for child in children)
+        if kind == "heading":
+            attrs = _optional_mapping(node, "attrs") or {}
+            level = attrs.get("level") if isinstance(attrs.get("level"), int) else 2
+            text = f"{'#' * int(level)} {text}"  # type: ignore[call-overload]
+        lines.append(f"{prefix}{text}")
+        return
+    if kind in {"bulletList", "orderedList", "taskList"}:
+        for index, child in enumerate(children, start=1):
+            if kind == "orderedList":
+                marker = f"{index}. "
+            elif kind == "taskList":
+                attrs = _optional_mapping(child, "attrs") or {}
+                marker = "[x] " if attrs.get("state") == "DONE" else "[ ] "
+            else:
+                marker = "- "
+            _adf_list_item(child, lines, mentions, tenant_id, prefix=prefix, marker=marker)
+        return
+    if kind == "table":
+        for row in children:
+            cells = [
+                " ".join(_adf_text(cell, mentions, tenant_id).split())
+                for cell in _list_items(row.get("content"))
+            ]
+            lines.append(f"{prefix}{' | '.join(cells)}")
+        return
+    for child in children:
+        _adf_blocks(child, lines, mentions, tenant_id, prefix=prefix)
+
+
+def _adf_list_item(
+    node: Mapping[str, object],
+    lines: list[str],
+    mentions: list[UserRef],
+    tenant_id: str,
+    *,
+    prefix: str,
+    marker: str,
+) -> None:
+    children = _list_items(node.get("content"))
+    if node.get("type") == "taskItem":
+        text = "".join(_adf_inline(child, mentions, tenant_id) for child in children)
+        lines.append(f"{prefix}{marker}{text}")
+        return
+    first = True
+    for child in children:
+        if first and child.get("type") == "paragraph":
+            text = "".join(
+                _adf_inline(part, mentions, tenant_id) for part in _list_items(child.get("content"))
+            )
+            lines.append(f"{prefix}{marker}{text}")
+            first = False
+            continue
+        _adf_blocks(child, lines, mentions, tenant_id, prefix=prefix + "  ")
+
+
+def _adf_text(node: Mapping[str, object], mentions: list[UserRef], tenant_id: str) -> str:
+    lines: list[str] = []
+    _adf_blocks(node, lines, mentions, tenant_id, prefix="")
+    return " ".join(lines)
+
+
+def _adf_inline(node: Mapping[str, object], mentions: list[UserRef], tenant_id: str) -> str:
+    kind = node.get("type")
+    if kind == "text":
+        return _optional_string(node, "text") or ""
+    if kind == "hardBreak":
+        return " "
+    if kind == "mention":
+        attrs = _optional_mapping(node, "attrs") or {}
+        account = _optional_string(attrs, "id")
+        name = (_optional_string(attrs, "text") or "").lstrip("@")
+        if account:
+            mentions.append(
+                UserRef(tenant_id=tenant_id, external_id=account, display_name=name or None)
+            )
+        return f"@{name or account or 'someone'}"
+    if kind in {"emoji", "inlineCard", "status"}:
+        attrs = _optional_mapping(node, "attrs") or {}
+        return _optional_string(attrs, "text") or _optional_string(attrs, "url") or ""
+    return "".join(
+        _adf_inline(child, mentions, tenant_id) for child in _list_items(node.get("content"))
+    )
+
+
+_ADF_BLOCKS = frozenset(
+    {"paragraph", "heading", "bulletList", "orderedList", "taskList", "table", "codeBlock"}
+)
 
 
 def _adf_document(body: str) -> Mapping[str, object]:

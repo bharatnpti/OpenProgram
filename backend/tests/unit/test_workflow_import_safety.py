@@ -29,6 +29,7 @@ def test_workflow_definitions_load_without_structlog_or_rich() -> None:
         "import infra.workflows.cross_person_notify_retry\n"
         "import infra.workflows.nudge\n"
         "import infra.workflows.drift_scan\n"
+        "import infra.workflows.delivery_reports\n"
         "import infra.adapters.workflows.temporal\n"
         "loaded = sorted(name for name in ('structlog', 'rich') if name in sys.modules)\n"
         "print(','.join(loaded))\n"

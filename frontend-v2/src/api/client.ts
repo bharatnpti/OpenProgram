@@ -1,4 +1,36 @@
 import type {
+  EscalationMatrixRequest,
+  EscalationMatrixResponse,
+  EscalationOverviewResponse,
+  ProjectDayReportResponse,
+  GateBoardResponse,
+  GateItemResponse,
+  GateScanResponse,
+  GateTemplateDto,
+  GateTemplatesResponse,
+  ItemStatus,
+  QuestionStatus,
+  TrackedQuestionResponse,
+  CommitmentResponse,
+  DeliveryDateRequest,
+  PodDeliveryResponse,
+  ProjectDeliveryResponse,
+  ReleaseCandidateResponse,
+  ReleaseRequest,
+  ReleaseResponse,
+  ConnectionResponse,
+  ConnectionTestRequest,
+  ConnectionTestResponse,
+  ConnectionUpdateRequest,
+  DayReportRequest,
+  DayReportResponse,
+  DeliveryStagesResponse,
+  DeliveryStagesUpdateRequest,
+  ObservedStatusResponse,
+  ReportDestinationOptionResponse,
+  ReportPreviewResponse,
+  ReportRunResponse,
+  RequirementsResponse,
   CheckinPreferenceResponse,
   CheckinPreferenceUpdateRequest,
   ChatSimulatorMessagesResponse,
@@ -436,6 +468,173 @@ export const apiClient = {
   uploadBrandingLogo: (body: TenantLogoUploadRequest) =>
     requestJson<BrandingResponse>("/config/branding/logo", { method: "PUT", body }),
   removeBrandingLogo: () => requestJson<void>("/config/branding/logo", { method: "DELETE" }),
+  connections: () => requestJson<ConnectionResponse[]>("/config/integrations"),
+  saveConnection: (connector: string, body: ConnectionUpdateRequest) =>
+    requestJson<ConnectionResponse>(`/config/integrations/${encodeURIComponent(connector)}`, {
+      method: "PUT",
+      body,
+    }),
+  removeConnection: (connector: string) =>
+    requestJson<void>(`/config/integrations/${encodeURIComponent(connector)}`, {
+      method: "DELETE",
+    }),
+  testConnection: (connector: string, body?: ConnectionTestRequest) =>
+    requestJson<ConnectionTestResponse>(
+      `/config/integrations/${encodeURIComponent(connector)}/test`,
+      { method: "POST", body },
+    ),
+  deliveryStages: () => requestJson<DeliveryStagesResponse>("/config/delivery/stages"),
+  saveDeliveryStages: (body: DeliveryStagesUpdateRequest) =>
+    requestJson<DeliveryStagesResponse>("/config/delivery/stages", { method: "PUT", body }),
+  observedStatuses: () => requestJson<ObservedStatusResponse[]>("/config/delivery/statuses"),
+  previewObservedStatuses: (body: DeliveryStagesUpdateRequest) =>
+    requestJson<ObservedStatusResponse[]>("/config/delivery/statuses/preview", {
+      method: "POST",
+      body,
+    }),
+  projectRequirements: (projectId: string, asOf?: string, days?: number, releaseId?: string) =>
+    requestJson<RequirementsResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/requirements`, {
+        as_of: asOf,
+        days: days ? String(days) : undefined,
+        release_id: releaseId,
+      }),
+    ),
+  projectDelivery: (projectId: string, asOf?: string) =>
+    requestJson<ProjectDeliveryResponse>(
+      withAsOf(`/projects/${encodeURIComponent(projectId)}/delivery`, asOf),
+    ),
+  podDelivery: (podId: string, asOf?: string) =>
+    requestJson<PodDeliveryResponse>(withAsOf(`/pods/${encodeURIComponent(podId)}/delivery`, asOf)),
+  setProjectDate: (projectId: string, body: DeliveryDateRequest) =>
+    requestJson<CommitmentResponse>(`/projects/${encodeURIComponent(projectId)}/delivery-date`, {
+      method: "PUT",
+      body,
+    }),
+  setPodDate: (projectId: string, podId: string, body: DeliveryDateRequest) =>
+    requestJson<CommitmentResponse>(
+      `/projects/${encodeURIComponent(projectId)}/pods/${encodeURIComponent(podId)}/delivery-date`,
+      { method: "PUT", body },
+    ),
+  setReleaseDate: (projectId: string, releaseId: string, body: DeliveryDateRequest) =>
+    requestJson<CommitmentResponse>(
+      `/projects/${encodeURIComponent(projectId)}/releases/${encodeURIComponent(releaseId)}/delivery-date`,
+      { method: "PUT", body },
+    ),
+  escalationOverview: () => requestJson<EscalationOverviewResponse>("/config/escalation"),
+  projectEscalation: (projectId: string) =>
+    requestJson<EscalationMatrixResponse>(
+      `/config/escalation/projects/${encodeURIComponent(projectId)}`,
+    ),
+  saveTenantEscalation: (body: EscalationMatrixRequest) =>
+    requestJson<EscalationMatrixResponse>("/config/escalation/tenant", { method: "PUT", body }),
+  saveProjectEscalation: (projectId: string, body: EscalationMatrixRequest) =>
+    requestJson<EscalationMatrixResponse>(
+      `/config/escalation/projects/${encodeURIComponent(projectId)}`,
+      { method: "PUT", body },
+    ),
+  removeProjectEscalation: (projectId: string) =>
+    requestJson<void>(`/config/escalation/projects/${encodeURIComponent(projectId)}`, {
+      method: "DELETE",
+    }),
+  projectDayReports: (projectId: string) =>
+    requestJson<ProjectDayReportResponse[]>(
+      `/projects/${encodeURIComponent(projectId)}/day-reports`,
+    ),
+  writeDayReportNote: (reportId: string, text: string) =>
+    requestJson<ProjectDayReportResponse>(`/day-reports/${encodeURIComponent(reportId)}/note`, {
+      method: "PUT",
+      body: { text },
+    }),
+  gateTemplates: () => requestJson<GateTemplatesResponse>("/config/gates"),
+  saveGateTemplate: (body: GateTemplateDto) =>
+    requestJson<GateTemplateDto>("/config/gates", { method: "PUT", body }),
+  removeGateTemplate: (templateId: string) =>
+    requestJson<void>(`/config/gates/${encodeURIComponent(templateId)}`, { method: "DELETE" }),
+  gateBoard: (projectId: string, asOf?: string, releaseId?: string) =>
+    requestJson<GateBoardResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/gates`, {
+        as_of: asOf,
+        release_id: releaseId,
+      }),
+    ),
+  scanGates: (projectId: string, releaseId?: string) =>
+    requestJson<GateScanResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/gates/scan`, { release_id: releaseId }),
+      { method: "POST" },
+    ),
+  addGateItem: (issueKey: string, body: { template_id: string; kind: string; text: string }) =>
+    requestJson<GateItemResponse>(`/issues/${encodeURIComponent(issueKey)}/gate-items`, {
+      method: "POST",
+      body,
+    }),
+  confirmGateItem: (itemId: string) =>
+    requestJson<GateItemResponse>(`/gate-items/${encodeURIComponent(itemId)}/confirm`, {
+      method: "POST",
+    }),
+  dismissGateItem: (itemId: string) =>
+    requestJson<GateItemResponse>(`/gate-items/${encodeURIComponent(itemId)}/dismiss`, {
+      method: "POST",
+    }),
+  signOffGateItem: (
+    itemId: string,
+    body: { status: ItemStatus; evidence_url?: string | null; note?: string },
+  ) =>
+    requestJson<GateItemResponse>(`/gate-items/${encodeURIComponent(itemId)}/sign-off`, {
+      method: "PUT",
+      body,
+    }),
+  updateQuestion: (
+    questionId: string,
+    body: { confirmed?: boolean; dismissed?: boolean; status?: QuestionStatus },
+  ) =>
+    requestJson<TrackedQuestionResponse>(`/questions/${encodeURIComponent(questionId)}`, {
+      method: "PUT",
+      body,
+    }),
+  addQuestion: (issueKey: string, body: { asked_to: string; summary: string }) =>
+    requestJson<TrackedQuestionResponse>(`/issues/${encodeURIComponent(issueKey)}/questions`, {
+      method: "POST",
+      body,
+    }),
+  releases: (projectId: string) =>
+    requestJson<ReleaseResponse[]>(`/projects/${encodeURIComponent(projectId)}/releases`),
+  releaseCandidates: (projectId: string) =>
+    requestJson<ReleaseCandidateResponse[]>(
+      `/projects/${encodeURIComponent(projectId)}/release-candidates`,
+    ),
+  createRelease: (projectId: string, body: ReleaseRequest) =>
+    requestJson<ReleaseResponse>(`/projects/${encodeURIComponent(projectId)}/releases`, {
+      method: "POST",
+      body,
+    }),
+  removeRelease: (projectId: string, releaseId: string) =>
+    requestJson<void>(
+      `/projects/${encodeURIComponent(projectId)}/releases/${encodeURIComponent(releaseId)}`,
+      { method: "DELETE" },
+    ),
+  dayReports: () => requestJson<DayReportResponse[]>("/config/reports"),
+  reportDestinationOptions: () =>
+    requestJson<ReportDestinationOptionResponse[]>("/config/reports/destinations"),
+  createDayReport: (body: DayReportRequest) =>
+    requestJson<DayReportResponse>("/config/reports", { method: "POST", body }),
+  updateDayReport: (reportId: string, body: DayReportRequest) =>
+    requestJson<DayReportResponse>(`/config/reports/${encodeURIComponent(reportId)}`, {
+      method: "PUT",
+      body,
+    }),
+  removeDayReport: (reportId: string) =>
+    requestJson<void>(`/config/reports/${encodeURIComponent(reportId)}`, { method: "DELETE" }),
+  previewDayReport: (reportId: string) =>
+    requestJson<ReportPreviewResponse>(`/config/reports/${encodeURIComponent(reportId)}/preview`, {
+      method: "POST",
+    }),
+  sendDayReport: (reportId: string) =>
+    requestJson<ReportRunResponse>(`/config/reports/${encodeURIComponent(reportId)}/send`, {
+      method: "POST",
+    }),
+  dayReportRuns: (reportId: string) =>
+    requestJson<ReportRunResponse[]>(`/config/reports/${encodeURIComponent(reportId)}/runs`),
   configMemberIdentityLink: (memberId: string) =>
     requestJson<IdentityLinkResponse>(`/config/members/${memberId}/identity-link`),
   updateConfigMemberIdentityLink: (memberId: string, body: IdentityLinkUpdateRequest) =>

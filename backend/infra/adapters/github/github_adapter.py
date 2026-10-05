@@ -9,10 +9,10 @@ from urllib.parse import quote
 import httpx
 from opentelemetry import trace
 
-from core.domain.errors import ProviderUnavailable, SecretNotFound
+from core.domain.errors import ProviderUnavailable
 from core.domain.graph import JsonScalar
 from core.domain.integrations import Commit, PullRequest, Repo, SyncCursor, UserRef
-from core.ports.secrets import SecretRef, SecretStore
+from core.ports.connections import ConnectionResolver
 
 _tracer = trace.get_tracer("openprogram.adapters.vcs.github")
 
@@ -29,7 +29,7 @@ class GitHubVcsAdapter:
     base_url: str = "https://api.github.com"
     token: str | None = None
     owner: str | None = None
-    secret_store: SecretStore | None = None
+    connections: ConnectionResolver | None = None
     timeout_seconds: float = 10.0
 
     async def list_repos(self, tenant_id: str) -> list[Repo]:
@@ -127,21 +127,20 @@ class GitHubVcsAdapter:
             raise ProviderUnavailable("VCS request failed") from exc
 
     async def _credentials(self, tenant_id: str) -> GitHubCredentials:
+        # The tenant's connection set up in admin wins over the server's settings.
+        if self.connections is not None:
+            values = await self.connections.resolve(tenant_id, "github")
+            if values is not None:
+                return GitHubCredentials(
+                    base_url=(values.get("base_url") or "https://api.github.com").rstrip("/"),
+                    token=values.get("token"),
+                    owner=values.get("owner"),
+                )
         return GitHubCredentials(
-            base_url=(self.base_url or await self._secret(tenant_id, "base_url") or "").rstrip("/"),
-            token=self.token or await self._secret(tenant_id, "token"),
-            owner=self.owner or await self._secret(tenant_id, "owner"),
+            base_url=(self.base_url or "").rstrip("/"),
+            token=self.token,
+            owner=self.owner,
         )
-
-    async def _secret(self, tenant_id: str, key: str) -> str | None:
-        if self.secret_store is None:
-            return None
-        try:
-            return await self.secret_store.get(
-                SecretRef(tenant_id=tenant_id, connector="github", key=key)
-            )
-        except SecretNotFound:
-            return None
 
 
 def _map_repo(tenant_id: str, payload: Mapping[str, object]) -> Repo:

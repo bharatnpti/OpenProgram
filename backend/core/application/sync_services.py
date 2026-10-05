@@ -299,6 +299,8 @@ def issue_task_node(issue: Issue, *, project_key: str, member_id: str | None) ->
         "key": issue.key,
         "state": issue.state.value,
         "project_key": project_key,
+        # When the tracker last changed the issue: lets a scan of its text skip it.
+        "updated_at": issue.updated_at.isoformat() if issue.updated_at is not None else None,
     }
     if issue.assignee is not None and member_id is None:
         # Nobody is linked to this tracker account yet. It stays on the issue,
@@ -605,13 +607,20 @@ class CalendarReadSyncService:
 
 
 def _issue_fact_payload(issue: Issue, project_key: str) -> dict[str, JsonScalar]:
-    return {
+    payload: dict[str, JsonScalar] = {
         "key": issue.key,
         "title": issue.title,
         "state": issue.state.value,
         "project_key": project_key,
         "assignee_id": issue.assignee.external_id if issue.assignee else None,
     }
+    # The tracker's own status name, type and size, when it reports them: the
+    # delivery stages are read from the status name, so its history is kept.
+    for key in ("status", "issue_type", "story_points"):
+        value = issue.metadata.get(key)
+        if value is not None:
+            payload[key] = value
+    return payload
 
 
 def _project_key_for_issue(issue: Issue, fallback: str) -> str:

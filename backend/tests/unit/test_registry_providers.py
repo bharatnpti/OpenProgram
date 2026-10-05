@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import cast
 
 import pytest
 
 from config.settings import Settings
+from core.domain.connections import ConnectionValues
 from core.domain.errors import ProviderConfigurationError
 from core.ports.auth import AuthCredentials
 from infra.adapters import catalog
@@ -13,6 +14,7 @@ from infra.adapters.calendar.google_adapter import GoogleCalendarAdapter
 from infra.adapters.chat.fake import FakeChatProvider, FakeChatWebhookMapper
 from infra.adapters.chat.mock_slack import InMemoryMockSlackStore, MockSlackChatAdapter
 from infra.adapters.chat.slack import SlackChatAdapter, SlackChatWebhookMapper
+from infra.adapters.chat.slack_connection import ConnectionSlackHttpClient
 from infra.adapters.directory.mock_slack import MockSlackDirectoryProvider
 from infra.adapters.github.github_adapter import GitHubVcsAdapter
 from infra.adapters.gitlab.gitlab_adapter import GitLabVcsAdapter
@@ -255,8 +257,88 @@ def test_registry_builds_slack_socket_listener_only_for_container_socket_mode() 
     assert registry(slack_inbound_transport="http").slack_socket_listener() is None
     assert registry(chat_provider="mock_slack").slack_socket_listener() is None
     assert registry(runtime_mode="memory").slack_socket_listener() is None
+    # The app token may be set in the console later: the listener is built and
+    # reports the missing token each time it tries to connect.
+    assert registry(slack_app_token=None).slack_socket_listener() is not None
+
+
+async def test_socket_listener_without_any_app_token_reports_it_when_connecting() -> None:
+    settings = _settings(
+        secret_key=SECRET_KEY,
+        runtime_mode="container",
+        chat_provider="slack",
+        slack_inbound_transport="socket",
+        slack_bot_token="xoxb-test",
+        slack_app_token=None,
+    )
+    opener = catalog.build_slack_socket_listener(
+        settings, _FakeRedis(), _ignore_event, connections=_NoConnections()
+    )
+
+    assert opener is not None
     with pytest.raises(ProviderConfigurationError, match="slack_app_token"):
-        registry(slack_app_token=None).slack_socket_listener()
+        await opener.url_opener.open_socket_connection()
+
+
+async def test_socket_listener_reads_the_app_token_from_the_tenant_connection() -> None:
+    settings = _settings(
+        secret_key=SECRET_KEY,
+        runtime_mode="container",
+        chat_provider="slack",
+        slack_inbound_transport="socket",
+        slack_bot_token="xoxb-test",
+        slack_app_token="xapp-from-env",
+    )
+    listener = catalog.build_slack_socket_listener(
+        settings,
+        _FakeRedis(),
+        _ignore_event,
+        connections=_SlackConnection({"bot_token": "xoxb-admin", "app_token": "xapp-admin"}),
+    )
+
+    assert listener is not None
+    opener = listener.url_opener
+    assert isinstance(opener, ConnectionSlackHttpClient)
+    assert await opener.credentials.value("app_token") == "xapp-admin"
+    assert await opener.credentials.value("bot_token") == "xoxb-admin"
+
+
+async def test_slack_credentials_fall_back_to_settings_one_by_one() -> None:
+    settings = _settings(
+        secret_key=SECRET_KEY,
+        runtime_mode="container",
+        chat_provider="slack",
+        slack_bot_token="xoxb-env",
+        slack_app_token="xapp-env",
+        slack_signing_secret="signing-env",
+    )
+    source = catalog.slack_credentials(settings, _SlackConnection({"bot_token": "xoxb-admin"}))
+
+    assert await source.value("bot_token") == "xoxb-admin"
+    assert await source.value("app_token") == "xapp-env"
+    assert await source.value("signing_secret") == "signing-env"
+
+
+async def _ignore_event(payload: Mapping[str, object], correlation_id: str) -> object:
+    del payload, correlation_id
+    return None
+
+
+class _NoConnections:
+    async def resolve(self, tenant_id: str, connector: str) -> ConnectionValues | None:
+        del tenant_id, connector
+        return None
+
+
+class _SlackConnection:
+    def __init__(self, values: Mapping[str, str]) -> None:
+        self._values = values
+
+    async def resolve(self, tenant_id: str, connector: str) -> ConnectionValues | None:
+        del tenant_id
+        if connector != "slack":
+            return None
+        return ConnectionValues(connector="slack", values=self._values)
 
 
 @pytest.mark.parametrize(

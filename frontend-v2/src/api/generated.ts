@@ -1050,6 +1050,653 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/config/integrations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Connections */
+    get: operations["list_connections_config_integrations_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/integrations/{connector}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Connection */
+    get: operations["get_connection_config_integrations__connector__get"];
+    /** Save Connection */
+    put: operations["save_connection_config_integrations__connector__put"];
+    post?: never;
+    /** Remove Connection */
+    delete: operations["remove_connection_config_integrations__connector__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/integrations/{connector}/test": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Test Connection */
+    post: operations["test_connection_config_integrations__connector__test_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/requirements": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Project Requirements */
+    get: operations["project_requirements_projects__project_id__requirements_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/delivery/stages": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Delivery Stages */
+    get: operations["get_delivery_stages_config_delivery_stages_get"];
+    /** Save Delivery Stages */
+    put: operations["save_delivery_stages_config_delivery_stages_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/delivery/statuses": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Observed Statuses
+     * @description Every status the synced issues carry, placed by the saved mapping.
+     */
+    get: operations["observed_statuses_config_delivery_statuses_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/delivery/statuses/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview Observed Statuses
+     * @description The same statuses placed by an unsaved mapping. Nothing is stored.
+     */
+    post: operations["preview_observed_statuses_config_delivery_statuses_preview_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/delivery": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Project Delivery */
+    get: operations["project_delivery_projects__project_id__delivery_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/delivery-date": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set Project Date */
+    put: operations["set_project_date_projects__project_id__delivery_date_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/releases/{release_id}/delivery-date": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set Release Date */
+    put: operations["set_release_date_projects__project_id__releases__release_id__delivery_date_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/pods/{pod_id}/delivery-date": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Set Pod Date */
+    put: operations["set_pod_date_projects__project_id__pods__pod_id__delivery_date_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/pods/{pod_id}/delivery": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Pod Delivery */
+    get: operations["pod_delivery_pods__pod_id__delivery_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/releases": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Releases */
+    get: operations["list_releases_projects__project_id__releases_get"];
+    put?: never;
+    /** Create Release */
+    post: operations["create_release_projects__project_id__releases_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/release-candidates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Release Candidates
+     * @description The fix versions and labels the project's requirements carry, to define releases from.
+     */
+    get: operations["release_candidates_projects__project_id__release_candidates_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/releases/{release_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Update Release */
+    put: operations["update_release_projects__project_id__releases__release_id__put"];
+    post?: never;
+    /** Delete Release */
+    delete: operations["delete_release_projects__project_id__releases__release_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/gates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Templates */
+    get: operations["list_templates_config_gates_get"];
+    /**
+     * Save Template
+     * @description Create a gate (empty template_id) or replace the one with that id.
+     */
+    put: operations["save_template_config_gates_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/gates/{template_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Delete Template */
+    delete: operations["delete_template_config_gates__template_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/gates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Gate Board */
+    get: operations["gate_board_projects__project_id__gates_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/gates/scan": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Scan Now */
+    post: operations["scan_now_projects__project_id__gates_scan_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/issues/{issue_key}/gate-items": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Add Item */
+    post: operations["add_item_issues__issue_key__gate_items_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/gate-items/{item_id}/confirm": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Confirm Item */
+    post: operations["confirm_item_gate_items__item_id__confirm_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/gate-items/{item_id}/dismiss": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Dismiss Item */
+    post: operations["dismiss_item_gate_items__item_id__dismiss_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/gate-items/{item_id}/sign-off": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Sign Off */
+    put: operations["sign_off_gate_items__item_id__sign_off_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/questions/{question_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Update Question */
+    put: operations["update_question_questions__question_id__put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/issues/{issue_key}/questions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Add Question */
+    post: operations["add_question_issues__issue_key__questions_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/reports": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List Reports */
+    get: operations["list_reports_config_reports_get"];
+    put?: never;
+    /** Create Report */
+    post: operations["create_report_config_reports_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/reports/destinations": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Destination Options */
+    get: operations["destination_options_config_reports_destinations_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/reports/{report_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Report */
+    get: operations["get_report_config_reports__report_id__get"];
+    /** Update Report */
+    put: operations["update_report_config_reports__report_id__put"];
+    post?: never;
+    /** Delete Report */
+    delete: operations["delete_report_config_reports__report_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/reports/{report_id}/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Preview Report */
+    post: operations["preview_report_config_reports__report_id__preview_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/reports/{report_id}/send": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Send Report Now */
+    post: operations["send_report_now_config_reports__report_id__send_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/reports/{report_id}/runs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Report Runs */
+    get: operations["report_runs_config_reports__report_id__runs_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/day-reports": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Project Reports
+     * @description The project's reports and the note each opens with today.
+     */
+    get: operations["project_reports_projects__project_id__day_reports_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/day-reports/{report_id}/note": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Write Note
+     * @description Write the note today's report opens with; an empty text removes it.
+     */
+    put: operations["write_note_day_reports__report_id__note_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/escalation": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Overview */
+    get: operations["overview_config_escalation_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/escalation/projects/{project_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Project Matrix
+     * @description The matrix the project's asks escalate by, and where it comes from.
+     */
+    get: operations["project_matrix_config_escalation_projects__project_id__get"];
+    /** Save Project Matrix */
+    put: operations["save_project_matrix_config_escalation_projects__project_id__put"];
+    post?: never;
+    /**
+     * Remove Project Matrix
+     * @description Go back to the tenant's matrix.
+     */
+    delete: operations["remove_project_matrix_config_escalation_projects__project_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/escalation/tenant": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Save Tenant Matrix */
+    put: operations["save_tenant_matrix_config_escalation_tenant_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/ask": {
     parameters: {
       query?: never;
@@ -2050,6 +2697,24 @@ export interface components {
       /** Final Reply Wait Seconds */
       final_reply_wait_seconds?: number | null;
     };
+    /** CommitmentResponse */
+    CommitmentResponse: {
+      /** Target Date */
+      target_date: string | null;
+      /** Original Date */
+      original_date: string | null;
+      /** Times Moved */
+      times_moved: number;
+      /** Moved Days */
+      moved_days: number | null;
+      /** Changes */
+      changes: components["schemas"]["DateChangeResponse"][];
+    };
+    /**
+     * CommitmentScopeKind
+     * @enum {string}
+     */
+    CommitmentScopeKind: "project" | "pod" | "release";
     /** ConfigEdgeResponse */
     ConfigEdgeResponse: {
       /** From Node Id */
@@ -2140,6 +2805,161 @@ export interface components {
         [key: string]: string | number | boolean | null;
       } | null;
     };
+    /** ConnectionDetailDto */
+    ConnectionDetailDto: {
+      /** Label */
+      label: string;
+      /** Value */
+      value: string;
+    };
+    /**
+     * ConnectionResponse
+     * @description One connector and the tenant's connection to it.
+     *
+     *     Secret values are never returned: ``secrets_set`` names the secret fields
+     *     that hold a stored value, so the console can show "set" next to them.
+     */
+    ConnectionResponse: {
+      /** Connector */
+      connector: string;
+      /** Name */
+      name: string;
+      /** Description */
+      description: string;
+      /** Purposes */
+      purposes: components["schemas"]["ConnectorPurpose"][];
+      /** Fields */
+      fields: components["schemas"]["ConnectorFieldDto"][];
+      /** Exclusive Group */
+      exclusive_group: string | null;
+      /** Configured */
+      configured: boolean;
+      /** Enabled */
+      enabled: boolean;
+      /** Settings */
+      settings: {
+        [key: string]: string;
+      };
+      /** Secrets Set */
+      secrets_set: string[];
+      /**
+       * Environment Configured
+       * @description The server's own settings configure this connector. They are used while the tenant has no enabled connection of its own.
+       */
+      environment_configured: boolean;
+      /** Updated At */
+      updated_at: string | null;
+      /** Updated By */
+      updated_by: string | null;
+      last_test: components["schemas"]["ConnectionTestOutcomeDto"] | null;
+    };
+    /** ConnectionTestOutcomeDto */
+    ConnectionTestOutcomeDto: {
+      /** Ok */
+      ok: boolean;
+      /** Message */
+      message: string;
+      /**
+       * Tested At
+       * Format: date-time
+       */
+      tested_at: string;
+    };
+    /**
+     * ConnectionTestRequest
+     * @description Optional unsaved values to test over the stored ones.
+     *
+     *     A secret left out or blank uses the stored one. Leave the whole body out to
+     *     test what is saved; only that test is recorded on the connection.
+     */
+    ConnectionTestRequest: {
+      /** Settings */
+      settings?: {
+        [key: string]: string | null;
+      };
+      /** Secrets */
+      secrets?: {
+        [key: string]: string;
+      };
+    };
+    /** ConnectionTestResponse */
+    ConnectionTestResponse: {
+      /** Ok */
+      ok: boolean;
+      /** Message */
+      message: string;
+      /** Details */
+      details: components["schemas"]["ConnectionDetailDto"][];
+      /** Suggestions */
+      suggestions: {
+        [key: string]: components["schemas"]["ConnectorFieldOptionDto"][];
+      };
+      /**
+       * Tested At
+       * Format: date-time
+       */
+      tested_at: string;
+      /** Recorded */
+      recorded: boolean;
+    };
+    /**
+     * ConnectionUpdateRequest
+     * @description Save a connection.
+     *
+     *     ``settings`` replaces the plain settings (a blank or null value clears a
+     *     field). ``secrets`` only changes the secrets it names: a value stores it, a
+     *     blank or null clears it, and a secret left out keeps its stored value.
+     */
+    ConnectionUpdateRequest: {
+      /** Enabled */
+      enabled: boolean;
+      /** Settings */
+      settings?: {
+        [key: string]: string | null;
+      };
+      /** Secrets */
+      secrets?: {
+        [key: string]: string | null;
+      };
+    };
+    /** ConnectorFieldDto */
+    ConnectorFieldDto: {
+      /** Key */
+      key: string;
+      /** Label */
+      label: string;
+      kind: components["schemas"]["FieldKind"];
+      /** Required */
+      required: boolean;
+      /** Help */
+      help: string;
+      /** Placeholder */
+      placeholder: string;
+      /** Default */
+      default: string | null;
+      /** Options */
+      options: components["schemas"]["ConnectorFieldOptionDto"][];
+      shown_when: components["schemas"]["FieldConditionDto"] | null;
+    };
+    /** ConnectorFieldOptionDto */
+    ConnectorFieldOptionDto: {
+      /** Value */
+      value: string;
+      /** Label */
+      label: string;
+      shown_when?: components["schemas"]["FieldConditionDto"] | null;
+    };
+    /**
+     * ConnectorPurpose
+     * @description What OpenProgram uses a connector for.
+     * @enum {string}
+     */
+    ConnectorPurpose: "issue_tracker" | "code" | "chat" | "calendar" | "report_delivery";
+    /**
+     * ContactSource
+     * @enum {string}
+     */
+    ContactSource: "team_scrum_master" | "team_manager" | "member";
     /**
      * CrossPersonDelivery
      * @description Whether the counterpart has been sent the DM about a request.
@@ -2194,6 +3014,96 @@ export interface components {
       /** Requests */
       requests: components["schemas"]["CrossPersonRequestResponse"][];
     };
+    /** DateChangeResponse */
+    DateChangeResponse: {
+      /** Target Date */
+      target_date: string | null;
+      /**
+       * Changed At
+       * Format: date-time
+       */
+      changed_at: string;
+      /** Changed By */
+      changed_by: string;
+      /** Changed By Name */
+      changed_by_name: string;
+      /** Note */
+      note: string;
+    };
+    /** DayReportNoteRequest */
+    DayReportNoteRequest: {
+      /**
+       * Text
+       * @description Empty removes the note.
+       * @default
+       */
+      text: string;
+    };
+    /** DayReportNoteResponse */
+    DayReportNoteResponse: {
+      /** Report Id */
+      report_id: string;
+      /**
+       * Report Date
+       * Format: date
+       */
+      report_date: string;
+      /** Text */
+      text: string;
+      /** Author */
+      author: string;
+      /** Author Name */
+      author_name?: string | null;
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+    };
+    /** DayReportRequest */
+    DayReportRequest: {
+      /** Name */
+      name: string;
+      /** Project Id */
+      project_id: string;
+      /**
+       * Enabled
+       * @default true
+       */
+      enabled: boolean;
+      schedule: components["schemas"]["ReportScheduleDto"];
+      /** Destinations */
+      destinations?: components["schemas"]["ReportDestinationDto"][];
+      /**
+       * Release Id
+       * @description Report on one release of the project only.
+       */
+      release_id?: string | null;
+    };
+    /** DayReportResponse */
+    DayReportResponse: {
+      /** Report Id */
+      report_id: string;
+      /** Name */
+      name: string;
+      /** Project Id */
+      project_id: string;
+      /** Enabled */
+      enabled: boolean;
+      schedule: components["schemas"]["ReportScheduleDto"];
+      /** Destinations */
+      destinations: components["schemas"]["ReportDestinationDto"][];
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+      /** Updated By */
+      updated_by: string;
+      /** Release Id */
+      release_id?: string | null;
+      last_run?: components["schemas"]["ReportRunResponse"] | null;
+    };
     /** DeadLetterResponse */
     DeadLetterResponse: {
       /** Id */
@@ -2238,6 +3148,72 @@ export interface components {
       /** Dead Letters */
       dead_letters: components["schemas"]["DeadLetterResponse"][];
     };
+    /** DeliveryDateRequest */
+    DeliveryDateRequest: {
+      /**
+       * Target Date
+       * @description Null clears the committed date.
+       */
+      target_date: string | null;
+      /**
+       * Note
+       * @default
+       */
+      note: string;
+    };
+    /** DeliveryOutcomeResponse */
+    DeliveryOutcomeResponse: {
+      kind: components["schemas"]["DestinationKind"];
+      /** Target */
+      target: string;
+      /** Ok */
+      ok: boolean;
+      /** Detail */
+      detail: string;
+    };
+    /**
+     * DeliveryStage
+     * @enum {string}
+     */
+    DeliveryStage:
+      "raised" | "groomed" | "in_development" | "in_testing" | "business_testing" | "production";
+    /**
+     * DeliveryStagesResponse
+     * @description Which tracker statuses count as which delivery stage.
+     */
+    DeliveryStagesResponse: {
+      /** Stages */
+      stages: components["schemas"]["StageStatusesDto"][];
+      /** Excluded Statuses */
+      excluded_statuses: string[];
+      /**
+       * Requirement Types
+       * @description Issue types that count as requirements. Empty counts every type.
+       */
+      requirement_types: string[];
+      /** Is Default */
+      is_default: boolean;
+      /** Updated At */
+      updated_at: string | null;
+      /** Updated By */
+      updated_by: string | null;
+    };
+    /** DeliveryStagesUpdateRequest */
+    DeliveryStagesUpdateRequest: {
+      /** Stages */
+      stages: {
+        [key: string]: string[];
+      };
+      /** Excluded Statuses */
+      excluded_statuses?: string[];
+      /** Requirement Types */
+      requirement_types?: string[];
+    };
+    /**
+     * DestinationKind
+     * @enum {string}
+     */
+    DestinationKind: "chat_channel" | "person" | "email" | "teams";
     /**
      * DevUserResponse
      * @description One switchable person for the local demo persona picker.
@@ -2420,6 +3396,72 @@ export interface components {
       /** Chat External Id */
       chat_external_id?: string | null;
     };
+    /** EscalationLevelDto */
+    EscalationLevelDto: {
+      /** Label */
+      label: string;
+      source: components["schemas"]["ContactSource"];
+      /** Member Id */
+      member_id?: string | null;
+      /**
+       * After Days
+       * @description Days an ask of each kind waits before it reaches this level; a kind left out never reaches it.
+       */
+      after_days?: {
+        [key: string]: number;
+      };
+    };
+    /** EscalationMatrixRequest */
+    EscalationMatrixRequest: {
+      /**
+       * Decision Owner Id
+       * @description Who owns a decision nothing else names an owner for: the product owner.
+       */
+      decision_owner_id?: string | null;
+      /**
+       * Levels
+       * @description Level 2 first; level 1 is always the ask's owner.
+       */
+      levels: components["schemas"]["EscalationLevelDto"][];
+    };
+    /** EscalationMatrixResponse */
+    EscalationMatrixResponse: {
+      /**
+       * Project Id
+       * @description Empty for the tenant's own matrix.
+       */
+      project_id: string;
+      source: components["schemas"]["MatrixSource"];
+      /** Decision Owner Id */
+      decision_owner_id: string | null;
+      /** Levels */
+      levels: components["schemas"]["EscalationLevelDto"][];
+      /** Updated At */
+      updated_at: string | null;
+      /** Updated By */
+      updated_by: string | null;
+    };
+    /** EscalationOverviewResponse */
+    EscalationOverviewResponse: {
+      tenant: components["schemas"]["EscalationMatrixResponse"];
+      /** Projects */
+      projects: components["schemas"]["EscalationMatrixResponse"][];
+    };
+    /**
+     * FieldConditionDto
+     * @description The field (or option) applies only while ``field`` holds one of ``values``.
+     */
+    FieldConditionDto: {
+      /** Field */
+      field: string;
+      /** Values */
+      values: string[];
+    };
+    /**
+     * FieldKind
+     * @enum {string}
+     */
+    FieldKind: "text" | "url" | "email" | "number" | "select" | "secret";
     /** FocusItemDto */
     FocusItemDto: {
       /**
@@ -2475,6 +3517,132 @@ export interface components {
       confidence: number | null;
       /** Deadline */
       deadline: string | null;
+    };
+    /**
+     * GateBoardResponse
+     * @description A project's (or release's) requirements against their gates, and open questions.
+     */
+    GateBoardResponse: {
+      /** Project Id */
+      project_id: string;
+      /** Release Id */
+      release_id: string | null;
+      /** Templates */
+      templates: components["schemas"]["GateTemplateDto"][];
+      /** Issues */
+      issues: components["schemas"]["IssueGatesResponse"][];
+      /** Questions */
+      questions: components["schemas"]["TrackedQuestionResponse"][];
+      /** Actor Names */
+      actor_names?: {
+        [key: string]: string;
+      };
+    };
+    /** GateEvaluationResponse */
+    GateEvaluationResponse: {
+      /** Template Id */
+      template_id: string;
+      state: components["schemas"]["GateState"];
+      /** Met */
+      met: number;
+      /** Total */
+      total: number;
+      /** Suggested */
+      suggested: number;
+      /** Missing Kinds */
+      missing_kinds: string[];
+    };
+    /** GateItemCreateRequest */
+    GateItemCreateRequest: {
+      /** Template Id */
+      template_id: string;
+      /** Kind */
+      kind: string;
+      /** Text */
+      text: string;
+    };
+    /** GateItemResponse */
+    GateItemResponse: {
+      /** Item Id */
+      item_id: string;
+      /** Issue Key */
+      issue_key: string;
+      /** Template Id */
+      template_id: string;
+      /** Kind */
+      kind: string;
+      /** Text */
+      text: string;
+      status: components["schemas"]["ItemStatus"];
+      source: components["schemas"]["ItemSource"];
+      /** Source Ref */
+      source_ref: string;
+      /** Created By */
+      created_by: string;
+      /** Signed By */
+      signed_by: string | null;
+      /** Signed At */
+      signed_at: string | null;
+      /** Evidence Url */
+      evidence_url: string | null;
+      /** Note */
+      note: string;
+    };
+    /** GateItemSignOffRequest */
+    GateItemSignOffRequest: {
+      status: components["schemas"]["ItemStatus"];
+      /** Evidence Url */
+      evidence_url?: string | null;
+      /**
+       * Note
+       * @default
+       */
+      note: string;
+    };
+    /** GateScanResponse */
+    GateScanResponse: {
+      /** Read */
+      read: number;
+      /** Unchanged */
+      unchanged: number;
+      /** Failed */
+      failed: number;
+      /** Suggested Items */
+      suggested_items: number;
+      /** Questions */
+      questions: number;
+    };
+    /**
+     * GateState
+     * @enum {string}
+     */
+    GateState: "passed" | "open" | "failed" | "missing";
+    /** GateTemplateDto */
+    GateTemplateDto: {
+      /**
+       * Template Id
+       * @default
+       */
+      template_id: string;
+      /** Name */
+      name: string;
+      guards_stage: components["schemas"]["DeliveryStage"];
+      /** Kinds */
+      kinds: components["schemas"]["ItemKindDto"][];
+      /** Issue Types */
+      issue_types?: string[];
+      /**
+       * Enabled
+       * @default true
+       */
+      enabled: boolean;
+    };
+    /** GateTemplatesResponse */
+    GateTemplatesResponse: {
+      /** Templates */
+      templates: components["schemas"]["GateTemplateDto"][];
+      /** Is Default */
+      is_default: boolean;
     };
     /** GithubSyncDispatchRequest */
     GithubSyncDispatchRequest: {
@@ -2558,6 +3726,23 @@ export interface components {
        */
       reasons?: string[];
     };
+    /** HistoryForecastResponse */
+    HistoryForecastResponse: {
+      /** P50 */
+      p50: string | null;
+      /** P85 */
+      p85: string | null;
+      /** Remaining */
+      remaining: number;
+      /** Unit */
+      unit: string;
+      /** Sample Days */
+      sample_days: number;
+      /** Completed In Sample */
+      completed_in_sample: number;
+      /** Reason */
+      reason: string | null;
+    };
     /** IdentityAutoMatchMemberDto */
     IdentityAutoMatchMemberDto: {
       /** Id */
@@ -2598,6 +3783,56 @@ export interface components {
       /** Vcs Username */
       vcs_username?: string | null;
     };
+    /** IssueGatesResponse */
+    IssueGatesResponse: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      stage: components["schemas"]["DeliveryStage"];
+      /** Status */
+      status: string | null;
+      /** Evaluations */
+      evaluations: components["schemas"]["GateEvaluationResponse"][];
+      /** Items */
+      items: components["schemas"]["GateItemResponse"][];
+      /**
+       * Passed Without
+       * @description Gates whose stage the issue reached without passing them.
+       */
+      passed_without: string[];
+    };
+    /** ItemKindDto */
+    ItemKindDto: {
+      /** Key */
+      key: string;
+      /** Label */
+      label: string;
+      /** Sign Off Roles */
+      sign_off_roles: components["schemas"]["Role"][];
+      /**
+       * Evidence Required
+       * @default false
+       */
+      evidence_required: boolean;
+      /** Headings */
+      headings?: string[];
+      /**
+       * Gherkin
+       * @default false
+       */
+      gherkin: boolean;
+    };
+    /**
+     * ItemSource
+     * @enum {string}
+     */
+    ItemSource: "description" | "comment" | "manual";
+    /**
+     * ItemStatus
+     * @enum {string}
+     */
+    ItemStatus: "suggested" | "dismissed" | "pending" | "met" | "failed" | "waived";
     /** JiraSyncDispatchRequest */
     JiraSyncDispatchRequest: {
       /** Tenant Id */
@@ -2623,6 +3858,11 @@ export interface components {
       /** Redirect Url */
       redirect_url: string;
     };
+    /**
+     * MatrixSource
+     * @enum {string}
+     */
+    MatrixSource: "project" | "tenant" | "default";
     /** MemberFromDirectoryRequest */
     MemberFromDirectoryRequest: {
       /** External Ids */
@@ -2693,6 +3933,11 @@ export interface components {
       briefs: components["schemas"]["NarrativeBriefResponse"][];
     };
     /**
+     * NeedType
+     * @enum {string}
+     */
+    NeedType: "fix" | "decision" | "answer" | "review";
+    /**
      * NodeKind
      * @enum {string}
      */
@@ -2723,6 +3968,22 @@ export interface components {
       end: string;
       /** Points */
       points: components["schemas"]["TrendPointDto"][];
+    };
+    /** ObservedStatusResponse */
+    ObservedStatusResponse: {
+      /** Status */
+      status: string;
+      /** Issues */
+      issues: number;
+      /** Issue Types */
+      issue_types: string[];
+      /** @description Null when the status is not counted. */
+      stage: components["schemas"]["DeliveryStage"] | null;
+      /**
+       * Mapped
+       * @description False when no stage names the status and its broad state placed it.
+       */
+      mapped: boolean;
     };
     /** PersonaTreeEdgeDto */
     PersonaTreeEdgeDto: {
@@ -2782,6 +4043,18 @@ export interface components {
       /** Developers */
       developers: components["schemas"]["CheckinDeveloperDto"][];
     };
+    /**
+     * PodDeliveryResponse
+     * @description A pod's part of each project it works on: what its scrum master commits.
+     */
+    PodDeliveryResponse: {
+      /** Pod Id */
+      pod_id: string;
+      /** Can Set Dates */
+      can_set_dates: boolean;
+      /** Projects */
+      projects: components["schemas"]["PodProjectDeliveryResponse"][];
+    };
     /** PodEscalationContactsResponse */
     PodEscalationContactsResponse: {
       /** Pod Id */
@@ -2798,6 +4071,16 @@ export interface components {
     PodMemberLinkRequest: {
       /** Role */
       role: string;
+    };
+    /** PodProjectDeliveryResponse */
+    PodProjectDeliveryResponse: {
+      /** Project Id */
+      project_id: string;
+      /** Project Name */
+      project_name: string;
+      /** Project Target */
+      project_target: string | null;
+      pod: components["schemas"]["ScopeDeliveryResponse"];
     };
     /** PodRollupResponse */
     PodRollupResponse: {
@@ -3011,6 +4294,32 @@ export interface components {
       /** Edges */
       edges: components["schemas"]["PersonaTreeEdgeDto"][];
     };
+    /**
+     * ProjectDayReportResponse
+     * @description A project's day report as its product owner or manager sees it: when, and today's note.
+     */
+    ProjectDayReportResponse: {
+      /** Report Id */
+      report_id: string;
+      /** Name */
+      name: string;
+      /** Enabled */
+      enabled: boolean;
+      /** Release Id */
+      release_id: string | null;
+      schedule: components["schemas"]["ReportScheduleDto"];
+      /** Destination Count */
+      destination_count: number;
+      note: components["schemas"]["DayReportNoteResponse"] | null;
+    };
+    /** ProjectDeliveryResponse */
+    ProjectDeliveryResponse: {
+      project: components["schemas"]["ScopeDeliveryResponse"];
+      /** Pods */
+      pods: components["schemas"]["ScopeDeliveryResponse"][];
+      /** Releases */
+      releases: components["schemas"]["ScopeDeliveryResponse"][];
+    };
     /** ProjectProgressResponse */
     ProjectProgressResponse: {
       /** Project Id */
@@ -3064,6 +4373,26 @@ export interface components {
        */
       drift: components["schemas"]["DriftFindingResponse"][];
     };
+    /** QuestionCreateRequest */
+    QuestionCreateRequest: {
+      /** Asked To */
+      asked_to: string;
+      /** Summary */
+      summary: string;
+    };
+    /**
+     * QuestionStatus
+     * @enum {string}
+     */
+    QuestionStatus: "not_yet" | "partly" | "answered" | "closed_unanswered";
+    /** QuestionUpdateRequest */
+    QuestionUpdateRequest: {
+      /** Confirmed */
+      confirmed?: boolean | null;
+      /** Dismissed */
+      dismissed?: boolean | null;
+      status?: components["schemas"]["QuestionStatus"] | null;
+    };
     /**
      * Rag
      * @enum {string}
@@ -3081,6 +4410,266 @@ export interface components {
       details?: {
         [key: string]: string;
       };
+    };
+    /** ReleaseCandidateResponse */
+    ReleaseCandidateResponse: {
+      kind: components["schemas"]["ReleaseMatchKind"];
+      /** Value */
+      value: string;
+      /** Issues */
+      issues: number;
+      /** Release Date */
+      release_date: string | null;
+    };
+    /**
+     * ReleaseMatchKind
+     * @enum {string}
+     */
+    ReleaseMatchKind: "fix_version" | "label";
+    /** ReleaseRequest */
+    ReleaseRequest: {
+      /** Name */
+      name: string;
+      match_kind: components["schemas"]["ReleaseMatchKind"];
+      /** Match Value */
+      match_value: string;
+    };
+    /** ReleaseResponse */
+    ReleaseResponse: {
+      /** Release Id */
+      release_id: string;
+      /** Project Id */
+      project_id: string;
+      /** Name */
+      name: string;
+      match_kind: components["schemas"]["ReleaseMatchKind"];
+      /** Match Value */
+      match_value: string;
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+      /** Updated By */
+      updated_by: string;
+    };
+    /** ReportDestinationDto */
+    ReportDestinationDto: {
+      kind: components["schemas"]["DestinationKind"];
+      /**
+       * Target
+       * @description A chat channel id, a member id, or an email address (a person or a mailing list). Empty for Teams, which posts to the Teams connection's channel.
+       * @default
+       */
+      target: string;
+    };
+    /** ReportDestinationOptionResponse */
+    ReportDestinationOptionResponse: {
+      kind: components["schemas"]["DestinationKind"];
+      /** Label */
+      label: string;
+      /** Available */
+      available: boolean;
+      /** Note */
+      note: string;
+    };
+    /** ReportGroupResponse */
+    ReportGroupResponse: {
+      /** Heading */
+      heading: string;
+      /** Lines */
+      lines: string[];
+    };
+    /**
+     * ReportPreviewResponse
+     * @description What the report would say if it were sent now. Nothing is sent or stored.
+     */
+    ReportPreviewResponse: {
+      /** Title */
+      title: string;
+      /**
+       * Report Date
+       * Format: date
+       */
+      report_date: string;
+      rag: components["schemas"]["Rag"];
+      /** Headline */
+      headline: string;
+      /** Percent Complete */
+      percent_complete: number | null;
+      /** Progress Line */
+      progress_line: string;
+      /** Sections */
+      sections: components["schemas"]["ReportSectionResponse"][];
+      /** Console Url */
+      console_url: string | null;
+      /** Text */
+      text: string;
+    };
+    /** ReportRunResponse */
+    ReportRunResponse: {
+      /** Run Id */
+      run_id: string;
+      /** Report Id */
+      report_id: string;
+      /**
+       * Report Date
+       * Format: date
+       */
+      report_date: string;
+      trigger: components["schemas"]["RunTrigger"];
+      status: components["schemas"]["RunStatus"];
+      /**
+       * Started At
+       * Format: date-time
+       */
+      started_at: string;
+      /** Finished At */
+      finished_at: string | null;
+      /** Title */
+      title: string;
+      /** Outcomes */
+      outcomes: components["schemas"]["DeliveryOutcomeResponse"][];
+      /** Actor */
+      actor: string | null;
+    };
+    /** ReportScheduleDto */
+    ReportScheduleDto: {
+      /**
+       * Local Time
+       * Format: time
+       */
+      local_time: string;
+      /** Timezone */
+      timezone: string;
+      /**
+       * Weekdays
+       * @description 0 is Monday, 6 is Sunday.
+       */
+      weekdays: number[];
+    };
+    /** ReportSectionResponse */
+    ReportSectionResponse: {
+      /** Title */
+      title: string;
+      /** Lines */
+      lines: string[];
+      /** Groups */
+      groups?: components["schemas"]["ReportGroupResponse"][];
+      table?: components["schemas"]["ReportTableResponse"] | null;
+      /** Empty Text */
+      empty_text: string;
+    };
+    /** ReportTableResponse */
+    ReportTableResponse: {
+      /** Columns */
+      columns: string[];
+      /** Rows */
+      rows: string[][];
+    };
+    /** RequirementMoveResponse */
+    RequirementMoveResponse: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      /** @description Null for a requirement new in scope. */
+      from_stage: components["schemas"]["DeliveryStage"] | null;
+      /** @description Null for one that left the scope. */
+      to_stage: components["schemas"]["DeliveryStage"] | null;
+    };
+    /** RequirementResponse */
+    RequirementResponse: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      stage: components["schemas"]["DeliveryStage"];
+      /** Status */
+      status: string | null;
+      /** Mapped */
+      mapped: boolean;
+      /** Assignee Name */
+      assignee_name: string | null;
+      /** Story Points */
+      story_points: number | null;
+      /** Due Date */
+      due_date: string | null;
+      /** In Stage Since */
+      in_stage_since: string | null;
+    };
+    /** RequirementStageCountResponse */
+    RequirementStageCountResponse: {
+      stage: components["schemas"]["DeliveryStage"];
+      /** Label */
+      label: string;
+      /** Count */
+      count: number;
+      /** Points */
+      points: number;
+      /** Change */
+      change: number | null;
+    };
+    /** RequirementTimelinePointResponse */
+    RequirementTimelinePointResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** Counts */
+      counts: {
+        [key: string]: number;
+      };
+    };
+    /**
+     * RequirementsResponse
+     * @description A project's requirements by delivery stage, with counts over time.
+     */
+    RequirementsResponse: {
+      /** Project Id */
+      project_id: string;
+      /** Project Name */
+      project_name: string;
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Release Id */
+      release_id: string | null;
+      /** Release Name */
+      release_name: string | null;
+      /** Live */
+      live: boolean;
+      /** Available */
+      available: boolean;
+      /** Total */
+      total: number;
+      /** Done */
+      done: number;
+      /** Percent Complete */
+      percent_complete: number | null;
+      /** Has Points */
+      has_points: boolean;
+      /** Points Total */
+      points_total: number;
+      /** Points Done */
+      points_done: number;
+      /** Stages */
+      stages: components["schemas"]["RequirementStageCountResponse"][];
+      /** Timeline */
+      timeline: components["schemas"]["RequirementTimelinePointResponse"][];
+      /** Moves */
+      moves: components["schemas"]["RequirementMoveResponse"][];
+      /** Previous Day */
+      previous_day: string | null;
+      /** Unmapped Statuses */
+      unmapped_statuses: string[];
+      /** Excluded */
+      excluded: number;
+      /** Requirements */
+      requirements: components["schemas"]["RequirementResponse"][];
     };
     /** RiskEvidenceDto */
     RiskEvidenceDto: {
@@ -3131,6 +4720,11 @@ export interface components {
        */
       person_name?: string | null;
     };
+    /**
+     * Role
+     * @enum {string}
+     */
+    Role: "dev" | "po" | "sm" | "mgr" | "exec" | "admin";
     /** RollupFactorDto */
     RollupFactorDto: {
       /** Description */
@@ -3146,6 +4740,45 @@ export interface components {
       unattributed: boolean;
       /** Applies To Pod Ids */
       applies_to_pod_ids: string[];
+    };
+    /**
+     * RunStatus
+     * @enum {string}
+     */
+    RunStatus: "sending" | "sent" | "partial" | "failed";
+    /**
+     * RunTrigger
+     * @enum {string}
+     */
+    RunTrigger: "schedule" | "manual";
+    /**
+     * ScopeDeliveryResponse
+     * @description One scope's committed date and forecast: a project, a pod's part, or a release.
+     */
+    ScopeDeliveryResponse: {
+      scope_kind: components["schemas"]["CommitmentScopeKind"];
+      /** Scope Id */
+      scope_id: string;
+      /** Project Id */
+      project_id: string;
+      /** Name */
+      name: string;
+      commitment: components["schemas"]["CommitmentResponse"];
+      /** Target */
+      target: string | null;
+      /** Target Source */
+      target_source: ("committed" | "jira_release") | null;
+      /** Jira Release Date */
+      jira_release_date: string | null;
+      history: components["schemas"]["HistoryForecastResponse"];
+      team: components["schemas"]["TeamForecastResponse"];
+      verdict: components["schemas"]["Verdict"];
+      /** Reasons */
+      reasons: string[];
+      /** Total */
+      total: number;
+      /** Open */
+      open: number;
     };
     /**
      * SelfCheckinPreferenceUpdateRequest
@@ -3164,6 +4797,14 @@ export interface components {
       timezone?: string | null;
       /** Weekdays */
       weekdays?: number[] | null;
+    };
+    /** StageStatusesDto */
+    StageStatusesDto: {
+      stage: components["schemas"]["DeliveryStage"];
+      /** Label */
+      label: string;
+      /** Statuses */
+      statuses: string[];
     };
     /** StatusCorrectionRequest */
     StatusCorrectionRequest: {
@@ -3286,6 +4927,17 @@ export interface components {
       /** Tracker Status */
       tracker_status?: string | null;
     };
+    /** TeamForecastResponse */
+    TeamForecastResponse: {
+      /** Latest */
+      latest: string | null;
+      /** Latest Key */
+      latest_key: string | null;
+      /** Dated */
+      dated: number;
+      /** Undated */
+      undated: number;
+    };
     /**
      * TenantLogoResponse
      * @description The tenant's logo, inline as a data URL.
@@ -3338,6 +4990,37 @@ export interface components {
       /** Enabled */
       enabled: boolean;
     };
+    /** TrackedQuestionResponse */
+    TrackedQuestionResponse: {
+      /** Question Id */
+      question_id: string;
+      /** Issue Key */
+      issue_key: string;
+      /** Comment Ref */
+      comment_ref: string;
+      /** Asked By */
+      asked_by: string;
+      /** Asked By Name */
+      asked_by_name: string;
+      /** Asked To */
+      asked_to: string;
+      /** Asked To Name */
+      asked_to_name: string;
+      /**
+       * Asked At
+       * Format: date-time
+       */
+      asked_at: string;
+      /** Summary */
+      summary: string;
+      status: components["schemas"]["QuestionStatus"];
+      /** Confirmed */
+      confirmed: boolean;
+      /** Status Set By Person */
+      status_set_by_person: boolean;
+      /** Answered Ref */
+      answered_ref: string | null;
+    };
     /** TrendPointDto */
     TrendPointDto: {
       /**
@@ -3372,6 +5055,11 @@ export interface components {
       /** Context */
       ctx?: Record<string, never>;
     };
+    /**
+     * Verdict
+     * @enum {string}
+     */
+    Verdict: "on_track" | "at_risk" | "off_track" | "done" | "no_date" | "not_enough_data";
     /** WorkItemCreateRequest */
     WorkItemCreateRequest: {
       /** Id */
@@ -6526,6 +8214,1621 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_connections_config_integrations_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConnectionResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_connection_config_integrations__connector__get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        connector: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConnectionResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_connection_config_integrations__connector__put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        connector: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ConnectionUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConnectionResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  remove_connection_config_integrations__connector__delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        connector: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  test_connection_config_integrations__connector__test_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        connector: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["ConnectionTestRequest"] | null;
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConnectionTestResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_requirements_projects__project_id__requirements_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        days?: number;
+        /** @description One release of the project. */
+        release_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RequirementsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_delivery_stages_config_delivery_stages_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeliveryStagesResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_delivery_stages_config_delivery_stages_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DeliveryStagesUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeliveryStagesResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  observed_statuses_config_delivery_statuses_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ObservedStatusResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  preview_observed_statuses_config_delivery_statuses_preview_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DeliveryStagesUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ObservedStatusResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_delivery_projects__project_id__delivery_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectDeliveryResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  set_project_date_projects__project_id__delivery_date_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DeliveryDateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CommitmentResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  set_release_date_projects__project_id__releases__release_id__delivery_date_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+        release_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DeliveryDateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CommitmentResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  set_pod_date_projects__project_id__pods__pod_id__delivery_date_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DeliveryDateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CommitmentResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  pod_delivery_pods__pod_id__delivery_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PodDeliveryResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_releases_projects__project_id__releases_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReleaseResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_release_projects__project_id__releases_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReleaseRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReleaseResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  release_candidates_projects__project_id__release_candidates_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReleaseCandidateResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_release_projects__project_id__releases__release_id__put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+        release_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReleaseRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReleaseResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  delete_release_projects__project_id__releases__release_id__delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+        release_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_templates_config_gates_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GateTemplatesResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_template_config_gates_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["GateTemplateDto"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GateTemplateDto"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  delete_template_config_gates__template_id__delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        template_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  gate_board_projects__project_id__gates_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        release_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GateBoardResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  scan_now_projects__project_id__gates_scan_post: {
+    parameters: {
+      query?: {
+        release_id?: string | null;
+        /** @description Read every issue, changed or not. */
+        force?: boolean;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GateScanResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  add_item_issues__issue_key__gate_items_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        issue_key: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["GateItemCreateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GateItemResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  confirm_item_gate_items__item_id__confirm_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GateItemResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  dismiss_item_gate_items__item_id__dismiss_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GateItemResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  sign_off_gate_items__item_id__sign_off_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        item_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["GateItemSignOffRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GateItemResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_question_questions__question_id__put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        question_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["QuestionUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TrackedQuestionResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  add_question_issues__issue_key__questions_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        issue_key: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["QuestionCreateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TrackedQuestionResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_reports_config_reports_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DayReportResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_report_config_reports_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DayReportRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DayReportResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  destination_options_config_reports_destinations_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReportDestinationOptionResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_report_config_reports__report_id__get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        report_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DayReportResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_report_config_reports__report_id__put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        report_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DayReportRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DayReportResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  delete_report_config_reports__report_id__delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        report_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  preview_report_config_reports__report_id__preview_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        report_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReportPreviewResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  send_report_now_config_reports__report_id__send_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        report_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReportRunResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  report_runs_config_reports__report_id__runs_get: {
+    parameters: {
+      query?: {
+        limit?: number;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        report_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReportRunResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_reports_projects__project_id__day_reports_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectDayReportResponse"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  write_note_day_reports__report_id__note_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        report_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DayReportNoteRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectDayReportResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  overview_config_escalation_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EscalationOverviewResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_matrix_config_escalation_projects__project_id__get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EscalationMatrixResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_project_matrix_config_escalation_projects__project_id__put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["EscalationMatrixRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EscalationMatrixResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  remove_project_matrix_config_escalation_projects__project_id__delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_tenant_matrix_config_escalation_tenant_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["EscalationMatrixRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EscalationMatrixResponse"];
+        };
       };
       /** @description Validation Error */
       422: {

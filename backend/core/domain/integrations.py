@@ -71,6 +71,28 @@ class Issue:
 
 
 @dataclass(frozen=True, kw_only=True)
+class IssueComment:
+    id: str
+    author: UserRef | None
+    created_at: datetime | None
+    #: Plain text: rich text flattened, mentions written as "@Name".
+    body: str
+    mentions: tuple[UserRef, ...] = ()
+
+
+@dataclass(frozen=True, kw_only=True)
+class IssueText:
+    """An issue's description and comments, read on demand and never stored."""
+
+    tenant_id: str
+    key: str
+    state: IssueState
+    description: str
+    comments: tuple[IssueComment, ...] = ()
+    updated_at: datetime | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
 class PullRequest:
     tenant_id: str
     id: str

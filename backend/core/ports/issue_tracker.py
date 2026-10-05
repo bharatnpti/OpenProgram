@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from core.domain.integrations import Issue, Project, Sprint, SyncCursor, UserRef
+from core.domain.integrations import Issue, IssueText, Project, Sprint, SyncCursor, UserRef
 
 
 class IssueTracker(Protocol):
@@ -19,6 +19,10 @@ class IssueTracker(Protocol):
     async def list_sprints(self, tenant_id: str, board_id: str) -> list[Sprint]: ...
 
     async def get_issue(self, tenant_id: str, key: str) -> Issue: ...
+
+    async def get_issue_text(self, tenant_id: str, key: str) -> IssueText:
+        """The issue's description and comments as plain text. Read-only, never stored."""
+        ...
 
     async def list_active_for(self, assignee: UserRef) -> list[Issue]: ...
 

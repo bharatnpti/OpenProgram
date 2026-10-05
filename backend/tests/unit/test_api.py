@@ -770,7 +770,7 @@ def test_container_slack_webhook_route_ignores_signed_bot_message_event(
     assert response.json() == {"status": "ignored", "message_id": "unsupported-provider"}
 
 
-def test_chat_signature_required_keys_off_configured_provider_not_url(
+async def test_chat_signature_required_keys_off_configured_provider_not_url(
     settings: Settings,
 ) -> None:
     # Configured chat provider is Slack in container mode: verification is
@@ -779,11 +779,11 @@ def test_chat_signature_required_keys_off_configured_provider_not_url(
     registry = ServiceRegistry(configured)
     body = _slack_json_body({"event": {"type": "message"}})
 
-    assert not registry.chat_webhook_signature_valid("mock_slack", {}, body)
-    assert registry.chat_webhook_signature_valid("slack", _signed_slack_headers(body), body)
+    assert not await registry.chat_webhook_signature_valid("mock_slack", {}, body)
+    assert await registry.chat_webhook_signature_valid("slack", _signed_slack_headers(body), body)
 
 
-def test_chat_signature_skipped_when_configured_provider_is_not_slack(
+async def test_chat_signature_skipped_when_configured_provider_is_not_slack(
     settings: Settings,
 ) -> None:
     # Configured chat provider is the credential-free simulator: no signature.
@@ -792,8 +792,8 @@ def test_chat_signature_skipped_when_configured_provider_is_not_slack(
     )
     registry = ServiceRegistry(configured)
 
-    assert registry.chat_webhook_signature_valid("slack", {}, b"{}")
-    assert registry.chat_webhook_signature_valid("mock_slack", {}, b"{}")
+    assert await registry.chat_webhook_signature_valid("slack", {}, b"{}")
+    assert await registry.chat_webhook_signature_valid("mock_slack", {}, b"{}")
 
 
 def test_chat_webhook_dedupes_redelivered_event_id(settings: Settings) -> None:

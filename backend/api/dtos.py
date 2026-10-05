@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from collections.abc import Mapping
 from datetime import date, datetime, time
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -18,12 +19,21 @@ from core.application.config_service import (
     PodEscalationContactChoices,
     UnmappedMember,
 )
+from core.application.connection_service import ConnectionTestView, ConnectionView
+from core.application.delivery_service import (
+    DeliverySettingsView,
+    ObservedStatus,
+    RequirementsView,
+)
+from core.application.escalation_matrix_service import MatrixSource, MatrixView
 from core.application.flow_metrics_service import (
     PortfolioFlowView,
     WorkItemFlowView,
     WorkstreamFlowSummaryView,
     WorkstreamFlowView,
 )
+from core.application.forecast_service import ProjectDeliveryView, ScopeDeliveryView
+from core.application.gate_service import GateBoardView
 from core.application.persona_views import (
     BlockerDetailView,
     BlockerView,
@@ -50,18 +60,58 @@ from core.application.persona_views import (
     WorkstreamProgressView,
 )
 from core.application.portfolio_feed_service import PortfolioFeedItemView, PortfolioFeedView
+from core.domain.auth import Role
 from core.domain.branding import LogoContentType, TenantLogo
 from core.domain.brief import BriefKind, NarrativeBrief
+from core.domain.connections import (
+    ConnectorField,
+    ConnectorPurpose,
+    FieldCondition,
+    FieldKind,
+)
 from core.domain.cross_person import (
     CrossPersonDelivery,
     CrossPersonRequest,
     CrossPersonRequestStatus,
 )
 from core.domain.dead_letter import DeadLetter, DeadLetterStatus
+from core.domain.delivery import STAGE_LABELS, STAGE_ORDER, DeliveryStage
 from core.domain.directory import DirectoryUser
 from core.domain.escalation import EscalationContact, PodEscalationContacts
+from core.domain.escalation_matrix import (
+    ContactSource,
+    EscalationLevel,
+    EscalationMatrix,
+    NeedType,
+)
+from core.domain.forecast import (
+    Commitment,
+    CommitmentScopeKind,
+    Release,
+    ReleaseMatchKind,
+    Verdict,
+)
+from core.domain.gates import (
+    GateItem,
+    GateState,
+    GateTemplate,
+    ItemSource,
+    ItemStatus,
+    QuestionStatus,
+    TrackedQuestion,
+)
 from core.domain.graph import EdgeKind, EntityRef, GraphEdge, GraphNode, GraphTree, NodeKind
 from core.domain.identity import IdentityLink
+from core.domain.reports import (
+    DayReport,
+    DayReportDefinition,
+    DayReportNote,
+    DestinationKind,
+    ReportRun,
+    ReportSection,
+    RunStatus,
+    RunTrigger,
+)
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import Rag, RollupFactor
 from core.domain.status import (
@@ -2578,3 +2628,1166 @@ class BrandingResponse(BaseModel):
     @classmethod
     def from_domain(cls, logo: TenantLogo | None) -> BrandingResponse:
         return cls(logo=TenantLogoResponse.from_domain(logo) if logo is not None else None)
+
+
+# --- Integrations: the tenant's connections to external systems --------------
+
+
+class FieldConditionDto(BaseModel):
+    """The field (or option) applies only while ``field`` holds one of ``values``."""
+
+    model_config = ConfigDict(frozen=True)
+
+    field: str
+    values: list[str]
+
+
+class ConnectorFieldOptionDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    value: str
+    label: str
+    shown_when: FieldConditionDto | None = None
+
+
+class ConnectorFieldDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    label: str
+    kind: FieldKind
+    required: bool
+    help: str
+    placeholder: str
+    default: str | None
+    options: list[ConnectorFieldOptionDto]
+    shown_when: FieldConditionDto | None
+
+
+class ConnectionTestOutcomeDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    ok: bool
+    message: str
+    tested_at: datetime
+
+
+class ConnectionResponse(BaseModel):
+    """One connector and the tenant's connection to it.
+
+    Secret values are never returned: ``secrets_set`` names the secret fields
+    that hold a stored value, so the console can show "set" next to them.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    connector: str
+    name: str
+    description: str
+    purposes: list[ConnectorPurpose]
+    fields: list[ConnectorFieldDto]
+    exclusive_group: str | None
+    configured: bool
+    enabled: bool
+    settings: dict[str, str]
+    secrets_set: list[str]
+    environment_configured: bool = Field(
+        description=(
+            "The server's own settings configure this connector. They are used "
+            "while the tenant has no enabled connection of its own."
+        )
+    )
+    updated_at: datetime | None
+    updated_by: str | None
+    last_test: ConnectionTestOutcomeDto | None
+
+    @classmethod
+    def from_view(cls, view: ConnectionView) -> ConnectionResponse:
+        spec = view.spec
+        connection = view.connection
+        last_test = connection.last_test if connection is not None else None
+        return cls(
+            connector=spec.id,
+            name=spec.name,
+            description=spec.description,
+            purposes=list(spec.purposes),
+            fields=[_connector_field_dto(item) for item in spec.fields],
+            exclusive_group=spec.exclusive_group,
+            configured=connection is not None,
+            enabled=connection.enabled if connection is not None else False,
+            settings=dict(connection.settings) if connection is not None else {},
+            secrets_set=sorted(connection.secret_keys) if connection is not None else [],
+            environment_configured=view.environment_configured,
+            updated_at=connection.updated_at if connection is not None else None,
+            updated_by=connection.updated_by if connection is not None else None,
+            last_test=(
+                ConnectionTestOutcomeDto(
+                    ok=last_test.ok, message=last_test.message, tested_at=last_test.tested_at
+                )
+                if last_test is not None
+                else None
+            ),
+        )
+
+
+class ConnectionUpdateRequest(BaseModel):
+    """Save a connection.
+
+    ``settings`` replaces the plain settings (a blank or null value clears a
+    field). ``secrets`` only changes the secrets it names: a value stores it, a
+    blank or null clears it, and a secret left out keeps its stored value.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool
+    settings: dict[str, str | None] = Field(default_factory=dict)
+    secrets: dict[str, str | None] = Field(default_factory=dict)
+
+
+class ConnectionTestRequest(BaseModel):
+    """Optional unsaved values to test over the stored ones.
+
+    A secret left out or blank uses the stored one. Leave the whole body out to
+    test what is saved; only that test is recorded on the connection.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    settings: dict[str, str | None] = Field(default_factory=dict)
+    secrets: dict[str, str] = Field(default_factory=dict)
+
+
+class ConnectionDetailDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    label: str
+    value: str
+
+
+class ConnectionTestResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    ok: bool
+    message: str
+    details: list[ConnectionDetailDto]
+    suggestions: dict[str, list[ConnectorFieldOptionDto]]
+    tested_at: datetime
+    recorded: bool
+
+    @classmethod
+    def from_view(cls, view: ConnectionTestView) -> ConnectionTestResponse:
+        check = view.check
+        return cls(
+            ok=check.ok,
+            message=check.message,
+            details=[
+                ConnectionDetailDto(label=label, value=value) for label, value in check.details
+            ],
+            suggestions={
+                key: [
+                    ConnectorFieldOptionDto(value=item.value, label=item.label) for item in options
+                ]
+                for key, options in check.suggestions.items()
+            },
+            tested_at=view.tested_at,
+            recorded=view.recorded,
+        )
+
+
+def _connector_field_dto(item: ConnectorField) -> ConnectorFieldDto:
+    return ConnectorFieldDto(
+        key=item.key,
+        label=item.label,
+        kind=item.kind,
+        required=item.required,
+        help=item.help,
+        placeholder=item.placeholder,
+        default=item.default,
+        options=[
+            ConnectorFieldOptionDto(
+                value=option.value,
+                label=option.label,
+                shown_when=_condition_dto(option.shown_when),
+            )
+            for option in item.options
+        ],
+        shown_when=_condition_dto(item.shown_when),
+    )
+
+
+def _condition_dto(condition: FieldCondition | None) -> FieldConditionDto | None:
+    if condition is None:
+        return None
+    return FieldConditionDto(field=condition.field, values=list(condition.values))
+
+
+# --- Delivery stages and requirements -------------------------------------------
+
+
+class StageStatusesDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    stage: DeliveryStage
+    label: str
+    statuses: list[str]
+
+
+class DeliveryStagesResponse(BaseModel):
+    """Which tracker statuses count as which delivery stage."""
+
+    model_config = ConfigDict(frozen=True)
+
+    stages: list[StageStatusesDto]
+    excluded_statuses: list[str]
+    requirement_types: list[str] = Field(
+        description="Issue types that count as requirements. Empty counts every type."
+    )
+    is_default: bool
+    updated_at: datetime | None
+    updated_by: str | None
+
+    @classmethod
+    def from_view(cls, view: DeliverySettingsView) -> DeliveryStagesResponse:
+        mapping = view.settings.mapping
+        return cls(
+            stages=[
+                StageStatusesDto(
+                    stage=stage,
+                    label=STAGE_LABELS[stage],
+                    statuses=list(mapping.statuses.get(stage, ())),
+                )
+                for stage in STAGE_ORDER
+            ],
+            excluded_statuses=list(mapping.excluded_statuses),
+            requirement_types=list(mapping.requirement_types),
+            is_default=view.is_default,
+            updated_at=view.settings.updated_at,
+            updated_by=view.settings.updated_by,
+        )
+
+
+class DeliveryStagesUpdateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    stages: dict[DeliveryStage, list[str]]
+    excluded_statuses: list[str] = Field(default_factory=list)
+    requirement_types: list[str] = Field(default_factory=list)
+
+
+class ObservedStatusResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: str
+    issues: int
+    issue_types: list[str]
+    stage: DeliveryStage | None = Field(description="Null when the status is not counted.")
+    mapped: bool = Field(
+        description="False when no stage names the status and its broad state placed it."
+    )
+
+    @classmethod
+    def from_view(cls, view: ObservedStatus) -> ObservedStatusResponse:
+        return cls(
+            status=view.status,
+            issues=view.issues,
+            issue_types=list(view.issue_types),
+            stage=view.stage,
+            mapped=view.mapped,
+        )
+
+
+class RequirementStageCountResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    stage: DeliveryStage
+    label: str
+    count: int
+    points: float
+    change: int | None
+
+
+class RequirementTimelinePointResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    day: date
+    counts: dict[DeliveryStage, int]
+
+
+class RequirementMoveResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    title: str
+    from_stage: DeliveryStage | None = Field(description="Null for a requirement new in scope.")
+    to_stage: DeliveryStage | None = Field(description="Null for one that left the scope.")
+
+
+class RequirementResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    title: str
+    stage: DeliveryStage
+    status: str | None
+    mapped: bool
+    assignee_name: str | None
+    story_points: float | None
+    due_date: str | None
+    in_stage_since: date | None
+
+
+class RequirementsResponse(BaseModel):
+    """A project's requirements by delivery stage, with counts over time."""
+
+    model_config = ConfigDict(frozen=True)
+
+    project_id: str
+    project_name: str
+    as_of: date
+    release_id: str | None
+    release_name: str | None
+    live: bool
+    available: bool
+    total: int
+    done: int
+    percent_complete: float | None
+    has_points: bool
+    points_total: float
+    points_done: float
+    stages: list[RequirementStageCountResponse]
+    timeline: list[RequirementTimelinePointResponse]
+    moves: list[RequirementMoveResponse]
+    previous_day: date | None
+    unmapped_statuses: list[str]
+    excluded: int
+    requirements: list[RequirementResponse]
+
+    @classmethod
+    def from_view(cls, view: RequirementsView) -> RequirementsResponse:
+        return cls(
+            project_id=view.project_id,
+            project_name=view.project_name,
+            as_of=view.as_of,
+            release_id=view.release_id,
+            release_name=view.release_name,
+            live=view.live,
+            available=view.available,
+            total=view.total,
+            done=view.done,
+            percent_complete=view.percent_complete,
+            has_points=view.has_points,
+            points_total=view.points_total,
+            points_done=view.points_done,
+            stages=[
+                RequirementStageCountResponse(
+                    stage=item.stage,
+                    label=item.label,
+                    count=item.count,
+                    points=item.points,
+                    change=item.change,
+                )
+                for item in view.stages
+            ],
+            timeline=[
+                RequirementTimelinePointResponse(day=point.day, counts=dict(point.counts))
+                for point in view.timeline
+            ],
+            moves=[
+                RequirementMoveResponse(
+                    key=move.key,
+                    title=move.title,
+                    from_stage=move.from_stage,
+                    to_stage=move.to_stage,
+                )
+                for move in view.moves
+            ],
+            previous_day=view.previous_day,
+            unmapped_statuses=list(view.unmapped_statuses),
+            excluded=view.excluded,
+            requirements=[
+                RequirementResponse(
+                    key=item.item.key,
+                    title=item.item.title,
+                    stage=item.item.stage,
+                    status=item.item.status,
+                    mapped=item.item.mapped,
+                    assignee_name=item.assignee_name,
+                    story_points=item.item.story_points,
+                    due_date=item.item.due_date,
+                    in_stage_since=item.in_stage_since,
+                )
+                for item in view.requirements
+            ],
+        )
+
+
+# --- Day reports ----------------------------------------------------------------
+
+
+class ReportDestinationDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    kind: DestinationKind
+    target: str = Field(
+        default="",
+        max_length=320,
+        description=(
+            "A chat channel id, a member id, or an email address (a person or a mailing "
+            "list). Empty for Teams, which posts to the Teams connection's channel."
+        ),
+    )
+
+
+class ReportScheduleDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    local_time: time
+    timezone: str = Field(max_length=64)
+    weekdays: list[int] = Field(description="0 is Monday, 6 is Sunday.")
+
+
+class DayReportRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    name: str = Field(max_length=200)
+    project_id: str = Field(min_length=1, max_length=200)
+    enabled: bool = True
+    schedule: ReportScheduleDto
+    destinations: list[ReportDestinationDto] = Field(default_factory=list, max_length=100)
+    release_id: str | None = Field(
+        default=None, max_length=200, description="Report on one release of the project only."
+    )
+
+
+class DeliveryOutcomeResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    kind: DestinationKind
+    target: str
+    ok: bool
+    detail: str
+
+
+class ReportRunResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    run_id: str
+    report_id: str
+    report_date: date
+    trigger: RunTrigger
+    status: RunStatus
+    started_at: datetime
+    finished_at: datetime | None
+    title: str
+    outcomes: list[DeliveryOutcomeResponse]
+    actor: str | None
+
+    @classmethod
+    def from_domain(cls, run: ReportRun) -> ReportRunResponse:
+        return cls(
+            run_id=run.run_id,
+            report_id=run.report_id,
+            report_date=run.report_date,
+            trigger=run.trigger,
+            status=run.status,
+            started_at=run.started_at,
+            finished_at=run.finished_at,
+            title=run.title,
+            outcomes=[
+                DeliveryOutcomeResponse(
+                    kind=outcome.destination.kind,
+                    target=outcome.destination.target,
+                    ok=outcome.ok,
+                    detail=outcome.detail,
+                )
+                for outcome in run.outcomes
+            ],
+            actor=run.actor,
+        )
+
+
+class DayReportResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    report_id: str
+    name: str
+    project_id: str
+    enabled: bool
+    schedule: ReportScheduleDto
+    destinations: list[ReportDestinationDto]
+    updated_at: datetime
+    updated_by: str
+    release_id: str | None = None
+    last_run: ReportRunResponse | None = None
+
+    @classmethod
+    def from_domain(
+        cls, definition: DayReportDefinition, last_run: ReportRun | None = None
+    ) -> DayReportResponse:
+        return cls(
+            report_id=definition.report_id,
+            name=definition.name,
+            project_id=definition.project_id,
+            enabled=definition.enabled,
+            schedule=ReportScheduleDto(
+                local_time=definition.schedule.local_time,
+                timezone=definition.schedule.timezone,
+                weekdays=list(definition.schedule.weekdays),
+            ),
+            destinations=[
+                ReportDestinationDto(kind=item.kind, target=item.target)
+                for item in definition.destinations
+            ],
+            updated_at=definition.updated_at,
+            updated_by=definition.updated_by,
+            release_id=definition.release_id,
+            last_run=ReportRunResponse.from_domain(last_run) if last_run is not None else None,
+        )
+
+
+class ReportGroupResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    heading: str
+    lines: list[str]
+
+
+class ReportTableResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    columns: list[str]
+    rows: list[list[str]]
+
+
+class ReportSectionResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    title: str
+    lines: list[str]
+    groups: list[ReportGroupResponse] = Field(default_factory=list)
+    table: ReportTableResponse | None = None
+    empty_text: str
+
+    @classmethod
+    def from_domain(cls, section: ReportSection) -> ReportSectionResponse:
+        return cls(
+            title=section.title,
+            lines=list(section.lines),
+            groups=[
+                ReportGroupResponse(heading=group.heading, lines=list(group.lines))
+                for group in section.groups
+            ],
+            table=(
+                ReportTableResponse(
+                    columns=list(section.table.columns),
+                    rows=[list(row) for row in section.table.rows],
+                )
+                if section.table is not None
+                else None
+            ),
+            empty_text=section.empty_text,
+        )
+
+
+class DayReportNoteRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    text: str = Field(default="", max_length=1000, description="Empty removes the note.")
+
+
+class DayReportNoteResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    report_id: str
+    report_date: date
+    text: str
+    author: str
+    author_name: str | None = None
+    updated_at: datetime
+
+    @classmethod
+    def from_domain(
+        cls, note: DayReportNote, author_name: str | None = None
+    ) -> DayReportNoteResponse:
+        return cls(
+            report_id=note.report_id,
+            report_date=note.report_date,
+            text=note.text,
+            author=note.author,
+            author_name=author_name,
+            updated_at=note.updated_at,
+        )
+
+
+class ProjectDayReportResponse(BaseModel):
+    """A project's day report as its product owner or manager sees it: when, and today's note."""
+
+    model_config = ConfigDict(frozen=True)
+
+    report_id: str
+    name: str
+    enabled: bool
+    release_id: str | None
+    schedule: ReportScheduleDto
+    destination_count: int
+    note: DayReportNoteResponse | None
+
+
+class ReportPreviewResponse(BaseModel):
+    """What the report would say if it were sent now. Nothing is sent or stored."""
+
+    model_config = ConfigDict(frozen=True)
+
+    title: str
+    report_date: date
+    rag: Rag
+    headline: str
+    percent_complete: float | None
+    progress_line: str
+    sections: list[ReportSectionResponse]
+    console_url: str | None
+    text: str
+
+    @classmethod
+    def from_preview(cls, report: DayReport, text: str) -> ReportPreviewResponse:
+        return cls(
+            title=report.title,
+            report_date=report.report_date,
+            rag=report.rag,
+            headline=report.headline,
+            percent_complete=report.percent_complete,
+            progress_line=report.progress_line,
+            sections=[ReportSectionResponse.from_domain(section) for section in report.sections],
+            console_url=report.console_url,
+            text=text,
+        )
+
+
+class ReportDestinationOptionResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    kind: DestinationKind
+    label: str
+    available: bool
+    note: str
+
+
+# --- Delivery dates, releases and forecasts ------------------------------------------
+
+
+class DateChangeResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    target_date: date | None
+    changed_at: datetime
+    changed_by: str
+    #: The member's name when the person is a member; otherwise their id.
+    changed_by_name: str
+    note: str
+
+
+class CommitmentResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    target_date: date | None
+    original_date: date | None
+    times_moved: int
+    moved_days: int | None
+    changes: list[DateChangeResponse]
+
+    @classmethod
+    def from_domain(
+        cls, commitment: Commitment, names: Mapping[str, str] | None = None
+    ) -> CommitmentResponse:
+        names = names or {}
+        return cls(
+            target_date=commitment.target_date,
+            original_date=commitment.original_date,
+            times_moved=commitment.times_moved,
+            moved_days=commitment.moved_days,
+            changes=[
+                DateChangeResponse(
+                    target_date=change.target_date,
+                    changed_at=change.changed_at,
+                    changed_by=change.changed_by,
+                    changed_by_name=names.get(change.changed_by, change.changed_by),
+                    note=change.note,
+                )
+                for change in commitment.changes
+            ],
+        )
+
+
+class HistoryForecastResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    p50: date | None
+    p85: date | None
+    remaining: float
+    unit: str
+    sample_days: int
+    completed_in_sample: float
+    reason: str | None
+
+
+class TeamForecastResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    latest: date | None
+    latest_key: str | None
+    dated: int
+    undated: int
+
+
+class ScopeDeliveryResponse(BaseModel):
+    """One scope's committed date and forecast: a project, a pod's part, or a release."""
+
+    model_config = ConfigDict(frozen=True)
+
+    scope_kind: CommitmentScopeKind
+    scope_id: str
+    project_id: str
+    name: str
+    commitment: CommitmentResponse
+    target: date | None
+    target_source: Literal["committed", "jira_release"] | None
+    jira_release_date: date | None
+    history: HistoryForecastResponse
+    team: TeamForecastResponse
+    verdict: Verdict
+    reasons: list[str]
+    total: int
+    open: int
+
+    @classmethod
+    def from_view(cls, view: ScopeDeliveryView) -> ScopeDeliveryResponse:
+        history = view.history
+        team = view.team
+        return cls(
+            scope_kind=view.scope.kind,
+            scope_id=view.scope.id,
+            project_id=view.scope.project_id,
+            name=view.name,
+            commitment=CommitmentResponse.from_domain(view.commitment, view.actor_names),
+            target=view.target,
+            target_source=view.target_source,  # type: ignore[arg-type]
+            jira_release_date=view.jira_release_date,
+            history=HistoryForecastResponse(
+                p50=history.p50,
+                p85=history.p85,
+                remaining=history.remaining,
+                unit=history.unit,
+                sample_days=history.sample_days,
+                completed_in_sample=history.completed_in_sample,
+                reason=history.reason,
+            ),
+            team=TeamForecastResponse(
+                latest=team.latest,
+                latest_key=team.latest_key,
+                dated=team.dated,
+                undated=team.undated,
+            ),
+            verdict=view.verdict,
+            reasons=list(view.reasons),
+            total=view.total,
+            open=view.open,
+        )
+
+
+class ProjectDeliveryResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    project: ScopeDeliveryResponse
+    pods: list[ScopeDeliveryResponse]
+    releases: list[ScopeDeliveryResponse]
+
+    @classmethod
+    def from_view(cls, view: ProjectDeliveryView) -> ProjectDeliveryResponse:
+        return cls(
+            project=ScopeDeliveryResponse.from_view(view.project),
+            pods=[ScopeDeliveryResponse.from_view(item) for item in view.pods],
+            releases=[ScopeDeliveryResponse.from_view(item) for item in view.releases],
+        )
+
+
+class PodProjectDeliveryResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    project_id: str
+    project_name: str
+    project_target: date | None
+    pod: ScopeDeliveryResponse
+
+
+class PodDeliveryResponse(BaseModel):
+    """A pod's part of each project it works on: what its scrum master commits."""
+
+    model_config = ConfigDict(frozen=True)
+
+    pod_id: str
+    can_set_dates: bool
+    projects: list[PodProjectDeliveryResponse]
+
+
+class DeliveryDateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    target_date: date | None = Field(description="Null clears the committed date.")
+    note: str = Field(default="", max_length=300)
+
+
+class ReleaseRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    name: str = Field(min_length=1, max_length=120)
+    match_kind: ReleaseMatchKind
+    match_value: str = Field(min_length=1, max_length=200)
+
+
+class ReleaseResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    release_id: str
+    project_id: str
+    name: str
+    match_kind: ReleaseMatchKind
+    match_value: str
+    updated_at: datetime
+    updated_by: str
+
+    @classmethod
+    def from_domain(cls, release: Release) -> ReleaseResponse:
+        return cls(
+            release_id=release.release_id,
+            project_id=release.project_id,
+            name=release.name,
+            match_kind=release.match.kind,
+            match_value=release.match.value,
+            updated_at=release.updated_at,
+            updated_by=release.updated_by,
+        )
+
+
+class ReleaseCandidateResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    kind: ReleaseMatchKind
+    value: str
+    issues: int
+    release_date: date | None
+
+
+# --- Gates, items and questions -------------------------------------------------------
+
+
+class ItemKindDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    key: str = Field(min_length=1, max_length=60)
+    label: str = Field(min_length=1, max_length=80)
+    sign_off_roles: list[Role]
+    evidence_required: bool = False
+    headings: list[str] = Field(default_factory=list, max_length=20)
+    gherkin: bool = False
+
+
+class GateTemplateDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    template_id: str = Field(default="", max_length=80)
+    name: str = Field(min_length=1, max_length=120)
+    guards_stage: DeliveryStage
+    kinds: list[ItemKindDto] = Field(max_length=10)
+    issue_types: list[str] = Field(default_factory=list, max_length=50)
+    enabled: bool = True
+
+    @classmethod
+    def from_domain(cls, template: GateTemplate) -> GateTemplateDto:
+        return cls(
+            template_id=template.template_id,
+            name=template.name,
+            guards_stage=template.guards_stage,
+            kinds=[
+                ItemKindDto(
+                    key=kind.key,
+                    label=kind.label,
+                    sign_off_roles=list(kind.sign_off_roles),
+                    evidence_required=kind.evidence_required,
+                    headings=list(kind.headings),
+                    gherkin=kind.gherkin,
+                )
+                for kind in template.kinds
+            ],
+            issue_types=list(template.issue_types),
+            enabled=template.enabled,
+        )
+
+
+class GateTemplatesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    templates: list[GateTemplateDto]
+    is_default: bool
+
+
+class GateItemResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    item_id: str
+    issue_key: str
+    template_id: str
+    kind: str
+    text: str
+    status: ItemStatus
+    source: ItemSource
+    source_ref: str
+    created_by: str
+    signed_by: str | None
+    signed_at: datetime | None
+    evidence_url: str | None
+    note: str
+
+    @classmethod
+    def from_domain(cls, item: GateItem) -> GateItemResponse:
+        return cls(
+            item_id=item.item_id,
+            issue_key=item.issue_key,
+            template_id=item.template_id,
+            kind=item.kind,
+            text=item.text,
+            status=item.status,
+            source=item.source,
+            source_ref=item.source_ref,
+            created_by=item.created_by,
+            signed_by=item.signed_by,
+            signed_at=item.signed_at,
+            evidence_url=item.evidence_url,
+            note=item.note,
+        )
+
+
+class GateEvaluationResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    template_id: str
+    state: GateState
+    met: int
+    total: int
+    suggested: int
+    missing_kinds: list[str]
+
+
+class IssueGatesResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    title: str
+    stage: DeliveryStage
+    status: str | None
+    evaluations: list[GateEvaluationResponse]
+    items: list[GateItemResponse]
+    passed_without: list[str] = Field(
+        description="Gates whose stage the issue reached without passing them."
+    )
+
+
+class TrackedQuestionResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    question_id: str
+    issue_key: str
+    comment_ref: str
+    asked_by: str
+    asked_by_name: str
+    asked_to: str
+    asked_to_name: str
+    asked_at: datetime
+    summary: str
+    status: QuestionStatus
+    confirmed: bool
+    status_set_by_person: bool
+    answered_ref: str | None
+
+    @classmethod
+    def from_domain(cls, question: TrackedQuestion) -> TrackedQuestionResponse:
+        return cls(
+            question_id=question.question_id,
+            issue_key=question.issue_key,
+            comment_ref=question.comment_ref,
+            asked_by=question.asked_by,
+            asked_by_name=question.asked_by_name,
+            asked_to=question.asked_to,
+            asked_to_name=question.asked_to_name,
+            asked_at=question.asked_at,
+            summary=question.summary,
+            status=question.status,
+            confirmed=question.confirmed,
+            status_set_by_person=question.status_set_by_person,
+            answered_ref=question.answered_ref,
+        )
+
+
+class GateBoardResponse(BaseModel):
+    """A project's (or release's) requirements against their gates, and open questions."""
+
+    model_config = ConfigDict(frozen=True)
+
+    project_id: str
+    release_id: str | None
+    templates: list[GateTemplateDto]
+    issues: list[IssueGatesResponse]
+    questions: list[TrackedQuestionResponse]
+    actor_names: dict[str, str] = Field(default_factory=dict)
+
+    @classmethod
+    def from_view(cls, view: GateBoardView) -> GateBoardResponse:
+        return cls(
+            project_id=view.project_id,
+            release_id=view.release_id,
+            templates=[GateTemplateDto.from_domain(item) for item in view.templates],
+            issues=[
+                IssueGatesResponse(
+                    key=issue.key,
+                    title=issue.title,
+                    stage=issue.stage,
+                    status=issue.status,
+                    evaluations=[
+                        GateEvaluationResponse(
+                            template_id=evaluation.template.template_id,
+                            state=evaluation.state,
+                            met=evaluation.met,
+                            total=evaluation.total,
+                            suggested=evaluation.suggested,
+                            missing_kinds=list(evaluation.missing_kinds),
+                        )
+                        for evaluation in issue.evaluations
+                    ],
+                    items=[GateItemResponse.from_domain(item) for item in issue.items],
+                    passed_without=list(issue.passed_without),
+                )
+                for issue in view.issues
+            ],
+            questions=[TrackedQuestionResponse.from_domain(item) for item in view.questions],
+            actor_names=dict(view.actor_names),
+        )
+
+
+class GateScanResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    read: int
+    unchanged: int
+    failed: int
+    suggested_items: int
+    questions: int
+
+
+class GateItemCreateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    template_id: str
+    kind: str
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class GateItemSignOffRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: ItemStatus
+    evidence_url: str | None = Field(default=None, max_length=2000)
+    note: str = Field(default="", max_length=300)
+
+
+class QuestionUpdateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    confirmed: bool | None = None
+    dismissed: bool | None = None
+    status: QuestionStatus | None = None
+
+
+class QuestionCreateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    asked_to: str = Field(min_length=1, max_length=200)
+    summary: str = Field(min_length=1, max_length=1000)
+
+
+class EscalationLevelDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    label: str = Field(min_length=1, max_length=60)
+    source: ContactSource
+    member_id: str | None = Field(default=None, max_length=200)
+    after_days: dict[NeedType, int] = Field(
+        default_factory=dict,
+        description="Days an ask of each kind waits before it reaches this level; a kind "
+        "left out never reaches it.",
+    )
+
+    @classmethod
+    def from_domain(cls, level: EscalationLevel) -> EscalationLevelDto:
+        return cls(
+            label=level.label,
+            source=level.source,
+            member_id=level.member_id,
+            after_days=dict(level.after_days),
+        )
+
+    def to_domain(self) -> EscalationLevel:
+        return EscalationLevel(
+            label=self.label,
+            source=self.source,
+            member_id=self.member_id,
+            after_days=dict(self.after_days),
+        )
+
+
+class EscalationMatrixRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    decision_owner_id: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Who owns a decision nothing else names an owner for: the product owner.",
+    )
+    levels: list[EscalationLevelDto] = Field(
+        max_length=5, description="Level 2 first; level 1 is always the ask's owner."
+    )
+
+
+class EscalationMatrixResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    project_id: str = Field(description="Empty for the tenant's own matrix.")
+    source: MatrixSource
+    decision_owner_id: str | None
+    levels: list[EscalationLevelDto]
+    updated_at: datetime | None
+    updated_by: str | None
+
+    @classmethod
+    def from_matrix(
+        cls, matrix: EscalationMatrix, source: MatrixSource
+    ) -> EscalationMatrixResponse:
+        return cls(
+            project_id=matrix.project_id,
+            source=source,
+            decision_owner_id=matrix.decision_owner_id,
+            levels=[EscalationLevelDto.from_domain(level) for level in matrix.levels],
+            updated_at=matrix.updated_at,
+            updated_by=matrix.updated_by,
+        )
+
+    @classmethod
+    def from_view(cls, view: MatrixView) -> EscalationMatrixResponse:
+        return cls.from_matrix(view.matrix, view.source)
+
+
+class EscalationOverviewResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    tenant: EscalationMatrixResponse
+    #: The projects with a matrix of their own.
+    projects: list[EscalationMatrixResponse]
