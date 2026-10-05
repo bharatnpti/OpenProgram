@@ -1,0 +1,33 @@
+frontend-v2/src/features/today/ManagerExecToday.tsx
+  s_239b3b1319ec3a::t_149e2964b3e277 204,206,241-242
+frontend-v2/src/components/ui/Sparkline.tsx
+  s_239b3b1319ec3a::t_1ac90142a9d71f 16,33-39
+frontend-v2/src/pages/DeliveryPage.tsx
+  s_239b3b1319ec3a::t_62b51ccc5dce39 48
+frontend-v2/src/components/shell/Header.tsx
+  s_239b3b1319ec3a::t_5b63cfdce165a7 9,30,41-44,71,83-86
+frontend-v2/src/features/delivery/ProgramDetail.tsx
+  s_239b3b1319ec3a::t_5f131bc5a80ef1 119
+frontend-v2/src/features/delivery/DeliveryDetail.tsx
+  s_239b3b1319ec3a::t_5f131bc5a80ef1 222
+frontend-v2/src/components/shell/PersonPicker.tsx
+  s_239b3b1319ec3a::t_5b63cfdce165a7 69,84,88-90
+frontend-v2/src/components/shell/NavMenu.tsx
+  s_239b3b1319ec3a::t_7df7d694e21806 1-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c803f971102690b0d39236a4d2c8ed2309243274",
+  "prompts": {},
+  "sessions": {
+    "s_239b3b1319ec3a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "edb8c1f2-3037-41fd-a1b3-6261f7f7734c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
