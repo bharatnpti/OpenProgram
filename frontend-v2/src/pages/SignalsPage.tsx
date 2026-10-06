@@ -31,7 +31,7 @@ function riskCard(risk: RiskFindingResponse, index: number): SignalCardData {
     // (days since detection plus its age when detected), while the reason text
     // states the age it had *when detected* -- both true, different measures.
     // Unlabelled and adjacent they read as one number contradicting itself:
-    // "active for 3 day(s)" beside "5d", widening by a day every day.
+    // "active for 3 days" beside "5d", widening by a day every day.
     ageLabel: `open ${risk.age_days}d`,
     watermelon: risk.is_watermelon,
     ownerSays: risk.owner_status_summary ?? "No check-in on record",

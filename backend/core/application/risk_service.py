@@ -424,7 +424,7 @@ class RiskService:
                         entity_ref=item.ref,
                         workstream_id=workstream.id if workstream is not None else None,
                         reason=(
-                            f"{item.name} has been active for {age_days} day(s) "
+                            f"{item.name} has been active for {_days(age_days)} "
                             "with no linked pull request."
                         ),
                         evidence=RiskEvidence(identifier=item.id),
@@ -443,7 +443,7 @@ class RiskService:
                         threshold_days=thresholds.stale_days,
                         entity_ref=item.ref,
                         workstream_id=workstream.id if workstream is not None else None,
-                        reason=f"{item.name} has had no state change in {age_days} day(s).",
+                        reason=f"{item.name} has had no state change in {_days(age_days)}.",
                         evidence=RiskEvidence(identifier=item.id),
                         age_days=age_days,
                         owner_id=owner_id,
@@ -511,7 +511,9 @@ class RiskService:
                     threshold_days=thresholds.pr_age_days,
                     entity_ref=entity_ref,
                     workstream_id=workstream.id if workstream is not None else None,
-                    reason=f"Pull request '{title}' in {repo} has been open for {age_days} day(s).",
+                    reason=(
+                        f"Pull request '{title}' in {repo} has been open for {_days(age_days)}."
+                    ),
                     evidence=pull_request_evidence(
                         repo=repo,
                         pr_id=pr_id,
@@ -901,7 +903,7 @@ class RiskService:
                     entity_ref=task.ref,
                     workstream_id=None,
                     reason=(
-                        f"'{title}' in {repo} was merged {days} day(s) ago, but {key} is "
+                        f"'{title}' in {repo} was merged {_days(days)} ago, but {key} is "
                         f"still '{status}' in the issue tracker."
                     ),
                     owner_id=assignees.get(key),
@@ -981,7 +983,7 @@ class RiskService:
                     workstream_id=workstream_id,
                     reason=(
                         f"{item.name} owner reported progress but there has been no Git/PR "
-                        f"activity in {age_days} day(s)."
+                        f"activity in {_days(age_days)}."
                     ),
                     owner_id=owner_id,
                     stated_source=owner_status.source,
@@ -1482,6 +1484,11 @@ def _age_days(reference_at: datetime | None, as_of: date) -> int | None:
     if reference_at is None:
         return None
     return max(0, (as_of - reference_at.date()).days)
+
+
+def _days(count: int) -> str:
+    """'1 day', '3 days': a finding's reason is read as a sentence, never 'day(s)'."""
+    return "1 day" if count == 1 else f"{count} days"
 
 
 def _parse_repo_list(value: JsonScalar) -> list[str]:

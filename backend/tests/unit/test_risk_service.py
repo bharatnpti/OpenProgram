@@ -102,6 +102,7 @@ async def test_feature_without_pr_past_threshold_is_flagged() -> None:
     assert finding.entity_ref == EntityRef(tenant_id=TENANT, kind=NodeKind.WORK_ITEM, id="wi-1")
     assert finding.age_days == 5
     assert finding.status is RiskFindingStatus.OPEN
+    assert finding.reason == "wi-1 has been active for 5 days with no linked pull request."
 
 
 async def test_workstream_threshold_override_suppresses_finding() -> None:
@@ -147,6 +148,7 @@ async def test_stale_work_item_is_flagged_independent_of_item_type() -> None:
     assert len(delta.newly_opened) == 1
     assert delta.newly_opened[0].rule_id is RiskRuleId.STALE_WORK_ITEM
     assert delta.newly_opened[0].age_days == 10
+    assert delta.newly_opened[0].reason == "wi-chore has had no state change in 10 days."
 
 
 async def test_pr_age_finding_uses_pr_author_as_owner_when_unmatched() -> None:
@@ -180,6 +182,37 @@ async def test_pr_age_finding_uses_pr_author_as_owner_when_unmatched() -> None:
     assert finding.owner_id == "dev-author"
     assert finding.evidence.identifier == "acme/api#42"
     assert finding.age_days == 5
+    assert finding.reason == "Pull request 'Add feature' in acme/api has been open for 5 days."
+
+
+async def test_a_reason_counts_one_day_in_the_singular() -> None:
+    store = InMemoryGraphStore()
+    project_id, _workstream_id = await _setup_project_with_workstream(
+        store, project_metadata={"github_repos": "acme/api"}
+    )
+    await store.append_fact_once(
+        FactEvent(
+            tenant_id=TENANT,
+            source="vcs_pull_request",
+            entity_ref=EntityRef(tenant_id=TENANT, kind=NodeKind.DEVELOPER, id="dev-author"),
+            payload={
+                "repo": "acme/api",
+                "id": "43",
+                "title": "Fix typo",
+                "merged": False,
+                "opened_at": _iso_days_ago(AS_OF, 1),
+            },
+            observed_at=datetime.now(tz=UTC),
+            correlation_id="pr-43-observed",
+        )
+    )
+    service = _service(store, default_pr_age_days=1)
+
+    delta = await service.assess_and_persist_project(TENANT, project_id, AS_OF)
+
+    assert [finding.reason for finding in delta.newly_opened] == [
+        "Pull request 'Fix typo' in acme/api has been open for 1 day."
+    ]
 
 
 @pytest.mark.parametrize(
