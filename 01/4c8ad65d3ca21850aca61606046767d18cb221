@@ -59,10 +59,12 @@ features.md
   s_46c43e5fac8673::t_b4f9f3b5613c30 65,369,454,575-576
 frontend-v2/src/api/openapi.json
   s_46c43e5fac8673::t_d04649a8a9f606 14322,14324
+  s_8bfaa6d62bf2a2::t_c0ec4620453197 12705-12709
 frontend-v2/src/features/delivery/DeliveryNavigator.tsx
   s_46c43e5fac8673::t_349b93197a8f8e 7,102-103,134
 frontend/src/api/openapi.json
   s_46c43e5fac8673::t_d04649a8a9f606 14322,14324
+  s_8bfaa6d62bf2a2::t_c0ec4620453197 12705-12709
 frontend-v2/src/features/delivery/DeliveryDetail.tsx
   s_46c43e5fac8673::t_643a93ad5626a6 24,83-92,119,157-160,181-183,188-205,233-234,273
 frontend-v2/src/pages/AdminPage.tsx
@@ -82,6 +84,10 @@ frontend-v2/src/features/delivery/workstreams.test.ts
   s_46c43e5fac8673::t_46c9b37c767a8b 1-42
 backend/tests/unit/test_api.py
   s_46c43e5fac8673::t_5821d64eb7b048 1791-1795
+frontend/src/api/generated.ts
+  s_8bfaa6d62bf2a2::t_c0ec4620453197 3341-3345
+frontend-v2/src/api/generated.ts
+  s_8bfaa6d62bf2a2::t_c0ec4620453197 3328-3332
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -93,6 +99,14 @@ backend/tests/unit/test_api.py
       "agent_id": {
         "tool": "claude",
         "id": "74865cd1-4f07-48fe-b0f3-c490d0726e40",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_8bfaa6d62bf2a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88a73698-de1c-479c-841f-c9c10e9430a0",
         "model": "claude-opus-5-5"
       },
       "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
