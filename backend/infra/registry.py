@@ -559,7 +559,7 @@ class ServiceRegistry:
             forecast_service=self.forecast_service(),
             gate_service=self.gate_service(),
             escalation_service=self.escalation_matrix_service(),
-            console_base_url=self.settings.auth_frontend_url,
+            console_base_url=self.settings.public_console_url,
         )
 
     def day_report_service(self) -> DayReportService:
