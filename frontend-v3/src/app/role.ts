@@ -1,0 +1,119 @@
+import { createContext, useContext } from "react";
+
+import type { AuthStatusResponse, DevUserResponse } from "../api/schema";
+
+/*
+ * Same roles, storage keys and lens rules as frontend-v2 (src/app/role.ts), so
+ * a person acting as someone in one console is the same person in the other.
+ */
+
+export type AppRole = "dev" | "sm" | "po" | "mgr" | "exec" | "admin";
+export type AuthProvider = "dev" | "oidc_bff";
+
+export const STORAGE_KEY = "openprogram.active-role";
+export const USER_STORAGE_KEY = "openprogram.acting-as";
+
+export const roleLabels: Record<AppRole, string> = {
+  dev: "Developer",
+  sm: "Scrum Master",
+  po: "Product Owner",
+  mgr: "Manager",
+  exec: "Executive",
+  admin: "Admin",
+};
+
+export const appRoles: AppRole[] = ["dev", "sm", "po", "mgr", "exec", "admin"];
+
+/** Most-privileged first: how a person's default lens is chosen. */
+export const rolePriority: AppRole[] = ["admin", "exec", "mgr", "po", "sm", "dev"];
+
+export type RoleContextValue = {
+  role: AppRole;
+  setRole: (role: AppRole) => void;
+  roleLabel: string;
+  /** Every role the person holds; the lens is one of these. */
+  roles: AppRole[];
+  provider: AuthProvider;
+  authenticated: boolean;
+  authLoading: boolean;
+  user: AuthStatusResponse["user"] | null;
+  isDevMode: boolean;
+  /** Persona switching is served (backend `demo_mode`). */
+  demoMode: boolean;
+  /**
+   * These mirror the backend's capabilities only so the app can say up front
+   * which role opens a panel. The backend still decides: every panel also
+   * handles a 403 and shows the server's reason.
+   */
+  /** `READ_PROJECT_PROGRESS`: product owner, manager, executive, admin. */
+  canReadProjectProgress: boolean;
+  /** `READ_TEAM_AGGREGATE` or `READ_EXEC_AGGREGATE`: everyone but the developer. */
+  canReadAggregate: boolean;
+  /** `MANAGE_CONFIG`: admin. Reading a project's escalation matrix needs it. */
+  canManageConfig: boolean;
+  signIn: () => void;
+  logout: () => Promise<void>;
+  /** People this app can act as; empty outside a local dev-auth tenant. */
+  people: DevUserResponse[];
+  peopleLoading: boolean;
+  actingAs: DevUserResponse | null;
+  setActingAsId: (id: string) => void;
+  displayName: string;
+};
+
+export const RoleContext = createContext<RoleContextValue | null>(null);
+
+export function readStoredRole(): AppRole {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return appRoles.includes(stored as AppRole) ? (stored as AppRole) : "dev";
+  } catch {
+    return "dev";
+  }
+}
+
+export function readStoredUserId(): string | null {
+  try {
+    return localStorage.getItem(USER_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function store(key: string, value: string | null): void {
+  try {
+    if (value === null) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, value);
+    }
+  } catch {
+    // Private windows and blocked storage: the choice simply isn't remembered.
+  }
+}
+
+export function isAppRole(value: string): value is AppRole {
+  return appRoles.includes(value as AppRole);
+}
+
+export function appRolesOf(person: DevUserResponse | null): AppRole[] {
+  return (person?.roles ?? []).filter(isAppRole);
+}
+
+export function highestRole(roles: AppRole[]): AppRole {
+  return rolePriority.find((item) => roles.includes(item)) ?? "dev";
+}
+
+export function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  const initials = parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "");
+  return initials.join("") || "OP";
+}
+
+export function useRole() {
+  const context = useContext(RoleContext);
+  if (!context) {
+    throw new Error("useRole must be used within RoleProvider");
+  }
+  return context;
+}

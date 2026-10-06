@@ -1,0 +1,34 @@
+[
+  {
+    "name": "01-projects.png",
+    "path": "/",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
+  },
+  {
+    "name": "02-daily-manager.png",
+    "path": "/projects/project-checkout/daily",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
+  },
+  {
+    "name": "03-overall-admin.png",
+    "path": "/projects/project-checkout/overall",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" },
+    "wait": 3500
+  },
+  {
+    "name": "04-overall-developer.png",
+    "path": "/projects/project-checkout/overall",
+    "storage": { "openprogram.acting-as": "U1007" }
+  },
+  {
+    "name": "05-daily-executive.png",
+    "path": "/projects/project-checkout/daily",
+    "storage": { "openprogram.acting-as": "U1011" }
+  },
+  {
+    "name": "06-daily-mobile.png",
+    "path": "/projects/project-checkout/daily",
+    "width": 390,
+    "storage": { "openprogram.acting-as": "U1003" }
+  }
+]

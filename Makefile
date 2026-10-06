@@ -35,7 +35,7 @@ export OPENPROGRAM_LANGFUSE_PUBLIC_KEY
 export OPENPROGRAM_LANGFUSE_SECRET_KEY
 export OPENPROGRAM_LANGFUSE_PROJECT_ID
 
-.PHONY: up down migrate smoke phase1-smoke integration ui-bdd verify test lint format api openapi openapi-check worker mock-llm frontend-install frontend-dev frontend-lint frontend-format frontend-build frontend-generate frontend-v2-install frontend-v2-lint frontend-v2-format frontend-v2-build
+.PHONY: up down migrate smoke phase1-smoke integration ui-bdd verify test lint format api openapi openapi-check worker mock-llm frontend-install frontend-dev frontend-lint frontend-format frontend-build frontend-generate frontend-v2-install frontend-v2-lint frontend-v2-format frontend-v2-build frontend-v3-install frontend-v3-dev frontend-v3-lint frontend-v3-format frontend-v3-build frontend-v3-test
 
 up:
 	docker compose up -d
@@ -60,7 +60,7 @@ integration:
 ui-bdd:
 	OPENPROGRAM_RUN_UI_BDD=1 PYTHONPATH=$(PYTHONPATH) uv run pytest backend/tests/bdd -m ui_bdd_scenario --no-cov
 
-verify: lint test frontend-lint frontend-build frontend-v2-lint frontend-v2-build openapi-check integration smoke phase1-smoke
+verify: lint test frontend-lint frontend-build frontend-v2-lint frontend-v2-build frontend-v3-lint frontend-v3-build openapi-check integration smoke phase1-smoke
 
 test:
 	PYTHONPATH=$(PYTHONPATH) uv run pytest
@@ -88,7 +88,10 @@ openapi-check:
 	cp frontend/src/api/openapi.json frontend-v2/src/api/openapi.json
 	cd frontend-v2 && npx prettier --write src/api/openapi.json
 	cd frontend-v2 && npm run generate:client
-	git diff --exit-code frontend/src/api/openapi.json frontend/src/api/generated.ts frontend-v2/src/api/openapi.json frontend-v2/src/api/generated.ts
+	cp frontend/src/api/openapi.json frontend-v3/src/api/openapi.json
+	cd frontend-v3 && npx prettier --write src/api/openapi.json
+	cd frontend-v3 && npm run generate:client
+	git diff --exit-code frontend/src/api/openapi.json frontend/src/api/generated.ts frontend-v2/src/api/openapi.json frontend-v2/src/api/generated.ts frontend-v3/src/api/openapi.json frontend-v3/src/api/generated.ts
 
 worker:
 	PYTHONPATH=$(PYTHONPATH) uv run python -m infra.workflows.worker
@@ -125,3 +128,23 @@ frontend-v2-format:
 
 frontend-v2-build:
 	cd frontend-v2 && npm run build
+
+# Project reports app (Daily and Overall views), dev server on 5175.
+frontend-v3-install:
+	cd frontend-v3 && npm install
+
+frontend-v3-dev:
+	cd frontend-v3 && npm run dev
+
+frontend-v3-lint:
+	cd frontend-v3 && npm run lint && npm run typecheck && npm run format:check
+
+frontend-v3-format:
+	cd frontend-v3 && npm run format
+
+frontend-v3-build:
+	cd frontend-v3 && npm run build
+
+# Unit tests run TypeScript directly through `node --test`, which needs Node 22.18+.
+frontend-v3-test:
+	cd frontend-v3 && npm test

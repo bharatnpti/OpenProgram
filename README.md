@@ -108,7 +108,7 @@ Full CRUD over the hierarchy, directory onboarding, graph links, assignments, id
 
 ![Command palette](docs/images/command-palette.png)
 
-> There are **two** frontends in this repo. [`frontend/`](frontend) is the original console (dev server on **5173**): per-persona dashboard routes (`/me`, `/sm`, `/po`, `/mgr`, `/exec`) plus separate pages for pods, projects, workstreams, flow, portfolio, risks, cross-person requests, admin, and the mock-Slack simulator. [`frontend-v2/`](frontend-v2) is the IA redesign shown above (dev server on **5174**), collapsing all of that into `/today`, `/delivery`, `/signals`, `/coordination`, plus `/chat` in the nav and `/admin` behind the avatar menu (`/sim` redirects to `/chat`). CI and `make verify` lint, typecheck, format-check and build both.
+> There are **three** frontends in this repo. [`frontend/`](frontend) is the original console (dev server on **5173**): per-persona dashboard routes (`/me`, `/sm`, `/po`, `/mgr`, `/exec`) plus separate pages for pods, projects, workstreams, flow, portfolio, risks, cross-person requests, admin, and the mock-Slack simulator. [`frontend-v2/`](frontend-v2) is the IA redesign shown above (dev server on **5174**), collapsing all of that into `/today`, `/delivery`, `/signals`, `/coordination`, plus `/chat` in the nav and `/admin` behind the avatar menu (`/sim` redirects to `/chat`). [`frontend-v3/`](frontend-v3) is a separate project-reports app (dev server on **5175**): a project's **Daily** end-of-day report and its **Overall** state (delivery date and forecast, requirements by stage, acceptance gates, risks and escalation, questions), on the same API and sign-in. CI and `make verify` lint, typecheck, format-check and build all three.
 
 ---
 
@@ -133,6 +133,7 @@ backend/
   tests/             # unit/, contract/, integration/, bdd/
 frontend/            # original React/Vite console (port 5173)
 frontend-v2/         # redesigned console (port 5174)
+frontend-v3/         # project reports app (port 5175)
 ```
 
 **Dependency rule:** `api → application → domain`, and `infra → ports`. The core never imports a vendor SDK, `infra`, `api`, or `config.settings`; provider values thread through constructors. A guard test also bans the literal string `slack` inside `core`/`api` to keep the core provider-neutral (`chat_external_id`, not `slack_user_id`).
@@ -193,6 +194,8 @@ cd frontend-v2 && npm install && npm run dev
 ```
 
 Open <http://127.0.0.1:5174>. In `local` environment with `auth_provider=dev` you are an unauthenticated admin and can switch persona from the avatar menu.
+
+The project reports app runs the same way: `cd frontend-v3 && npm install && npm run dev`, then open <http://127.0.0.1:5175>. See [frontend-v3/README.md](frontend-v3/README.md).
 
 A fresh database has no hierarchy, so every indicator reads `unknown` until you populate the graph — either from the **Admin → Directory** screen (sync users from the chat directory, then import them as members) or through the `/config/*` API, then link projects → programs and pods → projects. The fastest end-to-end proof that needs no infra at all is `make phase1-smoke`, which builds a graph, runs a check-in, a nudge, a sync, and a rollup entirely in memory with fake providers.
 
@@ -276,16 +279,17 @@ Frontend:
 
 ```bash
 make frontend-v2-install frontend-v2-lint frontend-v2-build   # the console
+make frontend-v3-install frontend-v3-lint frontend-v3-build   # project reports app
 make frontend-install frontend-lint frontend-build            # original app
 ```
 
-**OpenAPI contract:** whenever an API route or DTO changes, regenerate the schema and both clients and commit them — CI runs the same drift gate.
+**OpenAPI contract:** whenever an API route or DTO changes, regenerate the schema and every client and commit them — CI runs the same drift gate.
 
 ```bash
-make openapi-check   # rewrites openapi.json + generated.ts in frontend/ and frontend-v2/, fails while they differ from the index
+make openapi-check   # rewrites openapi.json + generated.ts in frontend/, frontend-v2/ and frontend-v3/, fails while they differ from the index
 ```
 
-Install both apps first (`make frontend-install frontend-v2-install`) so `npx prettier` resolves to each app's pinned local binary — a global prettier produces spurious diffs.
+Install every app first (`make frontend-install frontend-v2-install frontend-v3-install`) so `npx prettier` resolves to each app's pinned local binary — a global prettier produces spurious diffs.
 
 ### Tests
 
@@ -308,6 +312,7 @@ CI (`.github/workflows/ci.yml`) runs backend lint+types+tests, integration, lint
 | [backend/](backend) | FastAPI service, agents, adapters, migrations, tests |
 | [frontend/](frontend) | original React console (port 5173) |
 | [frontend-v2/](frontend-v2) | redesigned console (port 5174) |
+| [frontend-v3/](frontend-v3) | project reports app: Daily and Overall views (port 5175) |
 | [infra/](infra) | container, Prometheus, Grafana, OTel, and LiteLLM configuration |
 | [scripts/](scripts) | mock LLM and local helper scripts |
 | [docs/lld/](docs/lld) | low-level designs per seam |

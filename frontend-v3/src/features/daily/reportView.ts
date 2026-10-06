@@ -1,0 +1,70 @@
+// Pure helpers for the Daily view, type imports only so `node --test` runs them.
+import type { DayReportResponse, Rag, ReportRunResponse } from "../../api/schema";
+import type { BadgeTone } from "../../lib/status";
+
+/** The section whose groups are people, each with what is needed from them. */
+export const ASKS_SECTION = "What we need, and from whom";
+
+type RunStatus = ReportRunResponse["status"];
+
+export const RUN_LABELS: Record<RunStatus, string> = {
+  sent: "Sent",
+  partial: "Partly sent",
+  failed: "Not sent",
+  sending: "Sending",
+};
+
+export const RUN_TONES: Record<RunStatus, BadgeTone> = {
+  sent: "success",
+  partial: "warning",
+  failed: "danger",
+  sending: "info",
+};
+
+/** The words the report itself opens with for each colour. */
+export const RAG_WORDS: Record<Rag, string> = {
+  green: "On track",
+  amber: "At risk",
+  red: "Off track",
+  unknown: "Status unknown",
+};
+
+const ASK_KINDS = ["Fix", "Decision", "Answer", "Review"];
+
+/**
+ * An ask's kind, as the report starts each line under a person ("Fix: …"),
+ * split off so it can be shown as a tag. Any other line keeps its text whole.
+ */
+export function askParts(line: string): { kind: string | null; text: string } {
+  const at = line.indexOf(": ");
+  const kind = at > 0 ? line.slice(0, at) : "";
+  if (!ASK_KINDS.includes(kind)) return { kind: null, text: line };
+  return { kind, text: line.slice(at + 2) };
+}
+
+/** What the confirm step before "Send now" says, in the server's own words for where. */
+export function sendConfirmation(
+  report: Pick<DayReportResponse, "name" | "destination_count" | "audience_summary">,
+): { title: string; description: string } {
+  const count = report.destination_count;
+  const receive = count === 1 ? "1 destination receives" : `${count} destinations receive`;
+  return {
+    title: `Send ${report.name} now?`,
+    description:
+      `${receive} it right away: ${report.audience_summary}. ` +
+      "Today's scheduled send still goes out at its time.",
+  };
+}
+
+/** "3 of 4 delivered" for a run's outcomes. */
+export function outcomeLine(run: Pick<ReportRunResponse, "outcomes">): string {
+  const total = run.outcomes.length;
+  if (total === 0) return "no destinations";
+  const ok = run.outcomes.filter((o) => o.ok).length;
+  return `${ok} of ${total} delivered`;
+}
+
+/** Today's note text when the stored note is for `today`, else empty. */
+export function todaysNote(report: Pick<DayReportResponse, "note">, today: string): string {
+  return report.note && report.note.report_date === today ? report.note.text : "";
+}
