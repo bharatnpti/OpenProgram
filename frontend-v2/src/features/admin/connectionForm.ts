@@ -124,6 +124,14 @@ export function testPayload(connection: ConnectionResponse, form: ConnectionForm
 
 export type ConnectionState = "on" | "off" | "environment" | "not_set_up";
 
+/**
+ * Who last saved the connection: the member's name, which the server resolves,
+ * or the stored id when it is no member's, never a guess.
+ */
+export function savedBy(connection: ConnectionResponse): string {
+  return connection.updated_by_name ?? connection.updated_by ?? "an admin";
+}
+
 /** How a connector card reads at a glance. */
 export function connectionState(connection: ConnectionResponse): ConnectionState {
   if (connection.configured && connection.enabled) return "on";
