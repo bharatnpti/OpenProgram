@@ -28,6 +28,7 @@ import {
   formFromConnection,
   missingRequired,
   savePayload,
+  savedBy,
   testPayload,
   visibleFields,
   visibleOptions,
@@ -155,7 +156,7 @@ function ConnectorCard({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-[12px] text-grey-secondary">
           {connection.updated_at
-            ? `Saved ${formatWhen(connection.updated_at)} by ${connection.updated_by ?? "an admin"}`
+            ? `Saved ${formatWhen(connection.updated_at)} by ${savedBy(connection)}`
             : state === "environment"
               ? "Set up in the server settings."
               : ""}

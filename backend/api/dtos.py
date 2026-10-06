@@ -2699,6 +2699,12 @@ class ConnectionResponse(BaseModel):
     )
     updated_at: datetime | None
     updated_by: str | None
+    updated_by_name: str | None = Field(
+        description=(
+            "The display name of the member who last saved it, or null when "
+            "updated_by is no member's id."
+        )
+    )
     last_test: ConnectionTestOutcomeDto | None
 
     @classmethod
@@ -2720,6 +2726,7 @@ class ConnectionResponse(BaseModel):
             environment_configured=view.environment_configured,
             updated_at=connection.updated_at if connection is not None else None,
             updated_by=connection.updated_by if connection is not None else None,
+            updated_by_name=view.updated_by_name,
             last_test=(
                 ConnectionTestOutcomeDto(
                     ok=last_test.ok, message=last_test.message, tested_at=last_test.tested_at
