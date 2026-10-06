@@ -213,6 +213,17 @@ def test_the_progress_bar_reads_the_same_everywhere() -> None:
 # --- What the report says ----------------------------------------------------------------
 
 
+class _RegistryOnTheDay(ServiceRegistry):
+    """The registry with the tenant's today pinned to the report's day.
+
+    A day before today is read from stored snapshots rather than the live
+    graph, so on the wall clock these reports would count nothing.
+    """
+
+    def _tenant_today(self) -> date:
+        return TODAY
+
+
 async def _seeded_registry() -> tuple[ServiceRegistry, InMemoryGraphStore]:
     store = InMemoryGraphStore()
     for node in (
@@ -310,7 +321,7 @@ async def _seeded_registry() -> tuple[ServiceRegistry, InMemoryGraphStore]:
         tenant_default_timezone=BERLIN,
         auth_frontend_url="https://console.example.com",
     )
-    return ServiceRegistry(settings, graph_store=store), store
+    return _RegistryOnTheDay(settings, graph_store=store), store
 
 
 def _edge(parent: str, child: str) -> GraphEdge:
