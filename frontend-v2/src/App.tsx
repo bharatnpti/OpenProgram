@@ -17,6 +17,9 @@ const SignalsPage = lazy(() =>
 const CoordinationPage = lazy(() =>
   import("./pages/CoordinationPage").then((module) => ({ default: module.CoordinationPage })),
 );
+const ReportsPage = lazy(() =>
+  import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })),
+);
 const AdminPage = lazy(() =>
   import("./pages/AdminPage").then((module) => ({ default: module.AdminPage })),
 );
@@ -51,6 +54,8 @@ export function App() {
                 }
               />
               <Route path="/coordination" element={<CoordinationPage />} />
+              {/* Everyone reads the day reports; each report says who may send it. */}
+              <Route path="/reports" element={<ReportsPage />} />
               <Route
                 path="/admin"
                 element={

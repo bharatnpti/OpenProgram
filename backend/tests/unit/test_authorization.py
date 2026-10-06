@@ -78,6 +78,11 @@ _WRITERS: dict[Capability, frozenset[Role]] = {
     # Everyone who works the requirements confirms and tracks gate items; the
     # executive only reads them. Sign-off is limited per kind by the gate.
     Capability.EDIT_GATES: frozenset({Role.DEV, Role.SM, Role.PO, Role.MGR, Role.ADMIN}),
+    # Day reports: the scrum master and the manager send and set them up (a
+    # scrum master only for a project their pods work on, enforced where the
+    # report is sent or saved). The day's note stays with set_project_dates.
+    Capability.SEND_DAY_REPORTS: frozenset({Role.SM, Role.MGR, Role.ADMIN}),
+    Capability.SET_UP_DAY_REPORTS: frozenset({Role.SM, Role.MGR, Role.ADMIN}),
 }
 
 
@@ -115,6 +120,14 @@ def test_every_role_can_read_its_own_work() -> None:
         principal = Principal(tenant_id="demo", subject=role.value, roles=frozenset({role}))
         assert policy.can(principal, Capability.READ_OWN_WORK), role
         assert policy.can(principal, Capability.READ_DIRECTORY), role
+
+
+def test_every_role_reads_the_day_reports() -> None:
+    """A day report is what its readers are sent, so everyone may read it.
+
+    Sending and setting up stay with the scrum master, manager and admin.
+    """
+    assert _roles_allowed(Capability.READ_DAY_REPORTS) == frozenset(Role)
 
 
 def test_a_principal_with_no_role_can_read_nothing() -> None:

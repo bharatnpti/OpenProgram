@@ -1,12 +1,16 @@
 """Day reports: who gets which project's report, when, and what was sent.
 
-Setting reports up is runtime config, so every /config route needs
-manage_config. A preview builds the report without sending or storing it;
-"send now" sends it to every destination at once and keeps the run.
+Everyone reads the reports (read_day_reports): which there are, today's
+report built live (a preview: nothing is sent or stored), and past sends with
+how each destination fared and who sent it. A reader who may not set a report
+up sees where it goes as counts and people's names, never the addresses or ids.
 
-A project's product owner or manager may see the project's reports and write
-the note today's report opens with (set_project_dates), without managing
-config. The tenant always comes from the principal.
+Sending now (send_day_reports) and setting reports up (set_up_day_reports) are
+for the scrum master, the manager and the admin; a scrum master only for a
+project one of their pods works on, by the rule a pod's date uses
+(ForecastService.runs_pod). The note today's report opens with stays with
+set_project_dates. Each report says what the caller may do with it. The
+tenant always comes from the principal.
 """
 
 from __future__ import annotations
@@ -17,21 +21,28 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
-from api.dependencies import get_current_principal, get_day_report_service, get_registry
+from api.dependencies import (
+    get_current_principal,
+    get_day_report_service,
+    get_forecast_service,
+    get_registry,
+)
 from api.dtos import (
     DayReportNoteRequest,
-    DayReportNoteResponse,
     DayReportRequest,
     DayReportResponse,
-    ProjectDayReportResponse,
+    DayReportSetupResponse,
     ReportDestinationOptionResponse,
     ReportPreviewResponse,
     ReportRunResponse,
-    ReportScheduleDto,
+    ReportSetupPersonResponse,
+    ReportSetupProjectResponse,
+    ReportSetupReleaseResponse,
 )
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.day_report_service import DayReportService, ReportNotFound
-from core.domain.auth import Principal
+from core.application.forecast_service import ForecastService
+from core.domain.auth import Principal, Role
 from core.domain.errors import AuthorizationDenied, GraphNotFound
 from core.domain.graph import NodeKind
 from core.domain.reports import (
@@ -45,8 +56,7 @@ from core.domain.reports import (
 )
 from infra.registry import ServiceRegistry
 
-router = APIRouter(prefix="/config/reports", tags=["reports"])
-project_router = APIRouter(tags=["reports"])
+router = APIRouter(prefix="/day-reports", tags=["reports"])
 
 _DESTINATION_LABELS = {
     DestinationKind.CHAT_CHANNEL: "Chat channel",
@@ -54,40 +64,186 @@ _DESTINATION_LABELS = {
     DestinationKind.EMAIL: "Email address or mailing list",
     DestinationKind.TEAMS: "Teams channel",
 }
+_NOT_YOURS = (
+    "Only a scrum master of a pod working on the project, a manager or an admin "
+    "sends and sets up its reports."
+)
+
+
+class _Reach:
+    """What the caller may do with each project's reports; a scrum master's differs by project."""
+
+    def __init__(self, principal: Principal, forecast: ForecastService) -> None:
+        self._principal = principal
+        self._forecast = forecast
+        self._policy = AuthorizationPolicy()
+        self._runs: dict[str, bool] = {}
+
+    def can(self, capability: Capability) -> bool:
+        return self._policy.can(self._principal, capability)
+
+    async def may(self, capability: Capability, project_id: str) -> bool:
+        """Holds ``capability`` for this project: a manager or admin any, a scrum master theirs."""
+        if not self.can(capability):
+            return False
+        if self._principal.has_role(Role.ADMIN) or self._principal.has_role(Role.MGR):
+            return True
+        if project_id not in self._runs:
+            self._runs[project_id] = await self._forecast.runs_project_pod(
+                self._principal.tenant_id, project_id, self._principal.subject
+            )
+        return self._runs[project_id]
+
+    async def ensure(self, capability: Capability, project_id: str) -> None:
+        if not await self.may(capability, project_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_NOT_YOURS)
+
+
+class _Views:
+    """Builds each report's response as the caller may see it, reading each name once."""
+
+    def __init__(
+        self,
+        principal: Principal,
+        service: DayReportService,
+        forecast: ForecastService,
+        registry: ServiceRegistry,
+        reach: _Reach,
+    ) -> None:
+        self._principal = principal
+        self._service = service
+        self._forecast = forecast
+        self._registry = registry
+        self.reach = reach
+        self._names: dict[str, str] | None = None
+        self._projects: dict[str, str | None] = {}
+        self._releases: dict[str, str | None] = {}
+
+    async def names(self) -> dict[str, str]:
+        if self._names is None:
+            self._names = await _member_names(self._registry, self._principal.tenant_id)
+        return self._names
+
+    async def report(
+        self, definition: DayReportDefinition, *, sent_before: bool = True
+    ) -> DayReportResponse:
+        """The report with its last send (none for a new one) and today's note."""
+        tenant_id = self._principal.tenant_id
+        last_run: ReportRun | None = None
+        if sent_before:
+            runs = await self._service.runs(tenant_id, definition.report_id, limit=1)
+            last_run = runs[0] if runs else None
+        note: DayReportNote | None = await self._service.note(tenant_id, definition.report_id)
+        return DayReportResponse.from_domain(
+            definition,
+            names=await self.names(),
+            can_send=await self.reach.may(Capability.SEND_DAY_REPORTS, definition.project_id),
+            can_edit=await self.reach.may(Capability.SET_UP_DAY_REPORTS, definition.project_id),
+            can_write_note=self.reach.can(Capability.SET_PROJECT_DATES),
+            last_run=last_run,
+            note=note,
+            project_name=await self._project_name(definition.project_id),
+            release_name=await self._release_name(definition.release_id),
+        )
+
+    async def runs(self, project_id: str, runs: Iterable[ReportRun]) -> list[ReportRunResponse]:
+        exact = await self.reach.may(Capability.SET_UP_DAY_REPORTS, project_id)
+        names = await self.names()
+        return [ReportRunResponse.from_domain(run, names, exact=exact) for run in runs]
+
+    async def _project_name(self, project_id: str) -> str | None:
+        if project_id not in self._projects:
+            node = await self._registry.graph_repository().get_node(
+                self._principal.tenant_id, project_id
+            )
+            self._projects[project_id] = (
+                node.name if node is not None and node.kind is NodeKind.PROJECT else None
+            )
+        return self._projects[project_id]
+
+    async def _release_name(self, release_id: str | None) -> str | None:
+        if release_id is None:
+            return None
+        if release_id not in self._releases:
+            try:
+                release = await self._forecast.release(self._principal.tenant_id, release_id)
+            except GraphNotFound:
+                self._releases[release_id] = None
+            else:
+                self._releases[release_id] = release.name
+        return self._releases[release_id]
+
+
+def _views(
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[DayReportService, Depends(get_day_report_service)],
+    forecast: Annotated[ForecastService, Depends(get_forecast_service)],
+    registry: Annotated[ServiceRegistry, Depends(get_registry)],
+) -> _Views:
+    return _Views(principal, service, forecast, registry, _Reach(principal, forecast))
 
 
 @router.get("", response_model=list[DayReportResponse])
 async def list_reports(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DayReportService, Depends(get_day_report_service)],
-    registry: Annotated[ServiceRegistry, Depends(get_registry)],
+    views: Annotated[_Views, Depends(_views)],
+    project_id: Annotated[str | None, Query(max_length=200)] = None,
 ) -> list[DayReportResponse]:
-    _ensure(principal)
-    reports: list[tuple[DayReportDefinition, ReportRun | None]] = []
-    for definition in await service.definitions(principal.tenant_id):
-        runs = await service.runs(principal.tenant_id, definition.report_id, limit=1)
-        reports.append((definition, runs[0] if runs else None))
-    names = await _actor_names(
-        registry, principal.tenant_id, [run for _definition, run in reports if run is not None]
-    )
-    return [DayReportResponse.from_domain(definition, run, names) for definition, run in reports]
+    """Every report, or one project's: its last send, today's note and what the caller may do."""
+    _ensure(principal, Capability.READ_DAY_REPORTS)
+    return [
+        await views.report(definition)
+        for definition in await service.definitions(principal.tenant_id)
+        if project_id is None or definition.project_id == project_id
+    ]
 
 
-@router.get("/destinations", response_model=list[ReportDestinationOptionResponse])
-async def destination_options(
+@router.get("/setup", response_model=DayReportSetupResponse)
+async def setup_options(
     principal: Annotated[Principal, Depends(get_current_principal)],
     registry: Annotated[ServiceRegistry, Depends(get_registry)],
-) -> list[ReportDestinationOptionResponse]:
-    _ensure(principal)
-    return [
-        ReportDestinationOptionResponse(
-            kind=DestinationKind(kind),
-            label=_DESTINATION_LABELS[DestinationKind(kind)],
-            available=available,
-            note=note,
+    forecast: Annotated[ForecastService, Depends(get_forecast_service)],
+    views: Annotated[_Views, Depends(_views)],
+) -> DayReportSetupResponse:
+    """The projects the caller may set reports up for, the people, and the destinations."""
+    _ensure(principal, Capability.SET_UP_DAY_REPORTS)
+    tenant_id = principal.tenant_id
+    projects: list[ReportSetupProjectResponse] = []
+    for node in await registry.graph_repository().list_nodes(tenant_id, NodeKind.PROJECT):
+        if not await views.reach.may(Capability.SET_UP_DAY_REPORTS, node.id):
+            continue
+        releases = await forecast.releases(tenant_id, node.id)
+        projects.append(
+            ReportSetupProjectResponse(
+                id=node.id,
+                name=node.name or node.id,
+                releases=[
+                    ReportSetupReleaseResponse(release_id=item.release_id, name=item.name)
+                    for item in releases
+                ],
+            )
         )
-        for kind, available, note in await registry.report_destination_options(principal.tenant_id)
-    ]
+    names = await views.names()
+    return DayReportSetupResponse(
+        projects=sorted(projects, key=lambda item: item.name.casefold()),
+        people=sorted(
+            (
+                ReportSetupPersonResponse(id=member_id, name=name)
+                for member_id, name in names.items()
+            ),
+            key=lambda item: item.name.casefold(),
+        ),
+        destinations=[
+            ReportDestinationOptionResponse(
+                kind=DestinationKind(kind),
+                label=_DESTINATION_LABELS[DestinationKind(kind)],
+                available=available,
+                note=note,
+            )
+            for kind, available, note in await registry.report_destination_options(tenant_id)
+        ],
+    )
 
 
 @router.post("", response_model=DayReportResponse, status_code=status.HTTP_201_CREATED)
@@ -95,9 +251,12 @@ async def create_report(
     request: DayReportRequest,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DayReportService, Depends(get_day_report_service)],
+    views: Annotated[_Views, Depends(_views)],
 ) -> DayReportResponse:
-    _ensure(principal)
-    return DayReportResponse.from_domain(await _save(service, principal, request, report_id=""))
+    _ensure(principal, Capability.SET_UP_DAY_REPORTS)
+    await views.reach.ensure(Capability.SET_UP_DAY_REPORTS, request.project_id)
+    saved = await _save(service, principal, request, report_id="")
+    return await views.report(saved, sent_before=False)
 
 
 @router.get("/{report_id}", response_model=DayReportResponse)
@@ -105,16 +264,10 @@ async def get_report(
     report_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DayReportService, Depends(get_day_report_service)],
-    registry: Annotated[ServiceRegistry, Depends(get_registry)],
+    views: Annotated[_Views, Depends(_views)],
 ) -> DayReportResponse:
-    _ensure(principal)
-    try:
-        definition = await service.definition(principal.tenant_id, report_id)
-        runs = await service.runs(principal.tenant_id, report_id, limit=1)
-    except ReportNotFound as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    names = await _actor_names(registry, principal.tenant_id, runs)
-    return DayReportResponse.from_domain(definition, runs[0] if runs else None, names)
+    _ensure(principal, Capability.READ_DAY_REPORTS)
+    return await views.report(await _definition(service, principal, report_id))
 
 
 @router.put("/{report_id}", response_model=DayReportResponse)
@@ -123,11 +276,15 @@ async def update_report(
     request: DayReportRequest,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DayReportService, Depends(get_day_report_service)],
+    views: Annotated[_Views, Depends(_views)],
 ) -> DayReportResponse:
-    _ensure(principal)
-    return DayReportResponse.from_domain(
-        await _save(service, principal, request, report_id=report_id)
-    )
+    _ensure(principal, Capability.SET_UP_DAY_REPORTS)
+    current = await _definition(service, principal, report_id)
+    # Moving a report to another project needs the reach of both.
+    await views.reach.ensure(Capability.SET_UP_DAY_REPORTS, current.project_id)
+    await views.reach.ensure(Capability.SET_UP_DAY_REPORTS, request.project_id)
+    saved = await _save(service, principal, request, report_id=report_id)
+    return await views.report(saved)
 
 
 @router.delete("/{report_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -135,19 +292,26 @@ async def delete_report(
     report_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DayReportService, Depends(get_day_report_service)],
+    views: Annotated[_Views, Depends(_views)],
 ) -> Response:
-    _ensure(principal)
+    _ensure(principal, Capability.SET_UP_DAY_REPORTS)
+    try:
+        current = await service.definition(principal.tenant_id, report_id)
+    except ReportNotFound:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    await views.reach.ensure(Capability.SET_UP_DAY_REPORTS, current.project_id)
     await service.remove(principal.tenant_id, report_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{report_id}/preview", response_model=ReportPreviewResponse)
+@router.get("/{report_id}/preview", response_model=ReportPreviewResponse)
 async def preview_report(
     report_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DayReportService, Depends(get_day_report_service)],
 ) -> ReportPreviewResponse:
-    _ensure(principal)
+    """Today's report, built now: what it would say if it were sent. Nothing is sent or stored."""
+    _ensure(principal, Capability.READ_DAY_REPORTS)
     try:
         preview = await service.preview(principal.tenant_id, report_id)
     except (ReportNotFound, GraphNotFound) as exc:
@@ -160,16 +324,16 @@ async def send_report_now(
     report_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DayReportService, Depends(get_day_report_service)],
-    registry: Annotated[ServiceRegistry, Depends(get_registry)],
+    views: Annotated[_Views, Depends(_views)],
 ) -> ReportRunResponse:
-    _ensure(principal)
+    _ensure(principal, Capability.SEND_DAY_REPORTS)
+    definition = await _definition(service, principal, report_id)
+    await views.reach.ensure(Capability.SEND_DAY_REPORTS, definition.project_id)
     try:
         run = await service.send_now(principal.tenant_id, report_id, actor=principal.subject)
     except ReportNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return ReportRunResponse.from_domain(
-        run, await _actor_names(registry, principal.tenant_id, [run])
-    )
+    return (await views.runs(definition.project_id, [run]))[0]
 
 
 @router.get("/{report_id}/runs", response_model=list[ReportRunResponse])
@@ -177,16 +341,47 @@ async def report_runs(
     report_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DayReportService, Depends(get_day_report_service)],
-    registry: Annotated[ServiceRegistry, Depends(get_registry)],
+    views: Annotated[_Views, Depends(_views)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[ReportRunResponse]:
-    _ensure(principal)
+    """Past sends, newest first, with how each destination fared and who sent it."""
+    _ensure(principal, Capability.READ_DAY_REPORTS)
+    definition = await _definition(service, principal, report_id)
+    runs = await service.runs(principal.tenant_id, report_id, limit=limit)
+    return await views.runs(definition.project_id, runs)
+
+
+@router.put("/{report_id}/note", response_model=DayReportResponse)
+async def write_note(
+    report_id: str,
+    request: DayReportNoteRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[DayReportService, Depends(get_day_report_service)],
+    views: Annotated[_Views, Depends(_views)],
+) -> DayReportResponse:
+    """Write the note today's report opens with; an empty text removes it."""
+    _ensure(principal, Capability.SET_PROJECT_DATES)
+    definition = await _definition(service, principal, report_id)
     try:
-        runs = await service.runs(principal.tenant_id, report_id, limit=limit)
+        await service.save_note(
+            principal.tenant_id, report_id, request.text, actor=principal.subject
+        )
     except ReportNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    names = await _actor_names(registry, principal.tenant_id, runs)
-    return [ReportRunResponse.from_domain(run, names) for run in runs]
+    except ReportDefinitionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+    return await views.report(definition)
+
+
+async def _definition(
+    service: DayReportService, principal: Principal, report_id: str
+) -> DayReportDefinition:
+    try:
+        return await service.definition(principal.tenant_id, report_id)
+    except ReportNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 async def _save(
@@ -224,76 +419,12 @@ async def _save(
         ) from exc
 
 
-@project_router.get(
-    "/projects/{project_id}/day-reports", response_model=list[ProjectDayReportResponse]
-)
-async def project_reports(
-    project_id: str,
-    principal: Annotated[Principal, Depends(get_current_principal)],
-    service: Annotated[DayReportService, Depends(get_day_report_service)],
-    registry: Annotated[ServiceRegistry, Depends(get_registry)],
-) -> list[ProjectDayReportResponse]:
-    """The project's reports and the note each opens with today."""
-    _ensure(principal, Capability.SET_PROJECT_DATES)
-    names = await _member_names(registry, principal.tenant_id)
-    responses: list[ProjectDayReportResponse] = []
-    for definition in await service.definitions(principal.tenant_id):
-        if definition.project_id != project_id:
-            continue
-        note = await service.note(principal.tenant_id, definition.report_id)
-        responses.append(_project_report(definition, note, names))
-    return responses
-
-
-@project_router.put("/day-reports/{report_id}/note", response_model=ProjectDayReportResponse)
-async def write_note(
-    report_id: str,
-    request: DayReportNoteRequest,
-    principal: Annotated[Principal, Depends(get_current_principal)],
-    service: Annotated[DayReportService, Depends(get_day_report_service)],
-    registry: Annotated[ServiceRegistry, Depends(get_registry)],
-) -> ProjectDayReportResponse:
-    """Write the note today's report opens with; an empty text removes it."""
-    _ensure(principal, Capability.SET_PROJECT_DATES)
-    try:
-        definition = await service.definition(principal.tenant_id, report_id)
-        note = await service.save_note(
-            principal.tenant_id, report_id, request.text, actor=principal.subject
-        )
-    except ReportNotFound as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    except ReportDefinitionError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
-        ) from exc
-    names = await _member_names(registry, principal.tenant_id)
-    return _project_report(definition, note if note.text else None, names)
-
-
-def _project_report(
-    definition: DayReportDefinition, note: DayReportNote | None, names: dict[str, str]
-) -> ProjectDayReportResponse:
-    return ProjectDayReportResponse(
-        report_id=definition.report_id,
-        name=definition.name,
-        enabled=definition.enabled,
-        release_id=definition.release_id,
-        schedule=ReportScheduleDto(
-            local_time=definition.schedule.local_time,
-            timezone=definition.schedule.timezone,
-            weekdays=list(definition.schedule.weekdays),
-        ),
-        destination_count=len(definition.destinations),
-        note=(
-            DayReportNoteResponse.from_domain(note, names.get(note.author))
-            if note is not None
-            else None
-        ),
-    )
-
-
 async def _member_names(registry: ServiceRegistry, tenant_id: str) -> dict[str, str]:
-    """Members' display names by node id, read from the graph; one without a name is left out."""
+    """Members' display names by node id, read from the graph; one without a name is left out.
+
+    An id that is no member's gets no name, so the console shows the id or the
+    kind of place, never a guess.
+    """
     return {
         node.id: node.name
         for node in await registry.graph_repository().list_nodes(tenant_id, NodeKind.DEVELOPER)
@@ -301,19 +432,7 @@ async def _member_names(registry: ServiceRegistry, tenant_id: str) -> dict[str, 
     }
 
 
-async def _actor_names(
-    registry: ServiceRegistry, tenant_id: str, runs: Iterable[ReportRun]
-) -> dict[str, str]:
-    """Names for the members who sent these runs; a scheduled run has no sender.
-
-    An id that is no member's gets no name, so the console shows the id, never a guess.
-    """
-    if not any(run.actor for run in runs):
-        return {}
-    return await _member_names(registry, tenant_id)
-
-
-def _ensure(principal: Principal, capability: Capability = Capability.MANAGE_CONFIG) -> None:
+def _ensure(principal: Principal, capability: Capability) -> None:
     try:
         AuthorizationPolicy().ensure(principal, capability)
     except AuthorizationDenied as exc:

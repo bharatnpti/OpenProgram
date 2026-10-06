@@ -6,7 +6,6 @@ import {
   Layers,
   Link2,
   ListChecks,
-  Mail,
   Palette,
   PlugZap,
   ShieldAlert,
@@ -20,7 +19,6 @@ import { apiClient } from "../api/client";
 import type { ConfigNodeResponse, UnmappedMemberResponse } from "../api/schema";
 import { CheckinPreferencesPanel } from "../features/admin/CheckinPreferencesPanel";
 import { DataSourcesPanel } from "../features/admin/DataSourcesPanel";
-import { DayReportsPanel } from "../features/admin/DayReportsPanel";
 import { DeliveryStagesPanel } from "../features/admin/DeliveryStagesPanel";
 import { DirectoryPanel } from "../features/admin/DirectoryPanel";
 import { EntitiesPanel } from "../features/admin/EntitiesPanel";
@@ -41,7 +39,6 @@ const TABS: { value: string; label: string; icon: typeof Settings2 }[] = [
   { value: "sources", label: "Data sources", icon: Cable },
   { value: "stages", label: "Delivery stages", icon: Layers },
   { value: "gates", label: "Gates", icon: ListChecks },
-  { value: "reports", label: "Day reports", icon: Mail },
   { value: "escalation", label: "Escalation", icon: TrendingUp },
   { value: "branding", label: "Branding", icon: Palette },
 ];
@@ -96,7 +93,7 @@ export function AdminPage() {
         <h1 className="text-[28px] font-extrabold">Configuration</h1>
         <p className="mt-1 max-w-[640px] text-[15px] text-grey-secondary">
           Manage hierarchy, directory onboarding, graph links, assignments, check-in timing, the
-          systems OpenProgram connects to, delivery stages, gates, day reports and escalation.
+          systems OpenProgram connects to, delivery stages, gates and escalation.
         </p>
       </div>
 
@@ -188,10 +185,6 @@ export function AdminPage() {
 
         <TabsPrimitive.Content value="gates">
           <GatesPanel />
-        </TabsPrimitive.Content>
-
-        <TabsPrimitive.Content value="reports">
-          <DayReportsPanel projects={projects.data ?? []} members={members.data ?? []} />
         </TabsPrimitive.Content>
 
         <TabsPrimitive.Content value="escalation">
