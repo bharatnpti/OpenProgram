@@ -605,6 +605,66 @@ def test_api_gates_from_template_to_sign_off(settings: Settings) -> None:
     assert bad_template.status_code == 422
 
 
+def test_api_a_developer_and_a_scrum_master_work_the_gates_but_read_no_progress(
+    settings: Settings,
+) -> None:
+    app = create_app(settings=settings.model_copy(update={"demo_mode": True}))
+    with TestClient(app) as client:
+        client.post("/config/projects", json={"id": "checkout", "name": "Checkout"})
+        boards = {
+            role: client.get("/projects/checkout/gates", headers=_as(role))
+            for role in ("dev", "sm", "po", "mgr", "exec")
+        }
+        added = client.post(
+            "/issues/CHK-1/gate-items",
+            json={"template_id": "engineering-delivery", "kind": "test_case", "text": "Refunds"},
+            headers=_as("dev"),
+        )
+        item_id = added.json()["item_id"]
+        confirmed = client.post(f"/gate-items/{item_id}/confirm", headers=_as("sm"))
+        dev_sign = client.put(
+            f"/gate-items/{item_id}/sign-off",
+            json={"status": "met", "evidence_url": "https://ci.example.com/run/7"},
+            headers=_as("dev"),
+        )
+        sm_sign = client.put(
+            f"/gate-items/{item_id}/sign-off",
+            json={"status": "failed", "note": "Second refund double-books"},
+            headers=_as("sm"),
+        )
+        # The rest of the project stays with the roles that read its progress.
+        progress_reads = [
+            client.get(path, headers=_as(role))
+            for role in ("dev", "sm")
+            for path in (
+                "/projects/checkout/progress",
+                "/projects/checkout/delivery",
+                "/projects/checkout/requirements",
+                "/projects/checkout/releases",
+            )
+        ]
+
+    assert {role: response.status_code for role, response in boards.items()} == {
+        "dev": 200,
+        "sm": 200,
+        "po": 200,
+        "mgr": 200,
+        "exec": 200,
+    }
+    assert set(boards["dev"].json()) == {
+        "project_id",
+        "release_id",
+        "templates",
+        "issues",
+        "questions",
+        "actor_names",
+    }
+    assert added.status_code == 201 and confirmed.json()["status"] == "pending"
+    assert dev_sign.status_code == 200 and dev_sign.json()["status"] == "met"
+    assert sm_sign.status_code == 200 and sm_sign.json()["status"] == "failed"
+    assert [response.status_code for response in progress_reads] == [403] * 8
+
+
 def test_api_a_board_for_an_unknown_project_is_not_found(settings: Settings) -> None:
     app = create_app(settings=settings)
     with TestClient(app) as client:
