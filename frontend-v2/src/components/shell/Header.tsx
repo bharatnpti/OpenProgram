@@ -15,6 +15,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Delivery", to: "/delivery" },
   { label: "Signals", to: "/signals", needsAggregate: true },
   { label: "Coordination", to: "/coordination" },
+  { label: "Reports", to: "/reports" },
 ];
 
 export function Header({ onOpenPalette }: { onOpenPalette: () => void }) {

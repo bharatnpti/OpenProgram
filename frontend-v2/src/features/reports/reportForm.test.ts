@@ -3,7 +3,6 @@ import { test } from "node:test";
 
 import type { ReportRunResponse } from "../../api/schema";
 import {
-  destinationsSummary,
   emailDestinations,
   emptyReportForm,
   formProblems,
@@ -40,19 +39,6 @@ test("a report that is on needs a destination; teams needs no target", () => {
   assert.equal(requestFromForm({ ...teams, releaseId: "rel-1" }).release_id, "rel-1");
 });
 
-test("a summary counts each kind of destination", () => {
-  assert.equal(
-    destinationsSummary([
-      { kind: "email", target: "a@x.io" },
-      { kind: "email", target: "b@x.io" },
-      { kind: "person", target: "dev-1" },
-      { kind: "teams", target: "" },
-    ]),
-    "2 email addresses, 1 person, the Teams channel",
-  );
-  assert.equal(destinationsSummary([]), "Nowhere yet");
-});
-
 test("a send names who sent it, else shows the id, and a scheduled one says so", () => {
   const run: ReportRunResponse = {
     run_id: "r1",
@@ -69,6 +55,6 @@ test("a send names who sent it, else shows the id, and a scheduled one says so",
   };
   assert.equal(runStartedBy(run), "sent by Asha Rao");
   assert.equal(runStartedBy({ ...run, actor_name: null }), "sent by U0C1");
-  assert.equal(runStartedBy({ ...run, actor: null, actor_name: null }), "sent by an admin");
+  assert.equal(runStartedBy({ ...run, actor: null, actor_name: null }), "sent by a team member");
   assert.equal(runStartedBy({ ...run, trigger: "schedule", actor: null }), "on schedule");
 });

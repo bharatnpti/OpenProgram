@@ -1493,33 +1493,39 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/config/reports": {
+  "/day-reports": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /** List Reports */
-    get: operations["list_reports_config_reports_get"];
+    /**
+     * List Reports
+     * @description Every report, or one project's: its last send, today's note and what the caller may do.
+     */
+    get: operations["list_reports_day_reports_get"];
     put?: never;
     /** Create Report */
-    post: operations["create_report_config_reports_post"];
+    post: operations["create_report_day_reports_post"];
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  "/config/reports/destinations": {
+  "/day-reports/setup": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /** Destination Options */
-    get: operations["destination_options_config_reports_destinations_get"];
+    /**
+     * Setup Options
+     * @description The projects the caller may set reports up for, the people, and the destinations.
+     */
+    get: operations["setup_options_day_reports_setup_get"];
     put?: never;
     post?: never;
     delete?: never;
@@ -1528,7 +1534,7 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/config/reports/{report_id}": {
+  "/day-reports/{report_id}": {
     parameters: {
       query?: never;
       header?: never;
@@ -1536,35 +1542,38 @@ export interface paths {
       cookie?: never;
     };
     /** Get Report */
-    get: operations["get_report_config_reports__report_id__get"];
+    get: operations["get_report_day_reports__report_id__get"];
     /** Update Report */
-    put: operations["update_report_config_reports__report_id__put"];
+    put: operations["update_report_day_reports__report_id__put"];
     post?: never;
     /** Delete Report */
-    delete: operations["delete_report_config_reports__report_id__delete"];
+    delete: operations["delete_report_day_reports__report_id__delete"];
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  "/config/reports/{report_id}/preview": {
+  "/day-reports/{report_id}/preview": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    get?: never;
+    /**
+     * Preview Report
+     * @description Today's report, built now: what it would say if it were sent. Nothing is sent or stored.
+     */
+    get: operations["preview_report_day_reports__report_id__preview_get"];
     put?: never;
-    /** Preview Report */
-    post: operations["preview_report_config_reports__report_id__preview_post"];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  "/config/reports/{report_id}/send": {
+  "/day-reports/{report_id}/send": {
     parameters: {
       query?: never;
       header?: never;
@@ -1574,31 +1583,14 @@ export interface paths {
     get?: never;
     put?: never;
     /** Send Report Now */
-    post: operations["send_report_now_config_reports__report_id__send_post"];
+    post: operations["send_report_now_day_reports__report_id__send_post"];
     delete?: never;
     options?: never;
     head?: never;
     patch?: never;
     trace?: never;
   };
-  "/config/reports/{report_id}/runs": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Report Runs */
-    get: operations["report_runs_config_reports__report_id__runs_get"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/projects/{project_id}/day-reports": {
+  "/day-reports/{report_id}/runs": {
     parameters: {
       query?: never;
       header?: never;
@@ -1606,10 +1598,10 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Project Reports
-     * @description The project's reports and the note each opens with today.
+     * Report Runs
+     * @description Past sends, newest first, with how each destination fared and who sent it.
      */
-    get: operations["project_reports_projects__project_id__day_reports_get"];
+    get: operations["report_runs_day_reports__report_id__runs_get"];
     put?: never;
     post?: never;
     delete?: never;
@@ -3085,7 +3077,10 @@ export interface components {
        */
       release_id?: string | null;
     };
-    /** DayReportResponse */
+    /**
+     * DayReportResponse
+     * @description A day report as the caller may see it, with what the caller may do with it.
+     */
     DayReportResponse: {
       /** Report Id */
       report_id: string;
@@ -3093,11 +3088,28 @@ export interface components {
       name: string;
       /** Project Id */
       project_id: string;
+      /**
+       * Project Name
+       * @description Null when the project no longer exists.
+       */
+      project_name: string | null;
       /** Enabled */
       enabled: boolean;
       schedule: components["schemas"]["ReportScheduleDto"];
-      /** Destinations */
+      /**
+       * Destinations
+       * @description Exactly where it goes; empty for a reader who may not set the report up.
+       */
       destinations: components["schemas"]["ReportDestinationDto"][];
+      /** Destination Count */
+      destination_count: number;
+      /** Audience */
+      audience: components["schemas"]["ReportAudienceResponse"][];
+      /**
+       * Audience Summary
+       * @description Where it goes in one line, such as "3 people by direct message".
+       */
+      audience_summary: string;
       /**
        * Updated At
        * Format: date-time
@@ -3107,7 +3119,39 @@ export interface components {
       updated_by: string;
       /** Release Id */
       release_id?: string | null;
+      /** Release Name */
+      release_name?: string | null;
       last_run?: components["schemas"]["ReportRunResponse"] | null;
+      /** @description The note today's report opens with, if anyone wrote one. */
+      note?: components["schemas"]["DayReportNoteResponse"] | null;
+      /**
+       * Can Send
+       * @description The caller may send it now.
+       */
+      can_send: boolean;
+      /**
+       * Can Edit
+       * @description The caller may change, switch or remove it.
+       */
+      can_edit: boolean;
+      /**
+       * Can Write Note
+       * @description The caller may write the note today's report opens with.
+       */
+      can_write_note: boolean;
+    };
+    /**
+     * DayReportSetupResponse
+     * @description What setting a report up can pick from: the projects the caller may report on,
+     *     the people it can go to, and the kinds of destination with whether each can be used.
+     */
+    DayReportSetupResponse: {
+      /** Projects */
+      projects: components["schemas"]["ReportSetupProjectResponse"][];
+      /** People */
+      people: components["schemas"]["ReportSetupPersonResponse"][];
+      /** Destinations */
+      destinations: components["schemas"]["ReportDestinationOptionResponse"][];
     };
     /** DeadLetterResponse */
     DeadLetterResponse: {
@@ -3169,8 +3213,16 @@ export interface components {
     /** DeliveryOutcomeResponse */
     DeliveryOutcomeResponse: {
       kind: components["schemas"]["DestinationKind"];
-      /** Target */
+      /**
+       * Target
+       * @description The exact destination; empty for a reader who may not set the report up.
+       */
       target: string;
+      /**
+       * Label
+       * @description Who or where, as the reader may see it: a person's name, else the exact destination for whoever sets the report up, else what kind of place it is.
+       */
+      label: string;
       /** Ok */
       ok: boolean;
       /** Detail */
@@ -4299,24 +4351,6 @@ export interface components {
       /** Edges */
       edges: components["schemas"]["PersonaTreeEdgeDto"][];
     };
-    /**
-     * ProjectDayReportResponse
-     * @description A project's day report as its product owner or manager sees it: when, and today's note.
-     */
-    ProjectDayReportResponse: {
-      /** Report Id */
-      report_id: string;
-      /** Name */
-      name: string;
-      /** Enabled */
-      enabled: boolean;
-      /** Release Id */
-      release_id: string | null;
-      schedule: components["schemas"]["ReportScheduleDto"];
-      /** Destination Count */
-      destination_count: number;
-      note: components["schemas"]["DayReportNoteResponse"] | null;
-    };
     /** ProjectDeliveryResponse */
     ProjectDeliveryResponse: {
       project: components["schemas"]["ScopeDeliveryResponse"];
@@ -4458,6 +4492,20 @@ export interface components {
       /** Updated By */
       updated_by: string;
     };
+    /**
+     * ReportAudienceResponse
+     * @description How many places of one kind a report goes to, and the people among them by name.
+     */
+    ReportAudienceResponse: {
+      kind: components["schemas"]["DestinationKind"];
+      /** Count */
+      count: number;
+      /**
+       * Names
+       * @description For people, the names of those who are members; anyone else is only counted.
+       */
+      names: string[];
+    };
     /** ReportDestinationDto */
     ReportDestinationDto: {
       kind: components["schemas"]["DestinationKind"];
@@ -4569,6 +4617,29 @@ export interface components {
       table?: components["schemas"]["ReportTableResponse"] | null;
       /** Empty Text */
       empty_text: string;
+    };
+    /** ReportSetupPersonResponse */
+    ReportSetupPersonResponse: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+    };
+    /** ReportSetupProjectResponse */
+    ReportSetupProjectResponse: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Releases */
+      releases: components["schemas"]["ReportSetupReleaseResponse"][];
+    };
+    /** ReportSetupReleaseResponse */
+    ReportSetupReleaseResponse: {
+      /** Release Id */
+      release_id: string;
+      /** Name */
+      name: string;
     };
     /** ReportTableResponse */
     ReportTableResponse: {
@@ -9315,9 +9386,11 @@ export interface operations {
       };
     };
   };
-  list_reports_config_reports_get: {
+  list_reports_day_reports_get: {
     parameters: {
-      query?: never;
+      query?: {
+        project_id?: string | null;
+      };
       header?: {
         authorization?: string | null;
       };
@@ -9346,7 +9419,7 @@ export interface operations {
       };
     };
   };
-  create_report_config_reports_post: {
+  create_report_day_reports_post: {
     parameters: {
       query?: never;
       header?: {
@@ -9381,7 +9454,7 @@ export interface operations {
       };
     };
   };
-  destination_options_config_reports_destinations_get: {
+  setup_options_day_reports_setup_get: {
     parameters: {
       query?: never;
       header?: {
@@ -9398,7 +9471,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ReportDestinationOptionResponse"][];
+          "application/json": components["schemas"]["DayReportSetupResponse"];
         };
       };
       /** @description Validation Error */
@@ -9412,7 +9485,7 @@ export interface operations {
       };
     };
   };
-  get_report_config_reports__report_id__get: {
+  get_report_day_reports__report_id__get: {
     parameters: {
       query?: never;
       header?: {
@@ -9445,7 +9518,7 @@ export interface operations {
       };
     };
   };
-  update_report_config_reports__report_id__put: {
+  update_report_day_reports__report_id__put: {
     parameters: {
       query?: never;
       header?: {
@@ -9482,7 +9555,7 @@ export interface operations {
       };
     };
   };
-  delete_report_config_reports__report_id__delete: {
+  delete_report_day_reports__report_id__delete: {
     parameters: {
       query?: never;
       header?: {
@@ -9513,7 +9586,7 @@ export interface operations {
       };
     };
   };
-  preview_report_config_reports__report_id__preview_post: {
+  preview_report_day_reports__report_id__preview_get: {
     parameters: {
       query?: never;
       header?: {
@@ -9546,7 +9619,7 @@ export interface operations {
       };
     };
   };
-  send_report_now_config_reports__report_id__send_post: {
+  send_report_now_day_reports__report_id__send_post: {
     parameters: {
       query?: never;
       header?: {
@@ -9579,7 +9652,7 @@ export interface operations {
       };
     };
   };
-  report_runs_config_reports__report_id__runs_get: {
+  report_runs_day_reports__report_id__runs_get: {
     parameters: {
       query?: {
         limit?: number;
@@ -9601,39 +9674,6 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ReportRunResponse"][];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"];
-        };
-      };
-    };
-  };
-  project_reports_projects__project_id__day_reports_get: {
-    parameters: {
-      query?: never;
-      header?: {
-        authorization?: string | null;
-      };
-      path: {
-        project_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ProjectDayReportResponse"][];
         };
       };
       /** @description Validation Error */
@@ -9670,7 +9710,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ProjectDayReportResponse"];
+          "application/json": components["schemas"]["DayReportResponse"];
         };
       };
       /** @description Validation Error */

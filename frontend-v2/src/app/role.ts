@@ -57,6 +57,16 @@ export type RoleContextValue = {
   canSetPodDates: boolean;
   /** Mirrors `EDIT_GATES`: everyone but the executive. Sign-off is per gate kind. */
   canEditGates: boolean;
+  /** Mirrors `READ_DAY_REPORTS`: every role reads the day reports and their sends. */
+  canReadDayReports: boolean;
+  /**
+   * Mirrors `SEND_DAY_REPORTS`: scrum master, manager, admin. A scrum master only
+   * for a project one of their pods works on, so each report's own `can_send`
+   * decides its button.
+   */
+  canSendDayReports: boolean;
+  /** Mirrors `SET_UP_DAY_REPORTS`: the same roles and limit, per report `can_edit`. */
+  canSetUpDayReports: boolean;
   /** The roles the current lens acts with, for per-kind sign-off. */
   lensRoles: AppRole[];
   canAccessAdmin: boolean;

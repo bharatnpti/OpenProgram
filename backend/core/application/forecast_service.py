@@ -252,6 +252,14 @@ class ForecastService:
             )
         )
 
+    async def runs_project_pod(self, tenant_id: str, project_id: str, subject: str) -> bool:
+        """Whether ``subject`` runs a pod working on the project today, by :meth:`runs_pod`."""
+        today = self._today()
+        for pod in await self._project_pods(tenant_id, project_id, today):
+            if await self.runs_pod(tenant_id, pod.id, subject, today):
+                return True
+        return False
+
     # ---- forecasts -------------------------------------------------------
 
     async def project_delivery(

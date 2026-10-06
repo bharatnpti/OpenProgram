@@ -1128,48 +1128,63 @@ def test_api_creates_previews_sends_and_lists_a_report(settings: Settings) -> No
             client.post("/config/projects", json={"id": "checkout", "name": "Checkout"}).status_code
             == 201
         )
-        created = client.post("/config/reports", json=_report_body("checkout"))
+        created = client.post("/day-reports", json=_report_body("checkout"))
         report_id = created.json()["report_id"]
-        preview = client.post(f"/config/reports/{report_id}/preview")
-        sent = client.post(f"/config/reports/{report_id}/send")
-        listed = client.get("/config/reports")
-        runs = client.get(f"/config/reports/{report_id}/runs")
-        options = client.get("/config/reports/destinations")
+        preview = client.get(f"/day-reports/{report_id}/preview")
+        sent = client.post(f"/day-reports/{report_id}/send")
+        listed = client.get("/day-reports")
+        one_project = client.get("/day-reports", params={"project_id": "checkout"})
+        other_project = client.get("/day-reports", params={"project_id": "nope"})
+        runs = client.get(f"/day-reports/{report_id}/runs")
+        setup = client.get("/day-reports/setup")
         updated = client.put(
-            f"/config/reports/{report_id}", json=_report_body("checkout", enabled=False)
+            f"/day-reports/{report_id}", json=_report_body("checkout", enabled=False)
         )
-        removed = client.delete(f"/config/reports/{report_id}")
-        gone = client.get(f"/config/reports/{report_id}")
+        removed = client.delete(f"/day-reports/{report_id}")
+        gone = client.get(f"/day-reports/{report_id}")
+        removed_again = client.delete(f"/day-reports/{report_id}")
+        old = client.get("/config/reports")
 
     assert created.status_code == 201
+    assert created.json()["last_run"] is None
+    assert (created.json()["project_name"], created.json()["release_name"]) == ("Checkout", None)
     assert preview.status_code == 200
     assert preview.json()["title"].startswith("Checkout: day report")
     assert "WHERE WE STAND" in preview.json()["text"]
     assert sent.status_code == 200
     assert sent.json()["trigger"] == "manual"
     assert sent.json()["status"] == "sent"
+    assert sent.json()["outcomes"][0]["label"] == "Dana"
     assert listed.json()[0]["last_run"]["run_id"] == sent.json()["run_id"]
+    assert [item["report_id"] for item in one_project.json()] == [report_id]
+    assert other_project.json() == []
     assert [run["run_id"] for run in runs.json()] == [sent.json()["run_id"]]
-    available = {option["kind"]: option["available"] for option in options.json()}
+    options = setup.json()
+    available = {option["kind"]: option["available"] for option in options["destinations"]}
     assert available == {"chat_channel": False, "person": True, "email": False, "teams": False}
+    assert [(item["id"], item["name"]) for item in options["projects"]] == [
+        ("checkout", "Checkout")
+    ]
+    assert {"id": "U1001", "name": "Dana"} in options["people"]
     assert updated.json()["enabled"] is False
     assert removed.status_code == 204
     assert gone.status_code == 404
+    assert removed_again.status_code == 204
+    # The reports left the config routes; nothing answers there any more.
+    assert old.status_code == 404
 
 
 def test_api_names_the_member_who_sent_a_report(settings: Settings) -> None:
     app = create_app(settings=settings.model_copy(update={"chat_provider": "fake"}))
     with TestClient(app) as client:
         client.post("/config/projects", json={"id": "checkout", "name": "Checkout"})
-        report_id = client.post("/config/reports", json=_report_body("checkout")).json()[
-            "report_id"
-        ]
-        unnamed = client.post(f"/config/reports/{report_id}/send")
+        report_id = client.post("/day-reports", json=_report_body("checkout")).json()["report_id"]
+        unnamed = client.post(f"/day-reports/{report_id}/send")
         client.post("/config/members", json={"id": "dev-user", "name": "Dana Admin"})
-        named = client.post(f"/config/reports/{report_id}/send")
-        runs = client.get(f"/config/reports/{report_id}/runs")
-        listed = client.get("/config/reports")
-        read = client.get(f"/config/reports/{report_id}")
+        named = client.post(f"/day-reports/{report_id}/send")
+        runs = client.get(f"/day-reports/{report_id}/runs")
+        listed = client.get("/day-reports")
+        read = client.get(f"/day-reports/{report_id}")
 
     # An id that is no member's keeps no name: the console shows the id itself.
     assert (unnamed.json()["actor"], unnamed.json()["actor_name"]) == ("dev-user", None)
@@ -1192,54 +1207,239 @@ def test_api_names_the_member_who_sent_a_report(settings: Settings) -> None:
 def test_api_refuses_a_report_it_cannot_send(settings: Settings) -> None:
     app = create_app(settings=settings)
     with TestClient(app) as client:
-        no_project = client.post("/config/reports", json=_report_body("nope"))
+        no_project = client.post("/day-reports", json=_report_body("nope"))
         client.post("/config/projects", json={"id": "checkout", "name": "Checkout"})
-        nowhere = client.post("/config/reports", json=_report_body("checkout", destinations=[]))
+        nowhere = client.post("/day-reports", json=_report_body("checkout", destinations=[]))
 
     assert no_project.status_code == 422
     assert nowhere.status_code == 422
     assert "needs somewhere to go" in nowhere.json()["detail"]
 
 
-@pytest.mark.parametrize("role", ["dev", "po", "sm", "mgr", "exec"])
-def test_only_an_admin_manages_reports(settings: Settings, role: str) -> None:
-    app = create_app(settings=settings.model_copy(update={"dev_principal_roles": role}))
-    with TestClient(app, raise_server_exceptions=False) as client:
-        responses = [
-            client.get("/config/reports"),
-            client.post("/config/reports", json=_report_body("checkout")),
-            client.post("/config/reports/x/send"),
-            client.get("/config/reports/destinations"),
-        ]
+def _reach_app(settings: Settings) -> tuple[TestClient, str, str]:
+    """Two projects with a pod each, a report on each, and the people around them.
 
-    assert [response.status_code for response in responses] == [403] * 4
+    Priya is the Payments pod's scrum master contact (Checkout); Ravi is a
+    member of the Data pod (Insights). Every send goes to the fake chat provider.
+    """
+    app = create_app(
+        settings=settings.model_copy(update={"demo_mode": True, "chat_provider": "fake"})
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+    client.__enter__()
+    graph = app.state.registry.graph_repository()
+
+    async def seed() -> None:
+        for node in (
+            Project(tenant_id=TENANT, id="checkout", name="Checkout Revamp"),
+            Project(tenant_id=TENANT, id="insights", name="Customer Insights"),
+            Pod(
+                tenant_id=TENANT,
+                id="pod-pay",
+                name="Payments",
+                metadata={"escalation_sm_member_id": "dev-priya"},
+            ),
+            Pod(tenant_id=TENANT, id="pod-data", name="Data"),
+            Developer(tenant_id=TENANT, id="dev-priya", name="Priya"),
+            Developer(tenant_id=TENANT, id="dev-ravi", name="Ravi"),
+            Developer(tenant_id=TENANT, id="dev-asha", name="Asha"),
+        ):
+            await graph.upsert_node(node)
+        for edge in (
+            _edge("checkout", "pod-pay"),
+            _edge("insights", "pod-data"),
+            _edge("pod-data", "dev-ravi"),
+        ):
+            await graph.add_edge(edge)
+
+    asyncio.run(seed())
+    destinations = [
+        {"kind": "person", "target": "dev-asha"},
+        {"kind": "person", "target": "U-NOBODY"},
+        {"kind": "email", "target": "leads@example.com"},
+    ]
+    checkout = client.post(
+        "/day-reports", json=_report_body("checkout", destinations=destinations)
+    ).json()["report_id"]
+    insights = client.post(
+        "/day-reports", json=_report_body("insights", name="Insights daily")
+    ).json()["report_id"]
+    return client, checkout, insights
 
 
-@pytest.mark.parametrize(("role", "allowed"), [("po", True), ("mgr", True), ("dev", False)])
-def test_a_product_owner_writes_the_note_without_managing_reports(
+def _as(role: str, member: str = "dev-zoe") -> dict[str, str]:
+    return {"x-openprogram-dev-user": member, "x-openprogram-dev-roles": role}
+
+
+@pytest.mark.parametrize("role", ["dev", "sm", "po", "mgr", "exec", "admin"])
+def test_every_role_reads_the_reports_todays_report_and_past_sends(
+    settings: Settings, role: str
+) -> None:
+    client, checkout, _insights = _reach_app(settings)
+    with client:
+        client.post(f"/day-reports/{checkout}/send")
+        persona = _as(role)
+        listed = client.get("/day-reports", headers=persona)
+        read = client.get(f"/day-reports/{checkout}", headers=persona)
+        preview = client.get(f"/day-reports/{checkout}/preview", headers=persona)
+        runs = client.get(f"/day-reports/{checkout}/runs", headers=persona)
+
+    assert [response.status_code for response in (listed, read, preview, runs)] == [200] * 4
+    assert {item["name"] for item in listed.json()} == {"Checkout daily", "Insights daily"}
+    assert read.json()["project_name"] == "Checkout Revamp"
+    assert preview.json()["title"].startswith("Checkout Revamp: day report")
+    assert runs.json()[0]["actor"] == "dev-user"
+
+
+@pytest.mark.parametrize(
+    ("role", "member", "checkout_allowed", "insights_allowed"),
+    [
+        # A scrum master of a pod on the project: its contact, or one of its members.
+        ("sm", "dev-priya", True, False),
+        ("sm", "dev-ravi", False, True),
+        ("mgr", "dev-zoe", True, True),
+        ("admin", "dev-zoe", True, True),
+        ("po", "dev-priya", False, False),
+        ("dev", "dev-priya", False, False),
+        ("exec", "dev-priya", False, False),
+    ],
+)
+def test_the_scrum_master_of_a_pod_on_the_project_a_manager_or_an_admin_sends_and_sets_up(
+    settings: Settings,
+    role: str,
+    member: str,
+    checkout_allowed: bool,
+    insights_allowed: bool,
+) -> None:
+    client, checkout, insights = _reach_app(settings)
+    persona = _as(role, member)
+    with client:
+        listed = {
+            item["report_id"]: item for item in client.get("/day-reports", headers=persona).json()
+        }
+        setup = client.get("/day-reports/setup", headers=persona)
+        # Moving a report to another project needs the reach of both.
+        moved = client.put(
+            f"/day-reports/{checkout}",
+            json=_report_body("insights", name="Checkout daily"),
+            headers=persona,
+        )
+        if moved.status_code == 200:
+            client.put(f"/day-reports/{checkout}", json=_report_body("checkout"), headers=persona)
+        outcomes: dict[str, list[int]] = {}
+        for report_id, project_id in ((checkout, "checkout"), (insights, "insights")):
+            outcomes[project_id] = [
+                client.post(f"/day-reports/{report_id}/send", headers=persona).status_code,
+                client.put(
+                    f"/day-reports/{report_id}",
+                    json=_report_body(project_id, name="Renamed"),
+                    headers=persona,
+                ).status_code,
+                client.post(
+                    "/day-reports", json=_report_body(project_id), headers=persona
+                ).status_code,
+                client.delete(f"/day-reports/{report_id}", headers=persona).status_code,
+            ]
+
+    def expected(allowed: bool) -> list[int]:
+        return [200, 200, 201, 204] if allowed else [403, 403, 403, 403]
+
+    assert outcomes == {
+        "checkout": expected(checkout_allowed),
+        "insights": expected(insights_allowed),
+    }
+    assert moved.status_code == (200 if checkout_allowed and insights_allowed else 403)
+    for report_id, allowed in ((checkout, checkout_allowed), (insights, insights_allowed)):
+        assert (listed[report_id]["can_send"], listed[report_id]["can_edit"]) == (allowed, allowed)
+    if role in {"po", "dev", "exec"}:
+        assert setup.status_code == 403
+        return
+    reachable = sorted(project["id"] for project in setup.json()["projects"])
+    assert reachable == [
+        project
+        for project, allowed in (("checkout", checkout_allowed), ("insights", insights_allowed))
+        if allowed
+    ]
+
+
+def test_a_reader_who_cannot_set_a_report_up_sees_names_and_counts_never_addresses(
+    settings: Settings,
+) -> None:
+    client, checkout, _insights = _reach_app(settings)
+    with client:
+        client.post(f"/day-reports/{checkout}/send")
+        viewer = client.get(f"/day-reports/{checkout}", headers=_as("dev")).json()
+        viewer_runs = client.get(f"/day-reports/{checkout}/runs", headers=_as("dev")).json()
+        listed = client.get("/day-reports", headers=_as("exec")).json()
+        setter = client.get(f"/day-reports/{checkout}", headers=_as("mgr")).json()
+        setter_runs = client.get(f"/day-reports/{checkout}/runs", headers=_as("mgr")).json()
+
+    assert viewer["destinations"] == []
+    assert viewer["destination_count"] == 3
+    assert viewer["audience"] == [
+        {"kind": "person", "count": 2, "names": ["Asha"]},
+        {"kind": "email", "count": 1, "names": []},
+    ]
+    assert viewer["audience_summary"] == "2 people by direct message, 1 email address"
+    outcomes = viewer["last_run"]["outcomes"]
+    assert [(item["target"], item["label"]) for item in outcomes] == [
+        ("", "Asha"),
+        ("", "A team member"),
+        ("", "An email address"),
+    ]
+    assert [item["label"] for item in viewer_runs[0]["outcomes"]] == [
+        "Asha",
+        "A team member",
+        "An email address",
+    ]
+    text = json.dumps([viewer, viewer_runs, listed])
+    assert "leads@example.com" not in text
+    assert "U-NOBODY" not in text
+    assert "dev-asha" not in text
+    # Whoever sets it up sees exactly where it goes.
+    assert [item["target"] for item in setter["destinations"]] == [
+        "dev-asha",
+        "U-NOBODY",
+        "leads@example.com",
+    ]
+    assert [(item["target"], item["label"]) for item in setter_runs[0]["outcomes"]] == [
+        ("dev-asha", "Asha"),
+        ("U-NOBODY", "U-NOBODY"),
+        ("leads@example.com", "leads@example.com"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("role", "allowed"),
+    [("po", True), ("mgr", True), ("admin", True), ("dev", False), ("sm", False), ("exec", False)],
+)
+def test_the_product_owner_a_manager_or_an_admin_writes_the_days_note(
     settings: Settings, role: str, allowed: bool
 ) -> None:
-    app = create_app(settings=settings.model_copy(update={"demo_mode": True}))
-    persona = {"x-openprogram-dev-user": "dev-priya", "x-openprogram-dev-roles": role}
-    with TestClient(app) as client:
-        client.post("/config/projects", json={"id": "checkout", "name": "Checkout"})
-        report_id = client.post("/config/reports", json=_report_body("checkout")).json()[
-            "report_id"
-        ]
-        listed = client.get("/projects/checkout/day-reports", headers=persona)
+    client, checkout, _insights = _reach_app(settings)
+    persona = _as(role, "dev-priya")
+    with client:
+        listed = client.get("/day-reports", params={"project_id": "checkout"}, headers=persona)
         written = client.put(
-            f"/day-reports/{report_id}/note", json={"text": "Vendor on Thu."}, headers=persona
+            f"/day-reports/{checkout}/note", json={"text": "Vendor on Thu."}, headers=persona
         )
         missing = client.put("/day-reports/nope/note", json={"text": "x"}, headers=persona)
+        read = client.get(f"/day-reports/{checkout}", headers=_as("dev"))
+        removed = client.put(f"/day-reports/{checkout}/note", json={"text": ""}, headers=persona)
 
-    if not allowed:
-        assert (listed.status_code, written.status_code) == (403, 403)
-        return
     assert listed.status_code == 200
-    assert [item["report_id"] for item in listed.json()] == [report_id]
+    assert [item["can_write_note"] for item in listed.json()] == [allowed]
+    if not allowed:
+        assert (written.status_code, missing.status_code) == (403, 403)
+        assert read.json()["note"] is None
+        return
     assert written.status_code == 200
     assert written.json()["note"]["text"] == "Vendor on Thu."
+    assert written.json()["note"]["author_name"] == "Priya"
     assert missing.status_code == 404
+    # Everyone reads the note today's report opens with.
+    assert read.json()["note"]["text"] == "Vendor on Thu."
+    assert removed.json()["note"] is None
 
 
 # --- Workflow -------------------------------------------------------------------------------
