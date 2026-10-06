@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 from datetime import time
 from functools import lru_cache
@@ -213,6 +214,10 @@ class Settings(BaseSettings):
     oidc_scopes: tuple[str, ...] = ("openid", "profile", "email")
     auth_public_backend_url: str = "http://127.0.0.1:8000"
     auth_frontend_url: str = "http://localhost:5173"
+    # The console's public address, for links in what OpenProgram sends out (the
+    # day report's "Open in OpenProgram"). Unset, auth_frontend_url is used; a
+    # local address is linked only when environment is 'local'.
+    console_url: str | None = None
     auth_session_ttl_seconds: int = 7200
     auth_flow_state_ttl_seconds: int = 300
     auth_cookie_name: str = "openprogram_session"
@@ -461,9 +466,18 @@ class Settings(BaseSettings):
             raise ValueError("value must be an IANA timezone") from exc
         return value
 
-    @field_validator("auth_public_backend_url", "auth_frontend_url")
+    @field_validator("console_url", mode="before")
     @classmethod
-    def validate_absolute_http_url(cls, value: str) -> str:
+    def empty_console_url_is_unset(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("auth_public_backend_url", "auth_frontend_url", "console_url")
+    @classmethod
+    def validate_absolute_http_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         stripped = value.strip().rstrip("/")
         parts = urlsplit(stripped)
         if parts.scheme not in {"http", "https"} or not parts.netloc:
@@ -674,6 +688,19 @@ class Settings(BaseSettings):
     def auth_callback_url(self) -> str:
         return f"{self.auth_public_backend_url}/api/v1/auth/callback"
 
+    @property
+    def public_console_url(self) -> str | None:
+        """The console's address for links that leave OpenProgram, or None to send none.
+
+        console_url, else auth_frontend_url. Outside the local environment a
+        local address (localhost, *.localhost, a loopback IP) is no link anyone
+        who gets the message can open, so none is sent rather than that one.
+        """
+        url = self.console_url or self.auth_frontend_url
+        if self.environment != "local" and _is_local_address(url):
+            return None
+        return url
+
     def frontend_logged_out_url(self) -> str:
         return f"{self.auth_frontend_url}/logged-out"
 
@@ -756,6 +783,18 @@ class Settings(BaseSettings):
 def _origin(value: str) -> str:
     parts = urlsplit(value)
     return urlunsplit((parts.scheme, parts.netloc, "", "", ""))
+
+
+def _is_local_address(url: str) -> bool:
+    """Whether the URL names this machine: localhost, *.localhost, a loopback IP or 0.0.0.0."""
+    host = (urlsplit(url).hostname or "").rstrip(".").lower()
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_unspecified
 
 
 @lru_cache(maxsize=1)

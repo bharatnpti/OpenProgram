@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import type { ReportRunResponse } from "../../api/schema";
 import {
   destinationsSummary,
   emailDestinations,
   emptyReportForm,
   formProblems,
   requestFromForm,
+  runStartedBy,
   scheduleLabel,
 } from "./reportForm.ts";
 
@@ -49,4 +51,24 @@ test("a summary counts each kind of destination", () => {
     "2 email addresses, 1 person, the Teams channel",
   );
   assert.equal(destinationsSummary([]), "Nowhere yet");
+});
+
+test("a send names who sent it, else shows the id, and a scheduled one says so", () => {
+  const run: ReportRunResponse = {
+    run_id: "r1",
+    report_id: "rep-1",
+    report_date: "2026-10-06",
+    trigger: "manual",
+    status: "sent",
+    started_at: "2026-10-06T16:00:00Z",
+    finished_at: "2026-10-06T16:00:02Z",
+    title: "Checkout: day report",
+    outcomes: [],
+    actor: "U0C1",
+    actor_name: "Asha Rao",
+  };
+  assert.equal(runStartedBy(run), "sent by Asha Rao");
+  assert.equal(runStartedBy({ ...run, actor_name: null }), "sent by U0C1");
+  assert.equal(runStartedBy({ ...run, actor: null, actor_name: null }), "sent by an admin");
+  assert.equal(runStartedBy({ ...run, trigger: "schedule", actor: null }), "on schedule");
 });

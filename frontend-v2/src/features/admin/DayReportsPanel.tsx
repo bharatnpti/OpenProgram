@@ -30,6 +30,7 @@ import {
   formFromReport,
   formProblems,
   requestFromForm,
+  runStartedBy,
   scheduleLabel,
 } from "./reportForm";
 
@@ -640,8 +641,7 @@ function HistoryDialog({
             <li key={run.run_id} className="rounded-2xl border border-grey-border p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-[14px] font-bold">
-                  {formatDay(run.report_date)} ·{" "}
-                  {run.trigger === "manual" ? `sent by ${run.actor ?? "an admin"}` : "on schedule"}
+                  {formatDay(run.report_date)} · {runStartedBy(run)}
                 </span>
                 <RagChip tone={RUN_TONES[run.status]} dot className="h-6 text-[12px]">
                   {RUN_LABELS[run.status]}
