@@ -249,7 +249,7 @@ async def test_merged_request_on_an_open_issue_is_drift() -> None:
     assert finding.evidence is not None
     assert finding.evidence.identifier == "acme/api#1"
     assert finding.evidence.url == "https://git.test/acme/api/-/merge_requests/1"
-    assert "merged 2 day(s) ago" in finding.reason
+    assert "merged 2 days ago" in finding.reason
     assert "CHK-3 is still 'In Progress'" in finding.reason
 
 
@@ -379,6 +379,7 @@ async def test_claimed_progress_without_git_activity_flags_amber() -> None:
     assert findings[0].kind is DriftFindingKind.CLAIMED_PROGRESS_NO_ACTIVITY
     assert findings[0].severity is Rag.AMBER
     assert findings[0].owner_id == "dev-1"
+    assert findings[0].reason.endswith("no Git/PR activity in 5 days.")
 
 
 async def test_recent_git_activity_suppresses_claimed_progress() -> None:
