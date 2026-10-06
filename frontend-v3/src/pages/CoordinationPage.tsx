@@ -10,13 +10,22 @@ import type {
   CrossPersonRequestResponse,
   CrossPersonRequestStatus,
 } from "../api/schema";
-import { useNames } from "../app/directory";
+import { useMemberId, useNames } from "../app/directory";
 import { useRole } from "../app/role";
 import { PanelState, SectionHeader } from "../components/PanelState";
 import { ChipPicker, Panel } from "../components/ui/Bits";
 import { Pill } from "../components/ui/Pill";
 import { RagChip } from "../components/ui/RagChip";
+import { actionError } from "../lib/errors";
 import { daysBetween, formatDate } from "../lib/format";
+import {
+  daysLabel,
+  deliveryNote,
+  plural,
+  requestKindLabel,
+  requestStatusLabel,
+  spaced,
+} from "../lib/words";
 
 const NEEDS = "a scrum master, product owner, manager, executive or admin";
 
@@ -107,7 +116,7 @@ function Requests() {
           >
             <ul className="grid gap-2">
               {live(waiting.data?.requests).map((r) => (
-                <RequestCard key={r.id} request={r} />
+                <RequestCard key={r.id} request={r} showStatus />
               ))}
             </ul>
           </PanelState>
@@ -122,7 +131,7 @@ function Requests() {
           >
             <ul className="grid gap-2">
               {live(raised.data?.requests).map((r) => (
-                <RequestCard key={r.id} request={r} />
+                <RequestCard key={r.id} request={r} showStatus />
               ))}
             </ul>
           </PanelState>
@@ -132,14 +141,20 @@ function Requests() {
   );
 }
 
-const DELIVERY_WORDS: Record<string, string> = {
-  sent: "DM sent",
-  retrying: "DM being retried",
-  not_delivered: "DM not delivered",
-};
-
-function RequestCard({ request }: { request: CrossPersonRequestResponse }) {
+/**
+ * One request. The person asking and the person asked are named (you, when it
+ * is the viewer); the board's column already says where it stands, the two
+ * personal lists say it on the card (`showStatus`).
+ */
+function RequestCard({
+  request,
+  showStatus = false,
+}: {
+  request: CrossPersonRequestResponse;
+  showStatus?: boolean;
+}) {
   const names = useNames();
+  const memberId = useMemberId();
   const queryClient = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
   const age = daysBetween(request.created_at, today);
@@ -150,34 +165,62 @@ function RequestCard({ request }: { request: CrossPersonRequestResponse }) {
       toast.success(status === "resolved" ? "Request resolved." : "Request acknowledged.");
       void queryClient.invalidateQueries({ queryKey: ["requests"] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => {
+      toast.error(actionError(e, "update this request"));
+      // Someone else may have closed or removed it: show the lists as they are now.
+      void queryClient.invalidateQueries({ queryKey: ["requests"] });
+    },
   });
+
+  const raisedByViewer = Boolean(memberId && request.requester_id === memberId);
+  const askedOfViewer = Boolean(memberId && request.counterpart_id === memberId);
+  const requester = raisedByViewer ? "You" : names.or(request.requester_id, "Someone");
+  const counterpart = askedOfViewer
+    ? "you"
+    : (request.counterpart_display_name ?? request.raw_name ?? "someone not matched yet");
+  const delivery = deliveryNote(request.delivery, raisedByViewer);
+  const live = request.status === "open" || request.status === "acknowledged";
+  // Acknowledging is the asked person's: someone who only raised the request
+  // can resolve it, not acknowledge their own ask.
+  const canAcknowledge = request.status === "open" && (!raisedByViewer || askedOfViewer);
 
   return (
     <li className="rounded-2xl border border-grey-border bg-white p-3">
       <p className="text-[13px] font-bold">
-        {names(request.requester_id)} →{" "}
-        {request.counterpart_display_name ?? request.raw_name ?? "someone not matched yet"}
+        {requester} → {counterpart}
       </p>
       <p className="mt-0.5 text-[13px] text-grey-body">{request.note || "No note."}</p>
       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-grey-secondary">
         <RagChip tone="neutral" className="h-5 px-2 text-[11px]">
-          {request.kind}
+          {requestKindLabel(request.kind)}
         </RagChip>
-        <span>{age === 0 ? "today" : `${age} ${age === 1 ? "day" : "days"}`}</span>
-        {request.delivery ? (
-          <span className={request.delivery === "not_delivered" ? "font-bold text-rag-red" : ""}>
-            · {DELIVERY_WORDS[request.delivery] ?? request.delivery}
-          </span>
+        {showStatus ? (
+          <RagChip
+            tone={request.status === "acknowledged" ? "success" : "warning"}
+            className="h-5 px-2 text-[11px]"
+          >
+            {requestStatusLabel(request.status)}
+          </RagChip>
+        ) : null}
+        <span>{age <= 0 ? "raised today" : `waiting ${daysLabel(age)}`}</span>
+        {delivery ? (
+          <span className={delivery.bad ? "font-bold text-rag-red" : ""}>· {delivery.text}</span>
         ) : null}
       </div>
-      {request.status === "open" || request.status === "acknowledged" ? (
+      {request.status === "needs_resolution" ? (
+        <p className="mt-2 text-[12px] text-grey-secondary">
+          The name wasn't matched to anyone. OpenProgram asked the requester who was meant; it stays
+          here until they answer.
+        </p>
+      ) : null}
+      {live || request.status === "needs_resolution" ? (
         <div className="mt-2 flex gap-1.5">
-          {request.status === "open" ? (
+          {canAcknowledge ? (
             <Pill
               size="sm"
               variant="ghost"
               disabled={update.isPending}
+              aria-label={`Acknowledge: ${request.note || requestKindLabel(request.kind)}`}
               onClick={() => update.mutate("acknowledged")}
             >
               Acknowledge
@@ -187,6 +230,7 @@ function RequestCard({ request }: { request: CrossPersonRequestResponse }) {
             size="sm"
             variant="dark"
             disabled={update.isPending}
+            aria-label={`Resolve: ${request.note || requestKindLabel(request.kind)}`}
             onClick={() => update.mutate("resolved")}
           >
             Resolve
@@ -204,9 +248,13 @@ const BRIEF_FILTERS: { value: "all" | BriefKind; label: string }[] = [
   { value: "daily_pod", label: "Daily pod" },
 ];
 
+/** The newest few; real briefs are paragraphs, and a page of twenty buries the rest. */
+const BRIEFS_SHOWN = 5;
+
 function Briefs() {
   const { canReadAggregate } = useRole();
   const [search, setSearch] = useSearchParams();
+  const [showAll, setShowAll] = useState(false);
   const raw = search.get("brief");
   const kind = BRIEF_FILTERS.some((f) => f.value === raw) ? (raw as "all" | BriefKind) : "all";
   const briefs = useQuery({
@@ -214,6 +262,8 @@ function Briefs() {
     queryFn: () => apiClient.personaBriefs(kind === "all" ? undefined : kind, 20),
     enabled: canReadAggregate,
   });
+  const all = briefs.data?.briefs ?? [];
+  const shown = showAll ? all : all.slice(0, BRIEFS_SHOWN);
 
   return (
     <Panel title="Briefs" note="written from facts only, no raw chat">
@@ -226,37 +276,60 @@ function Briefs() {
         <ChipPicker
           label="Brief kind"
           value={kind}
-          onChange={(next) => setSearch(next === "all" ? {} : { brief: next }, { replace: true })}
+          onChange={(next) => {
+            setShowAll(false);
+            setSearch(
+              (current) => {
+                // Other parameters (the day being viewed) are the shell's; leave them.
+                const params = new URLSearchParams(current);
+                if (next === "all") params.delete("brief");
+                else params.set("brief", next);
+                return params;
+              },
+              { replace: true },
+            );
+          }}
           options={BRIEF_FILTERS}
         />
-        {(briefs.data?.briefs ?? []).length === 0 ? (
-          <p className="text-[13px] text-grey-secondary">No briefs of this kind yet.</p>
+        {all.length === 0 ? (
+          <p className="text-[13px] text-grey-secondary">
+            No briefs of this kind yet. They are written from the day's facts on a schedule.
+          </p>
         ) : (
-          <ul className="grid gap-3">
-            {(briefs.data?.briefs ?? []).map((b) => (
-              <li
-                key={`${b.kind}-${b.scope_id}-${b.generated_at}`}
-                className="rounded-2xl border border-grey-border p-4"
-              >
-                <p className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary">
-                  {b.kind.replace(/_/g, " ")} · {formatDate(b.generated_at)}
-                </p>
-                <p className="mt-1 text-[15px] font-extrabold">{b.title}</p>
-                {b.bullets && b.bullets.length > 0 ? (
-                  <ul className="mt-2 grid list-disc gap-1 pl-5 text-[14px] text-grey-body">
-                    {b.bullets.map((line) => (
-                      <li key={line}>{line}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-1 text-[14px] text-grey-body">{b.body}</p>
-                )}
-                <p className="mt-2 text-[11px] text-grey-secondary">
-                  From {b.sources.length} sources
-                </p>
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="grid gap-3">
+              {shown.map((b) => (
+                <li
+                  key={`${b.kind}-${b.scope_id}-${b.generated_at}`}
+                  className="rounded-2xl border border-grey-border p-4"
+                >
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary">
+                    {spaced(b.kind)} · {formatDate(b.generated_at)}
+                  </p>
+                  <p className="mt-1 text-[15px] font-extrabold">{b.title}</p>
+                  {b.bullets && b.bullets.length > 0 ? (
+                    <ul className="mt-2 grid list-disc gap-1 pl-5 text-[14px] text-grey-body">
+                      {b.bullets.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-[14px] text-grey-body">{b.body}</p>
+                  )}
+                  <p className="mt-2 text-[11px] text-grey-secondary">
+                    From {plural(b.sources.length, "source", "sources")}
+                  </p>
+                </li>
+              ))}
+            </ul>
+            {all.length > BRIEFS_SHOWN ? (
+              <div className="mt-3">
+                <Pill size="sm" variant="ghost" onClick={() => setShowAll((on) => !on)}>
+                  {showAll ? "Show fewer" : `Show ${all.length - BRIEFS_SHOWN} older`}
+                </Pill>
+              </div>
+            ) : null}
+          </>
         )}
       </PanelState>
     </Panel>
@@ -276,7 +349,7 @@ function AskTheGraph() {
   const ask = useMutation({
     mutationFn: (q: string) => apiClient.ask({ question: q }),
     onSuccess: setAnswer,
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(actionError(e, "answer that")),
   });
 
   return (
@@ -329,7 +402,7 @@ function AskTheGraph() {
                   {(answer.sources ?? []).map((s) => (
                     <RagChip key={s.id} tone="info" className="h-6 px-2.5 text-[11px]">
                       {s.label ?? s.id}
-                      {s.kind ? ` · ${s.kind}` : ""}
+                      {s.kind ? ` · ${spaced(s.kind)}` : ""}
                     </RagChip>
                   ))}
                 </div>

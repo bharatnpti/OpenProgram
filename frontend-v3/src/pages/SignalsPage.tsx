@@ -8,13 +8,14 @@ import type {
   RiskFindingResponse,
 } from "../api/schema";
 import { useNames } from "../app/directory";
+import type { NameOf } from "../app/names";
 import { useRole } from "../app/role";
 import { PanelState, SectionHeader, TableBox, td, th } from "../components/PanelState";
 import { ChipPicker, Panel, RagBadge, RagDot } from "../components/ui/Bits";
 import { RagChip } from "../components/ui/RagChip";
 import { formatDay, formatTime } from "../lib/format";
 import { ragSeverity } from "../lib/status";
-import { sourceLine } from "../lib/words";
+import { plural, sourceLine, spaced } from "../lib/words";
 
 const VIEWS = ["everything", "risks", "drift", "flow", "feed"] as const;
 type View = (typeof VIEWS)[number];
@@ -60,7 +61,7 @@ export function SignalsPage() {
         title="Signals"
         meta={
           risks.data
-            ? `${r.length} open risks · ${watermelons} watermelons · ${d.length} drift findings`
+            ? `${plural(r.length, "open risk", "open risks")} · ${plural(watermelons, "watermelon", "watermelons")} · ${plural(d.length, "drift finding", "drift findings")}`
             : "Risks, drift, flow and activity from Jira and Git, independent of what anyone reports."
         }
       />
@@ -123,7 +124,7 @@ export function SignalsPage() {
                       <span className="min-w-0 flex-1 text-[14px]">
                         {item.summary}
                         <span className="block text-[12px] text-grey-secondary">
-                          {item.kind.replace(/_/g, " ")} · {item.source}
+                          {spaced(item.kind)} · {spaced(item.source)}
                           {item.person_name ? ` · ${item.person_name}` : ""}
                         </span>
                       </span>
@@ -172,50 +173,26 @@ function Stream({ risks, drift }: { risks: RiskFindingResponse[]; drift: DriftFi
               </span>
             </div>
             <p className="mt-1 text-[12px] text-grey-secondary">
-              {item.type === "risk"
-                ? item.x.rule_id.replace(/_/g, " ")
-                : `drift · ${item.x.kind.replace(/_/g, " ")}`}{" "}
-              ·{" "}
+              {item.type === "risk" ? spaced(item.x.rule_id) : `drift · ${spaced(item.x.kind)}`} ·{" "}
               {link ? (
                 <Link to={link}>
-                  {ref.kind} {ref.id}
+                  {spaced(ref.kind)} {ref.id}
                 </Link>
               ) : (
-                `${ref.kind} ${ref.id}`
+                `${spaced(ref.kind)} ${ref.id}`
               )}
               {item.x.evidence && item.x.evidence.identifier !== ref.id
                 ? ` · ${item.x.evidence.identifier}`
                 : ""}
             </p>
             {item.type === "risk" ? (
-              <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2">
-                <div className="rounded-2xl bg-grey-fill p-3 text-[13px]">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary">
-                    Owner says · {item.x.person_name ?? names(item.x.owner_id)}
-                  </p>
-                  <p className="mt-1">
-                    {item.x.owner_status_summary ?? "Nothing reported."}
-                    {item.x.owner_status_source ? (
-                      <span className="text-grey-secondary">
-                        {" "}
-                        ({sourceLine(item.x.owner_status_source)})
-                      </span>
-                    ) : null}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-rag-red-bg/50 p-3 text-[13px]">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary">
-                    Signals say
-                  </p>
-                  <p className="mt-1">{item.x.reason}</p>
-                </div>
-              </div>
+              <RiskCard risk={item.x} />
             ) : (
               <p className="mt-2 text-[13px] text-grey-body">
-                Owner: {names(item.x.owner_id)}
+                Owner: {ownerWords(item.x.owner_id, names)}
                 {item.x.stated_source ? ` · stated ${sourceLine(item.x.stated_source)}` : ""}
                 {item.x.child_entity_ref
-                  ? ` · hides ${item.x.child_entity_ref.kind} ${item.x.child_entity_ref.id}`
+                  ? ` · hides ${spaced(item.x.child_entity_ref.kind)} ${item.x.child_entity_ref.id}`
                   : ""}
               </p>
             )}
@@ -223,6 +200,44 @@ function Stream({ risks, drift }: { risks: RiskFindingResponse[]; drift: DriftFi
         );
       })}
     </ul>
+  );
+}
+
+/** Who owns a finding, in words: the name, or why there is none. */
+function ownerWords(ownerId: string | null | undefined, names: NameOf): string {
+  if (!ownerId) return "nobody is named as the owner";
+  return names.or(ownerId, "unnamed");
+}
+
+/** What the owner says about the work, beside what the signals say about it. */
+function RiskCard({ risk }: { risk: RiskFindingResponse }) {
+  const names = useNames();
+  // `person_name` is who the finding is about when that is a person (a merge
+  // request no work item claims is filed on its author); else the work item's owner.
+  const who = risk.person_name ?? (risk.owner_id ? names(risk.owner_id) : null);
+  const hasOwner = Boolean(risk.person_name || risk.owner_id);
+  return (
+    <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2">
+      <div className="rounded-2xl bg-grey-fill p-3 text-[13px]">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary">
+          {hasOwner ? `Owner says${who ? ` · ${who}` : ""}` : "No owner named"}
+        </p>
+        <p className="mt-1">
+          {hasOwner
+            ? (risk.owner_status_summary ?? "Nothing reported.")
+            : "Nobody owns this work item, so nobody has said anything about it."}
+          {hasOwner && risk.owner_status_source ? (
+            <span className="text-grey-secondary"> ({sourceLine(risk.owner_status_source)})</span>
+          ) : null}
+        </p>
+      </div>
+      <div className="rounded-2xl bg-rag-red-bg/50 p-3 text-[13px]">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary">
+          Signals say
+        </p>
+        <p className="mt-1">{risk.reason}</p>
+      </div>
+    </div>
   );
 }
 
