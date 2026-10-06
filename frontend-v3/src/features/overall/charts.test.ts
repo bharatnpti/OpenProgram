@@ -14,6 +14,7 @@ const timeline = [
       business_testing: 1,
       production: 1,
     },
+    has_points: false,
   },
   {
     day: "2026-10-06",
@@ -25,6 +26,7 @@ const timeline = [
       business_testing: 2,
       production: 7,
     },
+    has_points: false,
   },
 ];
 
@@ -73,7 +75,7 @@ test("a stacked day puts production on top and skips empty stages", () => {
     "production",
   ] as const;
   const { bars, yMax } = stageStack(
-    [{ day: "2026-10-06", counts: { raised: 0, production: 3, in_testing: 1 } }],
+    [{ day: "2026-10-06", counts: { raised: 0, production: 3, in_testing: 1 }, has_points: false }],
     [...order],
   );
   assert.equal(yMax, 4);

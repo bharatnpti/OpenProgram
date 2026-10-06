@@ -16339,6 +16339,23 @@
             },
             "type": "object",
             "title": "Counts"
+          },
+          "points": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/DeliveryStage"
+            },
+            "type": "object",
+            "title": "Points",
+            "description": "Story points per stage that day; a burn-down by points reads them only when has_points."
+          },
+          "has_points": {
+            "type": "boolean",
+            "title": "Has Points",
+            "description": "True when every requirement counted that day carried story points.",
+            "default": false
           }
         },
         "type": "object",

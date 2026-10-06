@@ -2926,6 +2926,15 @@ class RequirementTimelinePointResponse(BaseModel):
 
     day: date
     counts: dict[DeliveryStage, int]
+    points: dict[DeliveryStage, float] = Field(
+        default_factory=dict,
+        description="Story points per stage that day; a burn-down by points reads them "
+        "only when has_points.",
+    )
+    has_points: bool = Field(
+        default=False,
+        description="True when every requirement counted that day carried story points.",
+    )
 
 
 class RequirementMoveResponse(BaseModel):
@@ -3004,7 +3013,12 @@ class RequirementsResponse(BaseModel):
                 for item in view.stages
             ],
             timeline=[
-                RequirementTimelinePointResponse(day=point.day, counts=dict(point.counts))
+                RequirementTimelinePointResponse(
+                    day=point.day,
+                    counts=dict(point.counts),
+                    points=dict(point.points),
+                    has_points=point.has_points,
+                )
                 for point in view.timeline
             ],
             moves=[

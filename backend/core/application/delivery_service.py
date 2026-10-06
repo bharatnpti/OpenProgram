@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 
 from core.application.persona_views import owned_project_tasks
@@ -63,6 +63,10 @@ class StageCountView:
 class TimelinePoint:
     day: date
     counts: Mapping[DeliveryStage, int]
+    #: Story points per stage that day, as the day's snapshot kept them.
+    points: Mapping[DeliveryStage, float] = field(default_factory=dict)
+    #: True when every requirement counted that day carried story points.
+    has_points: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -511,7 +515,12 @@ def _view(
         points_done=current.points_done if current else 0.0,
         stages=stages,
         timeline=tuple(
-            TimelinePoint(day=snapshot.day, counts=dict(snapshot.stage_counts))
+            TimelinePoint(
+                day=snapshot.day,
+                counts=dict(snapshot.stage_counts),
+                points=dict(snapshot.stage_points),
+                has_points=snapshot.has_points,
+            )
             for snapshot in timeline
         ),
         moves=stage_moves(previous, current) if current is not None else (),

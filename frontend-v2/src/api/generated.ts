@@ -4707,6 +4707,19 @@ export interface components {
       counts: {
         [key: string]: number;
       };
+      /**
+       * Points
+       * @description Story points per stage that day; a burn-down by points reads them only when has_points.
+       */
+      points?: {
+        [key: string]: number;
+      };
+      /**
+       * Has Points
+       * @description True when every requirement counted that day carried story points.
+       * @default false
+       */
+      has_points: boolean;
     };
     /**
      * RequirementsResponse
