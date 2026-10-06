@@ -1,0 +1,101 @@
+backend/core/application/attention.py
+  s_46c43e5fac8673::t_a845242c2bd4b7 100-103,122,124,126-127
+  s_46c43e5fac8673::t_f8122b919028a1 32-39,110,133,136-142
+  s_46c43e5fac8673::t_bdd10e179fda4a 223-227,252-256
+  s_46c43e5fac8673::t_ee8e14e3c9032d 31,507-508
+  s_46c43e5fac8673::t_b0376bd2ab923c 117,121
+  s_46c43e5fac8673::t_119df00d1f0a1f 143
+scripts/qa_org/seed_openprogram.py
+  s_46c43e5fac8673::t_b4f9f3b5613c30 15-18
+frontend-v2/src/features/today/heatRows.test.ts
+  s_46c43e5fac8673::t_927162442d32b0 1-41
+frontend-v2/src/features/admin/RelationshipsPanel.tsx
+  s_46c43e5fac8673::t_807a9c2a557fd8 128,163,233
+frontend-v2/src/features/admin/EntitiesPanel.tsx
+  s_46c43e5fac8673::t_807a9c2a557fd8 25,140-142
+  s_46c43e5fac8673::t_9695d6875accc8 143
+frontend-v2/src/features/today/heatRows.ts
+  s_46c43e5fac8673::t_927162442d32b0 1-15
+backend/tests/unit/test_optional_workstreams.py
+  s_46c43e5fac8673::t_6d3de1a9954e2d 1-237,239-340
+  s_46c43e5fac8673::t_e5e725f46235ee 238
+frontend-v2/src/features/admin/adminTypes.ts
+  s_46c43e5fac8673::t_807a9c2a557fd8 40-49
+backend/core/application/rollup_service.py
+  s_46c43e5fac8673::t_e3779491892196 13-21,33,36,98,126,666-667,673-675,686-688
+  s_46c43e5fac8673::t_7c88a0eee55e22 32,34-35
+backend/core/application/config_service.py
+  s_46c43e5fac8673::t_364ef049b1ab6c 25,87-90,926-934,952,961,989-990,992,996-1000,1002-1004,1006,1057-1058,1061,1064
+  s_46c43e5fac8673::t_64bd0539173ac6 1138-1142
+  s_46c43e5fac8673::t_849b046a9619d2 1087
+  s_46c43e5fac8673::t_3142d336b57ff2 1005
+  s_46c43e5fac8673::t_6d8e5007dd161a 963-966
+  s_46c43e5fac8673::t_6a060ed42c4466 1001
+backend/tests/unit/test_config_service.py
+  s_46c43e5fac8673::t_87c0de6e4f65e3 228-232,264
+README.md
+  s_46c43e5fac8673::t_b4f9f3b5613c30 9
+frontend-v2/src/pages/SignalsPage.tsx
+  s_46c43e5fac8673::t_e6ff373608be9d 139-146
+frontend-v2/src/features/admin/AdminTable.tsx
+  s_46c43e5fac8673::t_807a9c2a557fd8 38-40
+backend/core/application/persona_views.py
+  s_46c43e5fac8673::t_44fe410d40cd98 18,34,670-671,739-744,747-754,756,797,840-842
+  s_46c43e5fac8673::t_57c8240d62fdbc 828-831
+  s_46c43e5fac8673::t_32efcaa5eb0fe6 1467-1500
+frontend-v2/src/features/delivery/ProgramDetail.tsx
+  s_46c43e5fac8673::t_ff73af4edc9d73 13,76-77,114,269-272
+backend/core/application/ask_service.py
+  s_46c43e5fac8673::t_34174bbb8f08a7 353-354,440
+  s_46c43e5fac8673::t_219de882de1a10 24,28-35,256-264,267,305-309,313-314,322-327,329,333-345,432-439,442,1171-1174
+  s_46c43e5fac8673::t_81d5c43641afac 443-444
+backend/core/domain/graph.py
+  s_46c43e5fac8673::t_de90059a67f27e 3
+  s_46c43e5fac8673::t_6df9f809890bcd 137-165
+frontend-v2/src/features/delivery/workstreams.ts
+  s_46c43e5fac8673::t_8aa757995162f5 1-54
+features.md
+  s_46c43e5fac8673::t_f878be165c3a60 48-50,55,196,216-217,229,232,235,253
+  s_46c43e5fac8673::t_b4f9f3b5613c30 65,369,454,575-576
+frontend-v2/src/api/openapi.json
+  s_46c43e5fac8673::t_d04649a8a9f606 14322,14324
+frontend-v2/src/features/delivery/DeliveryNavigator.tsx
+  s_46c43e5fac8673::t_349b93197a8f8e 7,102-103,134
+frontend/src/api/openapi.json
+  s_46c43e5fac8673::t_d04649a8a9f606 14322,14324
+frontend-v2/src/features/delivery/DeliveryDetail.tsx
+  s_46c43e5fac8673::t_643a93ad5626a6 24,83-92,119,157-160,181-183,188-205,233-234,273
+frontend-v2/src/pages/AdminPage.tsx
+  s_46c43e5fac8673::t_807a9c2a557fd8 103
+frontend-v2/src/features/today/ManagerExecToday.tsx
+  s_46c43e5fac8673::t_927162442d32b0 19,96-99,103
+backend/tests/unit/test_ask_service.py
+  s_46c43e5fac8673::t_08f1fae97b8c9a 86,308-309,332-333,346-347,620-623
+backend/tests/unit/test_attention.py
+  s_46c43e5fac8673::t_8093fb715a9f78 5-7,196-197,203-216,219-238
+  s_46c43e5fac8673::t_81d5c43641afac 199-200
+  s_46c43e5fac8673::t_24105bcc533232 217-218
+backend/api/dtos.py
+  s_46c43e5fac8673::t_11563efabdd476 543,563
+  s_46c43e5fac8673::t_df8fc3d9feed1c 539-542
+frontend-v2/src/features/delivery/workstreams.test.ts
+  s_46c43e5fac8673::t_46c9b37c767a8b 1-42
+backend/tests/unit/test_api.py
+  s_46c43e5fac8673::t_5821d64eb7b048 1791-1795
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "014c8ad65d3ca21850aca61606046767d18cb221",
+  "prompts": {},
+  "sessions": {
+    "s_46c43e5fac8673": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74865cd1-4f07-48fe-b0f3-c490d0726e40",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
