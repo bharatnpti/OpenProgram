@@ -1,0 +1,41 @@
+backend/core/application/connection_service.py
+  s_239b3b1319ec3a::t_9cee96a65a0d45 33,35,60-62,131,134,146-147,151-153,155,212,281-299
+  s_239b3b1319ec3a::t_80863d3db39367 300
+frontend-v2/src/api/openapi.json
+  s_239b3b1319ec3a::t_9cee96a65a0d45 11563-11574,11601
+frontend-v2/src/features/admin/IntegrationsPanel.tsx
+  s_239b3b1319ec3a::t_9cee96a65a0d45 31,159
+backend/infra/registry.py
+  s_239b3b1319ec3a::t_9cee96a65a0d45 647
+frontend/src/api/generated.ts
+  s_239b3b1319ec3a::t_9cee96a65a0d45 2858-2862
+backend/tests/unit/test_connections.py
+  s_239b3b1319ec3a::t_9cee96a65a0d45 31,50,87,100,264-286,626-627,634-635
+frontend/src/api/openapi.json
+  s_239b3b1319ec3a::t_9cee96a65a0d45 11563-11574,11601
+frontend-v2/src/features/admin/connectionForm.test.ts
+  s_239b3b1319ec3a::t_9cee96a65a0d45 10,35,166-169
+  s_239b3b1319ec3a::t_b833ab6a99e35f 170-171
+backend/api/dtos.py
+  s_239b3b1319ec3a::t_9cee96a65a0d45 2702-2707,2729
+frontend-v2/src/api/generated.ts
+  s_239b3b1319ec3a::t_9cee96a65a0d45 2854-2858
+frontend-v2/src/features/admin/connectionForm.ts
+  s_239b3b1319ec3a::t_9cee96a65a0d45 127-134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "efa1b6353b2e3700292cff0fb81771401350a086",
+  "prompts": {},
+  "sessions": {
+    "s_239b3b1319ec3a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "edb8c1f2-3037-41fd-a1b3-6261f7f7734c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
