@@ -1,0 +1,22 @@
+backend/tests/unit/test_forecast.py
+  s_239b3b1319ec3a::t_9cee96a65a0d45 110-111,116-119,337
+backend/core/domain/forecast.py
+  s_239b3b1319ec3a::t_9cee96a65a0d45 284,363-370
+  s_239b3b1319ec3a::t_0e90d826e907b0 371-372
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "58f93d4749908929c73f8510828b6fb7d31aae06",
+  "prompts": {},
+  "sessions": {
+    "s_239b3b1319ec3a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "edb8c1f2-3037-41fd-a1b3-6261f7f7734c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
