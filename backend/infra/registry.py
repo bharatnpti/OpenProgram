@@ -644,6 +644,7 @@ class ServiceRegistry:
             catalog=self.connector_catalog(),
             tester=HttpConnectionTester(self.settings),
             on_change=self.connection_resolver().invalidate,
+            graph_repository=self.graph_repository(),
         )
 
     def auth_provider(self) -> AuthProvider:

@@ -11560,6 +11560,18 @@
             ],
             "title": "Updated By"
           },
+          "updated_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By Name",
+            "description": "The display name of the member who last saved it, or null when updated_by is no member's id."
+          },
           "last_test": {
             "anyOf": [
               {
@@ -11586,6 +11598,7 @@
           "environment_configured",
           "updated_at",
           "updated_by",
+          "updated_by_name",
           "last_test"
         ],
         "title": "ConnectionResponse",

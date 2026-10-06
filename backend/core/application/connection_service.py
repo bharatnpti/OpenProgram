@@ -30,7 +30,9 @@ from core.domain.connections import (
     with_defaults,
 )
 from core.domain.errors import OpenProgramError, SecretNotFound
+from core.domain.graph import NodeKind
 from core.ports.connections import ConnectionRepository, ConnectionTester, ConnectorCatalog
+from core.ports.repositories import GraphRepository
 from core.ports.secrets import SecretRef, SecretStore
 
 # A secret longer than this is not a token anyone pastes; refusing it keeps a
@@ -55,6 +57,9 @@ class ConnectionView:
     spec: ConnectorSpec
     connection: Connection | None
     environment_configured: bool
+    #: The name of the member who last saved the connection; None when the id
+    #: is no member's, so the id is shown rather than a guess.
+    updated_by_name: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -123,8 +128,10 @@ class ConnectionService:
         tester: ConnectionTester,
         clock: Callable[[], datetime] = _utc_now,
         on_change: Callable[[str], None] | None = None,
+        graph_repository: GraphRepository | None = None,
     ) -> None:
         self._repository = repository
+        self._graph = graph_repository
         self._on_change = on_change
         self._secret_store = secret_store
         self._catalog = catalog
@@ -136,22 +143,16 @@ class ConnectionService:
 
     async def list_connections(self, tenant_id: str) -> list[ConnectionView]:
         stored = {item.connector: item for item in await self._repository.list(tenant_id)}
-        return [
-            ConnectionView(
-                spec=spec,
-                connection=stored.get(spec.id),
-                environment_configured=self._catalog.environment_configured(spec.id),
-            )
-            for spec in self._catalog.specs()
-        ]
+        names = await self._names(tenant_id, {item.updated_by for item in stored.values()})
+        return [self._view(spec, stored.get(spec.id), names) for spec in self._catalog.specs()]
 
     async def connection(self, tenant_id: str, connector: str) -> ConnectionView:
         spec = self._require_spec(connector)
-        return ConnectionView(
-            spec=spec,
-            connection=await self._repository.get(tenant_id, connector),
-            environment_configured=self._catalog.environment_configured(spec.id),
+        connection = await self._repository.get(tenant_id, connector)
+        names = await self._names(
+            tenant_id, {connection.updated_by} if connection is not None else set()
         )
+        return self._view(spec, connection, names)
 
     async def save(
         self,
@@ -208,11 +209,7 @@ class ConnectionService:
         )
         await self._repository.save(connection)
         self._changed(tenant_id)
-        return ConnectionView(
-            spec=spec,
-            connection=connection,
-            environment_configured=self._catalog.environment_configured(spec.id),
-        )
+        return self._view(spec, connection, await self._names(tenant_id, {actor}))
 
     async def remove(self, tenant_id: str, connector: str) -> None:
         """Forget the connection and every secret it stored. Idempotent."""
@@ -280,6 +277,26 @@ class ConnectionService:
                 raise ConnectionConflict(
                     f"{other.name} is already on. Turn it off before turning {spec.name} on."
                 )
+
+    def _view(
+        self, spec: ConnectorSpec, connection: Connection | None, names: Mapping[str, str]
+    ) -> ConnectionView:
+        return ConnectionView(
+            spec=spec,
+            connection=connection,
+            environment_configured=self._catalog.environment_configured(spec.id),
+            updated_by_name=names.get(connection.updated_by) if connection is not None else None,
+        )
+
+    async def _names(self, tenant_id: str, actors: set[str]) -> dict[str, str]:
+        """Member names for the ids that saved connections, read from the graph."""
+        if self._graph is None or not actors:
+            return {}
+        return {
+            node.id: node.name
+            for node in await self._graph.list_nodes(tenant_id, NodeKind.DEVELOPER)
+            if node.id in actors and node.name
+        }
 
     def _changed(self, tenant_id: str) -> None:
         if self._on_change is not None:

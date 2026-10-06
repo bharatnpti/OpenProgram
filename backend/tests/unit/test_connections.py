@@ -28,6 +28,7 @@ from core.domain.connections import (
     missing_required,
     normalize_settings,
 )
+from core.domain.graph import Developer
 from core.domain.integrations import Issue, IssueState, SyncCursor
 from core.ports.secrets import SecretRef
 from infra.adapters.connections.resolver import CachedConnectionResolver
@@ -46,6 +47,7 @@ from infra.adapters.secrets.encrypted import (
     InMemoryEncryptedSecretRecordStore,
 )
 from infra.persistence.in_memory_connections import InMemoryConnectionRepository
+from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.persistence.postgres_connections import PostgresConnectionRepository
 
 TENANT = "demo"
@@ -82,7 +84,7 @@ class _Harness:
     changes: list[str]
 
 
-def _harness(**settings: object) -> _Harness:
+def _harness(*, graph: InMemoryGraphStore | None = None, **settings: object) -> _Harness:
     repository = InMemoryConnectionRepository()
     records = InMemoryEncryptedSecretRecordStore()
     secrets = FernetSecretStore(Fernet(Fernet.generate_key()), records)
@@ -95,6 +97,7 @@ def _harness(**settings: object) -> _Harness:
         tester=tester,
         clock=lambda: NOW,
         on_change=changes.append,
+        graph_repository=graph,
     )
     return _Harness(service, repository, secrets, records, tester, changes)
 
@@ -256,6 +259,29 @@ async def test_a_connection_can_be_saved_incomplete_while_it_is_off() -> None:
     )
 
     assert view.connection is not None and view.connection.enabled is False
+
+
+async def test_a_connection_names_the_member_who_saved_it() -> None:
+    graph = InMemoryGraphStore()
+    await graph.upsert_node(Developer(tenant_id=TENANT, id="U-ASHA", name="Asha Rao"))
+    harness = _harness(graph=graph)
+
+    saved = await harness.service.save(
+        TENANT, "jira", enabled=False, settings=JIRA_DC, secrets={}, actor="U-ASHA"
+    )
+    await harness.service.save(
+        TENANT, "gitlab", enabled=False, settings={}, secrets={}, actor="ci-bot"
+    )
+    read = await harness.service.connection(TENANT, "jira")
+    listed = {view.spec.id: view for view in await harness.service.list_connections(TENANT)}
+
+    assert saved.updated_by_name == read.updated_by_name == "Asha Rao"
+    assert listed["jira"].updated_by_name == "Asha Rao"
+    # An id that is no member's keeps no name: the console shows the id itself.
+    gitlab = listed["gitlab"]
+    assert gitlab.updated_by_name is None
+    assert gitlab.connection is not None and gitlab.connection.updated_by == "ci-bot"
+    assert listed["github"].updated_by_name is None
 
 
 async def test_turning_a_connection_on_needs_every_required_field_that_applies() -> None:
@@ -597,12 +623,16 @@ def test_api_saves_reads_tests_and_removes_a_connection(settings: Settings) -> N
             "/config/integrations/jira/test",
             json={"settings": {"base_url": "https://jira.invalid"}, "secrets": {}},
         )
+        client.post("/config/members", json={"id": "dev-user", "name": "Dana Admin"})
+        named = client.get("/config/integrations/jira")
         removed = client.delete("/config/integrations/jira")
         after = client.get("/config/integrations/jira")
 
     assert listed.status_code == 200
     assert [item["connector"] for item in listed.json()][:3] == ["jira", "gitlab", "github"]
     assert saved.status_code == 200
+    assert (saved.json()["updated_by"], saved.json()["updated_by_name"]) == ("dev-user", None)
+    assert named.json()["updated_by_name"] == "Dana Admin"
     body = read.json()
     assert body["enabled"] is True
     assert body["settings"]["base_url"] == "https://jira.example.com"
