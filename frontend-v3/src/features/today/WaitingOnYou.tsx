@@ -6,12 +6,7 @@ import { useNames } from "../../app/directory";
 import { PanelState } from "../../components/PanelState";
 import { Panel, Row } from "../../components/ui/Bits";
 import { daysBetween } from "../../lib/format";
-
-const KIND_WORDS: Record<string, string> = {
-  review: "a review",
-  input: "input",
-  dependency: "work they depend on",
-};
+import { daysLabel, requestKindLabel, requestSentence } from "../../lib/words";
 
 /** Open and acknowledged asks where this person is the one asked. */
 export function WaitingOnYou() {
@@ -49,9 +44,9 @@ export function WaitingOnYou() {
               <Row
                 key={request.id}
                 rag={request.status === "acknowledged" ? "green" : "amber"}
-                title={`${names(request.requester_id)} asks for ${KIND_WORDS[request.kind] ?? request.kind}`}
-                meta={`${request.note || "No note"} · ${request.status === "acknowledged" ? "acknowledged, " : ""}waiting ${age === 0 ? "since today" : `${age} ${age === 1 ? "day" : "days"}`}`}
-                right={request.kind.toUpperCase()}
+                title={requestSentence(names.or(request.requester_id, "Someone"), request.kind)}
+                meta={`${request.note || "No note"} · ${request.status === "acknowledged" ? "acknowledged, " : ""}${age <= 0 ? "raised today" : `waiting ${daysLabel(age)}`}`}
+                right={requestKindLabel(request.kind).toUpperCase()}
               />
             );
           })}

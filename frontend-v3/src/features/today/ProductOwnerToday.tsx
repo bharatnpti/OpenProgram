@@ -3,31 +3,43 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
-import { podsOf, projectsOf, usePods, useProgram, useProjects } from "../../app/directory";
+import {
+  podsOfPerson,
+  programsOfProjects,
+  projectsOfPerson,
+  useMemberId,
+  usePods,
+  usePrograms,
+  useProjects,
+} from "../../app/directory";
 import { useRole } from "../../app/role";
 import { PanelState } from "../../components/PanelState";
 import { ChipPicker, Greeting, Panel, ProgressRing, RagBadge, Row } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
-import { greetingWord, PERSON_KEY_WORDS, sourceLine, todayEyebrow } from "../../lib/words";
+import { greetingWord, PERSON_KEY_WORDS, plural, sourceLine, todayEyebrow } from "../../lib/words";
 import { WaitingOnYou } from "./WaitingOnYou";
 
 const NEEDS = "a product owner, manager, executive or admin";
+const ATTENTION_SHOWN = 8;
 
 /**
  * A product owner's day: how far along the project is, which workstreams are
  * worst, and the tasks that need a decision. Defaults to the projects of the
- * person's pods.
+ * pods the person belongs to.
  */
 export function ProductOwnerToday() {
-  const { program } = useProgram();
-  const { actingAs, canReadProjectProgress, roleLabel } = useRole();
+  const { canReadProjectProgress, roleLabel } = useRole();
+  const memberId = useMemberId();
   const pods = usePods();
   const projects = useProjects();
-  const mine = projectsOf(projects.data ?? [], podsOf(pods.data ?? [], actingAs?.id));
+  const programs = usePrograms();
+  const ownPods = podsOfPerson(pods.data ?? [], memberId);
+  const { projects: mine, own } = projectsOfPerson(projects.data ?? [], ownPods.pods, ownPods.own);
   const [chosen, setChosen] = useState("");
   const projectId = mine.some((p) => p.id === chosen) ? chosen : (mine[0]?.id ?? "");
+  const project = mine.find((p) => p.id === projectId);
 
   const progress = useQuery({
     queryKey: ["project", projectId, "progress"],
@@ -50,7 +62,9 @@ export function ProductOwnerToday() {
   return (
     <>
       <Greeting
-        eyebrow={todayEyebrow(program?.name)}
+        eyebrow={todayEyebrow(
+          programsOfProjects(programs.data ?? [], project ? [project] : []).map((x) => x.name),
+        )}
         title={`${greetingWord()}, ${roleLabel}`}
         sub="Project progress, task health and what needs a decision from you."
       />
@@ -66,7 +80,9 @@ export function ProductOwnerToday() {
           value={projectId}
           onChange={setChosen}
           options={mine.map((x) => ({ value: x.id, label: x.name, rag: x.rag }))}
-          note="defaults to the projects of your pods"
+          note={
+            own ? "the projects of your pods" : `you are in no pod yet, so every project is shown`
+          }
         />
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
           <Panel
@@ -102,7 +118,10 @@ export function ProductOwnerToday() {
                       </RagChip>
                     </div>
                     <p className="text-[12px] text-grey-secondary">
-                      {p.total_tasks} tasks · {sourceLine(p.source, p.confidence)}
+                      {plural(p.total_tasks, "task", "tasks")}
+                      {p.total_tasks > 0 && p.confidence != null
+                        ? ` · ${Math.round(p.confidence * 100)}% average confidence`
+                        : ""}
                     </p>
                   </div>
                 </div>
@@ -149,7 +168,16 @@ export function ProductOwnerToday() {
               </ul>
             </PanelState>
           </Panel>
-          <Panel title="Needs your attention" note={p ? `${attention.length} tasks` : undefined}>
+          <Panel
+            title="Needs your attention"
+            note={
+              p
+                ? attention.length > ATTENTION_SHOWN
+                  ? `worst ${ATTENTION_SHOWN} of ${attention.length} tasks`
+                  : plural(attention.length, "task", "tasks")
+                : undefined
+            }
+          >
             <PanelState
               locked={!canReadProjectProgress}
               needs={NEEDS}
@@ -159,7 +187,7 @@ export function ProductOwnerToday() {
               emptyText="Every task is green."
             >
               <ul>
-                {attention.slice(0, 8).map((t) => (
+                {attention.slice(0, ATTENTION_SHOWN).map((t) => (
                   <Row
                     key={t.id}
                     rag={t.rag}

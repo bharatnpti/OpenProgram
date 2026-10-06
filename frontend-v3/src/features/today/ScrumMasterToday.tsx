@@ -4,14 +4,22 @@ import { Link } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
 import type { PodCheckinsResponse } from "../../api/schema";
-import { podsOf, usePods, useProgram } from "../../app/directory";
+import {
+  podsOfPerson,
+  programsOfProjects,
+  useMemberId,
+  usePods,
+  usePrograms,
+  useProjects,
+} from "../../app/directory";
 import { useRole } from "../../app/role";
 import { PanelState } from "../../components/PanelState";
 import { ChipPicker, Greeting, Panel, Row } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
-import { formatTime } from "../../lib/format";
+import { formatDay } from "../../lib/format";
 import { ragSeverity, toneForRag, type BadgeTone } from "../../lib/status";
-import { greetingWord, sourceLine, todayEyebrow } from "../../lib/words";
+import { greetingWord, plural, sourceLine, spaced, todayEyebrow } from "../../lib/words";
+import { podCheckinMeta } from "./checkin";
 import { WaitingOnYou } from "./WaitingOnYou";
 
 type CheckinState = PodCheckinsResponse["developers"][number]["state"];
@@ -27,21 +35,31 @@ const STATE_RAG = {
   stale: "amber",
   missing: "unknown",
 } as const;
+const STATE_WORD: Record<CheckinState, string> = {
+  confirmed: "confirmed",
+  partial: "partial",
+  stale: "stale",
+  missing: "no status",
+};
 
 const NEEDS = "a scrum master, manager or admin";
 
 /**
  * A scrum master's two morning questions: who has checked in across my pods,
- * and how old is each blocker. Defaults to the pods the person belongs to.
+ * and how old is each blocker. Defaults to the pods the person runs: a member
+ * of, or named as the scrum master contact of (the backend's own rule).
  */
 export function ScrumMasterToday() {
-  const { program } = useProgram();
-  const { actingAs, canReadPodDetail, roleLabel } = useRole();
+  const { canReadPodDetail, roleLabel } = useRole();
+  const memberId = useMemberId();
   const pods = usePods();
-  const mine = podsOf(pods.data ?? [], actingAs?.id);
+  const projects = useProjects();
+  const programs = usePrograms();
+  const { pods: mine, own } = podsOfPerson(pods.data ?? [], memberId);
   const [chosen, setChosen] = useState("");
   const podId = mine.some((p) => p.id === chosen) ? chosen : (mine[0]?.id ?? "");
   const pod = mine.find((p) => p.id === podId);
+  const podProjects = (projects.data ?? []).filter((p) => pod?.project_ids.includes(p.id));
 
   const checkins = useQuery({
     queryKey: ["pod", podId, "checkins"],
@@ -71,7 +89,9 @@ export function ScrumMasterToday() {
   return (
     <>
       <Greeting
-        eyebrow={todayEyebrow(program?.name)}
+        eyebrow={todayEyebrow(
+          programsOfProjects(programs.data ?? [], podProjects).map((p) => p.name),
+        )}
         title={`${greetingWord()}, ${roleLabel}`}
         sub="Who has checked in across your pods, and how long each blocker has been open."
       />
@@ -87,7 +107,11 @@ export function ScrumMasterToday() {
           value={podId}
           onChange={setChosen}
           options={mine.map((p) => ({ value: p.id, label: p.name, rag: p.rag }))}
-          note={`${mine.length} ${mine.length === 1 ? "pod" : "pods"} · defaults to the pods you belong to`}
+          note={
+            own
+              ? `${plural(mine.length, "pod", "pods")} · the pods you run or belong to`
+              : `${plural(mine.length, "pod", "pods")} · you run no pod yet, so every pod is shown`
+          }
         />
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
           <Panel
@@ -108,10 +132,10 @@ export function ScrumMasterToday() {
                     key={dev.developer_id}
                     rag={STATE_RAG[dev.state]}
                     title={dev.developer_name}
-                    meta={`${sourceLine(dev.source)}${dev.status_as_of ? ` · ${formatTime(dev.status_as_of)}` : ""}${dev.summary ? ` · ${dev.summary}` : ""}`}
+                    meta={podCheckinMeta(dev, c?.as_of ?? "", { day: formatDay })}
                     right={
                       <RagChip tone={STATE_TONE[dev.state]} className="h-6 px-2.5 text-[12px]">
-                        {dev.state}
+                        {STATE_WORD[dev.state]}
                       </RagChip>
                     }
                   />
@@ -134,7 +158,15 @@ export function ScrumMasterToday() {
                     key={b.id}
                     rag={b.age_days >= 7 ? "red" : "amber"}
                     title={b.description}
-                    meta={`${b.owner_name} · ${sourceLine(b.source)}${b.work_item_ref ? ` · ${b.work_item_ref.id}` : ""}`}
+                    meta={[
+                      b.owner_name,
+                      b.work_item_ref?.id,
+                      // A blocker the owner stated is the norm; one inferred from
+                      // delivery signals says so.
+                      b.source === "confirmed" ? null : sourceLine(b.source),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                     right={`${b.age_days}d`}
                   />
                 ))}
@@ -169,7 +201,7 @@ export function ScrumMasterToday() {
                     key={`${f.kind}-${i}`}
                     rag={f.contributes}
                     title={f.description}
-                    meta={rollup.data?.source_names[f.source_ref.id] ?? f.kind.replace(/_/g, " ")}
+                    meta={rollup.data?.source_names[f.source_ref.id] ?? spaced(f.kind)}
                     right={
                       <RagChip tone={toneForRag(f.contributes)} className="h-6 px-2.5 text-[12px]">
                         {f.contributes}

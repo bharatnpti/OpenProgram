@@ -2,17 +2,35 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
-import type { DirectoryItemResponse, NodeTrendResponse, Rag } from "../../api/schema";
-import { usePods, useProgram, useProjects, useWorkstreams } from "../../app/directory";
+import type { DirectoryItemResponse, Rag } from "../../api/schema";
+import { usePods, useProgramChoice, useProjects, useWorkstreams } from "../../app/directory";
 import { useRole } from "../../app/role";
+import { scopeToProgram } from "../../app/scope";
 import { PanelState } from "../../components/PanelState";
-import { Greeting, Panel, RagDot, Row, Sparkline } from "../../components/ui/Bits";
+import { ChipPicker, Greeting, Panel, RagDot, Row, Sparkline } from "../../components/ui/Bits";
 import { formatDate, formatTime } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
 import { cn } from "../../lib/utils";
-import { greetingWord, todayEyebrow } from "../../lib/words";
+import {
+  checkinsLine,
+  greetingWord,
+  plural,
+  signalAge,
+  signalKindLabel,
+  todayEyebrow,
+} from "../../lib/words";
+import {
+  momentum,
+  noPodTiles,
+  signalHref,
+  tileKey,
+  tileReasons,
+  type NoPodTile,
+  type TileReason,
+} from "./heat";
 
 const HEAT_COLUMNS = 4;
+const SIGNALS_SHOWN = 5;
 
 const HERO: Record<Rag, string> = {
   red: "bg-rag-red-bg text-rag-red",
@@ -27,25 +45,17 @@ const TILE: Record<Rag, string> = {
   unknown: "bg-rag-unknown-bg text-rag-unknown",
 };
 
-/** Only days that reported a status are on the health scale (unknown scores 0, below red). */
-function momentum(points: NodeTrendResponse["points"] | undefined) {
-  const reported = (points ?? []).filter((p) => p.rag !== "unknown");
-  const values = (points ?? []).map((p) => (p.rag === "unknown" ? null : (p.score - 1) / 2));
-  if (reported.length < 2) return { label: "not enough reported days", values };
-  const first = reported[0].score;
-  const last = reported[reported.length - 1].score;
-  const label = last > first ? "improving" : last < first ? "sliding" : "steady";
-  return { label, values };
-}
-
 /**
  * The portfolio read shared by manager, executive and admin: a one-line
  * verdict with its reason, 30-day momentum, the newest executive brief,
- * heat for projects, workstreams and pods (worst first), and the oldest risks.
+ * heat for projects, workstreams and pods (worst first, each saying why), the
+ * people in no team, and the oldest risks. A tenant with several programs shows
+ * one at a time: pick it in the verdict area; each chip carries the program's
+ * colour and the screen opens on the worst.
  */
 export function PortfolioToday() {
   const { roleLabel, canReadPortfolio } = useRole();
-  const { program, query: programs } = useProgram();
+  const { query: programsQuery, programs, program, choose } = useProgramChoice();
   const programId = program?.id ?? "";
   const projects = useProjects();
   const workstreams = useWorkstreams();
@@ -66,6 +76,12 @@ export function PortfolioToday() {
     queryFn: () => apiClient.nodeTrend("program", programId, { windowDays: 30 }),
     enabled: Boolean(programId) && canReadPortfolio,
   });
+  // The heat map's cells carry each node's reason, and the people in no team.
+  const heatmap = useQuery({
+    queryKey: ["portfolio", "heatmap", programId],
+    queryFn: () => apiClient.portfolioHeatmap(undefined, programId),
+    enabled: Boolean(programId) && canReadPortfolio,
+  });
   const brief = useQuery({
     queryKey: ["briefs", "exec", 1],
     queryFn: () => apiClient.personaBriefs("exec", 1),
@@ -74,11 +90,18 @@ export function PortfolioToday() {
   const a = attention.data;
   const m = momentum(trend.data?.points);
   const newest = brief.data?.briefs[0];
+  const scoped = scopeToProgram(programId, programs.length, {
+    projects: projects.data ?? [],
+    workstreams: workstreams.data ?? [],
+    pods: pods.data ?? [],
+  });
   const heat = [
-    { label: "Projects", kind: "project", items: projects.data ?? [] },
-    { label: "Workstreams", kind: "workstream", items: workstreams.data ?? [] },
-    { label: "Pods", kind: "pod", items: pods.data ?? [] },
+    { label: "Projects", kind: "project", items: scoped.projects },
+    { label: "Workstreams", kind: "workstream", items: scoped.workstreams },
+    { label: "Pods", kind: "pod", items: scoped.pods },
   ].filter((row) => row.kind !== "workstream" || row.items.length > 0);
+  const reasons = tileReasons(heatmap.data?.cells);
+  const noPod = noPodTiles(heatmap.data?.cells, HEAT_COLUMNS);
 
   return (
     <>
@@ -88,12 +111,21 @@ export function PortfolioToday() {
         sub="A portfolio-wide read on delivery health, momentum, and what changed."
       />
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+        {programs.length > 1 ? (
+          <ChipPicker
+            label="Program"
+            value={programId}
+            onChange={choose}
+            options={programs.map((item) => ({ value: item.id, label: item.name, rag: item.rag }))}
+            note={`${programs.length} programs · worst first`}
+          />
+        ) : null}
         <PanelState
           locked={!canReadPortfolio}
           needs="a manager, executive or admin"
-          isLoading={programs.isLoading || attention.isLoading}
-          error={programs.error ?? attention.error}
-          isEmpty={!programs.isLoading && !program}
+          isLoading={programsQuery.isLoading || attention.isLoading}
+          error={programsQuery.error ?? attention.error}
+          isEmpty={!programsQuery.isLoading && !program}
           emptyText="No program is configured yet. An admin adds one under Admin → Entities."
         >
           {a ? (
@@ -104,10 +136,10 @@ export function PortfolioToday() {
               </p>
               {a.detail ? <p className="mt-2 text-[15px] font-medium">{a.detail}</p> : null}
               <p className="mt-3 text-[13px] opacity-80">
-                Check-ins today: {a.checkins.answered} of {a.checkins.asked} answered
-                {a.checkins.first_asked_at
-                  ? ` · asked from ${formatTime(a.checkins.first_asked_at)}`
-                  : ""}
+                {checkinsLine(
+                  a.checkins,
+                  a.checkins.first_asked_at ? formatTime(a.checkins.first_asked_at) : null,
+                )}
               </p>
             </section>
           ) : null}
@@ -155,7 +187,8 @@ export function PortfolioToday() {
                     <p className="mt-2">{newest.body}</p>
                   )}
                   <p className="mt-2 text-[12px] text-grey-secondary">
-                    {formatDate(newest.generated_at)} · from {newest.sources.length} sources
+                    {formatDate(newest.generated_at)} · from{" "}
+                    {plural(newest.sources.length, "source", "sources")}
                   </p>
                 </div>
               ) : null}
@@ -163,12 +196,27 @@ export function PortfolioToday() {
           </Panel>
         </div>
 
-        <Panel title="Portfolio heat" note="worst first · click a tile to open it in Delivery">
+        <Panel
+          title="Portfolio heat"
+          note="worst first · click a tile to open it in Delivery · hover for every reason"
+        >
           <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-3">
             {heat.map((row) => (
-              <HeatRow key={row.kind} label={row.label} kind={row.kind} items={row.items} />
+              <HeatRow
+                key={row.kind}
+                label={row.label}
+                kind={row.kind}
+                items={row.items}
+                reasons={reasons}
+              />
             ))}
+            {noPod.tiles.length > 0 ? <NoPodRow tiles={noPod.tiles} total={noPod.total} /> : null}
           </div>
+          {heatmap.isError ? (
+            <p className="mt-3 text-[12px] text-grey-secondary">
+              The reasons under each tile could not be loaded, so only the colours show.
+            </p>
+          ) : null}
         </Panel>
 
         <Panel
@@ -185,27 +233,25 @@ export function PortfolioToday() {
             isLoading={attention.isLoading}
             error={attention.error}
             isEmpty={(a?.signals ?? []).length === 0}
-            emptyText="No open risks."
+            emptyText="Nothing needs attention right now."
           >
+            {programs.length > 1 ? (
+              <p className="mb-1 text-[12px] text-grey-secondary">
+                Risks are read across the whole portfolio, not one program.
+              </p>
+            ) : null}
             <ul>
-              {(a?.signals ?? []).slice(0, 3).map((s, i) => (
+              {(a?.signals ?? []).slice(0, SIGNALS_SHOWN).map((s, i) => (
                 <Row
                   key={`${s.kind}-${i}`}
                   rag={s.severity}
                   title={
-                    s.link.kind !== "signals" && s.link.id ? (
-                      <Link
-                        to={`/delivery/${s.link.kind}/${s.link.id}`}
-                        className="text-ink no-underline hover:underline"
-                      >
-                        {s.title}
-                      </Link>
-                    ) : (
-                      s.title
-                    )
+                    <Link to={signalHref(s.link)} className="text-ink no-underline hover:underline">
+                      {s.title}
+                    </Link>
                   }
-                  meta={s.kind.replace(/_/g, " ")}
-                  right={`${s.age_days}d`}
+                  meta={signalKindLabel(s.kind)}
+                  right={signalAge(s.age_days)}
                 />
               ))}
             </ul>
@@ -216,14 +262,17 @@ export function PortfolioToday() {
   );
 }
 
+/** A row of heat, `HEAT_COLUMNS` wide: label on the left, then a tile per node, worst first. */
 function HeatRow({
   label,
   kind,
   items,
+  reasons,
 }: {
   label: string;
   kind: string;
   items: DirectoryItemResponse[];
+  reasons: Map<string, TileReason>;
 }) {
   const ranked = [...items].sort(
     (a, b) => ragSeverity(b.rag) - ragSeverity(a.rag) || a.name.localeCompare(b.name),
@@ -245,19 +294,18 @@ function HeatRow({
         <ul className="grid grid-cols-2 gap-2 lg:grid-cols-4">
           {shown.map((item) => {
             const rag = item.rag ?? "unknown";
+            const why = reasons.get(tileKey(kind, item.id));
             return (
               <li key={item.id}>
                 <Link
-                  to={`/delivery/${kind}/${item.id}`}
+                  to={`/delivery/${kind}/${encodeURIComponent(item.id)}`}
+                  title={why?.tooltip}
                   className={cn(
-                    "block rounded-2xl px-3 py-3 no-underline hover:shadow-op-hover",
+                    "block min-h-[76px] rounded-2xl px-3 py-3 no-underline hover:shadow-op-hover",
                     TILE[rag],
                   )}
                 >
-                  <span className="block truncate text-[14px] font-bold">{item.name}</span>
-                  <span className="mt-1 block text-[11px] font-extrabold uppercase tracking-wider">
-                    {rag}
-                  </span>
+                  <TileText name={item.name} colour={rag} why={why?.reason} />
                 </Link>
               </li>
             );
@@ -265,5 +313,62 @@ function HeatRow({
         </ul>
       )}
     </div>
+  );
+}
+
+/**
+ * People in no pod, project or program (an executive, or someone not yet
+ * placed): their own check-in, which no team's colour counts and the verdict
+ * never reads.
+ */
+function NoPodRow({ tiles, total }: { tiles: NoPodTile[]; total: number }) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-2 sm:grid-cols-[110px_minmax(0,1fr)]">
+      <p className="pt-2 text-[13px] font-bold text-grey-secondary">
+        No pod
+        <span className="block text-[11px] font-medium">
+          {total > tiles.length ? `worst ${tiles.length} of ${total}` : "not in team colours"}
+        </span>
+      </p>
+      <ul className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {tiles.map((tile) => (
+          <li key={tile.id}>
+            <div
+              title={[tile.name, ...tile.reasons.map((line) => `• ${line}`)].join("\n")}
+              className={cn("min-h-[76px] rounded-2xl px-3 py-3", TILE[tile.rag])}
+            >
+              <TileText
+                name={tile.name}
+                colour={tile.reason ? tile.rag : tile.state}
+                why={tile.reason ?? undefined}
+              />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** A tile's name, its colour, and the few words that say why. */
+function TileText({
+  name,
+  colour,
+  why,
+}: {
+  name: string;
+  colour: string;
+  why: string | undefined;
+}) {
+  return (
+    <>
+      <span className="block truncate text-[14px] font-bold">{name}</span>
+      <span className="mt-1 block text-[11px] font-extrabold uppercase tracking-wider">
+        {colour}
+      </span>
+      {why ? (
+        <span className="mt-0.5 block line-clamp-2 text-[12px] font-semibold">{why}</span>
+      ) : null}
+    </>
   );
 }
