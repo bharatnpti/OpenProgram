@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     checkin_fanout_schedule_id: str = "openprogram-checkin-fanout"
     checkin_fanout_cron: str = "30 9 * * 1-5"
     checkin_reconcile_enabled: bool = True
+    # DEMO ONLY, never commit: every fan-out asks everyone again (a new round),
+    # instead of once per person per date, and each ask resets that person's
+    # status for the date to "awaiting this round's reply".
+    demo_checkin_rounds: bool = False
     checkin_reconcile_schedule_id: str = "openprogram-checkin-reconcile"
     checkin_reconcile_cron: str = "*/15 * * * 1-5"
     checkin_reconcile_after_local_time: str = "09:45"

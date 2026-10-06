@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING
 
 from core.domain.escalation import EscalationTarget
 from core.domain.status import (
     CheckIn,
     CheckInScheduleRun,
+    DeveloperStatus,
+    StatusSource,
     effective_checkin_preference,
     resolve_timezone,
 )
@@ -65,6 +67,24 @@ async def start_daily_checkin_activity(payload: DailyCheckinInput) -> DailyCheck
             payload.developer_id,
             checkin_date,
         )
+        if (
+            existing_run is not None
+            and getattr(settings, "demo_checkin_rounds", False)
+            and payload.correlation_id is not None
+            and existing_run.correlation_id != payload.correlation_id
+        ):
+            # DEMO ONLY: a new round. Close this person's still-open check-ins so
+            # a reply matches the new question, not an ambiguous pair.
+            chat_ref = payload.chat_external_id or payload.developer_id
+            now = datetime.now(tz=UTC)
+            for day in (checkin_date - timedelta(days=1), checkin_date):
+                for open_corr in await repository.unconsumed_checkin_correlations_for_user(
+                    payload.tenant_id, chat_ref, day
+                ):
+                    await repository.consume_checkin_correlation(
+                        payload.tenant_id, open_corr.correlation_id, now
+                    )
+            existing_run = None
         if existing_run is not None:
             existing_checkin = await repository.checkin_by_correlation(
                 payload.tenant_id,
@@ -148,6 +168,8 @@ async def start_daily_checkin_activity(payload: DailyCheckinInput) -> DailyCheck
             scheduled_at=scheduled_at,
             reason=None,
         )
+        if getattr(settings, "demo_checkin_rounds", False):  # DEMO ONLY: reset the day's status
+            await _demo_reset_round_status(repository, checkin, checkin_date)
         return _checkin_result(
             checkin,
             already_recorded=False,
@@ -275,6 +297,35 @@ async def _record_schedule_run(
     )
     await repository.record_checkin_schedule_run(run)
     return run
+
+
+async def _demo_reset_round_status(
+    repository: StatusRepository, checkin: CheckIn, checkin_date: date
+) -> None:
+    """DEMO ONLY, never commit: a round's ask resets the person's status for the date.
+
+    Rounds share a date. Without this, the status shown and rolled up stays the
+    previous round's final until this round's close-out: green while silent
+    (N10), and an inferred, stale or unknown final makes the close-out stop at
+    ``already_closed`` (N18). The placeholder is partial: never green, and unlike
+    those sources it lets the close-out judge this round's replies or silence on
+    their own. Written after the ask, so the question still reads the previous
+    round's status. Earlier rounds' check-ins, facts and blockers stay; open
+    blockers stay listed.
+    """
+    open_blockers = await repository.open_blockers(
+        checkin.tenant_id, checkin.developer_id, checkin_date
+    )
+    await repository.record_developer_status(
+        DeveloperStatus(
+            tenant_id=checkin.tenant_id,
+            developer_id=checkin.developer_id,
+            as_of=checkin_date,
+            source=StatusSource.PARTIAL,
+            blockers=tuple(blocker.description for blocker in open_blockers),
+            summary="Awaiting this round's reply.",
+        )
+    )
 
 
 def _checkin_date(payload: DailyCheckinInput, fallback: datetime) -> date:

@@ -105,10 +105,16 @@ async def _developer_checkin_dispatches(
     payload: CheckinFanoutInput,
 ) -> list[DeveloperCheckinDispatch]:
     checkin_date = date.fromisoformat(payload.checkin_date)
-    developers = await registry.status_repository().developers_without_checkin(
-        payload.tenant_id,
-        checkin_date,
-    )
+    if getattr(registry.settings, "demo_checkin_rounds", False):  # DEMO ONLY: every member
+        from core.domain.graph import NodeKind
+
+        nodes = await registry.graph_repository().list_nodes(payload.tenant_id, NodeKind.DEVELOPER)
+        developers = [node.id for node in nodes]
+    else:
+        developers = await registry.status_repository().developers_without_checkin(
+            payload.tenant_id,
+            checkin_date,
+        )
     return [
         DeveloperCheckinDispatch(
             tenant_id=payload.tenant_id,
