@@ -1,0 +1,19 @@
+AGENTS.md
+  s_b588b76c1d4779::t_956a6e7251600c 6-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "079f31c1b40486c60d0fa55ed3cc533cc4ef25dd",
+  "prompts": {},
+  "sessions": {
+    "s_b588b76c1d4779": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "df1112d7-5452-400d-9853-f2e6476376d7",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
