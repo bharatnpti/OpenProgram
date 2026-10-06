@@ -1,0 +1,44 @@
+frontend-v2/src/api/generated.ts
+  s_a5c95ae649948d::t_396552993372fd 4710-4722
+frontend/src/api/openapi.json
+  s_a5c95ae649948d::t_396552993372fd 16342-16358
+frontend-v2/src/api/openapi.json
+  s_a5c95ae649948d::t_396552993372fd 16342-16358
+frontend-v3/src/api/openapi.json
+  s_a5c95ae649948d::t_396552993372fd 16342-16358
+backend/core/application/delivery_service.py
+  s_a5c95ae649948d::t_30622ab840ba43 66-69
+  s_a5c95ae649948d::t_29f25b9ef9d219 518-523
+  s_a5c95ae649948d::t_a0b1c9fdbead17 15
+backend/api/dtos.py
+  s_a5c95ae649948d::t_b4cb3f57131079 2929-2937
+  s_a5c95ae649948d::t_c5c6985f709f1e 3016-3021
+backend/tests/unit/test_delivery.py
+  s_a5c95ae649948d::t_fc34a6d7f5682f 7
+  s_a5c95ae649948d::t_234446b4d00c0f 329-366
+  s_a5c95ae649948d::t_75e586c49924ce 473-477
+frontend/src/api/generated.ts
+  s_a5c95ae649948d::t_396552993372fd 4723-4735
+frontend-v3/src/api/generated.ts
+  s_a5c95ae649948d::t_396552993372fd 4710-4722
+frontend-v2/src/features/requirements/stages.test.ts
+  s_a5c95ae649948d::t_a5cfdcf7e3d4d8 16-17,38-44
+frontend-v3/src/features/overall/charts.test.ts
+  s_a5c95ae649948d::t_de0df288afd0b0 17,29,78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bf966deab641704b183a409d273458d27d4fae57",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
