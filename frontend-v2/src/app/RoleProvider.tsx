@@ -203,6 +203,9 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         lensSet.has("sm") ||
         lensSet.has("po") ||
         lensSet.has("mgr"),
+      canReadDayReports: lensSet.size > 0,
+      canSendDayReports: hasAdmin || lensSet.has("sm") || lensSet.has("mgr"),
+      canSetUpDayReports: hasAdmin || lensSet.has("sm") || lensSet.has("mgr"),
       lensRoles: [...lensSet],
       canAccessAdmin: hasAdmin,
       // Which lenses are on offer is about who the person is, not the lens they

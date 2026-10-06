@@ -6826,12 +6826,30 @@
         }
       }
     },
-    "/config/reports": {
+    "/day-reports": {
       "get": {
         "tags": ["reports"],
         "summary": "List Reports",
-        "operationId": "list_reports_config_reports_get",
+        "description": "Every report, or one project's: its last send, today's note and what the caller may do.",
+        "operationId": "list_reports_day_reports_get",
         "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",
@@ -6859,7 +6877,7 @@
                   "items": {
                     "$ref": "#/components/schemas/DayReportResponse"
                   },
-                  "title": "Response List Reports Config Reports Get"
+                  "title": "Response List Reports Day Reports Get"
                 }
               }
             }
@@ -6879,7 +6897,7 @@
       "post": {
         "tags": ["reports"],
         "summary": "Create Report",
-        "operationId": "create_report_config_reports_post",
+        "operationId": "create_report_day_reports_post",
         "parameters": [
           {
             "name": "authorization",
@@ -6932,11 +6950,12 @@
         }
       }
     },
-    "/config/reports/destinations": {
+    "/day-reports/setup": {
       "get": {
         "tags": ["reports"],
-        "summary": "Destination Options",
-        "operationId": "destination_options_config_reports_destinations_get",
+        "summary": "Setup Options",
+        "description": "The projects the caller may set reports up for, the people, and the destinations.",
+        "operationId": "setup_options_day_reports_setup_get",
         "parameters": [
           {
             "name": "authorization",
@@ -6961,11 +6980,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ReportDestinationOptionResponse"
-                  },
-                  "title": "Response Destination Options Config Reports Destinations Get"
+                  "$ref": "#/components/schemas/DayReportSetupResponse"
                 }
               }
             }
@@ -6983,11 +6998,11 @@
         }
       }
     },
-    "/config/reports/{report_id}": {
+    "/day-reports/{report_id}": {
       "get": {
         "tags": ["reports"],
         "summary": "Get Report",
-        "operationId": "get_report_config_reports__report_id__get",
+        "operationId": "get_report_day_reports__report_id__get",
         "parameters": [
           {
             "name": "report_id",
@@ -7041,7 +7056,7 @@
       "put": {
         "tags": ["reports"],
         "summary": "Update Report",
-        "operationId": "update_report_config_reports__report_id__put",
+        "operationId": "update_report_day_reports__report_id__put",
         "parameters": [
           {
             "name": "report_id",
@@ -7105,7 +7120,7 @@
       "delete": {
         "tags": ["reports"],
         "summary": "Delete Report",
-        "operationId": "delete_report_config_reports__report_id__delete",
+        "operationId": "delete_report_day_reports__report_id__delete",
         "parameters": [
           {
             "name": "report_id",
@@ -7150,11 +7165,12 @@
         }
       }
     },
-    "/config/reports/{report_id}/preview": {
-      "post": {
+    "/day-reports/{report_id}/preview": {
+      "get": {
         "tags": ["reports"],
         "summary": "Preview Report",
-        "operationId": "preview_report_config_reports__report_id__preview_post",
+        "description": "Today's report, built now: what it would say if it were sent. Nothing is sent or stored.",
+        "operationId": "preview_report_day_reports__report_id__preview_get",
         "parameters": [
           {
             "name": "report_id",
@@ -7206,11 +7222,11 @@
         }
       }
     },
-    "/config/reports/{report_id}/send": {
+    "/day-reports/{report_id}/send": {
       "post": {
         "tags": ["reports"],
         "summary": "Send Report Now",
-        "operationId": "send_report_now_config_reports__report_id__send_post",
+        "operationId": "send_report_now_day_reports__report_id__send_post",
         "parameters": [
           {
             "name": "report_id",
@@ -7262,11 +7278,12 @@
         }
       }
     },
-    "/config/reports/{report_id}/runs": {
+    "/day-reports/{report_id}/runs": {
       "get": {
         "tags": ["reports"],
         "summary": "Report Runs",
-        "operationId": "report_runs_config_reports__report_id__runs_get",
+        "description": "Past sends, newest first, with how each destination fared and who sent it.",
+        "operationId": "report_runs_day_reports__report_id__runs_get",
         "parameters": [
           {
             "name": "report_id",
@@ -7316,68 +7333,7 @@
                   "items": {
                     "$ref": "#/components/schemas/ReportRunResponse"
                   },
-                  "title": "Response Report Runs Config Reports  Report Id  Runs Get"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/projects/{project_id}/day-reports": {
-      "get": {
-        "tags": ["reports"],
-        "summary": "Project Reports",
-        "description": "The project's reports and the note each opens with today.",
-        "operationId": "project_reports_projects__project_id__day_reports_get",
-        "parameters": [
-          {
-            "name": "project_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Project Id"
-            }
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ProjectDayReportResponse"
-                  },
-                  "title": "Response Project Reports Projects  Project Id  Day Reports Get"
+                  "title": "Response Report Runs Day Reports  Report Id  Runs Get"
                 }
               }
             }
@@ -7444,7 +7400,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProjectDayReportResponse"
+                  "$ref": "#/components/schemas/DayReportResponse"
                 }
               }
             }
@@ -12130,6 +12086,18 @@
             "type": "string",
             "title": "Project Id"
           },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Name",
+            "description": "Null when the project no longer exists."
+          },
           "enabled": {
             "type": "boolean",
             "title": "Enabled"
@@ -12142,7 +12110,24 @@
               "$ref": "#/components/schemas/ReportDestinationDto"
             },
             "type": "array",
-            "title": "Destinations"
+            "title": "Destinations",
+            "description": "Exactly where it goes; empty for a reader who may not set the report up."
+          },
+          "destination_count": {
+            "type": "integer",
+            "title": "Destination Count"
+          },
+          "audience": {
+            "items": {
+              "$ref": "#/components/schemas/ReportAudienceResponse"
+            },
+            "type": "array",
+            "title": "Audience"
+          },
+          "audience_summary": {
+            "type": "string",
+            "title": "Audience Summary",
+            "description": "Where it goes in one line, such as \"3 people by direct message\"."
           },
           "updated_at": {
             "type": "string",
@@ -12164,6 +12149,17 @@
             ],
             "title": "Release Id"
           },
+          "release_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Name"
+          },
           "last_run": {
             "anyOf": [
               {
@@ -12173,6 +12169,32 @@
                 "type": "null"
               }
             ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DayReportNoteResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The note today's report opens with, if anyone wrote one."
+          },
+          "can_send": {
+            "type": "boolean",
+            "title": "Can Send",
+            "description": "The caller may send it now."
+          },
+          "can_edit": {
+            "type": "boolean",
+            "title": "Can Edit",
+            "description": "The caller may change, switch or remove it."
+          },
+          "can_write_note": {
+            "type": "boolean",
+            "title": "Can Write Note",
+            "description": "The caller may write the note today's report opens with."
           }
         },
         "type": "object",
@@ -12180,13 +12202,50 @@
           "report_id",
           "name",
           "project_id",
+          "project_name",
           "enabled",
           "schedule",
           "destinations",
+          "destination_count",
+          "audience",
+          "audience_summary",
           "updated_at",
-          "updated_by"
+          "updated_by",
+          "can_send",
+          "can_edit",
+          "can_write_note"
         ],
-        "title": "DayReportResponse"
+        "title": "DayReportResponse",
+        "description": "A day report as the caller may see it, with what the caller may do with it."
+      },
+      "DayReportSetupResponse": {
+        "properties": {
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/ReportSetupProjectResponse"
+            },
+            "type": "array",
+            "title": "Projects"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/ReportSetupPersonResponse"
+            },
+            "type": "array",
+            "title": "People"
+          },
+          "destinations": {
+            "items": {
+              "$ref": "#/components/schemas/ReportDestinationOptionResponse"
+            },
+            "type": "array",
+            "title": "Destinations"
+          }
+        },
+        "type": "object",
+        "required": ["projects", "people", "destinations"],
+        "title": "DayReportSetupResponse",
+        "description": "What setting a report up can pick from: the projects the caller may report on,\nthe people it can go to, and the kinds of destination with whether each can be used."
       },
       "DeadLetterResponse": {
         "properties": {
@@ -12315,7 +12374,13 @@
           },
           "target": {
             "type": "string",
-            "title": "Target"
+            "title": "Target",
+            "description": "The exact destination; empty for a reader who may not set the report up."
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Who or where, as the reader may see it: a person's name, else the exact destination for whoever sets the report up, else what kind of place it is."
           },
           "ok": {
             "type": "boolean",
@@ -12327,7 +12392,7 @@
           }
         },
         "type": "object",
-        "required": ["kind", "target", "ok", "detail"],
+        "required": ["kind", "target", "label", "ok", "detail"],
         "title": "DeliveryOutcomeResponse"
       },
       "DeliveryStage": {
@@ -15370,62 +15435,6 @@
         "required": ["root_id", "as_of", "nodes", "edges"],
         "title": "ProgramTreeResponse"
       },
-      "ProjectDayReportResponse": {
-        "properties": {
-          "report_id": {
-            "type": "string",
-            "title": "Report Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "enabled": {
-            "type": "boolean",
-            "title": "Enabled"
-          },
-          "release_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Release Id"
-          },
-          "schedule": {
-            "$ref": "#/components/schemas/ReportScheduleDto"
-          },
-          "destination_count": {
-            "type": "integer",
-            "title": "Destination Count"
-          },
-          "note": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/DayReportNoteResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "report_id",
-          "name",
-          "enabled",
-          "release_id",
-          "schedule",
-          "destination_count",
-          "note"
-        ],
-        "title": "ProjectDayReportResponse",
-        "description": "A project's day report as its product owner or manager sees it: when, and today's note."
-      },
       "ProjectDeliveryResponse": {
         "properties": {
           "project": {
@@ -15771,6 +15780,29 @@
         ],
         "title": "ReleaseResponse"
       },
+      "ReportAudienceResponse": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/DestinationKind"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Names",
+            "description": "For people, the names of those who are members; anyone else is only counted."
+          }
+        },
+        "type": "object",
+        "required": ["kind", "count", "names"],
+        "title": "ReportAudienceResponse",
+        "description": "How many places of one kind a report goes to, and the people among them by name."
+      },
       "ReportDestinationDto": {
         "properties": {
           "kind": {
@@ -16051,6 +16083,58 @@
         "type": "object",
         "required": ["title", "lines", "empty_text"],
         "title": "ReportSectionResponse"
+      },
+      "ReportSetupPersonResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name"],
+        "title": "ReportSetupPersonResponse"
+      },
+      "ReportSetupProjectResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "releases": {
+            "items": {
+              "$ref": "#/components/schemas/ReportSetupReleaseResponse"
+            },
+            "type": "array",
+            "title": "Releases"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "releases"],
+        "title": "ReportSetupProjectResponse"
+      },
+      "ReportSetupReleaseResponse": {
+        "properties": {
+          "release_id": {
+            "type": "string",
+            "title": "Release Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["release_id", "name"],
+        "title": "ReportSetupReleaseResponse"
       },
       "ReportTableResponse": {
         "properties": {

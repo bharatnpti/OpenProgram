@@ -35,9 +35,14 @@ export function parseViewingDate(raw: string | null, today: string): string | nu
   return raw < today ? raw : null;
 }
 
-/** Admin edits current configuration, so it never follows a past date. */
+/**
+ * Admin edits current configuration, and Reports shows today's report built
+ * live with the current set-up, so neither follows a past date.
+ */
+const CURRENT_ONLY = ["/admin", "/reports"];
+
 export function viewingDateApplies(pathname: string): boolean {
-  return !(pathname === "/admin" || pathname.startsWith("/admin/"));
+  return !CURRENT_ONLY.some((root) => pathname === root || pathname.startsWith(`${root}/`));
 }
 
 /**

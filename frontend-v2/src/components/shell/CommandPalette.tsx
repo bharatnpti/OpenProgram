@@ -18,6 +18,7 @@ const NAV_DESTINATIONS: {
   { label: "Delivery", hint: "Graph explorer", to: "/delivery" },
   { label: "Signals", hint: "Risks, drift & flow", to: "/signals", needsAggregate: true },
   { label: "Coordination", hint: "Requests & briefs", to: "/coordination" },
+  { label: "Reports", hint: "Day reports", to: "/reports" },
 ];
 
 type PaletteRow = {

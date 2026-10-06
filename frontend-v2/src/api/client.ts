@@ -2,7 +2,6 @@ import type {
   EscalationMatrixRequest,
   EscalationMatrixResponse,
   EscalationOverviewResponse,
-  ProjectDayReportResponse,
   GateBoardResponse,
   GateItemResponse,
   GateScanResponse,
@@ -24,10 +23,10 @@ import type {
   ConnectionUpdateRequest,
   DayReportRequest,
   DayReportResponse,
+  DayReportSetupResponse,
   DeliveryStagesResponse,
   DeliveryStagesUpdateRequest,
   ObservedStatusResponse,
-  ReportDestinationOptionResponse,
   ReportPreviewResponse,
   ReportRunResponse,
   RequirementsResponse,
@@ -537,15 +536,6 @@ export const apiClient = {
     requestJson<void>(`/config/escalation/projects/${encodeURIComponent(projectId)}`, {
       method: "DELETE",
     }),
-  projectDayReports: (projectId: string) =>
-    requestJson<ProjectDayReportResponse[]>(
-      `/projects/${encodeURIComponent(projectId)}/day-reports`,
-    ),
-  writeDayReportNote: (reportId: string, text: string) =>
-    requestJson<ProjectDayReportResponse>(`/day-reports/${encodeURIComponent(reportId)}/note`, {
-      method: "PUT",
-      body: { text },
-    }),
   gateTemplates: () => requestJson<GateTemplatesResponse>("/config/gates"),
   saveGateTemplate: (body: GateTemplateDto) =>
     requestJson<GateTemplateDto>("/config/gates", { method: "PUT", body }),
@@ -613,28 +603,35 @@ export const apiClient = {
       `/projects/${encodeURIComponent(projectId)}/releases/${encodeURIComponent(releaseId)}`,
       { method: "DELETE" },
     ),
-  dayReports: () => requestJson<DayReportResponse[]>("/config/reports"),
-  reportDestinationOptions: () =>
-    requestJson<ReportDestinationOptionResponse[]>("/config/reports/destinations"),
+  // Day reports: everyone reads them; each report says whether the caller may
+  // send it, set it up, or write today's note.
+  dayReports: (projectId?: string) =>
+    requestJson<DayReportResponse[]>(withQuery("/day-reports", { project_id: projectId })),
+  dayReport: (reportId: string) =>
+    requestJson<DayReportResponse>(`/day-reports/${encodeURIComponent(reportId)}`),
+  dayReportSetup: () => requestJson<DayReportSetupResponse>("/day-reports/setup"),
   createDayReport: (body: DayReportRequest) =>
-    requestJson<DayReportResponse>("/config/reports", { method: "POST", body }),
+    requestJson<DayReportResponse>("/day-reports", { method: "POST", body }),
   updateDayReport: (reportId: string, body: DayReportRequest) =>
-    requestJson<DayReportResponse>(`/config/reports/${encodeURIComponent(reportId)}`, {
+    requestJson<DayReportResponse>(`/day-reports/${encodeURIComponent(reportId)}`, {
       method: "PUT",
       body,
     }),
   removeDayReport: (reportId: string) =>
-    requestJson<void>(`/config/reports/${encodeURIComponent(reportId)}`, { method: "DELETE" }),
+    requestJson<void>(`/day-reports/${encodeURIComponent(reportId)}`, { method: "DELETE" }),
   previewDayReport: (reportId: string) =>
-    requestJson<ReportPreviewResponse>(`/config/reports/${encodeURIComponent(reportId)}/preview`, {
-      method: "POST",
-    }),
+    requestJson<ReportPreviewResponse>(`/day-reports/${encodeURIComponent(reportId)}/preview`),
   sendDayReport: (reportId: string) =>
-    requestJson<ReportRunResponse>(`/config/reports/${encodeURIComponent(reportId)}/send`, {
+    requestJson<ReportRunResponse>(`/day-reports/${encodeURIComponent(reportId)}/send`, {
       method: "POST",
     }),
   dayReportRuns: (reportId: string) =>
-    requestJson<ReportRunResponse[]>(`/config/reports/${encodeURIComponent(reportId)}/runs`),
+    requestJson<ReportRunResponse[]>(`/day-reports/${encodeURIComponent(reportId)}/runs`),
+  writeDayReportNote: (reportId: string, text: string) =>
+    requestJson<DayReportResponse>(`/day-reports/${encodeURIComponent(reportId)}/note`, {
+      method: "PUT",
+      body: { text },
+    }),
   configMemberIdentityLink: (memberId: string) =>
     requestJson<IdentityLinkResponse>(`/config/members/${memberId}/identity-link`),
   updateConfigMemberIdentityLink: (memberId: string, body: IdentityLinkUpdateRequest) =>
