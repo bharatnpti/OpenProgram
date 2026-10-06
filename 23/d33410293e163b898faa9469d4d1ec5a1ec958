@@ -1,0 +1,111 @@
+frontend-v2/src/lib/viewingDate.ts
+  s_8bfaa6d62bf2a2::t_945b5eaf2c4fa5 38-43,45
+frontend-v2/src/features/reports/ReportNoteEditor.tsx
+  s_8bfaa6d62bf2a2::t_74ef55f1a9b6a2 1-46,48-54,56-74,76-89
+  s_8bfaa6d62bf2a2::t_ad722fa5d3dd31 47,55
+  s_8bfaa6d62bf2a2::t_08c68ff5156b2e 75
+frontend-v2/src/features/reports/DayReportNoteCard.tsx
+  s_8bfaa6d62bf2a2::t_ac8d2e10e43aa4 12
+  s_8bfaa6d62bf2a2::t_3741d743d57130 1-3,9-10,13-14,17-19,22,27-28,31-32,42-50,52-68,70,72-73
+  s_8bfaa6d62bf2a2::t_ad722fa5d3dd31 69
+frontend-v2/src/features/reports/ReportDialog.tsx
+  s_8bfaa6d62bf2a2::t_20044a7355beed 1-105,107-389
+  s_8bfaa6d62bf2a2::t_ad722fa5d3dd31 106
+backend/core/application/forecast_service.py
+  s_8bfaa6d62bf2a2::t_c28d4d531eb2e2 255-262
+frontend-v2/src/features/reports/reportForm.test.ts
+  s_8bfaa6d62bf2a2::t_8cf9dbcffc56a1 1-60
+frontend-v2/src/features/reports/reportView.test.ts
+  s_8bfaa6d62bf2a2::t_ad722fa5d3dd31 65-68
+  s_8bfaa6d62bf2a2::t_eb53fca18bfce0 1-3,11-56,73
+  s_8bfaa6d62bf2a2::t_54fc86dc226159 4-10,57-64,69-72
+backend/api/routers/reports.py
+  s_276b53b5934f7f::t_fed087f1f31a53 86,128,130,132-133,143,193,231-234,259,366-368
+  s_8bfaa6d62bf2a2::t_57d03001a9d12b 3-13,24-29,34,38-40,44-45,59,67-85,87-127,129,131,134-142,144-183,190-191,194-199,202-203,206-225,227-230,235-246,254,256-258,267,269-270,279,281-287,295,297-302,307,313-314,327,329-331,336,344,347-365,369-380,382,423-427,435
+backend/api/dtos.py
+  s_276b53b5934f7f::t_fed087f1f31a53 3077,3083,3137-3163,3167-3178,3180-3181,3187,3190-3197,3201,3203-3210,3323,3410,3417,3425,3435
+  s_8bfaa6d62bf2a2::t_35a84a3f52cbf3 4,110,3075-3076,3078-3082,3110,3112,3125-3126,3133-3136,3216-3220,3222-3224,3226,3231,3238-3248,3252,3254-3261,3263-3265,3269-3322,3324-3325,3409,3411-3416,3418-3424,3426-3434,3436-3441
+backend/core/application/authorization.py
+  s_d88fb673f992cc::t_c47e189c9f8ae6 30-35,59,66-67,70,81-85,103-105,118-120
+frontend-v2/src/features/reports/ReportPreview.tsx
+  s_8bfaa6d62bf2a2::t_8e0f5806719f0a 4,114-118
+  s_8bfaa6d62bf2a2::t_b4d0cad7ae57fc 1-3,5-47,49-50,52-61,63-64,66-87,89-113,119-140
+  s_8bfaa6d62bf2a2::t_ac8d2e10e43aa4 48,51,62,65,88
+frontend-v2/src/pages/AdminPage.tsx
+  s_8bfaa6d62bf2a2::t_945b5eaf2c4fa5 96
+features.md
+  s_8bfaa6d62bf2a2::t_df56dea15c0385 32,34,36,79,495,497-498,507
+  s_8bfaa6d62bf2a2::t_169eedbe21857c 496
+frontend-v2/src/features/reports/reportView.ts
+  s_8bfaa6d62bf2a2::t_3d3f0cef3a24a2 1-2,9-12,18-54,71-99
+  s_8bfaa6d62bf2a2::t_54fc86dc226159 3-8,55-70
+  s_8bfaa6d62bf2a2::t_ac8d2e10e43aa4 13-17
+frontend-v2/src/features/reports/reportForm.ts
+  s_8bfaa6d62bf2a2::t_8cf9dbcffc56a1 1-114
+frontend-v2/src/features/reports/ReportHistory.tsx
+  s_8bfaa6d62bf2a2::t_ac8d2e10e43aa4 7
+  s_8bfaa6d62bf2a2::t_184891fb2fb475 1-6,8-54
+backend/tests/unit/test_authorization.py
+  s_d88fb673f992cc::t_c47e189c9f8ae6 81-85,125-130
+  s_8bfaa6d62bf2a2::t_bfc1599a381249 131-132
+frontend-v2/src/App.tsx
+  s_8bfaa6d62bf2a2::t_945b5eaf2c4fa5 20-22,57-58
+frontend-v2/src/components/shell/Header.tsx
+  s_8bfaa6d62bf2a2::t_945b5eaf2c4fa5 18
+frontend-v2/src/components/shell/CommandPalette.tsx
+  s_8bfaa6d62bf2a2::t_945b5eaf2c4fa5 21
+frontend-v2/src/pages/ReportsPage.tsx
+  s_8bfaa6d62bf2a2::t_ac8d2e10e43aa4 17,26
+  s_8bfaa6d62bf2a2::t_89c2de08b2acf8 1-16,18-25,27-98,102-370,373-410
+  s_8bfaa6d62bf2a2::t_ad722fa5d3dd31 99-101,371-372
+backend/tests/unit/test_day_reports.py
+  s_8bfaa6d62bf2a2::t_eff531a246a074 1131,1133-1139,1141,1143-1146,1149-1150,1157,1159-1160,1162-1163,1165-1168,1172-1174,1181-1182,1184-1187,1210,1212,1219-1363,1365-1409,1412-1416,1419-1422,1424,1427-1428,1430-1431,1433-1434,1438,1440-1442
+frontend-v2/src/api/client.ts
+  s_8bfaa6d62bf2a2::t_57b5289213fb65 26,606-612,614,616,621,623,625,629-634
+frontend-v2/src/api/generated.ts
+  s_8bfaa6d62bf2a2::t_c4a2dd794b6474 1496,1503-1507,1510,1517,1524-1528,1537,1545,1547,1550,1556,1563-1567,1569,1576,1586,1593,1601-1602,1604,3080-3083,3091-3095,3099-3102,3104-3112,3122-3123,3125-3154,3216-3219,3221-3225,4495-4508,4621-4643,9389,9391-9393,9422,9457,9474,9488,9521,9558,9589,9622,9655,9713
+frontend-v2/src/api/openapi.json
+  s_8bfaa6d62bf2a2::t_8ecf3754b17571 6829,6833-6834,6836-6852,6880,6900,6953,6956-6958,6983,7001,7005,7059,7123,7168-7169,7172-7173,7225,7229,7281,7285-7286,7336,7403,12089-12100,12113-12130,12152-12162,12172-12197,12205,12209-12211,12213-12216,12218-12248,12377-12383,12395,15783-15805,16087-16138
+frontend-v2/src/api/schema.ts
+  s_8bfaa6d62bf2a2::t_71aeacdec6e490 132-137
+frontend-v2/src/app/RoleProvider.tsx
+  s_8bfaa6d62bf2a2::t_1d2aa9d791e1d0 206-208
+frontend-v2/src/app/role.ts
+  s_8bfaa6d62bf2a2::t_a12299439859ac 60-69
+frontend/src/api/generated.ts
+  s_8bfaa6d62bf2a2::t_c8233c06eb73ed 1496,1503-1507,1510,1517,1524-1528,1537,1545,1547,1550,1556,1563-1567,1569,1576,1586,1593,1601-1602,1604,3088-3091,3099-3103,3107-3110,3112-3120,3130-3131,3133-3162,3224-3227,3229-3233,4508-4521,4634-4656,9402,9404-9406,9435,9470,9487,9501,9534,9571,9602,9635,9668,9726
+frontend/src/api/openapi.json
+  s_8bfaa6d62bf2a2::t_f58a0ea19ecbaa 6829,6833-6834,6836-6852,6880,6900,6953,6956-6958,6983,7001,7005,7059,7123,7168-7169,7172-7173,7225,7229,7281,7285-7286,7336,7403,12089-12100,12113-12130,12152-12162,12172-12197,12205,12209-12211,12213-12216,12218-12248,12377-12383,12395,15783-15805,16087-16138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "23d33410293e163b898faa9469d4d1ec5a1ec958",
+  "prompts": {},
+  "sessions": {
+    "s_276b53b5934f7f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48373e82-8aca-459f-ab12-15a0fd615ab2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_8bfaa6d62bf2a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88a73698-de1c-479c-841f-c9c10e9430a0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_d88fb673f992cc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a69ec195-a53f-4611-a7ba-e562d067a61b",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
