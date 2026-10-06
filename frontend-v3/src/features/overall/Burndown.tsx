@@ -1,6 +1,5 @@
-import type { RequirementTimelinePointResponse } from "../../api/schema";
 import { formatDay } from "../../lib/format";
-import { burndownByCount, burndownGeometry, type Marker } from "./charts";
+import { burndownGeometry, type BurndownSeries, type Marker } from "./charts";
 
 const MARKER_COLORS: Record<string, string> = {
   committed: "var(--op-black)",
@@ -10,18 +9,14 @@ const MARKER_COLORS: Record<string, string> = {
 };
 
 /**
- * Requirements still to reach production, per day, with the committed date and
- * the forecast dates marked on the same axis.
+ * Story points (or, when not every requirement has them, requirements) still
+ * to reach production, per day, with the committed date and the forecast dates
+ * marked on the same axis.
  */
-export function Burndown({
-  timeline,
-  markers,
-}: {
-  timeline: RequirementTimelinePointResponse[];
-  markers: Marker[];
-}) {
-  const points = burndownByCount(timeline);
+export function Burndown({ series, markers }: { series: BurndownSeries; markers: Marker[] }) {
+  const { points, unit } = series;
   const g = burndownGeometry(points, markers, (iso) => formatDay(iso).replace(/^\w+ /, ""));
+  const what = unit === "story points" ? "Story points" : "Requirements";
 
   // One snapshot is a dot, not a trend: say how much history there is instead.
   if (!g.last || points.length < 2) {
@@ -29,7 +24,7 @@ export function Burndown({
       <p className="rounded-2xl bg-grey-fill px-4 py-3 text-[13px] text-grey-body">
         {points.length === 0
           ? "No daily snapshots yet. The burn-down starts once the first one is kept."
-          : `Only one daily snapshot so far (${formatDay(points[0].day)}): ${points[0].remaining} requirements not yet in production. The line draws from the second day.`}
+          : `Only one daily snapshot so far (${formatDay(points[0].day)}): ${points[0].remaining} ${unit} not yet in production. The line draws from the second day.`}
       </p>
     );
   }
@@ -40,7 +35,7 @@ export function Burndown({
         viewBox={`0 0 ${g.width} ${g.height}`}
         className="block h-auto w-full max-w-full"
         role="img"
-        aria-label={`Requirements not yet in production: ${points[0].remaining} on the first day, ${g.last.remaining} today.`}
+        aria-label={`${what} not yet in production: ${points[0].remaining} on the first day, ${g.last.remaining} today.`}
       >
         {g.yTicks.map((tick) => (
           <g key={tick.value}>

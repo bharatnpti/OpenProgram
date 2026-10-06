@@ -1,46 +1,76 @@
-import type {
-  GateBoardResponse,
-  GateEvaluationResponse,
-  GateState,
-  GateTemplateDto,
-} from "../../api/schema";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { toast } from "sonner";
+
+import { apiClient } from "../../api/client";
+import type { GateBoardResponse, GateEvaluationResponse, GateTemplateDto } from "../../api/schema";
 import { roleLabels, type AppRole } from "../../app/role";
 import { PanelState, SectionHeader, TableBox, td, th } from "../../components/PanelState";
+import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
-import type { BadgeTone } from "../../lib/status";
 import { STAGE_LABELS } from "../../lib/status";
+import { WHO, actionError } from "../reports/access";
+import { Locked } from "../reports/ReportDialog";
+import { useReportAccess } from "../reports/useReportAccess";
+import {
+  GATE_STATE_TONES,
+  evaluationChip,
+  evaluationLine,
+  gateCounts,
+  needsSomeone,
+  plural,
+  scanSummary,
+} from "./gateWords";
+import { IssueGatesDialog } from "./IssueGatesDialog";
 import { useGateBoard } from "./queries";
-
-const STATE_LABELS: Record<GateState, string> = {
-  passed: "Passed",
-  open: "Open",
-  failed: "Failed",
-  missing: "Nothing kept yet",
-};
-
-const STATE_TONES: Record<GateState, BadgeTone> = {
-  passed: "success",
-  open: "warning",
-  failed: "danger",
-  missing: "neutral",
-};
 
 /**
  * The checks every requirement passes on its way to production, in plain words,
  * then each requirement against each check. A tenant starts with two: business
  * acceptance before production, engineering delivery (test cases) before
  * business testing. Admins define them on the console's Admin → Gates tab.
+ * Everyone but an executive keeps or dismisses what Jira suggests, adds items
+ * and rereads Jira; only the roles a gate names sign its items off.
  */
-export function GatesSection({ projectId }: { projectId: string }) {
-  const { query } = useGateBoard(projectId);
+export function GatesSection({
+  projectId,
+  releaseId = "",
+}: {
+  projectId: string;
+  releaseId?: string;
+}) {
+  const { editGates } = useReportAccess();
+  const queryClient = useQueryClient();
+  const { query } = useGateBoard(projectId, releaseId || undefined);
   const data = query.data;
   const templates = (data?.templates ?? []).filter((t) => t.enabled);
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const scan = useMutation({
+    mutationFn: () => apiClient.scanGates(projectId, releaseId || undefined),
+    onSuccess: async (result) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["gates", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["day-reports"] }),
+      ]);
+      toast.success(scanSummary(result));
+    },
+    onError: (error) => toast.error(actionError(error)),
+  });
 
   return (
     <section>
       <SectionHeader
         title="Acceptance gates"
         meta="What must be true before a requirement moves on, and who says so"
+        actions={
+          editGates ? (
+            <Pill size="sm" variant="ghost" disabled={scan.isPending} onClick={() => scan.mutate()}>
+              {scan.isPending ? "Reading Jira…" : "Read Jira now"}
+            </Pill>
+          ) : (
+            <Locked>Rereading Jira and keeping items is for {WHO.gates}.</Locked>
+          )
+        }
       />
       <PanelState
         needs="anyone but an executive, or a project-progress reader"
@@ -59,13 +89,45 @@ export function GatesSection({ projectId }: { projectId: string }) {
             </ul>
             <p className="text-[12px] text-grey-secondary">
               A gate does not block Jira. When a requirement moves on without passing, it is flagged
-              below so the gap is visible.
+              below so the gap is visible. Items read from Jira count once someone keeps them.
             </p>
-            <GateTable data={data} templates={templates} />
+            {data.issues.length === 0 ? (
+              <p className="rounded-2xl bg-grey-fill px-4 py-3 text-[14px] text-grey-body">
+                No requirements in this scope yet.
+              </p>
+            ) : (
+              <>
+                <Counts data={data} />
+                <GateTable data={data} templates={templates} onOpen={setOpenKey} />
+              </>
+            )}
           </div>
         ) : null}
       </PanelState>
+      {openKey && data ? (
+        <IssueGatesDialog
+          board={data}
+          issueKey={openKey}
+          projectId={projectId}
+          onClose={() => setOpenKey(null)}
+        />
+      ) : null}
     </section>
+  );
+}
+
+function Counts({ data }: { data: GateBoardResponse }) {
+  const counts = gateCounts(data);
+  const waiting = data.issues.filter(needsSomeone).length;
+  return (
+    <p className="text-[13px] text-grey-body">
+      {counts.passedAll} of {counts.issues} passed every gate
+      {counts.passedWithout > 0 ? ` · ${counts.passedWithout} moved on without passing` : ""}
+      {counts.suggestions > 0
+        ? ` · ${plural(counts.suggestions, "suggestion")} from Jira to keep or dismiss`
+        : ""}
+      {waiting > 0 ? ` · ${waiting} need someone` : ""}
+    </p>
   );
 }
 
@@ -102,7 +164,15 @@ function listRoles(roles: string[]): string {
   return `the ${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
 }
 
-function GateTable({ data, templates }: { data: GateBoardResponse; templates: GateTemplateDto[] }) {
+function GateTable({
+  data,
+  templates,
+  onOpen,
+}: {
+  data: GateBoardResponse;
+  templates: GateTemplateDto[];
+  onOpen: (key: string) => void;
+}) {
   // `passed_without` carries gate names (not ids), as the server words them.
   return (
     <TableBox>
@@ -123,12 +193,24 @@ function GateTable({ data, templates }: { data: GateBoardResponse; templates: Ga
           {data.issues.map((issue) => (
             <tr key={issue.key}>
               <td className={td}>
-                <span className="font-bold">{issue.key}</span> {issue.title}
+                <button
+                  type="button"
+                  className="text-left hover:underline"
+                  onClick={() => onOpen(issue.key)}
+                >
+                  <span className="font-bold">{issue.key}</span> {issue.title}
+                </button>
+                <span className="block text-[12px] text-grey-secondary">
+                  {issue.items.some((item) => item.status === "suggested")
+                    ? "Suggestions to keep or dismiss"
+                    : "Open to see its items"}
+                </span>
               </td>
               <td className={`${td} whitespace-nowrap`}>{STAGE_LABELS[issue.stage]}</td>
               {templates.map((t) => (
                 <td key={t.template_id} className={td}>
                   <Evaluation
+                    template={t}
                     evaluation={issue.evaluations.find((e) => e.template_id === t.template_id)}
                   />
                 </td>
@@ -150,20 +232,20 @@ function GateTable({ data, templates }: { data: GateBoardResponse; templates: Ga
   );
 }
 
-function Evaluation({ evaluation }: { evaluation: GateEvaluationResponse | undefined }) {
+function Evaluation({
+  template,
+  evaluation,
+}: {
+  template: GateTemplateDto;
+  evaluation: GateEvaluationResponse | undefined;
+}) {
   if (!evaluation) return <span className="text-grey-secondary">Does not apply</span>;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-1">
-      <RagChip tone={STATE_TONES[evaluation.state]} className="h-6 w-fit px-2.5 text-[12px]">
-        {STATE_LABELS[evaluation.state]}
+      <RagChip tone={GATE_STATE_TONES[evaluation.state]} className="h-6 w-fit px-2.5 text-[12px]">
+        {evaluationChip(evaluation)}
       </RagChip>
-      <span className="text-[12px] text-grey-body">
-        {evaluation.total > 0 ? `${evaluation.met} of ${evaluation.total} met` : "none kept"}
-        {evaluation.suggested > 0 ? ` · ${evaluation.suggested} suggested from Jira` : ""}
-        {evaluation.missing_kinds.length > 0
-          ? ` · missing ${evaluation.missing_kinds.join(", ")}`
-          : ""}
-      </span>
+      <span className="text-[12px] text-grey-body">{evaluationLine(evaluation, template)}</span>
     </div>
   );
 }

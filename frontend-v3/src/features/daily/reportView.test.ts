@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { askParts, outcomeLine, sendConfirmation, todaysNote } from "./reportView.ts";
+import {
+  askParts,
+  localDay,
+  outcomeLine,
+  reportLocks,
+  scheduleTime,
+  sendConfirmation,
+  todaysNote,
+} from "./reportView.ts";
 
 test("an ask line splits into its kind and its text", () => {
   assert.deepEqual(askParts("Fix: Sandbox credentials for 3-D Secure"), {
@@ -48,4 +56,33 @@ test("yesterday's note does not prefill today's", () => {
   assert.equal(todaysNote({ note }, "2026-10-06"), "");
   assert.equal(todaysNote({ note }, "2026-10-05"), "Old");
   assert.equal(todaysNote({ note: null }, "2026-10-06"), "");
+});
+
+test("today is the report's own day in its time zone, not the UTC date", () => {
+  // 20:00 UTC on 6 Oct is already 7 Oct in India and still 6 Oct in Berlin.
+  const evening = new Date("2026-10-06T20:00:00Z");
+  assert.equal(localDay("Asia/Kolkata", evening), "2026-10-07");
+  assert.equal(localDay("Europe/Berlin", evening), "2026-10-06");
+  assert.equal(localDay("Not/AZone", evening), "2026-10-06");
+});
+
+test("the schedule's time reads without the seconds the server keeps", () => {
+  assert.equal(scheduleTime("17:30:00"), "17:30");
+  assert.equal(scheduleTime("09:05"), "09:05");
+});
+
+test("each action a reader may not take says who takes it", () => {
+  const report = { project_name: "Checkout Revamp", can_send: false, can_edit: false };
+  assert.deepEqual(reportLocks({ ...report, can_write_note: true }), [
+    "Sending it now and changing it: a scrum master of a pod working on Checkout Revamp, a manager or an admin.",
+  ]);
+  assert.deepEqual(
+    reportLocks({ ...report, can_send: true, can_edit: true, can_write_note: false }),
+    ["Today's note: a product owner, manager or admin."],
+  );
+  assert.equal(
+    reportLocks({ can_send: true, can_edit: true, can_write_note: true, project_name: null })
+      .length,
+    0,
+  );
 });

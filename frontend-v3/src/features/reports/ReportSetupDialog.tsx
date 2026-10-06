@@ -7,6 +7,8 @@ import { apiClient } from "../../api/client";
 import type { DayReportRequest, DayReportResponse } from "../../api/schema";
 import { Pill } from "../../components/ui/Pill";
 import { cn } from "../../lib/utils";
+import { releaseName } from "../overall/overallWords";
+import { actionError } from "./access";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const field = "h-10 w-full rounded-xl border border-grey-border bg-white px-3 text-[14px]";
@@ -96,9 +98,24 @@ export function ReportSetupDialog({
   const available = (kind: string) =>
     setup.data?.destinations.find((d) => d.kind === kind) ?? { available: false, note: "" };
 
-  const done = (message: string) => {
+  const done = (message: string, removedId?: string) => {
     toast.success(message);
-    void queryClient.invalidateQueries({ queryKey: ["day-reports"] });
+    if (removedId) {
+      // Drop it from the lists first, so the page moves to another report
+      // instead of asking for the removed one's preview and sends again.
+      for (const key of [
+        ["day-reports", "all"],
+        ["day-reports", "project", report?.project_id],
+      ]) {
+        queryClient.setQueryData<DayReportResponse[]>(key, (old) =>
+          old?.filter((item) => item.report_id !== removedId),
+        );
+      }
+    }
+    void queryClient.invalidateQueries({
+      queryKey: ["day-reports"],
+      predicate: (query) => !removedId || !query.queryKey.includes(removedId),
+    });
     setOpen(false);
   };
   const save = useMutation({
@@ -109,12 +126,12 @@ export function ReportSetupDialog({
         : apiClient.createDayReport(body);
     },
     onSuccess: (saved) => done(report ? `Saved ${saved.name}.` : `Set up ${saved.name}.`),
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error) => toast.error(actionError(error)),
   });
   const remove = useMutation({
     mutationFn: () => apiClient.removeDayReport(report!.report_id),
-    onSuccess: () => done("Report removed. Past sends are kept."),
-    onError: (error: Error) => toast.error(error.message),
+    onSuccess: () => done("Report removed. Past sends are kept.", report?.report_id),
+    onError: (error) => toast.error(actionError(error)),
   });
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
@@ -194,7 +211,7 @@ export function ReportSetupDialog({
                     <option value="">The whole project</option>
                     {(project?.releases ?? []).map((r) => (
                       <option key={r.release_id} value={r.release_id}>
-                        Release {r.name}
+                        {releaseName(r.name)}
                       </option>
                     ))}
                   </select>

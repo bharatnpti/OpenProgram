@@ -68,3 +68,47 @@ export function outcomeLine(run: Pick<ReportRunResponse, "outcomes">): string {
 export function todaysNote(report: Pick<DayReportResponse, "note">, today: string): string {
   return report.note && report.note.report_date === today ? report.note.text : "";
 }
+
+/**
+ * The report's own today (YYYY-MM-DD) in its time zone: the day the server
+ * files today's note and today's send under, not the viewer's UTC date.
+ */
+export function localDay(timezone: string, now: Date = new Date()): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now);
+  } catch {
+    return now.toISOString().slice(0, 10);
+  }
+}
+
+/** "17:30" for the schedule's local time, which the server keeps with seconds. */
+export function scheduleTime(localTime: string): string {
+  return /^\d{2}:\d{2}/.test(localTime) ? localTime.slice(0, 5) : localTime;
+}
+
+/**
+ * One line per thing this reader may not do with the report, saying who does
+ * it. The server decides per report: a scrum master sends and sets up only the
+ * reports of a project one of their pods works on.
+ */
+export function reportLocks(
+  report: Pick<DayReportResponse, "can_send" | "can_edit" | "can_write_note" | "project_name">,
+): string[] {
+  const project = report.project_name ?? "the project";
+  const runners = `a scrum master of a pod working on ${project}, a manager or an admin`;
+  const lines: string[] = [];
+  if (!report.can_send && !report.can_edit) {
+    lines.push(`Sending it now and changing it: ${runners}.`);
+  } else if (!report.can_send) {
+    lines.push(`Sending it now: ${runners}.`);
+  } else if (!report.can_edit) {
+    lines.push(`Changing it: ${runners}.`);
+  }
+  if (!report.can_write_note) lines.push("Today's note: a product owner, manager or admin.");
+  return lines;
+}

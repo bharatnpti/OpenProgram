@@ -10,6 +10,7 @@ import { formatDay } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
 import { sourceLine } from "../../lib/words";
 import { FactorsPanel, NodeHeader, Related } from "./NodeBits";
+import { PodDeliveryCard } from "./PodDeliveryCard";
 import { reasonLine, type Finder } from "./factors";
 
 const NEEDS = "a scrum master, manager or admin";
@@ -80,6 +81,7 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
           {blockers.data ? ` · ${blockers.data.blockers.length} open blockers` : ""}
         </p>
       </div>
+      <PodDeliveryCard pod={pod} />
       <PanelState locked={!on} needs={NEEDS} isLoading={rollup.isLoading} error={rollup.error}>
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">

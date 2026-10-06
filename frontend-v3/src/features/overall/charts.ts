@@ -6,11 +6,7 @@ import { daysBetween } from "../../lib/format.ts";
 
 export type BurndownPoint = { day: string; remaining: number };
 
-/**
- * Requirements not yet in production, per day of the timeline. This is the
- * burn-down by count: the API keeps stage counts per day but not story points
- * per day, so a points burn-down needs the daily snapshot to store points first.
- */
+/** Requirements not yet in production, per day of the timeline: the burn-down by count. */
 export function burndownByCount(timeline: RequirementTimelinePointResponse[]): BurndownPoint[] {
   return timeline.map((point) => {
     let remaining = 0;
@@ -19,6 +15,52 @@ export function burndownByCount(timeline: RequirementTimelinePointResponse[]): B
     }
     return { day: point.day, remaining };
   });
+}
+
+/**
+ * Story points not yet in production, per day, or null unless every day of the
+ * timeline kept points for every requirement it counted. That is the backend's
+ * own rule for forecasting by points, so the line and the forecast dates on it
+ * measure the same thing.
+ */
+export function burndownByPoints(
+  timeline: RequirementTimelinePointResponse[],
+): BurndownPoint[] | null {
+  if (timeline.length === 0 || !timeline.every((point) => point.has_points)) return null;
+  return timeline.map((point) => {
+    let remaining = 0;
+    for (const [stage, points] of Object.entries(point.points ?? {})) {
+      if (stage !== "production") remaining += points ?? 0;
+    }
+    return { day: point.day, remaining: Math.round(remaining * 10) / 10 };
+  });
+}
+
+export type BurndownSeries = {
+  points: BurndownPoint[];
+  unit: "story points" | "requirements";
+  /** The chart's caption: what it measures, and why by count when it is. */
+  caption: string;
+};
+
+/** The burn-down to draw: by story points when the timeline has them, else by count. */
+export function burndownSeries(timeline: RequirementTimelinePointResponse[]): BurndownSeries {
+  const byPoints = burndownByPoints(timeline);
+  if (byPoints) {
+    return {
+      points: byPoints,
+      unit: "story points",
+      caption: "Story points not yet in production",
+    };
+  }
+  return {
+    points: burndownByCount(timeline),
+    unit: "requirements",
+    caption:
+      timeline.length > 0
+        ? "Requirements not yet in production, by count: not every requirement has story points"
+        : "Requirements not yet in production, by count",
+  };
 }
 
 export type Marker = { key: string; day: string; label: string };

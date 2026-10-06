@@ -7,17 +7,29 @@ import { ConfirmDialog, TextDialog } from "../../components/Dialogs";
 import { RagChip } from "../../components/ui/RagChip";
 import { Pill } from "../../components/ui/Pill";
 import { formatDay, formatTime, weekdaysLabel } from "../../lib/format";
+import { actionError } from "../reports/access";
+import { releaseName } from "../overall/overallWords";
 import { ReportSetupDialog } from "../reports/ReportSetupDialog";
-import { RUN_LABELS, RUN_TONES, outcomeLine, sendConfirmation, todaysNote } from "./reportView";
+import {
+  RUN_LABELS,
+  RUN_TONES,
+  localDay,
+  outcomeLine,
+  reportLocks,
+  scheduleTime,
+  sendConfirmation,
+  todaysNote,
+} from "./reportView";
 
 /**
  * When the report goes out and to whom, and what this reader may do with it.
  * The server decides `can_send` and `can_write_note` per report, so the buttons
- * follow the project as well as the role.
+ * follow the project as well as the role; what this reader may not do is said
+ * with who does it.
  */
 export function ReportHeader({ report }: { report: DayReportResponse }) {
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDay(report.schedule.timezone);
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["day-reports"] });
 
   const send = useMutation({
@@ -26,19 +38,20 @@ export function ReportHeader({ report }: { report: DayReportResponse }) {
       toast.success(`${RUN_LABELS[run.status]}: ${outcomeLine(run)}.`);
       void refresh();
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error) => toast.error(actionError(error)),
   });
 
   const note = useMutation({
     mutationFn: (text: string) => apiClient.writeDayReportNote(report.report_id, text),
-    onSuccess: () => {
-      toast.success("Today's note saved.");
+    onSuccess: (_saved, text) => {
+      toast.success(text ? "Today's note saved." : "Today's note removed.");
       void refresh();
     },
-    onError: (error: Error) => toast.error(error.message),
+    onError: (error) => toast.error(actionError(error)),
   });
 
   const confirm = sendConfirmation(report);
+  const locks = reportLocks(report);
   const { schedule, last_run: lastRun } = report;
 
   return (
@@ -47,8 +60,8 @@ export function ReportHeader({ report }: { report: DayReportResponse }) {
         <h1 className="text-[24px] font-extrabold tracking-tight text-balance">{report.name}</h1>
         <p className="mt-1 text-[13px] text-grey-body">
           {report.enabled ? "On" : "Off"} · {weekdaysLabel(schedule.weekdays)} at{" "}
-          {schedule.local_time} {schedule.timezone}
-          {report.release_name ? ` · release ${report.release_name}` : ""}
+          {scheduleTime(schedule.local_time)} {schedule.timezone}
+          {report.release_name ? ` · ${releaseName(report.release_name)}` : ""}
         </p>
         <p className="mt-1 text-[13px] text-grey-body">Goes to {report.audience_summary}.</p>
         {lastRun ? (
@@ -64,47 +77,54 @@ export function ReportHeader({ report }: { report: DayReportResponse }) {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {report.can_send ? (
-          <ConfirmDialog
-            trigger={
-              <Pill size="sm" disabled={send.isPending}>
-                {send.isPending ? "Sending…" : "Send now"}
-              </Pill>
-            }
-            title={confirm.title}
-            description={confirm.description}
-            confirmLabel="Send now"
-            onConfirm={() => send.mutate()}
-          />
-        ) : null}
-        {report.can_write_note ? (
-          <TextDialog
-            trigger={
-              <Pill size="sm" variant="ghost">
-                {todaysNote(report, today) ? "Edit today's note" : "Write today's note"}
-              </Pill>
-            }
-            title="Today's note"
-            description="Opens today's report, signed with your name. It is not carried to tomorrow."
-            initial={todaysNote(report, today)}
-            saveLabel="Save note"
-            saving={note.isPending}
-            onSave={(text) => note.mutateAsync(text)}
-          />
-        ) : null}
-        {report.can_edit ? (
-          <ReportSetupDialog
-            report={report}
-            trigger={
-              <Pill size="sm" variant="ghost">
-                Change
-              </Pill>
-            }
-          />
-        ) : null}
-        {!report.can_send && !report.can_write_note && !report.can_edit ? (
-          <span className="text-[13px] text-grey-secondary">Read only for your role</span>
+      <div className="grid max-w-full justify-items-start gap-2 sm:max-w-[360px] sm:justify-items-end">
+        <div className="flex flex-wrap gap-2 sm:justify-end">
+          {report.can_send ? (
+            <ConfirmDialog
+              trigger={
+                <Pill size="sm" disabled={send.isPending}>
+                  {send.isPending ? "Sending…" : "Send now"}
+                </Pill>
+              }
+              title={confirm.title}
+              description={confirm.description}
+              confirmLabel="Send now"
+              onConfirm={() => send.mutate()}
+            />
+          ) : null}
+          {report.can_write_note ? (
+            <TextDialog
+              trigger={
+                <Pill size="sm" variant="ghost">
+                  {todaysNote(report, today) ? "Edit today's note" : "Write today's note"}
+                </Pill>
+              }
+              title="Today's note"
+              description="Opens today's report, signed with your name. It is not carried to tomorrow. Save it empty to remove it."
+              initial={todaysNote(report, today)}
+              saveLabel="Save note"
+              saving={note.isPending}
+              // Resolves only on success, so a refused note keeps the dialog open.
+              onSave={(text) => new Promise((done) => note.mutate(text, { onSuccess: done }))}
+            />
+          ) : null}
+          {report.can_edit ? (
+            <ReportSetupDialog
+              report={report}
+              trigger={
+                <Pill size="sm" variant="ghost">
+                  Change
+                </Pill>
+              }
+            />
+          ) : null}
+        </div>
+        {locks.length > 0 ? (
+          <ul className="grid gap-1 text-[12px] text-grey-secondary sm:text-right">
+            {locks.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
         ) : null}
       </div>
     </section>

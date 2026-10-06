@@ -1,4 +1,5 @@
 import type { EscalationMatrixResponse, ProjectRisksResponse } from "../../api/schema";
+import { useNames } from "../../app/directory";
 import { PanelState, SectionHeader, TableBox, td, th } from "../../components/PanelState";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
@@ -65,6 +66,9 @@ export function RisksSection({ projectId }: { projectId: string }) {
 }
 
 function RiskTable({ data }: { data: ProjectRisksResponse }) {
+  // The API names a risk's owner only sometimes; the directory names the rest,
+  // and an id nobody names stays an id.
+  const names = useNames();
   const rows = [
     ...data.risks.map((r) => ({
       key: `risk-${r.rule_id}-${r.entity_ref.id}`,
@@ -72,7 +76,7 @@ function RiskTable({ data }: { data: ProjectRisksResponse }) {
       what: r.reason,
       ref: r.evidence.identifier,
       kind: r.is_watermelon ? "Watermelon" : "Risk",
-      owner: r.person_name ?? r.owner_id ?? "—",
+      owner: r.person_name ?? names(r.owner_id),
       ownerSays: r.owner_status_summary,
       age: `${r.age_days}d`,
     })),
@@ -82,7 +86,7 @@ function RiskTable({ data }: { data: ProjectRisksResponse }) {
       what: d.reason,
       ref: d.evidence?.identifier ?? d.entity_ref.id,
       kind: "Drift",
-      owner: d.owner_id ?? "—",
+      owner: names(d.owner_id),
       ownerSays: null as string | null,
       age: formatDay(d.detected_at),
     })),
@@ -126,6 +130,7 @@ function RiskTable({ data }: { data: ProjectRisksResponse }) {
 }
 
 function Matrix({ data }: { data: EscalationMatrixResponse }) {
+  const names = useNames();
   const source =
     data.source === "project"
       ? "this project's own matrix"
@@ -134,7 +139,7 @@ function Matrix({ data }: { data: EscalationMatrixResponse }) {
     <div className="grid grid-cols-[minmax(0,1fr)] gap-2">
       <p className="text-[13px] text-grey-body">
         Using {source}.
-        {data.decision_owner_id ? ` Decisions owned by ${data.decision_owner_id}.` : ""}
+        {data.decision_owner_id ? ` Decisions owned by ${names(data.decision_owner_id)}.` : ""}
       </p>
       <TableBox>
         <table className="w-full min-w-[620px] border-collapse">
@@ -157,7 +162,7 @@ function Matrix({ data }: { data: EscalationMatrixResponse }) {
                   <span className="font-bold">{level.label}</span>
                   <span className="block text-[12px] text-grey-secondary">
                     {CONTACT_LABELS[level.source] ?? level.source}
-                    {level.member_id ? ` · ${level.member_id}` : ""}
+                    {level.member_id ? ` · ${names(level.member_id)}` : ""}
                   </span>
                 </td>
                 {NEEDS.map((need) => (

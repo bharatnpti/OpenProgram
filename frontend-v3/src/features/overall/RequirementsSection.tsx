@@ -4,17 +4,31 @@ import { Card } from "../../components/ui/Card";
 import { formatDay, signedChange } from "../../lib/format";
 import { STAGE_LABELS, STAGE_ORDER, stageColor } from "../../lib/status";
 import { stageStack } from "./charts";
+import { releaseName, timelineTitle } from "./overallWords";
 import { PROJECT_PROGRESS_READERS, useRequirements } from "./queries";
 
-/** How many requirements sit in each delivery stage, how that changed, and each one's place. */
-export function RequirementsSection({ projectId }: { projectId: string }) {
-  const { locked, query } = useRequirements(projectId);
+/**
+ * How many requirements sit in each delivery stage, how that changed, and each
+ * one's place, for the whole project or one release.
+ */
+export function RequirementsSection({
+  projectId,
+  releaseId = "",
+}: {
+  projectId: string;
+  releaseId?: string;
+}) {
+  const { locked, query } = useRequirements(projectId, releaseId || undefined);
   const data = query.data;
 
   return (
     <section>
       <SectionHeader
-        title="Requirements by stage"
+        title={
+          data?.release_name
+            ? `Requirements by stage: ${releaseName(data.release_name)}`
+            : "Requirements by stage"
+        }
         meta={
           data
             ? `${data.total} requirements · ${data.live ? "read live today" : `as of ${formatDay(data.as_of)}`}${
@@ -36,7 +50,7 @@ export function RequirementsSection({ projectId }: { projectId: string }) {
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
             <StageCards data={data} />
             <Card padding="p-5">
-              <h3 className="text-[15px] font-extrabold">Last {data.timeline.length} days</h3>
+              <h3 className="text-[15px] font-extrabold">{timelineTitle(data.timeline.length)}</h3>
               <p className="mb-3 text-[12px] text-grey-secondary">
                 One bar per day, from the daily snapshot
               </p>
@@ -109,6 +123,15 @@ function StageTimeline({ data }: { data: RequirementsResponse }) {
   });
   if (bars.length === 0) {
     return <p className="text-[13px] text-grey-secondary">No daily snapshots yet.</p>;
+  }
+  // One day is a single block, not a timeline: say what it holds instead.
+  if (bars.length === 1) {
+    return (
+      <p className="rounded-2xl bg-grey-fill px-4 py-3 text-[13px] text-grey-body">
+        Only one daily snapshot so far ({formatDay(bars[0].day)}); the counts are in the cards
+        above. The bars draw from the second day.
+      </p>
+    );
   }
   const first = bars[0];
   const last = bars[bars.length - 1];

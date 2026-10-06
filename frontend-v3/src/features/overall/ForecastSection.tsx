@@ -1,24 +1,86 @@
+import { useState } from "react";
+
 import type { ScopeDeliveryResponse } from "../../api/schema";
+import { useProjects } from "../../app/directory";
+import { useRole } from "../../app/role";
 import { PanelState, SectionHeader, TableBox, td, th } from "../../components/PanelState";
 import { Card } from "../../components/ui/Card";
+import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDate, formatDay, progressWidth } from "../../lib/format";
 import { VERDICT_LABELS, toneForVerdict } from "../../lib/status";
+import { PodProjectRow } from "../delivery/PodDeliveryCard";
+import { WHO } from "../reports/access";
+import { DeliveryDateDialog } from "../reports/DeliveryDateDialog";
+import { Locked } from "../reports/ReportDialog";
+import { useReportAccess } from "../reports/useReportAccess";
 import { Burndown } from "./Burndown";
-import type { Marker } from "./charts";
-import { PROJECT_PROGRESS_READERS, useDelivery, useRequirements } from "./queries";
+import { burndownSeries, type Marker } from "./charts";
+import { inScope, releaseName } from "./overallWords";
+import {
+  PROJECT_PROGRESS_READERS,
+  useDelivery,
+  usePodDeliveries,
+  useRequirements,
+} from "./queries";
 
-/** The committed date, whether it will hold, why, and the burn-down behind it. */
-export function ForecastSection({ projectId }: { projectId: string }) {
+type Editing = { scope: ScopeDeliveryResponse; title: string } | null;
+
+/**
+ * The committed date, whether it will hold, why, and the burn-down behind it,
+ * for the whole project or the release picked above. The product owner or a
+ * manager commits the project's and a release's date; a pod's part is its
+ * scrum master's.
+ */
+export function ForecastSection({
+  projectId,
+  releaseId = "",
+}: {
+  projectId: string;
+  releaseId?: string;
+}) {
+  const access = useReportAccess();
   const delivery = useDelivery(projectId);
-  const requirements = useRequirements(projectId);
-  const project = delivery.query.data?.project;
+  const requirements = useRequirements(projectId, releaseId || undefined);
+  const [editing, setEditing] = useState<Editing>(null);
+  const data = delivery.query.data;
+  const release = releaseId
+    ? data?.releases.find((item) => item.scope_id === releaseId)
+    : undefined;
+  const scope = release ?? data?.project;
+  const edit = (item: ScopeDeliveryResponse, title: string) => setEditing({ scope: item, title });
+  const timeline = requirements.query.data?.timeline;
+  const series = timeline ? burndownSeries(timeline) : null;
 
   return (
     <section>
       <SectionHeader
-        title="Delivery date and forecast"
-        meta={project ? commitmentLine(project) : undefined}
+        title={
+          release
+            ? `Delivery date and forecast: ${releaseName(release.name)}`
+            : "Delivery date and forecast"
+        }
+        meta={scope ? commitmentLine(scope) : undefined}
+        actions={
+          scope && access.setProjectDates ? (
+            <Pill
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                edit(
+                  scope,
+                  release
+                    ? `${releaseName(release.name)}: delivery date`
+                    : `${scope.name}: delivery date`,
+                )
+              }
+            >
+              {scope.commitment.target_date ? "Change date" : "Set date"}
+            </Pill>
+          ) : scope ? (
+            <Locked>The date is committed by {WHO.projectDates}.</Locked>
+          ) : undefined
+        }
       />
       <PanelState
         locked={delivery.locked}
@@ -27,20 +89,17 @@ export function ForecastSection({ projectId }: { projectId: string }) {
         error={delivery.query.error}
         onRetry={() => void delivery.query.refetch()}
       >
-        {project ? (
+        {data && scope ? (
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-            <Verdict scope={project} />
+            <Verdict scope={scope} />
             <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
               <Card padding="p-5">
                 <h3 className="text-[15px] font-extrabold">Burn-down</h3>
                 <p className="mb-3 text-[12px] text-grey-secondary">
-                  Requirements not yet in production, by count
+                  {series?.caption ?? "Not yet in production"}
                 </p>
-                {requirements.query.data ? (
-                  <Burndown
-                    timeline={requirements.query.data.timeline}
-                    markers={markersFor(project)}
-                  />
+                {series ? (
+                  <Burndown series={series} markers={markersFor(scope)} />
                 ) : (
                   <p className="text-[13px] text-grey-secondary">Loading…</p>
                 )}
@@ -52,20 +111,118 @@ export function ForecastSection({ projectId }: { projectId: string }) {
                   done={requirements.query.data?.done ?? 0}
                   total={requirements.query.data?.total ?? 0}
                 />
-                <TwoAnswers scope={project} />
+                <TwoAnswers scope={scope} />
               </Card>
             </div>
-            {delivery.query.data && delivery.query.data.pods.length > 0 ? (
-              <ScopeTable title="Dates by pod" scopes={delivery.query.data.pods} />
+            {data.pods.length > 0 ? (
+              <ScopeTable
+                title="Dates by pod"
+                scopes={data.pods}
+                onEdit={
+                  access.setPodDates
+                    ? (pod) => edit(pod, `${pod.name}'s date for ${data.project.name}`)
+                    : undefined
+                }
+                locked={access.setPodDates ? undefined : `A pod's date is set by ${WHO.podDates}.`}
+              />
             ) : null}
-            {delivery.query.data && delivery.query.data.releases.length > 0 ? (
-              <ScopeTable title="Dates by release" scopes={delivery.query.data.releases} />
+            {data.releases.length > 0 ? (
+              <ScopeTable
+                title="Dates by release"
+                scopes={data.releases}
+                current={releaseId}
+                onEdit={
+                  access.setProjectDates
+                    ? (item) => edit(item, `${releaseName(item.name)}: delivery date`)
+                    : undefined
+                }
+                locked={
+                  access.setProjectDates
+                    ? undefined
+                    : `A release's date is committed by ${WHO.projectDates}.`
+                }
+              />
             ) : null}
-            {project.commitment.changes.length > 0 ? <DateChanges scope={project} /> : null}
+            {scope.commitment.changes.length > 0 ? <DateChanges scope={scope} /> : null}
           </div>
         ) : null}
       </PanelState>
+      {delivery.locked && access.setPodDates ? (
+        <PodDatesForScrumMaster projectId={projectId} />
+      ) : null}
+      {editing ? (
+        <DeliveryDateDialog
+          scope={editing.scope}
+          title={editing.title}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
     </section>
+  );
+}
+
+/**
+ * A scrum master cannot read the project's forecast, but does commit the date
+ * of the pods they run: each of the project's pods, read pod by pod, with the
+ * button where the server says the pod is theirs.
+ */
+function PodDatesForScrumMaster({ projectId }: { projectId: string }) {
+  const { roleLabel } = useRole();
+  const projects = useProjects();
+  const project = projects.data?.find((item) => item.id === projectId);
+  const podIds = project?.pod_ids ?? [];
+  const pods = usePodDeliveries(podIds);
+  const [editing, setEditing] = useState<{ scope: ScopeDeliveryResponse; title: string } | null>(
+    null,
+  );
+  const rows = pods.flatMap((query) => {
+    const item = query.data?.projects.find((entry) => entry.project_id === projectId);
+    return item && query.data ? [{ item, canSet: query.data.can_set_dates }] : [];
+  });
+  const loading = projects.isLoading || pods.some((query) => query.isLoading);
+  const error = pods.find((query) => query.error)?.error ?? null;
+
+  return (
+    <div className="mt-4">
+      <h3 className="mb-2 text-[15px] font-extrabold">Dates by pod</h3>
+      <PanelState
+        needs={WHO.podDelivery}
+        isLoading={loading}
+        error={error}
+        isEmpty={rows.length === 0}
+        emptyText="No pod works on this project yet."
+      >
+        <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">
+          {rows.map(({ item, canSet }) => (
+            <PodProjectRow
+              key={item.pod.scope_id}
+              title={item.pod.name}
+              item={item}
+              canSet={canSet}
+              onEdit={() =>
+                setEditing({
+                  scope: item.pod,
+                  title: `${item.pod.name}'s date for ${item.project_name}`,
+                })
+              }
+            />
+          ))}
+        </ul>
+        {rows.some((row) => !row.canSet) ? (
+          <Locked className="mt-2">
+            You set the date of the pods you run as {roleLabel.toLowerCase()}; another pod&apos;s is
+            set by {WHO.podDates}.
+          </Locked>
+        ) : null}
+      </PanelState>
+      {editing ? (
+        <DeliveryDateDialog
+          scope={editing.scope}
+          title={editing.title}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -85,7 +242,7 @@ function commitmentLine(scope: ScopeDeliveryResponse): string {
 }
 
 function Verdict({ scope }: { scope: ScopeDeliveryResponse }) {
-  const tone = toneForVerdict(scope.verdict);
+  const tone = inScope(scope) ? toneForVerdict(scope.verdict) : "neutral";
   const bg =
     tone === "danger"
       ? "bg-rag-red-bg text-rag-red"
@@ -97,10 +254,10 @@ function Verdict({ scope }: { scope: ScopeDeliveryResponse }) {
   return (
     <div className={`rounded-3xl p-5 ${bg}`}>
       <p className="text-[20px] font-extrabold">
-        {VERDICT_LABELS[scope.verdict]}
+        {inScope(scope) ? VERDICT_LABELS[scope.verdict] : "Nothing in scope yet"}
         {scope.target ? ` for ${formatDate(scope.target)}` : ""}
       </p>
-      {scope.reasons.length > 0 ? (
+      {inScope(scope) && scope.reasons.length > 0 ? (
         <ul className="mt-2 grid list-disc gap-1 pl-5 text-[14px] font-medium">
           {scope.reasons.map((reason) => (
             <li key={reason}>{reason}</li>
@@ -108,7 +265,9 @@ function Verdict({ scope }: { scope: ScopeDeliveryResponse }) {
         </ul>
       ) : null}
       <p className="mt-2 text-[13px] opacity-80">
-        {scope.open} of {scope.total} still open
+        {inScope(scope)
+          ? `${scope.open} of ${scope.total} still open`
+          : "No requirements are counted for it yet, so there is nothing to forecast."}
       </p>
     </div>
   );
@@ -157,7 +316,9 @@ function TwoAnswers({ scope }: { scope: ScopeDeliveryResponse }) {
         <p className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary">
           Completion rate says
         </p>
-        {h.p50 ? (
+        {!inScope(scope) ? (
+          <p className="mt-1 text-[13px] text-grey-body">Nothing to forecast yet.</p>
+        ) : h.p50 ? (
           <>
             <p className="mt-1 text-[18px] font-extrabold">{formatDay(h.p50)}</p>
             <p className="text-[12px] text-grey-secondary">
@@ -202,7 +363,19 @@ function markersFor(scope: ScopeDeliveryResponse): Marker[] {
   return markers;
 }
 
-function ScopeTable({ title, scopes }: { title: string; scopes: ScopeDeliveryResponse[] }) {
+function ScopeTable({
+  title,
+  scopes,
+  current,
+  onEdit,
+  locked,
+}: {
+  title: string;
+  scopes: ScopeDeliveryResponse[];
+  current?: string;
+  onEdit?: (scope: ScopeDeliveryResponse) => void;
+  locked?: string;
+}) {
   return (
     <div>
       <h3 className="mb-2 text-[15px] font-extrabold">{title}</h3>
@@ -214,37 +387,63 @@ function ScopeTable({ title, scopes }: { title: string; scopes: ScopeDeliveryRes
               <th className={th}>Date</th>
               <th className={th}>Verdict</th>
               <th className={th}>Why</th>
+              {onEdit ? (
+                // Named by aria-label: a visually hidden child is positioned
+                // outside the table's scroll box and widens a phone's page.
+                <th className={th} aria-label="Set the date" />
+              ) : null}
             </tr>
           </thead>
           <tbody>
             {scopes.map((scope) => (
-              <tr key={scope.scope_id}>
+              <tr
+                key={scope.scope_id}
+                className={scope.scope_id === current ? "bg-grey-header" : undefined}
+              >
                 <td className={`${td} font-bold`}>{scope.name}</td>
-                <td className={`${td} whitespace-nowrap`}>{formatDate(scope.target)}</td>
-                <td className={td}>
-                  {scope.total === 0 ? (
-                    <RagChip tone="neutral" className="h-6 px-2.5 text-[12px]">
-                      Nothing in scope
-                    </RagChip>
-                  ) : (
+                <td className={`${td} whitespace-nowrap`}>
+                  {formatDate(scope.target)}
+                  {scope.target_source === "jira_release" ? (
+                    <span className="ml-1 text-[11px] text-grey-secondary">from Jira</span>
+                  ) : null}
+                </td>
+                <td className={`${td} whitespace-nowrap`}>
+                  {inScope(scope) ? (
                     <RagChip
                       tone={toneForVerdict(scope.verdict)}
                       className="h-6 px-2.5 text-[12px]"
                     >
                       {VERDICT_LABELS[scope.verdict]}
                     </RagChip>
+                  ) : (
+                    <RagChip tone="neutral" className="h-6 px-2.5 text-[12px]">
+                      Nothing in scope
+                    </RagChip>
                   )}
                 </td>
                 <td className={`${td} text-grey-body`}>
-                  {scope.total === 0
-                    ? "No requirements are counted for it yet."
-                    : scope.reasons.join(" ") || "—"}
+                  {inScope(scope)
+                    ? scope.reasons.join(" ") || "—"
+                    : "No requirements are counted for it yet."}
                 </td>
+                {onEdit ? (
+                  <td className={td}>
+                    <Pill
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 whitespace-nowrap px-3"
+                      onClick={() => onEdit(scope)}
+                    >
+                      {scope.commitment.target_date ? "Change date" : "Set date"}
+                    </Pill>
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>
         </table>
       </TableBox>
+      {locked ? <Locked className="mt-2">{locked}</Locked> : null}
     </div>
   );
 }
@@ -264,10 +463,12 @@ function DateChanges({ scope }: { scope: ScopeDeliveryResponse }) {
             </tr>
           </thead>
           <tbody>
-            {scope.commitment.changes.map((change) => (
+            {[...scope.commitment.changes].reverse().map((change) => (
               <tr key={change.changed_at}>
                 <td className={`${td} whitespace-nowrap`}>{formatDate(change.changed_at)}</td>
-                <td className={`${td} whitespace-nowrap`}>{formatDate(change.target_date)}</td>
+                <td className={`${td} whitespace-nowrap`}>
+                  {change.target_date ? formatDate(change.target_date) : "Cleared"}
+                </td>
                 <td className={td}>{change.changed_by_name}</td>
                 <td className={`${td} text-grey-body`}>{change.note || "—"}</td>
               </tr>

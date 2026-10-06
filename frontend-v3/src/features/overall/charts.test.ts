@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { burndownByCount, burndownGeometry, niceCeiling, stageStack } from "./charts.ts";
+import {
+  burndownByCount,
+  burndownByPoints,
+  burndownGeometry,
+  burndownSeries,
+  niceCeiling,
+  stageStack,
+} from "./charts.ts";
 
 const timeline = [
   {
@@ -29,6 +36,29 @@ const timeline = [
     has_points: false,
   },
 ];
+
+test("the burn-down is by story points only when every day kept them", () => {
+  const pointed = timeline.map((point, i) => ({
+    ...point,
+    has_points: true,
+    points: { raised: 10, in_development: 20.5 - i * 8, production: 30 + i * 8 },
+  }));
+  assert.deepEqual(burndownByPoints(pointed), [
+    { day: "2026-10-01", remaining: 30.5 },
+    { day: "2026-10-06", remaining: 22.5 },
+  ]);
+  assert.equal(burndownSeries(pointed).unit, "story points");
+  // One day without points (today counted live with an unpointed story) falls back to the count.
+  const mixed = [pointed[0], { ...pointed[1], has_points: false }];
+  assert.equal(burndownByPoints(mixed), null);
+  assert.deepEqual(burndownSeries(mixed), {
+    points: burndownByCount(mixed),
+    unit: "requirements",
+    caption: "Requirements not yet in production, by count: not every requirement has story points",
+  });
+  // With no snapshots there is nothing to say about points either way.
+  assert.equal(burndownSeries([]).caption, "Requirements not yet in production, by count");
+});
 
 test("the burn-down by count is every requirement not yet in production", () => {
   assert.deepEqual(burndownByCount(timeline), [
