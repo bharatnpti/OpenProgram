@@ -1,0 +1,47 @@
+frontend-v3/src/pages/AdminPage.tsx
+  s_a5c95ae649948d::t_35c78bfee84fbb 61
+  s_a5c95ae649948d::t_e7d81ff6b6f34f 8
+  s_a5c95ae649948d::t_42e5d369dd3784 17
+frontend-v3/src/features/admin/LinkParts.tsx
+  s_a5c95ae649948d::t_4be9e822130c39 120-121
+  s_a5c95ae649948d::t_8dd68760423075 43-46
+  s_a5c95ae649948d::t_94a8da345c079d 159
+  s_a5c95ae649948d::t_6dbe6ed7330875 107
+  s_a5c95ae649948d::t_f3ca00ab42d08b 152-155
+  s_a5c95ae649948d::t_109df4f84a29ad 1-42,47-106,108-119,122-151,156-158,160-164
+frontend-v3/src/features/admin/LinksTab.tsx
+  s_a5c95ae649948d::t_b2c938f08deef5 136,141
+  s_a5c95ae649948d::t_7c3ea0408594d9 59-64,159
+  s_a5c95ae649948d::t_c0f0416fdd95c4 657
+  s_a5c95ae649948d::t_d4054c9ec05e59 584-585
+  s_a5c95ae649948d::t_61b97f33c42a6d 22
+  s_a5c95ae649948d::t_2eb97940f89c22 109-111
+  s_a5c95ae649948d::t_f4d8a125ea7807 705
+  s_a5c95ae649948d::t_a6e2ceaf6b834e 637
+  s_a5c95ae649948d::t_df692985b38fd6 187,194-195,203-209
+  s_a5c95ae649948d::t_3d561dbece2663 150
+  s_a5c95ae649948d::t_303ccc4b9a108b 636
+  s_a5c95ae649948d::t_8c61563ec88cfd 11
+  s_a5c95ae649948d::t_68a1f0264d84b1 50-52
+  s_a5c95ae649948d::t_79bcfc6543d44a 486-493
+  s_a5c95ae649948d::t_c3f0249fc16f5c 94
+  s_a5c95ae649948d::t_3c56715e3053f3 127-128
+  s_a5c95ae649948d::t_5ecbec824e3c45 465
+  s_a5c95ae649948d::t_822b348ea8d258 1-10,12-21,23-49,53-58,65-93,95-108,112-126,129-135,137-140,142-149,151-158,160-186,188-193,196-202,210-464,466-485,494-583,586-635,638-656,658-704,706-712
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "90cdc3451356c047f543414ae729de5477f79a45",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
