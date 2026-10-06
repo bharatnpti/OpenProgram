@@ -1,0 +1,19 @@
+backend/tests/unit/test_day_reports.py
+  s_239b3b1319ec3a::t_9cee96a65a0d45 216-226,324
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b77289b060ecdcf1234dde72d81377af89bd8007",
+  "prompts": {},
+  "sessions": {
+    "s_239b3b1319ec3a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "edb8c1f2-3037-41fd-a1b3-6261f7f7734c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
