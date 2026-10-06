@@ -5,6 +5,7 @@ import { PanelState, SectionHeader } from "../components/PanelState";
 import { CheckinsTab } from "../features/admin/CheckinsTab";
 import { DataSourcesTab } from "../features/admin/DataSourcesTab";
 import { EntitiesTab } from "../features/admin/EntitiesTab";
+import { LinksTab } from "../features/admin/LinksTab";
 import { cn } from "../lib/utils";
 
 const CONSOLE_URL = import.meta.env.VITE_CONSOLE_URL ?? "http://127.0.0.1:5174";
@@ -13,6 +14,7 @@ const TABS = [
   { key: "checkins", label: "Check-ins" },
   { key: "sources", label: "Data sources" },
   { key: "entities", label: "Entities" },
+  { key: "links", label: "Links" },
   { key: "more", label: "More settings" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
@@ -56,6 +58,7 @@ export function AdminPage() {
         {tab === "checkins" ? <CheckinsTab /> : null}
         {tab === "sources" ? <DataSourcesTab /> : null}
         {tab === "entities" ? <EntitiesTab /> : null}
+        {tab === "links" ? <LinksTab /> : null}
         {tab === "more" ? <MoreSettings /> : null}
       </PanelState>
     </>
