@@ -107,10 +107,16 @@ def test_the_simulation_is_fixed_by_its_seed_and_orders_its_percentiles() -> Non
 
 
 def test_the_simulation_says_why_it_cannot_forecast() -> None:
+    none = history_forecast([], 5, start=TODAY, seed="x")
+    one = history_forecast([1.0], 5, start=TODAY, seed="x")
     short = history_forecast([1.0] * 4, 5, start=TODAY, seed="x")
     idle = history_forecast([0.0] * 12, 5, start=TODAY, seed="x")
     done = history_forecast([1.0] * 12, 0, start=TODAY, seed="x")
 
+    assert none.p50 is None and none.reason == (
+        "No history yet: a forecast needs 10 working days of daily snapshots."
+    )
+    assert one.reason == "Only 1 working day of history; a forecast needs 10."
     assert short.p50 is None and short.reason == (
         "Only 4 working days of history; a forecast needs 10."
     )
@@ -328,7 +334,7 @@ async def test_the_project_forecast_uses_the_teams_dates_until_history_builds_up
         latest=date(2026, 11, 20), latest_key="CHK-4", dated=3, undated=0
     )
     assert project.verdict is Verdict.OFF_TRACK
-    assert "Only 0 working days of history; a forecast needs 10." in project.reasons
+    assert "No history yet: a forecast needs 10 working days of daily snapshots." in project.reasons
     assert any("CHK-4" in reason for reason in project.reasons)
     # The pods split the project: Payments has CHK-1..3, Storefront CHK-4.
     pods = {pod.name: pod for pod in view.pods}
