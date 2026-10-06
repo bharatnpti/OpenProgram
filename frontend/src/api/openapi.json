@@ -15958,6 +15958,18 @@
               }
             ],
             "title": "Actor"
+          },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Name",
+            "description": "The display name of the member who sent it, or null when actor is no member's id or there is none (a scheduled run)."
           }
         },
         "type": "object",
@@ -15971,7 +15983,8 @@
           "finished_at",
           "title",
           "outcomes",
-          "actor"
+          "actor",
+          "actor_name"
         ],
         "title": "ReportRunResponse"
       },

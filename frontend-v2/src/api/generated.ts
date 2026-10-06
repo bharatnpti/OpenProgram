@@ -4537,6 +4537,11 @@ export interface components {
       outcomes: components["schemas"]["DeliveryOutcomeResponse"][];
       /** Actor */
       actor: string | null;
+      /**
+       * Actor Name
+       * @description The display name of the member who sent it, or null when actor is no member's id or there is none (a scheduled run).
+       */
+      actor_name: string | null;
     };
     /** ReportScheduleDto */
     ReportScheduleDto: {

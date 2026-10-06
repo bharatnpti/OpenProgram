@@ -14,6 +14,7 @@ import pytest
 import respx
 from fastapi.testclient import TestClient
 
+from api.dtos import ReportRunResponse
 from api.main import create_app
 from config.settings import Settings
 from core.application.day_report_service import DayReportService, ReportNotFound
@@ -451,6 +452,38 @@ async def test_in_short_names_the_date_and_what_is_needed_most() -> None:
         "Needed most: a fix from Omar on PLT-9 (5 days), a fix from Asha on CHK-3 (2 days) "
         "and a review from Omar on CHK-1 (2 days).",
     )
+
+
+@pytest.mark.parametrize(
+    ("environment", "console_url", "link"),
+    [
+        pytest.param("local", None, "http://localhost:5173/delivery/project/checkout", id="local"),
+        pytest.param(
+            "production",
+            "https://openprogram.example.com",
+            "https://openprogram.example.com/delivery/project/checkout",
+            id="set",
+        ),
+        # A deployment that never set its address would link to a local one.
+        pytest.param("production", None, None, id="deployed-without-an-address"),
+    ],
+)
+async def test_the_report_links_the_console_only_where_its_readers_can_open_it(
+    environment: str, console_url: str | None, link: str | None
+) -> None:
+    registry, store = await _seeded_registry()
+    settings = registry.settings.model_copy(
+        update={
+            "environment": environment,
+            "auth_frontend_url": "http://localhost:5173",
+            "console_url": console_url,
+        }
+    )
+
+    report = await _build(_RegistryOnTheDay(settings, graph_store=store))
+
+    assert report.console_url == link
+    assert ("Open in OpenProgram" in render_text(report)) is (link is not None)
 
 
 async def test_where_we_stand_says_what_changed_and_why() -> None:
@@ -1122,6 +1155,38 @@ def test_api_creates_previews_sends_and_lists_a_report(settings: Settings) -> No
     assert updated.json()["enabled"] is False
     assert removed.status_code == 204
     assert gone.status_code == 404
+
+
+def test_api_names_the_member_who_sent_a_report(settings: Settings) -> None:
+    app = create_app(settings=settings.model_copy(update={"chat_provider": "fake"}))
+    with TestClient(app) as client:
+        client.post("/config/projects", json={"id": "checkout", "name": "Checkout"})
+        report_id = client.post("/config/reports", json=_report_body("checkout")).json()[
+            "report_id"
+        ]
+        unnamed = client.post(f"/config/reports/{report_id}/send")
+        client.post("/config/members", json={"id": "dev-user", "name": "Dana Admin"})
+        named = client.post(f"/config/reports/{report_id}/send")
+        runs = client.get(f"/config/reports/{report_id}/runs")
+        listed = client.get("/config/reports")
+        read = client.get(f"/config/reports/{report_id}")
+
+    # An id that is no member's keeps no name: the console shows the id itself.
+    assert (unnamed.json()["actor"], unnamed.json()["actor_name"]) == ("dev-user", None)
+    assert (named.json()["actor"], named.json()["actor_name"]) == ("dev-user", "Dana Admin")
+    assert [run["actor_name"] for run in runs.json()] == ["Dana Admin", "Dana Admin"]
+    assert listed.json()[0]["last_run"]["actor_name"] == "Dana Admin"
+    assert read.json()["last_run"]["actor_name"] == "Dana Admin"
+    # A scheduled run has no sender to name.
+    scheduled = ReportRun(
+        tenant_id=TENANT,
+        run_id="r",
+        report_id=report_id,
+        report_date=TODAY,
+        trigger=RunTrigger.SCHEDULE,
+        started_at=NOW,
+    )
+    assert ReportRunResponse.from_domain(scheduled, {"dev-user": "Dana Admin"}).actor_name is None
 
 
 def test_api_refuses_a_report_it_cannot_send(settings: Settings) -> None:

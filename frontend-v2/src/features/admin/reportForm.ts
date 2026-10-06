@@ -5,6 +5,7 @@ import type {
   DayReportResponse,
   DestinationKind,
   ReportDestinationDto,
+  ReportRunResponse,
 } from "../../api/schema";
 
 export type ReportForm = {
@@ -100,6 +101,16 @@ export function scheduleLabel(time: string, timezone: string, weekdays: number[]
     label = `${WEEKDAY_NAMES[days[0]]}–${WEEKDAY_NAMES[days[days.length - 1]]}`;
   } else label = days.map((day) => WEEKDAY_NAMES[day]).join(", ") || "No day";
   return `${label} at ${time.slice(0, 5)} (${timezone})`;
+}
+
+/**
+ * How a send started, as its history line reads: "on schedule", or "sent by"
+ * the member's name, which the server resolves, else the stored id when it is
+ * no member's, never a guess.
+ */
+export function runStartedBy(run: ReportRunResponse): string {
+  if (run.trigger !== "manual") return "on schedule";
+  return `sent by ${run.actor_name ?? run.actor ?? "an admin"}`;
 }
 
 export function destinationsSummary(destinations: ReportDestinationDto[]): string {

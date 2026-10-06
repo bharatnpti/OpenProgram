@@ -11,6 +11,7 @@ config. The tenant always comes from the principal.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -39,6 +40,7 @@ from core.domain.reports import (
     DestinationKind,
     ReportDefinitionError,
     ReportDestination,
+    ReportRun,
     ReportSchedule,
 )
 from infra.registry import ServiceRegistry
@@ -58,13 +60,17 @@ _DESTINATION_LABELS = {
 async def list_reports(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DayReportService, Depends(get_day_report_service)],
+    registry: Annotated[ServiceRegistry, Depends(get_registry)],
 ) -> list[DayReportResponse]:
     _ensure(principal)
-    responses: list[DayReportResponse] = []
+    reports: list[tuple[DayReportDefinition, ReportRun | None]] = []
     for definition in await service.definitions(principal.tenant_id):
         runs = await service.runs(principal.tenant_id, definition.report_id, limit=1)
-        responses.append(DayReportResponse.from_domain(definition, runs[0] if runs else None))
-    return responses
+        reports.append((definition, runs[0] if runs else None))
+    names = await _actor_names(
+        registry, principal.tenant_id, [run for _definition, run in reports if run is not None]
+    )
+    return [DayReportResponse.from_domain(definition, run, names) for definition, run in reports]
 
 
 @router.get("/destinations", response_model=list[ReportDestinationOptionResponse])
@@ -99,6 +105,7 @@ async def get_report(
     report_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DayReportService, Depends(get_day_report_service)],
+    registry: Annotated[ServiceRegistry, Depends(get_registry)],
 ) -> DayReportResponse:
     _ensure(principal)
     try:
@@ -106,7 +113,8 @@ async def get_report(
         runs = await service.runs(principal.tenant_id, report_id, limit=1)
     except ReportNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return DayReportResponse.from_domain(definition, runs[0] if runs else None)
+    names = await _actor_names(registry, principal.tenant_id, runs)
+    return DayReportResponse.from_domain(definition, runs[0] if runs else None, names)
 
 
 @router.put("/{report_id}", response_model=DayReportResponse)
@@ -152,13 +160,16 @@ async def send_report_now(
     report_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DayReportService, Depends(get_day_report_service)],
+    registry: Annotated[ServiceRegistry, Depends(get_registry)],
 ) -> ReportRunResponse:
     _ensure(principal)
     try:
         run = await service.send_now(principal.tenant_id, report_id, actor=principal.subject)
     except ReportNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return ReportRunResponse.from_domain(run)
+    return ReportRunResponse.from_domain(
+        run, await _actor_names(registry, principal.tenant_id, [run])
+    )
 
 
 @router.get("/{report_id}/runs", response_model=list[ReportRunResponse])
@@ -166,6 +177,7 @@ async def report_runs(
     report_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[DayReportService, Depends(get_day_report_service)],
+    registry: Annotated[ServiceRegistry, Depends(get_registry)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> list[ReportRunResponse]:
     _ensure(principal)
@@ -173,7 +185,8 @@ async def report_runs(
         runs = await service.runs(principal.tenant_id, report_id, limit=limit)
     except ReportNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return [ReportRunResponse.from_domain(run) for run in runs]
+    names = await _actor_names(registry, principal.tenant_id, runs)
+    return [ReportRunResponse.from_domain(run, names) for run in runs]
 
 
 async def _save(
@@ -280,10 +293,24 @@ def _project_report(
 
 
 async def _member_names(registry: ServiceRegistry, tenant_id: str) -> dict[str, str]:
+    """Members' display names by node id, read from the graph; one without a name is left out."""
     return {
         node.id: node.name
         for node in await registry.graph_repository().list_nodes(tenant_id, NodeKind.DEVELOPER)
+        if node.name
     }
+
+
+async def _actor_names(
+    registry: ServiceRegistry, tenant_id: str, runs: Iterable[ReportRun]
+) -> dict[str, str]:
+    """Names for the members who sent these runs; a scheduled run has no sender.
+
+    An id that is no member's gets no name, so the console shows the id, never a guess.
+    """
+    if not any(run.actor for run in runs):
+        return {}
+    return await _member_names(registry, tenant_id)
 
 
 def _ensure(principal: Principal, capability: Capability = Capability.MANAGE_CONFIG) -> None:
