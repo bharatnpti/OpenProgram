@@ -1,8 +1,21 @@
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import * as Dialog from "@radix-ui/react-dialog";
-import { useState, type ReactNode } from "react";
+import { cloneElement, isValidElement, useState, type ReactNode } from "react";
 
+import { useReadOnly } from "../app/viewingDate";
 import { Pill } from "./ui/Pill";
+
+/**
+ * A dialog's trigger while a past day is shown: the same button, switched
+ * off, with the reason on hover; the dialog isn't mounted. Needed because a
+ * trigger's own `disabled` (say, while sending) overrides one passed through
+ * Radix's `asChild`.
+ */
+export function LockedTrigger({ trigger, reason }: { trigger: ReactNode; reason: string | null }) {
+  return isValidElement<{ disabled?: boolean; title?: string }>(trigger)
+    ? cloneElement(trigger, { disabled: true, title: reason ?? undefined })
+    : trigger;
+}
 
 const overlay = "fixed inset-0 z-40 bg-black/30";
 const panel =
@@ -22,6 +35,9 @@ export function ConfirmDialog({
   confirmLabel: string;
   onConfirm: () => void;
 }) {
+  // Always a change, so off while a past day is shown.
+  const { readOnly, reason } = useReadOnly();
+  if (readOnly) return <LockedTrigger trigger={trigger} reason={reason} />;
   return (
     <AlertDialog.Root>
       <AlertDialog.Trigger asChild>{trigger}</AlertDialog.Trigger>
@@ -70,7 +86,10 @@ export function TextDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState(initial);
+  // Saving is a change, so off while a past day is shown.
+  const { readOnly, reason } = useReadOnly();
 
+  if (readOnly) return <LockedTrigger trigger={trigger} reason={reason} />;
   return (
     <Dialog.Root
       open={open}

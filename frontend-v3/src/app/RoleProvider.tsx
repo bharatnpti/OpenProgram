@@ -1,8 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { apiClient, setActingAs } from "../api/client";
+import { apiClient, apiUrl, setActingAs } from "../api/client";
 import type { AuthStatusResponse, DevUserResponse } from "../api/schema";
+import { describeAuthFailure } from "./authWords";
 import {
   appRolesOf,
   highestRole,
@@ -15,8 +16,11 @@ import {
   STORAGE_KEY,
   USER_STORAGE_KEY,
   type AppRole,
+  type AuthProblem,
   type RoleContextValue,
 } from "./role";
+
+const AUTH_STATUS_PATH = "/api/v1/auth/status";
 
 /*
  * Ported from frontend-v2's RoleProvider. Keep the two in step: the identity
@@ -27,6 +31,9 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const [role, setRoleState] = useState<AppRole>(readStoredRole);
   const [authStatus, setAuthStatus] = useState<AuthStatusResponse | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authProblem, setAuthProblem] = useState<AuthProblem | null>(null);
+  const [authAttempt, setAuthAttempt] = useState(0);
+  const [authRetrying, setAuthRetrying] = useState(false);
   const [people, setPeople] = useState<DevUserResponse[]>([]);
   const [peopleLoading, setPeopleLoading] = useState(true);
   const [actingAsId, setActingAsIdState] = useState<string | null>(readStoredUserId);
@@ -48,31 +55,35 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   // mounted screen makes already carries the identity.
   setActingAs(actingAsPerson ? { id: actingAsPerson.id, roles: [activeRole] } : null);
 
+  // A failed answer is not "signed out": guessing a provider here used to send
+  // people to a Sign in button that could never work while the backend was
+  // down. The problem gets its own screen, with the address tried and a retry.
   useEffect(() => {
     let cancelled = false;
     apiClient
       .authStatus()
       .then((status) => {
-        if (!cancelled) setAuthStatus(status);
+        if (cancelled) return;
+        // After a retry the roster has to load again before any screen asks
+        // for anything, as on a first load.
+        if (status.demo_mode) setPeopleLoading(true);
+        setAuthStatus(status);
+        setAuthProblem(null);
       })
-      .catch(() => {
-        if (!cancelled) {
-          setAuthStatus({
-            authenticated: false,
-            provider: "oidc_bff",
-            login_url: "/api/v1/auth/login?return_url=/",
-            demo_mode: false,
-            chat_enabled: false,
-          });
-        }
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setAuthStatus(null);
+        setAuthProblem({ url: apiUrl(AUTH_STATUS_PATH), detail: describeAuthFailure(error) });
       })
       .finally(() => {
-        if (!cancelled) setAuthLoading(false);
+        if (cancelled) return;
+        setAuthLoading(false);
+        setAuthRetrying(false);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authAttempt]);
 
   const demoMode = authStatus?.demo_mode === true;
   useEffect(() => {
@@ -140,6 +151,12 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       provider,
       authenticated,
       authLoading,
+      authProblem,
+      retryAuth: () => {
+        setAuthRetrying(true);
+        setAuthAttempt((attempt) => attempt + 1);
+      },
+      authRetrying,
       user: authStatus?.user ?? null,
       isDevMode,
       demoMode,
@@ -180,6 +197,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     actingAsPerson,
     activeRole,
     authLoading,
+    authProblem,
+    authRetrying,
     authStatus,
     demoMode,
     dropCachedIdentity,

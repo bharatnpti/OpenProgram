@@ -5,6 +5,8 @@ import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
 import type { DayReportRequest, DayReportResponse } from "../../api/schema";
+import { useReadOnly } from "../../app/viewingDate";
+import { LockedTrigger } from "../../components/Dialogs";
 import { Pill } from "../../components/ui/Pill";
 import { cn } from "../../lib/utils";
 import { releaseName } from "../overall/overallWords";
@@ -136,6 +138,10 @@ export function ReportSetupDialog({
 
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
+
+  // Setting up, changing and removing are changes: off while a past day is shown.
+  const { readOnly, reason } = useReadOnly();
+  if (readOnly) return <LockedTrigger trigger={trigger} reason={reason} />;
 
   return (
     <Dialog.Root

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ApiError, apiClient } from "../../api/client";
 import type { FocusResponse, MyStatusResponse, StatusCorrectionRequest } from "../../api/schema";
 import { usePods, usePrograms, useProjects } from "../../app/directory";
+import { useReadOnly } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { Greeting, Panel, RagBadge, RagDot, Row } from "../../components/ui/Bits";
 import { Pill } from "../../components/ui/Pill";
@@ -151,6 +152,7 @@ function CheckinCard({
   podNames: string[];
 }) {
   const queryClient = useQueryClient();
+  const { readOnly, reason } = useReadOnly();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ["me"] });
   const confirm = useMutation({
     mutationFn: () => apiClient.confirmMyStatus(),
@@ -228,7 +230,12 @@ function CheckinCard({
                   ✓ Check-in confirmed
                 </span>
               ) : (
-                <Pill size="md" onClick={() => confirm.mutate()} disabled={confirm.isPending}>
+                <Pill
+                  size="md"
+                  onClick={() => confirm.mutate()}
+                  disabled={confirm.isPending || readOnly}
+                  title={reason ?? undefined}
+                >
                   {confirm.isPending ? "Confirming…" : "Confirm check-in"}
                 </Pill>
               )}
@@ -253,6 +260,7 @@ const LABEL = "mb-1 block text-[12px] font-bold uppercase tracking-wide text-gre
  * person had said it.
  */
 function CorrectDialog({ status, onDone }: { status: MyStatusResponse; onDone: () => void }) {
+  const { readOnly, reason } = useReadOnly();
   const rows = blockerRows(status);
   const ownWords = isOwnWords(status.source);
   const [open, setOpen] = useState(false);
@@ -287,7 +295,7 @@ function CorrectDialog({ status, onDone }: { status: MyStatusResponse; onDone: (
       }}
     >
       <Dialog.Trigger asChild>
-        <Pill variant="ghost" size="md">
+        <Pill variant="ghost" size="md" disabled={readOnly} title={reason ?? undefined}>
           Correct details
         </Pill>
       </Dialog.Trigger>
@@ -388,7 +396,7 @@ function CorrectDialog({ status, onDone }: { status: MyStatusResponse; onDone: (
                   Cancel
                 </Pill>
               </Dialog.Close>
-              <Pill type="submit" size="sm" disabled={save.isPending}>
+              <Pill type="submit" size="sm" disabled={save.isPending || readOnly}>
                 {save.isPending ? "Saving…" : "Save correction"}
               </Pill>
             </div>

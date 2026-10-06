@@ -4,15 +4,15 @@ import { apiClient } from "../../api/client";
 import type { DirectoryItemResponse } from "../../api/schema";
 import { useRole } from "../../app/role";
 import { PanelState } from "../../components/PanelState";
-import { formatDate } from "../../lib/format";
 import { PERSON_KEY_WORDS } from "../../lib/words";
-import { FactorsPanel, NodeHeader, Related } from "./NodeBits";
+import { Facts, FactorsPanel, NodeHeader, Related } from "./NodeBits";
 import { ProgressBlock } from "./ProgressBlock";
-import { reasonLine, type Finder } from "./factors";
+import { metadataFacts, reasonLine, type Finder } from "./factors";
 
 /**
- * A workstream: type, phase, target date and the people who run it (an id that
- * matches no member is shown as the id, never as a name), then its progress.
+ * A workstream: what its metadata says (type, phase, target date, its
+ * repositories), the people who run it (an id that matches no member is shown
+ * as the id, never as a name), then its progress.
  */
 export function WorkstreamPanel({
   workstream,
@@ -28,17 +28,13 @@ export function WorkstreamPanel({
     enabled: canReadProjectProgress,
   });
   const p = progress.data;
-  const m = workstream.metadata;
-  const text = (v: unknown) => (typeof v === "string" && v ? v : null);
-  const facts = [
-    ["Type", text(m.type)],
-    ["Phase", text(m.phase)],
-    ["Target date", text(m.target_date) ? formatDate(text(m.target_date)) : null],
-    ...workstream.people.map((person) => [
+  const facts: [string, string][] = [
+    ...metadataFacts(workstream.metadata),
+    ...workstream.people.map((person): [string, string] => [
       PERSON_KEY_WORDS[person.key] ?? person.key,
       person.name ?? person.id,
     ]),
-  ].filter((pair): pair is [string, string] => Boolean(pair[1]));
+  ];
 
   return (
     <>
@@ -48,18 +44,7 @@ export function WorkstreamPanel({
         rag={p?.rag ?? workstream.rag}
         reason={p ? reasonLine(p.factors, p.source_names) : undefined}
       />
-      {facts.length > 0 ? (
-        <dl className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {facts.map(([label, value]) => (
-            <div key={label} className="rounded-2xl bg-grey-fill px-3 py-2">
-              <dt className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary">
-                {label}
-              </dt>
-              <dd className="mt-0.5 text-[14px] font-bold">{value}</dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
+      <Facts facts={facts} />
       <div className="mb-5 grid gap-2">
         <Related
           label="Project"

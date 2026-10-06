@@ -1,31 +1,29 @@
 import { createContext, useContext } from "react";
 
 import type { AuthStatusResponse, DevUserResponse } from "../api/schema";
+import { appRoles, rolePriority, type AppRole } from "./roleWords";
 
 /*
  * Same roles, storage keys and lens rules as frontend-v2 (src/app/role.ts), so
  * a person acting as someone in one console is the same person in the other.
  */
 
-export type AppRole = "dev" | "sm" | "po" | "mgr" | "exec" | "admin";
+export { appRoles, roleLabels, rolePriority, type AppRole } from "./roleWords";
 export type AuthProvider = "dev" | "oidc_bff";
 
 export const STORAGE_KEY = "openprogram.active-role";
 export const USER_STORAGE_KEY = "openprogram.acting-as";
 
-export const roleLabels: Record<AppRole, string> = {
-  dev: "Developer",
-  sm: "Scrum Master",
-  po: "Product Owner",
-  mgr: "Manager",
-  exec: "Executive",
-  admin: "Admin",
+/**
+ * The backend could not say who is signed in: it gave no answer, or an error.
+ * Not the same as being signed out, so it gets its own screen and a retry.
+ */
+export type AuthProblem = {
+  /** The address that was asked, in full. */
+  url: string;
+  /** What happened, in a sentence. */
+  detail: string;
 };
-
-export const appRoles: AppRole[] = ["dev", "sm", "po", "mgr", "exec", "admin"];
-
-/** Most-privileged first: how a person's default lens is chosen. */
-export const rolePriority: AppRole[] = ["admin", "exec", "mgr", "po", "sm", "dev"];
 
 export type RoleContextValue = {
   role: AppRole;
@@ -36,6 +34,11 @@ export type RoleContextValue = {
   provider: AuthProvider;
   authenticated: boolean;
   authLoading: boolean;
+  /** Set when the backend could not be asked who this is; null once it answers. */
+  authProblem: AuthProblem | null;
+  /** Ask the backend again after `authProblem`; true while that is under way. */
+  retryAuth: () => void;
+  authRetrying: boolean;
   user: AuthStatusResponse["user"] | null;
   isDevMode: boolean;
   /** Persona switching is served (backend `demo_mode`). */

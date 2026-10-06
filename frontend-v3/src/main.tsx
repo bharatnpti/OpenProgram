@@ -4,11 +4,14 @@ import ReactDOM from "react-dom/client";
 import { Toaster } from "sonner";
 
 import { App } from "./App";
+import { viewingDayQueryHash } from "./app/queryCache";
 import "./index.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      // Keeps each viewed day's answers apart; see app/queryCache.ts.
+      queryKeyHashFn: viewingDayQueryHash,
       staleTime: 15_000,
       retry: (failureCount, error) => {
         // A refusal is an answer, not a blip: don't retry a 401/403/404.

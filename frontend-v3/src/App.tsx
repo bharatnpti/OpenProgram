@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-
 
 import { Layout } from "./app/Layout";
 import { RoleProvider } from "./app/RoleProvider";
+import { ViewingDateProvider } from "./app/ViewingDateProvider";
 import { useRole } from "./app/role";
 import { Pill } from "./components/ui/Pill";
 
@@ -30,42 +31,52 @@ const AdminPage = page(() => import("./pages/AdminPage"), "AdminPage");
  *   /reports/:projectId/overall     the project's state since it started
  *   /chat                           the built-in chat (local tenants only)
  *   /admin                          runtime configuration (admin)
+ *
+ * Any of them takes ?asOf=YYYY-MM-DD to show a past day (app/ViewingDateProvider).
  */
 export function App() {
   return (
     <RoleProvider>
       <BrowserRouter>
-        <Suspense fallback={<RouteFallback />}>
-          <Routes>
-            <Route path="/logged-out" element={<SignInScreen title="Signed out" />} />
-            <Route
-              element={
-                <RequireAuthenticated>
-                  <Layout />
-                </RequireAuthenticated>
-              }
-            >
-              <Route path="/" element={<Navigate to="/today" replace />} />
-              <Route path="/today" element={<TodayPage />} />
-              <Route path="/delivery" element={<DeliveryPage />} />
-              <Route path="/delivery/:kind/:id" element={<DeliveryPage />} />
-              <Route path="/signals" element={<SignalsPage />} />
-              <Route path="/coordination" element={<CoordinationPage />} />
-              <Route path="/reports" element={<ReportsHomePage />} />
-              <Route path="/reports/:projectId" element={<ProjectRedirect />} />
-              <Route path="/reports/:projectId/daily" element={<DailyPage />} />
-              <Route path="/reports/:projectId/overall" element={<OverallPage />} />
-              {/* Links from the first scaffold keep working. */}
-              <Route path="/projects/:projectId" element={<ProjectRedirect />} />
-              <Route path="/projects/:projectId/:view" element={<ProjectRedirect />} />
-              <Route path="/chat" element={<ChatPage />} />
-              <Route path="/admin" element={<AdminPage />} />
-              <Route path="*" element={<Navigate to="/today" replace />} />
-            </Route>
-          </Routes>
-        </Suspense>
+        <ViewingDateProvider>
+          <Suspense fallback={<RouteFallback />}>
+            <AppRoutes />
+          </Suspense>
+        </ViewingDateProvider>
       </BrowserRouter>
     </RoleProvider>
+  );
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/logged-out" element={<SignInScreen title="Signed out" />} />
+      <Route
+        element={
+          <RequireAuthenticated>
+            <Layout />
+          </RequireAuthenticated>
+        }
+      >
+        <Route path="/" element={<Navigate to="/today" replace />} />
+        <Route path="/today" element={<TodayPage />} />
+        <Route path="/delivery" element={<DeliveryPage />} />
+        <Route path="/delivery/:kind/:id" element={<DeliveryPage />} />
+        <Route path="/signals" element={<SignalsPage />} />
+        <Route path="/coordination" element={<CoordinationPage />} />
+        <Route path="/reports" element={<ReportsHomePage />} />
+        <Route path="/reports/:projectId" element={<ProjectRedirect />} />
+        <Route path="/reports/:projectId/daily" element={<DailyPage />} />
+        <Route path="/reports/:projectId/overall" element={<OverallPage />} />
+        {/* Links from the first scaffold keep working. */}
+        <Route path="/projects/:projectId" element={<ProjectRedirect />} />
+        <Route path="/projects/:projectId/:view" element={<ProjectRedirect />} />
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/admin" element={<AdminPage />} />
+        <Route path="*" element={<Navigate to="/today" replace />} />
+      </Route>
+    </Routes>
   );
 }
 
@@ -77,16 +88,58 @@ function ProjectRedirect() {
 }
 
 function RequireAuthenticated({ children }: { children: ReactNode }) {
-  const { authenticated, authLoading, isDevMode, peopleLoading } = useRole();
+  const { authenticated, authLoading, authProblem, isDevMode, peopleLoading } = useRole();
+  if (authLoading) {
+    return <RouteFallback />;
+  }
+  // Checked before the provider: with no answer there is no provider to go by.
+  if (authProblem) {
+    return <BackendUnreachable />;
+  }
   // In dev mode the acting-as person decides the role set, so wait for the
   // roster rather than briefly deciding access from a stale role.
-  if (authLoading || (isDevMode && peopleLoading)) {
+  if (isDevMode && peopleLoading) {
     return <RouteFallback />;
   }
   if (!isDevMode && !authenticated) {
     return <SignInScreen title="OpenProgram" />;
   }
   return children;
+}
+
+/**
+ * The backend did not say who this is. Signing in can't help until it
+ * answers, so this says which address was tried and offers to try again.
+ */
+function BackendUnreachable() {
+  const { authProblem, retryAuth, authRetrying } = useRole();
+  return (
+    <main className="grid min-h-screen place-items-center bg-white px-4">
+      <div className="flex max-w-[560px] flex-col gap-4">
+        <div>
+          <h1 className="text-[28px] font-extrabold tracking-tight text-balance">
+            Can't reach the OpenProgram backend
+          </h1>
+          <p className="mt-2 text-[15px] text-grey-body">
+            The console asked who you are at{" "}
+            <code className="break-all rounded-md bg-grey-fill px-1.5 py-0.5 text-[13px] text-ink">
+              {authProblem?.url}
+            </code>
+            . {authProblem?.detail}
+          </p>
+          <p className="mt-2 text-[13px] text-grey-secondary">
+            On a local setup, start the backend, or point this console at it with VITE_API_BASE_URL.
+            Nothing was changed.
+          </p>
+        </div>
+        <div>
+          <Pill onClick={retryAuth} disabled={authRetrying} size="md">
+            {authRetrying ? "Trying again…" : "Try again"}
+          </Pill>
+        </div>
+      </div>
+    </main>
+  );
 }
 
 function SignInScreen({ title }: { title: string }) {

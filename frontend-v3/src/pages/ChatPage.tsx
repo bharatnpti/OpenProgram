@@ -5,20 +5,12 @@ import { toast } from "sonner";
 import { apiClient } from "../api/client";
 import type { ChatSimulatorMessageResponse } from "../api/schema";
 import { useRole } from "../app/role";
+import { useReadOnly } from "../app/viewingDate";
 import { PanelState, SectionHeader } from "../components/PanelState";
 import { Pill } from "../components/ui/Pill";
+import { purposeWords, REQUEST_PURPOSE } from "../features/chat/purpose";
 import { formatDay, formatTime } from "../lib/format";
 import { cn } from "../lib/utils";
-
-/** The purpose the backend gives a DM that asks a person for a review or input. */
-const REQUEST_PURPOSE = "cross_person_request";
-
-const PURPOSE_WORDS: Record<string, string> = {
-  checkin: "check-in",
-  followup: "follow-up",
-  nudge: "nudge",
-  cross_person_request: "request",
-};
 
 /**
  * The built-in chat that stands in for Slack on a local tenant: one thread per
@@ -29,6 +21,7 @@ const PURPOSE_WORDS: Record<string, string> = {
  */
 export function ChatPage() {
   const { chatEnabled, canManageConfig, people, actingAs } = useRole();
+  const { readOnly, reason } = useReadOnly();
   const queryClient = useQueryClient();
   const [chosen, setChosen] = useState("");
   const threadId = canManageConfig && chosen ? chosen : (actingAs?.id ?? "");
@@ -54,14 +47,15 @@ export function ChatPage() {
       queryClient.invalidateQueries({ queryKey: ["requests"] }),
     ]);
 
+  // Only the tenant and the member, as the scheduled check-in sends: the
+  // backend finds where the DM goes. `chat_external_id` would override that
+  // target, and on a real chat tenant could reach someone outside the team.
+  const tenantId = status.data?.tenant_id;
   const requestCheckin = useMutation({
-    mutationFn: () =>
-      apiClient.dispatchCheckin({
-        tenant_id: status.data?.tenant_id ?? "demo",
-        developer_id: threadId,
-        developer_name: person?.name ?? threadId,
-        chat_external_id: threadId,
-      }),
+    mutationFn: () => {
+      if (!tenantId) throw new Error("The chat's tenant isn't known yet. Try again in a moment.");
+      return apiClient.dispatchCheckin({ tenant_id: tenantId, developer_id: threadId });
+    },
     onSuccess: async () => {
       await refresh();
       toast.success("Check-in requested. The bot asks in a moment.");
@@ -102,7 +96,8 @@ export function ChatPage() {
               <Pill
                 size="sm"
                 variant="ghost"
-                disabled={requestCheckin.isPending}
+                disabled={requestCheckin.isPending || !tenantId || readOnly}
+                title={reason ?? undefined}
                 onClick={() => requestCheckin.mutate()}
               >
                 Ask {person?.name.split(" ")[0] ?? "them"} for a check-in
@@ -110,7 +105,12 @@ export function ChatPage() {
               {confirmClear ? (
                 <span className="flex items-center gap-2 text-[13px]">
                   Clear every thread?
-                  <Pill size="sm" variant="dark" onClick={() => clear.mutate()}>
+                  <Pill
+                    size="sm"
+                    variant="dark"
+                    disabled={readOnly || clear.isPending}
+                    onClick={() => clear.mutate()}
+                  >
                     Clear
                   </Pill>
                   <Pill size="sm" variant="ghost" onClick={() => setConfirmClear(false)}>
@@ -118,7 +118,13 @@ export function ChatPage() {
                   </Pill>
                 </span>
               ) : (
-                <Pill size="sm" variant="ghost" onClick={() => setConfirmClear(true)}>
+                <Pill
+                  size="sm"
+                  variant="ghost"
+                  disabled={readOnly}
+                  title={reason ?? undefined}
+                  onClick={() => setConfirmClear(true)}
+                >
                   Clear history
                 </Pill>
               )}
@@ -182,6 +188,7 @@ function Thread({
   error: unknown;
   onSent: () => Promise<unknown>;
 }) {
+  const { readOnly, reason } = useReadOnly();
   const [draft, setDraft] = useState("");
   const [replyTo, setReplyTo] = useState<ChatSimulatorMessageResponse | null>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -219,6 +226,7 @@ function Thread({
     },
     onError: (e: Error) => toast.error(e.message),
   });
+  const canSend = Boolean(draft.trim()) && !send.isPending && !readOnly;
 
   if (!threadId) {
     return (
@@ -245,7 +253,9 @@ function Thread({
                 {m.direction === "bot" && m.purpose === REQUEST_PURPOSE ? (
                   <button
                     type="button"
-                    className="ml-2 mt-1 text-[12px] font-bold text-magenta"
+                    className="ml-2 mt-1 text-[12px] font-bold text-magenta disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={readOnly}
+                    title={reason ?? undefined}
                     onClick={() => setReplyTo(m)}
                   >
                     Reply in thread
@@ -270,9 +280,12 @@ function Thread({
         className="border-t border-grey-border p-3"
         onSubmit={(e) => {
           e.preventDefault();
-          if (draft.trim()) send.mutate();
+          if (canSend) send.mutate();
         }}
       >
+        {readOnly ? (
+          <p className="mb-2 text-[12px] font-bold text-rag-amber-deep">{reason}</p>
+        ) : null}
         {replyTo ? (
           <p className="mb-2 flex items-center gap-2 text-[12px] text-grey-body">
             Replying in thread to: “{replyTo.text.slice(0, 80)}”
@@ -298,11 +311,11 @@ function Thread({
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (draft.trim()) send.mutate();
+                if (canSend) send.mutate();
               }
             }}
           />
-          <Pill type="submit" size="md" disabled={!draft.trim() || send.isPending}>
+          <Pill type="submit" size="md" disabled={!canSend} title={reason ?? undefined}>
             {send.isPending ? "Sending…" : "Send"}
           </Pill>
         </div>
@@ -313,6 +326,7 @@ function Thread({
 
 function Bubble({ message, who }: { message: ChatSimulatorMessageResponse; who: string }) {
   const bot = message.direction !== "user";
+  const purpose = purposeWords(message);
   return (
     <div className={cn("flex", bot ? "justify-start" : "justify-end")}>
       <div
@@ -324,10 +338,8 @@ function Bubble({ message, who }: { message: ChatSimulatorMessageResponse; who: 
         <p className="whitespace-pre-line">{message.text}</p>
         <p className="mt-1 text-[11px] text-grey-secondary">
           {bot ? "OpenProgram" : who}
-          {message.purpose
-            ? ` · ${PURPOSE_WORDS[message.purpose] ?? message.purpose.replace(/_/g, " ")}`
-            : ""}{" "}
-          · {formatDay(message.created_at)} {formatTime(message.created_at)}
+          {purpose ? ` · ${purpose}` : ""} · {formatDay(message.created_at)}{" "}
+          {formatTime(message.created_at)}
         </p>
       </div>
     </div>

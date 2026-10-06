@@ -20,6 +20,7 @@ import * as consoleData from "./mock-console.mjs";
 import * as todayMock from "./mock/today.mjs";
 import * as adminStructure from "./mock/admin-structure.mjs";
 import * as reportsLane from "./mock/reports.mjs";
+import * as shellMock from "./mock/shell.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
@@ -409,6 +410,9 @@ function api(req, res, url) {
   if (p === "/config/escalation/projects/project-checkout")
     return can.config(roles) ? send(200, escalation) : deny();
   const userId = req.headers["x-openprogram-dev-user"] ?? "U1001";
+  // The shell mock goes first: of the reads the lane mocks share, it answers
+  // only past-day ones (as_of), which the today mock would answer as today.
+  if (shellMock.api(req, url, roles, userId, send, deny)) return;
   if (todayMock.api(req, url, roles, userId, send, deny)) return;
   if (adminStructure.api(req, url, roles, userId, send, deny)) return;
   if (reportsLane.api(req, url, roles, userId, send, deny)) return;

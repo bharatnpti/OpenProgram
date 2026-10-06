@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 
 import type { DirectoryItemResponse, Rag, RollupFactorDto } from "../../api/schema";
 import { Panel, RagBadge, RagDot, Row } from "../../components/ui/Bits";
-import { worstFirst } from "./factors";
+import { cn } from "../../lib/utils";
+import { reasonRows, sourcesLine } from "./factors";
 
 /** The top of every Delivery panel: kind, name, colour, and the one-line reason. */
 export function NodeHeader({
@@ -35,6 +36,11 @@ export function NodeHeader({
   );
 }
 
+/**
+ * Every reason behind a colour, worst first. The same reason from several
+ * places is one row that names them, and a source the server names is shown
+ * by name, else by kind and id (never a guessed name).
+ */
 export function FactorsPanel({
   factors,
   names,
@@ -43,19 +49,50 @@ export function FactorsPanel({
   names: Record<string, string>;
 }) {
   if (factors.length < 2) return null;
+  const rows = reasonRows(factors, names);
   return (
-    <Panel title="Every reason" note={`${factors.length} factors`}>
+    <Panel
+      title="Every reason"
+      note={
+        rows.length === factors.length
+          ? `${factors.length} reasons`
+          : `${rows.length} reasons from ${factors.length} places`
+      }
+    >
       <ul>
-        {worstFirst(factors).map((f, i) => (
+        {rows.map((row) => (
           <Row
-            key={`${f.kind}-${i}`}
-            rag={f.contributes}
-            title={f.description}
-            meta={`${f.kind.replace(/_/g, " ")}${names[f.source_ref.id] ? ` · ${names[f.source_ref.id]}` : ` · ${f.source_ref.kind} ${f.source_ref.id}`}`}
+            key={row.key}
+            rag={row.contributes}
+            title={row.description}
+            meta={`${row.kind} · ${sourcesLine(row.sources)}`}
           />
         ))}
       </ul>
     </Panel>
+  );
+}
+
+/** A node's facts (its metadata and the people it names), as small labelled tiles. */
+export function Facts({ facts }: { facts: [string, string][] }) {
+  if (facts.length === 0) return null;
+  return (
+    <dl className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      {facts.map(([label, value]) => (
+        <div
+          key={label}
+          className={cn(
+            "min-w-0 rounded-2xl bg-grey-fill px-3 py-2",
+            label === "Repositories" && "col-span-2",
+          )}
+        >
+          <dt className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary">
+            {label}
+          </dt>
+          <dd className="mt-0.5 break-words text-[14px] font-bold">{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

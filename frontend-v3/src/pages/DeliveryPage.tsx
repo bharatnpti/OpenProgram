@@ -1,7 +1,10 @@
+import { useQuery } from "@tanstack/react-query";
 import { Navigate, NavLink, useParams } from "react-router-dom";
 
+import { apiClient } from "../api/client";
 import type { DirectoryItemResponse } from "../api/schema";
 import { usePods, usePrograms, useProjects, useWorkstreams } from "../app/directory";
+import { useDayWords } from "../app/viewingDate";
 import { PanelState } from "../components/PanelState";
 import { RagDot } from "../components/ui/Bits";
 import { PodPanel } from "../features/delivery/PodPanel";
@@ -19,6 +22,7 @@ import { cn } from "../lib/utils";
  */
 export function DeliveryPage() {
   const { kind, id } = useParams();
+  const day = useDayWords();
   const programs = usePrograms();
   const projects = useProjects();
   const workstreams = useWorkstreams();
@@ -49,7 +53,11 @@ export function DeliveryPage() {
       isLoading={loading}
       error={error}
       isEmpty={all.length === 0}
-      emptyText="Nothing is configured yet. An admin adds programs, projects and pods under Admin → Entities."
+      emptyText={
+        day === "today"
+          ? "Nothing is configured yet. An admin adds programs, projects and pods under Admin → Entities."
+          : `Nothing was configured yet ${day}.`
+      }
     >
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
         <nav
@@ -93,9 +101,7 @@ export function DeliveryPage() {
         </nav>
         <div className="min-w-0">
           {!selected ? (
-            <p className="rounded-2xl bg-grey-fill px-4 py-3 text-[14px] text-grey-body">
-              That {kind ?? "item"} is not in the directory. Pick one on the left.
-            </p>
+            <NotListed kind={kind} id={id} day={day} />
           ) : selected.kind === "program" ? (
             <ProgramPanel program={selected.item} />
           ) : selected.kind === "project" ? (
@@ -108,5 +114,27 @@ export function DeliveryPage() {
         </div>
       </div>
     </PanelState>
+  );
+}
+
+/**
+ * A link to something the lists leave out. Workstreams are optional, so the
+ * lists skip one that holds no work; reading it directly says whether that is
+ * why, rather than calling it missing.
+ */
+function NotListed({ kind, id, day }: { kind?: string; id?: string; day: string }) {
+  const direct = useQuery({
+    queryKey: ["workstream", id, "direct"],
+    queryFn: () => apiClient.workstream(id ?? ""),
+    enabled: kind === "workstream" && Boolean(id),
+    retry: false,
+  });
+  const empty = kind === "workstream" && direct.data?.in_use === false;
+  return (
+    <p className="rounded-2xl bg-grey-fill px-4 py-3 text-[14px] text-grey-body">
+      {empty
+        ? `${direct.data?.name} holds no tasks or work items ${day}, so Delivery leaves it out. Pods carry the work; a workstream shows once something is linked to it.`
+        : `That ${kind ?? "item"} is not in the directory${day === "today" ? "" : ` ${day}`}. Pick one on the left.`}
+    </p>
   );
 }

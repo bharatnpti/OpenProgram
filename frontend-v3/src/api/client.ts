@@ -101,12 +101,18 @@ import type {
   BrandingResponse,
   TenantLogoUploadRequest,
 } from "./schema";
+import { withViewingAsOf } from "./asOf";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const CSRF_COOKIE_NAME = import.meta.env.VITE_AUTH_CSRF_COOKIE_NAME ?? "openprogram_csrf";
 const CSRF_HEADER_NAME = import.meta.env.VITE_AUTH_CSRF_HEADER_NAME ?? "x-csrf-token";
 const DEV_USER_HEADER = "x-openprogram-dev-user";
 const DEV_ROLES_HEADER = "x-openprogram-dev-roles";
+
+/** The full address a request for `path` goes to, as people should read it in an error. */
+export function apiUrl(path: string): string {
+  return new URL(`${API_BASE_URL}${path}`, window.location.origin).href;
+}
 
 /**
  * Who the console is acting as, for local demo tenants only.
@@ -173,7 +179,7 @@ async function requestJson<T>(
   ) {
     throw new ApiError(409, readOnlyReason);
   }
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${API_BASE_URL}${withViewingAsOf(path, options.method)}`, {
     method: options.method,
     credentials: "include",
     headers: {

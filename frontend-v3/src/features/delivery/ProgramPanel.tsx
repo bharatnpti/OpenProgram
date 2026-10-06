@@ -26,6 +26,8 @@ export function ProgramPanel({ program }: { program: DirectoryItemResponse }) {
   const nodes = tree.data?.nodes ?? [];
   const edges = tree.data?.edges ?? [];
   const byId = new Map(nodes.map((n) => [n.id, n]));
+  // The tree names every node a reason can come from: people, tasks, work items, repos.
+  const names = Object.fromEntries(nodes.map((n) => [n.id, n.name]));
   const root = byId.get(program.id) ?? nodes.find((n) => n.kind === "program");
   const children = (id: string) =>
     edges
@@ -113,7 +115,7 @@ export function ProgramPanel({ program }: { program: DirectoryItemResponse }) {
               </ul>
             )}
           </Panel>
-          {root ? <FactorsPanel factors={root.factors} names={{}} /> : null}
+          {root ? <FactorsPanel factors={root.factors} names={names} /> : null}
         </div>
       </PanelState>
     </>

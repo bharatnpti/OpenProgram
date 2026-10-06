@@ -5,11 +5,15 @@ import { apiClient } from "../../api/client";
 import type { DirectoryItemResponse } from "../../api/schema";
 import { useRole } from "../../app/role";
 import { PanelState } from "../../components/PanelState";
-import { FactorsPanel, NodeHeader, Related } from "./NodeBits";
+import { PERSON_KEY_WORDS } from "../../lib/words";
+import { Facts, FactorsPanel, NodeHeader, Related } from "./NodeBits";
 import { ProgressBlock } from "./ProgressBlock";
-import { reasonLine, type Finder } from "./factors";
+import { metadataFacts, reasonLine, type Finder } from "./factors";
 
-/** A project: its colour and why, related nodes, progress and tasks, and its reports. */
+/**
+ * A project: its colour and why, where its work is tracked (Jira project,
+ * repositories), related nodes, progress and tasks, and its reports.
+ */
 export function ProjectPanel({ project, find }: { project: DirectoryItemResponse; find: Finder }) {
   const { canReadProjectProgress } = useRole();
   const progress = useQuery({
@@ -42,6 +46,15 @@ export function ProjectPanel({ project, find }: { project: DirectoryItemResponse
             </Link>
           </>
         }
+      />
+      <Facts
+        facts={[
+          ...metadataFacts(project.metadata),
+          ...project.people.map((person): [string, string] => [
+            PERSON_KEY_WORDS[person.key] ?? person.key,
+            person.name ?? person.id,
+          ]),
+        ]}
       />
       <div className="mb-5 grid gap-2">
         <Related

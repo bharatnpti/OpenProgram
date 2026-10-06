@@ -1,44 +1,78 @@
+import { Search } from "lucide-react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
+import { AccountMenu } from "../components/shell/AccountMenu";
+import { ActingAsControls } from "../components/shell/ActingAs";
+import { CommandPalette } from "../components/shell/CommandPalette";
+import { HeaderLogo } from "../components/shell/HeaderLogo";
+import { ViewingDateBanner, ViewingDateControl } from "../components/shell/ViewingDate";
 import { cn } from "../lib/utils";
-import { NAV } from "./nav";
-import { initialsFor, roleLabels, useRole, type AppRole } from "./role";
+import { shownNav } from "./nav";
+import { useRole } from "./role";
+import { useViewingDate } from "./viewingDate";
+
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
 export function Layout() {
   const roleState = useRole();
+  const { asOf } = useViewingDate();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // ⌘K on a Mac, Ctrl+K elsewhere, from anywhere in the console.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((current) => !current);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     <div className="min-h-screen bg-white">
       <header className="sticky top-0 z-30 border-b border-grey-border bg-white">
         <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-x-6 gap-y-2 px-4 pt-3 sm:px-8">
           <NavLink to="/today" className="flex items-center gap-3 py-1 text-ink no-underline">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-magenta" aria-hidden>
-              <svg
-                viewBox="0 0 20 20"
-                className="h-5 w-5"
-                fill="none"
-                stroke="#fff"
-                strokeWidth="2"
-              >
-                <circle cx="10" cy="4" r="2" />
-                <circle cx="4" cy="16" r="2" />
-                <circle cx="16" cy="16" r="2" />
-                <path d="M10 6v4M10 10l-5 4M10 10l5 4" strokeLinecap="round" />
-              </svg>
-            </span>
+            <HeaderLogo />
             <span className="leading-tight">
               <span className="block text-[16px] font-extrabold">OpenProgram</span>
               <span className="block text-[11px] text-grey-secondary">Delivery intelligence</span>
             </span>
           </NavLink>
-          <div className="ml-auto flex items-center gap-3 py-1">
-            <IdentityControls />
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 py-1">
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Jump to a screen, person, project or pod"
+              aria-keyshortcuts={IS_MAC ? "Meta+K" : "Control+K"}
+              className="flex h-10 flex-none items-center gap-2 rounded-full border border-grey-border bg-grey-fill px-3 text-[13px] text-grey-secondary hover:border-grey-disabled"
+            >
+              <Search size={15} aria-hidden />
+              <span className="hidden lg:inline">Jump to…</span>
+              <kbd className="hidden rounded-md border border-grey-border bg-white px-1.5 text-[11px] lg:inline">
+                {IS_MAC ? "⌘K" : "Ctrl K"}
+              </kbd>
+            </button>
+            {/* Below sm the day picker lives in the account menu; the banner says when it's past. */}
+            <div className="hidden sm:block">
+              <ViewingDateControl />
+            </div>
+            {/* Below sm the acting-as controls live in the account menu too. */}
+            {roleState.isDevMode && roleState.people.length > 0 ? (
+              <div className="hidden sm:block">
+                <ActingAsControls idPrefix="header" />
+              </div>
+            ) : null}
+            <AccountMenu />
           </div>
           <nav
             aria-label="Main"
             className="-mx-1 flex w-full gap-1 overflow-x-auto px-1 [scrollbar-width:none]"
           >
-            {NAV.filter((item) => item.to !== "/chat" || roleState.chatEnabled).map((item) =>
+            {shownNav(roleState).map((item) =>
               item.offered(roleState) ? (
                 <NavLink
                   key={item.to}
@@ -66,103 +100,13 @@ export function Layout() {
             )}
           </nav>
         </div>
+        <ViewingDateBanner />
       </header>
       <main className="mx-auto max-w-[1240px] px-4 py-8 sm:px-8">
-        <Outlet />
+        {/* A different day remounts the screen, so every query on it asks for that day. */}
+        <Outlet key={asOf ?? "today"} />
       </main>
-    </div>
-  );
-}
-
-/**
- * Local demo tenants act as any seeded person, with a lens for people who hold
- * several roles; under real sign-in the token decides, so only the name, the
- * role and Sign out remain.
- */
-function IdentityControls() {
-  const {
-    displayName,
-    isDevMode,
-    people,
-    actingAs,
-    setActingAsId,
-    roles,
-    role,
-    setRole,
-    roleLabel,
-    logout,
-  } = useRole();
-
-  const avatar = (
-    <span
-      className="grid h-9 w-9 flex-none place-items-center rounded-full bg-ink text-[12px] font-extrabold text-white"
-      aria-hidden
-    >
-      {initialsFor(displayName)}
-    </span>
-  );
-
-  if (isDevMode && people.length > 0) {
-    return (
-      <div className="flex flex-wrap items-center gap-2">
-        {avatar}
-        <label htmlFor="acting-as" className="sr-only">
-          Acting as
-        </label>
-        <select
-          id="acting-as"
-          className="h-10 max-w-[230px] rounded-full border border-grey-border bg-white px-3 text-[13px] font-bold"
-          value={actingAs?.id ?? ""}
-          onChange={(event) => setActingAsId(event.target.value)}
-        >
-          {people.map((person) => (
-            <option key={person.id} value={person.id}>
-              {person.name}
-              {person.title ? ` · ${person.title}` : ""}
-            </option>
-          ))}
-        </select>
-        {roles.length > 1 ? (
-          <>
-            <label htmlFor="lens" className="sr-only">
-              View as
-            </label>
-            <select
-              id="lens"
-              className="h-10 rounded-full border border-grey-border bg-white px-3 text-[13px]"
-              value={role}
-              onChange={(event) => setRole(event.target.value as AppRole)}
-            >
-              {roles.map((item) => (
-                <option key={item} value={item}>
-                  {roleLabels[item]}
-                </option>
-              ))}
-            </select>
-          </>
-        ) : (
-          <span className="text-[12px] text-grey-secondary">{roleLabel}</span>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-2">
-      {avatar}
-      <span className="text-[13px] leading-tight">
-        <span className="block font-bold">{displayName}</span>
-        <span className="block text-[11px] text-grey-secondary">{roleLabel}</span>
-      </span>
-      {!isDevMode ? (
-        <button
-          type="button"
-          className="ml-1 text-[13px] font-bold text-magenta"
-          onClick={() => void logout()}
-        >
-          Sign out
-        </button>
-      ) : null}
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
   );
 }

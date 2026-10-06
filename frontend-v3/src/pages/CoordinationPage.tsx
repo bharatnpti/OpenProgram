@@ -12,6 +12,7 @@ import type {
 } from "../api/schema";
 import { useMemberId, useNames } from "../app/directory";
 import { useRole } from "../app/role";
+import { useReadOnly } from "../app/viewingDate";
 import { PanelState, SectionHeader } from "../components/PanelState";
 import { ChipPicker, Panel } from "../components/ui/Bits";
 import { Pill } from "../components/ui/Pill";
@@ -155,6 +156,7 @@ function RequestCard({
 }) {
   const names = useNames();
   const memberId = useMemberId();
+  const { readOnly, reason } = useReadOnly();
   const queryClient = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
   const age = daysBetween(request.created_at, today);
@@ -219,7 +221,8 @@ function RequestCard({
             <Pill
               size="sm"
               variant="ghost"
-              disabled={update.isPending}
+              disabled={update.isPending || readOnly}
+              title={reason ?? undefined}
               aria-label={`Acknowledge: ${request.note || requestKindLabel(request.kind)}`}
               onClick={() => update.mutate("acknowledged")}
             >
@@ -229,7 +232,8 @@ function RequestCard({
           <Pill
             size="sm"
             variant="dark"
-            disabled={update.isPending}
+            disabled={update.isPending || readOnly}
+            title={reason ?? undefined}
             aria-label={`Resolve: ${request.note || requestKindLabel(request.kind)}`}
             onClick={() => update.mutate("resolved")}
           >

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../api/client";
 import type { DirectoryItemResponse } from "../../api/schema";
 import { useRole } from "../../app/role";
+import { useDayWords } from "../../app/viewingDate";
 import { PanelState, TableBox, td, th } from "../../components/PanelState";
 import { Panel, RagBadge, Row } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
@@ -11,7 +12,7 @@ import { ragSeverity } from "../../lib/status";
 import { sourceLine } from "../../lib/words";
 import { FactorsPanel, NodeHeader, Related } from "./NodeBits";
 import { PodDeliveryCard } from "./PodDeliveryCard";
-import { reasonLine, type Finder } from "./factors";
+import { checkinStateWords, reasonLine, type Finder } from "./factors";
 
 const NEEDS = "a scrum master, manager or admin";
 
@@ -22,6 +23,7 @@ const NEEDS = "a scrum master, manager or admin";
  */
 export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Finder }) {
   const { canReadPodDetail } = useRole();
+  const day = useDayWords();
   const on = canReadPodDetail;
   const rollup = useQuery({
     queryKey: ["pod", pod.id, "rollup"],
@@ -77,7 +79,7 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
         />
         <p className="text-[13px] text-grey-body">
           {pod.member_ids.length} {pod.member_ids.length === 1 ? "member" : "members"}
-          {c ? ` · ${c.confirmed} of ${total} confirmed today` : ""}
+          {c ? ` · ${c.confirmed} of ${total} confirmed ${day}` : ""}
           {blockers.data ? ` · ${blockers.data.blockers.length} open blockers` : ""}
         </p>
       </div>
@@ -86,7 +88,7 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
             <Panel
-              title="Check-ins today"
+              title={`Check-ins ${day}`}
               note={c ? `${c.confirmed} of ${total} confirmed` : undefined}
             >
               <PanelState
@@ -109,7 +111,7 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
                       }
                       title={dev.developer_name}
                       meta={dev.summary || sourceLine(dev.source)}
-                      right={dev.state}
+                      right={checkinStateWords(dev)}
                     />
                   ))}
                 </ul>
