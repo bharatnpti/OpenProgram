@@ -1,0 +1,29 @@
+frontend-v2/src/features/gates/gates.ts
+  s_239b3b1319ec3a::t_9cee96a65a0d45 188-200
+frontend-v2/src/features/gates/ProjectGates.tsx
+  s_239b3b1319ec3a::t_9cee96a65a0d45 51,53-54,58
+frontend-v2/src/features/delivery/DeliveryDetail.tsx
+  s_239b3b1319ec3a::t_9cee96a65a0d45 17,83,95-99,223
+  s_239b3b1319ec3a::t_0b061ec15f84b8 224
+backend/tests/unit/test_gates.py
+  s_239b3b1319ec3a::t_9cee96a65a0d45 608-667
+frontend-v2/src/features/gates/gates.test.ts
+  s_239b3b1319ec3a::t_9cee96a65a0d45 21,220-225
+  s_239b3b1319ec3a::t_96b274ec1d54e5 226-227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eafc5ababbc5618eadb1cd077b1dad4823067e88",
+  "prompts": {},
+  "sessions": {
+    "s_239b3b1319ec3a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "edb8c1f2-3037-41fd-a1b3-6261f7f7734c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
