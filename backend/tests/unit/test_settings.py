@@ -281,6 +281,55 @@ def test_settings_allow_dev_auth_and_default_key_in_local() -> None:
     assert settings.secret_key == SECRET_KEY
 
 
+def _shared(**overrides: object) -> Settings:
+    """A deployed (non-local) environment that passes the shared-deployment guard."""
+    return _settings(
+        environment="production",
+        secret_key="A" * 43 + "=",
+        auth_provider="oidc_bff",
+        oidc_issuer_url="https://issuer.example.com",
+        oidc_client_id="openprogram",
+        oidc_client_secret="secret",
+        runtime_mode="memory",
+        **overrides,
+    )
+
+
+def test_the_console_url_for_outgoing_links_is_set_or_falls_back_to_the_frontend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENPROGRAM_CONSOLE_URL", "https://openprogram.example.com/")
+    assert _shared().public_console_url == "https://openprogram.example.com"
+
+    # Unset or empty, the frontend address the sign-in returns to is used.
+    monkeypatch.setenv("OPENPROGRAM_CONSOLE_URL", "")
+    fallback = _shared(auth_frontend_url="https://console.example.com")
+    assert fallback.console_url is None
+    assert fallback.public_console_url == "https://console.example.com"
+    with pytest.raises(ValidationError):
+        _shared(console_url="openprogram.example.com")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://[::1]:5174",
+        "http://console.localhost:8080",
+        "http://0.0.0.0:5173",
+    ],
+)
+def test_a_local_console_url_is_linked_only_in_the_local_environment(url: str) -> None:
+    assert _shared(console_url=url).public_console_url is None
+    # The default frontend address is local too: unset, a deployment sends no link.
+    assert _shared().public_console_url is None
+    assert _settings(secret_key=SECRET_KEY, console_url=url).public_console_url == url
+    assert _shared(console_url="https://localhost.example.com").public_console_url == (
+        "https://localhost.example.com"
+    )
+
+
 def test_settings_escalation_policy_default_ladder() -> None:
     settings = _settings(
         secret_key=SECRET_KEY,

@@ -3089,9 +3089,17 @@ class ReportRunResponse(BaseModel):
     title: str
     outcomes: list[DeliveryOutcomeResponse]
     actor: str | None
+    actor_name: str | None = Field(
+        description=(
+            "The display name of the member who sent it, or null when actor is no "
+            "member's id or there is none (a scheduled run)."
+        )
+    )
 
     @classmethod
-    def from_domain(cls, run: ReportRun) -> ReportRunResponse:
+    def from_domain(
+        cls, run: ReportRun, names: Mapping[str, str] | None = None
+    ) -> ReportRunResponse:
         return cls(
             run_id=run.run_id,
             report_id=run.report_id,
@@ -3111,6 +3119,7 @@ class ReportRunResponse(BaseModel):
                 for outcome in run.outcomes
             ],
             actor=run.actor,
+            actor_name=(names or {}).get(run.actor) if run.actor else None,
         )
 
 
@@ -3130,7 +3139,10 @@ class DayReportResponse(BaseModel):
 
     @classmethod
     def from_domain(
-        cls, definition: DayReportDefinition, last_run: ReportRun | None = None
+        cls,
+        definition: DayReportDefinition,
+        last_run: ReportRun | None = None,
+        names: Mapping[str, str] | None = None,
     ) -> DayReportResponse:
         return cls(
             report_id=definition.report_id,
@@ -3149,7 +3161,9 @@ class DayReportResponse(BaseModel):
             updated_at=definition.updated_at,
             updated_by=definition.updated_by,
             release_id=definition.release_id,
-            last_run=ReportRunResponse.from_domain(last_run) if last_run is not None else None,
+            last_run=(
+                ReportRunResponse.from_domain(last_run, names) if last_run is not None else None
+            ),
         )
 
 
