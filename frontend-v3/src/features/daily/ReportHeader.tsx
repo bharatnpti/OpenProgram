@@ -7,6 +7,7 @@ import { ConfirmDialog, TextDialog } from "../../components/Dialogs";
 import { RagChip } from "../../components/ui/RagChip";
 import { Pill } from "../../components/ui/Pill";
 import { formatDay, formatTime, weekdaysLabel } from "../../lib/format";
+import { ReportSetupDialog } from "../reports/ReportSetupDialog";
 import { RUN_LABELS, RUN_TONES, outcomeLine, sendConfirmation, todaysNote } from "./reportView";
 
 /**
@@ -92,7 +93,17 @@ export function ReportHeader({ report }: { report: DayReportResponse }) {
             onSave={(text) => note.mutateAsync(text)}
           />
         ) : null}
-        {!report.can_send && !report.can_write_note ? (
+        {report.can_edit ? (
+          <ReportSetupDialog
+            report={report}
+            trigger={
+              <Pill size="sm" variant="ghost">
+                Change
+              </Pill>
+            }
+          />
+        ) : null}
+        {!report.can_send && !report.can_write_note && !report.can_edit ? (
           <span className="text-[13px] text-grey-secondary">Read only for your role</span>
         ) : null}
       </div>

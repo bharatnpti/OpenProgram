@@ -16,65 +16,11 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 
+import * as consoleData from "./mock-console.mjs";
+
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
 const TODAY = "2026-10-06";
-
-const people = [
-  {
-    id: "U1011",
-    name: "Elena Fischer",
-    title: "Director of Engineering",
-    roles: ["exec"],
-    pods: [],
-  },
-  {
-    id: "U1001",
-    name: "Asha Rao",
-    title: "Engineering Manager",
-    roles: ["mgr", "admin"],
-    pods: ["pod-payments", "pod-storefront", "pod-identity", "pod-data"],
-  },
-  {
-    id: "U1003",
-    name: "Mina Patel",
-    title: "Product Owner",
-    roles: ["po"],
-    pods: ["pod-payments"],
-  },
-  { id: "U1006", name: "Ira Novak", title: "Scrum Master", roles: ["sm"], pods: ["pod-payments"] },
-  {
-    id: "U1007",
-    name: "Kai Thompson",
-    title: "Backend Engineer",
-    roles: ["dev"],
-    pods: ["pod-payments"],
-  },
-];
-
-const dir = (id, name, rag, pods) => ({
-  id,
-  kind: "project",
-  name,
-  description: null,
-  code: null,
-  metadata: {},
-  rag,
-  source: "confirmed",
-  program_ids: ["program-digital"],
-  project_ids: [],
-  workstream_ids: [],
-  pod_ids: pods,
-  member_ids: [],
-  task_ids: [],
-  people: [],
-  in_use: true,
-});
-const projects = [
-  dir("project-checkout", "Checkout Revamp", "red", ["pod-payments", "pod-storefront"]),
-  dir("project-identity", "Identity Platform", "amber", ["pod-identity"]),
-  dir("project-insights", "Customer Insights", "amber", ["pod-data"]),
-];
 
 const run = (id, day, trigger, status, actor) => ({
   run_id: id,
@@ -859,11 +805,15 @@ function api(req, res, url) {
       provider: "dev",
       login_url: null,
       demo_mode: true,
-      chat_enabled: false,
+      chat_enabled: true,
       user: null,
     });
-  if (p === "/api/v1/auth/dev-users") return send(200, { items: people });
-  if (p === "/projects") return send(200, projects);
+  if (p === "/api/v1/auth/dev-users") return send(200, { items: consoleData.roster });
+  if (p === "/projects") return send(200, consoleData.projects);
+  if (p === "/portfolio/risks")
+    return can.aggregate(roles)
+      ? send(200, { as_of: TODAY, risks: risks.risks, drift: risks.drift })
+      : deny();
   if (p === "/day-reports") {
     const pid = url.searchParams.get("project_id");
     return send(200, pid && pid !== "project-checkout" ? [] : dayReports(roles));
@@ -889,6 +839,9 @@ function api(req, res, url) {
     return can.aggregate(roles) ? send(200, risks) : deny();
   if (p === "/config/escalation/projects/project-checkout")
     return can.config(roles) ? send(200, escalation) : deny();
+  const userId = req.headers["x-openprogram-dev-user"] ?? "U1001";
+  const handled = consoleData.consoleApi(req, url, roles, userId, send, deny);
+  if (handled !== false) return handled;
   return send(404, { detail: "Not found." });
 }
 
@@ -903,14 +856,12 @@ const TYPES = {
 http
   .createServer((req, res) => {
     const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
-    const isApi =
-      url.pathname.startsWith("/api/") ||
-      (/^\/(projects|day-reports|config)(\/|$)/.test(url.pathname) &&
-        !req.headers.accept?.includes("text/html"));
-    if (isApi) return api(req, res, url);
+    // A file in the build is served as is; a page navigation gets the app;
+    // anything else is an API call.
     let file = path.join(DIST, url.pathname);
-    if (!file.startsWith(DIST) || !fs.existsSync(file) || fs.statSync(file).isDirectory())
-      file = path.join(DIST, "index.html");
+    const isFile = file.startsWith(DIST) && fs.existsSync(file) && fs.statSync(file).isFile();
+    if (!isFile && !req.headers.accept?.includes("text/html")) return api(req, res, url);
+    if (!isFile) file = path.join(DIST, "index.html");
     res.writeHead(200, { "content-type": TYPES[path.extname(file)] ?? "application/octet-stream" });
     fs.createReadStream(file).pipe(res);
   })

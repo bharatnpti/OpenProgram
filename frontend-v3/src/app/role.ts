@@ -51,6 +51,14 @@ export type RoleContextValue = {
   canReadAggregate: boolean;
   /** `MANAGE_CONFIG`: admin. Reading a project's escalation matrix needs it. */
   canManageConfig: boolean;
+  /** `READ_POD_CHECKINS` + `READ_POD_BLOCKERS`: scrum master, manager, admin. */
+  canReadPodDetail: boolean;
+  /** Program rollups and the portfolio heatmap: manager, executive, admin. */
+  canReadPortfolio: boolean;
+  /** `SET_UP_DAY_REPORTS`: scrum master (own projects), manager, admin. */
+  canSetUpDayReports: boolean;
+  /** The built-in chat is served (backend `chat_simulator_enabled`, local tenants). */
+  chatEnabled: boolean;
   signIn: () => void;
   logout: () => Promise<void>;
   /** People this app can act as; empty outside a local dev-auth tenant. */

@@ -147,6 +147,10 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       canReadAggregate:
         admin || lens.has("exec") || lens.has("mgr") || lens.has("po") || lens.has("sm"),
       canManageConfig: admin,
+      canReadPodDetail: admin || lens.has("sm") || lens.has("mgr"),
+      canReadPortfolio: admin || lens.has("mgr") || lens.has("exec"),
+      canSetUpDayReports: admin || lens.has("sm") || lens.has("mgr"),
+      chatEnabled: authStatus?.chat_enabled === true,
       signIn: () => {
         window.location.assign(authStatus?.login_url ?? "/api/v1/auth/login?return_url=/");
       },

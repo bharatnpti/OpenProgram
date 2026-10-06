@@ -1,356 +1,298 @@
-# frontend-v3: project reports app (handoff)
+# frontend-v3: status and handoff
 
-Everything needed to pick this work up in a new session: where the code is,
-what was decided and why, what was built, what was checked, and what is next.
+The single place to pick this work up in a new session: what is done, what is
+left, how to resume, and what was decided along the way.
 
-_Last updated: Tue 6 Oct 2026, 15:45 IST._
+_Last updated: Tue 6 Oct 2026, 20:00 IST._
 
-## Status at a glance
+## Snapshot
 
-| Item                                                                          | State                                                       |
-| ----------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| App scaffolded (`frontend-v3/`, port 5175)                                    | Done: Projects, Daily and Overall views on the real API     |
-| Repo wiring (CORS, Makefile, `openapi-check`, CI, README)                     | Done                                                        |
-| Static checks (lint, typecheck, prettier, 13 unit tests, build, client regen) | All pass                                                    |
-| Rendered in a browser                                                         | Yes, against a **mock API** (screenshots below)             |
-| Run against the real backend                                                  | **Not yet**. First thing to do next                         |
-| Backend tests after the CORS default change                                   | **Not run** (no Python 3.12 or Docker in the agent sandbox) |
-| Committed / pushed                                                            | **No**. All changes are uncommitted on `feat/frontend-v3`   |
+|              |                                                                                                                                   |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| Branch       | `feat/frontend-v3` in the main checkout `~/code/oneai/OpenProgram`                                            |
+| Last commit  | `568a089` "wip(frontend-v3): project reports app with Projects, Daily and Overall views" (pushed to `origin/feat/frontend-v3`)    |
+| Uncommitted  | **55 paths**: the whole console rebuild (every screen except the first Reports pass), 16 new screenshots, docs. Nothing is staged |
+| Build health | lint, typecheck, prettier, **17/17 unit tests**, production build: all pass (last run 19:40)                                      |
+| Rendered     | Every screen, per role, against the **mock API** only                                                                             |
+| Real backend | First Reports pass was opened by you (Projects, Overall). **The rebuilt console has not been run against the backend yet**        |
+| Size         | about 8,700 lines of TypeScript in `frontend-v3/src` (excluding the generated client), 5 test files                               |
 
-## Where everything is
+**In one line:** every screen in the design exists and works against the mock;
+the next step is to run it against the seeded backend, fix what differs, and
+commit. Read-only views are complete; several write actions and most Admin
+settings are still only in the frontend-v2 console.
 
-| What                                      | Where                                                                                                                                                    |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Repository                                | `~/code/oneai/OpenProgram` · remote `https://github.com/bharatnpti/OpenProgram`                                                      |
-| Working copy for this work                | `~/code/oneai/OpenProgram/.claude/worktrees/delivery-reporting` (a git worktree; the folder name is historical)                      |
-| Branch                                    | `feat/frontend-v3`, created from `origin/main` at `2c60090` ("feat(workstreams): make workstreams optional…", 6 Oct 14:57) with `--no-track`             |
-| This file                                 | `frontend-v3.md` at the root of that worktree                                                                                                            |
-| App                                       | `frontend-v3/` in that worktree                                                                                                                          |
-| Screenshots                               | `frontend-v3/docs/screenshots/*.png`                                                                                                                     |
-| Mock design page (earlier in the session) | <https://claude.ai/artifact/5vRcnsnsPHE6oRunvXYaJY> ("OpenProgram by Role", private, version 3: role switcher, Daily/Overall report mock, access matrix) |
+## Resume in a new session
 
-Git state worth knowing:
+```bash
+cd ~/code/oneai/OpenProgram
+git status                         # expect 55 changed paths on feat/frontend-v3
+docker compose up -d && make migrate
+docker compose exec -w /app backend python -m scripts.seed_demo_history --reset
+cd frontend-v3 && npm install && npm run dev      # http://127.0.0.1:5175
+# without the backend:
+npm run mock                                       # same URL, demo-shaped data
+```
 
-- `feat/delivery-reporting` (`23d3341`) still exists, unchanged. Every one of its
-  commits is already in `origin/main` (rebased; the last one is `0b82421`), which
-  is why the new branch starts from `origin/main`.
-- The **main checkout** (`~/code/oneai/OpenProgram`, branch
-  `main` at `8c6c86f`) is **13 commits behind `origin/main`** and has your own
-  uncommitted work. It was not touched: `backend/api/routers/config.py`,
-  `backend/config/settings.py`, `backend/infra/workflows/checkin_fanout.py`,
-  `backend/infra/workflows/daily_checkin.py`, `backend/tests/unit/test_api.py`,
-  `frontend-v2/package-lock.json`, plus untracked
-  `backend/tests/unit/test_demo_rounds_reset.py` and `features_usefulness.md`.
-  `settings.py` is changed on both sides, so expect to merge `cors_origins` by hand.
+Read first: this file, then `frontend-v3/README.md` (routes, endpoints, checks).
+Pick people in the header to switch role: Kai Thompson (developer), Ira Novak
+(scrum master), Mina Patel (product owner), Asha Rao (manager; switch the lens
+to admin), Elena Fischer (executive).
 
-Local URLs once running:
+## Status by screen
 
-| Service                          | URL                                                    |
-| -------------------------------- | ------------------------------------------------------ |
-| API                              | <http://127.0.0.1:8000> (`/health`, `/ready`, `/docs`) |
-| Original console (`frontend/`)   | <http://127.0.0.1:5173>                                |
-| Console (`frontend-v2/`)         | <http://127.0.0.1:5174> (Reports page: `/reports`)     |
-| **Reports app (`frontend-v3/`)** | <http://127.0.0.1:5175>                                |
+Legend: **Done** = built, renders against the mock; **Partial** = built with a
+named gap; **Not started** = not in v3 (the v2 console has it unless noted).
 
-Demo videos of the product (English and Hindi) are linked from the root
-`README.md` under "Demo videos" (GitHub release `demo-videos-2026-10`).
+### Navigation and shell
 
-## How we got here
+| Item                                                                                          | Status      | Notes                                                                |
+| --------------------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------- |
+| Top navigation on every screen (Today, Delivery, Signals, Coordination, Reports, Chat, Admin) | Done        | Underline on the active tab, scrolls sideways on phones              |
+| Tabs a role isn't offered shown struck through                                                | Done        | Signals for developers, Admin for non-admins                         |
+| Chat tab only when the backend serves the built-in chat                                       | Done        | From `auth/status.chat_enabled`                                      |
+| Acting-as and lens pickers (local dev auth), name and Sign out (OIDC)                         | Done        | Same `localStorage` keys as frontend-v2                              |
+| Sign-in and signed-out screens                                                                | Done        |                                                                      |
+| Old `/projects/:id/...` links redirect to `/reports/...`                                      | Done        |                                                                      |
+| Viewing a past day (`?asOf=`, banner, read-only)                                              | Not started | v2: `src/app/ViewingDateProvider.tsx`; most endpoints accept `as_of` |
+| ⌘K command palette                                                                            | Not started | v2: `src/components/shell`                                           |
+| Tenant logo in the header                                                                     | Not started | `GET /config/branding`                                               |
+| Member's own check-in schedule (avatar menu)                                                  | Not started | `GET/PUT /me/checkin-preference`; v2: `src/features/checkin`         |
 
-The conversation went in this order; the decisions in bold shaped the app.
+### Today
 
-1. **Explainer page.** Read `README.md`, `OpenProgramConcept.md`, `features.md`
-   and the demo roster, then published a page that shows the product through its
-   six roles (developer, scrum master, product owner, manager, executive, admin),
-   with the console's own magenta palette and RAG tokens. That is the artifact
-   linked above.
-2. **Reports asked for.** An end-of-day report for action (a distribution list of
-   people); the project's state with forecasting ("is the delivery date
-   possible?") as a burn-down and completion bar; risks with who resolves them,
-   dependencies and an escalation path per person; and an "AIDLC update"
-   requirements view (counts raised, groomed, in development, in testing,
-   business testing, production, over time), the business acceptance gate
-   (criteria business users set per Jira ticket) and engineering delivery (test
-   cases).
-3. **Restructured.** **AIDLC is not its own tab; it belongs in Overall.**
-   **A report has two views: Daily and Overall.** **The two gates are explained in
-   plain words** (business acceptance = criteria business writes on each ticket,
-   checked before production; engineering delivery = test cases with evidence,
-   checked before business testing) and shown side by side per requirement.
-4. **Reference format for Daily** (your sample, used as the shape, not copied):
-   an "In short" with counts, how the questions to Product stand, what matters
-   most and one clear ask; "Where we stand" as a table comparing two dates with a
-   line explaining why a number moved; "Most important" as ticket + needs a fix
-   or a decision + the evidence; "What we need, and from whom" grouped by owner;
-   "What we asked, and what we heard back" with Yes / Partly / Not yet / Closed.
-   The backend's day report builder already follows this order.
-5. **Separate UI.** Decided to build it as a new app, `frontend-v3`, on the same
-   backend. The backend already serves everything (features.md §4.26–4.30 on
-   main: requirements by stage, day reports, delivery dates and forecast,
-   acceptance gates and questions, escalation matrix), and frontend-v2 already
-   has a Reports page. A third app means a third client in the drift gate; that
-   trade-off was accepted.
-6. **Scaffolded, wired, checked, screenshotted** (this file).
+| Role                   | Item                                                                                        | Status  | Notes                                                                                                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Developer              | Check-in card: summary, blockers with age, where the status came from                       | Partial | Source wording covers confirmed / partly / inferred / stale / none; "carried forward from an earlier day" is not distinguished                                            |
+| Developer              | Confirm check-in                                                                            | Done    | `POST /me/status/confirm`                                                                                                                                                 |
+| Developer              | Correct details: summary, ETA change, resolve blockers, add one                             | Done    | `POST /me/status/correct` with `blocker_items`                                                                                                                            |
+| Developer              | Focus today, Your tasks                                                                     | Done    | `/me/focus`                                                                                                                                                               |
+| Developer              | Waiting on you                                                                              | Done    | `/me/cross-person-requests?relation=waiting`                                                                                                                              |
+| Developer              | Where you roll up (pod → project → program), "in no pod" message                            | Done    | From the directory                                                                                                                                                        |
+| Scrum master           | Pod chips, defaulting to the person's pods                                                  | Done    | Under OIDC there is no acting-as id, so every pod is offered                                                                                                              |
+| Scrum master           | Check-ins today, Open blockers oldest first, Why the pod is its colour, Waiting on you      | Done    | `/pods/{id}/checkins`, `/blockers`, `/rollup`                                                                                                                             |
+| Product owner          | Project chips (projects of the person's pods)                                               | Done    |                                                                                                                                                                           |
+| Product owner          | Progress ring and RAG counts, workstreams worst first, Needs your attention, Waiting on you | Done    | `/projects/{id}/progress`, `/projects/{id}/workstreams`                                                                                                                   |
+| Manager / exec / admin | Verdict with reason and check-ins answered                                                  | Done    | `/portfolio/attention` (first program only)                                                                                                                               |
+| Manager / exec / admin | 30-day momentum over reported days                                                          | Done    | `/persona/program/{id}/trend`                                                                                                                                             |
+| Manager / exec / admin | Newest executive brief                                                                      | Done    | `/persona/briefs?kind=exec&limit=1`                                                                                                                                       |
+| Manager / exec / admin | Portfolio heat (worst 4 per row, "worst N of M", tiles open Delivery)                       | Partial | Reasons under each tile and the "no pod" row of people in no team are missing (`/portfolio/heatmap` cells carry them; v2: `features/today/heatReasons.ts`, `noPodRow.ts`) |
+| Manager / exec / admin | Oldest open risks                                                                           | Done    | `attention.signals`                                                                                                                                                       |
 
-## What the app does
+### Delivery
 
-Routes are project-first, so every view can be linked:
+| Item                                                                                          | Status      | Notes                                                                                                                |
+| --------------------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------- |
+| Navigator of programs, projects, workstreams, pods, worst first; selection in the URL         | Done        | `/delivery/:kind/:id`                                                                                                |
+| Program panel: what sets the status, projects worst first with children, counts, every reason | Done        | `/programs/{id}/tree`; manager, exec, admin                                                                          |
+| Project panel: reason, related nodes, progress ring, tasks, every reason, links to reports    | Done        | `/projects/{id}/progress`                                                                                            |
+| Workstream panel: type, phase, target date, owner / TPM / SM, progress                        | Done        | metadata keys `type`, `phase`, `target_date`; people keys `owner_id`, `tpm_id`, `sm_id`                              |
+| Pod panel: check-ins, blockers, reasons, tasks blocked first with owners and blockers         | Done        | `/pods/{id}/*`; scrum master, manager, admin                                                                         |
+| Locked panels say which role opens them                                                       | Done        |                                                                                                                      |
+| Pod delivery date (scrum master sets the pod's part)                                          | Not started | `GET /pods/{id}/delivery`, `PUT /projects/{p}/pods/{pod}/delivery-date`; v2: `features/forecast/PodDeliveryCard.tsx` |
 
-| Path                           | View                                                                                          |
-| ------------------------------ | --------------------------------------------------------------------------------------------- |
-| `/`                            | Projects, worst status first, with how many day reports each has                              |
-| `/projects/:projectId/daily`   | Daily report. `?report=` picks one when a project has several (whole project, or one release) |
-| `/projects/:projectId/overall` | Overall state                                                                                 |
+### Signals
 
-**Daily** reads `GET /day-reports?project_id=` and, for the selected report,
-`/day-reports/{id}/preview` and `/day-reports/{id}/runs`. The preview is today's
-report built live by the backend exactly as it would be sent; the app only lays
-out its sections (lines, groups, table). The asks section splits each line's
-kind ("Fix: …") into a tag. Send now (with a confirm step that names how many
-destinations receive it) and Write today's note appear only when the report
-says `can_send` / `can_write_note` for this reader. Past sends show how every
-destination fared.
+| Item                                                              | Status | Notes                                                  |
+| ----------------------------------------------------------------- | ------ | ------------------------------------------------------ |
+| Counts: open risks, watermelons, drift                            | Done   |                                                        |
+| Filter Everything / Risks / Drift / Flow / Feed, kept in the URL  | Done   | `?view=`                                               |
+| Risk cards: owner says beside signals say, age, links to Delivery | Done   | `/portfolio/risks`                                     |
+| Drift cards                                                       | Done   | Owner shows as a member id where the API gives no name |
+| Flow KPIs and per-workstream table                                | Done   | `/portfolio/flow`                                      |
+| 7-day activity feed                                               | Done   | `/portfolio/feed`                                      |
 
-**Overall** is five independent reads, so one refused or slow read never blanks
-the others:
+### Coordination
 
-1. Delivery date and forecast (`/projects/{id}/delivery`): verdict and reasons,
-   committed date and how it moved, the two answers side by side (completion-rate
-   simulation 50%/85% vs the team's own dates), dates by pod and by release, the
-   date change log, and a **burn-down by count** drawn from the requirements
-   timeline with the committed, 50%, 85% and team dates marked.
-2. Requirements by stage (`/projects/{id}/requirements?days=30`): six stage
-   counts with change since the previous snapshot, a 30-day stacked timeline,
-   what moved, and every requirement with stage, since when, Jira status,
-   assignee and points.
-3. Acceptance gates (`/projects/{id}/gates`): each gate's plain-language
-   definition from its template (what it checks, before which stage, who signs
-   off, whether evidence is needed, which Jira headings it reads), then each
-   requirement against each gate, flagging ones that moved on without passing.
-4. Risks and drift (`/projects/{id}/risks`) and the escalation matrix
-   (`/config/escalation/projects/{id}`).
-5. Questions kept from Jira (from the gates response): what was asked, of whom,
-   by whom, when, heard back.
+| Item                                                                                             | Status | Notes                                                                    |
+| ------------------------------------------------------------------------------------------------ | ------ | ------------------------------------------------------------------------ |
+| Requests board: Open, Acknowledged, Needs resolution; Acknowledge and Resolve; DM delivery state | Done   | `/portfolio/cross-person-requests`, `/cross-person-requests/{id}/status` |
+| Waiting on you, Raised by you                                                                    | Done   | `/me/cross-person-requests?relation=`                                    |
+| Briefs with All / Exec / Weekly project / Daily pod filter in the URL                            | Done   | `?brief=`                                                                |
+| Ask the graph with sources; explanation for developers                                           | Done   | `POST /ask`                                                              |
 
-Who sees what (the app mirrors the backend only to say up front which role
-opens a panel; the backend still decides, and every panel also handles a 403):
+### Reports
 
-| Panel                                             | Readers                                                                           |
-| ------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Daily report, past sends                          | everyone                                                                          |
-| Send now                                          | scrum master (projects their pods work on), manager, admin, per report `can_send` |
-| Today's note                                      | product owner, manager, admin, per report `can_write_note`                        |
-| Delivery date and forecast, requirements by stage | product owner, manager, executive, admin                                          |
-| Acceptance gates, questions                       | everyone (project-progress read or gate editing)                                  |
-| Risks and drift                                   | everyone but the developer                                                        |
-| Escalation matrix                                 | admin only (`MANAGE_CONFIG`)                                                      |
+| Item                                                                                                      | Status           | Notes                                                                                       |
+| --------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------- |
+| Reports home: every project, worst first, with Daily and Overall buttons                                  | Done             |                                                                                             |
+| Set up a day report (project, release, name, time, time zone, days, destinations, on/off)                 | Done             | `GET /day-reports/setup`, `POST /day-reports`; unconnected destinations show why            |
+| Change and remove a report                                                                                | Done             | `PUT`, `DELETE /day-reports/{id}`                                                           |
+| Daily: schedule, audience, last send, Send now with confirm, today's note                                 | Done             | per-report `can_send`, `can_edit`, `can_write_note`                                         |
+| Daily: the report preview, sections in the backend's order and words                                      | Done             | `/day-reports/{id}/preview`                                                                 |
+| Daily: past sends with every destination's outcome                                                        | Done             | `/day-reports/{id}/runs`                                                                    |
+| Overall: verdict, reasons, committed date and how it moved, the two forecast answers                      | Done             | `/projects/{id}/delivery`                                                                   |
+| Overall: burn-down                                                                                        | Partial          | By requirement count. Story points need the daily snapshot to store points (backend change) |
+| Overall: pods and releases with "Nothing in scope" when they hold no requirements                         | Done             | Fix for your first run                                                                      |
+| Overall: requirements by stage, 30-day timeline, moves, requirement table                                 | Done             | `/projects/{id}/requirements?days=30`                                                       |
+| Overall: acceptance gates in plain words, each requirement against each gate, flags                       | Done (read only) | `/projects/{id}/gates`                                                                      |
+| Overall: risks and drift, escalation matrix, questions log                                                | Done (read only) | escalation needs admin; ids shown where the API gives no names                              |
+| Set the project delivery date (product owner, manager)                                                    | Not started      | `PUT /projects/{id}/delivery-date`; v2: `features/forecast/DeliveryForecastCard.tsx`        |
+| Gate actions: keep or dismiss suggestions, mark met / failed / waived, sign off, add an item, rescan Jira | Not started      | `/gate-items/{id}/confirm                                                                   | dismiss | sign-off`, `POST /issues/{key}/gate-items`, `POST /projects/{id}/gates/scan`; v2: `features/gates/` |
+| Question status (answered, partly, closed) and adding a question                                          | Not started      | `PUT /questions/{id}`, `POST /issues/{key}/questions`                                       |
+| Release scope on Overall (pick a release)                                                                 | Not started      | `requirements` and `gates` accept `release_id`; releases via `/projects/{id}/releases`      |
+| Create a release from a Jira fix version or label                                                         | Not started      | `/projects/{id}/release-candidates`, `POST /projects/{id}/releases`                         |
 
-Identity works like the console: on a local dev-auth tenant the header has the
-acting-as picker and a lens picker, sharing the console's `localStorage` keys
-(`openprogram.acting-as`, `openprogram.active-role`); under OIDC the token
-decides and only the name and Sign out remain.
+### Chat
+
+| Item                                                                                  | Status  | Notes                                                                                                                    |
+| ------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Own thread: bot questions, follow-ups, nudges, replies; refreshes every 5 s           | Done    | `/test/chat-simulator/messages?user_id=`                                                                                 |
+| Composer files the reply against the open check-in                                    | Done    | `POST /test/chat-simulator/users/{id}/messages`                                                                          |
+| Reply in thread to a request DM                                                       | Done    | same call with `thread_id`                                                                                               |
+| Admin: roster, open anyone's thread, Ask for a check-in, Clear history (with confirm) | Done    | `/admin/workflows/checkin/dispatch`, `DELETE /test/chat-simulator/state`                                                 |
+| Message purpose labels                                                                | Partial | `cross_person_request` is confirmed; `checkin`, `followup`, `nudge` are assumed names, so check them on the real backend |
+
+### Admin
+
+| Tab                                                                                                                                    | Status      | Notes                                                                                                                  |
+| -------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Check-ins: every member's days, time zone, nudge and give-up waits marked default or set, write-back consent, tenant write-back switch | Done        | `/config/checkin-preferences`, `/config/members`, `/config/members/{id}/writeback-consent`, `/config/tenant/writeback` |
+| Check-ins: Change dialog (sends only changed fields; refuses no days)                                                                  | Done        | `PUT /config/members/{id}/checkin-preference`, `PUT …/writeback-consent`                                               |
+| Check-ins: put a field back to the team default                                                                                        | Not started | needs the backend's reset semantics confirmed                                                                          |
+| Data sources: health, schedule, last sync and attempt, errors, targets                                                                 | Done        | `/admin/ops/sync-status`                                                                                               |
+| Data sources: run a Jira / Git / calendar sync now                                                                                     | Not started | `/admin/workflows/sync/{jira,github,calendar}` need project key, repo or user                                          |
+| Entities: lists of programs, projects, workstreams, pods, members; add the first four                                                  | Partial     | No edit or delete; members come from the directory                                                                     |
+| Links (program↔project, pod↔project/workstream, member↔pod, task assignment)                                                           | Not started | links to the console                                                                                                   |
+| Directory (sync, import members), identity links, pod escalation contacts                                                              | Not started | links to the console                                                                                                   |
+| Delivery stages, Gates, Escalation matrix, Integrations, Branding                                                                      | Not started | links to the console                                                                                                   |
+
+## Known risks when you run it for real
+
+- **Never run against the backend:** Today, Delivery, Signals, Coordination,
+  Chat, Admin, report set-up. The mock follows `generated.ts` exactly, so shapes
+  match, but values may not: chat `purpose` names, request `kind` words,
+  workstream metadata on your tenant, empty states on a fresh tenant.
+- **Pod membership in the mock** includes the product owner and scrum master;
+  the real seed may not, which changes the scrum master's default pod.
+- **Under OIDC** there is no acting-as id, so the scrum master and product owner
+  views offer every pod or project instead of the person's own.
+- **Ids instead of names** in drift findings, the escalation matrix's decision
+  owner and named levels, and request requesters outside the local roster.
+- **Portfolio Today** reads only the first program.
+- The admin consent column makes one request per member.
+
+## Verification log
+
+| Check                                                                           | Result                                                                                                                                                              |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm ci` from the committed lockfile in a clean copy                            | ok                                                                                                                                                                  |
+| `npm run lint`, `npm run typecheck`, `prettier --check .`                       | ok                                                                                                                                                                  |
+| `npm test` (format, charts, report wording, delivery factors, admin wording)    | 17 / 17 pass                                                                                                                                                        |
+| `npm run build`                                                                 | ok                                                                                                                                                                  |
+| Every screen rendered per role, plus Overall as a developer and Today at 390 px | ok, fixes applied (duplicated wording on Waiting on you, faded "Check-in confirmed", Delivery navigator and Ask panel stretching, repeated evidence ids on Signals) |
+| Real backend                                                                    | not yet for the rebuilt console                                                                                                                                     |
+| Backend tests                                                                   | not run in the sandbox (no Python 3.12 or Docker); the backend is unchanged in this pass                                                                            |
+
+## Remaining work, in order
+
+1. **Run against the seeded backend** with each person above; note anything
+   that differs from the mock. Fix, re-run `npm run lint && npm run typecheck &&
+npm test && npm run build`.
+2. **Commit and push** this pass on `feat/frontend-v3` (55 paths).
+3. **Write actions in Reports:** set the project delivery date; gate item
+   keep / dismiss / met / failed / waived / sign-off, add item, rescan; question
+   status; release picker and release creation. Reference: frontend-v2
+   `features/forecast/`, `features/gates/`, `features/requirements/`.
+4. **Pod delivery date** for scrum masters (Delivery pod panel).
+5. **Viewing a past day** across the app (`?asOf=`), then the ⌘K palette and the
+   member's own check-in schedule.
+6. **Today heat polish:** reasons under tiles and the "no pod" row.
+7. **Admin tabs** now linking to the console: Links, Directory and identity
+   links, escalation contacts, Delivery stages, Gates, Escalation, Integrations,
+   Branding; edit and delete in Entities; sync-now buttons; reset to default.
+8. **Names for ids** where the API gives none (map through `/config/members` for
+   admins, or add names to the DTOs).
+9. **Burn-down by story points** (backend: store points per stage in the daily
+   snapshot, expose them on `RequirementTimelinePointResponse`).
+10. Optional: an end-to-end smoke test (Playwright) per role.
+
+## Repo changes
+
+Committed in `568a089`: the first `frontend-v3` (Projects, Daily, Overall), CORS
+port 5175 in `backend/config/settings.py`, `.env.example` and the
+`docker-compose.yml` fallback, Makefile `frontend-v3-*` targets in `verify` and
+`openapi-check`, a CI job on Node 22, README rows.
+
+Uncommitted (this pass), all inside `frontend-v3/` except two docs:
+
+- New: `src/app/{directory,nav}.ts`, `src/lib/words.ts`, `src/components/ui/Bits.tsx`,
+  `src/features/{today,delivery,reports,admin}/`, `src/pages/{Today,Delivery,Signals,Coordination,Chat,Admin}Page.tsx`,
+  `scripts/mock-console.mjs`, 16 screenshots.
+- Changed: `App.tsx` (routes), `app/Layout.tsx` (navigation), `app/role.ts` and
+  `RoleProvider.tsx` (capabilities), `api/client.ts` and `schema.ts` (copied whole
+  from frontend-v2), Daily / Overall pages (reports header, set-up, fixes),
+  `scripts/mock-api.mjs`, `scripts/screenshots.json`, `README.md`.
+- Renamed: `pages/ProjectsPage.tsx` → `pages/ReportsHomePage.tsx`.
+- Removed: the six first-pass screenshots.
+- Repo root: `README.md` (frontend-v3 wording), this file.
+
+## Code map (`frontend-v3/src/`)
+
+| Path                                                                     | Purpose                                                                                                                                                                      |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `App.tsx`                                                                | Routes, auth gate, lazy pages                                                                                                                                                |
+| `app/Layout.tsx`, `app/nav.ts`                                           | Header, the seven destinations with role gating, identity pickers                                                                                                            |
+| `app/role.ts`, `app/RoleProvider.tsx`                                    | Identity and capability flags (`canReadProjectProgress`, `canReadAggregate`, `canReadPodDetail`, `canReadPortfolio`, `canSetUpDayReports`, `canManageConfig`, `chatEnabled`) |
+| `app/directory.ts`                                                       | Directory queries, `useNames()`, `podsOf` / `projectsOf`                                                                                                                     |
+| `api/client.ts`, `api/schema.ts`, `api/generated.ts`                     | Every endpoint, typed (copied from frontend-v2)                                                                                                                              |
+| `components/ui/Bits.tsx`                                                 | `RagDot`, `RagBadge`, `Greeting`, `ChipPicker`, `ProgressRing`, `Sparkline`, `Row`, `Panel`                                                                                  |
+| `components/PanelState.tsx`, `Dialogs.tsx`, `ui/{Card,Pill,RagChip}.tsx` | Loading / locked / 403 / error / empty states, tables, dialogs                                                                                                               |
+| `pages/`                                                                 | One file per destination; `TodayPage` switches by role                                                                                                                       |
+| `features/today/`                                                        | `DeveloperToday`, `ScrumMasterToday`, `ProductOwnerToday`, `PortfolioToday`, `WaitingOnYou`                                                                                  |
+| `features/delivery/`                                                     | `ProgramPanel`, `ProjectPanel`, `WorkstreamPanel`, `PodPanel`, `ProgressBlock`, `NodeBits`, `factors.ts` (+ test)                                                            |
+| `features/reports/`                                                      | `ReportsHeader`, `ReportSetupDialog`                                                                                                                                         |
+| `features/daily/`, `features/overall/`                                   | Daily header, preview, past sends; Overall sections and charts (+ tests)                                                                                                     |
+| `features/admin/`                                                        | `CheckinsTab`, `DataSourcesTab`, `EntitiesTab`, `adminWords.ts` (+ test)                                                                                                     |
+| `lib/`                                                                   | `format.ts` (+ test), `status.ts`, `words.ts`, `utils.ts`                                                                                                                    |
+| `../scripts/`                                                            | `mock-api.mjs` + `mock-console.mjs` (`npm run mock`), `screenshots.py` + `screenshots.json`                                                                                  |
 
 ## Screenshots
 
-Taken with headless Chromium (QtWebEngine) against `frontend-v3/scripts/mock-api.mjs`,
-which serves demo-shaped data for Checkout Revamp. **These are not real data and
-not the live backend**; they show layout, roles and states.
+Mock data, not the live backend; times are in the sandbox's time zone.
 
-**Projects** (Asha Rao as manager)
+|                                                                                                           |                                                                                                                        |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| ![Today, developer](frontend-v3/docs/screenshots/01-today-developer.png) **Today, developer**             | ![Today, scrum master](frontend-v3/docs/screenshots/02-today-scrum-master.png) **Today, scrum master**                 |
+| ![Today, product owner](frontend-v3/docs/screenshots/03-today-product-owner.png) **Today, product owner** | ![Today, manager](frontend-v3/docs/screenshots/04-today-manager.png) **Today, manager**                                |
+| ![Delivery, pod](frontend-v3/docs/screenshots/05-delivery-pod.png) **Delivery, pod**                      | ![Delivery, program](frontend-v3/docs/screenshots/06-delivery-program-executive.png) **Delivery, program (executive)** |
+| ![Signals](frontend-v3/docs/screenshots/07-signals.png) **Signals**                                       | ![Coordination](frontend-v3/docs/screenshots/08-coordination.png) **Coordination**                                     |
+| ![Reports](frontend-v3/docs/screenshots/09-reports.png) **Reports**                                       | ![Daily](frontend-v3/docs/screenshots/10-daily-manager.png) **Daily**                                                  |
+| ![Overall, admin](frontend-v3/docs/screenshots/11-overall-admin.png) **Overall (admin)**                  | ![Overall, developer](frontend-v3/docs/screenshots/15-overall-developer.png) **Overall (developer, locked panels)**    |
+| ![Chat](frontend-v3/docs/screenshots/12-chat-developer.png) **Chat**                                      | ![Admin, check-ins](frontend-v3/docs/screenshots/13-admin-checkins.png) **Admin, check-ins**                           |
+| ![Admin, data sources](frontend-v3/docs/screenshots/14-admin-data-sources.png) **Admin, data sources**    | ![Today on a phone](frontend-v3/docs/screenshots/16-today-mobile.png) **Today at 390 px**                              |
 
-![Projects](frontend-v3/docs/screenshots/01-projects.png)
+## How we got here
 
-**Daily** (Asha Rao as manager: Send now and Edit today's note are offered)
-
-![Daily, manager](frontend-v3/docs/screenshots/02-daily-manager.png)
-
-**Overall** (Asha Rao as admin: every panel, including the escalation matrix)
-
-![Overall, admin](frontend-v3/docs/screenshots/03-overall-admin.png)
-
-**Overall** (Kai Thompson as developer: forecast, requirements, risks and
-escalation say which role opens them; gates and questions show)
-
-![Overall, developer](frontend-v3/docs/screenshots/04-overall-developer.png)
-
-**Daily** (Elena Fischer as executive: read only)
-
-![Daily, executive](frontend-v3/docs/screenshots/05-daily-executive.png)
-
-**Daily on a phone** (390 px wide, Mina Patel as product owner: tables scroll
-inside their own box, the page never scrolls sideways)
-
-![Daily, mobile](frontend-v3/docs/screenshots/06-daily-mobile.png)
-
-## Code map (`frontend-v3/`)
-
-| Path                                                | Purpose                                                                                                                                                                                                                        |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `package.json`, `package-lock.json`                 | Same toolchain as frontend-v2 (React 19, Vite 8, TypeScript, Tailwind 4, TanStack Query, react-router 7, Radix dialogs, sonner). Lockfile pruned from frontend-v2's, every package at the same version; form libraries dropped |
-| `vite.config.ts`                                    | Port 5175, `strictPort` (a drifted port would be blocked by CORS)                                                                                                                                                              |
-| `eslint.config.js`, `.prettierrc`, `tsconfig*.json` | Copied from frontend-v2; `scripts/` is ignored by eslint                                                                                                                                                                       |
-| `public/favicon.svg`                                | Icon, copied from frontend-v2                                                                                                                                                                                                  |
-| `src/index.css`                                     | frontend-v2's tokens plus six `--op-stage-*` colours, one per delivery stage                                                                                                                                                   |
-| `src/api/openapi.json`, `generated.ts`              | Same schema and generated types as the other clients; regenerated by `make openapi-check`                                                                                                                                      |
-| `src/api/schema.ts`                                 | Type aliases for what the app uses                                                                                                                                                                                             |
-| `src/api/client.ts`                                 | Trimmed port of frontend-v2's client: cookies, CSRF on writes, dev acting-as headers, correlation id; only the endpoints the app calls                                                                                         |
-| `src/app/role.ts`, `RoleProvider.tsx`               | Trimmed port of frontend-v2's identity rules (who the API is told you are, cache dropped on switch); capability flags `canReadProjectProgress`, `canReadAggregate`, `canManageConfig`                                          |
-| `src/app/Layout.tsx`                                | Header: project picker, Daily/Overall tabs, Open console link, acting-as and lens pickers or name and Sign out                                                                                                                 |
-| `src/App.tsx`, `src/main.tsx`                       | Routes, auth gate, query client (no retry on 401/403/404)                                                                                                                                                                      |
-| `src/components/PanelState.tsx`                     | Loading, locked ("Opens for …"), 403 with the server's reason, error with retry, empty; table styles                                                                                                                           |
-| `src/components/Dialogs.tsx`                        | Confirm (Send now) and text (today's note) dialogs                                                                                                                                                                             |
-| `src/components/ui/`                                | `Card`, `Pill`, `RagChip` copied from frontend-v2                                                                                                                                                                              |
-| `src/pages/`                                        | `ProjectsPage`, `DailyPage`, `OverallPage`                                                                                                                                                                                     |
-| `src/features/daily/`                               | `ReportHeader` (schedule, audience, last send, actions), `ReportPreview` (sections), `RunHistory`, `reportView.ts` (+ test)                                                                                                    |
-| `src/features/overall/`                             | `ForecastSection`, `Burndown`, `RequirementsSection`, `GatesSection`, `RisksSection`, `QuestionsSection`, `queries.ts` (one hook per endpoint, `enabled` by role), `charts.ts` (+ test: burn-down and stacked-bar geometry)    |
-| `src/lib/`                                          | `format.ts` (+ test), `status.ts` (tones, verdict and stage labels, stage order and colours), `utils.ts`                                                                                                                       |
-| `scripts/mock-api.mjs`                              | Mock API + static server for `npm run mock` and the screenshots                                                                                                                                                                |
-| `scripts/screenshots.py`, `screenshots.json`        | QtWebEngine screenshot runner and the six shots                                                                                                                                                                                |
-| `docs/screenshots/`                                 | The PNGs above (about 1.5 MB)                                                                                                                                                                                                  |
-| `README.md`                                         | How to run, routes, who sees what, gaps, checks                                                                                                                                                                                |
-
-## Changes outside `frontend-v3/`
-
-| File                         | Change                                                                                                                                                                                                                                                                 |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `backend/config/settings.py` | `cors_origins` default adds `http://localhost:5175` and `http://127.0.0.1:5175`                                                                                                                                                                                        |
-| `.env.example`               | `OPENPROGRAM_CORS_ORIGINS` adds the two 5175 origins                                                                                                                                                                                                                   |
-| `docker-compose.yml`         | The `OPENPROGRAM_CORS_ORIGINS` fallback (used only when `.env` doesn't set it) now lists 5173, **5174** and 5175; it was missing 5174 before                                                                                                                           |
-| `Makefile`                   | New targets `frontend-v3-install`, `-dev`, `-lint`, `-format`, `-build`, `-test`; `verify` runs `frontend-v3-lint` and `frontend-v3-build`; `openapi-check` copies the schema into frontend-v3, regenerates its client and includes both files in the drift `git diff` |
-| `.github/workflows/ci.yml`   | New `frontend-v3` job on **Node 22** (lint, typecheck, format, `npm test`, build); `api-contract` installs frontend-v3 too; `image` needs `frontend-v3`                                                                                                                |
-| `README.md`                  | "three frontends", repo tree and map rows, how to run it, Make line, `openapi-check` wording                                                                                                                                                                           |
-
-`npm test` is not in `make verify` because `node --test` on `.ts` files needs
-Node 22.18+, and the README promises Node 20+ (frontend-v2's tests are not in
-`verify` for the same reason). CI runs it.
-
-## How to run
-
-Against the real backend (from the worktree root):
-
-```bash
-cp .env.example .env            # or add the 5175 origins to your existing .env
-docker compose up -d
-make migrate
-docker compose exec -w /app backend python -m scripts.seed_demo_history --reset
-cd frontend-v3 && npm install && npm run dev
-```
-
-Then open <http://127.0.0.1:5175> and switch people in the header: Asha Rao
-(manager and admin), Elena Fischer (executive), Mina Patel (product owner), Ira
-Novak (scrum master), Kai Thompson (developer). The demo story: Checkout Revamp
-is red (Payments blockers and one silent member), Identity amber on an aging
-review, Customer Insights amber on a stale spike. Without a day report set up,
-Daily says so and links to the console's Reports page to create one.
-
-Without the backend: `cd frontend-v3 && npm run mock`, then open the same URL.
-
-| Variable                            | Default                 | Purpose                                                                                  |
-| ----------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------- |
-| `VITE_API_BASE_URL`                 | `http://127.0.0.1:8000` | Backend to call (empty = same origin, used by `npm run mock`)                            |
-| `VITE_CONSOLE_URL`                  | `http://127.0.0.1:5174` | Where "Open console" and set-up links go                                                 |
-| `OPENPROGRAM_CONSOLE_URL` (backend) | unset                   | Set to `http://127.0.0.1:5175` to make the report's "Open in OpenProgram" link land here |
-
-## What was checked
-
-Passed, from a clean copy installed with `npm ci` from the committed lockfile:
-
-- `npm run lint`, `npm run typecheck`, `prettier --check .`
-- `npm test`: 13 tests (formatting, burn-down by count, axis stretch so a future
-  committed date stays on the chart, stacked bars, ask parsing, send
-  confirmation wording, yesterday's note not prefilling today's)
-- `npm run build`, and the same-origin mock build
-- `openapi-check` equivalent: regenerating `generated.ts` from `openapi.json`
-  gives no diff; `openapi.json` matches `frontend/`'s
-- `ruff check` and `ruff format --check` on `backend/config/settings.py`;
-  `docker-compose.yml` parses; `ci.yml` parses with the new job in `needs`
-- No test asserts the default CORS list (checked `test_settings.py`,
-  `test_api.py`, bdd fixtures)
-- Rendered in headless Chromium against the mock API for five roles and a phone
-  width; found and fixed: page widening on phones (grid tracks now
-  `minmax(0,1fr)`), a duplicated date in the report eyebrow, an oversized
-  timeline chart, "0 of 0 met" on gates, "1 pods"
-
-Not checked yet:
-
-- The app against the **real backend** and seeded demo data
-- Backend `pytest` after the `cors_origins` change
-- CI itself (nothing pushed)
-
-## Next steps
-
-1. **Commit and push**, then open a PR:
-   ```bash
-   cd ~/code/oneai/OpenProgram/.claude/worktrees/delivery-reporting
-   git status        # make sure no .git/worktrees/delivery-reporting/index.lock is left
-   git add -A && git commit -m "feat(frontend-v3): project reports app with Daily and Overall views"
-   git push -u origin feat/frontend-v3
-   ```
-   Decide first whether `frontend-v3/docs/screenshots/` (1.5 MB of mock-data
-   PNGs) and `frontend-v3/scripts/` belong in the repo.
-2. **Run against the seeded demo** and check, per person: Daily renders the
-   backend's preview for a report created in the console; Send now and the note
-   work and respect `can_send` / `can_write_note`; Overall's five panels load or
-   say which role opens them; numbers match the console's Reports and Delivery
-   pages.
-3. **Run the backend tests** on the Mac (`make test`, or at least
-   `backend/tests/unit/test_settings.py` and `test_api.py`).
-4. **Names instead of ids**: the escalation matrix shows `decision_owner_id` and
-   a named level's `member_id` as ids, and drift findings show `owner_id`. Either
-   map them through `/config/members` (admin reads the matrix anyway) or add
-   names to the DTOs.
-5. **Burn-down by story points**: the requirements timeline keeps counts per
-   stage per day, not points. Needs the daily snapshot to store points per stage
-   and `RequirementTimelinePointResponse` to carry them; then switch
-   `burndownByCount` for a points version.
-6. **Release scope on Overall**: `requirements` and `gates` accept `release_id`;
-   add a release picker (Daily already picks release reports).
-7. **Past-day viewing**: the console's `?asOf=` is not implemented in v3; the
-   requirements, delivery, gates and risks endpoints accept `as_of`.
-8. Open questions: does v3 need report set-up (create, schedule, destinations)
-   or does that stay in the console? Add a Playwright smoke test? An aggregate
-   Overall endpoint only if five requests prove slow.
-
-## Backend endpoints used
-
-| Endpoint                                                                            | Capability                              | Notes                                                                                             |
-| ----------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `GET /api/v1/auth/status`, `GET /api/v1/auth/dev-users`, `POST /api/v1/auth/logout` | none                                    | dev-users only when `demo_mode`                                                                   |
-| `GET /projects`                                                                     | directory read                          | project picker and list                                                                           |
-| `GET /day-reports?project_id=`                                                      | `READ_DAY_REPORTS` (everyone)           | returns `can_send`, `can_edit`, `can_write_note`, `audience_summary`, `last_run`, `note`          |
-| `GET /day-reports/{id}/preview`                                                     | `READ_DAY_REPORTS`                      | `rag`, `headline`, `percent_complete`, `progress_line`, `sections[]` (`lines`, `groups`, `table`) |
-| `GET /day-reports/{id}/runs`                                                        | `READ_DAY_REPORTS`                      | outcomes per destination                                                                          |
-| `POST /day-reports/{id}/send`                                                       | `SEND_DAY_REPORTS` (per project)        | manual send, recorded with actor                                                                  |
-| `PUT /day-reports/{id}/note`                                                        | `SET_PROJECT_DATES`                     | body `{ text }`; today's report only                                                              |
-| `GET /projects/{id}/delivery`                                                       | `READ_PROJECT_PROGRESS`                 | `project`, `pods[]`, `releases[]` each with commitment, history (p50/p85), team, verdict, reasons |
-| `GET /projects/{id}/requirements?days=30`                                           | `READ_PROJECT_PROGRESS`                 | stages with change, timeline of counts, moves, requirements                                       |
-| `GET /projects/{id}/gates`                                                          | `READ_PROJECT_PROGRESS` or `EDIT_GATES` | templates, issues with evaluations and `passed_without` (gate **names**), questions               |
-| `GET /projects/{id}/risks`                                                          | team or exec aggregate                  | risks (with `person_name`) and drift                                                              |
-| `GET /config/escalation/projects/{id}`                                              | `MANAGE_CONFIG`                         | source, decision owner id, levels with `after_days` per fix/decision/answer/review                |
-
-Backend sources for wording and rules: `backend/core/application/day_report_builder.py`,
-`day_report_asks.py`, `gate_service.py`, `backend/core/domain/gates.py`
-(default gates), `backend/api/dtos.py`, and `features.md` §4.26–4.30.
+1. **Design page** (<https://claude.ai/artifact/5vRcnsnsPHE6oRunvXYaJY>, private,
+   "OpenProgram by Role"): the product shown through its six roles, with a
+   console mock per role and an access matrix. This build follows it.
+2. **Reports asked for:** an end-of-day report for action, a forecast with
+   burn-down and completion, risks with who resolves them, dependencies and
+   escalation, and an AIDLC requirements view with business acceptance and test
+   cases. Then restructured: AIDLC folded into **Overall**, two views **Daily** and
+   **Overall**, gates explained in plain words; your sample daily report set the
+   shape of Daily.
+3. **Separate UI** on the same backend: first pass (Reports only) committed as
+   `568a089`.
+4. **Your run against the backend** showed no navigation and none of the role
+   screens. You chose to **build fresh from the design** and **everything in the
+   design**, then to keep building and test once all is done. That is where this
+   stands.
 
 ## Notes for the agent in the next session
 
-- The worktree's `.git` file points at a Mac path, so from the Linux sandbox run
-  git as `git --git-dir=.git/worktrees/delivery-reporting --work-tree=.claude/worktrees/delivery-reporting …`
-  from the main repo folder. **Never** run `git worktree add` or `prune` from the
-  sandbox: it would write Linux paths into the worktree metadata (the worktrees
-  already look "prunable" from there).
-- The sandbox cannot delete files in the folder until `allow_cowork_file_delete`
-  is granted. A git command that needs to delete (switch, checkout) fails halfway
-  and leaves `index.lock`; it happened once here and was removed.
-- Do not `npm install` inside the repo from the sandbox (Linux binaries would land
-  in a Mac folder). Copy to a work folder, install and build there, and copy
-  sources back without `node_modules` or `dist`.
-- The sandbox has no Python 3.12 and no Docker, so backend tests and the stack
-  cannot run there. Its Node is 22.23 (runs `npm test`).
-- Screenshots: `pip install PySide6==6.8.0.2` gives QtWebEngine on aarch64; it
-  needs the stub and symlinked libraries described at the top of
-  `frontend-v3/scripts/screenshots.py`. Start the mock server and the shooter in
-  the **same** shell call (background processes end with the call), and don't
-  `pkill -f` a pattern that also matches your own command line.
-- The published artifact cannot be opened in the in-app browser (it is not
-  signed in to claude.ai); open it in your own browser.
+- Work in the main checkout; the earlier worktree is gone. The sandbox mounts it
+  at `/sessions/<session>/mnt/OpenProgram`, and plain `git` works there.
+- Deleting files needs `allow_cowork_file_delete` first. A git command that
+  deletes and fails halfway can leave `.git/index.lock`; check before git work.
+- Never `npm install` inside the repo from the Linux sandbox (Linux binaries in
+  the Mac's `node_modules`). Copy `frontend-v3/` to a work folder without
+  `node_modules` and `dist`, install and check there, copy sources back.
+- The sandbox has Node 22.23, no Python 3.12, no Docker: frontend checks only.
+- Screenshots: `pip install PySide6==6.8.0.2` gives QtWebEngine; it needs the
+  stub and symlinked libraries described in `frontend-v3/scripts/screenshots.py`.
+  Build with `VITE_API_BASE_URL=`, start `node scripts/mock-api.mjs` and the
+  shooter in the same shell call, and stop the mock by its PID.
+- The mock lives in `scripts/mock-api.mjs` (reports) and `scripts/mock-console.mjs`
+  (everything else); extend both when a screen gains an endpoint.

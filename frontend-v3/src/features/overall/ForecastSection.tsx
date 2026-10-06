@@ -222,11 +222,24 @@ function ScopeTable({ title, scopes }: { title: string; scopes: ScopeDeliveryRes
                 <td className={`${td} font-bold`}>{scope.name}</td>
                 <td className={`${td} whitespace-nowrap`}>{formatDate(scope.target)}</td>
                 <td className={td}>
-                  <RagChip tone={toneForVerdict(scope.verdict)} className="h-6 px-2.5 text-[12px]">
-                    {VERDICT_LABELS[scope.verdict]}
-                  </RagChip>
+                  {scope.total === 0 ? (
+                    <RagChip tone="neutral" className="h-6 px-2.5 text-[12px]">
+                      Nothing in scope
+                    </RagChip>
+                  ) : (
+                    <RagChip
+                      tone={toneForVerdict(scope.verdict)}
+                      className="h-6 px-2.5 text-[12px]"
+                    >
+                      {VERDICT_LABELS[scope.verdict]}
+                    </RagChip>
+                  )}
                 </td>
-                <td className={`${td} text-grey-body`}>{scope.reasons.join(" ") || "—"}</td>
+                <td className={`${td} text-grey-body`}>
+                  {scope.total === 0
+                    ? "No requirements are counted for it yet."
+                    : scope.reasons.join(" ") || "—"}
+                </td>
               </tr>
             ))}
           </tbody>

@@ -23,10 +23,13 @@ export function Burndown({
   const points = burndownByCount(timeline);
   const g = burndownGeometry(points, markers, (iso) => formatDay(iso).replace(/^\w+ /, ""));
 
-  if (!g.last) {
+  // One snapshot is a dot, not a trend: say how much history there is instead.
+  if (!g.last || points.length < 2) {
     return (
-      <p className="text-[13px] text-grey-secondary">
-        No daily snapshots yet. The burn-down starts once the first snapshot is kept.
+      <p className="rounded-2xl bg-grey-fill px-4 py-3 text-[13px] text-grey-body">
+        {points.length === 0
+          ? "No daily snapshots yet. The burn-down starts once the first one is kept."
+          : `Only one daily snapshot so far (${formatDay(points[0].day)}): ${points[0].remaining} requirements not yet in production. The line draws from the second day.`}
       </p>
     );
   }

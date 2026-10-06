@@ -1,0 +1,269 @@
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+
+import { apiClient } from "../../api/client";
+import type { DirectoryItemResponse, NodeTrendResponse, Rag } from "../../api/schema";
+import { usePods, useProgram, useProjects, useWorkstreams } from "../../app/directory";
+import { useRole } from "../../app/role";
+import { PanelState } from "../../components/PanelState";
+import { Greeting, Panel, RagDot, Row, Sparkline } from "../../components/ui/Bits";
+import { formatDate, formatTime } from "../../lib/format";
+import { ragSeverity } from "../../lib/status";
+import { cn } from "../../lib/utils";
+import { greetingWord, todayEyebrow } from "../../lib/words";
+
+const HEAT_COLUMNS = 4;
+
+const HERO: Record<Rag, string> = {
+  red: "bg-rag-red-bg text-rag-red",
+  amber: "bg-rag-amber-bg text-rag-amber-deep",
+  green: "bg-rag-green-bg text-rag-green",
+  unknown: "bg-grey-fill text-grey-body",
+};
+const TILE: Record<Rag, string> = {
+  red: "bg-rag-red-bg text-rag-red",
+  amber: "bg-rag-amber-bg text-rag-amber",
+  green: "bg-rag-green-bg text-rag-green",
+  unknown: "bg-rag-unknown-bg text-rag-unknown",
+};
+
+/** Only days that reported a status are on the health scale (unknown scores 0, below red). */
+function momentum(points: NodeTrendResponse["points"] | undefined) {
+  const reported = (points ?? []).filter((p) => p.rag !== "unknown");
+  const values = (points ?? []).map((p) => (p.rag === "unknown" ? null : (p.score - 1) / 2));
+  if (reported.length < 2) return { label: "not enough reported days", values };
+  const first = reported[0].score;
+  const last = reported[reported.length - 1].score;
+  const label = last > first ? "improving" : last < first ? "sliding" : "steady";
+  return { label, values };
+}
+
+/**
+ * The portfolio read shared by manager, executive and admin: a one-line
+ * verdict with its reason, 30-day momentum, the newest executive brief,
+ * heat for projects, workstreams and pods (worst first), and the oldest risks.
+ */
+export function PortfolioToday() {
+  const { roleLabel, canReadPortfolio } = useRole();
+  const { program, query: programs } = useProgram();
+  const programId = program?.id ?? "";
+  const projects = useProjects();
+  const workstreams = useWorkstreams();
+  const pods = usePods();
+
+  const attention = useQuery({
+    queryKey: ["portfolio", "attention", programId],
+    queryFn: () =>
+      apiClient.portfolioAttention(
+        undefined,
+        programId,
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ),
+    enabled: Boolean(programId) && canReadPortfolio,
+  });
+  const trend = useQuery({
+    queryKey: ["portfolio", "trend", programId],
+    queryFn: () => apiClient.nodeTrend("program", programId, { windowDays: 30 }),
+    enabled: Boolean(programId) && canReadPortfolio,
+  });
+  const brief = useQuery({
+    queryKey: ["briefs", "exec", 1],
+    queryFn: () => apiClient.personaBriefs("exec", 1),
+  });
+
+  const a = attention.data;
+  const m = momentum(trend.data?.points);
+  const newest = brief.data?.briefs[0];
+  const heat = [
+    { label: "Projects", kind: "project", items: projects.data ?? [] },
+    { label: "Workstreams", kind: "workstream", items: workstreams.data ?? [] },
+    { label: "Pods", kind: "pod", items: pods.data ?? [] },
+  ].filter((row) => row.kind !== "workstream" || row.items.length > 0);
+
+  return (
+    <>
+      <Greeting
+        eyebrow={todayEyebrow(program?.name)}
+        title={`${greetingWord()}, ${roleLabel}`}
+        sub="A portfolio-wide read on delivery health, momentum, and what changed."
+      />
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+        <PanelState
+          locked={!canReadPortfolio}
+          needs="a manager, executive or admin"
+          isLoading={programs.isLoading || attention.isLoading}
+          error={programs.error ?? attention.error}
+          isEmpty={!programs.isLoading && !program}
+          emptyText="No program is configured yet. An admin adds one under Admin → Entities."
+        >
+          {a ? (
+            <section className={cn("rounded-3xl p-6", HERO[a.rag])}>
+              <p className="flex items-center gap-3 text-[24px] font-extrabold text-balance">
+                <RagDot rag={a.rag} className="h-3 w-3" />
+                {a.headline}
+              </p>
+              {a.detail ? <p className="mt-2 text-[15px] font-medium">{a.detail}</p> : null}
+              <p className="mt-3 text-[13px] opacity-80">
+                Check-ins today: {a.checkins.answered} of {a.checkins.asked} answered
+                {a.checkins.first_asked_at
+                  ? ` · asked from ${formatTime(a.checkins.first_asked_at)}`
+                  : ""}
+              </p>
+            </section>
+          ) : null}
+        </PanelState>
+
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
+          <Panel title="Momentum" note={`30 days · ${m.label}`}>
+            <PanelState
+              locked={!canReadPortfolio}
+              needs="a manager, executive or admin"
+              isLoading={trend.isLoading}
+              error={trend.error}
+            >
+              <Sparkline values={m.values} label={`Program health over 30 days: ${m.label}`} />
+              <p className="mt-2 text-[12px] text-grey-secondary">
+                Measured only over days that reported a status.
+              </p>
+            </PanelState>
+          </Panel>
+          <Panel
+            title="Executive brief"
+            note={
+              <Link to="/coordination?brief=exec" className="font-bold">
+                All briefs
+              </Link>
+            }
+          >
+            <PanelState
+              needs="a scrum master, product owner, manager, executive or admin"
+              isLoading={brief.isLoading}
+              error={brief.error}
+              isEmpty={!newest}
+              emptyText="No executive brief has been generated yet. It is written weekly from the week's facts."
+            >
+              {newest ? (
+                <div className="text-[14px] text-grey-body">
+                  <p className="font-bold text-ink">{newest.title}</p>
+                  {newest.bullets && newest.bullets.length > 0 ? (
+                    <ul className="mt-2 grid list-disc gap-1 pl-5">
+                      {newest.bullets.map((b) => (
+                        <li key={b}>{b}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2">{newest.body}</p>
+                  )}
+                  <p className="mt-2 text-[12px] text-grey-secondary">
+                    {formatDate(newest.generated_at)} · from {newest.sources.length} sources
+                  </p>
+                </div>
+              ) : null}
+            </PanelState>
+          </Panel>
+        </div>
+
+        <Panel title="Portfolio heat" note="worst first · click a tile to open it in Delivery">
+          <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-3">
+            {heat.map((row) => (
+              <HeatRow key={row.kind} label={row.label} kind={row.kind} items={row.items} />
+            ))}
+          </div>
+        </Panel>
+
+        <Panel
+          title="Oldest open risks"
+          note={
+            <Link to="/signals" className="font-bold">
+              All signals
+            </Link>
+          }
+        >
+          <PanelState
+            locked={!canReadPortfolio}
+            needs="a manager, executive or admin"
+            isLoading={attention.isLoading}
+            error={attention.error}
+            isEmpty={(a?.signals ?? []).length === 0}
+            emptyText="No open risks."
+          >
+            <ul>
+              {(a?.signals ?? []).slice(0, 3).map((s, i) => (
+                <Row
+                  key={`${s.kind}-${i}`}
+                  rag={s.severity}
+                  title={
+                    s.link.kind !== "signals" && s.link.id ? (
+                      <Link
+                        to={`/delivery/${s.link.kind}/${s.link.id}`}
+                        className="text-ink no-underline hover:underline"
+                      >
+                        {s.title}
+                      </Link>
+                    ) : (
+                      s.title
+                    )
+                  }
+                  meta={s.kind.replace(/_/g, " ")}
+                  right={`${s.age_days}d`}
+                />
+              ))}
+            </ul>
+          </PanelState>
+        </Panel>
+      </div>
+    </>
+  );
+}
+
+function HeatRow({
+  label,
+  kind,
+  items,
+}: {
+  label: string;
+  kind: string;
+  items: DirectoryItemResponse[];
+}) {
+  const ranked = [...items].sort(
+    (a, b) => ragSeverity(b.rag) - ragSeverity(a.rag) || a.name.localeCompare(b.name),
+  );
+  const shown = ranked.slice(0, HEAT_COLUMNS);
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-2 sm:grid-cols-[110px_minmax(0,1fr)]">
+      <p className="pt-2 text-[13px] font-bold text-grey-secondary">
+        {label}
+        {ranked.length > HEAT_COLUMNS ? (
+          <span className="block text-[11px] font-medium">
+            worst {HEAT_COLUMNS} of {ranked.length}
+          </span>
+        ) : null}
+      </p>
+      {shown.length === 0 ? (
+        <p className="pt-2 text-[13px] text-grey-secondary">None configured.</p>
+      ) : (
+        <ul className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          {shown.map((item) => {
+            const rag = item.rag ?? "unknown";
+            return (
+              <li key={item.id}>
+                <Link
+                  to={`/delivery/${kind}/${item.id}`}
+                  className={cn(
+                    "block rounded-2xl px-3 py-3 no-underline hover:shadow-op-hover",
+                    TILE[rag],
+                  )}
+                >
+                  <span className="block truncate text-[14px] font-bold">{item.name}</span>
+                  <span className="mt-1 block text-[11px] font-extrabold uppercase tracking-wider">
+                    {rag}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}

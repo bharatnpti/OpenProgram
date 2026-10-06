@@ -1,20 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
-import { NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 
-import { apiClient } from "../api/client";
 import { cn } from "../lib/utils";
-import { initialsFor, roleLabels, useRole } from "./role";
-
-const CONSOLE_URL = import.meta.env.VITE_CONSOLE_URL ?? "http://127.0.0.1:5174";
+import { NAV } from "./nav";
+import { initialsFor, roleLabels, useRole, type AppRole } from "./role";
 
 export function Layout() {
-  const { projectId } = useParams();
+  const roleState = useRole();
 
   return (
     <div className="min-h-screen bg-white">
       <header className="sticky top-0 z-30 border-b border-grey-border bg-white">
-        <div className="mx-auto flex max-w-[1200px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 sm:px-8">
-          <NavLink to="/" className="flex items-center gap-3 text-ink no-underline">
+        <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-x-6 gap-y-2 px-4 pt-3 sm:px-8">
+          <NavLink to="/today" className="flex items-center gap-3 py-1 text-ink no-underline">
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-magenta" aria-hidden>
               <svg
                 viewBox="0 0 20 20"
@@ -23,81 +20,64 @@ export function Layout() {
                 stroke="#fff"
                 strokeWidth="2"
               >
-                <path d="M4 15V9M10 15V5M16 15v-3" strokeLinecap="round" />
+                <circle cx="10" cy="4" r="2" />
+                <circle cx="4" cy="16" r="2" />
+                <circle cx="16" cy="16" r="2" />
+                <path d="M10 6v4M10 10l-5 4M10 10l5 4" strokeLinecap="round" />
               </svg>
             </span>
             <span className="leading-tight">
               <span className="block text-[16px] font-extrabold">OpenProgram</span>
-              <span className="block text-[11px] text-grey-secondary">Project reports</span>
+              <span className="block text-[11px] text-grey-secondary">Delivery intelligence</span>
             </span>
           </NavLink>
-
-          {projectId ? <ProjectNav projectId={projectId} /> : null}
-
-          <div className="ml-auto flex flex-wrap items-center gap-3">
-            <a href={CONSOLE_URL} className="text-[13px] font-bold">
-              Open console
-            </a>
+          <div className="ml-auto flex items-center gap-3 py-1">
             <IdentityControls />
           </div>
+          <nav
+            aria-label="Main"
+            className="-mx-1 flex w-full gap-1 overflow-x-auto px-1 [scrollbar-width:none]"
+          >
+            {NAV.filter((item) => item.to !== "/chat" || roleState.chatEnabled).map((item) =>
+              item.offered(roleState) ? (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    cn(
+                      "relative flex-none px-3 pb-3 pt-2 text-[15px] font-bold no-underline",
+                      isActive
+                        ? "text-ink after:absolute after:inset-x-3 after:bottom-0 after:h-[3px] after:rounded-full after:bg-magenta"
+                        : "text-grey-body hover:text-ink",
+                    )
+                  }
+                >
+                  {item.label}
+                </NavLink>
+              ) : (
+                <span
+                  key={item.to}
+                  title={`Not offered to the ${roleState.roleLabel.toLowerCase()} role`}
+                  className="flex-none px-3 pb-3 pt-2 text-[15px] font-bold text-grey-disabled line-through"
+                >
+                  {item.label}
+                </span>
+              ),
+            )}
+          </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-[1200px] px-4 py-8 sm:px-8">
+      <main className="mx-auto max-w-[1240px] px-4 py-8 sm:px-8">
         <Outlet />
       </main>
     </div>
   );
 }
 
-function ProjectNav({ projectId }: { projectId: string }) {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const projects = useQuery({ queryKey: ["projects"], queryFn: apiClient.projects });
-  const tab = (to: string, label: string) => (
-    <NavLink
-      to={to}
-      className={({ isActive }) =>
-        cn(
-          "rounded-full px-4 py-2 text-[14px] font-bold no-underline",
-          isActive ? "bg-ink text-white" : "text-grey-body hover:bg-grey-fill",
-        )
-      }
-    >
-      {label}
-    </NavLink>
-  );
-
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      <label htmlFor="project-picker" className="sr-only">
-        Project
-      </label>
-      <select
-        id="project-picker"
-        className="h-10 max-w-[240px] rounded-full border border-grey-border bg-white px-4 text-[14px] font-bold"
-        value={projectId}
-        onChange={(event) => {
-          const view = location.pathname.endsWith("/overall") ? "overall" : "daily";
-          navigate(`/projects/${event.target.value}/${view}`);
-        }}
-      >
-        {(projects.data ?? [{ id: projectId, name: projectId }]).map((project) => (
-          <option key={project.id} value={project.id}>
-            {project.name}
-          </option>
-        ))}
-      </select>
-      <nav className="flex gap-1 rounded-full bg-grey-fill p-1" aria-label="Report view">
-        {tab(`/projects/${projectId}/daily`, "Daily")}
-        {tab(`/projects/${projectId}/overall`, "Overall")}
-      </nav>
-    </div>
-  );
-}
-
 /**
- * Local demo tenants act as any seeded person; under real sign-in the token
- * decides, so only the name and a sign-out remain.
+ * Local demo tenants act as any seeded person, with a lens for people who hold
+ * several roles; under real sign-in the token decides, so only the name, the
+ * role and Sign out remain.
  */
 function IdentityControls() {
   const {
@@ -113,15 +93,25 @@ function IdentityControls() {
     logout,
   } = useRole();
 
+  const avatar = (
+    <span
+      className="grid h-9 w-9 flex-none place-items-center rounded-full bg-ink text-[12px] font-extrabold text-white"
+      aria-hidden
+    >
+      {initialsFor(displayName)}
+    </span>
+  );
+
   if (isDevMode && people.length > 0) {
     return (
       <div className="flex flex-wrap items-center gap-2">
+        {avatar}
         <label htmlFor="acting-as" className="sr-only">
           Acting as
         </label>
         <select
           id="acting-as"
-          className="h-10 max-w-[220px] rounded-full border border-grey-border bg-white px-3 text-[13px]"
+          className="h-10 max-w-[230px] rounded-full border border-grey-border bg-white px-3 text-[13px] font-bold"
           value={actingAs?.id ?? ""}
           onChange={(event) => setActingAsId(event.target.value)}
         >
@@ -141,7 +131,7 @@ function IdentityControls() {
               id="lens"
               className="h-10 rounded-full border border-grey-border bg-white px-3 text-[13px]"
               value={role}
-              onChange={(event) => setRole(event.target.value as typeof role)}
+              onChange={(event) => setRole(event.target.value as AppRole)}
             >
               {roles.map((item) => (
                 <option key={item} value={item}>
@@ -159,12 +149,7 @@ function IdentityControls() {
 
   return (
     <div className="flex items-center gap-2">
-      <span
-        className="grid h-9 w-9 place-items-center rounded-full bg-ink text-[12px] font-extrabold text-white"
-        aria-hidden
-      >
-        {initialsFor(displayName)}
-      </span>
+      {avatar}
       <span className="text-[13px] leading-tight">
         <span className="block font-bold">{displayName}</span>
         <span className="block text-[11px] text-grey-secondary">{roleLabel}</span>

@@ -19,7 +19,7 @@ export function useRequirements(projectId: string) {
     locked: !canReadProjectProgress,
     query: useQuery({
       queryKey: ["requirements", projectId],
-      queryFn: () => apiClient.projectRequirements(projectId),
+      queryFn: () => apiClient.projectRequirements(projectId, undefined, 30),
       enabled: canReadProjectProgress && projectId !== "",
     }),
   };

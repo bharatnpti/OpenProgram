@@ -1,34 +1,85 @@
 [
   {
-    "name": "01-projects.png",
-    "path": "/",
+    "name": "01-today-developer.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1002" }
+  },
+  {
+    "name": "02-today-scrum-master.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1006" }
+  },
+  {
+    "name": "03-today-product-owner.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1003" }
+  },
+  {
+    "name": "04-today-manager.png",
+    "path": "/today",
     "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
   },
   {
-    "name": "02-daily-manager.png",
-    "path": "/projects/project-checkout/daily",
+    "name": "05-delivery-pod.png",
+    "path": "/delivery/pod/pod-payments",
     "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
   },
   {
-    "name": "03-overall-admin.png",
-    "path": "/projects/project-checkout/overall",
+    "name": "06-delivery-program-executive.png",
+    "path": "/delivery/program/program-digital",
+    "storage": { "openprogram.acting-as": "U1011" }
+  },
+  {
+    "name": "07-signals.png",
+    "path": "/signals",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
+  },
+  {
+    "name": "08-coordination.png",
+    "path": "/coordination",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
+  },
+  {
+    "name": "09-reports.png",
+    "path": "/reports",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
+  },
+  {
+    "name": "10-daily-manager.png",
+    "path": "/reports/project-checkout/daily",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
+  },
+  {
+    "name": "11-overall-admin.png",
+    "path": "/reports/project-checkout/overall",
     "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" },
     "wait": 3500
   },
   {
-    "name": "04-overall-developer.png",
-    "path": "/projects/project-checkout/overall",
+    "name": "12-chat-developer.png",
+    "path": "/chat",
+    "storage": { "openprogram.acting-as": "U1002" }
+  },
+  {
+    "name": "13-admin-checkins.png",
+    "path": "/admin",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" },
+    "wait": 3500
+  },
+  {
+    "name": "14-admin-data-sources.png",
+    "path": "/admin?tab=sources",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "15-overall-developer.png",
+    "path": "/reports/project-checkout/overall",
     "storage": { "openprogram.acting-as": "U1007" }
   },
   {
-    "name": "05-daily-executive.png",
-    "path": "/projects/project-checkout/daily",
-    "storage": { "openprogram.acting-as": "U1011" }
-  },
-  {
-    "name": "06-daily-mobile.png",
-    "path": "/projects/project-checkout/daily",
+    "name": "16-today-mobile.png",
+    "path": "/today",
     "width": 390,
-    "storage": { "openprogram.acting-as": "U1003" }
+    "storage": { "openprogram.acting-as": "U1006" }
   }
 ]

@@ -1,0 +1,106 @@
+import { useSearchParams } from "react-router-dom";
+
+import { useRole } from "../app/role";
+import { PanelState, SectionHeader } from "../components/PanelState";
+import { CheckinsTab } from "../features/admin/CheckinsTab";
+import { DataSourcesTab } from "../features/admin/DataSourcesTab";
+import { EntitiesTab } from "../features/admin/EntitiesTab";
+import { cn } from "../lib/utils";
+
+const CONSOLE_URL = import.meta.env.VITE_CONSOLE_URL ?? "http://127.0.0.1:5174";
+
+const TABS = [
+  { key: "checkins", label: "Check-ins" },
+  { key: "sources", label: "Data sources" },
+  { key: "entities", label: "Entities" },
+  { key: "more", label: "More settings" },
+] as const;
+type Tab = (typeof TABS)[number]["key"];
+
+/** Runtime configuration. Always shows current configuration, whatever day is being viewed. */
+export function AdminPage() {
+  const { canManageConfig } = useRole();
+  const [search, setSearch] = useSearchParams();
+  const tab: Tab = TABS.some((t) => t.key === search.get("tab"))
+    ? (search.get("tab") as Tab)
+    : "checkins";
+
+  return (
+    <>
+      <SectionHeader
+        title="Admin"
+        meta="Who is asked to check in and when, where data comes from, and the hierarchy."
+      />
+      <PanelState locked={!canManageConfig} needs="an admin" isLoading={false} error={null}>
+        <nav
+          aria-label="Admin sections"
+          className="mb-6 flex gap-1 overflow-x-auto border-b border-grey-border"
+        >
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              aria-pressed={t.key === tab}
+              onClick={() => setSearch({ tab: t.key }, { replace: true })}
+              className={cn(
+                "relative flex-none px-3 pb-3 pt-2 text-[14px] font-bold",
+                t.key === tab
+                  ? "text-ink after:absolute after:inset-x-3 after:bottom-0 after:h-[3px] after:rounded-full after:bg-magenta"
+                  : "text-grey-body hover:text-ink",
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </nav>
+        {tab === "checkins" ? <CheckinsTab /> : null}
+        {tab === "sources" ? <DataSourcesTab /> : null}
+        {tab === "entities" ? <EntitiesTab /> : null}
+        {tab === "more" ? <MoreSettings /> : null}
+      </PanelState>
+    </>
+  );
+}
+
+const MORE = [
+  [
+    "Links",
+    "Which projects sit in which program, pods in projects and workstreams, members in pods, tasks to people.",
+  ],
+  [
+    "Directory",
+    "Sync people from the chat directory, import them as members, and set identity links to chat, Jira and Git.",
+  ],
+  [
+    "Delivery stages",
+    "Place each Jira status in one of the six requirement stages, or leave it out.",
+  ],
+  [
+    "Gates",
+    "Business acceptance and engineering delivery: what each gate checks, before which stage, and who signs off.",
+  ],
+  [
+    "Escalation",
+    "Who an ask reaches when it waits, after how many days, per tenant or per project.",
+  ],
+  ["Integrations", "The chat, email and Teams connections reports are sent through."],
+  ["Branding", "The tenant's logo in the header."],
+];
+
+function MoreSettings() {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2">
+      {MORE.map(([title, text]) => (
+        <a
+          key={title}
+          href={`${CONSOLE_URL}/admin`}
+          className="rounded-3xl border border-grey-border p-5 text-ink no-underline hover:shadow-op-hover"
+        >
+          <p className="text-[16px] font-extrabold">{title}</p>
+          <p className="mt-1 text-[13px] text-grey-body">{text}</p>
+          <p className="mt-2 text-[12px] font-bold text-magenta">Set in the console →</p>
+        </a>
+      ))}
+    </div>
+  );
+}
