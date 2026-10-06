@@ -225,7 +225,11 @@ async def test_directory_service_resolves_workstream_people_to_member_names() ->
         {"owner_id": "U1002", "tpm_id": pod.id, "sm_id": ""},
     )
 
-    workstreams = {item.id: item for item in await directory.list_workstreams("demo", as_of)}
+    # Neither holds work yet, so the lists leave both out; a direct read opens each.
+    workstreams = {
+        workstream_id: await directory.get_workstream("demo", workstream_id, as_of)
+        for workstream_id in ("ws-resolved", "ws-unresolved")
+    }
 
     assert workstreams["ws-resolved"].people == (
         DirectoryPersonView(key="owner_id", id="dev-asha", member_id="dev-asha", name="Asha Rao"),
@@ -257,7 +261,7 @@ async def test_directory_service_prefers_a_member_id_over_another_members_chat_i
         "demo", NodeKind.WORKSTREAM, "ws-1", "Payments", {"owner_id": "U1002"}
     )
 
-    [workstream] = await directory.list_workstreams("demo", date(2026, 1, 10))
+    workstream = await directory.get_workstream("demo", "ws-1", date(2026, 1, 10))
 
     assert workstream.people == (
         DirectoryPersonView(key="owner_id", id="U1002", member_id="U1002", name="Liam Chen"),

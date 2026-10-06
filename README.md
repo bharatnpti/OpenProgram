@@ -6,7 +6,7 @@ Instead of asking humans to report upward, OpenProgram asks developers a short c
 
 Three principles run through the whole system:
 
-1. **One canonical graph, many views.** `program → project → workstream → pod → developer → task` is the single source of truth; each persona reads it through a different lens.
+1. **One canonical graph, many views.** `program → project → pod → developer → task` is the single source of truth, with optional workstreams splitting a project's scope where several teams share it; each persona reads it through a different lens.
 2. **Pull from humans, reconcile with systems.** Self-reported status is never trusted blindly — it is scored against delivery signals, and drift ("said done, no PR") is surfaced explicitly.
 3. **Silence is never green.** A non-response becomes `unknown` with a lowered confidence score, not an assumed pass.
 

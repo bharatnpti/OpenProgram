@@ -83,7 +83,7 @@ async def test_search_graph_nodes_tool_filters_by_query_kind_and_limit() -> None
             metadata={"repo": "openprogram/risk"},
         )
     )
-    tool = SearchGraphNodesTool(tenant_id="demo", repository=store)
+    tool = SearchGraphNodesTool(tenant_id="demo", repository=store, as_of=AS_OF)
 
     payload = json.loads(
         await tool.run(
@@ -305,7 +305,8 @@ async def _delivery_store() -> InMemoryGraphStore:
     """Checkout Revamp with one red, one amber and one green workstream on AS_OF.
 
     The red one also carries an open signal risk: a feature with no pull
-    request, owned by a developer whose check-in says it is on track.
+    request, owned by a developer whose check-in says it is on track. Each
+    holds work, so each is in use and on the map.
     """
     store = InMemoryGraphStore()
     nodes = (
@@ -328,6 +329,8 @@ async def _delivery_store() -> InMemoryGraphStore:
                 "created_at": datetime(2026, 9, 15, 9, 0, tzinfo=UTC).isoformat(),
             },
         ),
+        Task(tenant_id="demo", id="task-login", name="Login retries"),
+        Task(tenant_id="demo", id="task-cart", name="Cart totals"),
     )
     for node in nodes:
         await store.upsert_node(node)
@@ -340,6 +343,8 @@ async def _delivery_store() -> InMemoryGraphStore:
         ("pod-payments", "dev-ada"),
         ("pod-payments", "dev-ben"),
         ("ws-payments", "wi-refunds"),
+        ("ws-login", "task-login"),
+        ("ws-cart", "task-cart"),
     ):
         await store.add_edge(
             GraphEdge(
@@ -612,9 +617,10 @@ def test_ask_tools_all_carry_the_asked_for_date() -> None:
     tools = service._tools(_principal(Role.ADMIN), AS_OF)
     dated = [tool for tool in tools if hasattr(tool, "as_of")]
 
-    # Every tool but the name search reads a day, so omitting as_of honours
-    # the caller's period instead of jumping to the host's today.
-    assert {tool.name for tool in tools} - {tool.name for tool in dated} == {"search_graph_nodes"}
+    # Every tool reads a day -- the name search too, for the workstreams in
+    # use -- so omitting as_of honours the caller's period instead of jumping
+    # to the host's today.
+    assert {tool.name for tool in tools} == {tool.name for tool in dated}
     assert all(tool.as_of == AS_OF for tool in dated)
 
 

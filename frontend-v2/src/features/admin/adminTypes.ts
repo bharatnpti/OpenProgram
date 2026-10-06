@@ -37,6 +37,16 @@ export const entityLabels: Record<EntityKind, string> = {
 
 export const entityKinds = Object.keys(entityLabels) as EntityKind[];
 
+/**
+ * Workstreams are optional: pods are the one grouping to set up. The persona
+ * views show a workstream only once it holds a task or work item, so an empty
+ * one is never asked for and never shown as missing data.
+ */
+export const workstreamsOptionalNote =
+  "Optional. Split a project into workstreams only when several teams share one piece of " +
+  "scope; pods are enough otherwise. A workstream shows in Delivery and Today once a task or " +
+  "work item is linked to it under Links.";
+
 export const workstreamTypes = ["feature", "adhoc", "incident", "migration", "experiment", "ops"];
 export const workstreamPhases = ["discovery", "build", "review", "rollout", "done", "paused"];
 

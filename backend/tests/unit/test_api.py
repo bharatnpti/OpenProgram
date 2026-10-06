@@ -1788,6 +1788,11 @@ def test_directory_names_workstream_people_for_every_role_that_opens_delivery(
                 "metadata": {"owner_id": "dev-ada", "tpm_id": "U2006", "sm_id": "U1002"},
             },
         )
+        # Work in it, so it is in use and listed (an empty one is not).
+        client.post(
+            "/config/work-items",
+            json={"id": "wi-alpha", "name": "Alpha", "workstream_id": "workstream-alpha"},
+        )
         by_role = {}
         for role in ("exec", "mgr", "po", "sm"):
             # What the console sends while acting as someone in that role.

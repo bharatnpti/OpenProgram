@@ -45,12 +45,14 @@ Functional requirements:
 
 - The system shall model programs, projects, workstreams, pods, developers, tasks, work items, repos, and sprints as graph nodes.
 - The system shall model hierarchy and assignment relationships with typed edges such as `CONTAINS`, `ASSIGNED_TO`, and `DEPENDS_ON`.
-- The system shall support drill paths from program to project, workstream, pod, developer, and task.
-- The system shall treat a workstream as a delivery level of its own: a project contains workstreams, a workstream contains tasks and work items, and pods are assigned to the workstreams they serve.
+- The system shall support drill paths from program to project, pod, developer, and task, and through a workstream where one is in use.
+- The system shall treat pods as the one grouping a tenant must set up, and workstreams as optional: a project may contain workstreams, a workstream contains tasks and work items, and pods are assigned to the workstreams they serve.
+- A workstream shall be in use on a day when it contains a task or work item on that day. An empty workstream is not in use, whatever pods, repos, or owner it has.
 - The system shall record a workstream's type, phase, owner, TPM, scrum master, and target date.
 - The system shall support matrixed relationships, including pods linked to multiple projects, pods serving several workstreams, and developers linked through pod membership.
 - The system shall store source facts as append-only evidence with timestamps, source identifiers, entity references, payloads, and correlation IDs.
 - The system shall expose directory views for configured programs, projects, workstreams, and pods, including relationship IDs, latest rollup status where available, and the names of the people a node refers to, such as a workstream's owner, TPM, and scrum master.
+- Directory views shall list only the workstreams in use and name only those in each node's workstream IDs. A direct read of one workstream shall still return an empty one, marked as not in use. The config API shall keep listing every workstream.
 
 ### 4.2 Runtime Configuration Management
 
@@ -60,7 +62,7 @@ Functional requirements:
 
 - Admins shall create, view, update, and delete programs.
 - Admins shall create, view, update, and delete projects.
-- Admins shall create, view, update, and delete workstreams.
+- Admins shall create, view, update, and delete workstreams, empty or not. The console shall mark workstreams as optional, and no setup step, empty state, or warning shall ask an admin to create one.
 - Admins shall create, view, update, and delete pods.
 - Admins shall create, view, update, and delete members/developers.
 - Admins shall link and unlink projects to programs.
@@ -191,6 +193,7 @@ Functional requirements:
 - The system shall keep stale or inferred status out of green.
 - The system shall aggregate child statuses into pod, workstream, project, and program status.
 - The system shall roll a workstream up from its tasks, and shall add an amber factor when the workstream's target date is approaching.
+- An empty workstream shall never change its project's or program's status, and its own unknown status shall say that no work is in it yet.
 - The system shall record rollup factors explaining why a node has a given RAG value.
 - The system shall store node rollups on a schedule (hourly by default), backfilling missed weekdays, so stored history does not depend on who opened which screen.
 - Read paths shall compute a rollup that is not stored yet for the response only, and shall never persist it.
@@ -210,7 +213,8 @@ Functional requirements:
 - The scrum master view shall default to the pods the person belongs to, and shall show each member as confirmed, partial, stale, or missing, plus open blockers with owner, source, and age.
 - The product owner view shall default to the projects of the person's pods, and shall show project progress, task counts by RAG, and the tasks that need attention.
 - The developer, scrum master, and product owner views shall list the cross-person requests waiting on the person (see 4.22).
-- Manager, executive, and admin shall see the same portfolio view: a one-line verdict on the program with the oldest open risk as its reason, a 30-day momentum line measured only over days that reported a status, the newest executive brief, portfolio heat rows for projects, workstreams, and pods, and the three oldest open risks.
+- Manager, executive, and admin shall see the same portfolio view: a one-line verdict on the program with the oldest open risk as its reason, a 30-day momentum line measured only over days that reported a status, the newest executive brief, portfolio heat rows for projects, workstreams in use, and pods, and the three oldest open risks.
+- The workstreams heat row shall be left out when no workstream is in use. An empty workstream shall never be a tile, a heat-map cell, or an unknown in the headline or brief counts.
 - Heat rows shall order items worst first, show four per row, say "worst N of M" when a row is cut short, and open the matching Delivery panel when a tile is clicked.
 - A loading, failed, or empty reading shall never be presented as on track.
 - The console shall populate pod, project, and program selectors from runtime directory data.
@@ -222,12 +226,13 @@ Functional requirements:
 
 Functional requirements:
 
-- The Delivery screen shall list every program, project, workstream, and pod in a navigator, and shall keep the selection in the URL (`/delivery/:kind/:id`) so any panel can be linked.
+- The Delivery screen shall list every program, project, workstream in use, and pod in a navigator, and shall keep the selection in the URL (`/delivery/:kind/:id`) so any panel can be linked. A project with no workstream in use shall show no workstream level.
 - Project, workstream, and pod panels shall show the node's status chip, a one-line reason naming the worst rollup factor and whom it comes from, links to related nodes coloured by their status, and, when there is more than one reason, a card listing each reason with its sources.
 - A node shall never read as on track when nothing is recorded for it: no reasons reads as "nothing recorded".
-- The program panel shall name what sets the program's status, list its projects worst first with each one's top reason and its workstreams and pods, and count what rolls up into it. The reasons behind each status shall need a manager, executive, or admin role.
+- The program panel shall name what sets the program's status, list its projects worst first with each one's top reason and its workstreams in use and pods, and count what rolls up into it, leaving workstreams out of the count when none is in use. The reasons behind each status shall need a manager, executive, or admin role.
 - The project and workstream panels shall show progress, task counts by RAG, source, confidence, and the task list.
 - The workstream panel shall show its type, phase, target date, and its owner, TPM, and scrum master by name. An ID that matches no member shall be shown as an ID, never as a name.
+- A direct link to an empty workstream shall open its panel, which shall say that no work is in it yet and how work gets into one, instead of a status, reasons, or a 0% ring.
 - The pod panel shall show members, confirmed check-ins, open blockers, and the pod's tasks: those assigned to its members within the pod's remit (the pod itself, the workstreams it serves, or a project that contains it), blocked first, each with its owners and the open blockers attributed to it.
 - A panel the viewing role may not read shall say which role opens it, instead of showing a denial as dashes or a 0% ring.
 
@@ -245,7 +250,7 @@ Functional requirements:
 - The Signals screen shall be offered to every role with a team or executive read, and not to developers.
 - Signals shall count open risks, watermelons, and drift findings, and shall list them in one stream filterable by Everything, Risks, Drift, Flow, and Feed.
 - Risk and drift cards shall put what the owner says beside what the signals say (see 4.19).
-- The Flow view shall show active items, features in flight, stale (7 days or more) and abandoned (21 days or more) counts, average cycle time, and average pull-request age for the portfolio, and active, stale, and abandoned counts per workstream.
+- The Flow view shall show active items, features in flight, stale (7 days or more) and abandoned (21 days or more) counts, average cycle time, and average pull-request age for the portfolio, and active, stale, and abandoned counts per workstream that holds work items, saying so when none does.
 - The Feed shall list the latest activity (work-item changes, pull requests, commits, issue updates, check-ins, risks, and cross-person requests) from the last 7 days, up to 50 items.
 
 ### 4.12 Role-Based Authorization
@@ -361,7 +366,7 @@ Functional requirements:
 - The avatar menu shall offer the member's own check-in schedule (see 4.3), the check-in chat when it is served, and Admin configuration for the admin role only; the Admin route shall send any other role back to Today.
 - On a dev-auth tenant, the avatar menu shall offer "View as" for the roles the acting person holds, and the console shall remember the chosen role in local storage.
 - On a local dev-auth tenant with demo mode on, the header shall carry a searchable person picker, grouped by each person's most senior role. Choosing a person shall re-issue every request as them, and changing person or role shall drop all cached data. The picker shall be absent under any real auth provider.
-- A command palette (⌘K or Ctrl+K) shall jump to any screen, program, project, workstream, or pod.
+- A command palette (⌘K or Ctrl+K) shall jump to any screen, program, project, workstream in use, or pod.
 - The header shall carry the viewing-date control (see 4.20).
 - Under a real auth provider, the console shall ask an unauthenticated user to sign in, and shall show a signed-out page after logout.
 - The frontend shall provide reusable UI primitives for cards, fields, dialogs, pills, progress rings, RAG chips, segmented bars, and sparklines.
@@ -446,6 +451,7 @@ Functional requirements:
 - Coordination shall offer a question box to every role with a team or executive read; a developer shall see an explanation instead.
 - The system shall answer through a tool-calling loop over the delivery graph. It shall tell the model which day the question is asked for, and shall resolve named periods (today, yesterday, this week, last week, the last 7 days, the last 30 days) against that day, never the server's clock.
 - The system shall offer each role only the tools whose matching endpoint that role may read. Every team or executive reader gets graph search and neighbours, recent activity over a window of up to 31 days, workstream and portfolio flow, and open risks and drift findings. Workstream progress needs the project-progress read, the portfolio heatmap needs the heatmap read, and pod check-ins and blockers need the pod reads.
+- Graph search and neighbours shall leave out empty workstreams, as the other views do; a search naming one exactly shall still find it, marked as not in use with the reason.
 - The answer shall be concise prose plus the IDs of the nodes it rests on, shown as references, and shall never contain raw DM or reply content.
 - A question asked while a past day is viewed shall be answered as of that day, and the answer shall keep that date after the viewing date changes.
 
@@ -566,8 +572,8 @@ Functional requirements:
 
 ### 5.3 Runtime Configuration Flow
 
-1. Admin creates programs, projects, workstreams, pods, and members.
-2. Admin links projects to programs, workstreams to projects, pods to projects and workstreams, and members to pods.
+1. Admin creates programs, projects, pods, and members, and workstreams only where several teams share one piece of a project's scope.
+2. Admin links projects to programs, pods to projects, members to pods, and any workstreams to their projects, pods, and work.
 3. Admin optionally imports members from synced directory users.
 4. Directory APIs expose configured entities and relationship IDs.
 5. Console screens populate selectors and the Delivery navigator from directory APIs.

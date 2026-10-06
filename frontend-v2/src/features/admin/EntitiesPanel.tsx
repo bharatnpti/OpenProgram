@@ -22,6 +22,7 @@ import {
   entityLabels,
   errorMessage,
   filterNodes,
+  workstreamsOptionalNote,
 } from "./adminTypes";
 
 export function EntitiesPanel({
@@ -135,6 +136,10 @@ export function EntitiesPanel({
         placeholder={`Search ${entityLabels[activeEntity].toLowerCase()}`}
         className="max-w-sm"
       />
+
+      {activeEntity === "workstreams" && (
+        <p className="max-w-[640px] text-[13px] text-grey-secondary">{workstreamsOptionalNote}</p>
+      )}
 
       {activeQuery.isLoading ? (
         <p className="text-[14px] text-grey-secondary">Loading…</p>

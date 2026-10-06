@@ -136,6 +136,14 @@ export function SignalsPage() {
 
       {filter === "flow" ? (
         <div className="flex max-w-[920px] flex-col gap-3">
+          {flow.data && flow.data.workstreams.length === 0 ? (
+            // Workstreams are optional: with none holding work items there is
+            // no row per workstream, and the portfolio's flow is all there is.
+            <p className="text-sm text-grey-secondary">
+              No workstream holds work items, so there is no flow per workstream. The portfolio's
+              flow is below.
+            </p>
+          ) : null}
           {(flow.data?.workstreams ?? []).map((ws) => (
             <div
               key={ws.workstream_id}
