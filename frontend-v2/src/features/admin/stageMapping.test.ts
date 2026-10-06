@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { DeliveryStagesResponse } from "../../api/schema";
-import { draftFromResponse, moveStatus, parseNames, placementOf } from "./stageMapping.ts";
+import {
+  draftFromResponse,
+  moveStatus,
+  otherNames,
+  parseNames,
+  placementOf,
+  unplacedFirst,
+} from "./stageMapping.ts";
 
 const RESPONSE: DeliveryStagesResponse = {
   stages: [
@@ -39,6 +46,41 @@ test("moving a status takes it out of wherever it was", () => {
 
   draft = moveStatus(draft, "Done", null);
   assert.equal(placementOf(draft, "Done"), null);
+});
+
+test("other names leave out every status the tracker carries, whatever its case", () => {
+  const draft = moveStatus(draftFromResponse(RESPONSE), "Backlog", "raised");
+  const others = otherNames(draft, ["to do", "In Progress", "Won't Do"]);
+
+  assert.deepEqual(others.stages.raised, ["Backlog"]);
+  assert.deepEqual(others.stages.in_development, []);
+  assert.deepEqual(others.stages.in_testing, ["QA"]);
+  assert.deepEqual(others.stages.production, ["Done"]);
+  assert.deepEqual(others.excluded, []);
+  assert.equal(others.total, 3);
+});
+
+test("other names are every name when the tracker carries none", () => {
+  const others = otherNames(draftFromResponse(RESPONSE), []);
+
+  assert.deepEqual(others.excluded, ["Won't Do"]);
+  assert.equal(others.total, 5);
+});
+
+test("statuses nothing places come first, each group in its own order", () => {
+  const draft = draftFromResponse(RESPONSE);
+  const rows = [
+    { status: "To Do", issues: 9 },
+    { status: "Waiting for Vendor", issues: 5 },
+    { status: "Done", issues: 4 },
+    { status: "Blocked", issues: 2 },
+  ];
+
+  assert.deepEqual(
+    unplacedFirst(rows, draft).map((row) => row.status),
+    ["Waiting for Vendor", "Blocked", "To Do", "Done"],
+  );
+  assert.equal(rows[0].status, "To Do");
 });
 
 test("names split on commas and lines, without repeats", () => {
