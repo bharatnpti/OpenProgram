@@ -4,6 +4,7 @@ import { useRole } from "../app/role";
 import { PanelState, SectionHeader } from "../components/PanelState";
 import { CheckinsTab } from "../features/admin/CheckinsTab";
 import { DataSourcesTab } from "../features/admin/DataSourcesTab";
+import { DirectoryTab } from "../features/admin/DirectoryTab";
 import { EntitiesTab } from "../features/admin/EntitiesTab";
 import { LinksTab } from "../features/admin/LinksTab";
 import { cn } from "../lib/utils";
@@ -15,6 +16,7 @@ const TABS = [
   { key: "sources", label: "Data sources" },
   { key: "entities", label: "Entities" },
   { key: "links", label: "Links" },
+  { key: "directory", label: "Directory" },
   { key: "more", label: "More settings" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
@@ -59,6 +61,7 @@ export function AdminPage() {
         {tab === "sources" ? <DataSourcesTab /> : null}
         {tab === "entities" ? <EntitiesTab /> : null}
         {tab === "links" ? <LinksTab /> : null}
+        {tab === "directory" ? <DirectoryTab /> : null}
         {tab === "more" ? <MoreSettings /> : null}
       </PanelState>
     </>
