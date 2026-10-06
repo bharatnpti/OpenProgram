@@ -7,11 +7,14 @@ same process clears it at once; other processes see the change within the TTL.
 A connection that cannot be read (the database is unreachable, or not yet
 migrated) is treated as not set up, so the adapter falls back to the server's
 settings instead of failing; the failure is logged by type only and retried
-after a few seconds.
+after a few seconds. A read that does not finish within a few seconds -- a
+database that went away under an open pool makes it wait 30 s for a
+connection -- counts as unreadable too, so a request is never held that long.
 """
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -23,6 +26,8 @@ from core.ports.connections import ConnectionResolver
 
 DEFAULT_TTL_SECONDS = 30.0
 UNREADABLE_RETRY_SECONDS = 5.0
+# The same budget the registry gives each readiness probe.
+DEFAULT_READ_TIMEOUT_SECONDS = 3.0
 
 _logger = structlog.get_logger(__name__)
 
@@ -31,6 +36,7 @@ _logger = structlog.get_logger(__name__)
 class CachedConnectionResolver:
     inner: ConnectionResolver
     ttl_seconds: float = DEFAULT_TTL_SECONDS
+    read_timeout_seconds: float = DEFAULT_READ_TIMEOUT_SECONDS
     clock: Callable[[], float] = time.monotonic
     _cache: dict[tuple[str, str], tuple[float, ConnectionValues | None]] = field(
         default_factory=dict
@@ -43,7 +49,8 @@ class CachedConnectionResolver:
         if cached is not None and cached[0] > now:
             return cached[1]
         try:
-            values = await self.inner.resolve(tenant_id, connector)
+            async with asyncio.timeout(self.read_timeout_seconds):
+                values = await self.inner.resolve(tenant_id, connector)
         except Exception as error:
             # Never the message: it can echo a connection string.
             _logger.warning(
