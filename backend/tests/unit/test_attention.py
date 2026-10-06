@@ -418,7 +418,7 @@ def test_signals_rank_by_severity_then_age_and_stop_at_five() -> None:
             severity=Rag.RED if age > 6 else Rag.AMBER,
             entity_ref=_ref(NodeKind.TASK, "SHOP-8"),
             workstream_id=None,
-            reason=f"Pull request open for {age} day(s).",
+            reason=f"Pull request open for {age} days.",
             evidence=RiskEvidence(identifier="web!4"),
             age_days=age,
             threshold_days=3,
