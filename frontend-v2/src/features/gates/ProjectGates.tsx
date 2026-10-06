@@ -48,10 +48,14 @@ const LIST_LIMIT = 12;
  * person confirms them, and only the roles a gate names sign its items off.
  */
 export function ProjectGates({ projectId, asOf }: { projectId: string; asOf: string }) {
+  const { canReadProjectProgress } = useRole();
   const [releaseId, setReleaseId] = useState("");
+  // Releases belong to the project's progress. Whoever only works the gates
+  // reads the whole project, with no release switch.
   const releases = useQuery({
     queryKey: ["persona", "releases", projectId],
     queryFn: () => apiClient.releases(projectId),
+    enabled: canReadProjectProgress,
   });
   const board = useQuery({
     queryKey: boardKey(projectId, asOf, releaseId),

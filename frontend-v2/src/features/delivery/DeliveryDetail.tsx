@@ -14,6 +14,7 @@ import { ProgramDetail } from "./ProgramDetail";
 import { DeliveryForecastCard } from "../forecast/DeliveryForecastCard";
 import { PodDeliveryCard } from "../forecast/PodDeliveryCard";
 import { ProjectGates } from "../gates/ProjectGates";
+import { mayReadGateBoard } from "../gates/gates";
 import { DayReportNoteCard } from "../reports/DayReportNoteCard";
 import { RequirementsCard } from "../requirements/RequirementsCard";
 import { RollupReasonsCard } from "./RollupReasonsCard";
@@ -79,7 +80,7 @@ export function DeliveryDetail({
   onSelect: (kind: DeliveryKind, id: string) => void;
 }) {
   const item = findItem(selection.kind, selection.id, lists);
-  const { canReadProjectProgress, canReadPodDetail } = useRole();
+  const { canReadProjectProgress, canReadPodDetail, canEditGates } = useRole();
   // The navigator lists every node, because the directory is readable by every
   // role. The detail behind a node is not: progress needs READ_PROJECT_PROGRESS
   // and a pod needs the pod capabilities. Asking anyway returned a 403 that the
@@ -91,6 +92,11 @@ export function DeliveryDetail({
       : selection.kind === "program"
         ? true
         : canReadProjectProgress;
+  // The gates have a reader of their own: a developer or scrum master signs
+  // test cases off, so they read a project's gates and questions even where
+  // its progress, forecast and requirements stay hidden from them.
+  const mayReadGates =
+    selection.kind === "project" && mayReadGateBoard({ canReadProjectProgress, canEditGates });
 
   const projectProgress = useQuery({
     queryKey: ["persona", "progress", selection.id, asOf],
@@ -211,9 +217,10 @@ export function DeliveryDetail({
           <DeliveryForecastCard projectId={selection.id} asOf={asOf} />
           <DayReportNoteCard projectId={selection.id} />
           <RequirementsCard projectId={selection.id} asOf={asOf} />
-          <ProjectGates projectId={selection.id} asOf={asOf} />
         </>
       ) : null}
+
+      {mayReadGates ? <ProjectGates projectId={selection.id} asOf={asOf} /> : null}
 
       {selection.kind === "pod" && mayReadDetail ? (
         <PodDeliveryCard podId={selection.id} asOf={asOf} />

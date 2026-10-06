@@ -185,6 +185,19 @@ export function itemsByKind(issue: IssueGatesResponse, template: GateTemplateDto
   }));
 }
 
+/**
+ * Whether the lens reads a project's gate board. Mirrors the board's guard on
+ * the server: reading the project's progress, or working its gates. So a
+ * developer or scrum master, who signs test cases off, reads the board even
+ * though the rest of the project's progress is not theirs to read.
+ */
+export function mayReadGateBoard(role: {
+  canReadProjectProgress: boolean;
+  canEditGates: boolean;
+}): boolean {
+  return role.canReadProjectProgress || role.canEditGates;
+}
+
 /** Whether the lens may mark this kind met, failed or waived. */
 export function maySignOff(kind: ItemKindDto, roles: AppRole[]): boolean {
   return roles.includes("admin") || kind.sign_off_roles.some((role) => roles.includes(role));

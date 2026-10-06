@@ -18,6 +18,7 @@ import {
   issueRows,
   itemsByKind,
   kindKey,
+  mayReadGateBoard,
   maySignOff,
   newKindDraft,
   passedWithoutLine,
@@ -214,6 +215,14 @@ test("only the named roles, or an admin, sign a kind off", () => {
     signOffLine({ ...kind, sign_off_roles: ["dev"], evidence_required: true }),
     "Signed off by developer, with a link to the evidence.",
   );
+});
+
+test("whoever reads the project's progress or works its gates reads the board", () => {
+  // Developer and scrum master: they sign test cases off, but read no progress.
+  assert.equal(mayReadGateBoard({ canReadProjectProgress: false, canEditGates: true }), true);
+  // Executive: reads it, changes nothing.
+  assert.equal(mayReadGateBoard({ canReadProjectProgress: true, canEditGates: false }), true);
+  assert.equal(mayReadGateBoard({ canReadProjectProgress: false, canEditGates: false }), false);
 });
 
 test("evidence is a link, and needed only to mark a kind that asks for it met", () => {
