@@ -4,6 +4,7 @@ import type { DirectoryItemResponse } from "../../api/schema";
 import { toneForRag, toneHex } from "../../lib/status";
 import type { DeliveryKind } from "../../lib/useDeliverySelection";
 import { cn } from "../../lib/utils";
+import { hierarchyLabel } from "./workstreams";
 
 function Dot({ item }: { item: DirectoryItemResponse }) {
   const tone = toneForRag(item.rag);
@@ -98,6 +99,8 @@ export function DeliveryNavigator({
   );
   const unlinkedProjects = projects.filter((p) => !linkedProjectIds.has(p.id));
 
+  // The directory lists only the workstreams in use, so a project whose
+  // workstreams hold no work -- or that has none -- shows no workstream level.
   const renderProject = (project: DirectoryItemResponse) => {
     const children = workstreams.filter((ws) => ws.project_ids.includes(project.id));
     return (
@@ -128,7 +131,7 @@ export function DeliveryNavigator({
 
   return (
     <div className="flex flex-col gap-1 rounded-3xl bg-grey-fill p-4">
-      <SectionLabel>Hierarchy · program → project → workstream</SectionLabel>
+      <SectionLabel>{hierarchyLabel(workstreams)}</SectionLabel>
       {programs.map((program) => {
         const children = projects.filter((p) => p.program_ids.includes(program.id));
         return (

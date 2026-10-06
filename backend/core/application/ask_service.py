@@ -21,10 +21,18 @@ from core.application.persona_views import (
 )
 from core.application.portfolio_feed_service import DEFAULT_FEED_SOURCES, PortfolioFeedService
 from core.application.risk_service import RiskService
+from core.application.rollup_service import NO_WORK_REASON
 from core.application.status_summaries import NO_REPLY_BLOCKER
 from core.domain.auth import Principal
 from core.domain.errors import GraphNotFound
-from core.domain.graph import EdgeKind, GraphEdge, GraphNode, JsonScalar, NodeKind
+from core.domain.graph import (
+    EdgeKind,
+    GraphEdge,
+    GraphNode,
+    JsonScalar,
+    NodeKind,
+    workstreams_in_use,
+)
 from core.domain.llm import LlmMessage, LlmRequest
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import FactorKind, Rag, RollupFactor
@@ -245,8 +253,18 @@ class ParsedAnswer:
 
 @dataclass(frozen=True, kw_only=True)
 class SearchGraphNodesTool:
+    """Name to id, over the nodes the views show.
+
+    Workstreams are optional: one holding no task or work item on ``as_of``
+    is left out, as the navigator and heat rows leave it out, so a list of
+    workstreams never names an empty one. Asked for by its exact id or name,
+    it still comes back, marked not in use with the reason, so Ask says it
+    holds no work rather than that it does not exist.
+    """
+
     tenant_id: str
     repository: GraphRepository
+    as_of: date
 
     name: str = "search_graph_nodes"
     description: str = (
@@ -284,11 +302,16 @@ class SearchGraphNodesTool:
         kinds = _kinds_argument(arguments.get("kinds"))
         limit = _bounded_int(arguments.get("limit"), default=10, maximum=25)
         nodes = await self.repository.list_nodes(self.tenant_id)
+        in_use = workstreams_in_use(
+            nodes,
+            await self.repository.list_edges(self.tenant_id, kind=EdgeKind.CONTAINS),
+            self.as_of,
+        )
         if kinds:
             kind_set = {NodeKind(kind) for kind in kinds}
             nodes = [node for node in nodes if node.kind in kind_set]
-        if query:
-            query_value = query.lower()
+        query_value = (query or "").lower()
+        if query_value:
             nodes = [
                 node
                 for node in nodes
@@ -296,16 +319,28 @@ class SearchGraphNodesTool:
                 or query_value in node.name.lower()
                 or _metadata_text(node).find(query_value) >= 0
             ]
-        matches = [
-            {
-                "id": node.id,
-                "kind": node.kind.value,
-                "name": node.name,
-                "metadata": dict(node.metadata),
-            }
-            for node in nodes[:limit]
+        nodes = [
+            node
+            for node in nodes
+            if node.kind is not NodeKind.WORKSTREAM
+            or node.id in in_use
+            or query_value in {node.id.lower(), node.name.lower()}
         ]
+        matches = [_search_match(node, in_use) for node in nodes[:limit]]
         return json.dumps(matches, ensure_ascii=False)
+
+
+def _search_match(node: GraphNode, in_use: frozenset[str]) -> dict[str, object]:
+    match: dict[str, object] = {
+        "id": node.id,
+        "kind": node.kind.value,
+        "name": node.name,
+        "metadata": dict(node.metadata),
+    }
+    if node.kind is NodeKind.WORKSTREAM and node.id not in in_use:
+        match["in_use"] = False
+        match["note"] = NO_WORK_REASON
+    return match
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -315,7 +350,8 @@ class GraphNeighborsTool:
     `search_graph_nodes` finds a node but says nothing about what it connects
     to, so questions like "which tasks is this developer on" used to come back
     as "no tasks found in the current graph" -- blaming correct data for a
-    missing tool.
+    missing tool. A workstream holding no work on ``as_of`` is no neighbor:
+    workstreams are optional, and the views leave an empty one out.
     """
 
     tenant_id: str
@@ -393,12 +429,19 @@ class GraphNeighborsTool:
                 if self._wanted(edge, kinds):
                     found.append(("in", edge.kind.value, edge.from_node_id))
 
-        found = found[:limit]
-        names = {
-            node.id: node
-            for node in await self.repository.list_nodes(self.tenant_id)
-            if node.id in {neighbor for _, _, neighbor in found}
+        nodes = await self.repository.list_nodes(self.tenant_id)
+        # An empty workstream is optional set-up, no relation worth naming.
+        in_use = workstreams_in_use(
+            nodes,
+            await self.repository.list_edges(self.tenant_id, kind=EdgeKind.CONTAINS),
+            self.as_of,
+        )
+        empty = {
+            node.id for node in nodes if node.kind is NodeKind.WORKSTREAM and node.id not in in_use
         }
+        found = [item for item in found if item[2] not in empty][:limit]
+        wanted = {neighbor for _, _, neighbor in found}
+        names = {node.id: node for node in nodes if node.id in wanted}
         node = await self.repository.get_node(self.tenant_id, node_id)
         return json.dumps(
             {
@@ -1125,7 +1168,10 @@ class AskService:
         personas = self._persona_view_service
         offered: tuple[tuple[AgentTool, Callable[[Principal], bool]], ...] = (
             # Graph reads behind /ask's own aggregate check.
-            (SearchGraphNodesTool(tenant_id=tenant_id, repository=graph), _reads_aggregate),
+            (
+                SearchGraphNodesTool(tenant_id=tenant_id, repository=graph, as_of=as_of),
+                _reads_aggregate,
+            ),
             (
                 GraphNeighborsTool(tenant_id=tenant_id, repository=graph, as_of=as_of),
                 _reads_aggregate,

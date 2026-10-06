@@ -10,7 +10,15 @@ from core.application.blocker_resolution import (
     ResolvedBlocker,
 )
 from core.application.status_summaries import NO_REPLY_BLOCKER
-from core.domain.graph import EdgeKind, EntityRef, GraphNode, GraphTree, JsonScalar, NodeKind
+from core.domain.graph import (
+    EdgeKind,
+    EntityRef,
+    GraphNode,
+    GraphTree,
+    JsonScalar,
+    NodeKind,
+    workstreams_in_use,
+)
 from core.domain.risk import OwnerDrift
 from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import DeveloperStatus, StatusSource
@@ -21,6 +29,11 @@ from core.ports.repositories import GraphRepository, RollupRepository, StatusRep
 _POD_SCOPED_KINDS = frozenset({FactorKind.BLOCKER, FactorKind.DRIFT})
 # The line a person in no team carries on their own cell (N5).
 NO_POD_REASON = "In no pod, so counted in no pod, project or program."
+# The line an empty workstream carries: it is optional, so this is no gap.
+NO_WORK_REASON = (
+    "No work is in this workstream yet. Workstreams are optional; one is in use once "
+    "an admin links a task or work item to it."
+)
 
 
 class DriftSignals(Protocol):
@@ -82,6 +95,7 @@ class RollupService:
         blockers: dict[str, tuple[ResolvedBlocker, ...]] = {}
         incoming = await self._incoming_dependencies(tree, as_of, blockers)
         drift = await self._owner_drift(tree.root.tenant_id, as_of, tree.nodes)
+        in_use = workstreams_in_use(tree.nodes, tree.edges, as_of)
 
         async def rollup_node(node: GraphNode) -> NodeStatus | None:
             """Roll `node` up and return what it contributes to its parent.
@@ -109,7 +123,7 @@ class RollupService:
                     _effective_child_status(child, node.id) for child in child_statuses
                 ]
             status = (
-                _aggregate_workstream_node(node, child_statuses, as_of)
+                _aggregate_workstream_node(node, child_statuses, as_of, in_use=node.id in in_use)
                 if node.kind is NodeKind.WORKSTREAM
                 else _aggregate_node(node, child_statuses, as_of)
             )
@@ -649,12 +663,16 @@ def _aggregate_workstream_node(
     node: GraphNode,
     child_statuses: Iterable[NodeStatus],
     as_of: date,
+    *,
+    in_use: bool = True,
 ) -> NodeStatus:
     """Aggregate the children that carry health, then weigh the target date.
 
     With no such child the workstream is unknown and neutral for its project,
     as it was with no children at all: a near target date turns a reported
-    workstream amber, but gives no status to one that nothing reports on.
+    workstream amber, but gives no status to one that nothing reports on. One
+    holding no task or work item at all (not ``in_use``) says so plainly:
+    workstreams are optional, and the views leave an empty one out.
     """
     children = tuple(child_statuses)
     if not children:
@@ -665,7 +683,9 @@ def _aggregate_workstream_node(
             as_of,
             (
                 RollupFactor(
-                    description="No child task status data is available.",
+                    description=(
+                        "No child task status data is available." if in_use else NO_WORK_REASON
+                    ),
                     contributes=Rag.UNKNOWN,
                     source_ref=node.ref,
                     kind=FactorKind.AGGREGATE,

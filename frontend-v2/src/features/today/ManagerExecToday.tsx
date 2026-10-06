@@ -16,6 +16,7 @@ import type {
   Rag,
 } from "../../api/schema";
 import { signalAge, signalHref, tileKey, tileReasons, type TileReason } from "./heatReasons";
+import { shownHeatRows } from "./heatRows";
 import { briefDateLabel, briefParts } from "./leadBrief";
 import { noPodTiles } from "./noPodRow";
 
@@ -92,12 +93,14 @@ export function ManagerExecToday() {
   // first four in directory order (which is alphabetical) hid the tenant's
   // only red workstream -- "Payments API" -- behind three ambers, so the row
   // read as "nothing red here" while the hero, computed over *every* item,
-  // said the program was at risk. The count names what is left out.
-  const heatRows = [
+  // said the program was at risk. The count names what is left out. The
+  // directory lists only the workstreams in use, and with none there is no
+  // workstreams row at all (workstreams are optional; pods are not).
+  const heatRows = shownHeatRows([
     heatRow("Projects", "project", projects.data),
     heatRow("Workstreams", "workstream", workstreams.data),
     heatRow("Pods", "pod", pods.data),
-  ];
+  ]);
 
   // The heat map's cells carry each node's reason: a few words under the
   // colour, and every reason for the tooltip. People in no team -- an exec,

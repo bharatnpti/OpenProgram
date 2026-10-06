@@ -21,6 +21,7 @@ import { RollupReasonsCard } from "./RollupReasonsCard";
 import { leadReason, reasonsAddToLead } from "./rollupReasons";
 import { useNodeReasons } from "./useNodeReasons";
 import { TaskRow } from "./TaskRow";
+import { EMPTY_WORKSTREAM_DETAIL, EMPTY_WORKSTREAM_LEAD, isEmptyWorkstream } from "./workstreams";
 
 type Lists = {
   programs: DirectoryItemResponse[];
@@ -79,7 +80,16 @@ export function DeliveryDetail({
   asOf: string;
   onSelect: (kind: DeliveryKind, id: string) => void;
 }) {
-  const item = findItem(selection.kind, selection.id, lists);
+  const listed = findItem(selection.kind, selection.id, lists);
+  // The directory lists only the workstreams in use. A link to an empty one
+  // still opens it: read it on its own, and its panel says it holds no work.
+  const direct = useQuery({
+    queryKey: ["directory", "workstream", selection.id, asOf],
+    queryFn: () => apiClient.workstream(selection.id, asOf),
+    enabled: selection.kind === "workstream" && Boolean(selection.id) && !listed,
+  });
+  const item = listed ?? (selection.kind === "workstream" ? direct.data : undefined);
+  const empty = isEmptyWorkstream(selection.kind, item);
   const { canReadProjectProgress, canReadPodDetail, canEditGates } = useRole();
   // The navigator lists every node, because the directory is readable by every
   // role. The detail behind a node is not: progress needs READ_PROJECT_PROGRESS
@@ -106,7 +116,7 @@ export function DeliveryDetail({
   const workstreamProgress = useQuery({
     queryKey: ["persona", "workstream-progress", selection.id, asOf],
     queryFn: () => apiClient.workstreamProgress(selection.id, asOf),
-    enabled: selection.kind === "workstream" && Boolean(selection.id) && mayReadDetail,
+    enabled: selection.kind === "workstream" && Boolean(selection.id) && mayReadDetail && !empty,
   });
   const podCheckins = useQuery({
     queryKey: ["persona", "checkins", selection.id, asOf],
@@ -144,8 +154,10 @@ export function DeliveryDetail({
   const tone = toneForRag(rag);
   // No ring at all rather than a 0% one: 0% confirmed and "not yours to read"
   // are very different things and must not look the same.
-  const percent =
-    selection.kind === "pod"
+  // An empty workstream has no work to be a percentage of.
+  const percent = empty
+    ? null
+    : selection.kind === "pod"
       ? podCheckins.data && podCheckins.data.developers.length > 0
         ? (podCheckins.data.confirmed / podCheckins.data.developers.length) * 100
         : null
@@ -166,20 +178,31 @@ export function DeliveryDetail({
           <div>
             <div className="flex items-center gap-3">
               <h2 className="text-[28px] font-extrabold">{item.name}</h2>
-              <RagChip tone={tone}>{rag ?? "unknown"}</RagChip>
+              <RagChip tone={empty ? "neutral" : tone}>
+                {empty ? "not in use" : (rag ?? "unknown")}
+              </RagChip>
             </div>
             <p className="mt-1.5 text-[15px] text-grey-secondary">
               {selection.kind} · {item.id}
             </p>
-            <p className="mt-3 text-[16px] text-grey-body">
-              {leadReason({
-                noun: selection.kind,
-                selfId: item.id,
-                rag: rag ?? "unknown",
-                state: reasons.state,
-                deniedRole: deniedRoleFor(selection.kind),
-              })}
-            </p>
+            {empty ? (
+              <>
+                <p className="mt-3 text-[16px] text-grey-body">{EMPTY_WORKSTREAM_LEAD}</p>
+                <p className="mt-1.5 max-w-[640px] text-[14px] text-grey-secondary">
+                  {EMPTY_WORKSTREAM_DETAIL}
+                </p>
+              </>
+            ) : (
+              <p className="mt-3 text-[16px] text-grey-body">
+                {leadReason({
+                  noun: selection.kind,
+                  selfId: item.id,
+                  rag: rag ?? "unknown",
+                  state: reasons.state,
+                  deniedRole: deniedRoleFor(selection.kind),
+                })}
+              </p>
+            )}
             {pills.length > 0 ? (
               <div className="mt-5 flex flex-wrap gap-2">
                 {pills.map((pill) => (
@@ -207,7 +230,8 @@ export function DeliveryDetail({
         </div>
       </Card>
 
-      {reasons.state.status === "ready" &&
+      {!empty &&
+      reasons.state.status === "ready" &&
       reasonsAddToLead(rag ?? "unknown", reasons.state.reasons) ? (
         <RollupReasonsCard rag={rag ?? "unknown"} noun={selection.kind} state={reasons.state} />
       ) : null}
@@ -246,7 +270,7 @@ export function DeliveryDetail({
           className={cn(tasks.length === 0 && !showPodTasks && "lg:col-span-2")}
         >
           <h3 className="text-[18px] font-bold">Details</h3>
-          {mayReadDetail ? null : (
+          {mayReadDetail || empty ? null : (
             <p className="mt-3 text-sm text-grey-secondary">{detailDeniedNote(selection.kind)}</p>
           )}
           <dl className="mt-3 flex flex-col gap-2.5">

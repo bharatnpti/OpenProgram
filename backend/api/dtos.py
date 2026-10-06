@@ -536,6 +536,11 @@ class DirectoryItemResponse(BaseModel):
     member_ids: list[str]
     task_ids: list[str]
     people: list[DirectoryPersonResponse]
+    # False only for a workstream that holds no task or work item on the day.
+    # Workstreams are optional, so the lists leave an empty one out; only a
+    # direct read (/workstreams/{id}) returns one, for its panel to say so.
+    # Optional, so older clients are unaffected.
+    in_use: bool = True
 
     @classmethod
     def from_view(cls, view: DirectoryItemView) -> DirectoryItemResponse:
@@ -555,6 +560,7 @@ class DirectoryItemResponse(BaseModel):
             member_ids=list(view.member_ids),
             task_ids=list(view.task_ids),
             people=[DirectoryPersonResponse.from_view(person) for person in view.people],
+            in_use=view.in_use,
         )
 
 

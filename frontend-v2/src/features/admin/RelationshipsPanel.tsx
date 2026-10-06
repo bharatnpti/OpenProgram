@@ -125,7 +125,7 @@ export function RelationshipsPanel({
         </LinkForm>
 
         <LinkForm
-          title="Project to Workstream"
+          title="Project to Workstream (optional)"
           canSubmit={Boolean(workstreamProjectId && projectWorkstreamId)}
           onSubmit={() =>
             void run(
@@ -160,7 +160,7 @@ export function RelationshipsPanel({
         </LinkForm>
 
         <LinkForm
-          title="Pod to Workstream"
+          title="Pod to Workstream (optional)"
           canSubmit={Boolean(workstreamPodId && podWorkstreamId)}
           onSubmit={() =>
             void run(
@@ -230,7 +230,7 @@ export function RelationshipsPanel({
         </LinkForm>
 
         <LinkForm
-          title="Workstream to Task"
+          title="Workstream to Task (optional)"
           canSubmit={Boolean(taskWorkstreamId && workstreamTaskId.trim())}
           onSubmit={() =>
             void run(

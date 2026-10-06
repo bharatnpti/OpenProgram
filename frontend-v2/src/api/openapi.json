@@ -12702,6 +12702,11 @@
             },
             "type": "array",
             "title": "People"
+          },
+          "in_use": {
+            "type": "boolean",
+            "title": "In Use",
+            "default": true
           }
         },
         "type": "object",
