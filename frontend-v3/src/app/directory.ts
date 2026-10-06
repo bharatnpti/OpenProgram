@@ -1,9 +1,21 @@
-import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useCallback, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { apiClient } from "../api/client";
-import type { DirectoryItemResponse } from "../api/schema";
+import type { GraphTreeDto, PortfolioHeatmapResponse } from "../api/schema";
+import {
+  fromDirectory,
+  fromHeatmapCells,
+  fromNodes,
+  fromRoster,
+  indexNames,
+  nameLookup,
+  type NameEntry,
+  type NameOf,
+} from "./names";
 import { useRole } from "./role";
+import { chooseProgram, rankPrograms } from "./scope";
 
 /*
  * The directory (programs, projects, workstreams, pods) is readable by every
@@ -11,6 +23,8 @@ import { useRole } from "./role";
  * navigator, and "where your check-in rolls up". One query key per kind, so
  * every screen shares the same request.
  */
+
+export { podsOf, podsOfPerson, projectsOf, projectsOfPerson, programsOfProjects } from "./scope";
 
 export function usePrograms() {
   return useQuery({ queryKey: ["directory", "programs"], queryFn: () => apiClient.programs() });
@@ -38,42 +52,102 @@ export function useProgram() {
 }
 
 /**
- * Display names for member ids, from the people the directory names on pods,
- * projects and workstreams, plus the acting-as roster on a local tenant. An id
- * nobody names stays an id: never a guessed name.
+ * The program a portfolio screen shows, when a tenant has several: the one in
+ * the URL (`?program=`), else the worst. `programs` is ranked worst first, for
+ * a picker whose chips carry each program's colour.
  */
-export function useNames(): (id: string | null | undefined) => string {
-  const { people } = useRole();
+export function useProgramChoice() {
+  const programs = usePrograms();
+  const [search, setSearch] = useSearchParams();
+  const ranked = useMemo(() => rankPrograms(programs.data ?? []), [programs.data]);
+  const program = chooseProgram(ranked, search.get("program"));
+  const choose = useCallback(
+    (id: string) =>
+      setSearch(
+        (current) => {
+          // Other parameters (the day being viewed) are the shell's; leave them.
+          const next = new URLSearchParams(current);
+          if (id === ranked[0]?.id) next.delete("program");
+          else next.set("program", id);
+          return next;
+        },
+        { replace: true },
+      ),
+    [ranked, setSearch],
+  );
+  return { query: programs, programs: ranked, program, choose };
+}
+
+/**
+ * The member id the console speaks as: the person picked in the header on a
+ * local tenant, else the signed-in subject, which the backend reads as the
+ * member (`/me/status` is keyed on it). Null when nobody is known.
+ */
+export function useMemberId(): string | null {
+  const { actingAs, user } = useRole();
+  return actingAs?.id ?? user?.subject ?? null;
+}
+
+const heatmapOf = (results: UseQueryResult<PortfolioHeatmapResponse>[]) =>
+  results.map((result) => result.data);
+const treeOf = (results: UseQueryResult<GraphTreeDto>[]) => results.map((result) => result.data);
+
+/**
+ * Display names for member ids, from what the viewing role may read:
+ *
+ * - everyone: the people the directory names on pods, projects and workstreams,
+ *   and the person themselves;
+ * - a local tenant: the acting-as roster;
+ * - an admin: every member (`/config/members`), by node id and by chat id;
+ * - a manager or executive: the people on the heat map, which names every member
+ *   in a team and everyone in no team;
+ * - a scrum master or product owner: the people in each program's team graph.
+ *
+ * A developer reads none of the lists, so a requester outside their own pods
+ * stays unnamed for them. An id nobody names stays an id, and `names.known(id)`
+ * says whether anything did: never a guessed name.
+ */
+export function useNames(): NameOf {
+  const { people, user, canManageConfig, canReadPortfolio, canReadAggregate } = useRole();
   const pods = usePods();
   const projects = useProjects();
   const workstreams = useWorkstreams();
-  const map = useMemo(() => {
-    const names = new Map<string, string>();
-    const items = [...(pods.data ?? []), ...(projects.data ?? []), ...(workstreams.data ?? [])];
-    for (const item of items) {
-      for (const person of item.people) {
-        if (person.name) {
-          names.set(person.id, person.name);
-          if (person.member_id) names.set(person.member_id, person.name);
-        }
-      }
-    }
-    for (const person of people) names.set(person.id, person.name);
-    return names;
-  }, [people, pods.data, projects.data, workstreams.data]);
-  return (id) => (id ? (map.get(id) ?? id) : "—");
-}
+  const programs = usePrograms();
+  const programIds = (programs.data ?? []).map((program) => program.id);
 
-/** Pods the given member belongs to; every pod when nobody is known (real sign-in). */
-export function podsOf(pods: DirectoryItemResponse[], memberId: string | null | undefined) {
-  if (!memberId) return pods;
-  const mine = pods.filter((pod) => pod.member_ids.includes(memberId));
-  return mine.length > 0 ? mine : pods;
-}
+  const members = useQuery({
+    queryKey: ["config", "members"],
+    queryFn: () => apiClient.configMembers(),
+    enabled: canManageConfig,
+  });
+  const heat = useQueries({
+    queries: programIds.map((id) => ({
+      queryKey: ["portfolio", "heatmap", id],
+      queryFn: () => apiClient.portfolioHeatmap(undefined, id),
+      enabled: canReadPortfolio && !canManageConfig,
+    })),
+    combine: heatmapOf,
+  });
+  const trees = useQueries({
+    queries: programIds.map((id) => ({
+      queryKey: ["graph", "tree", id],
+      queryFn: () => apiClient.programTree(id),
+      enabled: canReadAggregate && !canReadPortfolio,
+    })),
+    combine: treeOf,
+  });
 
-/** Projects the given pods work on; every project when the pods name none. */
-export function projectsOf(projects: DirectoryItemResponse[], pods: DirectoryItemResponse[]) {
-  const ids = new Set(pods.flatMap((pod) => pod.project_ids));
-  const mine = projects.filter((project) => ids.has(project.id));
-  return mine.length > 0 ? mine : projects;
+  const index = useMemo(() => {
+    const self: NameEntry[] = user?.name ? [{ id: user.subject, name: user.name }] : [];
+    return indexNames(
+      self,
+      fromRoster(people),
+      fromNodes(members.data),
+      fromDirectory([...(pods.data ?? []), ...(projects.data ?? []), ...(workstreams.data ?? [])]),
+      heat.flatMap((data) => fromHeatmapCells(data?.cells)),
+      trees.flatMap((data) => fromNodes(data?.nodes)),
+    );
+  }, [heat, members.data, people, pods.data, projects.data, trees, user, workstreams.data]);
+
+  return useMemo(() => nameLookup(index), [index]);
 }
