@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -9,6 +10,8 @@ from datetime import UTC, datetime
 import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
+from psycopg import OperationalError
+from psycopg_pool import PoolClosed, PoolTimeout
 
 from api.main import create_app
 from config.settings import Settings
@@ -31,6 +34,7 @@ from core.domain.connections import (
 from core.domain.graph import Developer
 from core.domain.integrations import Issue, IssueState, SyncCursor
 from core.ports.secrets import SecretRef
+from infra.adapters.connections import resolver as resolver_module
 from infra.adapters.connections.resolver import CachedConnectionResolver
 from infra.adapters.connections.routing import TenantRoutedIssueTracker, TenantRoutedVcsProvider
 from infra.adapters.connections.specs import (
@@ -532,6 +536,64 @@ async def test_an_unreadable_connection_falls_back_to_the_server_settings() -> N
     resolver = CachedConnectionResolver(_Broken())
 
     assert await resolver.resolve(TENANT, "jira") is None
+
+
+_LEAKY_DSN = "postgresql://user:secret@db/openprogram"
+
+
+@dataclass
+class _RecordingLogger:
+    warnings: list[tuple[str, dict[str, object]]] = field(default_factory=list)
+
+    def warning(self, event: str, **fields: object) -> None:
+        self.warnings.append((event, fields))
+
+
+@pytest.fixture
+def resolver_log(monkeypatch: pytest.MonkeyPatch) -> _RecordingLogger:
+    log = _RecordingLogger()
+    monkeypatch.setattr(resolver_module, "_logger", log)
+    return log
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        PoolTimeout("pool initialization incomplete after 30.0 sec"),
+        PoolClosed("pool has already been opened/closed and cannot be reused"),
+        OperationalError(f"connection to {_LEAKY_DSN} failed: Connection refused"),
+        TimeoutError(),
+    ],
+    ids=lambda error: type(error).__name__,
+)
+async def test_each_way_an_unreachable_store_fails_falls_back_and_logs_the_type_only(
+    error: Exception, resolver_log: _RecordingLogger
+) -> None:
+    class _Unreachable:
+        async def resolve(self, tenant_id: str, connector: str) -> ConnectionValues | None:
+            raise error
+
+    assert await CachedConnectionResolver(_Unreachable()).resolve(TENANT, "slack") is None
+
+    assert [fields["error_type"] for _, fields in resolver_log.warnings] == [type(error).__name__]
+    assert "secret" not in repr(resolver_log.warnings)
+
+
+async def test_a_connection_read_that_does_not_finish_falls_back_without_waiting(
+    resolver_log: _RecordingLogger,
+) -> None:
+    # A database that went away under an open pool makes a read wait for a
+    # connection for the pool's full 30 s: the resolver stops waiting first.
+    class _Hanging:
+        async def resolve(self, tenant_id: str, connector: str) -> ConnectionValues | None:
+            await asyncio.Event().wait()
+            return None
+
+    resolver = CachedConnectionResolver(_Hanging(), read_timeout_seconds=0.01)
+
+    assert await resolver.resolve(TENANT, "slack") is None
+
+    assert [fields["error_type"] for _, fields in resolver_log.warnings] == ["TimeoutError"]
 
 
 # --- Routing calls to what the tenant turned on ------------------------------------------
