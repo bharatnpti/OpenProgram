@@ -1073,7 +1073,7 @@ async def test_status_reasons_carry_the_open_signals_beneath_the_node() -> None:
             "severity": "red",
             "about": {"id": "wi-refunds", "label": "Refund flow"},
             "owner": {"id": "dev-ada", "name": "Ada"},
-            "says": "Refund flow has been active for 10 day(s) with no linked pull request.",
+            "says": "Refund flow has been active for 10 days with no linked pull request.",
         },
         {
             "signal": "drift",
@@ -1083,7 +1083,7 @@ async def test_status_reasons_carry_the_open_signals_beneath_the_node() -> None:
             "owner": {"id": "dev-ada", "name": "Ada"},
             "says": (
                 "Refund flow owner reported progress but there has been no Git/PR "
-                "activity in 10 day(s)."
+                "activity in 10 days."
             ),
         },
     ]
