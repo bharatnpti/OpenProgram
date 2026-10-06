@@ -17,6 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import * as consoleData from "./mock-console.mjs";
+import * as todayMock from "./mock/today.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
@@ -840,6 +841,7 @@ function api(req, res, url) {
   if (p === "/config/escalation/projects/project-checkout")
     return can.config(roles) ? send(200, escalation) : deny();
   const userId = req.headers["x-openprogram-dev-user"] ?? "U1001";
+  if (todayMock.api(req, url, roles, userId, send, deny)) return;
   const handled = consoleData.consoleApi(req, url, roles, userId, send, deny);
   if (handled !== false) return handled;
   return send(404, { detail: "Not found." });
