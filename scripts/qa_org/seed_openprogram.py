@@ -12,6 +12,10 @@ build program -> projects -> workstreams -> pods, add members from the
 directory (their id IS their Slack id), put them in pods with a role, link
 identities, then give each pod its scrum master and manager as escalation
 contacts. Idempotent: existing nodes are updated, existing links are kept.
+
+Workstreams are optional; pods are the grouping OpenProgram needs. The QA
+org creates its workstreams but puts no task in them, so the persona views
+leave them out (only Admin lists them) until work is linked to one.
 """
 
 from __future__ import annotations

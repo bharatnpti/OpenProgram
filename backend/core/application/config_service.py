@@ -22,6 +22,7 @@ from core.domain.graph import (
     JsonScalar,
     NodeKind,
     WorkItem,
+    workstreams_in_use,
 )
 from core.domain.identity import IdentityLink
 from core.domain.rollup import Rag
@@ -83,6 +84,10 @@ class DirectoryItemView:
     member_ids: tuple[str, ...] = ()
     task_ids: tuple[str, ...] = ()
     people: tuple[DirectoryPersonView, ...] = ()
+    #: False only for a workstream holding no task or work item on the day
+    #: (``workstreams_in_use``). The lists leave such a workstream out; only
+    #: ``DirectoryService.get_workstream`` returns one, for a direct link.
+    in_use: bool = True
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -918,6 +923,15 @@ class ConfigService:
 
 
 class DirectoryService:
+    """The directory every role reads: programs, projects, workstreams and pods.
+
+    Workstreams are optional (``workstreams_in_use``): the lists hold only the
+    ones in use on the day, and every item's ``workstream_ids`` names only
+    those, so an empty workstream is in no navigator, heat row, palette or link
+    chip. A direct read (``get_workstream``) still opens an empty one, marked
+    ``in_use=False``. The config API lists every workstream, empty or not.
+    """
+
     def __init__(
         self,
         graph_repository: GraphRepository,
@@ -935,6 +949,7 @@ class DirectoryService:
         return await self._list_items(tenant_id, NodeKind.PROJECT, as_of)
 
     async def list_workstreams(self, tenant_id: str, as_of: date) -> list[DirectoryItemView]:
+        """The workstreams in use on ``as_of``; an empty one is left out."""
         return await self._list_items(tenant_id, NodeKind.WORKSTREAM, as_of)
 
     async def get_workstream(
@@ -943,11 +958,12 @@ class DirectoryService:
         workstream_id: str,
         as_of: date,
     ) -> DirectoryItemView:
+        """One workstream, in use or not: a direct link to an empty one still opens."""
         await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
-        for item in await self.list_workstreams(tenant_id, as_of):
-            if item.id == workstream_id:
-                return item
-        raise GraphNotFound(f"workstream {workstream_id} not found for tenant {tenant_id}")
+        items = await self._list_items(tenant_id, NodeKind.WORKSTREAM, as_of, only_id=workstream_id)
+        if not items:
+            raise GraphNotFound(f"workstream {workstream_id} not found for tenant {tenant_id}")
+        return items[0]
 
     async def list_project_workstreams(
         self,
@@ -970,11 +986,24 @@ class DirectoryService:
         tenant_id: str,
         kind: NodeKind,
         as_of: date,
+        *,
+        only_id: str | None = None,
     ) -> list[DirectoryItemView]:
+        """The items of ``kind``; ``only_id`` reads that one, a workstream in use or not."""
         nodes = await self._graph_repository.list_nodes(tenant_id)
         node_by_id = {node.id: node for node in nodes}
-        selected = [node for node in nodes if node.kind is kind]
         edges = await self._graph_repository.list_edges(tenant_id)
+        in_use = workstreams_in_use(nodes, edges, as_of)
+        selected = [
+            node
+            for node in nodes
+            if node.kind is kind
+            and (node.id == only_id if only_id is not None else _shown(node, in_use))
+        ]
+        # An empty workstream is nobody's link: only the ones in use are named.
+        shown_by_id = {
+            node_id: node for node_id, node in node_by_id.items() if _shown(node, in_use)
+        }
         status_by_ref = {
             (status.entity_ref.kind, status.entity_ref.id): status
             for status in await self._rollup_repository.list_node_statuses(tenant_id, as_of)
@@ -1025,14 +1054,14 @@ class DirectoryService:
                     workstream_ids=tuple(
                         dict.fromkeys(
                             (
-                                *_source_ids(incoming, node_by_id, NodeKind.WORKSTREAM),
-                                *_target_ids(outgoing, node_by_id, NodeKind.WORKSTREAM),
+                                *_source_ids(incoming, shown_by_id, NodeKind.WORKSTREAM),
+                                *_target_ids(outgoing, shown_by_id, NodeKind.WORKSTREAM),
                                 *_source_ids(
                                     incoming_assignments,
-                                    node_by_id,
+                                    shown_by_id,
                                     NodeKind.WORKSTREAM,
                                 ),
-                                *_target_ids(assignments, node_by_id, NodeKind.WORKSTREAM),
+                                *_target_ids(assignments, shown_by_id, NodeKind.WORKSTREAM),
                             )
                         )
                     ),
@@ -1055,6 +1084,7 @@ class DirectoryService:
                         )
                     ),
                     people=_people(node, member_for),
+                    in_use=_shown(node, in_use),
                 )
             )
         return sorted(views, key=lambda item: (item.name, item.id))
@@ -1103,6 +1133,11 @@ class DirectoryService:
         if node.kind is not kind:
             raise GraphNotFound(f"{id} exists as a {node.kind.value}, not a {kind.value}")
         return node
+
+
+def _shown(node: GraphNode, in_use: frozenset[str]) -> bool:
+    """Whether the directory shows a node: anything but a workstream not in use."""
+    return node.kind is not NodeKind.WORKSTREAM or node.id in in_use
 
 
 def _person_fields(node: GraphNode) -> tuple[tuple[str, str], ...]:

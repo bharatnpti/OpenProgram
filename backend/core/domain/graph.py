@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from enum import StrEnum
@@ -134,3 +134,32 @@ class VectorMatch:
 
 def normalize_vector(vector: Sequence[float]) -> tuple[float, ...]:
     return tuple(float(value) for value in vector)
+
+
+# What puts a workstream in use: work it holds directly.
+_WORK_KINDS = frozenset({NodeKind.TASK, NodeKind.WORK_ITEM})
+
+
+def workstreams_in_use(
+    nodes: Iterable[GraphNode], edges: Iterable[GraphEdge], as_of: date
+) -> frozenset[str]:
+    """The workstreams that hold work on ``as_of``: a task or work item they contain.
+
+    Workstreams are optional. Pods are the one grouping a tenant must set up,
+    and most teams run all their work through them, so a workstream is often
+    created, linked to a project and served by pods, yet never holds a task.
+    The persona views show only the workstreams in use, so an empty one never
+    reads as an unknown tile, a 0% panel or a branch with nothing on it.
+    Pods, repos or an owner do not put one in use; an active ``contains`` edge
+    to a task or work item does, read on ``as_of`` like every other edge.
+    Admin and the config API still list every workstream.
+    """
+    kinds = {node.id: node.kind for node in nodes}
+    return frozenset(
+        edge.from_node_id
+        for edge in edges
+        if edge.kind is EdgeKind.CONTAINS
+        and kinds.get(edge.from_node_id) is NodeKind.WORKSTREAM
+        and kinds.get(edge.to_node_id) in _WORK_KINDS
+        and edge.is_active_on(as_of)
+    )

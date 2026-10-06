@@ -3325,6 +3325,11 @@ export interface components {
       task_ids: string[];
       /** People */
       people: components["schemas"]["DirectoryPersonResponse"][];
+      /**
+       * In Use
+       * @default true
+       */
+      in_use: boolean;
     };
     /**
      * DirectoryPersonResponse

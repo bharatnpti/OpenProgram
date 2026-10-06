@@ -28,7 +28,15 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, tzinfo
 from enum import StrEnum
 
-from core.domain.graph import EdgeKind, EntityRef, GraphEdge, GraphNode, NodeKind
+from core.application.rollup_service import NO_WORK_REASON
+from core.domain.graph import (
+    EdgeKind,
+    EntityRef,
+    GraphEdge,
+    GraphNode,
+    NodeKind,
+    workstreams_in_use,
+)
 from core.domain.risk import DriftFinding, DriftFindingKind, RiskFinding, RiskRuleId
 from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import CheckInDay, StatusSource
@@ -89,46 +97,49 @@ class TeamGraph:
     """Who and what sits under each node on the day, as the reasons count them.
 
     Read from the tenant's nodes and edges as they stand on the day, never by
-    walking a program tree: ``contains`` says who is in a pod and which pods a
-    project or program holds, ``assigned_to`` which pods serve a workstream.
+    walking a program tree: ``contains`` says who is in a pod, which pods a
+    project or program holds and what work a workstream holds. ``in_use`` is
+    the workstreams holding work on the day (``workstreams_in_use``); an empty
+    one is optional and left off the map (``shows``).
     """
 
     labels: Mapping[str, str]
     kinds: Mapping[str, NodeKind]
     children: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
-    assigned_pods: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     pods_of: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    in_use: frozenset[str] = frozenset()
 
     @classmethod
     def from_graph(
         cls, nodes: Iterable[GraphNode], edges: Iterable[GraphEdge], as_of: date
     ) -> TeamGraph:
         node_list = list(nodes)
+        edge_list = list(edges)
         kinds = {node.id: node.kind for node in node_list}
         children: dict[str, set[str]] = {}
-        assigned: dict[str, set[str]] = {}
         pods_of: dict[str, set[str]] = {}
-        for edge in edges:
-            if not edge.is_active_on(as_of):
+        for edge in edge_list:
+            if not edge.is_active_on(as_of) or edge.kind is not EdgeKind.CONTAINS:
                 continue
+            children.setdefault(edge.from_node_id, set()).add(edge.to_node_id)
             source, target = kinds.get(edge.from_node_id), kinds.get(edge.to_node_id)
-            if edge.kind is EdgeKind.CONTAINS:
-                children.setdefault(edge.from_node_id, set()).add(edge.to_node_id)
-                if source is NodeKind.POD and target is NodeKind.DEVELOPER:
-                    pods_of.setdefault(edge.to_node_id, set()).add(edge.from_node_id)
-            elif (
-                edge.kind is EdgeKind.ASSIGNED_TO
-                and source is NodeKind.POD
-                and target is NodeKind.WORKSTREAM
-            ):
-                assigned.setdefault(edge.to_node_id, set()).add(edge.from_node_id)
+            if source is NodeKind.POD and target is NodeKind.DEVELOPER:
+                pods_of.setdefault(edge.to_node_id, set()).add(edge.from_node_id)
         return cls(
             labels={node.id: _label(node) for node in node_list},
             kinds=kinds,
             children={key: tuple(sorted(value)) for key, value in children.items()},
-            assigned_pods={key: tuple(sorted(value)) for key, value in assigned.items()},
             pods_of={key: tuple(sorted(value)) for key, value in pods_of.items()},
+            in_use=workstreams_in_use(node_list, edge_list, as_of),
         )
+
+    def shows(self, ref: EntityRef) -> bool:
+        """Whether a status is on the map: anything but a workstream not in use.
+
+        An empty workstream is optional set-up, not a team that has not
+        reported: it is never a tile, a cell or an unknown in the headline.
+        """
+        return ref.kind is not NodeKind.WORKSTREAM or ref.id in self.in_use
 
     def under(self, node_id: str, kind: NodeKind) -> frozenset[str]:
         """Every node of ``kind`` beneath ``node_id`` along ``contains``."""
@@ -209,7 +220,11 @@ class AttentionView:
 
 @dataclass(frozen=True, kw_only=True)
 class AttentionDay:
-    """One day as the reasons read it."""
+    """One day as the reasons read it.
+
+    Its statuses are the ones on the map (``TeamGraph.shows``): an empty
+    workstream's is left out, so it is never a tile nor counted in the headline.
+    """
 
     as_of: date
     #: The reader's today: a reason says "today" only about that day.
@@ -234,7 +249,11 @@ class AttentionDay:
         tracker: str = "the issue tracker",
         vcs: str = "Git",
     ) -> AttentionDay:
-        by_ref = {(status.entity_ref.kind, status.entity_ref.id): status for status in statuses}
+        by_ref = {
+            (status.entity_ref.kind, status.entity_ref.id): status
+            for status in statuses
+            if graph.shows(status.entity_ref)
+        }
         owners: dict[str, str] = {}
         for (kind, node_id), status in by_ref.items():
             if kind is NodeKind.DEVELOPER:
@@ -485,24 +504,8 @@ def _workstream_reasons(day: AttentionDay, status: NodeStatus) -> CellReasons:
                     "done; none is blocked, at risk or carries a status.",
                 ),
             )
-        pods = [
-            name
-            for pod in day.graph.assigned_pods.get(cell.id, ())
-            if (name := day.graph.label(pod))
-        ]
-        whose = "its" if len(pods) == 1 else "their"
-        serving = (
-            f"Assigned to {_join(pods)}, but none of {whose} tickets is linked to it."
-            if pods
-            else "No pod is assigned to it either."
-        )
-        return CellReasons(
-            reason="No tasks linked",
-            reasons=(
-                "No tasks are linked to this workstream, so nothing reports a status for it.",
-                serving,
-            ),
-        )
+        # Never on the map (``TeamGraph.shows``); said plainly to anyone else.
+        return CellReasons(reason="No work in it yet", reasons=(NO_WORK_REASON,))
     if status.rag is Rag.GREEN:
         return CellReasons(
             reason="Tasks on track",

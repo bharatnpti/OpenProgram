@@ -35,7 +35,9 @@ export function AdminTable({
       </div>
       {items.length === 0 ? (
         <div className="px-5 py-10 text-center text-[14px] text-grey-secondary">
-          No records. Create a record or adjust the search filter.
+          {activeEntity === "workstreams"
+            ? "No workstreams. That is fine: pods are enough unless several teams share one piece of scope."
+            : "No records. Create a record or adjust the search filter."}
         </div>
       ) : (
         items.map((node) => (

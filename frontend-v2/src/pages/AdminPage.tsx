@@ -100,7 +100,7 @@ export function AdminPage() {
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <Stat label="Programs" value={programs.data?.length ?? "—"} />
         <Stat label="Projects" value={projects.data?.length ?? "—"} />
-        <Stat label="Workstreams" value={workstreams.data?.length ?? "—"} />
+        <Stat label="Workstreams" value={workstreams.data?.length ?? "—"} detail="optional" />
         <Stat label="Pods" value={pods.data?.length ?? "—"} />
         <Stat
           label="Members"

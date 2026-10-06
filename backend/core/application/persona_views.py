@@ -15,6 +15,7 @@ from core.application.attention import (
 )
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
 from core.application.rollup_service import (
+    NO_WORK_REASON,
     DriftSignals,
     RollupService,
     is_outside_teams,
@@ -30,6 +31,7 @@ from core.domain.graph import (
     GraphTree,
     JsonScalar,
     NodeKind,
+    workstreams_in_use,
 )
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
@@ -665,6 +667,8 @@ class PersonaViewService:
         as_of: date,
     ) -> WorkstreamProgressView:
         tree = await self._workstream_tree(tenant_id, workstream_id, as_of)
+        if tree.root.id not in workstreams_in_use(tree.nodes, tree.edges, as_of):
+            return _empty_workstream_progress(tree.root, as_of)
         statuses = await self._node_statuses_for_tree(tree, as_of)
         root_status = statuses.get((tree.root.kind, tree.root.id))
         nodes_by_id, parents = await self._tenant_contains(tenant_id, as_of)
@@ -732,10 +736,24 @@ class PersonaViewService:
         )
 
     async def program_tree(self, tenant_id: str, program_id: str, as_of: date) -> ProgramTreeView:
+        """The tree under a node with each node's status, empty workstreams left out.
+
+        Workstreams are optional: one holding no task or work item on the day
+        is no part of the program to draw or explain, so it and its edges are
+        dropped -- unless it is the root asked about.
+        """
         tree = await self._graph_repository.get_program_tree(tenant_id, program_id, as_of)
         node_statuses = await self._node_statuses_for_tree(tree, as_of)
+        in_use = workstreams_in_use(tree.nodes, tree.edges, as_of)
+        hidden = {
+            node.id
+            for node in tree.nodes
+            if node.kind is NodeKind.WORKSTREAM
+            and node.id not in in_use
+            and node.id != tree.root.id
+        }
         nodes: list[TreeNodeView] = []
-        for node in _sorted_nodes(tree.nodes):
+        for node in _sorted_nodes(tuple(node for node in tree.nodes if node.id not in hidden)):
             if node.kind is NodeKind.TASK:
                 task_status = await self._task_status(node, as_of)
                 nodes.append(
@@ -776,6 +794,7 @@ class PersonaViewService:
                     tree.edges,
                     key=lambda item: (item.from_node_id, item.to_node_id),
                 )
+                if edge.from_node_id not in hidden and edge.to_node_id not in hidden
             ),
         )
 
@@ -806,6 +825,10 @@ class PersonaViewService:
         (``attention.cell_reasons``), counted against who is in each team on
         the day and who answered the day's check-in: the tenant's nodes and
         edges read once, never the program tree walked.
+
+        A workstream holding no task or work item on the day has no cell
+        (``TeamGraph.shows``): workstreams are optional, so an empty one is
+        never a row of unknown tiles nor an unknown in the counts.
         """
         loaded = await self._heatmap_statuses(tenant_id, as_of, program_root_id)
         if loaded is None:
@@ -814,7 +837,9 @@ class PersonaViewService:
         day = await self._attention_day(
             tenant_id, statuses, as_of, today or datetime.now(tz=UTC).date(), names
         )
-        cells = await self._heatmap_cells(tenant_id, statuses, tree, day)
+        # An empty workstream is optional, not unreported: it gets no cell.
+        shown = [status for status in statuses if day.graph.shows(status.entity_ref)]
+        cells = await self._heatmap_cells(tenant_id, shown, tree, day)
         rows = tuple(dict.fromkeys(cell.row for cell in cells))
         columns = tuple(dict.fromkeys(cell.column for cell in cells))
         return PortfolioHeatmapView(as_of=as_of, rows=rows, columns=columns, cells=cells)
@@ -1437,6 +1462,40 @@ def _aggregate_task_source(tasks: tuple[TaskProgressView, ...]) -> StatusSource:
     if StatusSource.INFERRED in sources:
         return StatusSource.INFERRED
     return StatusSource.CONFIRMED
+
+
+def _empty_workstream_progress(node: GraphNode, as_of: date) -> WorkstreamProgressView:
+    """A workstream with no task or work item on the day: no status, and why.
+
+    Workstreams are optional, so the views leave an empty one out; a direct
+    link still opens it, and says plainly that no work is in it yet rather
+    than "no child task status data" and 0% complete. Neither its target date
+    nor a status set on it colours it: there is no work for them to be about.
+    """
+    return WorkstreamProgressView(
+        workstream_id=node.id,
+        workstream_name=node.name,
+        as_of=as_of,
+        rag=Rag.UNKNOWN,
+        source=StatusSource.UNKNOWN,
+        confidence=None,
+        percent_complete=0.0,
+        total_tasks=0,
+        green_tasks=0,
+        amber_tasks=0,
+        red_tasks=0,
+        unknown_tasks=0,
+        factors=(
+            RollupFactor(
+                description=NO_WORK_REASON,
+                contributes=Rag.UNKNOWN,
+                source_ref=node.ref,
+                kind=FactorKind.AGGREGATE,
+            ),
+        ),
+        source_names={},
+        tasks=(),
+    )
 
 
 def _workstream_task_rag(

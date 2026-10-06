@@ -10,6 +10,7 @@ import type { DeliveryKind } from "../../lib/useDeliverySelection";
 import { cn } from "../../lib/utils";
 import { RollupReasonsCard } from "./RollupReasonsCard";
 import { joinNames, rollupReasons, type ReasonsState } from "./rollupReasons";
+import { rollupCountsLine } from "./workstreams";
 
 /**
  * The program panel: how the program is doing, and why.
@@ -72,7 +73,8 @@ export function ProgramDetail({
     ragOf,
   );
   // A program usually holds projects only, but a workstream or pod linked to it
-  // directly sets its status too, so it can be the reason named.
+  // directly sets its status too, so it can be the reason named. Only the
+  // workstreams in use are listed, so an empty one is never that reason.
   const children = [
     ...programProjects,
     ...(workstreams.data ?? []).filter((item) => program.workstream_ids.includes(item.id)),
@@ -109,10 +111,7 @@ export function ProgramDetail({
         <p className="mt-1.5 text-[15px] text-grey-secondary">program · {program.id}</p>
         <p className="mt-3 text-[16px] text-grey-body">{reason}</p>
         {counts ? (
-          <p className="mt-1.5 text-[14px] text-grey-secondary">
-            {plural(counts.projects, "project")} · {plural(counts.workstreams, "workstream")} ·{" "}
-            {plural(counts.pods, "pod")} roll up into this program.
-          </p>
+          <p className="mt-1.5 text-[14px] text-grey-secondary">{rollupCountsLine(counts)}</p>
         ) : null}
       </Card>
 
@@ -267,10 +266,10 @@ function tally(rags: Rag[]): string {
     .join(" · ");
 }
 
-function plural(count: number, noun: string): string {
-  return `${count} ${count === 1 ? noun : `${noun}s`}`;
-}
-
+/**
+ * What rolls up into the program. `workstream_ids` name only the workstreams
+ * in use, so an empty one is never counted.
+ */
 function rollupCounts(
   item: DirectoryItemResponse,
   projects: DirectoryItemResponse[],

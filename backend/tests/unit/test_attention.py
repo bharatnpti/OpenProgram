@@ -2,8 +2,9 @@
 
 A small portfolio, neutral names: Commerce Program > Shop project > Web Pod
 (Ada, Ben, Cleo) and Payments Pod (Dina, Eli); Fay is in no team. Cart is a
-workstream Web Pod serves with no ticket linked; Payments API holds one
-ticket that reports no health. Statuses are rolled up by the real rollup.
+workstream Web Pod serves with no ticket linked, so it is not in use and off
+the map; Payments API holds one ticket that reports no health. Statuses are
+rolled up by the real rollup.
 """
 
 from __future__ import annotations
@@ -192,14 +193,49 @@ async def test_every_cell_says_why_when_no_one_has_answered_today() -> None:
 async def test_an_unknown_workstream_says_why_it_has_no_status() -> None:
     cells = await _cells(await _unanswered_day())
 
-    assert cells["ws-cart"] == (
-        "No tasks linked",
+    assert cells["ws-pay"] == (
+        "No task reports health",
         (
-            "No tasks are linked to this workstream, so nothing reports a status for it.",
-            "Assigned to Web Pod, but none of its tickets is linked to it.",
+            "Its 1 task is to do, in progress or done; none is blocked, at risk or carries "
+            "a status.",
         ),
     )
-    assert cells["ws-pay"][0] == "No task reports health"
+
+
+async def test_an_empty_workstream_has_no_cell_and_no_tile() -> None:
+    # Cart is served by Web Pod but holds no ticket: workstreams are optional,
+    # so it is set-up waiting for work, not a team that has not reported.
+    store = await _unanswered_day()
+
+    cells = await _cells(store)
+    view = await _service(store).portfolio_attention(
+        "demo", DAY, "prog", None, today=DAY, names=NAMES
+    )
+
+    assert "ws-cart" not in cells
+    assert "ws-pay" in cells
+    assert view.headline.startswith("Amber: no one has answered today's check-in yet")
+    assert all(signal.link.id != "ws-cart" for signal in view.signals)
+
+
+def test_an_empty_workstream_alone_is_nothing_set_up_to_report() -> None:
+    graph = TeamGraph.from_graph(
+        [
+            Program(tenant_id="demo", id="prog", name="Commerce Program"),
+            Workstream(tenant_id="demo", id="ws-cart", name="Cart"),
+        ],
+        [_contains("prog", "ws-cart")],
+        DAY,
+    )
+    empty = _status_of(NodeKind.WORKSTREAM, "ws-cart", Rag.UNKNOWN)
+    day = AttentionDay.build(as_of=DAY, today=DAY, statuses=[empty], graph=graph)
+
+    view = attention_view(day, "prog")
+
+    assert not graph.shows(empty.entity_ref)
+    assert day.statuses == {}
+    assert view.headline == "No status yet: nothing in the program is set up to report."
+    assert cell_reasons(day, empty).reason == "No work in it yet"
 
 
 async def test_a_past_day_is_never_called_today() -> None:
