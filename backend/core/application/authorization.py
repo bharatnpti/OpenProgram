@@ -27,6 +27,12 @@ class Capability(StrEnum):
     #: Confirm, add and track gate items and questions. Signing an item off is
     #: further limited to the roles its gate names for the item's kind.
     EDIT_GATES = "edit_gates"
+    #: Read the day reports: which there are, today's report, and past sends.
+    READ_DAY_REPORTS = "read_day_reports"
+    #: Send a day report now; a scrum master only for a project one of their pods works on.
+    SEND_DAY_REPORTS = "send_day_reports"
+    #: Create, change, switch and remove day reports, with the same per-project limit.
+    SET_UP_DAY_REPORTS = "set_up_day_reports"
 
 
 class SensitiveField(StrEnum):
@@ -50,15 +56,18 @@ class AuthorizationPolicy:
                     # own finalized check-in). Admin is short-circuited above.
                     Capability.WRITE_ISSUE_TRACKER,
                     Capability.EDIT_GATES,
+                    Capability.READ_DAY_REPORTS,
                 }
             ),
             Role.PO: frozenset(
                 {
                     Capability.READ_TEAM_AGGREGATE,
                     Capability.READ_PROJECT_PROGRESS,
-                    # The product owner owns the date the project promises.
+                    # The product owner owns the date the project promises, and
+                    # writes the note the day's report opens with under it.
                     Capability.SET_PROJECT_DATES,
                     Capability.EDIT_GATES,
+                    Capability.READ_DAY_REPORTS,
                 }
             ),
             Role.SM: frozenset(
@@ -69,6 +78,11 @@ class AuthorizationPolicy:
                     # The scrum master owns the date of the pod's part.
                     Capability.SET_POD_DATES,
                     Capability.EDIT_GATES,
+                    # The scrum master runs the day, so sends and sets up the
+                    # report of a project their pods work on.
+                    Capability.READ_DAY_REPORTS,
+                    Capability.SEND_DAY_REPORTS,
+                    Capability.SET_UP_DAY_REPORTS,
                 }
             ),
             Role.MGR: frozenset(
@@ -86,6 +100,9 @@ class AuthorizationPolicy:
                     Capability.SET_PROJECT_DATES,
                     Capability.SET_POD_DATES,
                     Capability.EDIT_GATES,
+                    Capability.READ_DAY_REPORTS,
+                    Capability.SEND_DAY_REPORTS,
+                    Capability.SET_UP_DAY_REPORTS,
                 }
             ),
             Role.EXEC: frozenset(
@@ -98,6 +115,9 @@ class AuthorizationPolicy:
                     # gives an executive. Pod check-ins and blockers are
                     # per-person, so they stay with the scrum master and manager.
                     Capability.READ_PROJECT_PROGRESS,
+                    # A day report says what its readers are sent: aggregate
+                    # state and asks, never anyone's reply.
+                    Capability.READ_DAY_REPORTS,
                 }
             ),
         }

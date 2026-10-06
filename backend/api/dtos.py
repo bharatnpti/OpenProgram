@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime, time
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -107,6 +107,7 @@ from core.domain.reports import (
     DayReportDefinition,
     DayReportNote,
     DestinationKind,
+    ReportDestination,
     ReportRun,
     ReportSection,
     RunStatus,
@@ -3071,7 +3072,15 @@ class DeliveryOutcomeResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     kind: DestinationKind
-    target: str
+    target: str = Field(
+        description="The exact destination; empty for a reader who may not set the report up."
+    )
+    label: str = Field(
+        description=(
+            "Who or where, as the reader may see it: a person's name, else the exact "
+            "destination for whoever sets the report up, else what kind of place it is."
+        )
+    )
     ok: bool
     detail: str
 
@@ -3098,8 +3107,9 @@ class ReportRunResponse(BaseModel):
 
     @classmethod
     def from_domain(
-        cls, run: ReportRun, names: Mapping[str, str] | None = None
+        cls, run: ReportRun, names: Mapping[str, str] | None = None, *, exact: bool = True
     ) -> ReportRunResponse:
+        known = names or {}
         return cls(
             run_id=run.run_id,
             report_id=run.report_id,
@@ -3112,59 +3122,205 @@ class ReportRunResponse(BaseModel):
             outcomes=[
                 DeliveryOutcomeResponse(
                     kind=outcome.destination.kind,
-                    target=outcome.destination.target,
+                    target=outcome.destination.target if exact else "",
+                    label=_destination_label(outcome.destination, known, exact=exact),
                     ok=outcome.ok,
                     detail=outcome.detail,
                 )
                 for outcome in run.outcomes
             ],
             actor=run.actor,
-            actor_name=(names or {}).get(run.actor) if run.actor else None,
+            actor_name=known.get(run.actor) if run.actor else None,
         )
 
 
+class DayReportNoteRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    text: str = Field(default="", max_length=1000, description="Empty removes the note.")
+
+
+class DayReportNoteResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    report_id: str
+    report_date: date
+    text: str
+    author: str
+    author_name: str | None = None
+    updated_at: datetime
+
+    @classmethod
+    def from_domain(
+        cls, note: DayReportNote, author_name: str | None = None
+    ) -> DayReportNoteResponse:
+        return cls(
+            report_id=note.report_id,
+            report_date=note.report_date,
+            text=note.text,
+            author=note.author,
+            author_name=author_name,
+            updated_at=note.updated_at,
+        )
+
+
+class ReportAudienceResponse(BaseModel):
+    """How many places of one kind a report goes to, and the people among them by name."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: DestinationKind
+    count: int
+    names: list[str] = Field(
+        description="For people, the names of those who are members; anyone else is only counted."
+    )
+
+
 class DayReportResponse(BaseModel):
+    """A day report as the caller may see it, with what the caller may do with it."""
+
     model_config = ConfigDict(frozen=True)
 
     report_id: str
     name: str
     project_id: str
+    project_name: str | None = Field(description="Null when the project no longer exists.")
     enabled: bool
     schedule: ReportScheduleDto
-    destinations: list[ReportDestinationDto]
+    destinations: list[ReportDestinationDto] = Field(
+        description="Exactly where it goes; empty for a reader who may not set the report up."
+    )
+    destination_count: int
+    audience: list[ReportAudienceResponse]
+    audience_summary: str = Field(
+        description='Where it goes in one line, such as "3 people by direct message".'
+    )
     updated_at: datetime
     updated_by: str
     release_id: str | None = None
+    release_name: str | None = None
     last_run: ReportRunResponse | None = None
+    note: DayReportNoteResponse | None = Field(
+        default=None, description="The note today's report opens with, if anyone wrote one."
+    )
+    can_send: bool = Field(description="The caller may send it now.")
+    can_edit: bool = Field(description="The caller may change, switch or remove it.")
+    can_write_note: bool = Field(
+        description="The caller may write the note today's report opens with."
+    )
 
     @classmethod
     def from_domain(
         cls,
         definition: DayReportDefinition,
+        *,
+        names: Mapping[str, str],
+        can_send: bool,
+        can_edit: bool,
+        can_write_note: bool,
         last_run: ReportRun | None = None,
-        names: Mapping[str, str] | None = None,
+        note: DayReportNote | None = None,
+        project_name: str | None = None,
+        release_name: str | None = None,
     ) -> DayReportResponse:
+        audience = _audience(definition.destinations, names)
         return cls(
             report_id=definition.report_id,
             name=definition.name,
             project_id=definition.project_id,
+            project_name=project_name,
             enabled=definition.enabled,
             schedule=ReportScheduleDto(
                 local_time=definition.schedule.local_time,
                 timezone=definition.schedule.timezone,
                 weekdays=list(definition.schedule.weekdays),
             ),
-            destinations=[
-                ReportDestinationDto(kind=item.kind, target=item.target)
-                for item in definition.destinations
-            ],
+            destinations=(
+                [
+                    ReportDestinationDto(kind=item.kind, target=item.target)
+                    for item in definition.destinations
+                ]
+                if can_edit
+                else []
+            ),
+            destination_count=len(definition.destinations),
+            audience=audience,
+            audience_summary=_audience_summary(audience),
             updated_at=definition.updated_at,
             updated_by=definition.updated_by,
             release_id=definition.release_id,
+            release_name=release_name,
             last_run=(
-                ReportRunResponse.from_domain(last_run, names) if last_run is not None else None
+                ReportRunResponse.from_domain(last_run, names, exact=can_edit)
+                if last_run is not None
+                else None
             ),
+            note=(
+                DayReportNoteResponse.from_domain(note, names.get(note.author))
+                if note is not None and note.text
+                else None
+            ),
+            can_send=can_send,
+            can_edit=can_edit,
+            can_write_note=can_write_note,
         )
+
+
+_AUDIENCE_ORDER = (
+    DestinationKind.PERSON,
+    DestinationKind.CHAT_CHANNEL,
+    DestinationKind.EMAIL,
+    DestinationKind.TEAMS,
+)
+
+
+def _audience(
+    destinations: Sequence[ReportDestination], names: Mapping[str, str]
+) -> list[ReportAudienceResponse]:
+    return [
+        ReportAudienceResponse(
+            kind=kind,
+            count=len(targets),
+            names=[name for target in targets if (name := names.get(target))]
+            if kind is DestinationKind.PERSON
+            else [],
+        )
+        for kind in _AUDIENCE_ORDER
+        if (targets := [item.target for item in destinations if item.kind is kind])
+    ]
+
+
+def _audience_summary(audience: Sequence[ReportAudienceResponse]) -> str:
+    words = {
+        DestinationKind.PERSON: ("person by direct message", "people by direct message"),
+        DestinationKind.CHAT_CHANNEL: ("chat channel", "chat channels"),
+        DestinationKind.EMAIL: ("email address", "email addresses"),
+    }
+    parts = [
+        "the Teams channel"
+        if item.kind is DestinationKind.TEAMS
+        else f"{item.count} {words[item.kind][0 if item.count == 1 else 1]}"
+        for item in audience
+    ]
+    return ", ".join(parts) or "Nowhere yet"
+
+
+def _destination_label(
+    destination: ReportDestination, names: Mapping[str, str], *, exact: bool
+) -> str:
+    """A person by name; else the exact place for whoever sets the report up; else its kind."""
+    if destination.kind is DestinationKind.PERSON:
+        name = names.get(destination.target)
+        if name:
+            return name
+        return destination.target if exact else "A team member"
+    if destination.kind is DestinationKind.TEAMS:
+        return "The Teams channel"
+    if exact:
+        return destination.target
+    return (
+        "A chat channel" if destination.kind is DestinationKind.CHAT_CHANNEL else "An email address"
+    )
 
 
 class ReportGroupResponse(BaseModel):
@@ -3211,50 +3367,6 @@ class ReportSectionResponse(BaseModel):
         )
 
 
-class DayReportNoteRequest(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    text: str = Field(default="", max_length=1000, description="Empty removes the note.")
-
-
-class DayReportNoteResponse(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    report_id: str
-    report_date: date
-    text: str
-    author: str
-    author_name: str | None = None
-    updated_at: datetime
-
-    @classmethod
-    def from_domain(
-        cls, note: DayReportNote, author_name: str | None = None
-    ) -> DayReportNoteResponse:
-        return cls(
-            report_id=note.report_id,
-            report_date=note.report_date,
-            text=note.text,
-            author=note.author,
-            author_name=author_name,
-            updated_at=note.updated_at,
-        )
-
-
-class ProjectDayReportResponse(BaseModel):
-    """A project's day report as its product owner or manager sees it: when, and today's note."""
-
-    model_config = ConfigDict(frozen=True)
-
-    report_id: str
-    name: str
-    enabled: bool
-    release_id: str | None
-    schedule: ReportScheduleDto
-    destination_count: int
-    note: DayReportNoteResponse | None
-
-
 class ReportPreviewResponse(BaseModel):
     """What the report would say if it were sent now. Nothing is sent or stored."""
 
@@ -3292,6 +3404,39 @@ class ReportDestinationOptionResponse(BaseModel):
     label: str
     available: bool
     note: str
+
+
+class ReportSetupReleaseResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    release_id: str
+    name: str
+
+
+class ReportSetupProjectResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    name: str
+    releases: list[ReportSetupReleaseResponse]
+
+
+class ReportSetupPersonResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    name: str
+
+
+class DayReportSetupResponse(BaseModel):
+    """What setting a report up can pick from: the projects the caller may report on,
+    the people it can go to, and the kinds of destination with whether each can be used."""
+
+    model_config = ConfigDict(frozen=True)
+
+    projects: list[ReportSetupProjectResponse]
+    people: list[ReportSetupPersonResponse]
+    destinations: list[ReportDestinationOptionResponse]
 
 
 # --- Delivery dates, releases and forecasts ------------------------------------------

@@ -110,21 +110,5 @@ export function scheduleLabel(time: string, timezone: string, weekdays: number[]
  */
 export function runStartedBy(run: ReportRunResponse): string {
   if (run.trigger !== "manual") return "on schedule";
-  return `sent by ${run.actor_name ?? run.actor ?? "an admin"}`;
-}
-
-export function destinationsSummary(destinations: ReportDestinationDto[]): string {
-  const counts = new Map<DestinationKind, number>();
-  destinations.forEach((item) => counts.set(item.kind, (counts.get(item.kind) ?? 0) + 1));
-  const parts: string[] = [];
-  const add = (kind: DestinationKind, one: string, many: string) => {
-    const count = counts.get(kind) ?? 0;
-    if (count === 1) parts.push(`1 ${one}`);
-    else if (count > 1) parts.push(`${count} ${many}`);
-  };
-  add("email", "email address", "email addresses");
-  add("chat_channel", "chat channel", "chat channels");
-  add("person", "person", "people");
-  if (counts.has("teams")) parts.push("the Teams channel");
-  return parts.join(", ") || "Nowhere yet";
+  return `sent by ${run.actor_name ?? run.actor ?? "a team member"}`;
 }

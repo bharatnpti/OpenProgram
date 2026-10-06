@@ -29,11 +29,11 @@ The application replaces manual status chasing and meeting-driven reporting with
 | Persona | Business Need | Application Support |
 |---|---|---|
 | Developer | Know current focus, blockers, tasks, and check-in expectations. | Today with the check-in to confirm or correct, focus list, tasks, requests waiting on them, and where their status rolls up; proactive chat check-ins; own check-in schedule (days and time zone). |
-| Scrum Master | Track team check-in completeness and active blockers. | Today with pod selector, check-in board, and blocker aging; Delivery pod panels with tasks and rollup reasons; Signals; Coordination. |
+| Scrum Master | Track team check-in completeness and active blockers. | Today with pod selector, check-in board, and blocker aging; Delivery pod panels with tasks and rollup reasons; Signals; Coordination; Reports, sending and setting up the day reports of the projects their pods work on. |
 | Product Owner | Track project progress, task health, and delivery risk indicators. | Today with project selector, progress ring, task breakdown, and a needs-your-attention list; Delivery project and workstream panels; Signals; Coordination. |
-| Manager | Review team/program health across multiple delivery layers. | Portfolio Today (verdict, momentum, executive brief, heat, top signals); Delivery at every level, including pod check-ins, blockers, and tasks; Signals; Coordination and Ask the graph. |
+| Manager | Review team/program health across multiple delivery layers. | Portfolio Today (verdict, momentum, executive brief, heat, top signals); Delivery at every level, including pod check-ins, blockers, and tasks; Signals; Coordination and Ask the graph; Reports, sending and setting up every day report. |
 | Executive | View portfolio health at a glance without raw developer-message access. | The same portfolio Today as the manager; Delivery program, project, and workstream panels, but not pod check-ins or blockers; Signals; Coordination and Ask the graph. |
-| Admin | Configure hierarchy, members, links, assignments, check-ins, the systems OpenProgram connects to, delivery stages, day reports, and workflow dispatch. | Admin screen (Entities, Links, Directory, Check-ins, Integrations, Data sources, Delivery stages, Day reports, Branding), config APIs, directory sync/import, workflow dispatch and ops APIs. |
+| Admin | Configure hierarchy, members, links, assignments, check-ins, the systems OpenProgram connects to, delivery stages, and workflow dispatch. | Admin screen (Entities, Links, Directory, Check-ins, Integrations, Data sources, Delivery stages, Gates, Escalation, Branding), config APIs, directory sync/import, workflow dispatch and ops APIs; Reports like a manager. |
 
 ## 4. Current Implemented Feature Set
 
@@ -76,7 +76,7 @@ Functional requirements:
 - Admins shall set a pod's escalation contacts (scrum master and manager) by picking members, the pod's own members listed first, instead of typing chat IDs.
 - Admins shall set each member's write-back consent, and the admin screen shall say whether write-back is switched on for the tenant (see 4.24).
 - Admins shall upload the tenant's logo and remove it again. A logo shall be a PNG, JPEG or WebP image of at most 256 KB, judged by the file's own bytes rather than its declared type; SVG shall be refused because it can carry script. A tenant shall have at most one logo, and the console shall record who replaced it last. Every signed-in person of the tenant may read the logo; only an admin may change it.
-- The admin screen shall group this work into Entities, Links, Directory, Check-ins, Integrations, Data sources, Delivery stages, Day reports, and Branding tabs.
+- The admin screen shall group this work into Entities, Links, Directory, Check-ins, Integrations, Data sources, Delivery stages, Gates, Escalation, and Branding tabs. Day reports are not admin work; they live on the Reports page (see 4.27).
 - The system shall reject invalid configuration mutations such as duplicate links, self-links, wrong node kinds, missing references, and conflicting IDs.
 
 ### 4.3 Check-In Preference Management
@@ -492,8 +492,10 @@ Functional requirements:
 
 Functional requirements:
 
-- Admins shall define day reports on the Day reports tab: one project, or one release of it, a local send time, timezone and weekdays, and where it goes: chat channels, people by direct message, email addresses or mailing lists, and the Teams channel. Destinations shall use the connections on the Integrations tab; one that is not set up shall be offered as unavailable, with the reason.
-- The project's product owner or a manager may write a note for the day's report on the project's Delivery page; it opens that day's report only, with the writer's name.
+- Day reports shall live on the Reports page of the main navigation, open to every role. Everyone shall see the list of reports (project, schedule, on or off, last send), today's report built live from the project's state and laid out to read (headline, progress, then each section, the asks grouped by person and the open questions as a table), today's note, and past sends with how each destination fared and who sent it. The page shall always show today, whatever past day is being viewed elsewhere; nothing is sent from it unless someone presses Send now.
+- A scrum master, a manager or an admin shall set reports up and send them now: create them, change their schedule and destinations, switch them on or off, and remove them. A scrum master may do so only for a project one of their pods works on (they are the pod's scrum master contact or one of its members), by the same rule as a pod's delivery date; a manager or an admin for any project. Each report shall say what the reader may do with it, so the buttons differ by project. Send now shall first say how many destinations will receive it, and where.
+- A report shall cover one project, or one release of it, with a local send time, timezone and weekdays, and go to chat channels, people by direct message, email addresses or mailing lists, and the Teams channel. Destinations shall use the connections on the admin Integrations tab; one that is not set up shall be offered as unavailable, with the reason. A reader who may not set a report up shall see where it goes as counts and people's names ("3 people by direct message"), never the addresses or ids; whoever sets it up sees the exact destinations.
+- The project's product owner, a manager or an admin may write a note for the day's report, on the Reports page or the project's Delivery page (which links to the report); it opens that day's report only, with the writer's name.
 - A report shall have five sections:
   - In short: the day's note, the delivery date with what the forecast and the team's dates say of it, and the asks needed most.
   - Where we stand: progress against the previous snapshot, requirements by stage with their change, what changed and why (requirements that moved, scope added or removed, the delivery date moved, with who and why), and how requirements stand against each gate.
@@ -502,7 +504,7 @@ Functional requirements:
   - Open questions: the questions kept from Jira comments with the ticket, what was asked, of whom, when, and whether they answered.
 - An ask's owner shall be: for a blocker waiting on another team's issue, that issue's assignee or that team's scrum master; for any other blocker, its team's scrum master or the person who reported it; for a person waiting on the project's issue, its assignee; for a request, the person asked; for a signal, the issue's owner; for a gate item, the project's decision owner when the product owner or a manager signs that kind off, else the issue's assignee; for a question, the person asked. A requirement waiting at a gate shall ask for its sign-offs, its suggestions to keep, and any kind still missing; one already past it only for sign-offs and failures. Reports describe work, never rank or score people, and never carry the text of anyone's reply.
 - A report on a release shall count only the release's issues and what is on them.
-- A scheduled report shall go out once per local day, from its send time for three hours; its day shall be claimed before anything is sent, so a repeated or retried tick never sends a second copy. Admins may preview a report, send it now, and see each send with how every destination fared, as fixed sentences.
+- A scheduled report shall go out once per local day, from its send time for three hours; its day shall be claimed before anything is sent, so a repeated or retried tick never sends a second copy. A send now is kept as a manual send with who sent it, and does not use up that day's scheduled send. How every destination fared shall be said in fixed sentences.
 
 ### 4.28 Delivery Dates and Forecast
 
