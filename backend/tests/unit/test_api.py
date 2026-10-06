@@ -516,6 +516,40 @@ def test_admin_add_from_directory_wrong_kind_conflict_returns_409(
     assert "not a developer" in add_response.json()["detail"]
 
 
+def test_create_work_item_duplicate_id_returns_409(settings: Settings) -> None:
+    app = create_app(settings=settings)
+    payload = {
+        "id": "wi-1",
+        "name": "Wire payment intent API",
+        "item_type": "feature",
+        "state": "in_progress",
+    }
+    with TestClient(app, raise_server_exceptions=False) as client:
+        first = client.post("/config/work-items", json=payload)
+        duplicate = client.post("/config/work-items", json=payload)
+        duplicate_from_branch = client.post(
+            "/config/work-items/from-branch",
+            json={"repo": "acme/api", "branch": "feat/payments"},
+        )
+        second_from_branch = client.post(
+            "/config/work-items/from-branch",
+            json={"repo": "acme/api", "branch": "feat/payments"},
+        )
+        unknown_workstream = client.post(
+            "/config/work-items",
+            json={**payload, "id": "wi-2", "workstream_id": "ws-missing"},
+        )
+
+    assert first.status_code == 201
+    assert duplicate.status_code == 409
+    assert "already exists" in duplicate.json()["detail"]
+    assert duplicate_from_branch.status_code == 201
+    assert second_from_branch.status_code == 409
+    # The workstream link runs after the node is created, so it needs the same guard.
+    assert unknown_workstream.status_code == 404
+    assert "ws-missing" in unknown_workstream.json()["detail"]
+
+
 def test_chat_webhook_route_processes_correlated_reply(settings: Settings) -> None:
     app = create_app(
         settings=settings.model_copy(

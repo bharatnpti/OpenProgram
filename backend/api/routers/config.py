@@ -360,23 +360,26 @@ async def create_config_work_item(
     service: Annotated[ConfigService, Depends(get_config_service)],
 ) -> ConfigNodeResponse:
     _ensure(principal, Capability.MANAGE_CONFIG)
-    node = await service.create_work_item(
-        principal.tenant_id,
-        request.id,
-        request.name,
-        _work_item_metadata(
-            request.metadata,
-            state=request.state,
-            item_type=request.item_type,
-            repo=request.repo,
-            branch=request.branch,
-            pr_id=request.pr_id,
-        ),
-    )
-    if request.workstream_id is not None:
-        await service.link_work_item_to_workstream(
-            principal.tenant_id, request.workstream_id, request.id
+    try:
+        node = await service.create_work_item(
+            principal.tenant_id,
+            request.id,
+            request.name,
+            _work_item_metadata(
+                request.metadata,
+                state=request.state,
+                item_type=request.item_type,
+                repo=request.repo,
+                branch=request.branch,
+                pr_id=request.pr_id,
+            ),
         )
+        if request.workstream_id is not None:
+            await service.link_work_item_to_workstream(
+                principal.tenant_id, request.workstream_id, request.id
+            )
+    except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
     return ConfigNodeResponse.from_domain(node)
 
 
@@ -391,22 +394,25 @@ async def create_config_work_item_from_branch(
     service: Annotated[ConfigService, Depends(get_config_service)],
 ) -> ConfigNodeResponse:
     _ensure(principal, Capability.MANAGE_CONFIG)
-    node = await service.create_work_item_from_branch(
-        principal.tenant_id,
-        request.repo,
-        request.branch,
-        request.name,
-        _work_item_metadata(
-            request.metadata,
-            item_type=request.item_type,
-            repo=request.repo,
-            branch=request.branch,
-        ),
-    )
-    if request.workstream_id is not None:
-        await service.link_work_item_to_workstream(
-            principal.tenant_id, request.workstream_id, node.id
+    try:
+        node = await service.create_work_item_from_branch(
+            principal.tenant_id,
+            request.repo,
+            request.branch,
+            request.name,
+            _work_item_metadata(
+                request.metadata,
+                item_type=request.item_type,
+                repo=request.repo,
+                branch=request.branch,
+            ),
         )
+        if request.workstream_id is not None:
+            await service.link_work_item_to_workstream(
+                principal.tenant_id, request.workstream_id, node.id
+            )
+    except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
     return ConfigNodeResponse.from_domain(node)
 
 
@@ -421,22 +427,25 @@ async def create_config_work_item_from_pr(
     service: Annotated[ConfigService, Depends(get_config_service)],
 ) -> ConfigNodeResponse:
     _ensure(principal, Capability.MANAGE_CONFIG)
-    node = await service.create_work_item_from_pr(
-        principal.tenant_id,
-        request.repo,
-        request.pr_id,
-        request.title,
-        _work_item_metadata(
-            request.metadata,
-            item_type=request.item_type,
-            repo=request.repo,
-            pr_id=request.pr_id,
-        ),
-    )
-    if request.workstream_id is not None:
-        await service.link_work_item_to_workstream(
-            principal.tenant_id, request.workstream_id, node.id
+    try:
+        node = await service.create_work_item_from_pr(
+            principal.tenant_id,
+            request.repo,
+            request.pr_id,
+            request.title,
+            _work_item_metadata(
+                request.metadata,
+                item_type=request.item_type,
+                repo=request.repo,
+                pr_id=request.pr_id,
+            ),
         )
+        if request.workstream_id is not None:
+            await service.link_work_item_to_workstream(
+                principal.tenant_id, request.workstream_id, node.id
+            )
+    except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
+        raise _http_error(exc) from exc
     return ConfigNodeResponse.from_domain(node)
 
 
@@ -551,7 +560,10 @@ async def search_config_directory_users(
     offset: int = Query(default=0, ge=0),
 ) -> DirectorySearchResponse:
     _ensure(principal, Capability.MANAGE_CONFIG)
-    users, total = await service.search_directory(principal.tenant_id, query, limit, offset)
+    try:
+        users, total = await service.search_directory(principal.tenant_id, query, limit, offset)
+    except ConfigValidationError as exc:
+        raise _http_error(exc) from exc
     return DirectorySearchResponse(
         items=[DirectoryUserResponse.from_domain(user) for user in users],
         total=total,
