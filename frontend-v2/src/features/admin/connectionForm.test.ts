@@ -7,6 +7,7 @@ import {
   formFromConnection,
   missingRequired,
   savePayload,
+  savedBy,
   testPayload,
   visibleFields,
   withValidOptions,
@@ -31,6 +32,7 @@ const JIRA: ConnectionResponse = {
   environment_configured: false,
   updated_at: null,
   updated_by: null,
+  updated_by_name: null,
   last_test: null,
   fields: [
     {
@@ -159,6 +161,12 @@ test("a test sends typed secrets only, never a clear", () => {
   const form = { ...formFromConnection(JIRA), clearedSecrets: ["personal_access_token"] };
 
   assert.deepEqual(testPayload(JIRA, form).secrets, {});
+});
+
+test("a card names who saved it, or shows the id when it is no member's", () => {
+  assert.equal(savedBy({ ...JIRA, updated_by: "U0C1", updated_by_name: "Asha Rao" }), "Asha Rao");
+  assert.equal(savedBy({ ...JIRA, updated_by: "U0C1" }), "U0C1");
+  assert.equal(savedBy(JIRA), "an admin");
 });
 
 test("a card says whether the tenant, the server, or nobody set it up", () => {

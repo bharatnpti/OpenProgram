@@ -2851,6 +2851,11 @@ export interface components {
       updated_at: string | null;
       /** Updated By */
       updated_by: string | null;
+      /**
+       * Updated By Name
+       * @description The display name of the member who last saved it, or null when updated_by is no member's id.
+       */
+      updated_by_name: string | null;
       last_test: components["schemas"]["ConnectionTestOutcomeDto"] | null;
     };
     /** ConnectionTestOutcomeDto */
