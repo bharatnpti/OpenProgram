@@ -4,6 +4,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
+import structlog
+
 from core.application.sync_recording import recording_sync_failure, succeeded_cursor
 from core.domain.workflows import DirectorySyncResult
 from core.ports.directory import DirectoryProvider, DirectoryUserRepository
@@ -11,6 +13,8 @@ from core.ports.repositories import SyncCursorRepository
 
 DIRECTORY_SYNC_CONNECTOR = "directory"
 DIRECTORY_SYNC_SCOPE = "workspace"
+
+_logger = structlog.get_logger(__name__)
 
 
 def _utc_now() -> datetime:
@@ -31,9 +35,23 @@ class DirectorySyncService:
         if self.cursor_repository is None:
             return await self._sync(tenant_id)
         attempted_at = self.clock()
-        cursor = await self.cursor_repository.get_cursor(
-            tenant_id, DIRECTORY_SYNC_CONNECTOR, DIRECTORY_SYNC_SCOPE
-        )
+        try:
+            cursor = await self.cursor_repository.get_cursor(
+                tenant_id, DIRECTORY_SYNC_CONNECTOR, DIRECTORY_SYNC_SCOPE
+            )
+        except Exception as error:
+            # The directory never resumes from this cursor: it only records how
+            # runs ended. Failing to read it must not hide the run's own outcome
+            # (a missing token is still reported as one), so the run goes ahead
+            # unrecorded -- without the cursor a result could not be written
+            # without overwriting what it holds.
+            _logger.warning(
+                "directory_sync_cursor_unreadable",
+                tenant_id=tenant_id,
+                # The type only: a driver error message can carry a connection string.
+                error_type=type(error).__name__,
+            )
+            return await self._sync(tenant_id)
         async with recording_sync_failure(
             self.cursor_repository,
             tenant_id=tenant_id,

@@ -8,6 +8,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from psycopg import OperationalError
+from psycopg_pool import PoolClosed, PoolTimeout
 
 from api.main import create_app
 from config.settings import Settings
@@ -19,6 +21,7 @@ from core.application.sync_status_service import (
     cron_interval,
     stale_after_for_cron,
 )
+from core.domain.connections import Connection
 from core.domain.directory import DirectoryUser
 from core.domain.errors import ProviderConfigurationError, ProviderUnavailable, SecretNotFound
 from core.domain.graph import EdgeKind, EntityRef, FactEvent, GraphEdge, NodeKind, Pod, Project
@@ -283,6 +286,96 @@ async def test_directory_sync_without_cursor_repository_still_syncs() -> None:
     result = await service.sync(TENANT)
 
     assert result.synced_count == 1
+
+
+# Each way a read fails while the database cannot be reached: the pool's first
+# open times out, a pool that timed out is reused, the server refuses, or a
+# caller's deadline runs out.
+_UNREACHABLE_DATABASE_ERRORS = [
+    PoolTimeout("pool initialization incomplete after 30.0 sec"),
+    PoolClosed("pool has already been opened/closed and cannot be reused"),
+    OperationalError("connection to server at 127.0.0.1, port 5432 failed: Connection refused"),
+    TimeoutError(),
+]
+
+
+@dataclass
+class _UnreachableStore:
+    """The sync cursors and tenant connections, in a database that cannot be reached."""
+
+    error: Exception
+    calls: list[str] = field(default_factory=list)
+
+    async def get_cursor(self, tenant_id: str, connector: str, scope: str) -> SyncCursor:
+        self.calls.append("get_cursor")
+        raise self.error
+
+    async def record_cursor(
+        self, tenant_id: str, connector: str, scope: str, cursor: SyncCursor
+    ) -> None:
+        self.calls.append("record_cursor")
+        raise self.error
+
+    async def get(self, tenant_id: str, connector: str) -> Connection | None:
+        self.calls.append("get")
+        raise self.error
+
+
+@pytest.mark.parametrize(
+    "error", _UNREACHABLE_DATABASE_ERRORS, ids=lambda error: type(error).__name__
+)
+async def test_directory_sync_reports_its_own_failure_when_its_cursor_is_unreadable(
+    error: Exception,
+) -> None:
+    store = _UnreachableStore(error)
+    service = DirectorySyncService(
+        provider=_FailingDirectoryProvider(),
+        repository=FakeDirectoryUserRepository(),
+        cursor_repository=store,
+    )
+
+    with pytest.raises(ProviderConfigurationError):
+        await service.sync(TENANT)
+
+    # Nothing is written over a cursor that could not be read.
+    assert store.calls == ["get_cursor"]
+
+
+async def test_directory_sync_still_syncs_when_its_cursor_is_unreadable() -> None:
+    store = _UnreachableStore(PoolTimeout("pool initialization incomplete after 30.0 sec"))
+    users = [DirectoryUser(tenant_id=TENANT, external_id="U1", display_name="Asha")]
+    service = DirectorySyncService(
+        provider=_StaticDirectoryProvider(users),
+        repository=FakeDirectoryUserRepository(),
+        cursor_repository=store,
+    )
+
+    result = await service.sync(TENANT)
+
+    assert result.synced_count == 1
+    assert store.calls == ["get_cursor"]
+
+
+@pytest.mark.parametrize(
+    "error", _UNREACHABLE_DATABASE_ERRORS, ids=lambda error: type(error).__name__
+)
+def test_directory_sync_route_reports_a_missing_slack_token_while_the_database_is_down(
+    settings: Settings, error: Exception
+) -> None:
+    configured = settings.model_copy(update={"runtime_mode": "container", "slack_bot_token": None})
+    registry = ServiceRegistry(configured)
+    store = _UnreachableStore(error)
+    registry._postgres_sync_cursor_repository = store  # type: ignore[assignment]
+    registry._connection_repository = store  # type: ignore[assignment]
+    app = create_app(settings=configured, registry=registry)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post("/config/directory/sync")
+
+    assert response.status_code == 424
+    assert "slack_bot_token" in response.json()["detail"]
+    # The stored Slack connection was tried, then the server's settings used.
+    assert store.calls == ["get_cursor", "get"]
 
 
 def test_classify_sync_error_uses_closed_categories() -> None:
