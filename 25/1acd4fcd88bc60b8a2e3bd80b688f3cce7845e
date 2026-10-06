@@ -1,0 +1,24 @@
+frontend-v3/scripts/mock-api.mjs
+  s_a5c95ae649948d::t_b1c34bf5ddc3bf 844
+  s_a5c95ae649948d::t_645774d6e0ee52 20
+frontend-v3/scripts/mock/today.mjs
+  s_a5c95ae649948d::t_cc49a2ed6978c6 1-22,28-273,281-346,352-354,356-357,359-360,362-367,369-376,378-382,384-385,389-390,393-394,397-398,401-402,404-405,408-410,412-422
+  s_a5c95ae649948d::t_a1c0fa0d2edec3 274-280
+  s_a5c95ae649948d::t_b6e59c8cc09f7f 23-27,347-351,355,358,361,368,377,383,386-388,391-392,395-396,399-400,403,406-407,411
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "251acd4fcd88bc60b8a2e3bd80b688f3cce7845e",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
