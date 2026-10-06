@@ -281,9 +281,7 @@ def history_forecast(
             unit=unit,
             sample_days=len(samples),
             completed_in_sample=completed,
-            reason=(
-                f"Only {len(samples)} working days of history; a forecast needs {MIN_SAMPLE_DAYS}."
-            ),
+            reason=_short_history_reason(len(samples)),
         )
     if completed <= 0:
         return HistoryForecast(
@@ -360,6 +358,16 @@ def validated_note(note: str) -> str:
     if len(clean) > MAX_NOTE_LENGTH:
         raise CommitmentError(f"A note is at most {MAX_NOTE_LENGTH} characters.")
     return clean
+
+
+def _short_history_reason(days: int) -> str:
+    """Why history cannot forecast yet, worded for no days and for one."""
+    if days == 0:
+        return (
+            f"No history yet: a forecast needs {MIN_SAMPLE_DAYS} working days of daily snapshots."
+        )
+    unit = "working day" if days == 1 else "working days"
+    return f"Only {days} {unit} of history; a forecast needs {MIN_SAMPLE_DAYS}."
 
 
 def _previous_working_day(day: date) -> date:
