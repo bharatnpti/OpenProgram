@@ -211,7 +211,7 @@ test("a moved address still stops a test while any stored secret would go there"
 
 test("a card names who saved it, or shows the id when it is no member's", () => {
   assert.equal(savedBy({ ...JIRA, updated_by: "U1001", updated_by_name: "Asha Rao" }), "Asha Rao");
-  assert.equal(savedBy({ ...JIRA, updated_by: "U0C1" }), "U0C1");
+  assert.equal(savedBy({ ...JIRA, updated_by: "U0123ABCD" }), "U0123ABCD");
   assert.equal(savedBy(JIRA), "an admin");
 });
 

@@ -66,7 +66,7 @@ export function personOption(person: Person): string {
 /**
  * What the account menu says about a sign-in with no identity provider: the
  * console acts as whoever is picked. It is the sign-in of a developer's
- * machine, not a "demo": a real tenant (qa2) runs under it too, and said
+ * machine, not a "demo": a real tenant runs under it too, and said
  * "local demo" under a real person's name.
  */
 export const DEV_SIGN_IN = "local sign-in (development)";
