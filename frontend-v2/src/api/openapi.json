@@ -9285,6 +9285,7 @@
       "post": {
         "tags": ["personas"],
         "summary": "Update Cross Person Request Status",
+        "description": "Acknowledge or resolve a cross-person request, as the signed-in member.\n\nOnly the person the request asks acknowledges it, and only they or its\nrequester resolve it, whatever else the caller's role reads (403). No other\nstatus is set by hand (422). The change is recorded with who made it.",
         "operationId": "update_cross_person_request_status_cross_person_requests__request_id__status_post",
         "parameters": [
           {

@@ -269,7 +269,7 @@ Functional requirements:
 - Executives shall read directory data, executive aggregates, project and workstream progress, program rollups, and portfolio heatmaps, but not pod blockers or pod check-ins.
 - A pod's task list and rollup reasons shall need both the pod check-in and pod blocker reads, so scrum masters, managers, and admins open them.
 - Signals, flow, feed, trends, briefs, the portfolio requests board, and Ask the graph shall need a team or executive aggregate read.
-- A cross-person request's status shall be changeable by a team or executive reader, or by the request's own requester or counterpart.
+- Only the person a cross-person request asks shall acknowledge it, and only they or its requester shall resolve it. No role grants either, admin included, and no other request status shall be set by hand.
 - Admins shall manage configuration and dispatch workflows.
 - Admin role shall short-circuit to allowed for capabilities.
 - No role, admin included, shall be granted raw DM content: there is no capability or field for it. Budget-like sensitive fields shall be readable only by admins and executives.
@@ -435,9 +435,9 @@ Functional requirements:
 - The system shall send no DM about a request whose person was not matched or is the requester. Such a request stays visible to the requester, and a DM that fails to send shall not lose the request.
 - The system shall retry a counterpart DM that failed to send, from a scheduled pass, with the same message. It shall count every attempt, the first included, stop after a configured number (5 by default) with a wait that doubles after each failure (5 minutes after the first by default), never send the DM twice when passes overlap or the DM was recorded meanwhile, and send nothing while counterpart notification is off. A request recorded while notification was off is never DMed later.
 - The requester's "Raised by you" list and the board shall say when the DM is still being retried and when it was not delivered.
-- The counterpart's reply shall acknowledge or resolve the request, and the requester shall be told when it is resolved. A reply after the request is resolved shall change nothing.
-- The system shall record each status change as a fact, so requests appear in the activity feed.
-- Coordination shall show requests in Open, Acknowledged, and Needs resolution columns, naming requester and counterpart, with Acknowledge and Resolve actions on each card.
+- The counterpart's reply shall acknowledge or resolve the request, and the requester shall be told when it is resolved, unless they resolved it themselves. A reply after the request is resolved shall change nothing.
+- The system shall record each status change as a fact, with the member who made it and when (none when a merge or a superseding copy closed it), so requests appear in the activity feed. A request its requester resolved shall not read in the feed as completed by the person asked.
+- Coordination shall show requests in Open, Acknowledged, and Needs resolution columns, naming requester and counterpart. A card shall offer Acknowledge to the person asked while the request is open, and Resolve to them or the requester; anyone else sees that only the people on the request act on it.
 - Team and executive readers shall see the portfolio-wide board; a developer shall see the requests waiting on them.
 - Coordination shall show "Raised by you": the open and acknowledged requests the person asked of others, and where each one has got to.
 - The developer, scrum master, and product owner Today shall show "Waiting on you": the open and acknowledged requests where the person is the counterpart.

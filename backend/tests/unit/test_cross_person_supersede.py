@@ -63,6 +63,8 @@ async def test_the_two_pre_fix_pairs_collapse_into_their_newest_copy_and_nobody_
         ("mina-r1", "mina-r2", "dismissed"),
         ("noah-r2", "noah-r3", "dismissed"),
     }
+    # OpenProgram closed the copies itself: no member made the change.
+    assert [f["changed_by"] for f in facts] == [None, None]
     # The kept copy is the ask as it stands; the dismissed one keeps its words.
     kept = await store.get(TENANT, "noah-r3")
     assert kept == rows["noah-r3"]

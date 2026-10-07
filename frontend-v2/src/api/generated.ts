@@ -2103,7 +2103,14 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Update Cross Person Request Status */
+    /**
+     * Update Cross Person Request Status
+     * @description Acknowledge or resolve a cross-person request, as the signed-in member.
+     *
+     *     Only the person the request asks acknowledges it, and only they or its
+     *     requester resolve it, whatever else the caller's role reads (403). No other
+     *     status is set by hand (422). The change is recorded with who made it.
+     */
     post: operations["update_cross_person_request_status_cross_person_requests__request_id__status_post"];
     delete?: never;
     options?: never;

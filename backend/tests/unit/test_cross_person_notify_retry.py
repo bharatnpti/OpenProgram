@@ -235,7 +235,9 @@ async def test_a_retry_is_not_sent_once_the_request_is_closed() -> None:
     chat = _FlakyChat(failures=1)
     service, store = await _service(chat, _Clock(T0))
     created = (await _record(service))[0]
-    await service.update_status("demo", created.id, CrossPersonRequestStatus.RESOLVED)
+    await service.update_status(
+        "demo", created.id, CrossPersonRequestStatus.RESOLVED, actor="U-alice"
+    )
 
     result = await service.retry_failed_notifications("demo", now=T0 + timedelta(hours=1))
 

@@ -113,7 +113,7 @@ async def test_a_console_resolve_that_clears_a_blocker_asks_for_the_rollup() -> 
     service = await _service(store, refresher)
     to_omar = await store.create(_to_omar())
 
-    await service.update_status(TENANT, to_omar.id, CrossPersonRequestStatus.RESOLVED)
+    await service.update_status(TENANT, to_omar.id, CrossPersonRequestStatus.RESOLVED, actor=OMAR)
 
     assert [b.blocker_id for b in await store.open_blockers(TENANT, ZOE, DAY)] == ["blk-chk8"]
     assert refresher.requests == [(TENANT, DAY)]
