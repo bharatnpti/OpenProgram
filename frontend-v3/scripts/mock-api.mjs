@@ -21,6 +21,7 @@ import * as todayMock from "./mock/today.mjs";
 import * as adminStructure from "./mock/admin-structure.mjs";
 import * as reportsLane from "./mock/reports.mjs";
 import * as shellMock from "./mock/shell.mjs";
+import * as adminConfig from "./mock/admin-config.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
@@ -374,6 +375,7 @@ function api(req, res, url) {
   const deny = () =>
     send(403, { detail: `Role ${roles.join(",") || "none"} lacks this capability.` });
   const p = url.pathname;
+  if (adminConfig.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
   if (p === "/api/v1/auth/status")
     return send(200, {
       authenticated: true,
