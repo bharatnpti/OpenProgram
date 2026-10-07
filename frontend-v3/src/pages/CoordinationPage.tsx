@@ -186,10 +186,11 @@ function RequestCard({
     : (request.counterpart_display_name ?? request.raw_name ?? "someone not matched yet");
   const delivery = deliveryNote(request.delivery, raisedByViewer);
   const live = request.status === "open" || request.status === "acknowledged";
-  // Acknowledging says the person asked has taken it, so it is theirs alone;
-  // resolving is theirs or the requester's. The backend also lets a team or
-  // executive reader do both, but records nobody's name, so the board does not
-  // offer it to someone who is not on the request.
+  // The backend's rule, and it refuses anyone else with a 403 whatever role they
+  // read (an admin too): only the person asked acknowledges a request, and only
+  // while it is open; they or the requester resolve it. Each change records who
+  // made it. The buttons show only where the viewer is one of those people; the
+  // board's readers see the request and the line below, not a button that is refused.
   const canAcknowledge = request.status === "open" && askedOfViewer;
   const canResolve = askedOfViewer || raisedByViewer;
 

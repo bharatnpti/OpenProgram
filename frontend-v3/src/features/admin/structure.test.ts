@@ -180,7 +180,7 @@ test("every link says what taking it away does", () => {
   assert.deepEqual(unlinkWords("pod-member", "Payments Pod", "Kai Thompson"), {
     title: "Take Kai Thompson out of Payments Pod?",
     effect:
-      "Kai Thompson's check-in stops counting toward Payments Pod, and if they miss one, Payments Pod's scrum master and manager are no longer told. With no other pod, they show as in no team. This removes the link from past days too; adding it back starts today.",
+      "Kai Thompson's check-in stops counting toward Payments Pod, and if they miss one, Payments Pod's scrum master and manager are no longer told. With no other pod, they show as in no team. The link ends today; earlier days still show it. Adding it back starts a new link today.",
   });
   assert.match(
     unlinkWords("member-task", "Kai", "CHK-1").effect,
@@ -210,7 +210,7 @@ test("deleting a program says its projects stay but leave the portfolio", () => 
   );
   assert.equal(
     impact.lines.at(-1),
-    "Nothing else is deleted, but every link to it goes, from past days too: looking back no longer shows them together.",
+    "Nothing else is deleted. Its links end today, and earlier days still show it with them.",
   );
   assert.deepEqual(impact.warnings, []);
 });

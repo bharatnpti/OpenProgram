@@ -1,6 +1,7 @@
 // What hangs off what, and what a change to it affects. Pure helpers, type imports only so
-// `node --test` can run them. The wording says what the backend really does: deleting a node
-// removes its links but never the nodes it was linked to.
+// `node --test` can run them. The wording says what the backend really does: unlinking, or
+// deleting a node, ends the link (and a deleted node's links) today and never rewrites an
+// earlier day; deleting never touches the nodes it was linked to.
 import type { ConfigNodeResponse, DirectoryItemResponse, PodTaskDto } from "../../api/schema";
 
 export type EntityKind = "program" | "project" | "pod" | "workstream" | "member";
@@ -217,15 +218,17 @@ export function unlinkWords(
   child: string,
 ): { title: string; effect: string } {
   const words = unlinkEffect(kind, parent, child);
-  return { ...words, effect: `${words.effect} ${PAST_DAYS_TOO}` };
+  return { ...words, effect: `${words.effect} ${LINK_ENDS_TODAY}` };
 }
 
 /**
- * The backend deletes the link itself, whatever days it was valid on, so
- * looking back at a past day no longer shows it either.
+ * The backend ends the link today (core/ports GraphRepository.end_edge) and keeps
+ * the days before: looking back at an earlier day still shows it, and adding it
+ * back starts a new link today. It used to delete the link, past days included,
+ * and this copy said so.
  */
-export const PAST_DAYS_TOO =
-  "This removes the link from past days too; adding it back starts today.";
+export const LINK_ENDS_TODAY =
+  "The link ends today; earlier days still show it. Adding it back starts a new link today.";
 
 function unlinkEffect(
   kind: LinkKind,
@@ -287,6 +290,10 @@ export function linkDone(kind: LinkKind, parent: string, child: string, linked: 
   return `${child} ${into[kind][linked ? 0 : 1]} ${parent}.`;
 }
 
+/** The last line of every delete: what stays and what ends, in a sentence. */
+export const DELETE_KEEPS_THE_PAST =
+  "Nothing else is deleted. Its links end today, and earlier days still show it with them.";
+
 export type DeleteImpact = {
   /** What else changes, in plain words. */
   lines: string[];
@@ -295,8 +302,9 @@ export type DeleteImpact = {
 };
 
 /**
- * What deleting a node changes. The backend removes the node and every link to it; the nodes it
- * was linked to stay. Anything saved about the node under its id stays too, with nothing to show it.
+ * What deleting a node changes. The backend ends the node and every link to it today and keeps
+ * both for earlier days; the nodes it was linked to stay. Anything saved about the node under
+ * its id stays too, with nothing to show it.
  */
 export function deleteImpact(
   kind: EditableKind,
@@ -426,9 +434,7 @@ export function deleteImpact(
     );
   }
   if (lines.length === 0) lines.push("Nothing is linked to it.");
-  lines.push(
-    "Nothing else is deleted, but every link to it goes, from past days too: looking back no longer shows them together.",
-  );
+  lines.push(DELETE_KEEPS_THE_PAST);
 
   for (const item of extra.outsideScope ?? []) {
     warnings.push(scopeWarning(name(item.podId), item.repos));

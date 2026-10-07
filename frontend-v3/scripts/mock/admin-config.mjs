@@ -735,6 +735,80 @@ const withDefaults = (spec, settings) =>
       .filter(([, value]) => value),
   );
 
+// The fields that decide where a stored secret goes or whom it signs in as
+// (ConnectorField.routes_secrets in infra/adapters/connections/specs.py).
+const ROUTES_SECRETS = {
+  jira: ["base_url", "auth_method", "email", "username"],
+  gitlab: ["base_url"],
+  github: ["base_url"],
+  google_calendar: ["base_url"],
+  email: ["host", "port", "security", "username"],
+};
+
+const labelList = (labels) =>
+  labels.length > 1 ? `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}` : (labels[0] ?? "");
+
+/**
+ * What ConnectionService.test does with a draft before any tester runs: a secret
+ * typed is used; one mapped to null or blank is cleared for the test and left out;
+ * one left out is the stored one, but only while every field that routes it is as
+ * saved (else a 400 naming the fields); a required field still empty is "Fill in X
+ * first." Returns [status, body] when it stops there, else null.
+ */
+function draftStop(spec, saved, settings, secrets) {
+  const typed = new Set(
+    Object.entries(secrets).flatMap(([key, value]) => (String(value ?? "").trim() ? [key] : [])),
+  );
+  const cleared = new Set(Object.keys(secrets).filter((key) => !typed.has(key)));
+  const stored = new Set(saved?.secret_keys ?? []);
+  const applicable = spec.fields.filter((field) => holds(field.shown_when, settings));
+  const reused = applicable.filter(
+    (field) =>
+      field.kind === "secret" &&
+      !typed.has(field.key) &&
+      !cleared.has(field.key) &&
+      stored.has(field.key),
+  );
+  const before = withDefaults(spec, saved?.settings ?? {});
+  const after = withDefaults(spec, settings);
+  const moved = applicable.filter(
+    (field) =>
+      (ROUTES_SECRETS[spec.connector] ?? []).includes(field.key) &&
+      (before[field.key] ?? "") !== (after[field.key] ?? ""),
+  );
+  if (reused.length > 0 && moved.length > 0) {
+    return [
+      400,
+      {
+        detail: `${labelList(moved.map((f) => f.label))} changed. A stored secret is used only with the address and sign-in it was saved with, so enter ${labelList(reused.map((f) => f.label))} again to test the new values.`,
+      },
+    ];
+  }
+  const missing = applicable
+    .filter(
+      (field) =>
+        field.required &&
+        (field.kind === "secret"
+          ? !(typed.has(field.key) || (stored.has(field.key) && !cleared.has(field.key)))
+          : !after[field.key]),
+    )
+    .map((field) => field.label);
+  if (missing.length > 0) {
+    return [
+      200,
+      {
+        ok: false,
+        message: `Fill in ${missing.join(", ")} first.`,
+        details: [],
+        suggestions: {},
+        tested_at: now(),
+        recorded: false,
+      },
+    ];
+  }
+  return null;
+}
+
 /** A fixed sentence, like the real testers: a .invalid host is never reached. */
 function testResult(spec, settings, typedSecrets) {
   const values = withDefaults(spec, settings);
@@ -983,8 +1057,13 @@ export function api(req, url, roles, actingAs, send, deny) {
         const settings = draft
           ? { ...(saved?.settings ?? {}), ...body.settings }
           : (saved?.settings ?? {});
+        const stopped = draft ? draftStop(spec, saved, settings, body.secrets ?? {}) : null;
+        if (stopped) return send(stopped[0], stopped[1]);
+        const typedSecrets = Object.fromEntries(
+          Object.entries(body.secrets ?? {}).filter(([, value]) => String(value ?? "").trim()),
+        );
         const result = {
-          ...testResult(spec, settings, body.secrets ?? {}),
+          ...testResult(spec, settings, typedSecrets),
           suggestions: {},
           tested_at: now(),
           recorded: !draft,

@@ -152,14 +152,22 @@ test("a required secret counts as present when stored, and missing once cleared"
   );
 });
 
-test("a test sends typed secrets only, never a clear", () => {
+test("a test sends a typed secret, and a secret marked to clear as null, so none falls back", () => {
   const form = { ...formFromConnection(JIRA), clearedSecrets: ["personal_access_token"] };
 
-  assert.deepEqual(testPayload(JIRA, form)?.secrets, {});
+  // The server leaves a null secret out of the test and never takes it from the store.
+  assert.deepEqual(testPayload(JIRA, form)?.secrets, { personal_access_token: null });
   assert.deepEqual(
     testPayload(JIRA, { ...form, secrets: { personal_access_token: "fake-token" } })?.secrets,
     { personal_access_token: "fake-token" },
   );
+  // A secret left alone is not in the body: the stored one is used.
+  assert.deepEqual(testPayload(JIRA, { ...formFromConnection(JIRA), enabled: false }), undefined);
+  const moved = {
+    ...formFromConnection(JIRA),
+    values: { ...formFromConnection(JIRA).values, base_url: "https://jira.example.invalid/x" },
+  };
+  assert.deepEqual(testPayload(JIRA, moved)?.secrets, {});
 });
 
 test("an unchanged form tests what is stored, with no body, so the result is recorded", () => {
@@ -170,18 +178,34 @@ test("an unchanged form tests what is stored, with no body, so the result is rec
 test("a stored secret is never tested against a changed address", () => {
   const form = formFromConnection(JIRA);
   const moved = { ...form, values: { ...form.values, base_url: "https://jira.example.co" } };
-  assert.match(testBlock(JIRA, moved) ?? "", /Jira address changed\. Type the stored secret again/);
+  assert.equal(
+    testBlock(JIRA, moved),
+    "Jira address changed. A stored secret is used only with the address and sign-in it was saved with, so enter Personal access token again to test the new values.",
+  );
   const retyped = { ...moved, secrets: { personal_access_token: "fake-token" } };
   assert.equal(testBlock(JIRA, retyped), null);
   assert.deepEqual(testPayload(JIRA, retyped)?.settings?.base_url, "https://jira.example.co");
 });
 
-test("a secret marked to clear is not tested with the stored one", () => {
+test("a secret marked to clear no longer stops a test: it is sent as null", () => {
   const cleared = { ...formFromConnection(JIRA), clearedSecrets: ["personal_access_token"] };
-  assert.match(testBlock(JIRA, cleared) ?? "", /marked to clear/);
+  assert.equal(testBlock(JIRA, cleared), null);
   assert.equal(
     testBlock(JIRA, { ...cleared, secrets: { personal_access_token: "fake-token" } }),
     null,
+  );
+});
+
+test("a moved address still stops a test while any stored secret would go there", () => {
+  const form = formFromConnection(JIRA);
+  const moved = { ...form, values: { ...form.values, base_url: "https://jira.example.co" } };
+  // Cleared, the one secret is no longer reused, so nothing reaches the new address.
+  assert.equal(testBlock(JIRA, { ...moved, clearedSecrets: ["personal_access_token"] }), null);
+  // With a second stored secret left alone, it would be reused and the block stays.
+  const two = { ...JIRA, secrets_set: ["personal_access_token", "api_token"] };
+  assert.match(
+    testBlock(two, { ...moved, clearedSecrets: ["personal_access_token"] }) ?? "",
+    /Jira address changed\..*enter API token again/,
   );
 });
 

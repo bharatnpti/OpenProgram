@@ -136,7 +136,7 @@ export function EntitiesTab() {
     setPending({
       key: `delete:${node.id}:${Date.now()}`,
       title: `Delete ${node.name}?`,
-      effect: `This removes the ${word} and every link to it. It can't be undone.`,
+      effect: `This removes the ${word} from today on and ends every link to it. Earlier days still show it. It can't be undone here.`,
       lines: impact.lines,
       warnings: impact.warnings,
       confirmLabel: `Delete ${word}`,
