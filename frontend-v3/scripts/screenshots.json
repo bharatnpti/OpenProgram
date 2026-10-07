@@ -53,7 +53,7 @@
     "name": "11-overall-admin.png",
     "path": "/reports/project-checkout/overall",
     "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" },
-    "wait": 3500
+    "wait": 2500
   },
   {
     "name": "12-chat-developer.png",
@@ -64,7 +64,7 @@
     "name": "13-admin-checkins.png",
     "path": "/admin",
     "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" },
-    "wait": 3500
+    "wait": 2500
   },
   {
     "name": "14-admin-data-sources.png",
@@ -81,5 +81,78 @@
     "path": "/today",
     "width": 390,
     "storage": { "openprogram.acting-as": "U1006" }
+  },
+  {
+    "name": "17-command-palette.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" },
+    "full_page": false,
+    "steps": [{ "press": "Control+K" }, { "type": "pay" }]
+  },
+  {
+    "name": "18-past-day.png",
+    "path": "/today?asOf=2026-10-05",
+    "storage": { "openprogram.acting-as": "U1006" }
+  },
+  {
+    "name": "19-overall-delivery-date.png",
+    "path": "/reports/project-checkout/overall",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" },
+    "wait": 2500,
+    "full_page": false,
+    "steps": [{ "click": { "role": "button", "name": "Change date" } }]
+  },
+  {
+    "name": "20-overall-gate-dialog.png",
+    "path": "/reports/project-checkout/overall",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" },
+    "wait": 2500,
+    "full_page": false,
+    "steps": [{ "click": { "css": "table button", "text": "CHK-104" } }]
+  },
+  {
+    "name": "21-admin-integrations.png",
+    "path": "/admin?tab=integrations",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "22-admin-delivery-stages.png",
+    "path": "/admin?tab=stages",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "23-admin-gates.png",
+    "path": "/admin?tab=gates",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "24-admin-escalation.png",
+    "path": "/admin?tab=escalation",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "25-admin-branding.png",
+    "path": "/admin?tab=branding",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "26-admin-links.png",
+    "path": "/admin?tab=links",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "27-admin-directory.png",
+    "path": "/admin?tab=directory",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "28-admin-entities.png",
+    "path": "/admin?tab=entities",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "29-admin-escalation-contacts.png",
+    "path": "/admin?tab=contacts",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
   }
 ]
