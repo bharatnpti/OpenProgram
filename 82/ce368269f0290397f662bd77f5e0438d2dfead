@@ -1,0 +1,83 @@
+frontend-v3/src/features/overall/GatesSection.tsx
+  s_a5c95ae649948d::t_6bb295c49e0d71 131-133
+frontend-v3/src/components/PanelState.tsx
+  s_a5c95ae649948d::t_713c46e42b23cb 1,107-112,114-183
+frontend-v3/src/features/overall/overallWords.ts
+  s_a5c95ae649948d::t_301ae383f0c89b 60-79
+  s_a5c95ae649948d::t_2da682d5f6e5d3 38,41,44,46,50,80-97
+  s_a5c95ae649948d::t_713c46e42b23cb 54-59
+  s_a5c95ae649948d::t_defcdeda546bb3 39-40,42-43,45,47-49,51-53
+frontend-v3/src/features/reports/ReportSetupDialog.tsx
+  s_a5c95ae649948d::t_540a8abad75db0 99-100,102,128,194,421
+  s_a5c95ae649948d::t_868b462c5137cf 12,43
+frontend-v3/src/features/overall/gateWords.ts
+  s_a5c95ae649948d::t_6bb295c49e0d71 183-197,201-205
+  s_a5c95ae649948d::t_dfe29a94450970 198-200
+frontend-v3/src/features/overall/RisksSection.tsx
+  s_a5c95ae649948d::t_2a21121ac41d1f 74-75,85
+frontend-v3/src/features/overall/QuestionsSection.tsx
+  s_a5c95ae649948d::t_6bb295c49e0d71 22,72,114-116,157,161-164
+  s_a5c95ae649948d::t_233c2882f9d0fe 165
+frontend-v3/src/features/overall/queries.ts
+  s_a5c95ae649948d::t_713c46e42b23cb 19-21,28-29
+frontend-v3/src/features/admin/connectionForm.test.ts
+  s_a5c95ae649948d::t_1e39104fb332ab 11,213-259
+  s_a5c95ae649948d::t_b623f0864d2c52 260
+frontend-v3/src/features/admin/connectionForm.ts
+  s_a5c95ae649948d::t_1e39104fb332ab 28-37,40,43-47
+frontend-v3/src/features/overall/overallWords.test.ts
+  s_a5c95ae649948d::t_b623f0864d2c52 106
+  s_a5c95ae649948d::t_d7f1126bca21ed 9,14,60-78
+  s_a5c95ae649948d::t_713c46e42b23cb 79,89-105
+  s_a5c95ae649948d::t_2da682d5f6e5d3 10-11,80-88
+  s_a5c95ae649948d::t_93e84e471141f2 7-8
+frontend-v3/src/pages/DailyPage.tsx
+  s_a5c95ae649948d::t_713c46e42b23cb 29-36,53-57,59
+frontend-v3/src/pages/OverallPage.tsx
+  s_a5c95ae649948d::t_2da682d5f6e5d3 4,23,52-56
+  s_a5c95ae649948d::t_e2ea6938c8624d 57-58
+frontend-v3/src/features/admin/IntegrationsTab.tsx
+  s_a5c95ae649948d::t_1e39104fb332ab 29,247-252
+frontend-v3/src/features/overall/RequirementsSection.tsx
+  s_a5c95ae649948d::t_f173fe418451ac 14
+  s_a5c95ae649948d::t_713c46e42b23cb 283-286,292
+  s_a5c95ae649948d::t_2da682d5f6e5d3 2,8-13,15,30,56,123,135-139
+  s_72b1f838a83461::t_adfb9e8bfc215e 16,245-264,266-282,287,289-291,293-300
+  s_a5c95ae649948d::t_5f2a1dc3d71a2a 239
+frontend-v3/scripts/mock-console.mjs
+  s_a5c95ae649948d::t_30af465a782a12 1074-1087
+frontend-v3/src/features/reports/ReportsHeader.tsx
+  s_a5c95ae649948d::t_2da38e115c44b8 29-32
+frontend-v3/src/features/overall/ForecastSection.tsx
+  s_a5c95ae649948d::t_5ace8bc9db9c5f 6,20
+  s_a5c95ae649948d::t_301ae383f0c89b 353,382
+frontend-v3/src/features/overall/gateWords.test.ts
+  s_a5c95ae649948d::t_6f9d89fd7b9e01 16,149-174
+  s_a5c95ae649948d::t_b623f0864d2c52 175
+frontend-v3/src/features/overall/Burndown.tsx
+  s_a5c95ae649948d::t_2da682d5f6e5d3 1,4,20,29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "82ce368269f0290397f662bd77f5e0438d2dfead",
+  "prompts": {},
+  "sessions": {
+    "s_72b1f838a83461": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "541119b0-718b-4214-b0c5-8810474567c1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
