@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   candidateLabel,
+  dateChangeLine,
   dateProblem,
   historyStart,
   inStageSinceWords,
@@ -211,6 +212,25 @@ test("a verdict that needs no cause, or has no date to be late against, has none
   assert.equal(verdictCause(scope({ verdict: "at_risk", team: { undated: 0 } })), null);
 });
 
+test("the cause says whether it already counted the requirements with no date", () => {
+  assert.equal(verdictCause(scope({ verdict: "at_risk" }))?.saysUndated, true);
+  assert.equal(
+    verdictCause(
+      scope({ verdict: "not_enough_data", team: { latest: null, latest_key: null, dated: 0 } }),
+    )?.saysUndated,
+    true,
+  );
+  assert.equal(
+    verdictCause(scope({ verdict: "at_risk", history: { p50: "2026-11-13", p85: "2026-12-02" } }))
+      ?.saysUndated,
+    false,
+  );
+  assert.equal(
+    verdictCause(scope({ verdict: "off_track", team: { latest: "2027-01-08" } }))?.saysUndated,
+    false,
+  );
+});
+
 test("the server's own undated line is not said twice beside the cause", () => {
   const reasons = [
     "Committed for Tue 15 Dec 2026 by Mina Patel.",
@@ -230,5 +250,26 @@ test("the server's own undated line is not said twice beside the cause", () => {
       ),
     ),
     reasons,
+  );
+});
+
+test("a change of date reads as one line, with who and why", () => {
+  assert.equal(
+    dateChangeLine({
+      target_date: "2026-11-20",
+      changed_at: "2026-10-07T09:12:00Z",
+      changed_by_name: "Ira Novak",
+      note: " Agreed at the checkout review ",
+    }),
+    "7 Oct 2026 · 20 Nov 2026 · Ira Novak · Agreed at the checkout review",
+  );
+  assert.equal(
+    dateChangeLine({
+      target_date: null,
+      changed_at: "2026-10-07T09:12:00Z",
+      changed_by_name: "Ira Novak",
+      note: "",
+    }),
+    "7 Oct 2026 · Cleared · Ira Novak",
   );
 });

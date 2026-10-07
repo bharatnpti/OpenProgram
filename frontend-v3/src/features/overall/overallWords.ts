@@ -2,7 +2,7 @@
 // only so `node --test` runs it directly.
 import type { ReleaseCandidateResponse, ScopeDeliveryResponse } from "../../api/schema";
 
-import { daysBetween, formatDay } from "../../lib/format.ts";
+import { daysBetween, formatDate, formatDay } from "../../lib/format.ts";
 import { VERDICT_LABELS } from "../../lib/status.ts";
 
 /** "Release Checkout 1.0", but "Release 1.1" when the name already says it. */
@@ -89,6 +89,8 @@ export type VerdictCause = {
   because: string;
   /** Why that settles it, for a card with room; null when `because` is whole. */
   also: string | null;
+  /** `because` already says how many open requirements have no ETA or due date. */
+  saysUndated: boolean;
 };
 
 /**
@@ -117,12 +119,14 @@ export function verdictCause(
       return {
         because: `${label} because history is 50% likely to finish by ${formatDay(history.p50)}, in time, but 85% likely only by ${formatDay(history.p85)}, after the delivery date.`,
         also: null,
+        saysUndated: false,
       };
     }
     if (team.undated > 0) {
       return {
         because: `${label} because ${undatedWords(team.undated)}.`,
         also: "The team's latest date is before the delivery date, but a requirement with no date could finish later, and there is not enough history to forecast it.",
+        saysUndated: true,
       };
     }
     return null;
@@ -132,12 +136,14 @@ export function verdictCause(
       return {
         because: `${label} because history puts the finish at ${formatDay(history.p50)} (50% likely), after the delivery date.`,
         also: null,
+        saysUndated: false,
       };
     }
     if (team.latest) {
       return {
         because: `${label} because the team's latest date, ${formatDay(team.latest)}${keyed}, is after the delivery date.`,
         also: null,
+        saysUndated: false,
       };
     }
     return null;
@@ -149,6 +155,7 @@ export function verdictCause(
     return {
       because: `${label}, and ${team.undated === 1 ? "the one open requirement has no" : `none of the ${team.undated} open requirements has an`} ETA or due date to go by.`,
       also: null,
+      saysUndated: true,
     };
   }
   return null;
@@ -161,8 +168,20 @@ const UNDATED_REASON = /^\d+ open requirements? (?:has|have) no ETA or due date\
  * card reads "At risk because 6 open requirements have no ETA or due date" once.
  */
 export function reasonsAfterCause(reasons: string[], cause: VerdictCause | null): string[] {
-  if (!cause?.because.includes("no ETA or due date")) return reasons;
+  if (!cause?.saysUndated) return reasons;
   return reasons.filter((reason) => !UNDATED_REASON.test(reason.trim()));
+}
+
+/** "Mon 6 Oct 2026 · 20 Nov 2026 · Ira Novak · why": one change of a delivery date, in a line. */
+export function dateChangeLine(change: {
+  target_date: string | null;
+  changed_at: string;
+  changed_by_name: string;
+  note: string;
+}): string {
+  const to = change.target_date ? formatDate(change.target_date) : "Cleared";
+  const why = change.note.trim() ? ` · ${change.note.trim()}` : "";
+  return `${formatDate(change.changed_at)} · ${to} · ${change.changed_by_name}${why}`;
 }
 
 /**

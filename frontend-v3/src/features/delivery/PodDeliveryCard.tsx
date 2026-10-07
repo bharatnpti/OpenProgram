@@ -22,6 +22,7 @@ import { WHO } from "../reports/access";
 import { DeliveryDateDialog } from "../reports/DeliveryDateDialog";
 import { Locked } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
+import { DateHistory } from "./DateHistory";
 
 type PodProjectDeliveryResponse = PodDeliveryResponse["projects"][number];
 
@@ -116,7 +117,6 @@ export function PodProjectRow({
   // Why the verdict is what it is, beside the verdict: the pod's undated
   // requirements are the only thing that makes it "At risk" on a short history.
   const cause = counted ? verdictCause(scope) : null;
-  const undatedSaid = Boolean(cause?.because.includes("no ETA or due date"));
 
   return (
     <li className="rounded-2xl border border-grey-border p-4">
@@ -172,10 +172,11 @@ export function PodProjectRow({
         {counted && scope.team.latest
           ? ` The team's latest date is ${formatDay(scope.team.latest)}${scope.team.latest_key ? ` (${scope.team.latest_key})` : ""}${isPastDay(scope.team.latest, shownDay) ? ", past its date" : ""}.`
           : ""}
-        {counted && scope.team.undated > 0 && !undatedSaid
+        {counted && scope.team.undated > 0 && !cause?.saysUndated
           ? ` ${undatedWords(scope.team.undated)}.`
           : ""}
       </p>
+      <DateHistory changes={scope.commitment.changes} />
     </li>
   );
 }

@@ -4,7 +4,9 @@ import { test } from "node:test";
 import {
   askParts,
   localDay,
+  NOTE_WRITERS,
   outcomeLine,
+  outcomeText,
   reportLocks,
   scheduleTime,
   sendConfirmation,
@@ -71,10 +73,17 @@ test("the schedule's time reads without the seconds the server keeps", () => {
   assert.equal(scheduleTime("09:05"), "09:05");
 });
 
-test("each action a reader may not take says who takes it", () => {
+test("each control a reader may not use says who uses it, named by the button", () => {
   const report = { project_name: "Checkout Revamp", can_send: false, can_edit: false };
+  // A product owner writes the note, so nothing here says otherwise.
   assert.deepEqual(reportLocks({ ...report, can_write_note: true }), [
-    "Sending it now and changing it: a scrum master of a pod working on Checkout Revamp, a manager or an admin.",
+    "Send now and Change: a scrum master of a pod working on Checkout Revamp, a manager or an admin.",
+  ]);
+  assert.deepEqual(reportLocks({ ...report, can_send: true, can_write_note: true }), [
+    "Change: a scrum master of a pod working on Checkout Revamp, a manager or an admin.",
+  ]);
+  assert.deepEqual(reportLocks({ ...report, can_edit: true, can_write_note: true }), [
+    "Send now: a scrum master of a pod working on Checkout Revamp, a manager or an admin.",
   ]);
   assert.deepEqual(
     reportLocks({ ...report, can_send: true, can_edit: true, can_write_note: false }),
@@ -85,4 +94,26 @@ test("each action a reader may not take says who takes it", () => {
       .length,
     0,
   );
+});
+
+test("the note's writers are the backend's can_write_note: product owner, manager, admin", () => {
+  assert.equal(NOTE_WRITERS, "a product owner, manager or admin");
+  assert.doesNotMatch(NOTE_WRITERS, /scrum master/);
+});
+
+test("a send names every destination and what happened to it", () => {
+  assert.equal(
+    outcomeText({ label: "Ira Novak", ok: true, detail: "Sent as a direct message." }),
+    "Ira Novak: Sent as a direct message.",
+  );
+  assert.equal(
+    outcomeText({
+      label: "checkout-leads@acme.example",
+      ok: false,
+      detail: " The mail server refused the message (550). ",
+    }),
+    "checkout-leads@acme.example: not delivered. The mail server refused the message (550).",
+  );
+  assert.equal(outcomeText({ label: "#checkout", ok: true, detail: "" }), "#checkout: delivered");
+  assert.equal(outcomeText({ label: "Teams", ok: false, detail: "" }), "Teams: not delivered");
 });

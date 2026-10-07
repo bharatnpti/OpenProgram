@@ -182,6 +182,9 @@ export function ForecastSection({
               />
             ) : null}
             {scope.commitment.changes.length > 0 ? <DateChanges scope={scope} /> : null}
+            {data.pods.some((pod) => pod.commitment.changes.length > 0) ? (
+              <PodDateChanges pods={data.pods} />
+            ) : null}
           </div>
         ) : null}
       </PanelState>
@@ -533,6 +536,44 @@ function DateChanges({ scope }: { scope: ScopeDeliveryResponse }) {
             {[...scope.commitment.changes].reverse().map((change) => (
               <tr key={change.changed_at}>
                 <td className={`${td} whitespace-nowrap`}>{formatDate(change.changed_at)}</td>
+                <td className={`${td} whitespace-nowrap`}>
+                  {change.target_date ? formatDate(change.target_date) : "Cleared"}
+                </td>
+                <td className={td}>{change.changed_by_name}</td>
+                <td className={`${td} text-grey-body`}>{change.note || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableBox>
+    </div>
+  );
+}
+
+/** The same history for each pod's part of the project, one pod to a row, newest first. */
+function PodDateChanges({ pods }: { pods: ScopeDeliveryResponse[] }) {
+  const rows = pods
+    .flatMap((pod) => pod.commitment.changes.map((change) => ({ pod, change })))
+    .sort((a, b) => b.change.changed_at.localeCompare(a.change.changed_at));
+  return (
+    <div>
+      <h3 className="mb-2 text-[15px] font-extrabold">How the pods&apos; dates moved</h3>
+      <TableBox>
+        <table className="w-full min-w-[620px] border-collapse">
+          <thead>
+            <tr>
+              <th className={th}>When</th>
+              <th className={th}>Pod</th>
+              <th className={th}>New date</th>
+              <th className={th}>Who</th>
+              <th className={th}>Why</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ pod, change }) => (
+              <tr key={`${pod.scope_id}-${change.changed_at}`}>
+                <td className={`${td} whitespace-nowrap`}>{formatDate(change.changed_at)}</td>
+                <td className={`${td} font-bold`}>{pod.name}</td>
                 <td className={`${td} whitespace-nowrap`}>
                   {change.target_date ? formatDate(change.target_date) : "Cleared"}
                 </td>

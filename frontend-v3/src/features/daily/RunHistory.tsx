@@ -4,9 +4,9 @@ import { apiClient } from "../../api/client";
 import { PanelState, SectionHeader, TableBox, td, th } from "../../components/PanelState";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay, formatTime } from "../../lib/format";
-import { RUN_LABELS, RUN_TONES, outcomeLine } from "./reportView";
+import { RUN_LABELS, RUN_TONES, outcomeLine, outcomeText } from "./reportView";
 
-/** Past sends, newest first, with how every destination fared and who sent it. */
+/** Past sends, newest first, with how every destination fared (each named) and who sent it. */
 export function RunHistory({ reportId }: { reportId: string }) {
   const runs = useQuery({
     queryKey: ["day-reports", "runs", reportId],
@@ -51,17 +51,17 @@ export function RunHistory({ reportId }: { reportId: string }) {
                   </td>
                   <td className={td}>
                     {outcomeLine(run)}
-                    {run.outcomes.some((o) => !o.ok) ? (
-                      <ul className="mt-1 text-[12px] text-rag-red">
-                        {run.outcomes
-                          .filter((o) => !o.ok)
-                          .map((o) => (
-                            <li key={`${o.kind}-${o.target}`}>
-                              {o.label}: {o.detail}
-                            </li>
-                          ))}
-                      </ul>
-                    ) : null}
+                    {/* Every destination, by name, with what happened: a failure in red. */}
+                    <ul className="mt-1 grid gap-0.5 text-[12px]">
+                      {run.outcomes.map((outcome) => (
+                        <li
+                          key={`${outcome.kind}-${outcome.target}-${outcome.label}`}
+                          className={outcome.ok ? "text-grey-body" : "font-bold text-rag-red"}
+                        >
+                          {outcomeText(outcome)}
+                        </li>
+                      ))}
+                    </ul>
                   </td>
                 </tr>
               ))}

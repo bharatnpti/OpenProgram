@@ -9,7 +9,8 @@ import { useReadOnly } from "../../app/viewingDate";
 import { LockedTrigger } from "../../components/Dialogs";
 import { Pill } from "../../components/ui/Pill";
 import { cn } from "../../lib/utils";
-import { deviceTimezone } from "../../lib/zones";
+import { deviceTimezone, reportZone } from "../../lib/zones";
+import { useMyCheckinPreference } from "../checkin/useMyCheckinPreference";
 import { releaseName } from "../overall/overallWords";
 import { actionError } from "./access";
 
@@ -23,7 +24,8 @@ type Draft = {
   releaseId: string;
   enabled: boolean;
   time: string;
-  timezone: string;
+  /** What was typed or saved; null until then, when the team's zone stands in. */
+  timezone: string | null;
   weekdays: number[];
   channels: string;
   people: string[];
@@ -40,7 +42,7 @@ function draftOf(report: DayReportResponse | undefined, projectId: string | unde
     releaseId: report?.release_id ?? "",
     enabled: report?.enabled ?? true,
     time: report?.schedule.local_time.slice(0, 5) ?? "17:30",
-    timezone: report?.schedule.timezone ?? deviceTimezone() ?? "UTC",
+    timezone: report?.schedule.timezone ?? null,
     weekdays: report?.schedule.weekdays ?? [0, 1, 2, 3, 4],
     channels: of("chat_channel").join(", "),
     people: of("person"),
@@ -49,7 +51,7 @@ function draftOf(report: DayReportResponse | undefined, projectId: string | unde
   };
 }
 
-function requestOf(draft: Draft, projectName: string): DayReportRequest {
+function requestOf(draft: Draft, projectName: string, zone: string): DayReportRequest {
   const list = (text: string) =>
     text
       .split(/[,\n]/)
@@ -60,7 +62,11 @@ function requestOf(draft: Draft, projectName: string): DayReportRequest {
     project_id: draft.projectId,
     release_id: draft.releaseId || null,
     enabled: draft.enabled,
-    schedule: { local_time: draft.time, timezone: draft.timezone.trim(), weekdays: draft.weekdays },
+    schedule: {
+      local_time: draft.time,
+      timezone: (draft.timezone ?? zone).trim(),
+      weekdays: draft.weekdays,
+    },
     destinations: [
       ...list(draft.channels).map((target) => ({ kind: "chat_channel" as const, target })),
       ...draft.people.map((target) => ({ kind: "person" as const, target })),
@@ -95,6 +101,11 @@ export function ReportSetupDialog({
     queryFn: () => apiClient.dayReportSetup(),
     enabled: open,
   });
+  // A new report starts in the team's time zone (the one its check-ins run in), which
+  // the own check-in preference carries as the team default; a saved one keeps its own.
+  const team = useMyCheckinPreference(open && !report);
+  const start = reportZone(team.data?.defaults.timezone, deviceTimezone());
+  const zoneLoading = !report && team.isLoading;
   const projects = setup.data?.projects ?? [];
   // A project the server doesn't offer this person is never taken for the pick:
   // the select would otherwise show another one while the report went to this.
@@ -125,7 +136,11 @@ export function ReportSetupDialog({
   };
   const save = useMutation({
     mutationFn: () => {
-      const body = requestOf({ ...draft, projectId: pickedProject }, project?.name ?? "Project");
+      const body = requestOf(
+        { ...draft, projectId: pickedProject },
+        project?.name ?? "Project",
+        start.zone,
+      );
       return report
         ? apiClient.updateDayReport(report.report_id, body)
         : apiClient.createDayReport(body);
@@ -261,10 +276,19 @@ export function ReportSetupDialog({
                   <input
                     id="rs-tz"
                     className={field}
-                    value={draft.timezone}
+                    value={draft.timezone ?? (zoneLoading ? "" : start.zone)}
+                    placeholder={zoneLoading ? "Reading the team's zone…" : undefined}
+                    aria-describedby={draft.timezone === null ? "rs-tz-from" : undefined}
                     required
                     onChange={(e) => set("timezone", e.target.value)}
                   />
+                  {draft.timezone === null && !zoneLoading ? (
+                    <p id="rs-tz-from" className="mt-1 text-[11px] text-grey-secondary">
+                      {start.from === "team"
+                        ? "The team's time zone."
+                        : "This device's time zone: the team's is not known."}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
@@ -418,7 +442,11 @@ export function ReportSetupDialog({
                       Cancel
                     </Pill>
                   </Dialog.Close>
-                  <Pill type="submit" size="sm" disabled={save.isPending || !pickedProject}>
+                  <Pill
+                    type="submit"
+                    size="sm"
+                    disabled={save.isPending || !pickedProject || zoneLoading}
+                  >
                     {save.isPending ? "Saving…" : report ? "Save" : "Set up report"}
                   </Pill>
                 </div>

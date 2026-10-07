@@ -48,3 +48,24 @@ export function deviceTimezone(): string | null {
     return null;
   }
 }
+
+/** Where a new day report's zone comes from, for the line under the field. */
+export type ReportZoneFrom = "team" | "device" | "none";
+
+/**
+ * The zone a new day report starts with: the team's, which is the one its
+ * check-ins already run in; else this device's, when the team's is not known (a
+ * sign-in with no member record); else UTC. A report goes to a team, not to the
+ * browser that happens to set it up: Ira, setting one up for a Berlin team from
+ * a laptop in India, was offered the laptop's zone.
+ */
+export function reportZone(
+  team: string | null | undefined,
+  device: string | null | undefined,
+): { zone: string; from: ReportZoneFrom } {
+  const teamZone = team?.trim();
+  if (teamZone) return { zone: teamZone, from: "team" };
+  const deviceZone = device?.trim();
+  if (deviceZone) return { zone: deviceZone, from: "device" };
+  return { zone: "UTC", from: "none" };
+}
