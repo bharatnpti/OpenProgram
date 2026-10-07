@@ -13,7 +13,7 @@ own settings, so a deployment configured by environment keeps working.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -23,10 +23,12 @@ from core.domain.connections import (
     ConnectionTestOutcome,
     ConnectionValidationError,
     ConnectionValues,
+    ConnectorField,
     ConnectorSpec,
     applicable_fields,
     missing_required,
     normalize_settings,
+    rerouted_fields,
     with_defaults,
 )
 from core.domain.errors import OpenProgramError, SecretNotFound
@@ -48,6 +50,10 @@ class ConnectionConflict(OpenProgramError):
     """Another connector that does the same job is already on."""
 
 
+class ConnectionTestRefused(OpenProgramError):
+    """A draft would send a stored secret to an address or sign-in it was not saved for."""
+
+
 def _utc_now() -> datetime:
     return datetime.now(tz=UTC)
 
@@ -64,10 +70,14 @@ class ConnectionView:
 
 @dataclass(frozen=True, kw_only=True)
 class ConnectionDraft:
-    """Unsaved values to test before saving: they override the stored ones."""
+    """Unsaved values to test before saving: they override the stored ones.
+
+    A secret mapped to None or blank is cleared for the test; one left out may
+    reuse the stored value, while the fields that route it are as saved.
+    """
 
     settings: Mapping[str, str | None]
-    secrets: Mapping[str, str]
+    secrets: Mapping[str, str | None]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -227,28 +237,49 @@ class ConnectionService:
         """Try the stored values, or a draft over them, against the system.
 
         Only a test of the stored values updates the connection's last test: a
-        draft's result says nothing about what is saved.
+        draft's result says nothing about what is saved. A draft reuses a
+        stored secret only while every field that routes it (an address, the
+        port or encryption, the sign-in method or user) is as saved, so a
+        mistyped address never receives it: a draft that changes one must type
+        each secret it uses again, or it is refused. A secret the draft clears,
+        like a plain field it clears, is left out, never taken from the store.
         """
         spec = self._require_spec(connector)
         existing = await self._repository.get(tenant_id, connector)
-        stored_settings: Mapping[str, str] = existing.settings if existing is not None else {}
-        settings = dict(stored_settings)
-        secret_overrides: dict[str, str] = {}
+        saved: Mapping[str, str] = existing.settings if existing is not None else {}
+        settings = dict(saved)
+        typed: dict[str, str] = {}
+        cleared: frozenset[str] = frozenset()
         if draft is not None:
-            settings = normalize_settings(spec, {**stored_settings, **draft.settings})
-            secret_overrides, _cleared = _secret_changes(spec, draft.secrets)
-        values = dict(
-            (await self._stored.values_for(spec, existing)).values if existing is not None else {}
+            settings = normalize_settings(spec, {**saved, **draft.settings})
+            typed, cleared = _secret_changes(spec, draft.secrets)
+        stored_secrets = (
+            {
+                key: value
+                for key, value in (await self._stored.values_for(spec, existing)).values.items()
+                if key in spec.secret_keys
+            }
+            if existing is not None
+            else {}
         )
-        values.update(with_defaults(spec, settings))
-        values.update(secret_overrides)
-        applicable = {item.key for item in applicable_fields(spec, settings)}
-        values = {key: value for key, value in values.items() if key in applicable}
-        missing = [
-            item.label
-            for item in applicable_fields(spec, settings)
-            if item.required and not values.get(item.key)
-        ]
+        applicable = applicable_fields(spec, settings)
+        values = with_defaults(spec, settings)
+        reused: list[ConnectorField] = []
+        for item in applicable:
+            if not item.secret:
+                continue
+            if item.key in typed:
+                values[item.key] = typed[item.key]
+            elif item.key in stored_secrets and item.key not in cleared:
+                values[item.key] = stored_secrets[item.key]
+                reused.append(item)
+        keys = {item.key for item in applicable}
+        values = {key: value for key, value in values.items() if key in keys}
+        if reused:
+            moved = rerouted_fields(spec, saved, settings)
+            if moved:
+                raise ConnectionTestRefused(_reuse_refusal(moved, reused))
+        missing = [item.label for item in applicable if item.required and not values.get(item.key)]
         tested_at = self._clock()
         if missing:
             check = ConnectionCheck(ok=False, message=f"Fill in {', '.join(missing)} first.")
@@ -311,6 +342,19 @@ class ConnectionService:
 
 def _spec(catalog: ConnectorCatalog, connector: str) -> ConnectorSpec | None:
     return next((spec for spec in catalog.specs() if spec.id == connector), None)
+
+
+def _reuse_refusal(moved: Sequence[ConnectorField], reused: Sequence[ConnectorField]) -> str:
+    """Why a draft may not reuse the stored secrets: field labels only, never a value."""
+    return (
+        f"{_labels(moved)} changed. A stored secret is used only with the address and "
+        f"sign-in it was saved with, so enter {_labels(reused)} again to test the new values."
+    )
+
+
+def _labels(fields: Sequence[ConnectorField]) -> str:
+    labels = [item.label for item in fields]
+    return labels[0] if len(labels) == 1 else f"{', '.join(labels[:-1])} and {labels[-1]}"
 
 
 def _secret_changes(

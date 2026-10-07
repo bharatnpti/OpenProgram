@@ -11599,7 +11599,14 @@
           },
           "secrets": {
             "additionalProperties": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "type": "object",
             "title": "Secrets"
@@ -11607,7 +11614,7 @@
         },
         "type": "object",
         "title": "ConnectionTestRequest",
-        "description": "Optional unsaved values to test over the stored ones.\n\nA secret left out or blank uses the stored one. Leave the whole body out to\ntest what is saved; only that test is recorded on the connection."
+        "description": "Optional unsaved values to test over the stored ones.\n\nA secret left out uses the stored one, but only while every address and\nsign-in field is as saved: a test that changes one must carry each secret\nit uses, or it is refused with 400. A secret mapped to null or blank is\ncleared for the test and never falls back to the stored one. Leave the\nwhole body out to test what is saved; only that test is recorded on the\nconnection."
       },
       "ConnectionTestResponse": {
         "properties": {

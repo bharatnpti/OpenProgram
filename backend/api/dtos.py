@@ -2762,14 +2762,18 @@ class ConnectionUpdateRequest(BaseModel):
 class ConnectionTestRequest(BaseModel):
     """Optional unsaved values to test over the stored ones.
 
-    A secret left out or blank uses the stored one. Leave the whole body out to
-    test what is saved; only that test is recorded on the connection.
+    A secret left out uses the stored one, but only while every address and
+    sign-in field is as saved: a test that changes one must carry each secret
+    it uses, or it is refused with 400. A secret mapped to null or blank is
+    cleared for the test and never falls back to the stored one. Leave the
+    whole body out to test what is saved; only that test is recorded on the
+    connection.
     """
 
     model_config = ConfigDict(frozen=True)
 
     settings: dict[str, str | None] = Field(default_factory=dict)
-    secrets: dict[str, str] = Field(default_factory=dict)
+    secrets: dict[str, str | None] = Field(default_factory=dict)
 
 
 class ConnectionDetailDto(BaseModel):

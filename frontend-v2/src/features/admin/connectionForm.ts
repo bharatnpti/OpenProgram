@@ -2,6 +2,7 @@
 // extensionless runtime imports.
 import type {
   ConnectionResponse,
+  ConnectionTestRequest,
   ConnectionUpdateRequest,
   ConnectorFieldDto,
   ConnectorFieldOptionDto,
@@ -112,14 +113,19 @@ export function savePayload(
   return { enabled: form.enabled, settings, secrets };
 }
 
-/** The unsaved values to test: typed secrets only; blank ones use what is stored. */
-export function testPayload(connection: ConnectionResponse, form: ConnectionForm) {
+/**
+ * The unsaved values to test, with the secrets exactly as a save would send
+ * them: typed ones, and null for one marked to clear, so the test never uses
+ * the stored value of a secret being removed. A secret left alone is reused
+ * only while the address and sign-in are as saved; the server refuses the test
+ * otherwise and says which field changed.
+ */
+export function testPayload(
+  connection: ConnectionResponse,
+  form: ConnectionForm,
+): ConnectionTestRequest {
   const payload = savePayload(connection, form);
-  const secrets: Record<string, string> = {};
-  Object.entries(payload.secrets ?? {}).forEach(([key, value]) => {
-    if (value) secrets[key] = value;
-  });
-  return { settings: payload.settings ?? {}, secrets };
+  return { settings: payload.settings ?? {}, secrets: payload.secrets ?? {} };
 }
 
 export type ConnectionState = "on" | "off" | "environment" | "not_set_up";
