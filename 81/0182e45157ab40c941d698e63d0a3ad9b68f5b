@@ -1,0 +1,46 @@
+frontend-v3/src/pages/OverallPage.tsx
+  s_a5c95ae649948d::t_5e5ffb6b35276f 3,5,25-28,30-31,35
+  s_a5c95ae649948d::t_df53b8c4666fac 32-34
+frontend-v3/src/features/reports/useReportAccess.ts
+  s_a5c95ae649948d::t_ab41a0303afb05 4-20,26-27,29,31,34-44
+frontend-v3/src/features/delivery/PodDeliveryCard.tsx
+  s_a5c95ae649948d::t_dbb0278b291d0f 25,29,45-46,73-75,137-142
+frontend-v3/src/features/reports/access.test.ts
+  s_a5c95ae649948d::t_ab41a0303afb05 71-82
+  s_a5c95ae649948d::t_c4e65268aaa4c2 4
+frontend-v3/src/features/overall/ForecastSection.tsx
+  s_a5c95ae649948d::t_df53b8c4666fac 54-67,95-97,120-129,134,152-153,169-172,180,201,211-213,244-246,312,318,342-344,410,417-418,473-483
+frontend-v3/src/features/reports/ReportDialog.tsx
+  s_a5c95ae649948d::t_e2fe2319c735ea 2,13-16,33,39-46
+frontend-v3/src/features/overall/RisksSection.tsx
+  s_a5c95ae649948d::t_284141c960b4ef 160-162,181-182
+frontend-v3/src/features/overall/GatesSection.tsx
+  s_a5c95ae649948d::t_0bf25b2b96a181 42
+  s_a5c95ae649948d::t_df53b8c4666fac 71-73
+frontend-v3/src/features/overall/ReleaseScope.tsx
+  s_a5c95ae649948d::t_df53b8c4666fac 111-113
+frontend-v3/src/features/reports/access.ts
+  s_a5c95ae649948d::t_ab41a0303afb05 38-45
+frontend-v3/src/features/overall/IssueGatesDialog.tsx
+  s_a5c95ae649948d::t_df53b8c4666fac 84-86
+  s_a5c95ae649948d::t_d27c1a0a3252ef 61,236,373-379
+frontend-v3/src/features/overall/QuestionsSection.tsx
+  s_a5c95ae649948d::t_5784d974a723a3 41,88-90,137,155-159,161,288-334
+  s_a5c95ae649948d::t_f62333d8b5df64 335-336
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "810182e45157ab40c941d698e63d0a3ad9b68f5b",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
