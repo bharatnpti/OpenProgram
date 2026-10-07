@@ -45,7 +45,7 @@ export function WorkstreamPanel({
         reason={
           canReadProjectProgress
             ? p
-              ? reasonLine(p.factors, p.source_names)
+              ? reasonLine(p.factors, p.source_names, p.rag)
               : undefined
             : "The reasons behind a workstream's status open for a product owner, manager, executive or admin."
         }

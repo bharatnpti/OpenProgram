@@ -335,16 +335,27 @@ function podScope(podId) {
       ["Planned later than the project's 30 Oct."],
     );
   }
+  // A short history cannot forecast, so the team's own dates decide (core/domain/forecast.py
+  // `verdict`): the latest date is before the pod's 16 Oct, but one requirement has none.
   return scope(
     "pod",
     podId,
     "Storefront Pod",
     9,
     6,
-    history("2026-10-14", "2026-10-16", 6),
+    {
+      ...history(null, null, 6),
+      sample_days: 1,
+      completed_in_sample: 0,
+      reason: "Only 1 working day of history; a forecast needs 10.",
+    },
     { latest: "2026-10-15", latest_key: "CHK-109", dated: 5, undated: 1 },
-    "on_track",
-    ["Six of seven planned items merged."],
+    "at_risk",
+    [
+      "Only 1 working day of history; a forecast needs 10.",
+      "Team dates: the latest open requirement is due Thu 15 Oct 2026 (CHK-109).",
+      "1 open requirement has no ETA or due date.",
+    ],
   );
 }
 

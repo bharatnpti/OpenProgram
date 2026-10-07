@@ -17,7 +17,14 @@ import { Locked } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
 import { Burndown } from "./Burndown";
 import { burndownSeries, type Marker } from "./charts";
-import { inScope, isPastDay, releaseName, teamDatesLine } from "./overallWords";
+import {
+  inScope,
+  isPastDay,
+  reasonsAfterCause,
+  releaseName,
+  teamDatesLine,
+  verdictCause,
+} from "./overallWords";
 import {
   PROJECT_PROGRESS_READERS,
   useDelivery,
@@ -279,6 +286,8 @@ function commitmentLine(scope: ScopeDeliveryResponse): string {
 
 function Verdict({ scope }: { scope: ScopeDeliveryResponse }) {
   const tone = inScope(scope) ? toneForVerdict(scope.verdict) : "neutral";
+  const cause = inScope(scope) ? verdictCause(scope) : null;
+  const reasons = reasonsAfterCause(scope.reasons, cause);
   const bg =
     tone === "danger"
       ? "bg-rag-red-bg text-rag-red"
@@ -293,9 +302,11 @@ function Verdict({ scope }: { scope: ScopeDeliveryResponse }) {
         {inScope(scope) ? VERDICT_LABELS[scope.verdict] : "Nothing in scope yet"}
         {scope.target ? ` for ${formatDate(scope.target)}` : ""}
       </p>
-      {inScope(scope) && scope.reasons.length > 0 ? (
+      {cause ? <p className="mt-2 text-[15px] font-bold">{cause.because}</p> : null}
+      {cause?.also ? <p className="mt-1 text-[13px] font-medium">{cause.also}</p> : null}
+      {inScope(scope) && reasons.length > 0 ? (
         <ul className="mt-2 grid list-disc gap-1 pl-5 text-[14px] font-medium">
-          {scope.reasons.map((reason) => (
+          {reasons.map((reason) => (
             <li key={reason}>{reason}</li>
           ))}
         </ul>
@@ -464,9 +475,7 @@ function ScopeTable({
                   )}
                 </td>
                 <td className={`${td} text-grey-body`}>
-                  {inScope(scope)
-                    ? scope.reasons.join(" ") || "—"
-                    : "No requirements are counted for it yet."}
+                  <WhyCell scope={scope} />
                 </td>
                 {onEdit ? (
                   <td className={td}>
@@ -490,6 +499,19 @@ function ScopeTable({
       </TableBox>
       {locked ? <Locked className="mt-2">{locked}</Locked> : null}
     </div>
+  );
+}
+
+/** A scope's cause first, in bold, then the server's reasons without the line the cause says. */
+function WhyCell({ scope }: { scope: ScopeDeliveryResponse }) {
+  if (!inScope(scope)) return <>No requirements are counted for it yet.</>;
+  const cause = verdictCause(scope);
+  const reasons = reasonsAfterCause(scope.reasons, cause).join(" ");
+  return (
+    <>
+      {cause ? <span className="block font-bold text-ink">{cause.because}</span> : null}
+      {reasons || (cause ? null : "—")}
+    </>
   );
 }
 

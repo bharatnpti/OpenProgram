@@ -11,7 +11,13 @@ import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDate, formatDay } from "../../lib/format";
 import { VERDICT_LABELS, toneForVerdict } from "../../lib/status";
-import { inScope, isPastDay, podLaterThanProject } from "../overall/overallWords";
+import {
+  inScope,
+  isPastDay,
+  podLaterThanProject,
+  undatedWords,
+  verdictCause,
+} from "../overall/overallWords";
 import { WHO } from "../reports/access";
 import { DeliveryDateDialog } from "../reports/DeliveryDateDialog";
 import { Locked } from "../reports/ReportDialog";
@@ -107,6 +113,10 @@ export function PodProjectRow({
   const counted = inScope(scope);
   const target = scope.commitment.target_date;
   const history = scope.history;
+  // Why the verdict is what it is, beside the verdict: the pod's undated
+  // requirements are the only thing that makes it "At risk" on a short history.
+  const cause = counted ? verdictCause(scope) : null;
+  const undatedSaid = Boolean(cause?.because.includes("no ETA or due date"));
 
   return (
     <li className="rounded-2xl border border-grey-border p-4">
@@ -129,6 +139,13 @@ export function PodProjectRow({
             {" · "}Project: {item.project_target ? formatDate(item.project_target) : "no date"}
             {counted ? ` · ${scope.open} of ${scope.total} requirements open` : ""}
           </p>
+          {cause ? (
+            <p
+              className={`mt-1 text-[13px] font-bold ${scope.verdict === "off_track" ? "text-rag-red" : "text-rag-amber"}`}
+            >
+              {cause.because}
+            </p>
+          ) : null}
           {podLaterThanProject(target, item.project_target) ? (
             <p className="mt-1 text-[13px] font-bold text-rag-amber">
               Committed after the project&apos;s date.
@@ -154,6 +171,9 @@ export function PodProjectRow({
             : (history.reason ?? "Not enough history to forecast yet.")}
         {counted && scope.team.latest
           ? ` The team's latest date is ${formatDay(scope.team.latest)}${scope.team.latest_key ? ` (${scope.team.latest_key})` : ""}${isPastDay(scope.team.latest, shownDay) ? ", past its date" : ""}.`
+          : ""}
+        {counted && scope.team.undated > 0 && !undatedSaid
+          ? ` ${undatedWords(scope.team.undated)}.`
           : ""}
       </p>
     </li>

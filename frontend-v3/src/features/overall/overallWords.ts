@@ -2,7 +2,8 @@
 // only so `node --test` runs it directly.
 import type { ReleaseCandidateResponse, ScopeDeliveryResponse } from "../../api/schema";
 
-import { daysBetween } from "../../lib/format.ts";
+import { daysBetween, formatDay } from "../../lib/format.ts";
+import { VERDICT_LABELS } from "../../lib/status.ts";
 
 /** "Release Checkout 1.0", but "Release 1.1" when the name already says it. */
 export function releaseName(name: string): string {
@@ -75,6 +76,93 @@ export function teamDatesLine(
   const gone = past ? ", past its date" : "";
   const undated = team.undated > 0 ? ` · ${team.undated} without a date` : "";
   return `latest of ${items}${key}${gone}${undated}`;
+}
+
+/** "6 open requirements have no ETA or due date": the count the verdict rests on, in the singular too. */
+export function undatedWords(count: number): string {
+  return `${count} open ${count === 1 ? "requirement has" : "requirements have"} no ETA or due date`;
+}
+
+/** What a verdict says it rests on, and a sentence that joins that to the verdict. */
+export type VerdictCause = {
+  /** One sentence that starts with the verdict and names what it rests on. */
+  because: string;
+  /** Why that settles it, for a card with room; null when `because` is whole. */
+  also: string | null;
+};
+
+/**
+ * Why a delivery verdict is what it is, by the rule the server applies
+ * (core/domain/forecast.py `verdict`): the completion history first, once it
+ * has the days to forecast; the team's own dates when it has not.
+ *
+ * The server lists the facts (an undated count, a short history, the team's
+ * latest date) but never joins them to the verdict, so "At risk" stood alone:
+ * with under ten days of history, one open requirement with no ETA or due date
+ * is enough, however far off the date is. The wording follows the rule's
+ * branches; a verdict this rule does not explain has no cause rather than a
+ * guessed one.
+ */
+export function verdictCause(
+  scope: Pick<ScopeDeliveryResponse, "verdict" | "target" | "history" | "team">,
+): VerdictCause | null {
+  const { verdict, target, history, team } = scope;
+  if (!target) return null;
+  const label = VERDICT_LABELS[verdict];
+  const keyed = team.latest_key ? ` (${team.latest_key})` : "";
+  const forecast = history.p50 && history.p85;
+
+  if (verdict === "at_risk") {
+    if (forecast) {
+      return {
+        because: `${label} because history is 50% likely to finish by ${formatDay(history.p50)}, in time, but 85% likely only by ${formatDay(history.p85)}, after the delivery date.`,
+        also: null,
+      };
+    }
+    if (team.undated > 0) {
+      return {
+        because: `${label} because ${undatedWords(team.undated)}.`,
+        also: "The team's latest date is before the delivery date, but a requirement with no date could finish later, and there is not enough history to forecast it.",
+      };
+    }
+    return null;
+  }
+  if (verdict === "off_track") {
+    if (forecast) {
+      return {
+        because: `${label} because history puts the finish at ${formatDay(history.p50)} (50% likely), after the delivery date.`,
+        also: null,
+      };
+    }
+    if (team.latest) {
+      return {
+        because: `${label} because the team's latest date, ${formatDay(team.latest)}${keyed}, is after the delivery date.`,
+        also: null,
+      };
+    }
+    return null;
+  }
+  if (verdict === "not_enough_data") {
+    // The history is too short and no open requirement carries a date: the label says the
+    // first, this adds the second.
+    if (team.undated === 0) return null;
+    return {
+      because: `${label}, and ${team.undated === 1 ? "the one open requirement has no" : `none of the ${team.undated} open requirements has an`} ETA or due date to go by.`,
+      also: null,
+    };
+  }
+  return null;
+}
+
+const UNDATED_REASON = /^\d+ open requirements? (?:has|have) no ETA or due date\.?$/;
+
+/**
+ * The server's reasons without the one a verdict's cause already says, so a
+ * card reads "At risk because 6 open requirements have no ETA or due date" once.
+ */
+export function reasonsAfterCause(reasons: string[], cause: VerdictCause | null): string[] {
+  if (!cause?.because.includes("no ETA or due date")) return reasons;
+  return reasons.filter((reason) => !UNDATED_REASON.test(reason.trim()));
 }
 
 /**

@@ -10,9 +10,12 @@ import {
   noRequirementsWords,
   noSnapshotsWords,
   podLaterThanProject,
+  reasonsAfterCause,
   releaseName,
   teamDatesLine,
   timelineTitle,
+  undatedWords,
+  verdictCause,
 } from "./overallWords.ts";
 
 test("a release is named once, whether or not its name says release", () => {
@@ -103,4 +106,129 @@ test("a requirement that has not moved since the history began is not given a fa
   assert.equal(historyStart(full, 30), null);
   assert.equal(inStageSinceWords("2026-09-01", null, day), "day 2026-09-01");
   assert.equal(historyStart([], 30), null);
+});
+
+// A scope as the server answers it, with only what the verdict rule reads.
+const scope = (over: {
+  verdict: "on_track" | "at_risk" | "off_track" | "done" | "no_date" | "not_enough_data";
+  target?: string | null;
+  history?: Partial<{ p50: string | null; p85: string | null; reason: string | null }>;
+  team?: Partial<{
+    latest: string | null;
+    latest_key: string | null;
+    dated: number;
+    undated: number;
+  }>;
+}) => ({
+  verdict: over.verdict,
+  target: over.target === undefined ? "2026-12-15" : over.target,
+  history: {
+    p50: null,
+    p85: null,
+    remaining: 6,
+    unit: "requirements",
+    sample_days: 1,
+    completed_in_sample: 0,
+    reason: "Only 1 working day of history; a forecast needs 10.",
+    ...over.history,
+  },
+  team: { latest: "2026-10-09", latest_key: "CHK-4", dated: 7, undated: 6, ...over.team },
+});
+
+test("the undated count is said in the singular too", () => {
+  assert.equal(undatedWords(6), "6 open requirements have no ETA or due date");
+  assert.equal(undatedWords(1), "1 open requirement has no ETA or due date");
+});
+
+test("at risk on a short history says it is the requirements with no date", () => {
+  const cause = verdictCause(scope({ verdict: "at_risk" }));
+  assert.equal(cause?.because, "At risk because 6 open requirements have no ETA or due date.");
+  assert.match(cause?.also ?? "", /could finish later/);
+  assert.match(cause?.also ?? "", /not enough history to forecast/);
+  assert.equal(
+    verdictCause(scope({ verdict: "at_risk", team: { undated: 1 } }))?.because,
+    "At risk because 1 open requirement has no ETA or due date.",
+  );
+});
+
+test("at risk on a history that forecasts says where the two dates fall", () => {
+  const cause = verdictCause(
+    scope({
+      verdict: "at_risk",
+      target: "2026-11-20",
+      history: { p50: "2026-11-13", p85: "2026-12-02", reason: null },
+      team: { undated: 4 },
+    }),
+  );
+  assert.match(
+    cause?.because ?? "",
+    /^At risk because history is 50% likely to finish by .*13 Nov/,
+  );
+  assert.match(cause?.because ?? "", /85% likely only by .*2 Dec, after the delivery date\.$/);
+  // The history decides, so the undated count is no part of it.
+  assert.doesNotMatch(cause?.because ?? "", /ETA or due date/);
+});
+
+test("off track names the forecast or the team's latest date, whichever decided it", () => {
+  assert.match(
+    verdictCause(
+      scope({
+        verdict: "off_track",
+        history: { p50: "2026-12-30", p85: "2027-01-20", reason: null },
+      }),
+    )?.because ?? "",
+    /^Off track because history puts the finish at .*30 Dec \(50% likely\), after the delivery date\.$/,
+  );
+  assert.match(
+    verdictCause(
+      scope({ verdict: "off_track", team: { latest: "2027-01-08", latest_key: "CHK-9" } }),
+    )?.because ?? "",
+    /^Off track because the team's latest date, .*8 Jan \(CHK-9\), is after the delivery date\.$/,
+  );
+});
+
+test("not enough to forecast adds that nothing has a date to go by", () => {
+  const none = { latest: null, latest_key: null, dated: 0 };
+  assert.equal(
+    verdictCause(scope({ verdict: "not_enough_data", team: { ...none, undated: 4 } }))?.because,
+    "Not enough history to forecast, and none of the 4 open requirements has an ETA or due date to go by.",
+  );
+  assert.equal(
+    verdictCause(scope({ verdict: "not_enough_data", team: { ...none, undated: 1 } }))?.because,
+    "Not enough history to forecast, and the one open requirement has no ETA or due date to go by.",
+  );
+  assert.equal(
+    verdictCause(scope({ verdict: "not_enough_data", team: { ...none, undated: 0 } })),
+    null,
+  );
+});
+
+test("a verdict that needs no cause, or has no date to be late against, has none", () => {
+  assert.equal(verdictCause(scope({ verdict: "on_track" })), null);
+  assert.equal(verdictCause(scope({ verdict: "done" })), null);
+  assert.equal(verdictCause(scope({ verdict: "no_date", target: null })), null);
+  // A server that calls it at risk for a reason this rule does not know: no guess.
+  assert.equal(verdictCause(scope({ verdict: "at_risk", team: { undated: 0 } })), null);
+});
+
+test("the server's own undated line is not said twice beside the cause", () => {
+  const reasons = [
+    "Committed for Tue 15 Dec 2026 by Mina Patel.",
+    "Only 1 working day of history; a forecast needs 10.",
+    "Team dates: the latest open requirement is due Fri 9 Oct 2026 (CHK-4).",
+    "6 open requirements have no ETA or due date.",
+  ];
+  const cause = verdictCause(scope({ verdict: "at_risk" }));
+  assert.deepEqual(reasonsAfterCause(reasons, cause), reasons.slice(0, 3));
+  // Without such a cause nothing is taken out.
+  assert.deepEqual(reasonsAfterCause(reasons, null), reasons);
+  assert.deepEqual(
+    reasonsAfterCause(
+      reasons,
+      verdictCause(
+        scope({ verdict: "off_track", history: { p50: "2026-12-30", p85: "2027-01-20" } }),
+      ),
+    ),
+    reasons,
+  );
 });

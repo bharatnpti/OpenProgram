@@ -13,7 +13,10 @@
 //     master or product owner;
 //   - more briefs, because a real tenant has dozens;
 //   - a second program, when MOCK_PROGRAMS=2 is set (Customer Insights moves to
-//     "Platform Operations Program"), to see the program picker.
+//     "Platform Operations Program"), to see the program picker. It is red on two
+//     different blockers while its teams read amber, as a real program can be: the
+//     verdict then leads with the program's own colour (the first program's tiles
+//     are red, so its verdict and colour agree).
 import * as consoleData from "../mock-console.mjs";
 
 const TODAY = "2026-10-06";
@@ -38,7 +41,7 @@ if (twoPrograms) {
     ...digital,
     id: OPS,
     name: "Platform Operations Program",
-    rag: "amber",
+    rag: "red",
     project_ids: ["project-insights"],
   });
 }
@@ -53,7 +56,11 @@ const REASONS = {
     "Payments Pod: 2 blockers (Kai, Noah)",
     "Identity Platform: 2 blockers (Sofia, Omar)",
   ],
-  "program:program-ops": ["Attribution model v2 spike needs attention"],
+  "program:program-ops": [
+    "2 blockers (Raj, Ben)",
+    "Open blocker on INS-502 (Raj Iyer).",
+    "Open blocker on INS-504 (Ben Sorensen).",
+  ],
   "project:project-checkout": [
     "Refund edge cases: settle scope with finance blocked",
     "3-D Secure step-up has had no state change in 7 days",

@@ -9,7 +9,7 @@ import { Panel, RagBadge, RagDot } from "../../components/ui/Bits";
 import { ragSeverity } from "../../lib/status";
 import { plural } from "../../lib/words";
 import { FactorsPanel, NodeHeader } from "./NodeBits";
-import { worstFirst } from "./factors";
+import { setBy } from "./factors";
 
 /**
  * A program: what sets its status, its projects worst first with each one's
@@ -39,7 +39,8 @@ export function ProgramPanel({ program }: { program: DirectoryItemResponse }) {
     .filter((n) => n.kind === "project")
     .sort((a, b) => ragSeverity(b.rag) - ragSeverity(a.rag));
   const count = (kind: string) => nodes.filter((n) => n.kind === kind).length;
-  const worst = root ? worstFirst(root.factors)[0] : undefined;
+  // A red that no single reason makes (two different blockers) says so, not the worst amber one.
+  const rootBy = root ? setBy(root.rag, root.factors) : null;
 
   return (
     <>
@@ -49,8 +50,8 @@ export function ProgramPanel({ program }: { program: DirectoryItemResponse }) {
         rag={root?.rag ?? program.rag}
         reason={
           canReadPortfolio
-            ? worst
-              ? `Set by: ${worst.description}`
+            ? rootBy
+              ? `Set by: ${rootBy.text}`
               : undefined
             : "The reasons behind a program's status open for a manager, executive or admin."
         }
@@ -82,7 +83,7 @@ export function ProgramPanel({ program }: { program: DirectoryItemResponse }) {
             ) : (
               <ul className="grid gap-3">
                 {projects.map((project) => {
-                  const top = worstFirst(project.factors)[0];
+                  const top = setBy(project.rag, project.factors);
                   const under = children(project.id).filter(
                     (n) => n.kind === "workstream" || n.kind === "pod",
                   );
@@ -99,7 +100,7 @@ export function ProgramPanel({ program }: { program: DirectoryItemResponse }) {
                         <RagBadge rag={project.rag} />
                       </div>
                       <p className="mt-1 text-[13px] text-grey-body">
-                        {top ? top.description : "Nothing recorded for it yet."}
+                        {top ? top.text : "Nothing recorded for it yet."}
                       </p>
                       {under.length > 0 ? (
                         <div className="mt-2 flex flex-wrap gap-1.5">

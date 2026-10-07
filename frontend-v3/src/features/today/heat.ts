@@ -103,6 +103,65 @@ export function tooltipText(rag: Rag, reason: string, reasons: string[]): string
   return [colour, ...lines.map((line) => `• ${line}`)].join("\n");
 }
 
+/** The program's own cell on the heat map: its colour, and the few words that say why. */
+export function programCell(
+  cells: Cell[] | undefined,
+  programId: string,
+): { rag: Rag; reason: string | null } | null {
+  const cell = (cells ?? []).find(
+    (item) => item.entity_ref.kind === "program" && item.entity_ref.id === programId,
+  );
+  return cell ? { rag: cell.rag, reason: cell.reason?.trim() || null } : null;
+}
+
+/** What the verdict at the top of Today shows. */
+export type TodayVerdict = {
+  rag: Rag;
+  headline: string;
+  detail: string | null;
+  /** The program's own colour is worse than its teams', so it leads. */
+  fromProgram: boolean;
+};
+
+const capital = (word: string) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`;
+
+/**
+ * The verdict Today opens with. The backend colours its headline by the worst
+ * of the program's pods, projects and workstreams, and leaves the program's own
+ * status out (attention.py `attention_view`). A program is red when two
+ * different blockers are open under it, though every team is amber, so the
+ * headline said "Amber" above a Momentum line that said "now red", and the
+ * program's own page said red.
+ *
+ * When the program's own colour is worse (red or amber over a better headline),
+ * it leads, with the first reason the heat map gives it, and what the teams
+ * read follows in the second line. Otherwise the server's verdict stands as it
+ * is.
+ */
+export function todayVerdict(
+  attention: { rag: Rag; headline: string; detail?: string | null },
+  program: { rag: Rag; reason: string | null } | null,
+): TodayVerdict {
+  const own = {
+    rag: attention.rag,
+    headline: attention.headline,
+    detail: attention.detail ?? null,
+    fromProgram: false,
+  };
+  if (!program || (program.rag !== "red" && program.rag !== "amber")) return own;
+  if (SEVERITY[program.rag] <= SEVERITY[attention.rag]) return own;
+  const lead = program.reason
+    ? `${capital(program.rag)}: ${program.reason}.`
+    : `${capital(program.rag)}: the program's own status is ${program.rag}. Delivery says why.`;
+  const teams = `Teams read ${attention.headline}`;
+  return {
+    rag: program.rag,
+    headline: lead,
+    detail: attention.detail ? `${teams} ${attention.detail}` : teams,
+    fromProgram: true,
+  };
+}
+
 /** The heat map's row for people in no team, as the backend names it. */
 export const NO_POD_ROW = "no pod";
 

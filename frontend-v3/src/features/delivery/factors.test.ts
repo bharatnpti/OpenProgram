@@ -3,10 +3,13 @@ import { test } from "node:test";
 
 import {
   checkinStateWords,
+  distinctBlockers,
   metadataFacts,
   reasonLine,
   reasonRows,
   reasonsNote,
+  redFromBlockerCount,
+  setBy,
   sourcesLine,
   worstFirst,
 } from "./factors.ts";
@@ -158,4 +161,61 @@ test("a rollup's drift reason is called what it says, not 'drift'", () => {
     { U2: "Zoe Almeida" },
   );
   assert.equal(rows[0].kind, "signals disagree");
+});
+
+// The program of the real round: two blockers in two pods, each amber on its own, and an
+// unrelated amber reason that happens to come first.
+const blocker = (description: string, id: string, ref: string) => ({
+  ...factor(description, "amber", ref, "blocker", "work_item"),
+  blocker_id: id,
+});
+const TWO_BLOCKERS = [
+  factor(
+    "Signals disagree: CHK-6 has a merge request open 5 days (checkout-api !3).",
+    "amber",
+    "U2",
+    "drift",
+  ),
+  blocker("Blocker: Waiting on review for sso-gateway!1", "b-idp-6", "IDP-6"),
+  blocker("Blocker: Waiting for reviewer for MR !1 (INS-2).", "b-ins-2", "INS-2"),
+];
+
+test("a red that two different blockers make says so, not an unrelated amber reason", () => {
+  assert.equal(redFromBlockerCount("red", TWO_BLOCKERS), true);
+  assert.deepEqual(setBy("red", TWO_BLOCKERS), {
+    text: "2 different blockers are open at once: Waiting on review for sso-gateway!1; Waiting for reviewer for MR !1 (INS-2).",
+    factor: null,
+  });
+  assert.equal(
+    reasonLine(TWO_BLOCKERS, {}, "red"),
+    "2 different blockers are open at once: Waiting on review for sso-gateway!1; Waiting for reviewer for MR !1 (INS-2).",
+  );
+});
+
+test("an amber node, or a red with a red reason of its own, names its worst reason", () => {
+  assert.equal(redFromBlockerCount("amber", TWO_BLOCKERS), false);
+  assert.equal(setBy("amber", TWO_BLOCKERS)?.factor?.kind, "drift");
+  const critical = [...TWO_BLOCKERS, factor("A critical blocker.", "red", "U7", "blocker")];
+  assert.equal(redFromBlockerCount("red", critical), false);
+  assert.equal(setBy("red", critical)?.text, "A critical blocker.");
+  // One blocker twice (the same id from two pods) is one blocker, as the backend counts it.
+  const once = [
+    blocker("Blocker: Waiting on review", "b-1", "IDP-6"),
+    blocker("Blocker: Waiting on review", "b-1", "IDP-6"),
+  ];
+  assert.equal(distinctBlockers(once).length, 1);
+  assert.equal(redFromBlockerCount("red", once), false);
+  // Without a colour to explain nothing changes: the worst reason, as before.
+  assert.equal(
+    reasonLine(TWO_BLOCKERS, { U2: "Noah Weber" }),
+    TWO_BLOCKERS[0].description + " (from Noah Weber)",
+  );
+});
+
+test("more than three blockers are named three, then counted", () => {
+  const many = ["a", "b", "c", "d", "e"].map((id) => blocker(`Blocker: ${id} is stuck`, id, id));
+  assert.equal(
+    setBy("red", many)?.text,
+    "5 different blockers are open at once: a is stuck; b is stuck; c is stuck and 2 more.",
+  );
 });

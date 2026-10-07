@@ -6,11 +6,13 @@ import {
   momentum,
   momentumNote,
   noPodTiles,
+  programCell,
   signalHref,
   tileColours,
   tileKey,
   tileReasons,
   tileWeights,
+  todayVerdict,
   tooltipText,
 } from "./heat.ts";
 
@@ -286,5 +288,74 @@ describe("a heat row", () => {
     assert.equal(weights.get(tileKey("pod", "b")), 2);
     assert.equal(weights.get(tileKey("pod", "c")), 0);
     assert.equal(tileWeights(undefined).size, 0);
+  });
+});
+
+describe("the verdict Today opens with", () => {
+  // The round that found it: every tile amber, the program red on two different blockers.
+  const tiles = {
+    rag: "amber" as const,
+    headline: "Amber: signals disagree on 4 issues.",
+    detail: "Also: 2 open blockers, including Omar Haddad on IDP-6.",
+  };
+
+  test("the program's own cell is found by kind and id", () => {
+    const cells = [
+      reasonCell({ kind: "project", id: "program-platform", rag: "green" }),
+      reasonCell({
+        kind: "program",
+        id: "program-platform",
+        rag: "red",
+        reason: " 2 blockers (Omar, Raj) ",
+      }),
+    ];
+    assert.deepEqual(programCell(cells, "program-platform"), {
+      rag: "red",
+      reason: "2 blockers (Omar, Raj)",
+    });
+    assert.equal(programCell(cells, "another-program"), null);
+    assert.equal(programCell(undefined, "program-platform"), null);
+  });
+
+  test("a red program leads over amber teams, with its own first reason", () => {
+    const verdict = todayVerdict(tiles, { rag: "red", reason: "2 blockers (Omar, Raj)" });
+    assert.equal(verdict.rag, "red");
+    assert.equal(verdict.headline, "Red: 2 blockers (Omar, Raj).");
+    assert.equal(
+      verdict.detail,
+      "Teams read Amber: signals disagree on 4 issues. Also: 2 open blockers, including Omar Haddad on IDP-6.",
+    );
+    assert.equal(verdict.fromProgram, true);
+    // Without a reason the heat map gives it, the colour still leads and Delivery says why.
+    assert.equal(
+      todayVerdict(tiles, { rag: "red", reason: null }).headline,
+      "Red: the program's own status is red. Delivery says why.",
+    );
+  });
+
+  test("the server's verdict stands when the program is no worse than its teams", () => {
+    for (const program of [
+      { rag: "amber" as const, reason: "Signals disagree on 3 issues" },
+      { rag: "green" as const, reason: "All 6 confirmed" },
+      { rag: "unknown" as const, reason: "No status reported yet" },
+      null,
+    ]) {
+      assert.deepEqual(todayVerdict(tiles, program), {
+        rag: "amber",
+        headline: tiles.headline,
+        detail: tiles.detail,
+        fromProgram: false,
+      });
+    }
+  });
+
+  test("an amber program over green teams leads too, with no second line when the teams said none", () => {
+    const verdict = todayVerdict(
+      { rag: "green", headline: "Green: everyone confirmed with no open blockers.", detail: null },
+      { rag: "amber", reason: "Target date near" },
+    );
+    assert.equal(verdict.rag, "amber");
+    assert.equal(verdict.headline, "Amber: Target date near.");
+    assert.equal(verdict.detail, "Teams read Green: everyone confirmed with no open blockers.");
   });
 });

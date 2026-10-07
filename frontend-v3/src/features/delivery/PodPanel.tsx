@@ -62,7 +62,7 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
         reason={
           on
             ? rollup.data
-              ? reasonLine(rollup.data.factors, rollup.data.source_names)
+              ? reasonLine(rollup.data.factors, rollup.data.source_names, rollup.data.rag)
               : undefined
             : "Check-ins, blockers and the reasons behind this pod's colour open for a scrum master, manager or admin."
         }

@@ -26,11 +26,13 @@ import {
   momentum,
   momentumNote,
   noPodTiles,
+  programCell,
   signalHref,
   tileKey,
   tileColours,
   tileReasons,
   tileWeights,
+  todayVerdict,
   type NoPodTile,
   type TileReason,
 } from "./heat";
@@ -109,6 +111,8 @@ export function PortfolioToday() {
   const colours = tileColours(heatmap.data?.cells);
   const weights = tileWeights(heatmap.data?.cells);
   const noPod = noPodTiles(heatmap.data?.cells, HEAT_COLUMNS);
+  // The program's own colour can be worse than its teams': it then leads the verdict.
+  const verdict = a ? todayVerdict(a, programCell(heatmap.data?.cells, programId)) : null;
 
   return (
     <>
@@ -130,18 +134,22 @@ export function PortfolioToday() {
         <PanelState
           locked={!canReadPortfolio}
           needs="a manager, executive or admin"
-          isLoading={programsQuery.isLoading || attention.isLoading}
+          // The heat map too: its program cell can turn the verdict, and the amber one
+          // drawn first would flip to red a moment later.
+          isLoading={programsQuery.isLoading || attention.isLoading || heatmap.isLoading}
           error={programsQuery.error ?? attention.error}
           isEmpty={!programsQuery.isLoading && !program}
           emptyText="No program is configured yet. An admin adds one under Admin → Entities."
         >
-          {a ? (
-            <section className={cn("rounded-3xl p-6", HERO[a.rag])}>
+          {a && verdict ? (
+            <section className={cn("rounded-3xl p-6", HERO[verdict.rag])}>
               <p className="flex items-center gap-3 text-[24px] font-extrabold text-balance">
-                <RagDot rag={a.rag} className="h-3 w-3" />
-                {a.headline}
+                <RagDot rag={verdict.rag} className="h-3 w-3" />
+                {verdict.headline}
               </p>
-              {a.detail ? <p className="mt-2 text-[15px] font-medium">{a.detail}</p> : null}
+              {verdict.detail ? (
+                <p className="mt-2 text-[15px] font-medium">{verdict.detail}</p>
+              ) : null}
               <p className="mt-3 text-[13px] opacity-80">
                 {checkinsLine(
                   a.checkins,
