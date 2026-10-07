@@ -1032,7 +1032,9 @@ class _GraphRepository:
         return self._tree
 
     # The heat map's computed path also reads who is in no team (N5).
-    async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
+    async def list_nodes(
+        self, tenant_id: str, kind: NodeKind | None = None, *, as_of: date | None = None
+    ) -> list[GraphNode]:
         return [node for node in self._tree.nodes if kind is None or node.kind is kind]
 
     async def list_edges(self, tenant_id: str, *, kind: EdgeKind | None = None) -> list[GraphEdge]:

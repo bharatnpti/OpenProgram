@@ -301,7 +301,7 @@ class SearchGraphNodesTool:
         query = _string_argument(arguments.get("query"))
         kinds = _kinds_argument(arguments.get("kinds"))
         limit = _bounded_int(arguments.get("limit"), default=10, maximum=25)
-        nodes = await self.repository.list_nodes(self.tenant_id)
+        nodes = await self.repository.list_nodes(self.tenant_id, as_of=self.as_of)
         in_use = workstreams_in_use(
             nodes,
             await self.repository.list_edges(self.tenant_id, kind=EdgeKind.CONTAINS),
@@ -429,7 +429,7 @@ class GraphNeighborsTool:
                 if self._wanted(edge, kinds):
                     found.append(("in", edge.kind.value, edge.from_node_id))
 
-        nodes = await self.repository.list_nodes(self.tenant_id)
+        nodes = await self.repository.list_nodes(self.tenant_id, as_of=self.as_of)
         # An empty workstream is optional set-up, no relation worth naming.
         in_use = workstreams_in_use(
             nodes,
@@ -442,7 +442,7 @@ class GraphNeighborsTool:
         found = [item for item in found if item[2] not in empty][:limit]
         wanted = {neighbor for _, _, neighbor in found}
         names = {node.id: node for node in nodes if node.id in wanted}
-        node = await self.repository.get_node(self.tenant_id, node_id)
+        node = await self.repository.get_node(self.tenant_id, node_id, as_of=self.as_of)
         return json.dumps(
             {
                 "node": (
@@ -722,7 +722,7 @@ class StatusReasonsTool:
     async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
         node_id = _required_string(arguments.get("node_id"), "node_id")
         as_of = _snapshot_date(arguments.get("as_of"), self.as_of)
-        node = await self.repository.get_node(self.tenant_id, node_id)
+        node = await self.repository.get_node(self.tenant_id, node_id, as_of=as_of)
         if node is None:
             raise GraphNotFound(
                 f"{node_id} not found; search_graph_nodes finds a program, project, "
@@ -742,7 +742,7 @@ class StatusReasonsTool:
         tree = await self.service.program_tree(self.tenant_id, node_id, as_of)
         labels = {
             graph_node.id: node_label(graph_node)
-            for graph_node in await self.repository.list_nodes(self.tenant_id)
+            for graph_node in await self.repository.list_nodes(self.tenant_id, as_of=as_of)
         }
         beneath = {tree_node.id for tree_node in tree.nodes}
         risks = [
@@ -836,7 +836,7 @@ class PortfolioHeatmapTool:
         kinds = set(_kinds_argument(arguments.get("kinds")))
         limit = _bounded_int(arguments.get("limit"), default=60, maximum=100)
         view = await self.service.portfolio_heatmap(self.tenant_id, as_of, program_root_id)
-        names = await _node_names(self.repository, self.tenant_id)
+        names = await _node_names(self.repository, self.tenant_id, as_of)
         return json.dumps(
             _portfolio_heatmap_payload(view, names, kinds=kinds, limit=limit),
             ensure_ascii=False,
@@ -893,7 +893,7 @@ class OpenRisksTool:
         if workstream_id is not None:
             risks = [risk for risk in risks if risk.workstream_id == workstream_id]
             drift = [finding for finding in drift if finding.workstream_id == workstream_id]
-        names = await _node_names(self.repository, self.tenant_id)
+        names = await _node_names(self.repository, self.tenant_id, self.as_of)
         return json.dumps(
             {
                 "as_of": self.as_of.isoformat(),
@@ -1143,7 +1143,7 @@ class AskService:
         )
         response = await self._tool_agent.run(request, tools)
         parsed = _parse_answer(response.text)
-        nodes = await _nodes_by_any_id(self._graph_repository, principal.tenant_id)
+        nodes = await _nodes_by_any_id(self._graph_repository, principal.tenant_id, asked_for)
         labelled = _nodes_by_label(nodes)
         answer = _without_raw_ids(_tidy_lines(parsed.answer), nodes) or _NO_ANSWER
         references = _references(parsed, nodes, labelled) or _named_in(answer, labelled)
@@ -1560,13 +1560,15 @@ def node_label(node: GraphNode) -> str | None:
     return name
 
 
-async def _nodes_by_any_id(repository: GraphRepository, tenant_id: str) -> dict[str, GraphNode]:
-    """Every node by its id, and each member also by their chat id.
+async def _nodes_by_any_id(
+    repository: GraphRepository, tenant_id: str, as_of: date
+) -> dict[str, GraphNode]:
+    """Every node of ``as_of`` by its id, and each member also by their chat id.
 
     A model may cite a person by the chat id a tool showed it. A member's own
     node id always wins over another member's chat id.
     """
-    nodes = await repository.list_nodes(tenant_id)
+    nodes = await repository.list_nodes(tenant_id, as_of=as_of)
     by_id: dict[str, GraphNode] = {}
     for node in nodes:
         chat_id = _string_metadata(node, "chat_external_id")
@@ -1965,11 +1967,11 @@ def _drift_payload(finding: DriftFinding, names: Mapping[str, str]) -> dict[str,
     }
 
 
-async def _node_names(repository: GraphRepository, tenant_id: str) -> dict[str, str]:
-    """Names by node id, leaving out a person whose only name is their raw id."""
+async def _node_names(repository: GraphRepository, tenant_id: str, as_of: date) -> dict[str, str]:
+    """Names by node id as of ``as_of``, leaving out a person whose only name is their raw id."""
     return {
         node.id: node.name
-        for node in await repository.list_nodes(tenant_id)
+        for node in await repository.list_nodes(tenant_id, as_of=as_of)
         if node.name and not (node.kind is NodeKind.DEVELOPER and node.name == node.id)
     }
 

@@ -17,6 +17,7 @@ from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.directory import DirectoryUser
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
+    DELETED_ON_METADATA_KEY,
     EdgeKind,
     EntityRef,
     FactEvent,
@@ -53,6 +54,8 @@ def _utc_now() -> datetime:
 @dataclass
 class InMemoryGraphStore:
     _nodes: dict[tuple[str, str], GraphNode] = field(default_factory=dict)
+    # The day each deleted node was deleted; the node itself stays in _nodes.
+    _deleted_on: dict[tuple[str, str], date] = field(default_factory=dict)
     _edges: list[GraphEdge] = field(default_factory=list)
     _facts: list[FactEvent] = field(default_factory=list)
     _vectors: dict[tuple[str, str, str], tuple[float, ...]] = field(default_factory=dict)
@@ -85,31 +88,45 @@ class InMemoryGraphStore:
     # Stamps a blocker row's updated_at on each write, as the Postgres upsert's now().
     blocker_clock: Callable[[], datetime] = field(default_factory=lambda: _utc_now)
 
-    async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
+    async def list_nodes(
+        self, tenant_id: str, kind: NodeKind | None = None, *, as_of: date | None = None
+    ) -> list[GraphNode]:
         return sorted(
             (
                 node
-                for (node_tenant_id, _), node in self._nodes.items()
-                if node_tenant_id == tenant_id and (kind is None or node.kind is kind)
+                for (node_tenant_id, node_id), node in self._nodes.items()
+                if node_tenant_id == tenant_id
+                and (kind is None or node.kind is kind)
+                and self._node_exists(tenant_id, node_id, as_of)
             ),
             key=lambda node: (node.kind.value, node.name, node.id),
         )
 
-    async def get_node(self, tenant_id: str, id: str) -> GraphNode | None:
-        return self._nodes.get((tenant_id, id))
+    async def get_node(
+        self, tenant_id: str, id: str, *, as_of: date | None = None
+    ) -> GraphNode | None:
+        return self._node_on(tenant_id, id, as_of)
 
     async def upsert_node(self, node: GraphNode) -> None:
-        self._nodes[(node.tenant_id, node.id)] = node
-
-    async def delete_node(self, tenant_id: str, id: str) -> None:
-        self._nodes.pop((tenant_id, id), None)
-        self._edges = [
-            edge
-            for edge in self._edges
-            if not (
-                edge.tenant_id == tenant_id and (edge.from_node_id == id or edge.to_node_id == id)
+        if DELETED_ON_METADATA_KEY in node.metadata:
+            node = replace(
+                node,
+                metadata={
+                    key: value
+                    for key, value in node.metadata.items()
+                    if key != DELETED_ON_METADATA_KEY
+                },
             )
-        ]
+        self._nodes[(node.tenant_id, node.id)] = node
+        self._deleted_on.pop((node.tenant_id, node.id), None)
+
+    async def delete_node(self, tenant_id: str, id: str, *, on: date) -> None:
+        if (tenant_id, id) not in self._nodes or (tenant_id, id) in self._deleted_on:
+            return
+        for edge in list(self._edges):
+            if edge.tenant_id == tenant_id and id in {edge.from_node_id, edge.to_node_id}:
+                await self.end_edge(edge, on)
+        self._deleted_on[(tenant_id, id)] = on
 
     async def add_edge(self, edge: GraphEdge) -> None:
         if edge not in self._edges:
@@ -144,8 +161,18 @@ class InMemoryGraphStore:
     async def remove_edge(self, edge: GraphEdge) -> None:
         self._edges = [existing for existing in self._edges if existing != edge]
 
+    async def end_edge(self, edge: GraphEdge, on: date) -> None:
+        if edge not in self._edges:
+            return
+        ended = edge.ended_on(on)
+        if ended == edge:
+            return
+        self._edges.remove(edge)
+        if ended is not None and ended not in self._edges:
+            self._edges.append(ended)
+
     async def get_program_tree(self, tenant_id: str, program_id: str, as_of: date) -> GraphTree:
-        root = self._nodes.get((tenant_id, program_id))
+        root = self._node_on(tenant_id, program_id, as_of)
         if root is None:
             raise GraphNotFound(f"program {program_id} not found for tenant {tenant_id}")
 
@@ -156,7 +183,7 @@ class InMemoryGraphStore:
         while queue:
             current_id = queue.popleft()
             for edge in self._active_edges_from(tenant_id, current_id, as_of):
-                target = self._nodes.get((tenant_id, edge.to_node_id))
+                target = self._node_on(tenant_id, edge.to_node_id, as_of)
                 if target is None:
                     continue
                 selected_edges.append(edge)
@@ -194,7 +221,7 @@ class InMemoryGraphStore:
                 or not edge.is_active_on(as_of)
             ):
                 continue
-            node = self._nodes.get((tenant_id, edge.from_node_id))
+            node = self._node_on(tenant_id, edge.from_node_id, as_of)
             if node is not None and node.kind is NodeKind.POD:
                 pods[node.id] = node
         return sorted(pods.values(), key=lambda node: node.id)
@@ -222,7 +249,7 @@ class InMemoryGraphStore:
         pods = {
             node.id: node
             for candidate_id in candidate_ids
-            if (node := self._nodes.get((tenant_id, candidate_id))) is not None
+            if (node := self._node_on(tenant_id, candidate_id, as_of)) is not None
             and node.kind is NodeKind.POD
         }
         return sorted(pods.values(), key=lambda node: node.id)
@@ -972,8 +999,10 @@ class InMemoryGraphStore:
     async def developers_without_checkin(self, tenant_id: str, as_of: date) -> list[str]:
         known_developer_ids = {
             node.id
-            for (node_tenant_id, _), node in self._nodes.items()
-            if node_tenant_id == tenant_id and node.kind is NodeKind.DEVELOPER
+            for (node_tenant_id, node_id), node in self._nodes.items()
+            if node_tenant_id == tenant_id
+            and node.kind is NodeKind.DEVELOPER
+            and self._node_exists(tenant_id, node_id, as_of)
         }
         known_developer_ids.update(
             status.developer_id
@@ -1388,6 +1417,17 @@ class InMemoryGraphStore:
             )
             count += 1
         return count
+
+    def _node_exists(self, tenant_id: str, node_id: str, as_of: date | None) -> bool:
+        """Not deleted: for now when ``as_of`` is None, else not yet by ``as_of``."""
+        deleted_on = self._deleted_on.get((tenant_id, node_id))
+        return deleted_on is None or (as_of is not None and deleted_on > as_of)
+
+    def _node_on(self, tenant_id: str, node_id: str, as_of: date | None) -> GraphNode | None:
+        node = self._nodes.get((tenant_id, node_id))
+        if node is None or not self._node_exists(tenant_id, node_id, as_of):
+            return None
+        return node
 
     def _active_edges_from(self, tenant_id: str, node_id: str, as_of: date) -> list[GraphEdge]:
         return [

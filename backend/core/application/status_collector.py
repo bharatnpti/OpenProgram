@@ -1041,7 +1041,14 @@ class StatusCollector:
         if self._graph_repository is None:
             return {}
         nodes = {node.id: node for node in await self._graph_repository.list_nodes(tenant_id)}
-        edges = await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+        # The links in force now: one ended earlier is history and would map a
+        # moved task to the project it left.
+        today = datetime.now(tz=UTC).date()
+        edges = [
+            edge
+            for edge in await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+            if edge.is_active_on(today)
+        ]
         parent_of = {
             edge.to_node_id: edge.from_node_id
             for edge in edges

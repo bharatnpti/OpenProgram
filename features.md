@@ -70,6 +70,7 @@ Functional requirements:
 - Admins shall link and unlink workstreams to projects, pods to workstreams, and tasks to workstreams.
 - Admins shall link and unlink members to pods with a role-in-pod label.
 - Admins shall assign and unassign tasks to members.
+- Every link an admin makes shall hold from that day, and unlinking or deleting shall end it that day, never erase it. A deleted program, project, workstream, pod, member, or task shall be gone from the admin screens and from every view of that day or later, and still be there, with its links, for a view or report of an earlier day. Linking again shall start a new link that day, so the days in between stay unlinked. A link stored without a start day (seeded or synced) shall hold on every earlier day.
 - Admins shall create work items (directly, or from a branch or pull request), record work-item transitions, and link work items to workstreams through the config API.
 - Admins shall search synced directory users.
 - Admins shall add selected directory users as configured members.
@@ -405,6 +406,7 @@ Functional requirements:
 - While a past day is viewed, nothing shall be changeable. Confirm, correct, acknowledge, resolve, send, request check-in, and clear history shall be disabled, and the client shall refuse any change request as a backstop. Asking the graph and signing out stay allowed.
 - These reads shall honour the viewing date: directory statuses and portfolio heat; the developer's status, focus list, and tasks; pod check-ins, blockers, rollup reasons, and tasks; project and workstream progress; the program tree; the 30-day momentum line; open risks and drift; flow metrics; and Ask the graph answers.
 - These shall show current state whatever the viewing date, and the screen shall say so: the Signals feed (left out of Everything on a past day), narrative briefs, cross-person requests, and the chat, which is read-only.
+- A past day shall read the links, pods, people, and projects of that day: a later unlink or delete shall not change it, nor shall an earlier day's report (see 4.2).
 - The Admin screen shall always show current configuration, and the viewing-date control shall be hidden there.
 - The console shall move "today" forward when the day changes, so a console left open never keeps asking for yesterday.
 

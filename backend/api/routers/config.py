@@ -849,13 +849,7 @@ async def link_config_pod_member(
 ) -> ConfigEdgeResponse:
     _ensure(principal, Capability.MANAGE_CONFIG)
     try:
-        edge = await service.link_pod_member(
-            principal.tenant_id,
-            pod_id,
-            member_id,
-            request.role,
-            date.today(),
-        )
+        edge = await service.link_pod_member(principal.tenant_id, pod_id, member_id, request.role)
     except (ConfigConflict, ConfigValidationError, GraphNotFound) as exc:
         raise _http_error(exc) from exc
     return ConfigEdgeResponse.from_domain(edge)

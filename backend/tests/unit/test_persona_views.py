@@ -1427,7 +1427,9 @@ class _StaticGraphRepository:
         return GraphTree(root=self._root, nodes=self._nodes, edges=self._edges)
 
     # The static graph is the whole tenant: ownership reads it through these.
-    async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
+    async def list_nodes(
+        self, tenant_id: str, kind: NodeKind | None = None, *, as_of: date | None = None
+    ) -> list[GraphNode]:
         return [node for node in self._nodes if kind is None or node.kind is kind]
 
     async def list_edges(
@@ -1457,7 +1459,9 @@ class _FailingGraphRepository:
 
     # The cell reasons count who is in each team from the flat node and edge
     # lists, read once; they never walk the tree.
-    async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
+    async def list_nodes(
+        self, tenant_id: str, kind: NodeKind | None = None, *, as_of: date | None = None
+    ) -> list[GraphNode]:
         return []
 
     async def list_edges(self, tenant_id: str, **_: object) -> list[GraphEdge]:

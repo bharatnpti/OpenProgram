@@ -6,7 +6,7 @@ import asyncio
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from email.message import EmailMessage
 
 import httpx
@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from api.dtos import ReportRunResponse
 from api.main import create_app
 from config.settings import Settings
+from core.application.config_service import ConfigService
 from core.application.day_report_service import DayReportService, ReportNotFound
 from core.domain.blockers import BlockerSource, DeveloperBlocker
 from core.domain.connections import ConnectionValues
@@ -364,6 +365,24 @@ def _section(report: DayReport, title: str) -> ReportSection:
 
 def _groups(section: ReportSection) -> dict[str, tuple[str, ...]]:
     return {group.heading: group.lines for group in section.groups}
+
+
+async def test_a_days_report_is_not_changed_by_unlinks_and_deletes_made_after_it() -> None:
+    """A day's report reads the graph as that day held it, so a later change is not in it."""
+    registry, store = await _seeded_registry()
+    before = await _build(registry)
+    config = ConfigService(store, store, today=lambda: TODAY + timedelta(days=1))
+
+    await config.unlink_pod_member(TENANT, "pod-pay", "dev-priya")
+    await config.delete_node(TENANT, "dev-omar", NodeKind.DEVELOPER)
+    await config.delete_node(TENANT, "pod-platform", NodeKind.POD)
+
+    assert await _build(registry) == before
+    assert "Omar" in _groups(_section(before, "What we need, and from whom"))
+    # From the day of the change on, the report reads the changed graph.
+    after = await registry.day_report_builder().build(TENANT, "checkout", TODAY + timedelta(days=1))
+    assert "Omar" not in _groups(_section(after, "What we need, and from whom"))
+    assert "waits on Platform Pod" not in render_text(after)
 
 
 async def test_the_report_reads_in_the_order_of_a_status_mail() -> None:
@@ -809,7 +828,7 @@ async def test_a_report_whose_project_was_removed_records_why_nothing_was_sent()
     sender = _RecordingSender()
     service, registry = await _service_with_sender(sender)
     saved = await service.save(_definition(report_id=""), actor="admin")
-    await registry.graph_repository().delete_node(TENANT, "checkout")
+    await registry.graph_repository().delete_node(TENANT, "checkout", on=TODAY)
 
     run = await service.send_now(TENANT, saved.report_id, actor="admin")
 

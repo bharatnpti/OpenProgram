@@ -17,7 +17,7 @@ from core.domain.blockers import (
 from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.dead_letter import DeadLetter, DeadLetterStatus
-from core.domain.graph import EntityRef, JsonScalar, NodeKind
+from core.domain.graph import DELETED_ON_METADATA_KEY, EntityRef, JsonScalar, NodeKind
 from core.domain.integrations import SyncCursor, SyncCursorRecord
 from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import (
@@ -736,6 +736,10 @@ class PostgresStatusRepository:
                     SELECT id AS developer_id
                     FROM graph_nodes
                     WHERE tenant_id = %s AND kind = 'developer'
+                      AND (
+                        metadata->>%s::text IS NULL
+                        OR (metadata->>%s::text)::date > %s::date
+                      )
                   UNION
                     SELECT developer_id
                     FROM developer_statuses
@@ -764,7 +768,18 @@ class PostgresStatusRepository:
                 )
                 ORDER BY known.developer_id
                 """,
-                (tenant_id, tenant_id, tenant_id, tenant_id, as_of, as_of, as_of),
+                (
+                    tenant_id,
+                    DELETED_ON_METADATA_KEY,
+                    DELETED_ON_METADATA_KEY,
+                    as_of,
+                    tenant_id,
+                    tenant_id,
+                    tenant_id,
+                    as_of,
+                    as_of,
+                    as_of,
+                ),
             )
         return [str(row["developer_id"]) for row in rows]
 

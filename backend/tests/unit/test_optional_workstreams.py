@@ -41,6 +41,7 @@ from core.domain.graph import (
 from core.domain.rollup import Rag
 from core.domain.status import DeveloperStatus, StatusSource
 from infra.persistence.in_memory_graph import InMemoryGraphStore
+from tests.fixtures.config_day import config_api_on
 
 DAY = date(2026, 3, 9)
 
@@ -311,7 +312,7 @@ def test_config_lists_every_workstream_while_the_directory_shows_those_in_use(
     settings: Settings,
 ) -> None:
     as_of = DAY.isoformat()
-    app = create_app(settings=settings)
+    app = config_api_on(create_app(settings=settings), DAY)
     with TestClient(app) as client:
         client.post("/config/projects", json={"id": "proj", "name": "Checkout"})
         for workstream_id, name in (("ws-pay", "Payments"), ("ws-search", "Search")):

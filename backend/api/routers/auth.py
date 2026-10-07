@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
@@ -104,8 +105,13 @@ async def dev_users(
     developers = await graph.list_nodes(tenant_id, NodeKind.DEVELOPER)
     pods = {pod.id: pod.name for pod in await graph.list_nodes(tenant_id, NodeKind.POD)}
     pod_names: dict[str, list[str]] = {}
+    today = date.today()
     for edge in await graph.list_edges(tenant_id):
-        if edge.from_node_id in pods and edge.to_node_id in {dev.id for dev in developers}:
+        if (
+            edge.from_node_id in pods
+            and edge.to_node_id in {dev.id for dev in developers}
+            and edge.is_active_on(today)
+        ):
             pod_names.setdefault(edge.to_node_id, []).append(pods[edge.from_node_id])
 
     items = [
