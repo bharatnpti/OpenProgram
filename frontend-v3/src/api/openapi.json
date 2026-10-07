@@ -9285,6 +9285,7 @@
       "post": {
         "tags": ["personas"],
         "summary": "Update Cross Person Request Status",
+        "description": "Acknowledge or resolve a cross-person request, as the signed-in member.\n\nOnly the person the request asks acknowledges it, and only they or its\nrequester resolve it, whatever else the caller's role reads (403). No other\nstatus is set by hand (422). The change is recorded with who made it.",
         "operationId": "update_cross_person_request_status_cross_person_requests__request_id__status_post",
         "parameters": [
           {
@@ -11598,7 +11599,14 @@
           },
           "secrets": {
             "additionalProperties": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "type": "object",
             "title": "Secrets"
@@ -11606,7 +11614,7 @@
         },
         "type": "object",
         "title": "ConnectionTestRequest",
-        "description": "Optional unsaved values to test over the stored ones.\n\nA secret left out or blank uses the stored one. Leave the whole body out to\ntest what is saved; only that test is recorded on the connection."
+        "description": "Optional unsaved values to test over the stored ones.\n\nA secret left out uses the stored one, but only while every address and\nsign-in field is as saved: a test that changes one must carry each secret\nit uses, or it is refused with 400. A secret mapped to null or blank is\ncleared for the test and never falls back to the stored one. Leave the\nwhole body out to test what is saved; only that test is recorded on the\nconnection."
       },
       "ConnectionTestResponse": {
         "properties": {

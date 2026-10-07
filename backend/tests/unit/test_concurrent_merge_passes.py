@@ -125,8 +125,8 @@ async def test_two_console_resolves_at_once_tell_the_requester_once() -> None:
     )
 
     first, second = await asyncio.gather(
-        service.update_status(TENANT, liam.id, CrossPersonRequestStatus.RESOLVED),
-        service.update_status(TENANT, liam.id, CrossPersonRequestStatus.RESOLVED),
+        service.update_status(TENANT, liam.id, CrossPersonRequestStatus.RESOLVED, actor=NOAH),
+        service.update_status(TENANT, liam.id, CrossPersonRequestStatus.RESOLVED, actor=NOAH),
     )
 
     # The one that lost gets the request as it is now, not "not found".

@@ -65,6 +65,7 @@ JIRA_SPEC = ConnectorSpec(
             required=True,
             placeholder="https://your-company.atlassian.net",
             help="The address you open Jira at, without a path.",
+            routes_secrets=True,
         ),
         ConnectorField(
             key="auth_method",
@@ -72,6 +73,7 @@ JIRA_SPEC = ConnectorSpec(
             kind=FieldKind.SELECT,
             required=True,
             default=JIRA_AUTH_API_TOKEN,
+            routes_secrets=True,
             options=(
                 FieldOption(
                     value=JIRA_AUTH_API_TOKEN,
@@ -97,6 +99,7 @@ JIRA_SPEC = ConnectorSpec(
             required=True,
             help="The Atlassian account the API token belongs to.",
             shown_when=_when("auth_method", JIRA_AUTH_API_TOKEN),
+            routes_secrets=True,
         ),
         ConnectorField(
             key="api_token",
@@ -120,6 +123,7 @@ JIRA_SPEC = ConnectorSpec(
             kind=FieldKind.TEXT,
             required=True,
             shown_when=_when("auth_method", JIRA_AUTH_BASIC),
+            routes_secrets=True,
         ),
         ConnectorField(
             key="password",
@@ -155,6 +159,7 @@ GITLAB_SPEC = ConnectorSpec(
             required=True,
             default="https://gitlab.com",
             help="The address you open GitLab at. The API path is added for you.",
+            routes_secrets=True,
         ),
         ConnectorField(
             key="token",
@@ -188,6 +193,7 @@ GITHUB_SPEC = ConnectorSpec(
             required=True,
             default="https://api.github.com",
             help="Leave as is for github.com. GitHub Enterprise uses https://<host>/api/v3.",
+            routes_secrets=True,
         ),
         ConnectorField(
             key="token",
@@ -248,6 +254,7 @@ EMAIL_SPEC = ConnectorSpec(
             kind=FieldKind.TEXT,
             required=True,
             placeholder="smtp.example.com",
+            routes_secrets=True,
         ),
         ConnectorField(
             key="port",
@@ -255,6 +262,7 @@ EMAIL_SPEC = ConnectorSpec(
             kind=FieldKind.NUMBER,
             required=True,
             default="587",
+            routes_secrets=True,
         ),
         ConnectorField(
             key="security",
@@ -262,6 +270,8 @@ EMAIL_SPEC = ConnectorSpec(
             kind=FieldKind.SELECT,
             required=True,
             default=SMTP_STARTTLS,
+            # Turning encryption off would send the stored password in clear.
+            routes_secrets=True,
             options=(
                 FieldOption(value=SMTP_STARTTLS, label="STARTTLS (usually port 587)"),
                 FieldOption(value=SMTP_SSL, label="TLS from the start (usually port 465)"),
@@ -273,6 +283,7 @@ EMAIL_SPEC = ConnectorSpec(
             label="User name",
             kind=FieldKind.TEXT,
             help="Leave empty for a relay that needs no sign-in.",
+            routes_secrets=True,
         ),
         ConnectorField(
             key="password",
@@ -331,6 +342,7 @@ GOOGLE_CALENDAR_SPEC = ConnectorSpec(
             kind=FieldKind.URL,
             required=True,
             default="https://www.googleapis.com/calendar/v3",
+            routes_secrets=True,
         ),
         ConnectorField(
             key="token",

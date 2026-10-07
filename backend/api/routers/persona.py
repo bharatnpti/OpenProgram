@@ -46,7 +46,10 @@ from api.dtos import (
     WriteBackAdoptionResponse,
 )
 from core.application.authorization import AuthorizationPolicy, Capability
-from core.application.cross_person_service import CrossPersonRequestService
+from core.application.cross_person_service import (
+    CrossPersonRequestService,
+    RequestStatusNotSettable,
+)
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.person_names import PersonNames, person_name
 from core.application.persona_views import PersonaViewService, ProviderNames
@@ -401,22 +404,21 @@ async def update_cross_person_request_status(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[CrossPersonRequestService, Depends(get_cross_person_request_service)],
 ) -> CrossPersonRequestResponse:
-    if not _can_update_cross_person_request(principal):
-        raise HTTPException(
-            status_code=403,
-            detail=f"{principal.subject} is not authorized to update cross-person requests",
+    """Acknowledge or resolve a cross-person request, as the signed-in member.
+
+    Only the person the request asks acknowledges it, and only they or its
+    requester resolve it, whatever else the caller's role reads (403). No other
+    status is set by hand (422). The change is recorded with who made it.
+    """
+    _ensure(principal, Capability.READ_OWN_WORK)
+    try:
+        updated = await service.update_status(
+            principal.tenant_id, request_id, request.status, actor=principal.subject
         )
-    existing = await service.get(principal.tenant_id, request_id)
-    if existing is None:
-        raise HTTPException(status_code=404, detail=f"cross-person request {request_id} not found")
-    if not _can_update_cross_person_request(principal, existing):
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"{principal.subject} is not authorized to update cross-person request {request_id}"
-            ),
-        )
-    updated = await service.update_status(principal.tenant_id, request_id, request.status)
+    except AuthorizationDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RequestStatusNotSettable as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if updated is None:
         raise HTTPException(status_code=404, detail=f"cross-person request {request_id} not found")
     return CrossPersonRequestResponse.from_domain(updated)
@@ -498,19 +500,3 @@ def _ensure_aggregate(principal: Principal) -> None:
     raise HTTPException(
         status_code=403, detail=f"{principal.subject} is not authorized for aggregate read"
     )
-
-
-def _can_update_cross_person_request(
-    principal: Principal,
-    request: CrossPersonRequest | None = None,
-) -> bool:
-    policy = AuthorizationPolicy()
-    if policy.can(principal, Capability.READ_TEAM_AGGREGATE):
-        return True
-    if policy.can(principal, Capability.READ_EXEC_AGGREGATE):
-        return True
-    if not policy.can(principal, Capability.READ_OWN_WORK):
-        return False
-    if request is None:
-        return True
-    return principal.subject in {request.requester_id, request.counterpart_id}

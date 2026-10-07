@@ -24,6 +24,7 @@ from core.application.connection_service import (
     ConnectionConflict,
     ConnectionDraft,
     ConnectionService,
+    ConnectionTestRefused,
     UnknownConnector,
 )
 from core.domain.auth import Principal
@@ -131,6 +132,8 @@ def _http_error(exc: OpenProgramError) -> HTTPException:
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     if isinstance(exc, ConnectionConflict):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    if isinstance(exc, ConnectionTestRefused):
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     if isinstance(exc, ConnectionValidationError):
         return HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
     return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))

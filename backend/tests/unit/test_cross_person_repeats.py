@@ -30,7 +30,7 @@ from core.domain.cross_person import (
     subject_of_text,
 )
 from core.domain.directory import DirectoryUser
-from core.domain.graph import EntityRef, FactEvent, NodeKind
+from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.domain.integrations import SyncCursor
 from core.domain.messaging import ChatUserRef, InboundMessage
 from core.domain.status import CrossPersonMention
@@ -201,10 +201,12 @@ async def test_resolving_from_the_console_also_closes_the_copies() -> None:
         _stored("xreq-r2", MINA, ASHA, "reviewing acceptance criteria for CHK-10", R2)
     )
 
-    await service.update_status("demo", r2.id, CrossPersonRequestStatus.RESOLVED)
+    await service.update_status("demo", r2.id, CrossPersonRequestStatus.RESOLVED, actor=ASHA)
 
     copy = await store.get("demo", r1.id)
     assert copy is not None and copy.status is CrossPersonRequestStatus.RESOLVED
+    # The copy closed with the resolution, so its fact names who made that one.
+    assert await _resolved_by(store) == {r1.id: ASHA, r2.id: ASHA}
 
 
 # --- a merged merge request resolves the ask about it ---------------------------
@@ -241,6 +243,8 @@ async def test_liams_approve_chk3_resolves_once_checkout_api_1_is_merged() -> No
     # A second pass finds nothing left to resolve and tells nobody again.
     assert await service.resolve_merged_work("demo") == ()
     assert len(chat.sent) == 1
+    # The merge resolved it, not any member in OpenProgram.
+    assert await _resolved_by(store) == {liam.id: None}
 
 
 async def test_an_ask_about_a_named_merge_request_resolves_when_it_merges() -> None:
@@ -408,6 +412,16 @@ def _reply(
         correlation_id=request.notify_correlation_id or "",
         received_at=at,
     )
+
+
+async def _resolved_by(store: InMemoryGraphStore) -> dict[str, JsonScalar]:
+    """Who each recorded resolution names as having made it, by request id."""
+    facts = await store.list_recent_facts("demo", sources=("cross_person_request",))
+    return {
+        str(fact.payload["request_id"]): fact.payload["changed_by"]
+        for fact in facts
+        if fact.payload["transition"] == CrossPersonRequestStatus.RESOLVED.value
+    }
 
 
 async def _merge_request(

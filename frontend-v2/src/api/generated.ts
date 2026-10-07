@@ -2103,7 +2103,14 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Update Cross Person Request Status */
+    /**
+     * Update Cross Person Request Status
+     * @description Acknowledge or resolve a cross-person request, as the signed-in member.
+     *
+     *     Only the person the request asks acknowledges it, and only they or its
+     *     requester resolve it, whatever else the caller's role reads (403). No other
+     *     status is set by hand (422). The change is recorded with who made it.
+     */
     post: operations["update_cross_person_request_status_cross_person_requests__request_id__status_post"];
     delete?: never;
     options?: never;
@@ -2866,8 +2873,12 @@ export interface components {
      * ConnectionTestRequest
      * @description Optional unsaved values to test over the stored ones.
      *
-     *     A secret left out or blank uses the stored one. Leave the whole body out to
-     *     test what is saved; only that test is recorded on the connection.
+     *     A secret left out uses the stored one, but only while every address and
+     *     sign-in field is as saved: a test that changes one must carry each secret
+     *     it uses, or it is refused with 400. A secret mapped to null or blank is
+     *     cleared for the test and never falls back to the stored one. Leave the
+     *     whole body out to test what is saved; only that test is recorded on the
+     *     connection.
      */
     ConnectionTestRequest: {
       /** Settings */
@@ -2876,7 +2887,7 @@ export interface components {
       };
       /** Secrets */
       secrets?: {
-        [key: string]: string;
+        [key: string]: string | null;
       };
     };
     /** ConnectionTestResponse */

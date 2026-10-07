@@ -214,12 +214,33 @@ def _cross_person_summary(fact: FactEvent, names: Mapping[str, str]) -> str:
     if transition == "opened":
         return f"Cross-person {kind} opened: {requester} needs {counterpart} for {summary}"
     if transition == "resolved":
+        if _resolved_by_requester(fact.payload):
+            # The requester closed their own ask: that says nothing of what the
+            # person asked did, so the sentence does not credit them with it.
+            return (
+                f"Cross-person {kind} resolved: {requester} no longer needs "
+                f"{counterpart} for {summary}"
+            )
         return f"Cross-person {kind} resolved: {counterpart} completed {summary}"
     if transition == "acknowledged":
         return f"Cross-person {kind} acknowledged: {counterpart} is handling {summary}"
     if transition == "needs_resolution":
         return f"Cross-person {kind} needs PM resolution: {requester} named {summary}"
     return f"Cross-person {kind} {transition}: {summary}"
+
+
+def _resolved_by_requester(payload: Mapping[str, JsonScalar]) -> bool:
+    """Whether the requester made the change (``changed_by``), not the person asked.
+
+    Facts recorded before ``changed_by`` existed name no one, and read as before.
+    An ask of oneself has one person on both sides, who did the work.
+    """
+    changed_by = _payload_string(payload, "changed_by")
+    return (
+        changed_by is not None
+        and changed_by == _payload_string_any(payload, _REPORTER_ID_KEYS)
+        and changed_by != _payload_string_any(payload, _REFERENCED_PERSON_ID_KEYS)
+    )
 
 
 def _reporter_name(payload: Mapping[str, JsonScalar], names: Mapping[str, str]) -> str | None:

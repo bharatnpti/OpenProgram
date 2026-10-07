@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 
 from api.main import create_app
@@ -139,6 +140,57 @@ async def test_feed_names_people_in_a_cross_person_request() -> None:
         "Cross-person input opened: Kai Thompson needs Mina Patel for "
         "Confirm the refund rounding rules."
     )
+
+
+_COMPLETED = "Cross-person input resolved: Mina Patel completed Confirm the refund rounding rules."
+
+
+@pytest.mark.parametrize(
+    ("who", "summary"),
+    [
+        # The person asked resolved it, a merge did (nobody), or the fact is
+        # from before who made a change was recorded.
+        ({"changed_by": "U1003"}, _COMPLETED),
+        ({"changed_by": None}, _COMPLETED),
+        ({}, _COMPLETED),
+        # The requester closed their own ask: the person asked is not credited.
+        (
+            {"changed_by": "U1007"},
+            "Cross-person input resolved: Kai Thompson no longer needs Mina Patel for "
+            "Confirm the refund rounding rules.",
+        ),
+    ],
+)
+async def test_a_resolved_request_reads_as_who_resolved_it(
+    who: dict[str, JsonScalar], summary: str
+) -> None:
+    store = InMemoryGraphStore()
+    await store.append_fact_once(
+        FactEvent(
+            tenant_id=TENANT,
+            source="cross_person_request",
+            entity_ref=EntityRef(tenant_id=TENANT, kind=NodeKind.DEVELOPER, id="U1003"),
+            payload={
+                "request_id": "xreq-2",
+                "reporter_id": "U1007",
+                "reporter_name": "Kai Thompson",
+                "referenced_person_id": "U1003",
+                "referenced_person_name": "Mina Patel",
+                "dependency_kind": "needs_input",
+                "dependency_status": "resolved",
+                "transition": "resolved",
+                "summary": "Confirm the refund rounding rules.",
+                "needs_resolution": False,
+                **who,
+            },
+            observed_at=datetime.now(tz=UTC),
+            correlation_id="cross-person:xreq-2:resolved",
+        )
+    )
+
+    feed = await PortfolioFeedService(store).feed(TENANT, sources=("cross_person_request",))
+
+    assert feed.items[0].summary == summary
 
 
 async def test_feed_renders_cross_person_request_fact_descriptively() -> None:

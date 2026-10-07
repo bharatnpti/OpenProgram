@@ -272,7 +272,7 @@ Functional requirements:
 - Executives shall read directory data, executive aggregates, project and workstream progress, program rollups, and portfolio heatmaps, but not pod blockers or pod check-ins.
 - A pod's task list and rollup reasons shall need both the pod check-in and pod blocker reads, so scrum masters, managers, and admins open them.
 - Signals, flow, feed, trends, briefs, the portfolio requests board, and Ask the graph shall need a team or executive aggregate read.
-- A cross-person request's status shall be changeable by a team or executive reader, or by the request's own requester or counterpart.
+- Only the person a cross-person request asks shall acknowledge it, and only they or its requester shall resolve it. No role grants either, admin included, and no other request status shall be set by hand.
 - Admins shall manage configuration and dispatch workflows.
 - Admin role shall short-circuit to allowed for capabilities.
 - No role, admin included, shall be granted raw DM content: there is no capability or field for it. Budget-like sensitive fields shall be readable only by admins and executives.
@@ -323,6 +323,7 @@ Functional requirements:
 - The system shall use encrypted secret storage for connector credentials.
 - Admins shall set up each integrated system from the Integrations tab, including how it signs in: Jira (Cloud with email and API token, or Data Center and Server with a personal access token or user name and password), GitLab or GitHub (one code host at a time), Slack (bot, app-level and signing tokens), email over SMTP, a Microsoft Teams channel webhook, and Google Calendar. Secrets shall be stored encrypted, never returned by any API, kept unless typed over or cleared, and removed with the connection.
 - An admin shall test a connection, saved or not, before relying on it. A test shall answer with a fixed sentence and what the system reported (server, signed-in account, and for Jira its number fields to pick story points from), never an error's own text; only a test of the saved values shall be recorded. Testing Teams posts one test message.
+- A test of unsaved values shall use a stored secret only with the address and sign-in it was saved with (the address, the SMTP server, port and encryption, the sign-in method and the user). A test that changes one of them shall carry every secret it uses, typed again, or be refused with a plain sentence naming what changed, so a mistyped address never receives a stored secret. A secret, or a setting, cleared in the test shall be left out of it, never taken from what is stored.
 - A connection the tenant turned on shall win over the server's own settings, from the next call and without a restart; a connector the tenant has not turned on shall keep using the server's settings. Memory mode shall stay credential-free and never use tenant connections.
 - Jira Data Center and Server shall be read through the v2 REST API, paged by offset; Jira Cloud shall keep the enhanced search endpoint. Issue sync shall also read due dates, fix versions and their release dates, labels, priority, created and resolved times, and story points from the configured field, and each issue fact shall keep the tracker's status name, type and points.
 
@@ -440,9 +441,9 @@ Functional requirements:
 - The system shall send no DM about a request whose person was not matched or is the requester. Such a request stays visible to the requester, and a DM that fails to send shall not lose the request.
 - The system shall retry a counterpart DM that failed to send, from a scheduled pass, with the same message. It shall count every attempt, the first included, stop after a configured number (5 by default) with a wait that doubles after each failure (5 minutes after the first by default), never send the DM twice when passes overlap or the DM was recorded meanwhile, and send nothing while counterpart notification is off. A request recorded while notification was off is never DMed later.
 - The requester's "Raised by you" list and the board shall say when the DM is still being retried and when it was not delivered.
-- The counterpart's reply shall acknowledge or resolve the request, and the requester shall be told when it is resolved. A reply after the request is resolved shall change nothing.
-- The system shall record each status change as a fact, so requests appear in the activity feed.
-- Coordination shall show requests in Open, Acknowledged, and Needs resolution columns, naming requester and counterpart, with Acknowledge and Resolve actions on each card.
+- The counterpart's reply shall acknowledge or resolve the request, and the requester shall be told when it is resolved, unless they resolved it themselves. A reply after the request is resolved shall change nothing.
+- The system shall record each status change as a fact, with the member who made it and when (none when a merge or a superseding copy closed it), so requests appear in the activity feed. A request its requester resolved shall not read in the feed as completed by the person asked.
+- Coordination shall show requests in Open, Acknowledged, and Needs resolution columns, naming requester and counterpart. A card shall offer Acknowledge to the person asked while the request is open, and Resolve to them or the requester; anyone else sees that only the people on the request act on it.
 - Team and executive readers shall see the portfolio-wide board; a developer shall see the requests waiting on them.
 - Coordination shall show "Raised by you": the open and acknowledged requests the person asked of others, and those that need resolution because nobody was matched (they wait on the requester, who has to say who was meant), and where each one has got to.
 - The developer, scrum master, and product owner Today shall show "Waiting on you": the open and acknowledged requests where the person is the counterpart.

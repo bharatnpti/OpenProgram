@@ -65,6 +65,11 @@ class ConnectorField:
     default: str | None = None
     options: tuple[FieldOption, ...] = ()
     shown_when: FieldCondition | None = None
+    #: The field decides where the connection's secrets are sent, how they
+    #: travel or whom they sign in as: an address, a port or encryption, a
+    #: sign-in method or a user. A stored secret is only tested with these as
+    #: they were saved, so a mistyped address never receives it.
+    routes_secrets: bool = False
 
     @property
     def secret(self) -> bool:
@@ -208,6 +213,24 @@ def normalize_settings(spec: ConnectorSpec, settings: Mapping[str, str | None]) 
     if problems:
         raise ConnectionValidationError(_sentence(problems))
     return normalized
+
+
+def rerouted_fields(
+    spec: ConnectorSpec, saved: Mapping[str, str], draft: Mapping[str, str]
+) -> tuple[ConnectorField, ...]:
+    """The fields that route secrets (``routes_secrets``) whose draft value is not the saved one.
+
+    Only fields that apply under the draft count, since only they are used.
+    Defaults are filled in on both sides, so an address cleared back to its
+    default has changed when the saved one was another.
+    """
+    before = with_defaults(spec, saved)
+    after = with_defaults(spec, draft)
+    return tuple(
+        item
+        for item in applicable_fields(spec, draft)
+        if item.routes_secrets and before.get(item.key, "") != after.get(item.key, "")
+    )
 
 
 def missing_required(

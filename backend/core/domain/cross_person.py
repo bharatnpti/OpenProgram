@@ -77,6 +77,26 @@ class CrossPersonRequest:
         return CrossPersonDelivery.NOT_DELIVERED
 
 
+def may_set_status(
+    request: CrossPersonRequest,
+    member_id: str,
+    status: CrossPersonRequestStatus,
+) -> bool:
+    """Whether this member may set ``status`` on the request by hand.
+
+    Acknowledging says the person asked has taken the ask on, so it is theirs
+    alone; resolving is theirs or the requester's. Nobody else may do either,
+    whatever their role can read: the asked person's list would change unseen.
+    No one sets the other statuses by hand; they are recorded for people.
+    """
+    asked = request.counterpart_id is not None and member_id == request.counterpart_id
+    if status is CrossPersonRequestStatus.ACKNOWLEDGED:
+        return asked
+    if status is CrossPersonRequestStatus.RESOLVED:
+        return asked or member_id == request.requester_id
+    return False
+
+
 @dataclass(frozen=True, kw_only=True)
 class CrossPersonNotifyRetrySummary:
     """One retry pass over counterpart DMs that have not been sent."""

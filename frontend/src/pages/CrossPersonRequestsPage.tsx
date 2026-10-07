@@ -4,6 +4,7 @@ import { CheckCheck, ClipboardCheck, Handshake, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { apiClient } from "../api/client";
+import { useRole } from "../app/role";
 import type {
   CrossPersonRequestResponse,
   CrossPersonRequestStatus,
@@ -30,6 +31,7 @@ const STATUS_FILTERS: Array<{ label: string; value: CrossPersonRequestStatus | n
 
 export function CrossPersonRequestsPage() {
   const queryClient = useQueryClient();
+  const memberId = useRole().user?.subject ?? null;
   const [status, setStatus] = useState<CrossPersonRequestStatus | null>("open");
   const query = useQuery({
     queryKey: ["persona", "cross-person-requests", status],
@@ -96,33 +98,48 @@ export function CrossPersonRequestsPage() {
       {
         id: "actions",
         header: "Actions",
-        cell: ({ row }) => (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={row.original.status === "acknowledged" || updateStatus.isPending}
-              onClick={() => updateStatus.mutate({ id: row.original.id, status: "acknowledged" })}
-            >
-              <ClipboardCheck className="h-3.5 w-3.5" />
-              Ack
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={row.original.status === "resolved" || updateStatus.isPending}
-              onClick={() => updateStatus.mutate({ id: row.original.id, status: "resolved" })}
-            >
-              <CheckCheck className="h-3.5 w-3.5" />
-              Resolve
-            </Button>
-          </div>
-        ),
+        cell: ({ row }) => {
+          // Acknowledging is the asked person's alone; resolving is theirs or the
+          // requester's. The server refuses anyone else, whatever their role reads.
+          const askedOfViewer = memberId !== null && row.original.counterpart_id === memberId;
+          const onRequest =
+            askedOfViewer || (memberId !== null && row.original.requester_id === memberId);
+          return (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                title={askedOfViewer ? undefined : "Only the person asked acknowledges a request."}
+                disabled={
+                  !askedOfViewer || row.original.status !== "open" || updateStatus.isPending
+                }
+                onClick={() => updateStatus.mutate({ id: row.original.id, status: "acknowledged" })}
+              >
+                <ClipboardCheck className="h-3.5 w-3.5" />
+                Ack
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                title={
+                  onRequest ? undefined : "Only the person asked or the requester resolves it."
+                }
+                disabled={
+                  !onRequest || row.original.status === "resolved" || updateStatus.isPending
+                }
+                onClick={() => updateStatus.mutate({ id: row.original.id, status: "resolved" })}
+              >
+                <CheckCheck className="h-3.5 w-3.5" />
+                Resolve
+              </Button>
+            </div>
+          );
+        },
       },
     ],
-    [updateStatus],
+    [updateStatus, memberId],
   );
 
   return (
