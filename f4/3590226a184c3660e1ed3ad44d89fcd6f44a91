@@ -1,0 +1,47 @@
+frontend-v3/src/features/reports/ReportSetupDialog.tsx
+  s_a5c95ae649948d::t_a459765a6c6f6c 12-13,27-28,45,54,65-69,104-108,139-143,279-281,285-291,445-449
+frontend-v3/src/features/overall/overallWords.ts
+  s_a5c95ae649948d::t_be3677b6d326fb 92-93,122,129,139,146,158,171
+  s_a5c95ae649948d::t_8870d8595e4f9a 5,175-184
+  s_a5c95ae649948d::t_f7ba868ebb4a5c 185-186
+frontend-v3/src/features/delivery/DateHistory.tsx
+  s_a5c95ae649948d::t_514bd1a44fd6c2 1-40
+frontend-v3/src/features/daily/reportView.ts
+  s_a5c95ae649948d::t_c0c1a2a4145f70 1-2
+  s_a5c95ae649948d::t_a8b4e085496607 97-103,112,114,116,118,121-122,124-132
+  s_a5c95ae649948d::t_df7aaf36f2a30f 5,123
+  s_a5c95ae649948d::t_f6da038bae8164 133
+frontend-v3/src/features/overall/ForecastSection.tsx
+  s_a5c95ae649948d::t_514bd1a44fd6c2 185-187,552-576
+  s_a5c95ae649948d::t_5ce524ad8664d7 577-589
+frontend-v3/src/features/daily/reportView.test.ts
+  s_a5c95ae649948d::t_a8b4e085496607 7,9,76,78,80-86,98-119
+frontend-v3/src/features/daily/RunHistory.tsx
+  s_a5c95ae649948d::t_a8b4e085496607 7,9,54-64
+frontend-v3/src/features/overall/overallWords.test.ts
+  s_a5c95ae649948d::t_be3677b6d326fb 215-233,275
+  s_a5c95ae649948d::t_8870d8595e4f9a 6,255-274
+frontend-v3/src/lib/zones.test.ts
+  s_a5c95ae649948d::t_a459765a6c6f6c 4,25-38
+frontend-v3/src/lib/zones.ts
+  s_a5c95ae649948d::t_a459765a6c6f6c 51-71
+frontend-v3/src/features/delivery/PodDeliveryCard.tsx
+  s_a5c95ae649948d::t_514bd1a44fd6c2 25,179
+  s_a5c95ae649948d::t_be3677b6d326fb 175
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f43590226a184c3660e1ed3ad44d89fcd6f44a91",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
