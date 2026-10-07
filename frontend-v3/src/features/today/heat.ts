@@ -42,6 +42,18 @@ export function tileReasons(cells: Cell[] | undefined): Map<string, TileReason> 
   return reasons;
 }
 
+/**
+ * Each cell's colour, by node kind and id. A tile takes its colour from the
+ * heat map cell that gives its reason, not from the directory's stored status:
+ * before the first rollup the directory has none, while the heat map works it
+ * out, and a grey tile would sit under a red tooltip.
+ */
+export function tileColours(cells: Cell[] | undefined): Map<string, Rag> {
+  return new Map(
+    (cells ?? []).map((cell) => [tileKey(cell.entity_ref.kind, cell.entity_ref.id), cell.rag]),
+  );
+}
+
 /** The tooltip: the colour, then every reason, one per line. */
 export function tooltipText(rag: Rag, reason: string, reasons: string[]): string {
   const colour = rag === "unknown" ? "No status" : `${rag.charAt(0).toUpperCase()}${rag.slice(1)}`;

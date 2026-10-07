@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { ApiError, apiClient } from "../../api/client";
 import type { FocusResponse, MyStatusResponse, StatusCorrectionRequest } from "../../api/schema";
 import { usePods, usePrograms, useProjects } from "../../app/directory";
-import { useReadOnly } from "../../app/viewingDate";
+import { useReadOnly, useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { Greeting, Panel, RagBadge, RagDot, Row } from "../../components/ui/Bits";
 import { Pill } from "../../components/ui/Pill";
@@ -25,14 +25,8 @@ import {
   MAX_BLOCKER_TEXT,
   type BlockerRow,
 } from "./checkin";
+import { useMyCheckinPreference } from "../checkin/useMyCheckinPreference";
 import { WaitingOnYou } from "./WaitingOnYou";
-
-/** The day in the viewer's own calendar, for when the server has not said which day it reads as today. */
-function localDay(): string {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
 
 /**
  * A developer's day: the check-in to confirm or correct, what to work on next,
@@ -40,17 +34,22 @@ function localDay(): string {
  * Most of a developer's OpenProgram happens in chat; this is the console side.
  */
 export function DeveloperToday() {
+  const shownDay = useShownDay();
   const status = useQuery({ queryKey: ["me", "status"], queryFn: () => apiClient.myStatus() });
   const focus = useQuery({ queryKey: ["me", "focus"], queryFn: () => apiClient.focus() });
   const rollup = useRollUp(focus.data?.developer_id);
-  // The day the server reads as today (focus answers with it), so "earlier day"
-  // is judged by the same calendar the pod board uses.
-  const today = focus.data?.as_of ?? localDay();
+  // The day the server reads (focus answers with it), so "earlier day" is
+  // judged by the same calendar the pod board uses. Never the browser's day:
+  // it can be a day off the server's.
+  const today = focus.data?.as_of ?? null;
 
   return (
     <>
       <Greeting
-        eyebrow={todayEyebrow(rollup.programs.map((program) => program.name))}
+        eyebrow={todayEyebrow(
+          rollup.programs.map((program) => program.name),
+          shownDay,
+        )}
         title={`${greetingWord()}, Developer`}
         sub="Confirm today's check-in and clear what's blocking you."
       />
@@ -61,6 +60,7 @@ export function DeveloperToday() {
             isLoading={status.isLoading}
             error={status.error}
             today={today}
+            dayUnknown={focus.isError}
             podNames={rollup.pods.map((pod) => pod.name)}
           />
           <Panel title="Focus today" note="ranked by urgency">
@@ -143,12 +143,16 @@ function CheckinCard({
   isLoading,
   error,
   today,
+  dayUnknown,
   podNames,
 }: {
   status: MyStatusResponse | undefined;
   isLoading: boolean;
   error: unknown;
-  today: string;
+  /** The day the server reads, or null until /me/focus has said it. */
+  today: string | null;
+  /** /me/focus failed, so the status cannot be judged against the server's day. */
+  dayUnknown: boolean;
   podNames: string[];
 }) {
   const queryClient = useQueryClient();
@@ -162,42 +166,60 @@ function CheckinCard({
     },
     onError: (e: unknown) => toast.error(actionError(e, "confirm this check-in")),
   });
-  // Only a configured member has a check-in: anyone else is told, not shown a failure.
-  const noRecord = error instanceof ApiError && error.status === 404;
+  // The server answers 404 both for a member with no status yet and for someone
+  // with no member record. Only the second is told to ask an admin, so the
+  // member check (the own preference read, 404 only without a record) runs then.
+  const noStatus = error instanceof ApiError && error.status === 404;
+  const preference = useMyCheckinPreference(noStatus);
+  const noMember = preference.error instanceof ApiError && preference.error.status === 404;
 
+  const judged = today !== null;
   const provenance = status
     ? checkinProvenance({
         source: status.source,
         statusAsOf: status.status_as_of,
-        today,
+        // Without the server's day nothing is judged against today: the status
+        // reads as of its own day, with no tick, carried-forward line or hint.
+        today: today ?? status.status_as_of ?? "",
         developerConfirmed: status.developer_confirmed,
       })
     : null;
+  const shown = provenance && !judged ? { ...provenance, confirmedToday: false } : provenance;
   const note =
-    status && provenance
-      ? checkinNote(
-          provenance,
-          {
-            source: status.source,
-            confirmedAt: status.confirmed_at,
-            developerConfirmed: status.developer_confirmed,
-          },
-          { day: formatDay, time: formatTime },
-        )
+    status && shown
+      ? judged
+        ? checkinNote(
+            shown,
+            {
+              source: status.source,
+              confirmedAt: status.confirmed_at,
+              developerConfirmed: status.developer_confirmed,
+            },
+            { day: formatDay, time: formatTime },
+          )
+        : status.status_as_of
+          ? `status from ${formatDay(status.status_as_of)}`
+          : "no check-in on record"
       : undefined;
-  const hint = provenance ? checkinHint(provenance.state, podNames) : null;
-  const caption = provenance ? confirmCaption(provenance, formatDay) : null;
+  const hint = shown && judged ? checkinHint(shown.state, podNames) : null;
+  const caption = shown && judged ? confirmCaption(shown, formatDay) : null;
 
   return (
     <Panel title="Your check-in" variant="grey" note={note}>
       <PanelState
         needs="anyone with a member record"
-        isLoading={isLoading}
-        error={noRecord ? null : error}
-        isEmpty={noRecord}
-        emptyText="No check-in is on record for you. Only members are asked to check in: an admin adds you under Admin → Entities."
+        isLoading={
+          isLoading || (status !== undefined && !judged && !dayUnknown) || preference.isLoading
+        }
+        error={noStatus ? null : error}
+        isEmpty={noStatus}
+        emptyText={
+          noMember
+            ? "You have no member record yet, and only members are asked to check in. An admin adds you under Admin → Directory."
+            : "No check-in yet. Your first one comes in chat at your check-in time."
+        }
       >
-        {status && provenance ? (
+        {status && shown ? (
           <div className="grid gap-3">
             <p
               className={
@@ -225,7 +247,7 @@ function CheckinCard({
             ) : null}
             {hint ? <p className="text-[13px] text-grey-body">{hint}</p> : null}
             <div className="flex flex-wrap gap-2 pt-1">
-              {provenance.confirmedToday ? (
+              {shown.confirmedToday ? (
                 <span className="inline-flex h-11 items-center rounded-full bg-rag-green-bg px-5 text-[15px] font-bold text-rag-green">
                   ✓ Check-in confirmed
                 </span>
@@ -241,7 +263,7 @@ function CheckinCard({
               )}
               <CorrectDialog status={status} onDone={refresh} />
             </div>
-            {caption && !provenance.confirmedToday ? (
+            {caption && !shown.confirmedToday ? (
               <p className="text-[12px] text-grey-secondary">{caption}</p>
             ) : null}
           </div>

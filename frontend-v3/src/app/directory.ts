@@ -53,7 +53,7 @@ export function useProgram() {
 
 /**
  * The program a portfolio screen shows, when a tenant has several: the one in
- * the URL (`?program=`), else the worst. `programs` is ranked worst first, for
+ * the URL (`?program=`, set by every pick), else the worst. `programs` is ranked worst first, for
  * a picker whose chips carry each program's colour.
  */
 export function useProgramChoice() {
@@ -66,14 +66,15 @@ export function useProgramChoice() {
       setSearch(
         (current) => {
           // Other parameters (the day being viewed) are the shell's; leave them.
+          // A pick is always kept, the worst program too: without it the screen
+          // would follow the ranking and switch program when the colours move.
           const next = new URLSearchParams(current);
-          if (id === ranked[0]?.id) next.delete("program");
-          else next.set("program", id);
+          next.set("program", id);
           return next;
         },
         { replace: true },
       ),
-    [ranked, setSearch],
+    [setSearch],
   );
   return { query: programs, programs: ranked, program, choose };
 }

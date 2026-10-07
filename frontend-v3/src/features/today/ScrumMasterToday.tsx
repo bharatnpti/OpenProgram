@@ -13,6 +13,7 @@ import {
   useProjects,
 } from "../../app/directory";
 import { useRole } from "../../app/role";
+import { useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { ChipPicker, Greeting, Panel, Row } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
@@ -50,6 +51,7 @@ const NEEDS = "a scrum master, manager or admin";
  * of, or named as the scrum master contact of (the backend's own rule).
  */
 export function ScrumMasterToday() {
+  const shownDay = useShownDay();
   const { canReadPodDetail, roleLabel } = useRole();
   const memberId = useMemberId();
   const pods = usePods();
@@ -91,6 +93,7 @@ export function ScrumMasterToday() {
       <Greeting
         eyebrow={todayEyebrow(
           programsOfProjects(programs.data ?? [], podProjects).map((p) => p.name),
+          shownDay,
         )}
         title={`${greetingWord()}, ${roleLabel}`}
         sub="Who has checked in across your pods, and how long each blocker has been open."

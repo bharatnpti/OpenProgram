@@ -13,6 +13,7 @@ import {
   useProjects,
 } from "../../app/directory";
 import { useRole } from "../../app/role";
+import { useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { ChipPicker, Greeting, Panel, ProgressRing, RagBadge, Row } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
@@ -30,13 +31,18 @@ const ATTENTION_SHOWN = 8;
  * pods the person belongs to.
  */
 export function ProductOwnerToday() {
+  const shownDay = useShownDay();
   const { canReadProjectProgress, roleLabel } = useRole();
   const memberId = useMemberId();
   const pods = usePods();
   const projects = useProjects();
   const programs = usePrograms();
   const ownPods = podsOfPerson(pods.data ?? [], memberId);
-  const { projects: mine, own } = projectsOfPerson(projects.data ?? [], ownPods.pods, ownPods.own);
+  const { projects: mine, fallback } = projectsOfPerson(
+    projects.data ?? [],
+    ownPods.pods,
+    ownPods.own,
+  );
   const [chosen, setChosen] = useState("");
   const projectId = mine.some((p) => p.id === chosen) ? chosen : (mine[0]?.id ?? "");
   const project = mine.find((p) => p.id === projectId);
@@ -64,6 +70,7 @@ export function ProductOwnerToday() {
       <Greeting
         eyebrow={todayEyebrow(
           programsOfProjects(programs.data ?? [], project ? [project] : []).map((x) => x.name),
+          shownDay,
         )}
         title={`${greetingWord()}, ${roleLabel}`}
         sub="Project progress, task health and what needs a decision from you."
@@ -81,7 +88,11 @@ export function ProductOwnerToday() {
           onChange={setChosen}
           options={mine.map((x) => ({ value: x.id, label: x.name, rag: x.rag }))}
           note={
-            own ? "the projects of your pods" : `you are in no pod yet, so every project is shown`
+            fallback === "no-pod"
+              ? "you are in no pod yet, so every project is shown"
+              : fallback === "no-project"
+                ? "your pods work on no project yet, so every project is shown"
+                : "the projects of your pods"
           }
         />
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">

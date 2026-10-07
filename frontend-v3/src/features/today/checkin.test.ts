@@ -5,6 +5,7 @@ import {
   blockerKey,
   blockerRows,
   buildCorrection,
+  type BlockerRow,
   checkinHint,
   checkinNote,
   checkinProvenance,
@@ -245,16 +246,41 @@ describe("a correction restates every open blocker", () => {
       summary: "Done with the sandbox setup",
       eta_change_days: 2,
       blocker_items: [
-        {
-          blocker_id: "b1",
-          description: "3-D Secure sandbox credentials still not provisioned",
-          work_item_id: "CHK-103",
-          pod_id: "pod-payments",
-          resolved: true,
-        },
+        { description: "3-D Secure sandbox credentials still not provisioned", resolved: true },
         { description: "Waiting on the key rotation", resolved: false },
       ],
     });
+  });
+
+  test("a restated blocker carries only its wording, never the work item the server inferred", () => {
+    const built = buildCorrection(blockerRows(status), {
+      summary: "x",
+      eta: "",
+      resolved: [],
+      added: "",
+    });
+    assert.ok(built.ok);
+    for (const item of built.body.blocker_items ?? []) {
+      assert.deepEqual(Object.keys(item).sort(), ["description", "resolved"]);
+    }
+  });
+
+  test("two open blockers worded alike are refused unless both are resolved", () => {
+    const twin = (key: string): BlockerRow => ({
+      key,
+      blocker_id: key,
+      description: "Waiting on CHK-14 review",
+      work_item_id: "CHK-14",
+      pod_id: null,
+      age_days: 3,
+    });
+    const rows = [twin("a"), { ...twin("b"), description: "waiting on CHK-14 review." }];
+    const draft = { summary: "x", eta: "", resolved: ["a"], added: "" };
+    const refused = buildCorrection(rows, draft);
+    assert.equal(refused.ok, false);
+    assert.match(refused.ok ? "" : refused.message, /read the same/);
+    assert.equal(buildCorrection(rows, { ...draft, resolved: [] }).ok, false);
+    assert.ok(buildCorrection(rows, { ...draft, resolved: ["a", "b"] }).ok);
   });
 
   test("an empty ETA is no change, and a blank summary is refused in words", () => {

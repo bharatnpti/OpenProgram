@@ -6,6 +6,7 @@ import type { DirectoryItemResponse, Rag } from "../../api/schema";
 import { usePods, useProgramChoice, useProjects, useWorkstreams } from "../../app/directory";
 import { useRole } from "../../app/role";
 import { scopeToProgram } from "../../app/scope";
+import { useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { ChipPicker, Greeting, Panel, RagDot, Row, Sparkline } from "../../components/ui/Bits";
 import { formatDate, formatTime } from "../../lib/format";
@@ -24,6 +25,7 @@ import {
   noPodTiles,
   signalHref,
   tileKey,
+  tileColours,
   tileReasons,
   type NoPodTile,
   type TileReason,
@@ -54,6 +56,7 @@ const TILE: Record<Rag, string> = {
  * colour and the screen opens on the worst.
  */
 export function PortfolioToday() {
+  const shownDay = useShownDay();
   const { roleLabel, canReadPortfolio } = useRole();
   const { query: programsQuery, programs, program, choose } = useProgramChoice();
   const programId = program?.id ?? "";
@@ -101,12 +104,13 @@ export function PortfolioToday() {
     { label: "Pods", kind: "pod", items: scoped.pods },
   ].filter((row) => row.kind !== "workstream" || row.items.length > 0);
   const reasons = tileReasons(heatmap.data?.cells);
+  const colours = tileColours(heatmap.data?.cells);
   const noPod = noPodTiles(heatmap.data?.cells, HEAT_COLUMNS);
 
   return (
     <>
       <Greeting
-        eyebrow={todayEyebrow(program?.name)}
+        eyebrow={todayEyebrow(program?.name, shownDay)}
         title={`${greetingWord()}, ${roleLabel}`}
         sub="A portfolio-wide read on delivery health, momentum, and what changed."
       />
@@ -208,6 +212,7 @@ export function PortfolioToday() {
                 kind={row.kind}
                 items={row.items}
                 reasons={reasons}
+                colours={colours}
               />
             ))}
             {noPod.tiles.length > 0 ? <NoPodRow tiles={noPod.tiles} total={noPod.total} /> : null}
@@ -268,14 +273,18 @@ function HeatRow({
   kind,
   items,
   reasons,
+  colours,
 }: {
   label: string;
   kind: string;
   items: DirectoryItemResponse[];
   reasons: Map<string, TileReason>;
+  colours: Map<string, Rag>;
 }) {
+  const colourOf = (item: DirectoryItemResponse): Rag =>
+    colours.get(tileKey(kind, item.id)) ?? item.rag ?? "unknown";
   const ranked = [...items].sort(
-    (a, b) => ragSeverity(b.rag) - ragSeverity(a.rag) || a.name.localeCompare(b.name),
+    (a, b) => ragSeverity(colourOf(b)) - ragSeverity(colourOf(a)) || a.name.localeCompare(b.name),
   );
   const shown = ranked.slice(0, HEAT_COLUMNS);
   return (
@@ -293,7 +302,7 @@ function HeatRow({
       ) : (
         <ul className="grid grid-cols-2 gap-2 lg:grid-cols-4">
           {shown.map((item) => {
-            const rag = item.rag ?? "unknown";
+            const rag = colourOf(item);
             const why = reasons.get(tileKey(kind, item.id));
             return (
               <li key={item.id}>

@@ -53,16 +53,26 @@ export function projectsOf(projects: DirectoryItemResponse[], pods: DirectoryIte
 }
 
 /**
- * The projects of a person's pods. `own` is false when they come from a
- * fallback instead: the pods were not the person's own, or name no project.
+ * The projects of a person's pods. Otherwise every project, and `fallback`
+ * says why: the person is in no pod of their own (`no-pod`; not only the
+ * projects some pod works on, or a project made today would be missing), or
+ * their pods work on no project yet (`no-project`). `own` is true only for the
+ * projects of their own pods.
  */
 export function projectsOfPerson(
   projects: DirectoryItemResponse[],
   pods: DirectoryItemResponse[],
   podsAreOwn: boolean,
-): { projects: DirectoryItemResponse[]; own: boolean } {
+): {
+  projects: DirectoryItemResponse[];
+  own: boolean;
+  fallback: "none" | "no-pod" | "no-project";
+} {
+  if (!podsAreOwn) return { projects, own: false, fallback: "no-pod" };
   const mine = projectsWorkedOnBy(projects, pods);
-  return { projects: mine.length > 0 ? mine : projects, own: podsAreOwn && mine.length > 0 };
+  return mine.length > 0
+    ? { projects: mine, own: true, fallback: "none" }
+    : { projects, own: false, fallback: "no-project" };
 }
 
 /** The programs the given projects belong to, in the directory's order. */

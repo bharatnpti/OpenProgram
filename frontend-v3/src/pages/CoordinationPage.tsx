@@ -182,9 +182,12 @@ function RequestCard({
     : (request.counterpart_display_name ?? request.raw_name ?? "someone not matched yet");
   const delivery = deliveryNote(request.delivery, raisedByViewer);
   const live = request.status === "open" || request.status === "acknowledged";
-  // Acknowledging is the asked person's: someone who only raised the request
-  // can resolve it, not acknowledge their own ask.
-  const canAcknowledge = request.status === "open" && (!raisedByViewer || askedOfViewer);
+  // Acknowledging says the person asked has taken it, so it is theirs alone;
+  // resolving is theirs or the requester's. The backend also lets a team or
+  // executive reader do both, but records nobody's name, so the board does not
+  // offer it to someone who is not on the request.
+  const canAcknowledge = request.status === "open" && askedOfViewer;
+  const canResolve = askedOfViewer || raisedByViewer;
 
   return (
     <li className="rounded-2xl border border-grey-border bg-white p-3">
@@ -215,7 +218,12 @@ function RequestCard({
           here until they answer.
         </p>
       ) : null}
-      {live || request.status === "needs_resolution" ? (
+      {(live || request.status === "needs_resolution") && !canResolve ? (
+        <p className="mt-2 text-[12px] text-grey-secondary">
+          Only the people on this request acknowledge or resolve it.
+        </p>
+      ) : null}
+      {(live || request.status === "needs_resolution") && canResolve ? (
         <div className="mt-2 flex gap-1.5">
           {canAcknowledge ? (
             <Pill

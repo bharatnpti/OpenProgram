@@ -77,14 +77,19 @@ describe("a person's projects and programs", () => {
     assert.deepEqual(projectsOfPerson([checkout, insights], [payments], true), {
       projects: [checkout],
       own: true,
+      fallback: "none",
     });
+    // In no pod of their own: every project, also one no pod works on yet.
     assert.deepEqual(projectsOfPerson([checkout, insights], [payments], false), {
-      projects: [checkout],
-      own: false,
-    });
-    assert.deepEqual(projectsOfPerson([checkout, insights], [], true), {
       projects: [checkout, insights],
       own: false,
+      fallback: "no-pod",
+    });
+    const idle = item({ id: "pod-idle", project_ids: [] });
+    assert.deepEqual(projectsOfPerson([checkout, insights], [idle], true), {
+      projects: [checkout, insights],
+      own: false,
+      fallback: "no-project",
     });
     assert.deepEqual(projectsOf([checkout, insights], [payments]), [checkout]);
   });

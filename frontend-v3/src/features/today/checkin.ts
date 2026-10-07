@@ -235,6 +235,15 @@ export function buildCorrection(
   if (rows.length + (added ? 1 : 0) > MAX_BLOCKERS) {
     return { ok: false, message: `At most ${MAX_BLOCKERS} blockers can be listed at once.` };
   }
+  // The server reads one report per wording and closes an open blocker left
+  // out, so of two open blockers worded alike a correction can only close both.
+  const clash = duplicateKept(rows, draft.resolved);
+  if (clash) {
+    return {
+      ok: false,
+      message: `Two of your blockers read the same ("${clash}"), so a correction can't keep one open and close the other. Mark both resolved, then add the one that still stands in your own words.`,
+    };
+  }
 
   return {
     ok: true,
@@ -242,17 +251,34 @@ export function buildCorrection(
       summary,
       eta_change_days: eta,
       blocker_items: [
+        // Only what the person says: the wording and whether it is resolved.
+        // The server matches a restated blocker by its wording and keeps the
+        // work item and pod it stored. The work item shown here is the one the
+        // server inferred, and sending it back would match the report to
+        // another blocker on the same work item.
         ...rows.map((row) => ({
-          blocker_id: row.blocker_id,
           description: row.description,
-          work_item_id: row.work_item_id,
-          pod_id: row.pod_id,
           resolved: draft.resolved.includes(row.key),
         })),
         ...(added ? [{ description: added, resolved: false }] : []),
       ],
     },
   };
+}
+
+/** The wording two rows share while at least one of them is kept open, or null. */
+function duplicateKept(rows: BlockerRow[], resolved: string[]): string | null {
+  const seen = new Map<string, BlockerRow[]>();
+  for (const row of rows) {
+    const key = blockerKey(row.description);
+    seen.set(key, [...(seen.get(key) ?? []), row]);
+  }
+  for (const group of seen.values()) {
+    if (group.length > 1 && group.some((row) => !resolved.includes(row.key))) {
+      return group[0].description;
+    }
+  }
+  return null;
 }
 
 /** The scrum master's line under a person on the pod board. */

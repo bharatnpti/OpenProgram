@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { momentum, noPodTiles, signalHref, tileKey, tileReasons, tooltipText } from "./heat.ts";
+import {
+  momentum,
+  noPodTiles,
+  signalHref,
+  tileColours,
+  tileKey,
+  tileReasons,
+  tooltipText,
+} from "./heat.ts";
 
 type ReasonCell = NonNullable<Parameters<typeof tileReasons>[0]>[number];
 
@@ -43,6 +51,16 @@ describe("tile reasons", () => {
   test("a cell from an older backend, with no reason, gives its tile none", () => {
     assert.equal(tileReasons([reasonCell({ kind: "pod", id: "p", reason: null })]).size, 0);
     assert.equal(tileReasons(undefined).size, 0);
+  });
+
+  test("a tile is coloured by its heat map cell, reason or not", () => {
+    const colours = tileColours([
+      reasonCell({ kind: "pod", id: "pod-web", rag: "red" }),
+      reasonCell({ kind: "project", id: "p", rag: "green", reason: null }),
+    ]);
+    assert.equal(colours.get(tileKey("pod", "pod-web")), "red");
+    assert.equal(colours.get(tileKey("project", "p")), "green");
+    assert.equal(tileColours(undefined).size, 0);
   });
 
   test("a tooltip with no reasons listed says the reason itself", () => {
