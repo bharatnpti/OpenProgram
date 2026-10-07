@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import cast
 from urllib.parse import quote
@@ -11,10 +12,33 @@ from opentelemetry import trace
 
 from core.domain.errors import ProviderUnavailable
 from core.domain.graph import JsonScalar
-from core.domain.integrations import Commit, PullRequest, Repo, SyncCursor, UserRef
+from core.domain.integrations import (
+    Commit,
+    PullRequest,
+    PullRequestEvent,
+    PullRequestEventKind,
+    Repo,
+    SyncCursor,
+    UserRef,
+)
 from core.ports.connections import ConnectionResolver
 
 _tracer = trace.get_tracer("openprogram.adapters.vcs.github")
+
+# A pull request's history: at most this many requests read at once, and this
+# many pages of 100 timeline events each.
+_HISTORY_CONCURRENCY = 4
+_HISTORY_MAX_PAGES = 5
+_PAGE_SIZE = 100
+
+# A submitted review's state: an approval, or review activity that is not one.
+# A dismissed review was an approval that no longer stands.
+_REVIEW_STATES: Mapping[str, PullRequestEventKind] = {
+    "approved": PullRequestEventKind.APPROVAL,
+    "changes_requested": PullRequestEventKind.REVIEW,
+    "commented": PullRequestEventKind.REVIEW,
+    "dismissed": PullRequestEventKind.REVIEW,
+}
 
 
 @dataclass(frozen=True)
@@ -80,13 +104,74 @@ class GitHubVcsAdapter:
             pull_requests = [
                 _map_pull_request(tenant_id, repo, item) for item in _list_payload(payload)
             ]
-            if cursor is None:
-                return pull_requests
-            return [
-                pull_request
-                for pull_request in pull_requests
-                if _after_cursor(pull_request.updated_at, cursor)
-            ]
+            if cursor is not None:
+                pull_requests = [
+                    pull_request
+                    for pull_request in pull_requests
+                    if _after_cursor(pull_request.updated_at, cursor)
+                ]
+            return await self._with_histories(credentials, owner, name, pull_requests)
+
+    async def _with_histories(
+        self,
+        credentials: GitHubCredentials,
+        owner: str,
+        name: str,
+        pull_requests: list[PullRequest],
+    ) -> list[PullRequest]:
+        """Each request with its commits, draft marks, reviews and comments.
+
+        A request whose timeline cannot be read keeps ``events=None`` rather
+        than failing the sync, as on GitLab.
+        """
+        if not pull_requests:
+            return pull_requests
+        limit = asyncio.Semaphore(_HISTORY_CONCURRENCY)
+        async with httpx.AsyncClient(
+            base_url=credentials.base_url, timeout=self.timeout_seconds
+        ) as client:
+
+            async def read(pull_request: PullRequest) -> PullRequest:
+                path = (
+                    f"/repos/{quote(owner, safe='')}/{quote(name, safe='')}"
+                    f"/issues/{quote(pull_request.id, safe='')}/timeline"
+                )
+                async with limit:
+                    try:
+                        timeline = await self._get_pages(client, credentials, path)
+                    except ProviderUnavailable:
+                        return pull_request
+                events = [event for item in timeline for event in _timeline_events(item)]
+                return replace(
+                    pull_request, events=tuple(sorted(events, key=lambda event: event.at))
+                )
+
+            with _tracer.start_as_current_span("github.pull_request_histories"):
+                return list(await asyncio.gather(*(read(item) for item in pull_requests)))
+
+    async def _get_pages(
+        self,
+        client: httpx.AsyncClient,
+        credentials: GitHubCredentials,
+        path: str,
+    ) -> list[Mapping[str, object]]:
+        items: list[Mapping[str, object]] = []
+        for page in range(1, _HISTORY_MAX_PAGES + 1):
+            try:
+                response = await client.get(
+                    path,
+                    headers=_headers(credentials),
+                    params={"per_page": str(_PAGE_SIZE), "page": str(page)},
+                )
+                response.raise_for_status()
+                payload = response.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                raise ProviderUnavailable("VCS request failed") from exc
+            batch = _list_payload(payload)
+            items.extend(batch)
+            if len(batch) < _PAGE_SIZE:
+                break
+        return items
 
     async def list_pull_requests_for(self, author: UserRef) -> list[PullRequest]:
         with _tracer.start_as_current_span("github.list_pull_requests_for"):
@@ -109,18 +194,12 @@ class GitHubVcsAdapter:
         *,
         params: Mapping[str, str],
     ) -> object:
-        headers = {
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-        }
-        if credentials.token:
-            headers["Authorization"] = f"Bearer {credentials.token}"
         try:
             async with httpx.AsyncClient(
                 base_url=credentials.base_url,
                 timeout=self.timeout_seconds,
             ) as client:
-                response = await client.get(path, headers=headers, params=params)
+                response = await client.get(path, headers=_headers(credentials), params=params)
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPError as exc:
@@ -141,6 +220,87 @@ class GitHubVcsAdapter:
             token=self.token,
             owner=self.owner,
         )
+
+
+def _headers(credentials: GitHubCredentials) -> dict[str, str]:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    if credentials.token:
+        headers["Authorization"] = f"Bearer {credentials.token}"
+    return headers
+
+
+def _timeline_events(payload: Mapping[str, object]) -> list[PullRequestEvent]:
+    """A timeline entry as review activity: commits, draft marks, reviews and comments."""
+    kind = _optional_string(payload, "event")
+    if kind == "committed":
+        author = _optional_mapping(payload, "author") or _optional_mapping(payload, "committer")
+        at = _datetime_field(author or {}, "date")
+        return [PullRequestEvent(kind=PullRequestEventKind.COMMIT, at=at)] if at else []
+    if kind == "reviewed":
+        review_kind = _REVIEW_STATES.get((_optional_string(payload, "state") or "").casefold())
+        at = _datetime_field(payload, "submitted_at")
+        if review_kind is None or at is None:
+            return []
+        return [PullRequestEvent(kind=review_kind, at=at, actor=_login(payload, "user"))]
+    if kind == "commented":
+        at = _datetime_field(payload, "created_at")
+        actor = _login(payload, "actor") or _login(payload, "user")
+        return (
+            [PullRequestEvent(kind=PullRequestEventKind.COMMENT, at=at, actor=actor)] if at else []
+        )
+    if kind == "line-commented":
+        return _line_comment_events(payload)
+    mark = _DRAFT_MARKS.get(kind or "")
+    at = _datetime_field(payload, "created_at")
+    if mark is None or at is None:
+        return []
+    return [PullRequestEvent(kind=mark, at=at, actor=_login(payload, "actor"))]
+
+
+_DRAFT_MARKS: Mapping[str, PullRequestEventKind] = {
+    "ready_for_review": PullRequestEventKind.READY,
+    "convert_to_draft": PullRequestEventKind.DRAFT,
+}
+
+
+def _line_comment_events(payload: Mapping[str, object]) -> list[PullRequestEvent]:
+    comments = payload.get("comments")
+    if not isinstance(comments, Sequence) or isinstance(comments, str | bytes):
+        return []
+    events: list[PullRequestEvent] = []
+    for comment in comments:
+        if not isinstance(comment, Mapping):
+            continue
+        entry = cast(Mapping[str, object], comment)
+        at = _datetime_field(entry, "created_at")
+        if at is not None:
+            events.append(
+                PullRequestEvent(
+                    kind=PullRequestEventKind.COMMENT, at=at, actor=_login(entry, "user")
+                )
+            )
+    return events
+
+
+def _login(payload: Mapping[str, object], key: str) -> str | None:
+    return _optional_string(_optional_mapping(payload, key) or {}, "login")
+
+
+def _labels(payload: Mapping[str, object]) -> tuple[str, ...]:
+    value = payload.get("labels")
+    if not isinstance(value, Sequence) or isinstance(value, str | bytes):
+        return ()
+    names: list[str] = []
+    for item in value:
+        name = item if isinstance(item, str) else None
+        if isinstance(item, Mapping):
+            name = _optional_string(cast(Mapping[str, object], item), "name")
+        if name:
+            names.append(name)
+    return tuple(names)
 
 
 def _map_repo(tenant_id: str, payload: Mapping[str, object]) -> Repo:
@@ -185,6 +345,9 @@ def _map_pull_request(tenant_id: str, repo: str, payload: Mapping[str, object]) 
         merged=_optional_string(payload, "merged_at") is not None,
         updated_at=_datetime_field(payload, "updated_at"),
         opened_at=_datetime_field(payload, "created_at"),
+        merged_at=_datetime_field(payload, "merged_at"),
+        closed_at=_datetime_field(payload, "closed_at"),
+        labels=_labels(payload),
         metadata=_metadata(
             {
                 "repo": repo,

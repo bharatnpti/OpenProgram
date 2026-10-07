@@ -2002,6 +2002,31 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/portfolio/pr-flow": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Portfolio Pull Request Flow
+     * @description How long pull and merge requests spend coding, awaiting review, in review and
+     *     awaiting merge, and what kind of work they are: merged ones in the ``days``
+     *     before ``as_of`` give the stage times, open ones are counted where they stand.
+     *
+     *     The whole tenant, or one of a program, a project or a pod. The same read
+     *     permission as ``/portfolio/flow``.
+     */
+    get: operations["portfolio_pull_request_flow_portfolio_pr_flow_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/portfolio/feed": {
     parameters: {
       query?: never;
@@ -4428,6 +4453,185 @@ export interface components {
        */
       drift: components["schemas"]["DriftFindingResponse"][];
     };
+    /** PullRequestFlowItemDto */
+    PullRequestFlowItemDto: {
+      /** Repo */
+      repo: string;
+      /** Number */
+      number: string;
+      /** Title */
+      title: string;
+      /** Web Url */
+      web_url: string | null;
+      /** Author Name */
+      author_name: string | null;
+      request_type: components["schemas"]["RequestType"];
+      type_source: components["schemas"]["TypeSource"];
+      /** Type Evidence */
+      type_evidence: string | null;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "open" | "merged";
+      /** Draft */
+      draft: boolean;
+      /** @description The stage an open request is in now; null for a merged one or when not known. */
+      stage: components["schemas"]["ReviewStage"] | null;
+      /** Stage Since */
+      stage_since: string | null;
+      /** Stage Age Hours */
+      stage_age_hours: number | null;
+      stage_hours: components["schemas"]["PullRequestStageHoursDto"];
+      /** Opened At */
+      opened_at: string | null;
+      /** Merged At */
+      merged_at: string | null;
+      /** Reviewer Count */
+      reviewer_count: number;
+      /**
+       * Timed
+       * @description Whether the request's review history was read.
+       */
+      timed: boolean;
+    };
+    /** PullRequestFlowResponse */
+    PullRequestFlowResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Window Days */
+      window_days: number;
+      /**
+       * Window Start
+       * Format: date-time
+       */
+      window_start: string;
+      /**
+       * Window End
+       * Format: date-time
+       */
+      window_end: string;
+      scope: components["schemas"]["PullRequestFlowScopeDto"];
+      /**
+       * Merged Count
+       * @description Requests merged in the window.
+       */
+      merged_count: number;
+      /**
+       * Open Count
+       * @description Requests open at the end of the window.
+       */
+      open_count: number;
+      /**
+       * Timed Merged Count
+       * @description Merged requests whose review history was read, so their stages are timed.
+       */
+      timed_merged_count: number;
+      /**
+       * Unreviewed Merged Count
+       * @description Merged requests with no review by anyone but the author.
+       */
+      unreviewed_merged_count: number;
+      /**
+       * Untimed Count
+       * @description Requests synced before review histories were read: counted, not timed.
+       */
+      untimed_count: number;
+      /** Stages */
+      stages: components["schemas"]["PullRequestFlowStageDto"][];
+      worst_jam: components["schemas"]["PullRequestWorstJamDto"];
+      /** Type Counts */
+      type_counts: components["schemas"]["PullRequestTypeCountDto"][];
+      /** Items */
+      items: components["schemas"]["PullRequestFlowItemDto"][];
+      /**
+       * Items Truncated
+       * @description More requests than the items list holds; counts and stage times cover all.
+       */
+      items_truncated: boolean;
+      /**
+       * Notes
+       * @description What the figures leave out, in words.
+       */
+      notes: string[];
+    };
+    /** PullRequestFlowScopeDto */
+    PullRequestFlowScopeDto: {
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "tenant" | "program" | "project" | "pod";
+      /** Id */
+      id: string | null;
+      /** Name */
+      name: string | null;
+      /**
+       * Repos
+       * @description The repositories read; null for every repository the tenant syncs.
+       */
+      repos: string[] | null;
+      /**
+       * Member Count
+       * @description A pod's members whose requests count; null when authors are not narrowed.
+       */
+      member_count: number | null;
+    };
+    /** PullRequestFlowStageDto */
+    PullRequestFlowStageDto: {
+      stage: components["schemas"]["ReviewStage"];
+      /** Label */
+      label: string;
+      /** P50 Hours */
+      p50_hours: number | null;
+      /** P75 Hours */
+      p75_hours: number | null;
+      /**
+       * Measured Count
+       * @description Merged requests in the window whose time in this stage is known.
+       */
+      measured_count: number;
+      /**
+       * Open Count
+       * @description Open requests in this stage now.
+       */
+      open_count: number;
+    };
+    /**
+     * PullRequestStageHoursDto
+     * @description Hours a request spent in each stage it finished; null for one not finished or not known.
+     */
+    PullRequestStageHoursDto: {
+      /** Coding */
+      coding: number | null;
+      /** Awaiting Review */
+      awaiting_review: number | null;
+      /** In Review */
+      in_review: number | null;
+      /** Awaiting Merge */
+      awaiting_merge: number | null;
+    };
+    /** PullRequestTypeCountDto */
+    PullRequestTypeCountDto: {
+      request_type: components["schemas"]["RequestType"];
+      /** Label */
+      label: string;
+      /** Merged Count */
+      merged_count: number;
+      /** Open Count */
+      open_count: number;
+    };
+    /**
+     * PullRequestWorstJamDto
+     * @description The stage requests spend longest in, at each percentile.
+     */
+    PullRequestWorstJamDto: {
+      p50: components["schemas"]["ReviewStage"] | null;
+      p75: components["schemas"]["ReviewStage"] | null;
+    };
     /** QuestionCreateRequest */
     QuestionCreateRequest: {
       /** Asked To */
@@ -4664,6 +4868,20 @@ export interface components {
       /** Rows */
       rows: string[][];
     };
+    /**
+     * RequestType
+     * @enum {string}
+     */
+    RequestType:
+      | "feature"
+      | "dependency_update"
+      | "bug_fix"
+      | "refactor"
+      | "chore"
+      | "documentation"
+      | "test"
+      | "performance"
+      | "unclassified";
     /** RequirementMoveResponse */
     RequirementMoveResponse: {
       /** Key */
@@ -4781,6 +4999,11 @@ export interface components {
       /** Requirements */
       requirements: components["schemas"]["RequirementResponse"][];
     };
+    /**
+     * ReviewStage
+     * @enum {string}
+     */
+    ReviewStage: "coding" | "awaiting_review" | "in_review" | "awaiting_merge";
     /** RiskEvidenceDto */
     RiskEvidenceDto: {
       /** Identifier */
@@ -5143,6 +5366,12 @@ export interface components {
       /** Score */
       score: number;
     };
+    /**
+     * TypeSource
+     * @description Which rule gave a request its type.
+     * @enum {string}
+     */
+    TypeSource: "author" | "issue" | "label" | "title" | "branch" | "none";
     /** UnmappedMemberResponse */
     UnmappedMemberResponse: {
       /** Id */
@@ -10564,6 +10793,43 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PortfolioFlowResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  portfolio_pull_request_flow_portfolio_pr_flow_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        days?: number;
+        program_id?: string | null;
+        project_id?: string | null;
+        pod_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PullRequestFlowResponse"];
         };
       };
       /** @description Validation Error */

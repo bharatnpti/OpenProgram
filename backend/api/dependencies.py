@@ -25,6 +25,7 @@ from core.application.graph_queries import GraphQueryService
 from core.application.person_names import PersonNames
 from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
+from core.application.pull_request_flow_service import PullRequestFlowService
 from core.application.risk_service import RiskService
 from core.application.self_status_service import SelfStatusService
 from core.application.sync_status_service import SyncStatusService
@@ -156,6 +157,14 @@ def config_service_for(
 def get_flow_metrics_service(request: Request) -> FlowMetricsService:
     registry = get_registry(request)
     return FlowMetricsService(
+        graph_repository=registry.graph_repository(),
+        time_series_repository=registry.time_series_repository(),
+    )
+
+
+def get_pull_request_flow_service(request: Request) -> PullRequestFlowService:
+    registry = get_registry(request)
+    return PullRequestFlowService(
         graph_repository=registry.graph_repository(),
         time_series_repository=registry.time_series_repository(),
     )

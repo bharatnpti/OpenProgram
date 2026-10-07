@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import cast
 from urllib.parse import quote
@@ -11,10 +12,36 @@ from opentelemetry import trace
 
 from core.domain.errors import ProviderUnavailable
 from core.domain.graph import JsonScalar
-from core.domain.integrations import Commit, PullRequest, Repo, SyncCursor, UserRef
+from core.domain.integrations import (
+    Commit,
+    PullRequest,
+    PullRequestEvent,
+    PullRequestEventKind,
+    Repo,
+    SyncCursor,
+    UserRef,
+)
 from core.ports.connections import ConnectionResolver
 
 _tracer = trace.get_tracer("openprogram.adapters.vcs.gitlab")
+
+# A merge request's history: at most this many requests read at once, and this
+# many pages of 100 notes or commits each.
+_HISTORY_CONCURRENCY = 4
+_HISTORY_MAX_PAGES = 5
+_PAGE_SIZE = 100
+
+# GitLab records approvals and draft changes as system notes; the body is
+# matched without its Markdown bold. "Work in progress" is the pre-14.0 wording.
+# "unapproved" is checked before "approved", which it contains.
+_SYSTEM_NOTE_EVENTS: tuple[tuple[str, PullRequestEventKind], ...] = (
+    ("unapproved this merge request", PullRequestEventKind.UNAPPROVAL),
+    ("approved this merge request", PullRequestEventKind.APPROVAL),
+    ("marked this merge request as ready", PullRequestEventKind.READY),
+    ("unmarked as a work in progress", PullRequestEventKind.READY),
+    ("marked this merge request as draft", PullRequestEventKind.DRAFT),
+    ("marked as a work in progress", PullRequestEventKind.DRAFT),
+)
 
 
 @dataclass(frozen=True)
@@ -80,13 +107,90 @@ class GitLabVcsAdapter:
             merge_requests = [
                 _map_merge_request(tenant_id, repo, item) for item in _list_payload(payload)
             ]
-            if cursor is None:
-                return merge_requests
-            return [
-                merge_request
-                for merge_request in merge_requests
-                if _after_cursor(merge_request.updated_at, cursor)
-            ]
+            if cursor is not None:
+                merge_requests = [
+                    merge_request
+                    for merge_request in merge_requests
+                    if _after_cursor(merge_request.updated_at, cursor)
+                ]
+            return await self._with_histories(credentials, repo, merge_requests)
+
+    async def _with_histories(
+        self,
+        credentials: GitLabCredentials,
+        repo: str,
+        merge_requests: list[PullRequest],
+    ) -> list[PullRequest]:
+        """Each request with its commits, draft marks, notes and approvals.
+
+        A request whose history cannot be read keeps ``events=None`` rather than
+        failing the sync: its state, title and branch still count, and the flow
+        view says how many requests it could not time.
+        """
+        if not merge_requests:
+            return merge_requests
+        limit = asyncio.Semaphore(_HISTORY_CONCURRENCY)
+        async with httpx.AsyncClient(
+            base_url=credentials.base_url, timeout=self.timeout_seconds
+        ) as client:
+
+            async def read(merge_request: PullRequest) -> PullRequest:
+                async with limit:
+                    try:
+                        events = await self._merge_request_events(
+                            client, credentials, repo, merge_request.id
+                        )
+                    except ProviderUnavailable:
+                        return merge_request
+                return replace(merge_request, events=events)
+
+            with _tracer.start_as_current_span("gitlab.merge_request_histories"):
+                return list(await asyncio.gather(*(read(item) for item in merge_requests)))
+
+    async def _merge_request_events(
+        self,
+        client: httpx.AsyncClient,
+        credentials: GitLabCredentials,
+        repo: str,
+        iid: str,
+    ) -> tuple[PullRequestEvent, ...]:
+        base = f"/projects/{_project_id(repo)}/merge_requests/{quote(iid, safe='')}"
+        notes = await self._get_pages(
+            client,
+            credentials,
+            f"{base}/notes",
+            params={"sort": "asc", "order_by": "created_at"},
+        )
+        commits = await self._get_pages(client, credentials, f"{base}/commits", params={})
+        events = [event for note in notes if (event := _note_event(note)) is not None]
+        events.extend(event for commit in commits if (event := _commit_event(commit)) is not None)
+        return tuple(sorted(events, key=lambda event: event.at))
+
+    async def _get_pages(
+        self,
+        client: httpx.AsyncClient,
+        credentials: GitLabCredentials,
+        path: str,
+        *,
+        params: Mapping[str, str],
+    ) -> list[Mapping[str, object]]:
+        items: list[Mapping[str, object]] = []
+        for page in range(1, _HISTORY_MAX_PAGES + 1):
+            try:
+                response = await client.get(
+                    path,
+                    headers=_headers(credentials),
+                    params={**params, "per_page": str(_PAGE_SIZE), "page": str(page)},
+                )
+                response.raise_for_status()
+                payload = response.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                raise ProviderUnavailable("VCS request failed") from exc
+            batch = _list_payload(payload)
+            items.extend(batch)
+            if len(batch) < _PAGE_SIZE:
+                break
+        return items
 
     async def list_pull_requests_for(self, author: UserRef) -> list[PullRequest]:
         with _tracer.start_as_current_span("gitlab.list_pull_requests_for"):
@@ -118,15 +222,12 @@ class GitLabVcsAdapter:
         *,
         params: Mapping[str, str],
     ) -> object:
-        headers = {"Accept": "application/json"}
-        if credentials.token:
-            headers["PRIVATE-TOKEN"] = credentials.token
         try:
             async with httpx.AsyncClient(
                 base_url=credentials.base_url,
                 timeout=self.timeout_seconds,
             ) as client:
-                response = await client.get(path, headers=headers, params=params)
+                response = await client.get(path, headers=_headers(credentials), params=params)
                 response.raise_for_status()
                 return response.json()
         except httpx.HTTPError as exc:
@@ -147,6 +248,53 @@ class GitLabVcsAdapter:
             token=self.token,
             namespace_id=self.namespace_id,
         )
+
+
+def _headers(credentials: GitLabCredentials) -> dict[str, str]:
+    headers = {"Accept": "application/json"}
+    if credentials.token:
+        headers["PRIVATE-TOKEN"] = credentials.token
+    return headers
+
+
+def _note_event(payload: Mapping[str, object]) -> PullRequestEvent | None:
+    """A note as review activity: a person's note, or a system note that approves or marks."""
+    at = _datetime_field(payload, "created_at")
+    if at is None:
+        return None
+    actor = _optional_string(_optional_mapping(payload, "author") or {}, "username")
+    if payload.get("system") is not True:
+        return PullRequestEvent(kind=PullRequestEventKind.COMMENT, at=at, actor=actor)
+    body = (_optional_string(payload, "body") or "").replace("*", "").strip().casefold()
+    for phrase, kind in _SYSTEM_NOTE_EVENTS:
+        if body.startswith(phrase):
+            return PullRequestEvent(kind=kind, at=at, actor=actor)
+    return None
+
+
+def _commit_event(payload: Mapping[str, object]) -> PullRequestEvent | None:
+    # When the author wrote it: a rebase or a squash changes the commit date.
+    at = (
+        _datetime_field(payload, "authored_date")
+        or _datetime_field(payload, "created_at")
+        or _datetime_field(payload, "committed_date")
+    )
+    return PullRequestEvent(kind=PullRequestEventKind.COMMIT, at=at) if at is not None else None
+
+
+def _labels(payload: Mapping[str, object]) -> tuple[str, ...]:
+    value = payload.get("labels")
+    if not isinstance(value, Sequence) or isinstance(value, str | bytes):
+        return ()
+    names: list[str] = []
+    for item in value:
+        # Plain names by default; objects when asked for with_labels_details.
+        name = item if isinstance(item, str) else None
+        if isinstance(item, Mapping):
+            name = _optional_string(cast(Mapping[str, object], item), "name")
+        if name:
+            names.append(name)
+    return tuple(names)
 
 
 def _map_repo(tenant_id: str, payload: Mapping[str, object]) -> Repo:
@@ -207,6 +355,9 @@ def _map_merge_request(
         or payload.get("state") == "merged",
         updated_at=_datetime_field(payload, "updated_at"),
         opened_at=_datetime_field(payload, "created_at"),
+        merged_at=_datetime_field(payload, "merged_at"),
+        closed_at=_datetime_field(payload, "closed_at"),
+        labels=_labels(payload),
         metadata=_metadata(
             {
                 "repo": repo,

@@ -60,6 +60,13 @@ from core.application.persona_views import (
     WorkstreamProgressView,
 )
 from core.application.portfolio_feed_service import PortfolioFeedItemView, PortfolioFeedView
+from core.application.pull_request_flow_service import (
+    FlowScopeView,
+    PullRequestFlowItemView,
+    PullRequestFlowView,
+    RequestTypeCountView,
+    StageFlowView,
+)
 from core.domain.auth import Role
 from core.domain.branding import LogoContentType, TenantLogo
 from core.domain.brief import BriefKind, NarrativeBrief
@@ -113,6 +120,7 @@ from core.domain.reports import (
     RunStatus,
     RunTrigger,
 )
+from core.domain.review_flow import RequestType, ReviewStage, TypeSource
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import Rag, RollupFactor
 from core.domain.status import (
@@ -1546,6 +1554,208 @@ class PortfolioFlowResponse(BaseModel):
             avg_cycle_time_days=view.avg_cycle_time_days,
             avg_pr_age_days=view.avg_pr_age_days,
             workstreams=[WorkstreamFlowSummaryDto.from_view(item) for item in view.workstreams],
+        )
+
+
+class PullRequestStageHoursDto(BaseModel):
+    """Hours a request spent in each stage it finished; null for one not finished or not known."""
+
+    model_config = ConfigDict(frozen=True)
+
+    coding: float | None
+    awaiting_review: float | None
+    in_review: float | None
+    awaiting_merge: float | None
+
+    @classmethod
+    def from_view(cls, hours: Mapping[ReviewStage, float | None]) -> PullRequestStageHoursDto:
+        return cls(
+            coding=hours.get(ReviewStage.CODING),
+            awaiting_review=hours.get(ReviewStage.AWAITING_REVIEW),
+            in_review=hours.get(ReviewStage.IN_REVIEW),
+            awaiting_merge=hours.get(ReviewStage.AWAITING_MERGE),
+        )
+
+
+class PullRequestFlowStageDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    stage: ReviewStage
+    label: str
+    p50_hours: float | None
+    p75_hours: float | None
+    measured_count: int = Field(
+        description="Merged requests in the window whose time in this stage is known."
+    )
+    open_count: int = Field(description="Open requests in this stage now.")
+
+    @classmethod
+    def from_view(cls, view: StageFlowView) -> PullRequestFlowStageDto:
+        return cls(
+            stage=view.stage,
+            label=view.label,
+            p50_hours=view.p50_hours,
+            p75_hours=view.p75_hours,
+            measured_count=view.measured_count,
+            open_count=view.open_count,
+        )
+
+
+class PullRequestTypeCountDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    request_type: RequestType
+    label: str
+    merged_count: int
+    open_count: int
+
+    @classmethod
+    def from_view(cls, view: RequestTypeCountView) -> PullRequestTypeCountDto:
+        return cls(
+            request_type=view.request_type,
+            label=view.label,
+            merged_count=view.merged_count,
+            open_count=view.open_count,
+        )
+
+
+class PullRequestFlowItemDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    repo: str
+    number: str
+    title: str
+    web_url: str | None
+    author_name: str | None
+    request_type: RequestType
+    type_source: TypeSource
+    type_evidence: str | None
+    state: Literal["open", "merged"]
+    draft: bool
+    stage: ReviewStage | None = Field(
+        description="The stage an open request is in now; null for a merged one or when not known."
+    )
+    stage_since: datetime | None
+    stage_age_hours: float | None
+    stage_hours: PullRequestStageHoursDto
+    opened_at: datetime | None
+    merged_at: datetime | None
+    reviewer_count: int
+    timed: bool = Field(description="Whether the request's review history was read.")
+
+    @classmethod
+    def from_view(cls, view: PullRequestFlowItemView) -> PullRequestFlowItemDto:
+        return cls(
+            repo=view.repo,
+            number=view.number,
+            title=view.title,
+            web_url=view.web_url,
+            author_name=view.author_name,
+            request_type=view.request_type,
+            type_source=view.type_source,
+            type_evidence=view.type_evidence,
+            state="merged" if view.state == "merged" else "open",
+            draft=view.draft,
+            stage=view.stage,
+            stage_since=view.stage_since,
+            stage_age_hours=view.stage_age_hours,
+            stage_hours=PullRequestStageHoursDto.from_view(view.stage_hours),
+            opened_at=view.opened_at,
+            merged_at=view.merged_at,
+            reviewer_count=view.reviewer_count,
+            timed=view.timed,
+        )
+
+
+class PullRequestFlowScopeDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["tenant", "program", "project", "pod"]
+    id: str | None
+    name: str | None
+    repos: list[str] | None = Field(
+        description="The repositories read; null for every repository the tenant syncs."
+    )
+    member_count: int | None = Field(
+        description="A pod's members whose requests count; null when authors are not narrowed."
+    )
+
+    @classmethod
+    def from_view(cls, view: FlowScopeView) -> PullRequestFlowScopeDto:
+        kind: Literal["tenant", "program", "project", "pod"] = (
+            "program"
+            if view.kind == "program"
+            else "project"
+            if view.kind == "project"
+            else "pod"
+            if view.kind == "pod"
+            else "tenant"
+        )
+        return cls(
+            kind=kind,
+            id=view.id,
+            name=view.name,
+            repos=list(view.repos) if view.repos is not None else None,
+            member_count=view.member_count,
+        )
+
+
+class PullRequestWorstJamDto(BaseModel):
+    """The stage requests spend longest in, at each percentile."""
+
+    model_config = ConfigDict(frozen=True)
+
+    p50: ReviewStage | None
+    p75: ReviewStage | None
+
+
+class PullRequestFlowResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    as_of: date
+    window_days: int
+    window_start: datetime
+    window_end: datetime
+    scope: PullRequestFlowScopeDto
+    merged_count: int = Field(description="Requests merged in the window.")
+    open_count: int = Field(description="Requests open at the end of the window.")
+    timed_merged_count: int = Field(
+        description="Merged requests whose review history was read, so their stages are timed."
+    )
+    unreviewed_merged_count: int = Field(
+        description="Merged requests with no review by anyone but the author."
+    )
+    untimed_count: int = Field(
+        description="Requests synced before review histories were read: counted, not timed."
+    )
+    stages: list[PullRequestFlowStageDto]
+    worst_jam: PullRequestWorstJamDto
+    type_counts: list[PullRequestTypeCountDto]
+    items: list[PullRequestFlowItemDto]
+    items_truncated: bool = Field(
+        description="More requests than the items list holds; counts and stage times cover all."
+    )
+    notes: list[str] = Field(description="What the figures leave out, in words.")
+
+    @classmethod
+    def from_view(cls, view: PullRequestFlowView) -> PullRequestFlowResponse:
+        return cls(
+            as_of=view.as_of,
+            window_days=view.window_days,
+            window_start=view.window_start,
+            window_end=view.window_end,
+            scope=PullRequestFlowScopeDto.from_view(view.scope),
+            merged_count=view.merged_count,
+            open_count=view.open_count,
+            timed_merged_count=view.timed_merged_count,
+            unreviewed_merged_count=view.unreviewed_merged_count,
+            untimed_count=view.untimed_count,
+            stages=[PullRequestFlowStageDto.from_view(stage) for stage in view.stages],
+            worst_jam=PullRequestWorstJamDto(p50=view.worst_jam_p50, p75=view.worst_jam_p75),
+            type_counts=[PullRequestTypeCountDto.from_view(item) for item in view.type_counts],
+            items=[PullRequestFlowItemDto.from_view(item) for item in view.items],
+            items_truncated=view.items_truncated,
+            notes=list(view.notes),
         )
 
 

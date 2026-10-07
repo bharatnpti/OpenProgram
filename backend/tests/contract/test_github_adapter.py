@@ -68,7 +68,44 @@ async def test_github_adapter_maps_recorded_rest_payloads() -> None:
                     "draft": False,
                     "html_url": "https://github.test/acme/repo/pull/7",
                     "head": {"ref": "PO-7-read-sync"},
+                    "closed_at": "2026-01-10T09:00:00Z",
+                    "labels": [{"name": "type: bug"}, {"name": "backend"}],
                 }
+            ],
+        )
+    )
+    respx.get("https://github.test/repos/acme/repo/issues/7/timeline").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "event": "committed",
+                    "sha": "abc123",
+                    "author": {"name": "Asha", "date": "2026-01-10T08:30:00Z"},
+                },
+                {
+                    "event": "ready_for_review",
+                    "actor": {"login": "asha"},
+                    "created_at": "2026-01-10T08:46:00Z",
+                },
+                {
+                    "event": "commented",
+                    "actor": {"login": "noah"},
+                    "created_at": "2026-01-10T08:50:00Z",
+                },
+                {
+                    "event": "line-commented",
+                    "comments": [
+                        {"user": {"login": "noah"}, "created_at": "2026-01-10T08:52:00Z"},
+                    ],
+                },
+                {
+                    "event": "reviewed",
+                    "state": "approved",
+                    "user": {"login": "noah"},
+                    "submitted_at": "2026-01-10T08:55:00Z",
+                },
+                {"event": "labeled", "created_at": "2026-01-10T08:56:00Z"},
             ],
         )
     )
@@ -112,5 +149,44 @@ async def test_github_adapter_maps_recorded_rest_payloads() -> None:
     assert pull_requests[0].metadata["repo"] == "repo"
     assert pull_requests[0].metadata["source_branch"] == "PO-7-read-sync"
     assert pull_requests[0].metadata["web_url"] == "https://github.test/acme/repo/pull/7"
+    assert pull_requests[0].merged_at == datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
+    assert pull_requests[0].closed_at == datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
+    assert pull_requests[0].labels == ("type: bug", "backend")
+    assert [(e.kind.value, e.actor) for e in pull_requests[0].events or ()] == [
+        ("commit", None),
+        ("ready", "asha"),
+        ("comment", "noah"),
+        ("comment", "noah"),
+        ("approval", "noah"),
+    ]
+    # A request listed for an author carries no history: it is not timed.
     assert authored[0].metadata["repo"] == "acme/repo"
+    assert authored[0].events is None
     assert {call.request.method for call in respx.calls} == {"GET"}
+
+
+@respx.mock
+async def test_github_adapter_keeps_a_request_whose_timeline_fails() -> None:
+    adapter = GitHubVcsAdapter(base_url="https://github.test", token="ghp-test", owner="acme")
+    respx.get("https://github.test/repos/acme/repo/pulls").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {
+                    "number": 7,
+                    "title": "Read sync",
+                    "user": {"login": "asha"},
+                    "state": "open",
+                    "created_at": "2026-01-10T08:45:00Z",
+                    "updated_at": "2026-01-10T09:30:00Z",
+                }
+            ],
+        )
+    )
+    respx.get("https://github.test/repos/acme/repo/issues/7/timeline").mock(
+        return_value=httpx.Response(502)
+    )
+
+    pull_requests = await adapter.list_pull_requests("demo", "repo")
+
+    assert [(pr.id, pr.events) for pr in pull_requests] == [("7", None)]

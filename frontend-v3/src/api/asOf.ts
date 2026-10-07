@@ -38,6 +38,7 @@ export const DATED_READS = [
   "/portfolio/attention",
   "/portfolio/flow",
   "/portfolio/heatmap",
+  "/portfolio/pr-flow",
   "/portfolio/risks",
   "/programs",
   "/programs/{program_id}/tree",
