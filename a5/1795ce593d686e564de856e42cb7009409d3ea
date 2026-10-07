@@ -1,0 +1,21 @@
+frontend-v3/scripts/screenshots.py
+  s_a5c95ae649948d::t_e1473e678074f9 19-23,26-30,32,37,43-44,46-47,51-52,54-57,59-60,63-64,66-68,72-73,78
+  s_a5c95ae649948d::t_beb7a8c938483d 18
+  s_a5c95ae649948d::t_3498bd994f17c8 82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a51795ce593d686e564de856e42cb7009409d3ea",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

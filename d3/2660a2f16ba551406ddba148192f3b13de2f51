@@ -1,0 +1,21 @@
+frontend-v3/src/pages/DailyPage.tsx
+  s_a5c95ae649948d::t_07580bc0afe829 34-35
+frontend-v3/src/features/overall/RequirementsSection.tsx
+  s_a5c95ae649948d::t_07580bc0afe829 297
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d32660a2f16ba551406ddba148192f3b13de2f51",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

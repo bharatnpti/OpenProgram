@@ -1,0 +1,34 @@
+frontend-v3/src/features/overall/RequirementsSection.tsx
+  s_a5c95ae649948d::t_3a7544bff7621e 247
+  s_a5c95ae649948d::t_346138854e2e05 262-265
+frontend-v3/src/features/admin/CheckinsTab.tsx
+  s_a5c95ae649948d::t_3a7544bff7621e 131
+  s_a5c95ae649948d::t_f3ec7484fae29c 166-172
+frontend-v3/src/features/overall/GatesSection.tsx
+  s_a5c95ae649948d::t_346138854e2e05 200-214
+  s_a5c95ae649948d::t_3a7544bff7621e 183
+frontend-v3/src/features/overall/RisksSection.tsx
+  s_a5c95ae649948d::t_3a7544bff7621e 98
+  s_a5c95ae649948d::t_653b84b9b7b249 118-121
+frontend-v3/src/features/delivery/PodPanel.tsx
+  s_a5c95ae649948d::t_3a7544bff7621e 160
+  s_a5c95ae649948d::t_653b84b9b7b249 174-181
+frontend-v3/src/features/overall/QuestionsSection.tsx
+  s_a5c95ae649948d::t_3a7544bff7621e 95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d902734c9e77f0f566bcd61ca4cc4533f67176c1",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}

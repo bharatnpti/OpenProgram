@@ -1,0 +1,86 @@
+frontend-v3/src/features/admin/escalationForm.ts
+  s_a5c95ae649948d::t_4bf4e4f72aa009 86-91
+  s_a5c95ae649948d::t_31402c2e7cbf61 27-33
+  s_a5c95ae649948d::t_f814e7b1176ccd 1-26,34-85,92-163,165-193
+  s_a5c95ae649948d::t_580a27404531ac 164
+frontend-v3/src/features/admin/BrandingTab.tsx
+  s_a5c95ae649948d::t_0e03a3cd99a56d 11,14
+  s_a5c95ae649948d::t_7ed0fcc9711dcd 1-10,12-13,15-16,19,21-86,89-112,119-169
+  s_a5c95ae649948d::t_3bc98688431598 113-118
+  s_a5c95ae649948d::t_7919e0a10b33ea 17-18,20
+  s_a5c95ae649948d::t_4bf4e4f72aa009 87-88
+frontend-v3/src/features/admin/logoFile.test.ts
+  s_a5c95ae649948d::t_64c395335f047d 1-69
+frontend-v3/src/features/admin/connectionForm.ts
+  s_a5c95ae649948d::t_0501148c7ffa60 1-202
+frontend-v3/src/features/admin/connectionForm.test.ts
+  s_a5c95ae649948d::t_4bf4e4f72aa009 72-76
+  s_a5c95ae649948d::t_d7c257e57f542f 1-71,77-187
+frontend-v3/src/features/admin/GatesTab.tsx
+  s_a5c95ae649948d::t_4bf4e4f72aa009 298-300
+  s_a5c95ae649948d::t_c90453a13b04b9 1-235,237-297,301-465
+  s_a5c95ae649948d::t_c88983913c7a2b 236
+frontend-v3/src/pages/AdminPage.tsx
+  s_a5c95ae649948d::t_9b266427dc70fa 5,9,12-14,20,24-28,49,75-79
+frontend-v3/src/features/admin/escalationForm.test.ts
+  s_a5c95ae649948d::t_4bf4e4f72aa009 49-53
+  s_a5c95ae649948d::t_df599f92bf6f9e 1-48,54-97
+frontend-v3/src/features/admin/DeliveryStagesTab.tsx
+  s_a5c95ae649948d::t_214da3b524dd1c 1-6,13-16,18,20-39,42-63,68-135,140-143,145-148,152-159,161-237,241-247,249-252,261-270,281-332,335-464
+  s_a5c95ae649948d::t_4d4fe39a2dbd25 12
+  s_a5c95ae649948d::t_45efc0849bd306 17,19
+  s_a5c95ae649948d::t_bccb93b875a675 144
+  s_a5c95ae649948d::t_71a496789c0a16 160
+  s_a5c95ae649948d::t_4c952bf983fb3a 40-41
+  s_a5c95ae649948d::t_2baa2100802512 136-139
+  s_a5c95ae649948d::t_ef890d990bea4b 238-240,248,253-260
+  s_a5c95ae649948d::t_c56d4969362470 271-280
+  s_a5c95ae649948d::t_4bf4e4f72aa009 7-11,64-67,149-151,333-334
+frontend-v3/src/features/admin/EscalationTab.tsx
+  s_a5c95ae649948d::t_c4fba16c9d9561 18
+  s_a5c95ae649948d::t_caa214da147518 19
+  s_a5c95ae649948d::t_85603d296fe969 226-228
+  s_a5c95ae649948d::t_31affb1541bcec 38
+  s_a5c95ae649948d::t_7cbb32402e6b03 440
+  s_a5c95ae649948d::t_af93266325a607 291
+  s_a5c95ae649948d::t_82a84ae009a8f3 1-17,20-37,39-49,54-207,211-225,229-290,292-357,363-439,441-447
+  s_a5c95ae649948d::t_4bf4e4f72aa009 50-53,208-210,358-362
+frontend-v3/src/features/admin/gateForm.ts
+  s_a5c95ae649948d::t_44c406d6073c53 1-137,140-145,148-204
+  s_a5c95ae649948d::t_4bf4e4f72aa009 138-139,146-147
+frontend-v3/src/features/admin/logoFile.ts
+  s_a5c95ae649948d::t_4e188aad5123c0 1-91
+frontend-v3/src/features/admin/stageMapping.test.ts
+  s_a5c95ae649948d::t_1ff321e413b78c 1-103
+frontend-v3/src/features/admin/gateForm.test.ts
+  s_a5c95ae649948d::t_4bf4e4f72aa009 96-99
+  s_a5c95ae649948d::t_60806239a0779b 1-95,100
+frontend-v3/src/features/admin/stageMapping.ts
+  s_a5c95ae649948d::t_4bf4e4f72aa009 91-93
+  s_a5c95ae649948d::t_c549fb66dc4298 1-90,94-148
+frontend-v3/src/features/admin/IntegrationsTab.tsx
+  s_a5c95ae649948d::t_0f82d76f3e87ba 432
+  s_a5c95ae649948d::t_ec54dd17b80fb7 1-18,20-73,76-148,152-223,228-431,433-479
+  s_a5c95ae649948d::t_4bf4e4f72aa009 74-75,149-151,224-227
+  s_a5c95ae649948d::t_2af7c33926254c 19
+frontend-v3/scripts/mock-api.mjs
+  s_a5c95ae649948d::t_956d24f1acbac6 24,378
+frontend-v3/scripts/mock/admin-config.mjs
+  s_a5c95ae649948d::t_956d24f1acbac6 1-1059
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5674a56c385486b68c5c302a66687436853c5a76",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

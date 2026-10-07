@@ -1,0 +1,56 @@
+frontend-v3/src/features/coordination/raised.ts
+  s_a5c95ae649948d::t_09b071c9f14e47 1-10
+backend/core/application/ask_service.py
+  s_a5c95ae649948d::t_0fa133d6a536fa 5,1414-1417,1421-1441,1443-1444,1447-1452,1456,1460-1461,1463-1480
+backend/tests/unit/test_cross_person_api.py
+  s_a5c95ae649948d::t_db9bdb81a61c6e 234-254
+  s_a5c95ae649948d::t_6d90fc9a29f80e 255-258
+  s_a5c95ae649948d::t_a98d70eac69764 121-156
+backend/tests/unit/test_persona_views.py
+  s_a5c95ae649948d::t_0c3cc7ab3ae3df 1370-1371
+  s_a5c95ae649948d::t_5da1e402416842 9,1293-1369
+backend/tests/unit/test_portfolio_feed_risk.py
+  s_a5c95ae649948d::t_7a68f1c74c2de7 285,288
+backend/api/routers/persona.py
+  s_a5c95ae649948d::t_d4fbcec03b742a 377
+  s_a5c95ae649948d::t_49560b7c0dbd0d 373-376
+  s_a5c95ae649948d::t_0132cea2e81b47 385
+backend/core/application/portfolio_feed_service.py
+  s_a5c95ae649948d::t_7a68f1c74c2de7 189-190
+backend/tests/unit/test_eta_duration_is_no_eta_change.py
+  s_a5c95ae649948d::t_7a68f1c74c2de7 148,163
+frontend-v3/src/features/coordination/raised.test.ts
+  s_a5c95ae649948d::t_09b071c9f14e47 1-12
+backend/tests/unit/test_ask_service.py
+  s_a5c95ae649948d::t_a74fd9cdb03bff 1517-1550
+  s_a5c95ae649948d::t_dd994a3143caca 1336-1373
+  s_a5c95ae649948d::t_9ba6674b8b2cd0 1316-1318,1320-1321
+  s_a5c95ae649948d::t_1836ea94d9fb83 1319
+backend/core/application/persona_views.py
+  s_a5c95ae649948d::t_e3ed3d7cd14ce7 383
+  s_a5c95ae649948d::t_0cf8229c5412d5 1392-1403
+  s_a5c95ae649948d::t_434faba3fec64c 1404-1406
+  s_a5c95ae649948d::t_de9e3934d6c9da 416
+  s_a5c95ae649948d::t_cd688b82e4eb21 25
+frontend-v3/src/pages/CoordinationPage.tsx
+  s_a5c95ae649948d::t_09b071c9f14e47 30
+  s_a5c95ae649948d::t_bde5685fdc50a6 80-82,134,138
+features.md
+  s_a5c95ae649948d::t_e60666fda677a0 443
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "04f0b54d6eaf9c2639fa185ad08f503bace87ef6",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
