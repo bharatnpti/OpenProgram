@@ -1,0 +1,42 @@
+frontend-v3/src/app/ViewingDateProvider.tsx
+  s_a5c95ae649948d::t_425a854ce861ed 1,4,10,33,106-108,112-114,116,118-120,128-129
+frontend-v3/src/lib/format.ts
+  s_a5c95ae649948d::t_425a854ce861ed 3-17,20,27,30
+frontend-v3/src/api/asOf.test.ts
+  s_a5c95ae649948d::t_425a854ce861ed 5-12,67-80
+  s_a5c95ae649948d::t_74908339998bc9 81
+frontend-v3/src/api/asOf.ts
+  s_a5c95ae649948d::t_425a854ce861ed 83-127
+frontend-v3/src/lib/words.test.ts
+  s_a5c95ae649948d::t_425a854ce861ed 48-55
+frontend-v3/src/app/viewingDate.ts
+  s_a5c95ae649948d::t_425a854ce861ed 10,55-62
+  s_a5c95ae649948d::t_bad2c7f6023127 63
+frontend-v3/src/lib/formatZone.test.ts
+  s_a5c95ae649948d::t_425a854ce861ed 1-25
+frontend-v3/src/lib/words.ts
+  s_a5c95ae649948d::t_425a854ce861ed 33-37,39-44,53
+frontend-v3/src/lib/viewingDate.test.ts
+  s_a5c95ae649948d::t_425a854ce861ed 8,21-36
+  s_a5c95ae649948d::t_90356b33623bd1 37
+frontend-v3/src/api/client.ts
+  s_a5c95ae649948d::t_425a854ce861ed 104,182-183,201-203
+frontend-v3/src/lib/viewingDate.ts
+  s_a5c95ae649948d::t_425a854ce861ed 16,21-46,51-53,68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e3d6b6d4b03e74859c20e37b343d5fda1adcfe42",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
