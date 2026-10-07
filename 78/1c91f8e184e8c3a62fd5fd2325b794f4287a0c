@@ -1,0 +1,27 @@
+frontend-v3/src/features/overall/RequirementsSection.tsx
+  s_a5c95ae649948d::t_346138854e2e05 262-265
+frontend-v3/src/features/delivery/PodPanel.tsx
+  s_a5c95ae649948d::t_653b84b9b7b249 174-181
+frontend-v3/src/features/overall/RisksSection.tsx
+  s_a5c95ae649948d::t_653b84b9b7b249 118-121
+frontend-v3/src/features/overall/GatesSection.tsx
+  s_a5c95ae649948d::t_346138854e2e05 200-214
+frontend-v3/src/features/admin/CheckinsTab.tsx
+  s_a5c95ae649948d::t_f3ec7484fae29c 166-172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "781c91f8e184e8c3a62fd5fd2325b794f4287a0c",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
