@@ -1,6 +1,7 @@
 import { useParams, useSearchParams } from "react-router-dom";
 
 import { ApiError } from "../api/client";
+import { useViewingDate } from "../app/viewingDate";
 import { ForecastSection } from "../features/overall/ForecastSection";
 import { useGateBoard, useReleases } from "../features/overall/queries";
 import { ReleaseScope } from "../features/overall/ReleaseScope";
@@ -19,6 +20,7 @@ import { RisksSection } from "../features/overall/RisksSection";
 export function OverallPage() {
   const { projectId = "" } = useParams();
   const [search, setSearch] = useSearchParams();
+  const { asOf, label } = useViewingDate();
   const asked = search.get("release") ?? "";
   const releases = useReleases(projectId);
   // A link to a release that is gone falls back to the whole project rather
@@ -45,6 +47,13 @@ export function OverallPage() {
       {asked && !releaseId ? (
         <p className="-mt-5 mb-8 text-[13px] text-grey-secondary">
           The release in the link no longer exists, so this shows the whole project.
+        </p>
+      ) : null}
+      {asOf ? (
+        <p className="mb-8 rounded-2xl bg-grey-fill px-4 py-3 text-[13px] text-grey-body">
+          The forecast, requirements and risks are as they stood on {label}. Gate sign-offs and
+          questions are not kept per day: they show how they stand now, for the requirements of that
+          day.
         </p>
       ) : null}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-12">

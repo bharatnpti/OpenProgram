@@ -26,6 +26,14 @@ export function DailyPage() {
     queryFn: () => apiClient.dayReports(projectId),
     enabled: projectId !== "",
   });
+  // Which projects this person may set a report up for: a scrum master's are the
+  // projects of the pods they run, so the role alone is not enough to offer it here.
+  const setup = useQuery({
+    queryKey: ["day-reports", "setup"],
+    queryFn: () => apiClient.dayReportSetup(),
+    enabled: canSetUpDayReports,
+  });
+  const mayHere = (setup.data?.projects ?? []).some((project) => project.id === projectId);
   const list = reports.data ?? [];
   const selected = list.find((report) => report.report_id === search.get("report")) ?? list[0];
 
@@ -42,11 +50,13 @@ export function DailyPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span>
               No day report is set up for this project yet.{" "}
-              {canSetUpDayReports
-                ? "Set one up to send it at the end of each day."
-                : "A scrum master of one of its pods, a manager or an admin sets one up."}
+              {!canSetUpDayReports
+                ? "A scrum master of one of its pods, a manager or an admin sets one up."
+                : setup.isSuccess && !mayHere
+                  ? "A scrum master of one of its pods, a manager or an admin sets one up, and you run no pod in this project."
+                  : "Set one up to send it at the end of each day."}
             </span>
-            {canSetUpDayReports ? (
+            {canSetUpDayReports && mayHere ? (
               <ReportSetupDialog
                 projectId={projectId}
                 trigger={<Pill size="sm">Set up a day report</Pill>}

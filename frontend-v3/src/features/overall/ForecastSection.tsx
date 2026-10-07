@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { ScopeDeliveryResponse } from "../../api/schema";
 import { useProjects } from "../../app/directory";
 import { useRole } from "../../app/role";
+import { useShownDay } from "../../app/viewingDate";
 import { PanelState, SectionHeader, TableBox, td, th } from "../../components/PanelState";
 import { Card } from "../../components/ui/Card";
 import { Pill } from "../../components/ui/Pill";
@@ -16,7 +17,7 @@ import { Locked } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
 import { Burndown } from "./Burndown";
 import { burndownSeries, type Marker } from "./charts";
-import { inScope, releaseName } from "./overallWords";
+import { inScope, isPastDay, releaseName, teamDatesLine } from "./overallWords";
 import {
   PROJECT_PROGRESS_READERS,
   useDelivery,
@@ -349,6 +350,7 @@ function Completion({
 
 function TwoAnswers({ scope }: { scope: ScopeDeliveryResponse }) {
   const h = scope.history;
+  const shownDay = useShownDay();
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
       <div className="rounded-2xl border border-grey-border p-3">
@@ -377,9 +379,7 @@ function TwoAnswers({ scope }: { scope: ScopeDeliveryResponse }) {
           <>
             <p className="mt-1 text-[18px] font-extrabold">{formatDay(scope.team.latest)}</p>
             <p className="text-[12px] text-grey-secondary">
-              latest of {scope.team.dated} dated items
-              {scope.team.latest_key ? ` (${scope.team.latest_key})` : ""}
-              {scope.team.undated > 0 ? ` · ${scope.team.undated} without a date` : ""}
+              {teamDatesLine(scope.team, isPastDay(scope.team.latest, shownDay))}
             </p>
           </>
         ) : (

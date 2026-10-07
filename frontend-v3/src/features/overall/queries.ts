@@ -16,13 +16,17 @@ export const PROJECT_PROGRESS_READERS = "a product owner, manager, executive or 
 export const AGGREGATE_READERS = "a scrum master, product owner, manager, executive or admin";
 export const CONFIG_READERS = "an admin";
 
+/** How many days of daily snapshots the requirements read asks for. */
+export const REQUIREMENT_DAYS = 30;
+
 export function useRequirements(projectId: string, releaseId?: string) {
   const { canReadProjectProgress } = useRole();
   return {
     locked: !canReadProjectProgress,
     query: useQuery({
       queryKey: ["requirements", projectId, releaseId ?? ""],
-      queryFn: () => apiClient.projectRequirements(projectId, undefined, 30, releaseId),
+      queryFn: () =>
+        apiClient.projectRequirements(projectId, undefined, REQUIREMENT_DAYS, releaseId),
       enabled: canReadProjectProgress && projectId !== "",
     }),
   };

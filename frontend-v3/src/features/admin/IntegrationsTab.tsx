@@ -26,6 +26,7 @@ import {
   groupOf,
   missingRequired,
   optionLabel,
+  runsOnServerSettings,
   savePayload,
   savedBy,
   testBlock,
@@ -243,6 +244,12 @@ function ConnectionDialog({
           if (!blocked) save.mutate();
         }}
       >
+        {runsOnServerSettings(connection) ? (
+          <p role="note" className="rounded-2xl bg-rag-amber-bg px-4 py-3 text-[13px] text-ink">
+            {connection.name} runs on the server&apos;s own settings today. A connection saved here
+            replaces them for this tenant until you remove it, so type the address you mean.
+          </p>
+        ) : null}
         <label className="flex items-center gap-3 rounded-2xl bg-grey-fill px-4 py-3 text-[14px] font-bold">
           <input
             type="checkbox"

@@ -71,7 +71,8 @@ function RiskTable({ data }: { data: ProjectRisksResponse }) {
   const names = useNames();
   const rows = [
     ...data.risks.map((r) => ({
-      key: `risk-${r.rule_id}-${r.entity_ref.id}`,
+      // A person can have several merge requests open: the request makes the finding its own.
+      key: `risk-${r.rule_id}-${r.entity_ref.id}-${r.evidence.identifier}`,
       severity: r.severity,
       what: r.reason,
       ref: r.evidence.identifier,
@@ -81,7 +82,7 @@ function RiskTable({ data }: { data: ProjectRisksResponse }) {
       age: `${r.age_days}d`,
     })),
     ...data.drift.map((d) => ({
-      key: `drift-${d.kind}-${d.entity_ref.id}`,
+      key: `drift-${d.kind}-${d.entity_ref.id}-${d.evidence?.identifier ?? ""}`,
       severity: d.severity,
       what: d.reason,
       ref: d.evidence?.identifier ?? d.entity_ref.id,

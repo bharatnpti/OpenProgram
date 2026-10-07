@@ -13,6 +13,7 @@ import {
   itemsByKind,
   questionProblem,
   questionRows,
+  questionsSummary,
   scanSummary,
 } from "./gateWords.ts";
 
@@ -144,4 +145,31 @@ test("questions to keep come first, then open ones longest waiting, then answere
   assert.equal(questionProblem(" ", "x"), "Say who has to answer.");
   assert.equal(questionProblem("Mina Patel", ""), "Write what was asked.");
   assert.equal(questionProblem("Mina Patel", "Is 24 hours enough?"), null);
+});
+
+test("the questions summary counts only kept ones as waiting, and says what a reader can do", () => {
+  const read = [
+    { confirmed: false, status: "not_yet" as const },
+    { confirmed: false, status: "not_yet" as const },
+  ];
+  // Two read from Jira and none kept: "not yet" on their rows was a claim nobody tracks.
+  assert.equal(
+    questionsSummary(read, false),
+    "2 questions · 0 not answered yet · 2 read from Jira, not kept",
+  );
+  assert.equal(
+    questionsSummary(read, true),
+    "2 questions · 0 not answered yet · 2 read from Jira to keep or dismiss",
+  );
+  assert.equal(
+    questionsSummary(
+      [
+        { confirmed: true, status: "partly" as const },
+        { confirmed: true, status: "answered" as const },
+      ],
+      true,
+    ),
+    "2 questions · 1 not answered yet",
+  );
+  assert.equal(questionsSummary([], true), "0 questions · 0 not answered yet");
 });

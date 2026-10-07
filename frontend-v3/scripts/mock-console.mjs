@@ -1071,7 +1071,19 @@ export function consoleApi(req, url, roles, userId, send, deny) {
     return admin() ? send(200, { enabled: false, source: "default" }) : deny();
   if ((m = p.match(/^\/config\/(programs|projects|workstreams|pods)$/)))
     return admin() ? send(200, config[m[1]]) : deny();
-  if (p === "/day-reports/setup")
-    return has("sm", "mgr", "admin") ? send(200, reportSetup) : deny();
+  if (p === "/day-reports/setup") {
+    if (!has("sm", "mgr", "admin")) return deny();
+    // A manager or admin sets a report up for any project; a scrum master only for the
+    // projects of the pods they run, as the real server offers them.
+    if (has("mgr", "admin")) return send(200, reportSetup);
+    const mine = roster.find((person) => person.id === userId)?.pods ?? [];
+    const offered = new Set(
+      pods.filter((pod) => mine.includes(pod.id)).flatMap((pod) => pod.project_ids),
+    );
+    return send(200, {
+      ...reportSetup,
+      projects: reportSetup.projects.filter((project) => offered.has(project.id)),
+    });
+  }
   return false;
 }

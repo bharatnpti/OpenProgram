@@ -26,7 +26,10 @@ export function ReportsHeader({ projectId }: { projectId: string }) {
 
   return (
     <div className="mb-6 flex flex-wrap items-center gap-3">
-      <Link to="/reports" className="text-[13px] font-bold">
+      <Link
+        to="/reports"
+        className="text-[13px] font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
+      >
         ← All reports
       </Link>
       <label htmlFor="project-picker" className="sr-only">

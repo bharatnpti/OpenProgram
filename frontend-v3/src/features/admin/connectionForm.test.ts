@@ -8,6 +8,7 @@ import {
   groupOf,
   missingRequired,
   optionLabel,
+  runsOnServerSettings,
   savePayload,
   savedBy,
   testBlock,
@@ -208,4 +209,52 @@ test("connectors are grouped by where reports go and where work is read from", (
   assert.equal(groupOf({ ...JIRA, purposes: ["calendar"] }), "calendar");
   assert.equal(optionLabel(JIRA, "deployment"), "Jira Data Center or Server");
   assert.equal(optionLabel({ ...JIRA, settings: {} }, "deployment"), null);
+});
+
+// GitLab as a tenant that has none of its own finds it: the server's settings run it.
+const GITLAB: ConnectionResponse = {
+  ...JIRA,
+  connector: "gitlab",
+  name: "GitLab",
+  configured: false,
+  enabled: false,
+  settings: {},
+  secrets_set: [],
+  environment_configured: true,
+  fields: [
+    field({
+      key: "base_url",
+      label: "GitLab address",
+      kind: "url",
+      required: true,
+      default: "https://gitlab.com",
+    }),
+    field({ key: "token", label: "Access token", kind: "secret", required: true }),
+    field({ key: "namespace_id", label: "Group" }),
+  ],
+};
+
+test("a connection the server already runs does not start with a typical address filled in", () => {
+  assert.equal(runsOnServerSettings(GITLAB), true);
+  const form = formFromConnection(GITLAB);
+  assert.equal(form.values.base_url, "", "typing a token over gitlab.com would repoint the tenant");
+  // Not set up anywhere: the typical address is a fair start.
+  const unset = formFromConnection({ ...GITLAB, environment_configured: false });
+  assert.equal(unset.values.base_url, "https://gitlab.com");
+  // Its own saved address always wins.
+  const saved = formFromConnection({
+    ...GITLAB,
+    configured: true,
+    settings: { base_url: "https://git.example.invalid" },
+  });
+  assert.equal(saved.values.base_url, "https://git.example.invalid");
+  assert.equal(runsOnServerSettings({ ...GITLAB, configured: true }), false);
+});
+
+test("the address has to be typed before such a connection can be turned on", () => {
+  const form = formFromConnection(GITLAB);
+  assert.deepEqual(
+    missingRequired(GITLAB, form).map((f) => f.key),
+    ["base_url", "token"],
+  );
 });

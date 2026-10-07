@@ -180,6 +180,29 @@ export function isOpenQuestion(status: QuestionStatus): boolean {
   return status === "not_yet" || status === "partly";
 }
 
+/**
+ * The questions' summary line. "Not answered yet" counts only the questions
+ * someone kept: one read from Jira is not tracked until it is, and says so
+ * rather than "not yet". A reader who can keep or dismiss it is told to; one
+ * who cannot is told it is not kept.
+ */
+export function questionsSummary(
+  questions: Pick<TrackedQuestionResponse, "confirmed" | "status">[],
+  canKeep: boolean,
+): string {
+  const open = questions.filter((q) => q.confirmed && isOpenQuestion(q.status)).length;
+  const toKeep = questions.filter((q) => !q.confirmed).length;
+  const parts = [plural(questions.length, "question"), `${open} not answered yet`];
+  if (toKeep > 0) {
+    parts.push(
+      canKeep
+        ? `${toKeep} read from Jira to keep or dismiss`
+        : `${toKeep} read from Jira, not kept`,
+    );
+  }
+  return parts.join(" · ");
+}
+
 /** Questions to keep or dismiss first, then open ones longest waiting, then the rest, newest first. */
 export function questionRows(questions: TrackedQuestionResponse[]): TrackedQuestionResponse[] {
   const rank = (q: TrackedQuestionResponse) =>

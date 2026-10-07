@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { ApiError } from "../api/client";
 import { useRole } from "../app/role";
@@ -104,9 +104,83 @@ export function SectionHeader({
   );
 }
 
-/** Wide tables scroll inside their own box, never the page. */
+/**
+ * Wide tables scroll inside their own box, never the page. A table wider than
+ * its box says so: a shadow on the edge that has more beyond it, and a line
+ * under it, because a column cut off at the edge of a phone looks like a
+ * table of one letter. The box can be scrolled from the keyboard too.
+ */
 export function TableBox({ children }: { children: ReactNode }) {
-  return <div className="overflow-x-auto rounded-2xl border border-grey-border">{children}</div>;
+  const box = useRef<HTMLDivElement>(null);
+  const [scroll, setScroll] = useState({ overflows: false, left: false, right: false });
+
+  useEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    const measure = () => {
+      const overflows = element.scrollWidth > element.clientWidth + 1;
+      const next = {
+        overflows,
+        left: overflows && element.scrollLeft > 1,
+        right: overflows && element.scrollLeft + element.clientWidth < element.scrollWidth - 1,
+      };
+      setScroll((current) =>
+        current.overflows === next.overflows &&
+        current.left === next.left &&
+        current.right === next.right
+          ? current
+          : next,
+      );
+    };
+    measure();
+    element.addEventListener("scroll", measure, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    if (element.firstElementChild) observer?.observe(element.firstElementChild);
+    return () => {
+      element.removeEventListener("scroll", measure);
+      observer?.disconnect();
+    };
+  }, []);
+
+  const shadow = (side: "left" | "right") => ({
+    backgroundImage: `linear-gradient(to ${side === "left" ? "right" : "left"}, rgba(0,0,0,0.12), rgba(0,0,0,0))`,
+  });
+  return (
+    <div>
+      <div className="relative">
+        <div
+          ref={box}
+          // Only a box that scrolls is a stop for the keyboard, with a name to say what it is.
+          tabIndex={scroll.overflows ? 0 : undefined}
+          role={scroll.overflows ? "region" : undefined}
+          aria-label={scroll.overflows ? "Table, scrolls sideways" : undefined}
+          className="overflow-x-auto rounded-2xl border border-grey-border"
+        >
+          {children}
+        </div>
+        {scroll.left ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-px left-px w-4 rounded-l-2xl"
+            style={shadow("left")}
+          />
+        ) : null}
+        {scroll.right ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-y-px right-px w-4 rounded-r-2xl"
+            style={shadow("right")}
+          />
+        ) : null}
+      </div>
+      {scroll.overflows ? (
+        <p className="mt-1.5 text-[11px] text-grey-secondary">
+          This table is wider than the screen: scroll sideways for the other columns.
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 export const th =

@@ -9,6 +9,7 @@ import { useReadOnly } from "../../app/viewingDate";
 import { LockedTrigger } from "../../components/Dialogs";
 import { Pill } from "../../components/ui/Pill";
 import { cn } from "../../lib/utils";
+import { deviceTimezone } from "../../lib/zones";
 import { releaseName } from "../overall/overallWords";
 import { actionError } from "./access";
 
@@ -39,8 +40,7 @@ function draftOf(report: DayReportResponse | undefined, projectId: string | unde
     releaseId: report?.release_id ?? "",
     enabled: report?.enabled ?? true,
     time: report?.schedule.local_time.slice(0, 5) ?? "17:30",
-    timezone:
-      report?.schedule.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+    timezone: report?.schedule.timezone ?? deviceTimezone() ?? "UTC",
     weekdays: report?.schedule.weekdays ?? [0, 1, 2, 3, 4],
     channels: of("chat_channel").join(", "),
     people: of("person"),
@@ -96,7 +96,10 @@ export function ReportSetupDialog({
     enabled: open,
   });
   const projects = setup.data?.projects ?? [];
+  // A project the server doesn't offer this person is never taken for the pick:
+  // the select would otherwise show another one while the report went to this.
   const project = projects.find((p) => p.id === draft.projectId);
+  const pickedProject = project ? draft.projectId : "";
   const available = (kind: string) =>
     setup.data?.destinations.find((d) => d.kind === kind) ?? { available: false, note: "" };
 
@@ -122,7 +125,7 @@ export function ReportSetupDialog({
   };
   const save = useMutation({
     mutationFn: () => {
-      const body = requestOf(draft, project?.name ?? "Project");
+      const body = requestOf({ ...draft, projectId: pickedProject }, project?.name ?? "Project");
       return report
         ? apiClient.updateDayReport(report.report_id, body)
         : apiClient.createDayReport(body);
@@ -188,7 +191,7 @@ export function ReportSetupDialog({
                   <select
                     id="rs-project"
                     className={field}
-                    value={draft.projectId}
+                    value={pickedProject}
                     required
                     onChange={(e) =>
                       setDraft((d) => ({ ...d, projectId: e.target.value, releaseId: "" }))
@@ -415,7 +418,7 @@ export function ReportSetupDialog({
                       Cancel
                     </Pill>
                   </Dialog.Close>
-                  <Pill type="submit" size="sm" disabled={save.isPending || !draft.projectId}>
+                  <Pill type="submit" size="sm" disabled={save.isPending || !pickedProject}>
                     {save.isPending ? "Saving…" : report ? "Save" : "Set up report"}
                   </Pill>
                 </div>

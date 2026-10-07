@@ -25,11 +25,26 @@ export type ConnectionForm = {
   clearedSecrets: string[];
 };
 
+/**
+ * Whether the server's own settings run this connection: the tenant has none of
+ * its own saved. A connection saved here replaces them.
+ */
+export function runsOnServerSettings(
+  connection: Pick<ConnectionResponse, "configured" | "environment_configured">,
+): boolean {
+  return !connection.configured && connection.environment_configured;
+}
+
 export function formFromConnection(connection: ConnectionResponse): ConnectionForm {
   const values: Record<string, string> = {};
+  const onServer = runsOnServerSettings(connection);
   connection.fields.forEach((field) => {
     if (field.kind === "secret") return;
-    values[field.key] = connection.settings[field.key] ?? field.default ?? "";
+    // A typical address ("https://gitlab.com") is no value for a connection the
+    // server already runs elsewhere: typing a token over it would repoint the
+    // tenant. The address starts empty, and has to be typed.
+    const fallback = onServer && field.kind === "url" ? "" : (field.default ?? "");
+    values[field.key] = connection.settings[field.key] ?? fallback;
   });
   return {
     enabled: connection.configured ? connection.enabled : true,

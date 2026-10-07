@@ -17,10 +17,9 @@ import {
   QUESTION_LABELS,
   QUESTION_STATUSES,
   QUESTION_TONES,
-  isOpenQuestion,
-  plural,
   questionProblem,
   questionRows,
+  questionsSummary,
 } from "./gateWords";
 import { useGateBoard } from "./queries";
 
@@ -44,8 +43,6 @@ export function QuestionsSection({
   const { query } = useGateBoard(projectId, releaseId || undefined);
   const board = query.data;
   const questions = board?.questions ?? [];
-  const open = questions.filter((q) => q.confirmed && isOpenQuestion(q.status)).length;
-  const toKeep = questions.filter((q) => !q.confirmed).length;
   const [adding, setAdding] = useState(false);
   const update = useMutation({
     mutationFn: ({ question, body }: { question: TrackedQuestionResponse; body: QuestionChange }) =>
@@ -72,11 +69,7 @@ export function QuestionsSection({
     <section>
       <SectionHeader
         title="What we asked, and what we heard back"
-        meta={
-          board
-            ? `${plural(questions.length, "question")} · ${open} not answered yet${toKeep > 0 ? ` · ${toKeep} read from Jira to keep or dismiss` : ""}`
-            : undefined
-        }
+        meta={board ? questionsSummary(questions, editGates) : undefined}
         actions={
           editGates ? (
             board && board.issues.length > 0 ? (
@@ -118,7 +111,9 @@ export function QuestionsSection({
                     {q.summary}
                     {!q.confirmed ? (
                       <span className="block text-[11px] text-grey-secondary">
-                        Read from Jira: keep it to track it
+                        {editGates
+                          ? "Read from Jira: keep it to track it"
+                          : "Read from Jira, not kept, so not tracked"}
                       </span>
                     ) : null}
                   </td>
@@ -159,9 +154,14 @@ export function QuestionsSection({
                           update.mutate({ question: q, body: { status } }, { onSuccess: done })
                         }
                       />
-                    ) : (
+                    ) : q.confirmed ? (
                       <RagChip tone={QUESTION_TONES[q.status]} className="h-6 px-2.5 text-[12px]">
                         {QUESTION_LABELS[q.status]}
+                      </RagChip>
+                    ) : (
+                      // Not kept, so nobody tracks whether it was heard back: "Not yet" would be a claim.
+                      <RagChip tone="neutral" className="h-6 px-2.5 text-[12px]">
+                        Not kept
                       </RagChip>
                     )}
                   </td>

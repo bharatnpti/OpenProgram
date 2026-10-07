@@ -1,5 +1,7 @@
+import { useViewingDate } from "../../app/viewingDate";
 import { formatDay } from "../../lib/format";
 import { burndownGeometry, type BurndownSeries, type Marker } from "./charts";
+import { noSnapshotsWords } from "./overallWords";
 
 const MARKER_COLORS: Record<string, string> = {
   committed: "var(--op-black)",
@@ -15,6 +17,7 @@ const MARKER_COLORS: Record<string, string> = {
  */
 export function Burndown({ series, markers }: { series: BurndownSeries; markers: Marker[] }) {
   const { points, unit } = series;
+  const { asOf, label } = useViewingDate();
   const g = burndownGeometry(points, markers, (iso) => formatDay(iso).replace(/^\w+ /, ""));
   const what = unit === "story points" ? "Story points" : "Requirements";
 
@@ -23,7 +26,7 @@ export function Burndown({ series, markers }: { series: BurndownSeries; markers:
     return (
       <p className="rounded-2xl bg-grey-fill px-4 py-3 text-[13px] text-grey-body">
         {points.length === 0
-          ? "No daily snapshots yet. The burn-down starts once the first one is kept."
+          ? noSnapshotsWords(asOf ? label : null)
           : `Only one daily snapshot so far (${formatDay(points[0].day)}): ${points[0].remaining} ${unit} not yet in production. The line draws from the second day.`}
       </p>
     );

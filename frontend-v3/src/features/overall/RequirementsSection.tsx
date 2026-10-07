@@ -1,11 +1,19 @@
 import type { DeliveryStage, RequirementsResponse } from "../../api/schema";
+import { useViewingDate } from "../../app/viewingDate";
 import { PanelState, SectionHeader, TableBox, td, th } from "../../components/PanelState";
 import { Card } from "../../components/ui/Card";
 import { formatDay, signedChange } from "../../lib/format";
 import { STAGE_LABELS, STAGE_ORDER, stageColor } from "../../lib/status";
 import { stageStack } from "./charts";
-import { releaseName, timelineTitle } from "./overallWords";
-import { PROJECT_PROGRESS_READERS, useRequirements } from "./queries";
+import {
+  historyStart,
+  inStageSinceWords,
+  noRequirementsWords,
+  noSnapshotsWords,
+  releaseName,
+  timelineTitle,
+} from "./overallWords";
+import { PROJECT_PROGRESS_READERS, REQUIREMENT_DAYS, useRequirements } from "./queries";
 
 /**
  * How many requirements sit in each delivery stage, how that changed, and each
@@ -19,6 +27,7 @@ export function RequirementsSection({
   releaseId?: string;
 }) {
   const { locked, query } = useRequirements(projectId, releaseId || undefined);
+  const { asOf, label } = useViewingDate();
   const data = query.data;
 
   return (
@@ -44,7 +53,7 @@ export function RequirementsSection({
         error={query.error}
         onRetry={() => void query.refetch()}
         isEmpty={data ? !data.available || data.total === 0 : false}
-        emptyText="No requirements are counted for this project yet. An admin places Jira statuses in stages on the console's Admin → Delivery stages tab."
+        emptyText={noRequirementsWords(asOf ? label : null)}
       >
         {data ? (
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
@@ -111,6 +120,7 @@ function StageCards({ data }: { data: RequirementsResponse }) {
 }
 
 function StageTimeline({ data }: { data: RequirementsResponse }) {
+  const { asOf, label } = useViewingDate();
   const width = 1000;
   const height = 220;
   const { bars, yTicks } = stageStack(data.timeline, STAGE_ORDER, {
@@ -122,7 +132,11 @@ function StageTimeline({ data }: { data: RequirementsResponse }) {
     bottom: 24,
   });
   if (bars.length === 0) {
-    return <p className="text-[13px] text-grey-secondary">No daily snapshots yet.</p>;
+    return (
+      <p className="text-[13px] text-grey-secondary">
+        {asOf ? noSnapshotsWords(label) : "No daily snapshots yet."}
+      </p>
+    );
   }
   // One day is a single block, not a timeline: say what it holds instead.
   if (bars.length === 1) {
@@ -222,56 +236,67 @@ function Moves({ data }: { data: RequirementsResponse }) {
 }
 
 function RequirementTable({ data }: { data: RequirementsResponse }) {
+  const start = historyStart(data.timeline, REQUIREMENT_DAYS);
   const rows = [...data.requirements].sort(
     (a, b) =>
       STAGE_ORDER.indexOf(b.stage) - STAGE_ORDER.indexOf(a.stage) || a.key.localeCompare(b.key),
   );
   return (
-    <TableBox>
-      <table className="w-full min-w-[760px] border-collapse">
-        <thead>
-          <tr>
-            <th className={th}>Requirement</th>
-            <th className={th}>Stage</th>
-            <th className={th}>In stage since</th>
-            <th className={th}>Jira status</th>
-            <th className={th}>Assignee</th>
-            {data.has_points ? <th className={`${th} text-right`}>Points</th> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((req) => (
-            <tr key={req.key}>
-              <td className={td}>
-                <span className="font-bold">{req.key}</span> {req.title}
-              </td>
-              <td className={`${td} whitespace-nowrap`}>
-                <span
-                  className="inline-flex items-center gap-1.5 font-bold"
-                  style={{ color: stageColor(req.stage) }}
-                >
-                  <span
-                    className="inline-block h-2 w-2 rounded-full"
-                    style={{ background: stageColor(req.stage) }}
-                  />
-                  {labelFor(data, req.stage)}
-                </span>
-              </td>
-              <td className={`${td} whitespace-nowrap`}>{formatDay(req.in_stage_since)}</td>
-              <td className={td}>
-                {req.status ?? "—"}
-                {!req.mapped ? (
-                  <span className="ml-1 text-[11px] text-grey-secondary">unplaced</span>
-                ) : null}
-              </td>
-              <td className={td}>{req.assignee_name ?? "—"}</td>
-              {data.has_points ? (
-                <td className={`${td} text-right tabular-nums`}>{req.story_points ?? "—"}</td>
-              ) : null}
+    <>
+      <TableBox>
+        <table className="w-full min-w-[760px] border-collapse">
+          <thead>
+            <tr>
+              <th className={th}>Requirement</th>
+              <th className={th}>Stage</th>
+              <th className={th}>In stage since</th>
+              <th className={th}>Jira status</th>
+              <th className={th}>Assignee</th>
+              {data.has_points ? <th className={`${th} text-right`}>Points</th> : null}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </TableBox>
+          </thead>
+          <tbody>
+            {rows.map((req) => (
+              <tr key={req.key}>
+                <td className={td}>
+                  <span className="font-bold">{req.key}</span> {req.title}
+                </td>
+                <td className={`${td} whitespace-nowrap`}>
+                  <span
+                    className="inline-flex items-center gap-1.5 font-bold"
+                    style={{ color: stageColor(req.stage) }}
+                  >
+                    <span
+                      className="inline-block h-2 w-2 rounded-full"
+                      style={{ background: stageColor(req.stage) }}
+                    />
+                    {labelFor(data, req.stage)}
+                  </span>
+                </td>
+                <td className={`${td} whitespace-nowrap`}>
+                  {inStageSinceWords(req.in_stage_since, start, formatDay)}
+                </td>
+                <td className={td}>
+                  {req.status ?? "—"}
+                  {!req.mapped ? (
+                    <span className="ml-1 text-[11px] text-grey-secondary">unplaced</span>
+                  ) : null}
+                </td>
+                <td className={td}>{req.assignee_name ?? "—"}</td>
+                {data.has_points ? (
+                  <td className={`${td} text-right tabular-nums`}>{req.story_points ?? "—"}</td>
+                ) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </TableBox>
+      {start ? (
+        <p className="mt-1.5 text-[11px] text-grey-secondary">
+          The daily history starts on {formatDay(start)}, so a requirement that has not moved since
+          reads &ldquo;or earlier&rdquo;: it may have been in its stage longer.
+        </p>
+      ) : null}
+    </>
   );
 }

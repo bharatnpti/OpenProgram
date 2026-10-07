@@ -128,7 +128,9 @@ function Counts({ data }: { data: GateBoardResponse }) {
       {counts.suggestions > 0
         ? ` · ${plural(counts.suggestions, "suggestion")} from Jira to keep or dismiss`
         : ""}
-      {waiting > 0 ? ` · ${waiting} need someone` : ""}
+      {waiting > 0
+        ? ` · ${plural(waiting, "issue")} ${waiting === 1 ? "needs" : "need"} someone's attention`
+        : ""}
     </p>
   );
 }
