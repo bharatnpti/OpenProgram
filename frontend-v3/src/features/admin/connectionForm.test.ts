@@ -1,0 +1,187 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import type { ConnectionResponse, ConnectorFieldDto } from "../../api/schema";
+import {
+  connectionState,
+  formFromConnection,
+  groupOf,
+  missingRequired,
+  optionLabel,
+  savePayload,
+  savedBy,
+  testPayload,
+  visibleFields,
+  withValidOptions,
+} from "./connectionForm.ts";
+
+const when = (field: string, ...values: string[]) => ({ field, values });
+const field = (over: Partial<ConnectorFieldDto> & { key: string }): ConnectorFieldDto => ({
+  label: over.key,
+  kind: "text",
+  required: false,
+  help: "",
+  placeholder: "",
+  default: null,
+  options: [],
+  shown_when: null,
+  ...over,
+});
+
+// Jira on Data Center with a personal access token stored, as the API returns it:
+// the token itself never comes back, only its name in secrets_set.
+const JIRA: ConnectionResponse = {
+  connector: "jira",
+  name: "Jira",
+  description: "",
+  purposes: ["issue_tracker"],
+  exclusive_group: null,
+  configured: true,
+  enabled: true,
+  settings: {
+    deployment: "data_center",
+    base_url: "https://jira.example.invalid",
+    auth_method: "personal_access_token",
+  },
+  secrets_set: ["personal_access_token"],
+  environment_configured: false,
+  updated_at: null,
+  updated_by: null,
+  updated_by_name: null,
+  last_test: null,
+  fields: [
+    field({
+      key: "deployment",
+      label: "Jira type",
+      kind: "select",
+      required: true,
+      default: "cloud",
+      options: [
+        { value: "cloud", label: "Jira Cloud (atlassian.net)", shown_when: null },
+        { value: "data_center", label: "Jira Data Center or Server", shown_when: null },
+      ],
+    }),
+    field({ key: "base_url", label: "Jira address", kind: "url", required: true }),
+    field({
+      key: "auth_method",
+      label: "Sign-in method",
+      kind: "select",
+      required: true,
+      default: "api_token",
+      options: [
+        {
+          value: "api_token",
+          label: "Email and API token",
+          shown_when: when("deployment", "cloud"),
+        },
+        {
+          value: "personal_access_token",
+          label: "Personal access token",
+          shown_when: when("deployment", "data_center"),
+        },
+      ],
+    }),
+    field({
+      key: "email",
+      label: "Account email",
+      kind: "email",
+      required: true,
+      shown_when: when("auth_method", "api_token"),
+    }),
+    field({
+      key: "api_token",
+      label: "API token",
+      kind: "secret",
+      required: true,
+      shown_when: when("auth_method", "api_token"),
+    }),
+    field({
+      key: "personal_access_token",
+      label: "Personal access token",
+      kind: "secret",
+      required: true,
+      shown_when: when("auth_method", "personal_access_token"),
+    }),
+  ],
+};
+
+test("a stored secret is never in the form, and is kept unless typed over or cleared", () => {
+  const form = formFromConnection(JIRA);
+
+  assert.deepEqual(form.secrets, {});
+  assert.equal("personal_access_token" in form.values, false);
+  assert.deepEqual(savePayload(JIRA, form).secrets, {});
+  assert.deepEqual(
+    savePayload(JIRA, { ...form, secrets: { personal_access_token: " new " } }).secrets,
+    { personal_access_token: "new" },
+  );
+  assert.deepEqual(
+    savePayload(JIRA, { ...form, clearedSecrets: ["personal_access_token"] }).secrets,
+    { personal_access_token: null },
+  );
+});
+
+test("only the fields of the chosen sign-in show", () => {
+  const keys = visibleFields(JIRA.fields, formFromConnection(JIRA).values).map((f) => f.key);
+
+  assert.deepEqual(keys, ["deployment", "base_url", "auth_method", "personal_access_token"]);
+});
+
+test("switching Jira to Cloud moves the sign-in to one Cloud offers", () => {
+  const values = withValidOptions(JIRA.fields, {
+    ...formFromConnection(JIRA).values,
+    deployment: "cloud",
+  });
+
+  assert.equal(values.auth_method, "api_token");
+  assert.deepEqual(
+    visibleFields(JIRA.fields, values).map((f) => f.key),
+    ["deployment", "base_url", "auth_method", "email", "api_token"],
+  );
+});
+
+test("a required secret counts as present when stored, and missing once cleared", () => {
+  const form = formFromConnection(JIRA);
+
+  assert.deepEqual(missingRequired(JIRA, form), []);
+  assert.deepEqual(
+    missingRequired(JIRA, { ...form, clearedSecrets: ["personal_access_token"] }).map((f) => f.key),
+    ["personal_access_token"],
+  );
+});
+
+test("a test sends typed secrets only, never a clear", () => {
+  const form = { ...formFromConnection(JIRA), clearedSecrets: ["personal_access_token"] };
+
+  assert.deepEqual(testPayload(JIRA, form).secrets, {});
+  assert.deepEqual(
+    testPayload(JIRA, { ...form, secrets: { personal_access_token: "fake-token" } }).secrets,
+    { personal_access_token: "fake-token" },
+  );
+});
+
+test("a card names who saved it, or shows the id when it is no member's", () => {
+  assert.equal(savedBy({ ...JIRA, updated_by: "U1001", updated_by_name: "Asha Rao" }), "Asha Rao");
+  assert.equal(savedBy({ ...JIRA, updated_by: "U0C1" }), "U0C1");
+  assert.equal(savedBy(JIRA), "an admin");
+});
+
+test("a card says whether the tenant, the server, or nobody set it up", () => {
+  assert.equal(connectionState(JIRA), "on");
+  assert.equal(connectionState({ ...JIRA, enabled: false }), "off");
+  assert.equal(
+    connectionState({ ...JIRA, configured: false, enabled: false, environment_configured: true }),
+    "environment",
+  );
+  assert.equal(connectionState({ ...JIRA, configured: false, enabled: false }), "not_set_up");
+});
+
+test("connectors are grouped by where reports go and where work is read from", () => {
+  assert.equal(groupOf(JIRA), "work");
+  assert.equal(groupOf({ ...JIRA, purposes: ["code"] }), "work");
+  assert.equal(groupOf({ ...JIRA, purposes: ["chat", "report_delivery"] }), "reports");
+  assert.equal(groupOf({ ...JIRA, purposes: ["report_delivery"] }), "reports");
+  assert.equal(groupOf({ ...JIRA, purposes: ["calendar"] }), "calendar");
+  assert.equal(optionLabel(JIRA, "deployment"), "Jira Data Center or Server");
+  assert.equal(optionLabel({ ...JIRA, settings: {} }, "deployment"), null);
+});
