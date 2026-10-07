@@ -242,7 +242,9 @@ class DayReportBuilder:
     async def _scope(
         self, tenant_id: str, project_id: str, day: date, release: Release | None
     ) -> AskScope:
-        project = await self._graph.get_node(tenant_id, project_id)
+        # Read as of the report's day: a pod or person deleted since still
+        # appears on an earlier day's report, as it was that day.
+        project = await self._graph.get_node(tenant_id, project_id, as_of=day)
         if project is None or project.kind is not NodeKind.PROJECT:
             raise GraphNotFound(f"project {project_id} not found for tenant {tenant_id}")
         owned = await owned_project_tasks(self._graph, tenant_id, [project_id], day)
@@ -251,7 +253,7 @@ class DayReportBuilder:
             for task in owned.get(project_id, ())
             if release is None or release.includes(task.metadata)
         }
-        nodes = {node.id: node for node in await self._graph.list_nodes(tenant_id)}
+        nodes = {node.id: node for node in await self._graph.list_nodes(tenant_id, as_of=day)}
         contains = [
             edge
             for edge in await self._graph.list_edges(tenant_id, kind=EdgeKind.CONTAINS)

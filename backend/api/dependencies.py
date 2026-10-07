@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import date
 from typing import Annotated, cast
 
 from fastapi import Header, HTTPException, Request, status
@@ -131,7 +133,13 @@ def get_graph_query_service(request: Request) -> GraphQueryService:
 
 
 def get_config_service(request: Request) -> ConfigService:
-    registry = get_registry(request)
+    return config_service_for(get_registry(request))
+
+
+def config_service_for(
+    registry: ServiceRegistry, *, today: Callable[[], date] = date.today
+) -> ConfigService:
+    """The config service over the registry's stores; ``today`` dates the links it changes."""
     return ConfigService(
         graph_repository=registry.graph_repository(),
         status_repository=registry.status_repository(),
@@ -141,6 +149,7 @@ def get_config_service(request: Request) -> ConfigService:
         writeback_config_repository=registry.writeback_config_repository(),
         issue_tracker=registry.issue_tracker(),
         require_issue_tracker_link=registry.settings.issue_tracker_provider != "fake",
+        today=today,
     )
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime
 
 from core.domain.graph import (
@@ -102,9 +103,16 @@ async def test_graph_store_lists_gets_and_deletes_nodes_and_edges() -> None:
     await store.remove_edge(pod_edge)
     assert await store.list_edges("demo", from_node_id="project-1") == []
 
-    await store.delete_node("demo", "dev-1")
+    # Deleting keeps history: the member's edges end that day, and the member
+    # is gone from that day on but still there for an earlier one.
+    deleted_on = date(2026, 3, 2)
+    await store.delete_node("demo", "dev-1", on=deleted_on)
     assert await store.get_node("demo", "dev-1") is None
-    assert await store.list_edges("demo", kind=EdgeKind.ASSIGNED_TO) == []
+    assert await store.get_node("demo", "dev-1", as_of=deleted_on) is None
+    assert await store.get_node("demo", "dev-1", as_of=date(2026, 3, 1)) == member
+    assert await store.list_edges("demo", kind=EdgeKind.ASSIGNED_TO) == [
+        replace(assignment, valid_to=deleted_on)
+    ]
 
 
 async def test_graph_store_traverses_project_workstream_task_tree() -> None:

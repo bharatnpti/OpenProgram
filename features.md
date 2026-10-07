@@ -70,6 +70,7 @@ Functional requirements:
 - Admins shall link and unlink workstreams to projects, pods to workstreams, and tasks to workstreams.
 - Admins shall link and unlink members to pods with a role-in-pod label.
 - Admins shall assign and unassign tasks to members.
+- Every link an admin makes shall hold from that day, and unlinking or deleting shall end it that day, never erase it. A deleted program, project, workstream, pod, member, or task shall be gone from the admin screens and from every view of that day or later, and still be there, with its links, for a view or report of an earlier day. Linking again shall start a new link that day, so the days in between stay unlinked. A link stored without a start day (seeded or synced) shall hold on every earlier day.
 - Admins shall create work items (directly, or from a branch or pull request), record work-item transitions, and link work items to workstreams through the config API.
 - Admins shall search synced directory users.
 - Admins shall add selected directory users as configured members.
@@ -208,6 +209,8 @@ Functional requirements:
 - The console shall open every role on Today, showing the view for the role being viewed as.
 - The developer view shall show today's check-in summary and open blockers, where the status came from (answered in chat, confirmed in the console, partly answered, inferred from delivery signals, stale, or carried forward from an earlier day), a focus list ranked by urgency, and assigned tasks with RAG, status source, and confidence.
 - A developer shall confirm the day's status, or correct its summary, blockers, and ETA change, from the console. A correction is a full statement, so a blocker left out of it is resolved.
+- A correction shall name each blocker it restates by the id the status gave it, and that blocker shall keep its age and history, also when two blockers share a work item or read alike. A blocker without an id (a new one, or one from an older client) shall be matched by work item, then wording.
+- When there is no status to show, confirm, or correct, the answer shall say whether the person has no member record or is a member with no status on record yet.
 - Confirming a status the developer didn't give that day (inferred, stale, unknown, or carried forward from an earlier day) shall record what was confirmed: the earlier day's status with its date, or what the inference was drawn from. It shall not keep the "no confirmed check-in" wording or the no-reply placeholder blocker.
 - The developer view shall show the pods, projects, and programs the developer's check-in rolls up into, each with its current colour, and shall say so plainly when the developer is in no pod.
 - The scrum master view shall default to the pods the person belongs to, and shall show each member as confirmed, partial, stale, or missing, plus open blockers with owner, source, and age.
@@ -406,6 +409,7 @@ Functional requirements:
 - While a past day is viewed, nothing shall be changeable. Confirm, correct, acknowledge, resolve, send, request check-in, and clear history shall be disabled, and the client shall refuse any change request as a backstop. Asking the graph and signing out stay allowed.
 - These reads shall honour the viewing date: directory statuses and portfolio heat; the developer's status, focus list, and tasks; pod check-ins, blockers, rollup reasons, and tasks; project and workstream progress; the program tree; the 30-day momentum line; open risks and drift; flow metrics; and Ask the graph answers.
 - These shall show current state whatever the viewing date, and the screen shall say so: the Signals feed (left out of Everything on a past day), narrative briefs, cross-person requests, and the chat, which is read-only.
+- A past day shall read the links, pods, people, and projects of that day: a later unlink or delete shall not change it, nor shall an earlier day's report (see 4.2).
 - The Admin screen shall always show current configuration, and the viewing-date control shall be hidden there.
 - The console shall move "today" forward when the day changes, so a console left open never keeps asking for yesterday.
 

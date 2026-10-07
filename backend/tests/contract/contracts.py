@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, date, datetime, time
 
+import pytest
+
 from core.domain.blockers import (
     BlockerResolutionReason,
     BlockerSource,
@@ -13,7 +15,16 @@ from core.domain.brief import BriefKind, NarrativeBrief
 from core.domain.conversation import ConversationRole, ConversationTurn
 from core.domain.dead_letter import DeadLetter, DeadLetterStatus
 from core.domain.directory import DirectoryUser
-from core.domain.graph import EdgeKind, EntityRef, FactEvent, GraphEdge, GraphNode, NodeKind
+from core.domain.errors import GraphNotFound
+from core.domain.graph import (
+    DELETED_ON_METADATA_KEY,
+    EdgeKind,
+    EntityRef,
+    FactEvent,
+    GraphEdge,
+    GraphNode,
+    NodeKind,
+)
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import (
@@ -714,6 +725,100 @@ async def assert_graph_repository_contract(repository: GraphRepository) -> None:
         )
     )
     assert len(await repository.list_edges("demo", from_node_id="pod-b", to_node_id="dev-1")) == 2
+
+
+async def assert_graph_history_contract(repository: GraphRepository) -> None:
+    """Unlinking and deleting keep history: a read as of an earlier day sees it as it was."""
+    tenant = "history"
+    monday, tuesday, wednesday, thursday = (date(2026, 3, day) for day in (2, 3, 4, 5))
+    program = GraphNode(tenant_id=tenant, id="h-program", kind=NodeKind.PROGRAM, name="Program")
+    project = GraphNode(tenant_id=tenant, id="h-project", kind=NodeKind.PROJECT, name="Project")
+    pod = GraphNode(
+        tenant_id=tenant, id="h-pod", kind=NodeKind.POD, name="Pod", metadata={"code": "P1"}
+    )
+    member = GraphNode(tenant_id=tenant, id="h-dev", kind=NodeKind.DEVELOPER, name="Asha")
+    newcomer = GraphNode(tenant_id=tenant, id="h-new", kind=NodeKind.DEVELOPER, name="Liam")
+    for node in (program, project, pod, member, newcomer):
+        await repository.upsert_node(node)
+    program_project = GraphEdge(
+        tenant_id=tenant, from_node_id=program.id, to_node_id=project.id, kind=EdgeKind.CONTAINS
+    )
+    project_pod = GraphEdge(
+        tenant_id=tenant,
+        from_node_id=project.id,
+        to_node_id=pod.id,
+        kind=EdgeKind.CONTAINS,
+        valid_from=monday,
+    )
+    membership = GraphEdge(
+        tenant_id=tenant,
+        from_node_id=pod.id,
+        to_node_id=member.id,
+        kind=EdgeKind.CONTAINS,
+        valid_from=monday,
+        metadata={"role": "engineer"},
+    )
+    upcoming = GraphEdge(
+        tenant_id=tenant,
+        from_node_id=pod.id,
+        to_node_id=newcomer.id,
+        kind=EdgeKind.CONTAINS,
+        valid_from=wednesday,
+    )
+    for edge in (program_project, project_pod, membership, upcoming):
+        await repository.add_edge(edge)
+
+    # Ending an edge keeps it for the days before its end, half-open as ever.
+    await repository.end_edge(program_project, wednesday)
+    ended = replace(program_project, valid_to=wednesday)
+    assert await repository.list_edges(tenant, from_node_id=program.id) == [ended]
+    assert project in (await repository.get_program_tree(tenant, program.id, tuesday)).nodes
+    assert (await repository.get_program_tree(tenant, program.id, wednesday)).nodes == (program,)
+    # Ending it again, later, rewrites no history; an edge not stored is no-op.
+    await repository.end_edge(ended, thursday)
+    await repository.end_edge(program_project, thursday)
+    assert await repository.list_edges(tenant, from_node_id=program.id) == [ended]
+
+    # Deleting a node ends its edges that day; one that would hold on no day
+    # (starting that day) is erased. The node stays for earlier days only.
+    await repository.delete_node(tenant, pod.id, on=wednesday)
+    assert await repository.list_edges(tenant, to_node_id=pod.id) == [
+        replace(project_pod, valid_to=wednesday)
+    ]
+    assert await repository.list_edges(tenant, from_node_id=pod.id) == [
+        replace(membership, valid_to=wednesday)
+    ]
+    assert await repository.get_node(tenant, pod.id) is None
+    assert await repository.get_node(tenant, pod.id, as_of=wednesday) is None
+    assert await repository.get_node(tenant, pod.id, as_of=tuesday) == pod
+    assert await repository.list_nodes(tenant, NodeKind.POD) == []
+    assert await repository.list_nodes(tenant, NodeKind.POD, as_of=tuesday) == [pod]
+    assert pod not in await repository.list_nodes(tenant)
+    assert await repository.pods_containing_developer(tenant, member.id, tuesday) == [pod]
+    assert await repository.pods_containing_developer(tenant, member.id, wednesday) == []
+    tuesday_tree = await repository.get_program_tree(tenant, project.id, tuesday)
+    assert {node.id for node in tuesday_tree.nodes} == {project.id, pod.id, member.id}
+    assert (await repository.get_program_tree(tenant, project.id, wednesday)).nodes == (project,)
+    with pytest.raises(GraphNotFound):
+        await repository.get_program_tree(tenant, pod.id, wednesday)
+    assert (await repository.get_program_tree(tenant, pod.id, tuesday)).root == pod
+
+    # Deleting again keeps the first day; storing the node again restores it,
+    # its old edges still ended.
+    await repository.delete_node(tenant, pod.id, on=thursday)
+    assert await repository.get_node(tenant, pod.id, as_of=wednesday) is None
+    await repository.upsert_node(pod)
+    assert await repository.get_node(tenant, pod.id) == pod
+    assert await repository.get_node(tenant, pod.id, as_of=wednesday) == pod
+    assert await repository.pods_containing_developer(tenant, member.id, thursday) == []
+
+    # The deletion day is the graph's own: a node's metadata never carries it.
+    await repository.upsert_node(
+        replace(member, metadata={DELETED_ON_METADATA_KEY: "2026-01-01", "title": "Engineer"})
+    )
+    restored = await repository.get_node(tenant, member.id)
+    assert restored is not None
+    assert restored.metadata == {"title": "Engineer"}
 
 
 async def assert_identity_link_repository_contract(

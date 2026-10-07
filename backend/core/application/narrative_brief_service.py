@@ -117,7 +117,7 @@ class NarrativeBriefService:
         as_of: datetime,
     ) -> NarrativeBrief:
         facts = await self.facts(tenant_id, kind, scope_id, as_of=as_of)
-        scope_name = await self._scope_name(tenant_id, kind, scope_id)
+        scope_name = await self._scope_name(tenant_id, kind, scope_id, as_of.date())
         title = _title_for(kind, scope_name)
         body = await self._compose_body(tenant_id, kind, scope_id, as_of, title, facts)
         brief = NarrativeBrief(
@@ -153,19 +153,22 @@ class NarrativeBriefService:
         if len(feed.items) >= _MAX_FEED_ITEMS and feed.items:
             # More happened than was read: say the window the facts cover.
             since = max(since, min(item.observed_at for item in feed.items))
+        day = as_of.date()
         tasks = {
             node.id: node
-            for node in await self._graph_repository.list_nodes(tenant_id, NodeKind.TASK)
+            for node in await self._graph_repository.list_nodes(tenant_id, NodeKind.TASK, as_of=day)
         }
         people = {
             node.id: node.name
-            for node in await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER)
+            for node in await self._graph_repository.list_nodes(
+                tenant_id, NodeKind.DEVELOPER, as_of=day
+            )
         }
         repos = frozenset(
             node.name or node.id
-            for node in await self._graph_repository.list_nodes(tenant_id, NodeKind.REPO)
+            for node in await self._graph_repository.list_nodes(tenant_id, NodeKind.REPO, as_of=day)
         )
-        scope_name = await self._scope_name(tenant_id, kind, scope_id)
+        scope_name = await self._scope_name(tenant_id, kind, scope_id, day)
         person_ids = (
             scoped.scope.member_ids if scoped.scope.member_ids is not None else frozenset(people)
         )
@@ -283,7 +286,10 @@ class NarrativeBriefService:
     async def _pod_holders(self, tenant_id: str, as_of: date) -> dict[str, set[str]]:
         """The pods that hold each node outright on ``as_of``."""
         pods = {
-            node.id for node in await self._graph_repository.list_nodes(tenant_id, NodeKind.POD)
+            node.id
+            for node in await self._graph_repository.list_nodes(
+                tenant_id, NodeKind.POD, as_of=as_of
+            )
         }
         holders: dict[str, set[str]] = {}
         for edge in await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS):
@@ -360,10 +366,11 @@ class NarrativeBriefService:
         tenant_id: str,
         kind: BriefKind,
         scope_id: str,
+        as_of: date,
     ) -> str:
         if kind is BriefKind.EXEC or not scope_id:
             return "portfolio"
-        node = await self._graph_repository.get_node(tenant_id, scope_id)
+        node = await self._graph_repository.get_node(tenant_id, scope_id, as_of=as_of)
         return node.name if node is not None else scope_id
 
 

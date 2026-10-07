@@ -55,12 +55,21 @@ class ReconcileMode(StrEnum):
 
 @dataclass(frozen=True, kw_only=True)
 class BlockerReport:
-    """A single blocker as stated in one check-in reply or correction."""
+    """A single blocker as stated in one check-in reply or correction.
+
+    ``blocker_id`` names the open blocker a correction restates, as the client
+    read it from the status. It is matched before anything else, so two
+    blockers on one work item, or two worded alike, stay apart. A report
+    without one (a chat reply, an older client, a blocker added in the
+    correction), or with one naming no open blocker, is matched by work item,
+    then wording, as before.
+    """
 
     description: str
     issue_key: str | None = None
     pod_id: str | None = None
     resolved: bool = False
+    blocker_id: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -151,12 +160,14 @@ def reconcile_blockers(
 ) -> BlockerReconciliation:
     """Match reports to open blockers, minting/bumping/resolving as needed.
 
-    Matching precedence per report: ``issue_key == blocker.work_item_id``
-    first, then equality of ``normalize_blocker_key(description)``. A match
-    bumps ``last_seen_on``, adopts the latest wording, and fills attribution
-    only where the row has none — unless ``overwrite_attribution`` is set
-    (explicit human corrections may re-attribute). Unmatched reports mint new
-    rows.
+    Reports naming the ``blocker_id`` of an open blocker are matched first,
+    each to that blocker, so no other report can take it. Every other report
+    (no id, or an id naming no open blocker) then matches the blockers left
+    over by precedence: ``issue_key == blocker.work_item_id`` first, then
+    equality of ``normalize_blocker_key(description)``. A match bumps ``last_seen_on``,
+    adopts the latest wording, and fills attribution only where the row has
+    none — unless ``overwrite_attribution`` is set (explicit human
+    corrections may re-attribute). Unmatched reports mint new rows.
     """
 
     remaining = {blocker.blocker_id: blocker for blocker in open_blockers}
@@ -164,10 +175,24 @@ def reconcile_blockers(
     minted: list[DeveloperBlocker] = []
     resolved: list[DeveloperBlocker] = []
 
-    for report in _dedupe_reports(reports):
-        match = _match_report(report, list(remaining.values()))
+    unique = _dedupe_reports(reports)
+    # A report naming an open blocker takes it before any report is matched
+    # by work item or wording, so none of those can take it instead.
+    claimed = {
+        report.blocker_id: remaining.pop(report.blocker_id)
+        for report in unique
+        if report.blocker_id is not None and report.blocker_id in remaining
+    }
+    for report in unique:
+        match = claimed.get(report.blocker_id) if report.blocker_id is not None else None
+        if match is None:
+            # No id, or one naming no open blocker: a legacy status's blocker
+            # (served as legacy:..., reconciled as shim:...) or one closed
+            # meanwhile. Matched as before, among the blockers no id claimed.
+            match = _match_report(report, list(remaining.values()))
+            if match is not None:
+                del remaining[match.blocker_id]
         if match is not None:
-            del remaining[match.blocker_id]
             updated = _apply_report(
                 match, report, as_of=as_of, overwrite_attribution=overwrite_attribution
             )
@@ -216,10 +241,19 @@ def reconcile_blockers(
 
 
 def _dedupe_reports(reports: Sequence[BlockerReport]) -> tuple[BlockerReport, ...]:
-    seen: set[str] = set()
+    """The first report per blocker id, and per wording among the reports with none.
+
+    Two reports naming different blockers are two statements even when they
+    read alike; without ids, one wording is one blocker, as it always was.
+    """
+    seen: set[tuple[str, str]] = set()
     unique: list[BlockerReport] = []
     for report in reports:
-        key = normalize_blocker_key(report.description)
+        key = (
+            ("id", report.blocker_id)
+            if report.blocker_id is not None
+            else ("wording", normalize_blocker_key(report.description))
+        )
         if key in seen:
             continue
         seen.add(key)

@@ -20,6 +20,7 @@ from tests.contract.contracts import (
     assert_conversation_repository_contract,
     assert_dead_letter_repository_contract,
     assert_directory_user_repository_contract,
+    assert_graph_history_contract,
     assert_graph_repository_contract,
     assert_identity_link_repository_contract,
     assert_inbound_chat_event_repository_contract,
@@ -104,6 +105,10 @@ async def test_fake_status_repository_satisfies_contract() -> None:
 
 async def test_in_memory_graph_store_satisfies_graph_repository_contract() -> None:
     await assert_graph_repository_contract(InMemoryGraphStore())
+
+
+async def test_in_memory_graph_store_keeps_history_on_unlink_and_delete() -> None:
+    await assert_graph_history_contract(InMemoryGraphStore())
 
 
 async def test_fake_time_series_repository_satisfies_contract() -> None:

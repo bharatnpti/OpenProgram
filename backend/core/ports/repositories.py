@@ -39,13 +39,37 @@ from core.domain.writeback import WriteBackAudit
 
 
 class GraphRepository(Protocol):
-    async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]: ...
+    """The tenant graph, kept with its history.
 
-    async def get_node(self, tenant_id: str, id: str) -> GraphNode | None: ...
+    An edge holds over its validity window, and a read for a day sees the
+    edges active on it. Unlinking ends an edge (``end_edge``) and deleting a
+    node ends its edges and keeps the node (``delete_node``), so a read as of
+    an earlier day still sees what was there that day.
 
-    async def upsert_node(self, node: GraphNode) -> None: ...
+    Node reads without ``as_of`` answer for now and leave a deleted node out.
+    A read with ``as_of`` answers for that day and still finds a node deleted
+    later; pass it wherever the caller reads a day that may be in the past.
+    """
 
-    async def delete_node(self, tenant_id: str, id: str) -> None: ...
+    async def list_nodes(
+        self, tenant_id: str, kind: NodeKind | None = None, *, as_of: date | None = None
+    ) -> list[GraphNode]: ...
+
+    async def get_node(
+        self, tenant_id: str, id: str, *, as_of: date | None = None
+    ) -> GraphNode | None: ...
+
+    async def upsert_node(self, node: GraphNode) -> None:
+        """Store the node; a deleted node with this id is restored, its old edges still ended."""
+        ...
+
+    async def delete_node(self, tenant_id: str, id: str, *, on: date) -> None:
+        """Delete the node from ``on``: its edges end on ``on`` (``end_edge``).
+
+        The node stays stored. Reads as of ``on`` or later, and reads without
+        ``as_of``, no longer find it; reads as of an earlier day still do.
+        """
+        ...
 
     async def add_edge(self, edge: GraphEdge) -> None: ...
 
@@ -57,9 +81,22 @@ class GraphRepository(Protocol):
         kind: EdgeKind | None = None,
     ) -> list[GraphEdge]: ...
 
-    async def remove_edge(self, edge: GraphEdge) -> None: ...
+    async def remove_edge(self, edge: GraphEdge) -> None:
+        """Erase the stored edge, history included. Unlinking uses ``end_edge``."""
+        ...
 
-    async def get_program_tree(self, tenant_id: str, program_id: str, as_of: date) -> GraphTree: ...
+    async def end_edge(self, edge: GraphEdge, on: date) -> None:
+        """End the stored edge on ``on``, as ``GraphEdge.ended_on`` reads it.
+
+        Reads as of ``on`` or later no longer see it; earlier reads still do.
+        An edge that would then hold on no day (one starting on ``on`` or
+        later) is erased, and one that already ended is left as it is.
+        """
+        ...
+
+    async def get_program_tree(self, tenant_id: str, program_id: str, as_of: date) -> GraphTree:
+        """The tree under the root as of ``as_of``: its active edges and nodes not yet deleted."""
+        ...
 
     async def active_developer_memberships(
         self, tenant_id: str, developer_id: str, as_of: date

@@ -293,7 +293,7 @@ async def people_outside_teams(
     An exec with no pod (Elena), or someone not yet placed. A person a pod,
     project or workstream contains is in a team's rollup and is not one.
     """
-    nodes = await graph.list_nodes(tenant_id)
+    nodes = await graph.list_nodes(tenant_id, as_of=as_of)
     contained = {
         edge.to_node_id
         for edge in await graph.list_edges(tenant_id, kind=EdgeKind.CONTAINS)

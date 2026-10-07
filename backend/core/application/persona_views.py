@@ -865,7 +865,7 @@ class PersonaViewService:
         findings (``findings``; none read without it), and how long each open
         blocker has stood.
         """
-        program_id = program_root_id or await self._first_program_id(tenant_id)
+        program_id = program_root_id or await self._first_program_id(tenant_id, as_of)
         loaded = await self._heatmap_statuses(tenant_id, as_of, program_id)
         statuses = loaded[0] if loaded is not None else []
         day = await self._attention_day(tenant_id, statuses, as_of, today, names)
@@ -903,7 +903,7 @@ class PersonaViewService:
                 statuses = list(await self._rollup_service.compute(tree, as_of))
                 statuses += await self._outside_teams(tenant_id, as_of)
             return statuses, tree
-        resolved_root_id = await self._first_program_id(tenant_id)
+        resolved_root_id = await self._first_program_id(tenant_id, as_of)
         if resolved_root_id is None:
             return None
         try:
@@ -934,7 +934,7 @@ class PersonaViewService:
         """The day as the reasons read it: statuses, teams on the day, its check-ins."""
         provider = names or ProviderNames()
         graph = TeamGraph.from_graph(
-            await self._graph_repository.list_nodes(tenant_id),
+            await self._graph_repository.list_nodes(tenant_id, as_of=as_of),
             await self._graph_repository.list_edges(tenant_id),
             as_of,
         )
@@ -974,7 +974,7 @@ class PersonaViewService:
         outside = {status.entity_ref.id for status in statuses if is_outside_teams(status)}
         nodes = {node.id: node for node in tree.nodes} if tree is not None else {}
         for node_id in sorted((wanted | outside) - nodes.keys()):
-            node = await self._graph_repository.get_node(tenant_id, node_id)
+            node = await self._graph_repository.get_node(tenant_id, node_id, as_of=day.as_of)
             if node is not None:
                 nodes[node_id] = node
         context = context.with_labels(
@@ -1034,8 +1034,8 @@ class PersonaViewService:
         people = await people_outside_teams(self._graph_repository, tenant_id, as_of)
         return list(await self._rollup_service.compute_outside_teams(people, as_of))
 
-    async def _first_program_id(self, tenant_id: str) -> str | None:
-        programs = await self._graph_repository.list_nodes(tenant_id, NodeKind.PROGRAM)
+    async def _first_program_id(self, tenant_id: str, as_of: date) -> str | None:
+        programs = await self._graph_repository.list_nodes(tenant_id, NodeKind.PROGRAM, as_of=as_of)
         return programs[0].id if programs else None
 
     async def _tenant_contains(
@@ -1046,7 +1046,10 @@ class PersonaViewService:
         Ownership is read from these, not from a tree: a tree holds only the
         edges below its root, so a container elsewhere is out of its sight.
         """
-        nodes = {node.id: node for node in await self._graph_repository.list_nodes(tenant_id)}
+        nodes = {
+            node.id: node
+            for node in await self._graph_repository.list_nodes(tenant_id, as_of=as_of)
+        }
         parents: dict[str, list[str]] = {}
         for edge in await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS):
             if edge.is_active_on(as_of):
@@ -1144,7 +1147,7 @@ async def owned_project_tasks(
     Read for many projects at once, so the tenant's nodes and ``contains``
     edges are listed once. A project id that is not a project is left out.
     """
-    nodes = {node.id: node for node in await graph_repository.list_nodes(tenant_id)}
+    nodes = {node.id: node for node in await graph_repository.list_nodes(tenant_id, as_of=as_of)}
     parents: dict[str, list[str]] = {}
     for edge in await graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS):
         if edge.is_active_on(as_of):

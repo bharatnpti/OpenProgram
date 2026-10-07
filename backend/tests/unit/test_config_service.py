@@ -131,9 +131,10 @@ async def test_config_service_crud_links_assignments_and_preferences() -> None:
 
 async def test_directory_service_lists_configured_relationships_and_rollup() -> None:
     store = InMemoryGraphStore()
-    service = ConfigService(store, store)
-    directory = DirectoryService(store, store)
     as_of = date(2026, 1, 10)
+    # Set up on the day read: a config link holds from the day it is made.
+    service = ConfigService(store, store, today=lambda: as_of)
+    directory = DirectoryService(store, store)
 
     program = await service.create_node("demo", NodeKind.PROGRAM, "program-1", "Program")
     project = await service.create_node(
