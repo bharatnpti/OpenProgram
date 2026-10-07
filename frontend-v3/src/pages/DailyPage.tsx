@@ -31,7 +31,8 @@ export function DailyPage() {
   const setup = useQuery({
     queryKey: ["day-reports", "setup"],
     queryFn: () => apiClient.dayReportSetup(),
-    enabled: canSetUpDayReports,
+    // Only the empty page offers set-up, so only it needs to know where.
+    enabled: canSetUpDayReports && reports.isSuccess && (reports.data ?? []).length === 0,
   });
   const mayHere = (setup.data?.projects ?? []).some((project) => project.id === projectId);
   const list = reports.data ?? [];

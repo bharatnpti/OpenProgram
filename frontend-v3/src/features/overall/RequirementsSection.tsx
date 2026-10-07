@@ -294,7 +294,7 @@ function RequirementTable({ data }: { data: RequirementsResponse }) {
           </tbody>
         </table>
       </TableBox>
-      {start ? (
+      {start && rows.some((req) => req.in_stage_since === start) ? (
         <p className="mt-1.5 text-[11px] text-grey-secondary">
           The daily history starts on {formatDay(start)}, so a requirement that has not moved since
           reads &ldquo;or earlier&rdquo;: it may have been in its stage longer.
