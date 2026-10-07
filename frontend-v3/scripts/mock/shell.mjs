@@ -1,5 +1,6 @@
 // Mock handlers for the shell lane, used by scripts/mock-api.mjs before the
-// console mock: the header's tenant logo, a member's own check-in schedule,
+// console mock: the made-up tenant logo (served by the admin-config mock, which
+// owns /config/branding), a member's own check-in schedule,
 // the built-in chat with the purposes the backend really sends and its two
 // admin actions, and a past day (`as_of`) on the reads it shows most plainly.
 // NOT real data: shapes follow src/api/generated.ts, the logo is a made-up mark.
@@ -17,6 +18,9 @@ const branding = {
     updated_by: "U1001",
   },
 };
+
+/** The made-up mark, for the admin-config mock, which owns /config/branding. */
+export const demoLogo = branding.logo;
 
 // The team's check-in defaults, and what members set for themselves; a field
 // not stored follows the team.
@@ -203,8 +207,6 @@ export function api(req, url, roles, userId, send, deny) {
     void readJson(req).then(handle);
     return true;
   };
-
-  if (p === "/config/branding" && req.method === "GET") return reply(200, branding);
 
   if (p === "/me/checkin-preference") {
     if (!consoleData.roster.some((person) => person.id === userId)) {

@@ -333,37 +333,8 @@ const risks = {
     },
   ],
 };
-const escalation = {
-  project_id: "project-checkout",
-  source: "tenant",
-  decision_owner_id: "U1003",
-  updated_at: "2026-09-01T09:00:00Z",
-  updated_by: "U1001",
-  levels: [
-    {
-      label: "Scrum master",
-      source: "team_scrum_master",
-      member_id: null,
-      after_days: { fix: 2, decision: 2, answer: 3, review: 2 },
-    },
-    {
-      label: "Manager",
-      source: "team_manager",
-      member_id: null,
-      after_days: { fix: 4, decision: 4, answer: 6, review: 5 },
-    },
-    {
-      label: "Director",
-      source: "member",
-      member_id: "U1011",
-      after_days: { fix: 10, decision: 8 },
-    },
-  ],
-};
-
 const can = {
   aggregate: (r) => r.some((x) => ["sm", "po", "mgr", "exec", "admin"].includes(x)),
-  config: (r) => r.includes("admin"),
 };
 
 function api(req, res, url) {
@@ -375,6 +346,8 @@ function api(req, res, url) {
   const deny = () =>
     send(403, { detail: `Role ${roles.join(",") || "none"} lacks this capability.` });
   const p = url.pathname;
+  // The admin-config mock answers first. It owns /config/branding, every /config/escalation
+  // read and write (Overall's included), the sync status and the directory sync.
   if (adminConfig.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
   if (p === "/api/v1/auth/status")
     return send(200, {
@@ -409,8 +382,6 @@ function api(req, res, url) {
   if (/^\/day-reports\/[^/]+\/runs$/.test(p)) return send(200, p.includes("-r1") ? [] : runs);
   if (p === "/projects/project-checkout/risks")
     return can.aggregate(roles) ? send(200, risks) : deny();
-  if (p === "/config/escalation/projects/project-checkout")
-    return can.config(roles) ? send(200, escalation) : deny();
   const userId = req.headers["x-openprogram-dev-user"] ?? "U1001";
   // The shell mock goes first: of the reads the lane mocks share, it answers
   // only past-day ones (as_of), which the today mock would answer as today.

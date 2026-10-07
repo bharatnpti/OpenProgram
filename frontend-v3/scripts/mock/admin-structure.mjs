@@ -196,6 +196,9 @@ const configList = (kind) => {
   return items.map((item) => configNode(kind, item.id));
 };
 
+/** The members as GET /config/members lists them: the admin-config mock reads them too. */
+export const memberList = () => configList("member");
+
 const refreshPeople = (item) => {
   item.people = ["owner_id", "tpm_id", "sm_id"]
     .filter((key) => typeof item.metadata[key] === "string" && item.metadata[key])

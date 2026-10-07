@@ -5,6 +5,8 @@
 // so every write round-trips. State lives in memory and resets when the mock
 // restarts. Integration secrets are never kept here, only which ones are set.
 import * as consoleData from "../mock-console.mjs";
+import { memberList } from "./admin-structure.mjs";
+import { demoLogo } from "./shell.mjs";
 
 const TENANT = "demo";
 const now = () => new Date().toISOString();
@@ -36,17 +38,12 @@ const refused = (field, message) => ({
 });
 
 // ---- Members ---------------------------------------------------------------------
-// Every person on the roster is a member, the executive too, as on the seeded tenant;
-// the escalation matrix below names her as its Director.
+// The members are the admin-structure mock's, which owns GET /config/members, so a
+// person imported from the directory there is a member here too (check-ins, the
+// matrix's member rules, who saved a connection). The executive starts outside them:
+// she is the directory person that mock leaves for an import.
 
-const MEMBERS = consoleData.roster.map((person) => ({
-  id: person.id,
-  kind: "developer",
-  name: person.name,
-  description: null,
-  code: null,
-  metadata: { title: person.title },
-}));
+const members = () => memberList();
 
 // ---- Check-in preferences and write-back consent ---------------------------------
 // api/routers/config.py: a field left out of a PUT keeps its value; null follows the default.
@@ -65,7 +62,9 @@ const stored = Object.fromEntries(
     Object.fromEntries(FIELDS.map((f) => [f, pref.inherited.includes(f) ? null : pref[f]])),
   ]),
 );
-const consents = Object.fromEntries(MEMBERS.map((m) => [m.id, consoleData.consent(m.id).consent]));
+const consents = Object.fromEntries(
+  consoleData.roster.map((person) => [person.id, consoleData.consent(person.id).consent]),
+);
 
 function effective(id) {
   const own = stored[id] ?? {};
@@ -409,7 +408,8 @@ function gateProblems(body) {
 
 // ---- Escalation ------------------------------------------------------------------
 // core/domain/escalation_matrix.py: levels in order, named members that exist. The
-// tenant's matrix is the one Overall's mock (scripts/mock-api.mjs) shows.
+// tenant's matrix is the one Overall reads; its named level is a member, so every
+// level reads by name and saving it unchanged passes the member rule.
 
 const level = (label, source, member_id, after_days) => ({ label, source, member_id, after_days });
 const defaultMatrix = () => ({
@@ -426,7 +426,7 @@ let tenantMatrix = {
   levels: [
     level("Scrum master", "team_scrum_master", null, { fix: 2, decision: 2, answer: 3, review: 2 }),
     level("Manager", "team_manager", null, { fix: 4, decision: 4, answer: 6, review: 5 }),
-    level("Director", "member", "U1011", { fix: 10, decision: 8 }),
+    level("Engineering manager", "member", "U1001", { fix: 10, decision: 8 }),
   ],
   updated_at: "2026-09-01T09:00:00Z",
   updated_by: "U1001",
@@ -462,12 +462,12 @@ function matrixProblems(body) {
     });
   }
   if (problems.length > 0) return sentence(problems);
-  const members = new Set(MEMBERS.map((m) => m.id));
+  const memberIds = new Set(members().map((m) => m.id));
   const named = [
     body.decision_owner_id,
     ...levels.map((item) => (item.source === "member" ? item.member_id : null)),
   ].filter(Boolean);
-  const unknown = named.filter((id) => !members.has(id));
+  const unknown = named.filter((id) => !memberIds.has(id));
   return unknown.length > 0 ? `No member ${unknown.map((id) => `'${id}'`).join(", ")}.` : null;
 }
 
@@ -721,7 +721,7 @@ function connectionResponse(spec) {
     environment_configured: ENVIRONMENT.has(spec.connector),
     updated_at: c?.updated_at ?? null,
     updated_by: c?.updated_by ?? null,
-    updated_by_name: c ? (MEMBERS.find((m) => m.id === c.updated_by)?.name ?? null) : null,
+    updated_by_name: c ? (members().find((m) => m.id === c.updated_by)?.name ?? null) : null,
     last_test: c?.last_test ?? null,
   };
 }
@@ -761,7 +761,8 @@ function testResult(spec, settings, typedSecrets) {
 // ---- Branding --------------------------------------------------------------------
 // core/application/branding_service.py: PNG, JPEG or WebP by their own bytes, 256 KB.
 
-let logo = null;
+// Starts with the shell mock's made-up mark, so the header shows a logo until it is removed.
+let logo = clone(demoLogo);
 function sniff(bytes) {
   const ascii = (start, end) => bytes.toString("ascii", start, end);
   if (bytes[0] === 0x89 && ascii(1, 4) === "PNG" && ascii(12, 16) === "IHDR") return "image/png";
@@ -773,7 +774,6 @@ function sniff(bytes) {
 // ---- Routing ---------------------------------------------------------------------
 
 const CONFIG_PATHS = [
-  /^\/config\/members$/,
   /^\/config\/checkin-preferences$/,
   /^\/config\/members\/[^/]+\/(checkin-preference|writeback-consent)$/,
   /^\/admin\/ops\/sync-status$/,
@@ -837,11 +837,10 @@ export function api(req, url, roles, actingAs, send, deny) {
   }
 
   // Members, and their check-ins.
-  if (p === "/config/members" && method === "GET") return done(200, MEMBERS);
   if (p === "/config/checkin-preferences") {
     return done(
       200,
-      MEMBERS.map((member) => effective(member.id)),
+      members().map((member) => effective(member.id)),
     );
   }
   if ((m = p.match(/^\/config\/members\/([^/]+)\/checkin-preference$/))) {
