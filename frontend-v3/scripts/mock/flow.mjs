@@ -217,8 +217,13 @@ function build() {
       draft: false,
     };
     if (!open) {
-      // Merged at some point in the last 100 days, weekday working hours more often.
-      const merged = NOW - random() * 100 * 24 * HOUR;
+      // Merged at some point in the last 100 days. Performance work all landed
+      // more than a month ago, so the 30-day view has a type with none (the
+      // "None in this window" line) and the 90-day view has every type.
+      const merged =
+        type === "performance"
+          ? NOW - (32 + random() * 66) * 24 * HOUR
+          : NOW - random() * 100 * 24 * HOUR;
       request.merged_at = merged;
       request.opened_at = merged - (lead - hours.coding) * HOUR;
       request.state = "merged";

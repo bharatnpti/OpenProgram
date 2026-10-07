@@ -13,6 +13,7 @@ import {
   formatHours,
   formatShare,
   investment,
+  noneWords,
   leadHours,
   parseScope,
   planDots,
@@ -216,17 +217,41 @@ test("types keep fixed colours: eight palette slots and grey", () => {
   assert.equal(typeColorVar("unclassified"), "--op-flow-type-none");
 });
 
-test("investment follows the fixed type order and shares the merged requests", () => {
-  const rows = investment(flow());
+test("investment bars run largest first and the types with none wait in one line", () => {
+  const { bars, none } = investment(
+    flow({
+      type_counts: [
+        { request_type: "feature", label: "Feature", merged_count: 2, open_count: 1 },
+        { request_type: "bug_fix", label: "Bug fix", merged_count: 5, open_count: 0 },
+        { request_type: "chore", label: "Chore or tooling", merged_count: 2, open_count: 0 },
+        { request_type: "refactor", label: "Refactor", merged_count: 0, open_count: 3 },
+      ],
+    }),
+  );
+  // A tie keeps the fixed type order: feature before chore.
   assert.deepEqual(
-    rows.slice(0, 3).map((row) => [row.type, row.merged, row.open]),
+    bars.map((row) => [row.type, row.merged, row.open]),
     [
+      ["bug_fix", 5, 0],
       ["feature", 2, 1],
-      ["dependency_update", 0, 0],
-      ["bug_fix", 1, 0],
+      ["chore", 2, 0],
     ],
   );
-  assert.equal(formatShare(rows[0].share), "67%");
+  assert.equal(formatShare(bars[0].share), "56%");
+  // Every type is somewhere, the ones with none in the fixed order.
+  assert.equal(bars.length + none.length, TYPES.length);
+  assert.deepEqual(
+    none.slice(0, 3).map((row) => row.type),
+    ["dependency_update", "refactor", "documentation"],
+  );
+  assert.equal(
+    noneWords(none.slice(0, 3)),
+    "None in this window: Dependency update, Refactor and Documentation.",
+  );
+  assert.equal(noneWords(none.slice(1, 2)), "None in this window: Refactor.");
+  assert.equal(noneWords([]), null);
+  // The colour stays the type's wherever the sort puts it.
+  assert.equal(typeColorVar(bars[0].type), "--op-flow-type-3");
   assert.equal(formatShare(0), "0%");
   assert.equal(formatShare(0.004), "<1%");
 });

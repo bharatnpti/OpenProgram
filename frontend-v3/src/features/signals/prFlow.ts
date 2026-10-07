@@ -302,16 +302,49 @@ export function bandSummary(flow: PullRequestFlowResponse, pct: Percentile): str
   return `Time in each stage at ${pct}, from ${flow.timed_merged_count} timed merged requests: ${parts.join(", ")}.`;
 }
 
-/** Each type's share of the merged requests, in the fixed type order. */
-export function investment(
-  flow: PullRequestFlowResponse,
-): { type: RequestType; label: string; merged: number; open: number; share: number }[] {
+export interface InvestmentRow {
+  type: RequestType;
+  label: string;
+  merged: number;
+  open: number;
+  share: number;
+}
+
+/**
+ * Each type's share of the merged requests: the bars, largest first (a tie
+ * keeps the fixed type order), and the types with none, in the fixed order, for
+ * one muted line instead of empty bars. A bar keeps its type's colour wherever
+ * the sort puts it.
+ */
+export function investment(flow: PullRequestFlowResponse): {
+  bars: InvestmentRow[];
+  none: InvestmentRow[];
+} {
   const total = flow.type_counts.reduce((sum, row) => sum + row.merged_count, 0);
-  return TYPES.map(({ type, label }) => {
+  const rows = TYPES.map(({ type, label }, order) => {
     const row = flow.type_counts.find((entry) => entry.request_type === type);
     const merged = row?.merged_count ?? 0;
-    return { type, label, merged, open: row?.open_count ?? 0, share: total ? merged / total : 0 };
+    const share = total ? merged / total : 0;
+    return { order, row: { type, label, merged, open: row?.open_count ?? 0, share } };
   });
+  return {
+    bars: rows
+      .filter(({ row }) => row.merged > 0)
+      .sort((a, b) => b.row.merged - a.row.merged || a.order - b.order)
+      .map(({ row }) => row),
+    none: rows.filter(({ row }) => row.merged === 0).map(({ row }) => row),
+  };
+}
+
+/** "None in this window: Refactor, Documentation and Performance", or null when every type has some. */
+export function noneWords(none: readonly { label: string }[]): string | null {
+  if (none.length === 0) return null;
+  const labels = none.map((row) => row.label);
+  const list =
+    labels.length === 1
+      ? labels[0]
+      : `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`;
+  return `None in this window: ${list}.`;
 }
 
 /** "12%" or "<1%" for a share above zero; "0%" for none. */

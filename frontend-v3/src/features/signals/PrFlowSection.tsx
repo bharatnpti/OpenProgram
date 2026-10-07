@@ -19,6 +19,7 @@ import {
   formatHours,
   formatShare,
   investment,
+  noneWords,
   parseScope,
   requestReference,
   scopeWords,
@@ -450,8 +451,9 @@ function InvestmentCard({
   highlight: RequestType | null;
   onType: (type: RequestType) => void;
 }) {
-  const rows = investment(flow);
+  const { bars: rows, none } = investment(flow);
   const max = Math.max(1, ...rows.map((row) => row.merged));
+  const noneLine = noneWords(none);
   return (
     <section
       aria-labelledby="pr-investment-title"
@@ -494,15 +496,13 @@ function InvestmentCard({
                 </span>
                 <span className="relative h-3.5" aria-hidden>
                   <span className="absolute inset-y-[6px] left-0 right-0 bg-(--op-flow-grid)" />
-                  {row.merged > 0 ? (
-                    <span
-                      className="animate-op-bar absolute inset-y-0 left-0 rounded-r-[4px]"
-                      style={{
-                        width: `${Math.max(1.5, (row.merged / max) * 100)}%`,
-                        background: `var(${typeColorVar(row.type)})`,
-                      }}
-                    />
-                  ) : null}
+                  <span
+                    className="animate-op-bar absolute inset-y-0 left-0 rounded-r-[4px]"
+                    style={{
+                      width: `${Math.max(1.5, (row.merged / max) * 100)}%`,
+                      background: `var(${typeColorVar(row.type)})`,
+                    }}
+                  />
                 </span>
                 <span className="text-right text-[12px] tabular-nums text-(--op-flow-ink-2)">
                   <span className="font-extrabold text-(--op-flow-ink)">{row.merged}</span>{" "}
@@ -513,6 +513,9 @@ function InvestmentCard({
           );
         })}
       </ul>
+      {noneLine ? (
+        <p className="mt-2 px-1.5 text-[12px] text-(--op-flow-muted)">{noneLine}</p>
+      ) : null}
       <p className="mt-3 text-[12px] text-(--op-flow-ink-2)">
         A type comes from the first rule that names one: a dependency bot wrote it, the linked Jira
         issue&apos;s type, a label, a title prefix (feat:, fix:, docs: …), a branch prefix. Pick a
