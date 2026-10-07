@@ -63,6 +63,10 @@ frontend-v3/src/features/admin/IntegrationsTab.tsx
   s_a5c95ae649948d::t_ec54dd17b80fb7 1-18,20-73,76-148,152-223,228-431,433-479
   s_a5c95ae649948d::t_4bf4e4f72aa009 74-75,149-151,224-227
   s_a5c95ae649948d::t_2af7c33926254c 19
+frontend-v3/scripts/mock-api.mjs
+  s_a5c95ae649948d::t_956d24f1acbac6 24,378
+frontend-v3/scripts/mock/admin-config.mjs
+  s_a5c95ae649948d::t_956d24f1acbac6 1-1059
 ---
 {
   "schema_version": "authorship/3.0.0",
