@@ -62,3 +62,17 @@ export function personOption(person: Person): string {
   const base = title ? `${person.name} · ${title}` : person.name;
   return others.length > 0 ? `${base} (also ${others.join(", ")})` : base;
 }
+
+/**
+ * What the account menu says about a sign-in with no identity provider: the
+ * console acts as whoever is picked. It is the sign-in of a developer's
+ * machine, not a "demo": a real tenant (qa2) runs under it too, and said
+ * "local demo" under a real person's name.
+ */
+export const DEV_SIGN_IN = "local sign-in (development)";
+
+/** The line under the name in the account menu: "Manager + Admin · local sign-in (development)". */
+export function accountLine(roles: readonly string[] | null | undefined, isDevMode: boolean) {
+  const who = rolesLabel(roles);
+  return isDevMode ? `${who} · ${DEV_SIGN_IN}` : who;
+}

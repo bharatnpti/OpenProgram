@@ -115,7 +115,7 @@ export function apiUrl(path: string): string {
 }
 
 /**
- * Who the console is acting as, for local demo tenants only.
+ * Who the console is acting as, under the local (development) sign-in only.
  *
  * The backend honours these headers exclusively under the dev auth provider in
  * a local environment; anywhere else they are ignored, so sending them always

@@ -16,6 +16,7 @@ import {
   isNoReplyPlaceholder,
   NO_REPLY_BLOCKER,
   podCheckinMeta,
+  whyCheckinMatters,
 } from "./checkin.ts";
 
 const say = {
@@ -190,6 +191,21 @@ describe("what the card says", () => {
     );
     assert.equal(checkinHint("confirmed", ["Payments Pod"]), null);
     assert.equal(checkinHint("stale", []), null);
+  });
+
+  test("on a past day nothing says to confirm or correct: both buttons are off", () => {
+    assert.equal(checkinHint("stale", ["Payments Pod"], true), null);
+    assert.equal(checkinHint("missing", ["Payments Pod"], true), null);
+    const carried = checkinProvenance({
+      source: "confirmed",
+      statusAsOf: "2026-10-05",
+      today: TODAY,
+      developerConfirmed: true,
+    });
+    assert.equal(confirmCaption(carried, say.day, true), null);
+    assert.doesNotMatch(whyCheckinMatters(true), /until you confirm or correct it/);
+    assert.match(whyCheckinMatters(true), /fed every rollup/);
+    assert.match(whyCheckinMatters(false), /until you confirm or correct it/);
   });
 });
 

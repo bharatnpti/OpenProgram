@@ -58,7 +58,7 @@ export const QUESTION_STATUSES: QuestionStatus[] = [
 ];
 
 export const QUESTION_LABELS: Record<QuestionStatus, string> = {
-  not_yet: "Not yet",
+  not_yet: "Not answered yet",
   partly: "Partly",
   answered: "Yes",
   closed_unanswered: "Closed without an answer",
@@ -178,6 +178,37 @@ export function gateCounts(board: Pick<GateBoardResponse, "issues">): GateCounts
 
 export function isOpenQuestion(status: QuestionStatus): boolean {
   return status === "not_yet" || status === "partly";
+}
+
+/**
+ * Where a question's status came from, when a reader could take it for their
+ * own doing. A status no person set is the backend's reading of Jira
+ * (core/application/gate_extraction.py `questions_in`): the person asked
+ * commented after the question, so it reads as answered; the issue closed, so
+ * it reads as closed without an answer. A kept question showing "Yes" before
+ * anyone had answered it looked like a default; this says what it rests on.
+ */
+export function questionStatusSource(
+  question: Pick<TrackedQuestionResponse, "status" | "status_set_by_person">,
+  askedTo: string,
+): string | null {
+  if (question.status_set_by_person) return null;
+  if (question.status === "answered") {
+    const who = askedTo.trim() || "The person asked";
+    return `Read from Jira: ${who} replied after the question. Change it if that did not answer it.`;
+  }
+  if (question.status === "closed_unanswered") {
+    return "Read from Jira: the issue closed without an answer.";
+  }
+  return null;
+}
+
+/** The line after a status is saved: "CHK-12: heard back partly." */
+export function questionSavedWords(issueKey: string, status: QuestionStatus): string {
+  if (status === "not_yet") return `${issueKey}: not answered yet.`;
+  if (status === "partly") return `${issueKey}: heard back partly.`;
+  if (status === "answered") return `${issueKey}: heard back, yes.`;
+  return `${issueKey}: closed without an answer.`;
 }
 
 /**

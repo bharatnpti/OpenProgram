@@ -24,7 +24,14 @@ import { chooseProgram, rankPrograms } from "./scope";
  * every screen shares the same request.
  */
 
-export { podsOf, podsOfPerson, projectsOf, projectsOfPerson, programsOfProjects } from "./scope";
+export {
+  podsOf,
+  podsOfPerson,
+  projectsOf,
+  projectsOfPerson,
+  programsOfProjects,
+  rankProjects,
+} from "./scope";
 
 export function usePrograms() {
   return useQuery({ queryKey: ["directory", "programs"], queryFn: () => apiClient.programs() });

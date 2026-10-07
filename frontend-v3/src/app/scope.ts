@@ -100,6 +100,29 @@ export function rankPrograms(programs: DirectoryItemResponse[]): DirectoryItemRe
   );
 }
 
+/**
+ * A person's projects, the one to open first on top: the worst colour first
+ * (`unknown` above `green`: silence is no clean bill of health), then the
+ * project of the person's first pod, then by name. A product owner's Today
+ * opened on whichever project the directory listed first, which for Hana was
+ * Customer Insights.
+ */
+export function rankProjects(
+  projects: DirectoryItemResponse[],
+  pods: DirectoryItemResponse[],
+): DirectoryItemResponse[] {
+  const firstPod = (project: DirectoryItemResponse) => {
+    const at = pods.findIndex((pod) => pod.project_ids.includes(project.id));
+    return at === -1 ? pods.length : at;
+  };
+  return [...projects].sort(
+    (a, b) =>
+      SEVERITY[b.rag ?? "unknown"] - SEVERITY[a.rag ?? "unknown"] ||
+      firstPod(a) - firstPod(b) ||
+      a.name.localeCompare(b.name),
+  );
+}
+
 /** The program to show: the one asked for if it exists, else the first of `ranked`. */
 export function chooseProgram(
   ranked: DirectoryItemResponse[],

@@ -10,6 +10,7 @@ import { PanelState, SectionHeader, TableBox, td, th } from "../../components/Pa
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
+import { cn } from "../../lib/utils";
 import { WHO, actionError } from "../reports/access";
 import { FormProblem, Locked, ReportDialog, field, fieldLabel } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
@@ -19,7 +20,9 @@ import {
   QUESTION_TONES,
   questionProblem,
   questionRows,
+  questionSavedWords,
   questionsSummary,
+  questionStatusSource,
 } from "./gateWords";
 import { useGateBoard } from "./queries";
 
@@ -57,7 +60,7 @@ export function QuestionsSection({
           ? `Dismissed the question on ${saved.issue_key}.`
           : body.confirmed
             ? `Kept the question on ${saved.issue_key}.`
-            : `${saved.issue_key}: heard back ${QUESTION_LABELS[saved.status].toLowerCase()}.`,
+            : questionSavedWords(saved.issue_key, saved.status),
       );
     },
     onError: (error) => toast.error(actionError(error)),
@@ -149,6 +152,7 @@ export function QuestionsSection({
                     ) : editGates ? (
                       <HeardBack
                         question={q}
+                        askedTo={q.asked_to_name || names(q.asked_to)}
                         saving={update.isPending}
                         onSave={(status, done) =>
                           update.mutate({ question: q, body: { status } }, { onSuccess: done })
@@ -291,45 +295,81 @@ function AddQuestionDialog({
  * that saved on every change saved a status nobody chose: a closed select
  * changes with the arrow keys (Windows, Linux), one step per press, and a
  * person's status is never corrected by the next Jira read.
+ *
+ * Because the choice waits for Save, it says so: the select turns amber, "Not
+ * saved yet" stands beside it with Save and Undo, and the row reads the same
+ * after a reload only once it is saved. A chosen status left unsaved changed
+ * nothing, silently, and the page looked as if it had.
  */
 function HeardBack({
   question,
+  askedTo,
   saving,
   onSave,
 }: {
   question: TrackedQuestionResponse;
+  askedTo: string;
   saving: boolean;
   onSave: (status: QuestionStatus, done: () => void) => void;
 }) {
   const [choice, setChoice] = useState<QuestionStatus | null>(null);
   const value = choice ?? question.status;
   const changed = value !== question.status;
+  const source = changed ? null : questionStatusSource(question, askedTo);
   return (
-    <span className="flex flex-wrap items-center gap-1.5">
-      {/* Named by aria-label: a visually hidden label is positioned outside
-          the table's scroll box and widens a phone's page. */}
-      <select
-        aria-label={`Heard back on ${question.issue_key}?`}
-        className="h-8 rounded-full border border-grey-border bg-white px-3 text-[13px] font-bold"
-        value={value}
-        onChange={(event) => setChoice(event.target.value as QuestionStatus)}
+    <span className="grid gap-1">
+      <span
+        className={cn(
+          "flex flex-wrap items-center gap-1.5",
+          changed && "rounded-3xl bg-rag-amber-bg p-1.5",
+        )}
       >
-        {QUESTION_STATUSES.map((status) => (
-          <option key={status} value={status}>
-            {QUESTION_LABELS[status]}
-          </option>
-        ))}
-      </select>
-      {changed ? (
-        <Pill
-          size="sm"
-          className="h-8 px-3"
-          aria-label={`Save what was heard back on ${question.issue_key}`}
-          disabled={saving}
-          onClick={() => onSave(value, () => setChoice(null))}
+        {/* Named by aria-label: a visually hidden label is positioned outside
+            the table's scroll box and widens a phone's page. */}
+        <select
+          aria-label={`Heard back on ${question.issue_key}?`}
+          className={cn(
+            "h-8 rounded-full border bg-white px-3 text-[13px] font-bold",
+            changed ? "border-rag-amber ring-2 ring-rag-amber" : "border-grey-border",
+          )}
+          value={value}
+          onChange={(event) => setChoice(event.target.value as QuestionStatus)}
         >
-          {saving ? "Saving…" : "Save"}
-        </Pill>
+          {QUESTION_STATUSES.map((status) => (
+            <option key={status} value={status}>
+              {QUESTION_LABELS[status]}
+            </option>
+          ))}
+        </select>
+        {changed ? (
+          <>
+            <span role="status" className="text-[12px] font-bold text-rag-amber-deep">
+              Not saved yet
+            </span>
+            <Pill
+              size="sm"
+              className="h-8 px-3"
+              aria-label={`Save what was heard back on ${question.issue_key}`}
+              disabled={saving}
+              onClick={() => onSave(value, () => setChoice(null))}
+            >
+              {saving ? "Saving…" : "Save"}
+            </Pill>
+            <Pill
+              size="sm"
+              variant="ghost"
+              className="h-8 px-3"
+              aria-label={`Undo the change on ${question.issue_key}`}
+              disabled={saving}
+              onClick={() => setChoice(null)}
+            >
+              Undo
+            </Pill>
+          </>
+        ) : null}
+      </span>
+      {source ? (
+        <span className="max-w-[260px] text-[11px] text-grey-secondary">{source}</span>
       ) : null}
     </span>
   );

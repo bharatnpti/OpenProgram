@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { ApiError } from "../../api/client";
 import { initialsFor, useRole } from "../../app/role";
-import { rolesLabel } from "../../app/roleWords";
+import { accountLine, rolesLabel } from "../../app/roleWords";
 import { CheckinScheduleDialog } from "../../features/checkin/CheckinScheduleDialog";
 import { noCheckinWords, scheduleSummary } from "../../features/checkin/schedule";
 import { isNoCheckin, useMyCheckinPreference } from "../../features/checkin/useMyCheckinPreference";
@@ -93,15 +93,12 @@ export function AccountMenu() {
         >
           <div className="border-b border-grey-fill px-3 pb-2.5 pt-1.5">
             <p className="font-bold">{displayName}</p>
-            <p className="text-[12px] text-grey-secondary">
-              {who}
-              {isDevMode ? " · local demo" : ""}
-            </p>
+            <p className="text-[12px] text-grey-secondary">{accountLine(roles, isDevMode)}</p>
           </div>
           {/* On a phone the header has no room for these, so they are here. */}
           {isDevMode && people.length > 0 ? (
             <div className="border-b border-grey-fill px-3 py-2.5 sm:hidden">
-              <p className={menuLabel}>Acting as (local demo)</p>
+              <p className={menuLabel}>Acting as (local sign-in)</p>
               <ActingAsControls idPrefix="menu" />
             </div>
           ) : null}

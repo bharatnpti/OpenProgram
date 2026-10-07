@@ -7,13 +7,16 @@ import type {
   TrackedQuestionResponse,
 } from "../../api/schema";
 import {
+  QUESTION_LABELS,
   evaluationChip,
   evaluationLine,
   evidenceProblem,
   itemsByKind,
   questionProblem,
   questionRows,
+  questionSavedWords,
   questionsSummary,
+  questionStatusSource,
   scanSummary,
 } from "./gateWords.ts";
 
@@ -172,4 +175,41 @@ test("the questions summary counts only kept ones as waiting, and says what a re
     "2 questions · 1 not answered yet",
   );
   assert.equal(questionsSummary([], true), "0 questions · 0 not answered yet");
+});
+
+test("a kept question that no person has answered reads 'Not answered yet'", () => {
+  assert.equal(QUESTION_LABELS.not_yet, "Not answered yet");
+  assert.equal(QUESTION_LABELS.answered, "Yes");
+});
+
+test("a status nobody set says it was read from Jira, so 'Yes' is not mistaken for a default", () => {
+  const read = { status_set_by_person: false };
+  assert.equal(
+    questionStatusSource({ ...read, status: "answered" }, "Mina Patel"),
+    "Read from Jira: Mina Patel replied after the question. Change it if that did not answer it.",
+  );
+  assert.equal(
+    questionStatusSource({ ...read, status: "answered" }, " "),
+    "Read from Jira: The person asked replied after the question. Change it if that did not answer it.",
+  );
+  assert.equal(
+    questionStatusSource({ ...read, status: "closed_unanswered" }, "Mina Patel"),
+    "Read from Jira: the issue closed without an answer.",
+  );
+  // Nothing to explain for an unanswered one, or for a status a person chose.
+  assert.equal(questionStatusSource({ ...read, status: "not_yet" }, "Mina Patel"), null);
+  assert.equal(
+    questionStatusSource({ status: "answered", status_set_by_person: true }, "Mina Patel"),
+    null,
+  );
+});
+
+test("a saved status is said in words that fit it", () => {
+  assert.equal(questionSavedWords("CHK-12", "not_yet"), "CHK-12: not answered yet.");
+  assert.equal(questionSavedWords("CHK-12", "partly"), "CHK-12: heard back partly.");
+  assert.equal(questionSavedWords("CHK-12", "answered"), "CHK-12: heard back, yes.");
+  assert.equal(
+    questionSavedWords("CHK-12", "closed_unanswered"),
+    "CHK-12: closed without an answer.",
+  );
 });

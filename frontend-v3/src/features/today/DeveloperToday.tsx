@@ -25,6 +25,7 @@ import {
   isNoReplyPlaceholder,
   isOwnWords,
   MAX_BLOCKER_TEXT,
+  whyCheckinMatters,
   type BlockerRow,
 } from "./checkin";
 import { useMyCheckinPreference } from "../checkin/useMyCheckinPreference";
@@ -37,6 +38,7 @@ import { WaitingOnYou } from "./WaitingOnYou";
  */
 export function DeveloperToday() {
   const shownDay = useShownDay();
+  const { readOnly } = useReadOnly();
   const { roleLabel, greetingName } = useRole();
   const status = useQuery({ queryKey: ["me", "status"], queryFn: () => apiClient.myStatus() });
   const focus = useQuery({ queryKey: ["me", "focus"], queryFn: () => apiClient.focus() });
@@ -115,11 +117,7 @@ export function DeveloperToday() {
           <WaitingOnYou />
           <RollsUpInto rollup={rollup} loading={focus.isLoading} />
           <Panel title="Why this matters">
-            <p className="text-[14px] text-grey-body">
-              Your check-in feeds every rollup above you: pod, project and program. Silence is never
-              read as green: an unconfirmed status stays visible as stale until you confirm or
-              correct it, so leaders see what is real.
-            </p>
+            <p className="text-[14px] text-grey-body">{whyCheckinMatters(readOnly)}</p>
           </Panel>
         </div>
       </div>
@@ -226,8 +224,9 @@ function CheckinCard({
           ? `status from ${formatDay(status.status_as_of)}`
           : "no check-in on record"
       : undefined;
-  const hint = shown && judged ? checkinHint(shown.state, podNames) : null;
-  const caption = shown && judged ? confirmCaption(shown, formatDay) : null;
+  // Both are advice for today: with a past day shown the buttons beside them are off.
+  const hint = shown && judged ? checkinHint(shown.state, podNames, readOnly) : null;
+  const caption = shown && judged ? confirmCaption(shown, formatDay, readOnly) : null;
 
   return (
     <Panel title="Your check-in" variant="grey" note={note}>

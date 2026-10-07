@@ -4,8 +4,9 @@ import { roleLabels, useRole, type AppRole } from "../../app/role";
 import { groupPeople, personOption, rolesLabel } from "../../app/roleWords";
 
 /**
- * Local demo tenants only: act as any seeded person, and pick the lens for
- * people who hold several roles. Choosing re-issues every request as them.
+ * Under the local sign-in only (no identity provider): act as anyone the
+ * backend lists, and pick the lens for people who hold several roles.
+ * Choosing re-issues every request as them.
  *
  * A native select, so it works by keyboard and with a phone's own picker,
  * grouped by each person's main role. Its face, drawn underneath, shows the

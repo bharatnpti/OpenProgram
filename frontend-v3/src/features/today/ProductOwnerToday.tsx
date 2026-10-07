@@ -7,6 +7,7 @@ import {
   podsOfPerson,
   programsOfProjects,
   projectsOfPerson,
+  rankProjects,
   useMemberId,
   usePods,
   usePrograms,
@@ -38,11 +39,13 @@ export function ProductOwnerToday() {
   const projects = useProjects();
   const programs = usePrograms();
   const ownPods = podsOfPerson(pods.data ?? [], memberId);
-  const { projects: mine, fallback } = projectsOfPerson(
+  const { projects: ofPods, fallback } = projectsOfPerson(
     projects.data ?? [],
     ownPods.pods,
     ownPods.own,
   );
+  // Opens on the worst of them; equally bad ones, on the project of the person's first pod.
+  const mine = rankProjects(ofPods, ownPods.pods);
   const [chosen, setChosen] = useState("");
   const projectId = mine.some((p) => p.id === chosen) ? chosen : (mine[0]?.id ?? "");
   const project = mine.find((p) => p.id === projectId);
@@ -92,7 +95,9 @@ export function ProductOwnerToday() {
               ? "you are in no pod yet, so every project is shown"
               : fallback === "no-project"
                 ? "your pods work on no project yet, so every project is shown"
-                : "the projects of your pods"
+                : mine.length > 1
+                  ? "the projects of your pods · worst first"
+                  : "the projects of your pods"
           }
         />
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">

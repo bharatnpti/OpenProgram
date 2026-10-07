@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { groupPeople, personOption, rolesLabel } from "./roleWords.ts";
+import { DEV_SIGN_IN, accountLine, groupPeople, personOption, rolesLabel } from "./roleWords.ts";
 
 const person = (name: string, roles: string[], title: string | null = null) => ({
   name,
@@ -49,4 +49,14 @@ test("an option names the person, their title, and any role beyond their group's
     "Kai Thompson · Backend Engineer",
   );
   assert.equal(personOption(person("Pat Doe", ["admin"], " ")), "Pat Doe");
+});
+
+test("the account menu calls a local sign-in what it is, never a demo", () => {
+  assert.equal(DEV_SIGN_IN, "local sign-in (development)");
+  assert.equal(
+    accountLine(["mgr", "admin"], true),
+    "Manager + Admin · local sign-in (development)",
+  );
+  assert.equal(accountLine(["dev"], false), "Developer");
+  assert.doesNotMatch(accountLine(["dev"], true), /demo/i);
 });

@@ -191,6 +191,7 @@ export function ForecastSection({
       {delivery.locked && access.role.setPodDates ? (
         <PodDatesForScrumMaster projectId={projectId} />
       ) : null}
+      {delivery.locked && !access.readPodDelivery ? <PodDatesLocked /> : null}
       {editing ? (
         <DeliveryDateDialog
           scope={editing.scope}
@@ -268,6 +269,22 @@ function PodDatesForScrumMaster({ projectId }: { projectId: string }) {
           onClose={() => setEditing(null)}
         />
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * "Dates by pod" for someone who may not open it (a developer). The forecast
+ * above says who opens the project's own; the pods' dates have their own
+ * readers, so their absence is said where they would be, not left as a gap.
+ */
+function PodDatesLocked() {
+  return (
+    <div className="mt-4">
+      <h3 className="mb-2 text-[15px] font-extrabold">Dates by pod</h3>
+      <PanelState locked needs={WHO.podDelivery} isLoading={false} error={null}>
+        {null}
+      </PanelState>
     </div>
   );
 }

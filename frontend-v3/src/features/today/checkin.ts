@@ -105,18 +105,32 @@ export function checkinNote(
   }
 }
 
-/** What confirming does, said under the buttons when the status is an earlier day's. */
-export function confirmCaption(provenance: CheckinProvenance, day: (iso: string) => string) {
-  if (provenance.kind !== "carried" || !provenance.from) return null;
+/**
+ * What confirming does, said under the buttons when the status is an earlier
+ * day's. Not on a past day: nothing can be confirmed then, so telling the
+ * person what confirming would do is an instruction they cannot follow.
+ */
+export function confirmCaption(
+  provenance: CheckinProvenance,
+  day: (iso: string) => string,
+  pastDay = false,
+) {
+  if (pastDay || provenance.kind !== "carried" || !provenance.from) return null;
   return `Confirming says the update from ${day(provenance.from)} still holds today, blockers included.`;
 }
 
 /**
  * How the person's pods read the check-in, or null when there is nothing to
- * flag: it is confirmed, still loading, or there is no pod for it to reach.
+ * flag: it is confirmed, still loading, there is no pod for it to reach, or a
+ * past day is shown. "Until you confirm or correct it" is advice for today: on
+ * a past day both buttons are off, and the line sat beside them anyway.
  */
-export function checkinHint(state: CheckinState, podNames: string[]): string | null {
-  if (state === "confirmed" || podNames.length === 0) return null;
+export function checkinHint(
+  state: CheckinState,
+  podNames: string[],
+  pastDay = false,
+): string | null {
+  if (pastDay || state === "confirmed" || podNames.length === 0) return null;
   const pods =
     podNames.length === 1
       ? podNames[0]
@@ -127,6 +141,13 @@ export function checkinHint(state: CheckinState, podNames: string[]): string | n
   return state === "missing"
     ? `${pods} ${shows} your check-in as missing. Silence is never read as green.`
     : `${pods} ${shows} your check-in as ${state} until you confirm or correct it.`;
+}
+
+/** What the card at the foot of Today says about why the check-in matters. */
+export function whyCheckinMatters(pastDay: boolean): string {
+  return pastDay
+    ? "Your check-in fed every rollup above you: pod, project and program. Silence is never read as green: a status nobody confirmed stayed visible as stale, so leaders saw what was real."
+    : "Your check-in feeds every rollup above you: pod, project and program. Silence is never read as green: an unconfirmed status stays visible as stale until you confirm or correct it, so leaders see what is real.";
 }
 
 /** Sources whose summary is the person's own words; the rest is wording the system wrote. */

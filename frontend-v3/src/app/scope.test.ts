@@ -10,6 +10,7 @@ import {
   projectsOf,
   projectsOfPerson,
   rankPrograms,
+  rankProjects,
   runsPod,
   scopeToProgram,
 } from "./scope.ts";
@@ -156,6 +157,68 @@ describe("several programs", () => {
     assert.deepEqual(
       scoped.pods.map((x) => x.id),
       ["pod1"],
+    );
+  });
+});
+
+describe("which of a person's projects opens first", () => {
+  const checkout = item({
+    id: "project-checkout",
+    name: "Checkout Revamp",
+    kind: "project",
+    rag: "amber",
+  });
+  const identity = item({
+    id: "project-identity",
+    name: "Identity Platform",
+    kind: "project",
+    rag: "amber",
+  });
+  const insights = item({
+    id: "project-insights",
+    name: "Customer Insights",
+    kind: "project",
+    rag: "amber",
+  });
+  const pods = [
+    item({ id: "pod-data", project_ids: ["project-insights"] }),
+    item({ id: "pod-identity", project_ids: ["project-identity"] }),
+  ];
+
+  test("the worst colour comes first, silence above green", () => {
+    const worst = [
+      { ...checkout, rag: "green" as const },
+      { ...identity, rag: "red" as const },
+      { ...insights, rag: "unknown" as const },
+    ];
+    assert.deepEqual(
+      rankProjects(worst, pods).map((p) => p.id),
+      ["project-identity", "project-insights", "project-checkout"],
+    );
+  });
+
+  test("equally bad projects go by the person's first pod, then by name", () => {
+    assert.deepEqual(
+      rankProjects([identity, insights], pods).map((p) => p.id),
+      ["project-insights", "project-identity"],
+    );
+    assert.deepEqual(
+      rankProjects([identity, insights], [...pods].reverse()).map((p) => p.id),
+      ["project-identity", "project-insights"],
+    );
+    // A project none of the pods works on is last of its colour, then A to Z.
+    assert.deepEqual(
+      rankProjects([checkout, identity], pods).map((p) => p.id),
+      ["project-identity", "project-checkout"],
+    );
+  });
+
+  test("the list asked about is not reordered in place", () => {
+    const given = [insights, identity];
+    rankProjects(given, pods);
+    assert.deepEqual(
+      given.map((p) => p.id),
+      ["project-insights", "project-identity"],
     );
   });
 });
