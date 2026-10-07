@@ -49,10 +49,60 @@
   --op-stage-business-testing: #7a3fb8;
   --op-stage-production: #007845;
 
+  /* Flow through review (Signals > Flow). The eight request types take the
+     validated categorical palette in its fixed order (validate_palette.js:
+     adjacent CVD dE 9.1, normal-vision 19.6 on white; aqua, yellow and pink sit
+     under 3:1, so the bars carry visible labels and the view has a table), and
+     unclassified is grey. The band's "flows freely -> jammed" is a warm
+     analogous ramp of documented steps, lighter to darker. */
+  --op-flow-surface: #ffffff;
+  --op-flow-ink: #0b0b0b;
+  --op-flow-ink-2: #52514e;
+  --op-flow-muted: #6f6e69;
+  --op-flow-grid: #e1e0d9;
+  --op-flow-border: rgba(11, 11, 11, 0.1);
+  --op-flow-type-1: #2a78d6;
+  --op-flow-type-2: #eb6834;
+  --op-flow-type-3: #1baf7a;
+  --op-flow-type-4: #eda100;
+  --op-flow-type-5: #e87ba4;
+  --op-flow-type-6: #008300;
+  --op-flow-type-7: #4a3aa7;
+  --op-flow-type-8: #e34948;
+  --op-flow-type-none: #9a9993;
+  --op-flow-free: #eda100;
+  --op-flow-busy: #eb6834;
+  --op-flow-jam: #e34948;
+
   /* Shadows */
   --op-shadow-menu: 0 16px 48px rgba(0, 0, 0, 0.14);
   --op-shadow-palette: 0 32px 80px rgba(0, 0, 0, 0.3);
   --op-shadow-hover: 0 10px 24px rgba(0, 0, 0, 0.08);
+}
+
+/* The flow view's dark steps: the same hues stepped for a dark surface
+   (validated against #1a1a19: every slot >= 3:1, adjacent CVD dE 8.4). The
+   console itself has no dark theme yet, so these follow a theme set on the
+   document (data-theme="dark"), the hook a console theme will use. */
+:root[data-theme="dark"] {
+  --op-flow-surface: #1a1a19;
+  --op-flow-ink: #ffffff;
+  --op-flow-ink-2: #c3c2b7;
+  --op-flow-muted: #a3a29b;
+  --op-flow-grid: #2c2c2a;
+  --op-flow-border: rgba(255, 255, 255, 0.1);
+  --op-flow-type-1: #3987e5;
+  --op-flow-type-2: #d95926;
+  --op-flow-type-3: #199e70;
+  --op-flow-type-4: #c98500;
+  --op-flow-type-5: #d55181;
+  --op-flow-type-6: #008300;
+  --op-flow-type-7: #9085e9;
+  --op-flow-type-8: #e66767;
+  --op-flow-type-none: #898781;
+  --op-flow-free: #c98500;
+  --op-flow-busy: #d95926;
+  --op-flow-jam: #e66767;
 }
 
 @theme {

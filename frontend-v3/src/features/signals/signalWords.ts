@@ -3,10 +3,11 @@ import type { NameOf } from "../../app/names";
 import type { PortfolioFlowResponse } from "../../api/schema";
 
 /**
- * Whether the flow read measured anything at all: every count is zero and
- * there is no average. Flow counts the work items an organisation groups in
- * workstreams; one that tracks its work as Jira tasks in pods has none, and a
- * row of zeros beside real risks reads as "nothing is moving".
+ * Whether the work-item flow read measured anything at all: every count is
+ * zero and there is no average. It counts the hand-made work items an
+ * organisation groups in workstreams; one that tracks its work as Jira tasks
+ * in pods has none, and a row of zeros beside the review flow (which every
+ * tenant with Git has) would read as "nothing is moving", so it is left out.
  */
 export function flowIsEmpty(
   flow: Pick<
@@ -32,11 +33,6 @@ export function flowIsEmpty(
     flow.workstreams.length === 0
   );
 }
-
-/** What the Flow view says when it measured nothing, instead of zeros. */
-export const FLOW_EMPTY_TITLE = "Flow isn't measured here yet";
-export const FLOW_EMPTY_WORDS =
-  "Flow counts work items: features with a state, a branch and a pull request. This organisation has none, and flow does not read tasks or pods. Nothing was measured, so there are no figures to show, not zeros. The risks and drift on this screen don't depend on it.";
 
 /**
  * What an empty Drift list says, so "Drift · 0" beside "signals disagree on 5

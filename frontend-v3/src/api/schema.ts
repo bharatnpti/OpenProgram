@@ -266,3 +266,12 @@ export interface AskResponse {
 
 // Used by frontend-v3 only.
 export type PersonaTreeNodeDto = components["schemas"]["PersonaTreeNodeDto"];
+
+// Flow through review (GET /portfolio/pr-flow). Used by frontend-v3 only.
+export type PullRequestFlowResponse = components["schemas"]["PullRequestFlowResponse"];
+export type PullRequestFlowItemDto = components["schemas"]["PullRequestFlowItemDto"];
+export type PullRequestFlowStageDto = components["schemas"]["PullRequestFlowStageDto"];
+export type PullRequestTypeCountDto = components["schemas"]["PullRequestTypeCountDto"];
+export type ReviewStage = components["schemas"]["ReviewStage"];
+export type RequestType = components["schemas"]["RequestType"];
+export type TypeSource = components["schemas"]["TypeSource"];

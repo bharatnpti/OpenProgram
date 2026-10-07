@@ -89,6 +89,7 @@ import type {
   ProgramTreeResponse,
   ProjectProgressResponse,
   ProjectRisksResponse,
+  PullRequestFlowResponse,
   ReadyResponse,
   LogoutResponse,
   MyStatusResponse,
@@ -277,6 +278,21 @@ export const apiClient = {
     ),
   portfolioFlow: (asOf?: string) =>
     requestJson<PortfolioFlowResponse>(withQuery("/portfolio/flow", { as_of: asOf })),
+  /** Flow through review: the tenant's, or one program's, project's or pod's. */
+  pullRequestFlow: (scope: {
+    days: number;
+    programId?: string | null;
+    projectId?: string | null;
+    podId?: string | null;
+  }) =>
+    requestJson<PullRequestFlowResponse>(
+      withQuery("/portfolio/pr-flow", {
+        days: String(scope.days),
+        program_id: scope.programId ?? undefined,
+        project_id: scope.projectId ?? undefined,
+        pod_id: scope.podId ?? undefined,
+      }),
+    ),
   portfolioFeed: (since?: string | null, limit = 50) =>
     requestJson<PortfolioFeedResponse>(
       withQuery("/portfolio/feed", {

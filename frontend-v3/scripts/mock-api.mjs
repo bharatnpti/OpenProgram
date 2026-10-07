@@ -22,6 +22,7 @@ import * as adminStructure from "./mock/admin-structure.mjs";
 import * as reportsLane from "./mock/reports.mjs";
 import * as shellMock from "./mock/shell.mjs";
 import * as adminConfig from "./mock/admin-config.mjs";
+import * as flowMock from "./mock/flow.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
@@ -389,6 +390,7 @@ function api(req, res, url) {
   if (todayMock.api(req, url, roles, userId, send, deny)) return;
   if (adminStructure.api(req, url, roles, userId, send, deny)) return;
   if (reportsLane.api(req, url, roles, userId, send, deny)) return;
+  if (flowMock.api(req, url, roles, userId, send, deny)) return;
   const handled = consoleData.consoleApi(req, url, roles, userId, send, deny);
   if (handled !== false) return handled;
   return send(404, { detail: "Not found." });

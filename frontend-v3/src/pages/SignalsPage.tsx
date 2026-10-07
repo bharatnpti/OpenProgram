@@ -17,13 +17,8 @@ import { formatDay, formatTime } from "../lib/format";
 import { ragSeverity } from "../lib/status";
 import { ownerSourceWords, statedSourceWords } from "../lib/checkinWords";
 import { plural, spaced } from "../lib/words";
-import {
-  DRIFT_EMPTY_WORDS,
-  FLOW_EMPTY_TITLE,
-  FLOW_EMPTY_WORDS,
-  findingSubject,
-  flowIsEmpty,
-} from "../features/signals/signalWords";
+import { PrFlowSection } from "../features/signals/PrFlowSection";
+import { DRIFT_EMPTY_WORDS, findingSubject, flowIsEmpty } from "../features/signals/signalWords";
 
 const VIEWS = ["everything", "risks", "drift", "flow", "feed"] as const;
 type View = (typeof VIEWS)[number];
@@ -90,9 +85,10 @@ export function SignalsPage() {
         />
         <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
           {view === "everything" || view === "flow" ? (
-            <PanelState needs={NEEDS} isLoading={flow.isLoading} error={flow.error}>
-              {flow.data ? <FlowBlock flow={flow.data} full={view === "flow"} /> : null}
-            </PanelState>
+            <PrFlowSection full={view === "flow"} enabled={canReadAggregate} />
+          ) : null}
+          {view === "flow" && flow.data && !flowIsEmpty(flow.data) ? (
+            <FlowBlock flow={flow.data} />
           ) : null}
           {view === "everything" || view === "risks" || view === "drift" ? (
             <PanelState
@@ -252,62 +248,64 @@ function RiskCard({ risk }: { risk: RiskFindingResponse }) {
   );
 }
 
-function FlowBlock({ flow, full }: { flow: PortfolioFlowResponse; full: boolean }) {
-  // Nothing measured is not "nothing moving": say so, rather than six zeros.
-  if (flowIsEmpty(flow)) {
-    return (
-      <div role="note" className="rounded-3xl bg-grey-fill p-5">
-        <p className="text-[15px] font-extrabold">{FLOW_EMPTY_TITLE}</p>
-        <p className="mt-1 text-[14px] text-grey-body">{FLOW_EMPTY_WORDS}</p>
-      </div>
-    );
-  }
-  const kpi = (label: string, value: string, note?: string) => (
+/**
+ * The hand-made work items grouped in workstreams, where a tenant keeps them.
+ * Shown only when there are some: the review flow above is the flow every
+ * tenant has, and a row of zeros beside it would read as "nothing moving".
+ */
+function FlowBlock({ flow }: { flow: PortfolioFlowResponse }) {
+  const kpi = (label: string, value: string, note: string) => (
     <div className="rounded-2xl border border-grey-border p-3">
       <p className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary">{label}</p>
-      <p className="mt-1 text-[22px] font-extrabold tabular-nums">{value}</p>
-      {note ? <p className="text-[11px] text-grey-secondary">{note}</p> : null}
+      <p className="mt-1 text-[22px] font-extrabold">{value}</p>
+      <p className="text-[11px] text-grey-secondary">{note}</p>
     </div>
   );
   const days = (v: number | null) => (v === null ? "—" : `${v.toFixed(1)}d`);
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
+    <Panel title="Work items by workstream" note="hand-made work items, not Jira issues">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        {kpi("Active", String(flow.active_count))}
-        {kpi("Features in flight", String(flow.features_in_flight))}
-        {kpi("Stale", String(flow.stale_count), "7 days or more")}
-        {kpi("Abandoned", String(flow.abandoned_count), "21 days or more")}
-        {kpi("Cycle time", days(flow.avg_cycle_time_days), "average")}
-        {kpi("PR age", days(flow.avg_pr_age_days), "average")}
+        {kpi("Active", String(flow.active_count), "proposed, in progress, in review or blocked")}
+        {kpi("Features in flight", String(flow.features_in_flight), "active items of type feature")}
+        {kpi("Stale", String(flow.stale_count), "active, no change in 7–20 days")}
+        {kpi("Abandoned", String(flow.abandoned_count), "abandoned, or no change in 21 days")}
+        {kpi("Cycle time", days(flow.avg_cycle_time_days), "average, first move to done")}
+        {kpi("PR age", days(flow.avg_pr_age_days), "average age of their linked requests")}
       </div>
-      {full && flow.workstreams.length > 0 ? (
-        <TableBox>
-          <table className="w-full min-w-[560px] border-collapse">
-            <thead>
-              <tr>
-                <th className={th}>Workstream</th>
-                <th className={`${th} text-right`}>Active</th>
-                <th className={`${th} text-right`}>Stale</th>
-                <th className={`${th} text-right`}>Abandoned</th>
-                <th className={`${th} text-right`}>Cycle time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {flow.workstreams.map((w) => (
-                <tr key={w.workstream_id}>
-                  <td className={td}>
-                    <Link to={`/delivery/workstream/${w.workstream_id}`}>{w.workstream_name}</Link>
-                  </td>
-                  <td className={`${td} text-right tabular-nums`}>{w.active_count}</td>
-                  <td className={`${td} text-right tabular-nums`}>{w.stale_count}</td>
-                  <td className={`${td} text-right tabular-nums`}>{w.abandoned_count}</td>
-                  <td className={`${td} text-right tabular-nums`}>{days(w.avg_cycle_time_days)}</td>
+      {flow.workstreams.length > 0 ? (
+        <div className="mt-3">
+          <TableBox>
+            <table className="w-full min-w-[560px] border-collapse">
+              <thead>
+                <tr>
+                  <th className={th}>Workstream</th>
+                  <th className={`${th} text-right`}>Active</th>
+                  <th className={`${th} text-right`}>Stale</th>
+                  <th className={`${th} text-right`}>Abandoned</th>
+                  <th className={`${th} text-right`}>Cycle time</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableBox>
+              </thead>
+              <tbody>
+                {flow.workstreams.map((w) => (
+                  <tr key={w.workstream_id}>
+                    <td className={td}>
+                      <Link to={`/delivery/workstream/${w.workstream_id}`}>
+                        {w.workstream_name}
+                      </Link>
+                    </td>
+                    <td className={`${td} text-right tabular-nums`}>{w.active_count}</td>
+                    <td className={`${td} text-right tabular-nums`}>{w.stale_count}</td>
+                    <td className={`${td} text-right tabular-nums`}>{w.abandoned_count}</td>
+                    <td className={`${td} text-right tabular-nums`}>
+                      {days(w.avg_cycle_time_days)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableBox>
+        </div>
       ) : null}
-    </div>
+    </Panel>
   );
 }
