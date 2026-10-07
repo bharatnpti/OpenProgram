@@ -92,7 +92,7 @@ export function QuestionsSection({
         emptyText="No questions kept yet. A Jira comment that mentions someone and asks, or starts with “Question:”, is suggested here; one asked elsewhere can be added by hand."
       >
         <TableBox>
-          <table className="w-full min-w-[820px] border-collapse">
+          <table className="w-full min-w-[600px] sm:min-w-[820px] border-collapse">
             <thead>
               <tr>
                 <th className={th}>Ticket</th>

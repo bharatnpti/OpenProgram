@@ -180,7 +180,7 @@ function GateTable({
   // `passed_without` carries gate names (not ids), as the server words them.
   return (
     <TableBox>
-      <table className="w-full min-w-[760px] border-collapse">
+      <table className="w-full min-w-[560px] sm:min-w-[760px] border-collapse">
         <thead>
           <tr>
             <th className={th}>Requirement</th>
@@ -197,18 +197,21 @@ function GateTable({
           {data.issues.map((issue) => (
             <tr key={issue.key}>
               <td className={td}>
-                <button
-                  type="button"
-                  className="text-left hover:underline"
-                  onClick={() => onOpen(issue.key)}
-                >
-                  <span className="font-bold">{issue.key}</span> {issue.title}
-                </button>
-                <span className="block text-[12px] text-grey-secondary">
-                  {issue.items.some((item) => item.status === "suggested")
-                    ? "Suggestions to keep or dismiss"
-                    : "Open to see its items"}
-                </span>
+                {/* Capped on a phone, so the stage beside it is in the first screenful. */}
+                <div className="max-w-[14rem] sm:max-w-none">
+                  <button
+                    type="button"
+                    className="text-left hover:underline"
+                    onClick={() => onOpen(issue.key)}
+                  >
+                    <span className="font-bold">{issue.key}</span> {issue.title}
+                  </button>
+                  <span className="block text-[12px] text-grey-secondary">
+                    {issue.items.some((item) => item.status === "suggested")
+                      ? "Suggestions to keep or dismiss"
+                      : "Open to see its items"}
+                  </span>
+                </div>
               </td>
               <td className={`${td} whitespace-nowrap`}>{STAGE_LABELS[issue.stage]}</td>
               {templates.map((t) => (

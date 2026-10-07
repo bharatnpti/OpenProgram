@@ -244,7 +244,7 @@ function RequirementTable({ data }: { data: RequirementsResponse }) {
   return (
     <>
       <TableBox>
-        <table className="w-full min-w-[760px] border-collapse">
+        <table className="w-full min-w-[520px] sm:min-w-[760px] border-collapse">
           <thead>
             <tr>
               <th className={th}>Requirement</th>
@@ -259,7 +259,10 @@ function RequirementTable({ data }: { data: RequirementsResponse }) {
             {rows.map((req) => (
               <tr key={req.key}>
                 <td className={td}>
-                  <span className="font-bold">{req.key}</span> {req.title}
+                  {/* Capped on a phone, so the stage beside it is in the first screenful. */}
+                  <div className="max-w-[14rem] sm:max-w-none">
+                    <span className="font-bold">{req.key}</span> {req.title}
+                  </div>
                 </td>
                 <td className={`${td} whitespace-nowrap`}>
                   <span

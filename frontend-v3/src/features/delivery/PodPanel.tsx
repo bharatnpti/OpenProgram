@@ -157,7 +157,7 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
               emptyText="No tasks are assigned to this pod's members within its remit."
             >
               <TableBox>
-                <table className="w-full min-w-[680px] border-collapse">
+                <table className="w-full min-w-[500px] sm:min-w-[680px] border-collapse">
                   <thead>
                     <tr>
                       <th className={th}>Task</th>
@@ -171,11 +171,14 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
                     {sortedTasks.map((task) => (
                       <tr key={task.id}>
                         <td className={td}>
-                          <span className="font-bold">{task.name}</span>
-                          <span className="block text-[12px] text-grey-secondary">
-                            {task.id}
-                            {task.tracker_status ? ` · ${task.tracker_status}` : ""}
-                          </span>
+                          {/* Capped on a phone, so the status beside it is in the first screenful. */}
+                          <div className="max-w-[12rem] sm:max-w-none">
+                            <span className="font-bold">{task.name}</span>
+                            <span className="block text-[12px] text-grey-secondary">
+                              {task.id}
+                              {task.tracker_status ? ` · ${task.tracker_status}` : ""}
+                            </span>
+                          </div>
                         </td>
                         <td className={td}>
                           {task.blocked ? (

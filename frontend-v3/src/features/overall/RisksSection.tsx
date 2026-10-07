@@ -95,7 +95,7 @@ function RiskTable({ data }: { data: ProjectRisksResponse }) {
 
   return (
     <TableBox>
-      <table className="w-full min-w-[820px] border-collapse">
+      <table className="w-full min-w-[600px] sm:min-w-[820px] border-collapse">
         <thead>
           <tr>
             <th className={th}>Severity</th>
@@ -115,8 +115,10 @@ function RiskTable({ data }: { data: ProjectRisksResponse }) {
                 </RagChip>
               </td>
               <td className={td}>
-                <span className="font-bold">{row.what}</span>
-                <span className="block text-[12px] text-grey-secondary">{row.ref}</span>
+                <div className="max-w-[16rem] sm:max-w-none">
+                  <span className="font-bold">{row.what}</span>
+                  <span className="block text-[12px] text-grey-secondary">{row.ref}</span>
+                </div>
               </td>
               <td className={`${td} whitespace-nowrap`}>{row.kind}</td>
               <td className={`${td} whitespace-nowrap`}>{row.owner}</td>

@@ -128,7 +128,7 @@ export function CheckinsTab() {
           is chosen for that member; Change puts it back to the default.
         </p>
         <TableBox>
-          <table className="w-full min-w-[860px] border-collapse">
+          <table className="w-full min-w-[560px] sm:min-w-[860px] border-collapse">
             <thead>
               <tr>
                 <th className={th}>Member</th>
@@ -163,10 +163,13 @@ export function CheckinsTab() {
                 return (
                   <tr key={m.id}>
                     <td className={td}>
-                      <span className="font-bold">{m.name}</span>
-                      <span className="block text-[11px] text-grey-secondary">
-                        {p ? inheritedSummary(p.inherited) : m.id}
-                      </span>
+                      {/* Capped on a phone, so the days beside it are in the first screenful. */}
+                      <div className="max-w-[10rem] sm:max-w-none">
+                        <span className="font-bold">{m.name}</span>
+                        <span className="block text-[11px] text-grey-secondary">
+                          {p ? inheritedSummary(p.inherited) : m.id}
+                        </span>
+                      </div>
                     </td>
                     <td className={td}>{cell("weekdays")}</td>
                     <td className={td}>{cell("timezone")}</td>
