@@ -29,6 +29,39 @@ frontend-v3/src/features/admin/checkinForm.test.ts
 frontend-v3/src/features/admin/checkinForm.ts
   s_a5c95ae649948d::t_f9a2a21da03e66 1-139,141-158,161-231
   s_a5c95ae649948d::t_951f67e8dcbd66 140,159-160
+frontend-v3/src/features/admin/DeliveryStagesTab.tsx
+  s_a5c95ae649948d::t_6940353f66144a 1-464
+frontend-v3/src/features/admin/escalationForm.test.ts
+  s_a5c95ae649948d::t_6940353f66144a 1-97
+frontend-v3/src/features/admin/gateForm.test.ts
+  s_a5c95ae649948d::t_6940353f66144a 1-100
+frontend-v3/src/features/admin/GatesTab.tsx
+  s_a5c95ae649948d::t_6940353f66144a 1-465
+frontend-v3/src/features/admin/stageMapping.ts
+  s_a5c95ae649948d::t_6940353f66144a 1-148
+frontend-v3/src/features/admin/EscalationTab.tsx
+  s_a5c95ae649948d::t_6940353f66144a 1-447
+frontend-v3/src/features/admin/IntegrationsTab.tsx
+  s_a5c95ae649948d::t_6940353f66144a 1-479
+frontend-v3/src/features/admin/logoFile.ts
+  s_a5c95ae649948d::t_6940353f66144a 1-91
+frontend-v3/src/features/admin/BrandingTab.tsx
+  s_a5c95ae649948d::t_6940353f66144a 1-169
+frontend-v3/src/features/admin/escalationForm.ts
+  s_a5c95ae649948d::t_6940353f66144a 1-193
+frontend-v3/src/features/admin/stageMapping.test.ts
+  s_a5c95ae649948d::t_6940353f66144a 1-103
+frontend-v3/src/features/admin/logoFile.test.ts
+  s_a5c95ae649948d::t_6940353f66144a 1-69
+frontend-v3/src/pages/AdminPage.tsx
+  s_a5c95ae649948d::t_31e2bcfc03bbd2 8
+  s_a5c95ae649948d::t_6940353f66144a 5,9,12-14,20,24-28,49,75-79
+frontend-v3/src/features/admin/gateForm.ts
+  s_a5c95ae649948d::t_6940353f66144a 1-204
+frontend-v3/src/features/admin/connectionForm.ts
+  s_a5c95ae649948d::t_6940353f66144a 1-202
+frontend-v3/src/features/admin/connectionForm.test.ts
+  s_a5c95ae649948d::t_6940353f66144a 1-187
 ---
 {
   "schema_version": "authorship/3.0.0",
