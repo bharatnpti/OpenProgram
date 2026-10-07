@@ -11,7 +11,11 @@ const SOURCE_WORDS: Record<StatusSource, string> = {
   unknown: "no status",
 };
 
-/** Where a status came from, with confidence when the server gives one. */
+/**
+ * Where a task's or blocker's status came from, with confidence when the server
+ * gives one. Not for a person's own check-in: that has its own words
+ * (lib/checkinWords.ts), so "confirmed" means one thing there.
+ */
 export function sourceLine(source: StatusSource | null | undefined, confidence?: number | null) {
   const word = source ? SOURCE_WORDS[source] : "no status";
   return confidence === null || confidence === undefined
@@ -181,13 +185,13 @@ export function signalKindLabel(kind: string): string {
     case "blocked_task":
       return "Blocked task";
     case "unanswered":
-      return "Check-in not answered";
+      return "No reply to the check-in";
     case "partial":
-      return "Partly answered check-in";
+      return "Check-in partly replied to";
     case "inferred":
-      return "Status inferred, not confirmed";
+      return "Status inferred, no reply";
     case "stale":
-      return "Stale update";
+      return "Update carried forward";
     case "missing":
       return "No status reported";
     case "attention_task":
@@ -206,7 +210,7 @@ export function signalAge(ageDays: number): string {
 
 /**
  * The day's check-in count in the portfolio verdict. Nobody asked yet is not
- * "0 of 0 answered": the day's check-ins start at each person's own time.
+ * "0 of 0 replied": the day's check-ins start at each person's own time.
  */
 export function checkinsLine(
   checkins: { people: number; asked: number; answered: number },
@@ -218,6 +222,6 @@ export function checkinsLine(
       ? `Check-ins ${day}: none asked yet · ${plural(checkins.people, "person", "people")} in teams`
       : `Check-ins ${day}: nobody is in a team yet`;
   }
-  const base = `Check-ins ${day}: ${checkins.answered} of ${checkins.asked} answered`;
+  const base = `Check-ins ${day}: ${checkins.answered} of ${checkins.asked} replied`;
   return firstAsked ? `${base} · asked from ${firstAsked}` : base;
 }

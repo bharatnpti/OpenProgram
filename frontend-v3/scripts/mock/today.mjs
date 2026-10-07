@@ -175,8 +175,37 @@ function attentionFor(programId) {
 
 const statuses = new Map();
 
-/** Kai has not answered since 5 Oct: the status on the card is that day's, carried forward. */
+// What the backend writes for a day whose replies said nothing about the work
+// (core/application/status_summaries.py NON_STATUS_REPLY_SUMMARY).
+const NON_STATUS_REPLY = "Replied without a status update. Current status is unknown.";
+
+/**
+ * Kai has not answered since 5 Oct: the status on the card is that day's, carried
+ * forward. Zoe replied in chat and has not confirmed it in the console (her scrum
+ * master's board counts her as replied). Sofia replied, but said nothing about her
+ * work, so her status is unknown.
+ */
 function initialStatus(userId) {
+  if (userId === "U1005") {
+    return {
+      ...consoleData.myStatus(userId),
+      developer_confirmed: false,
+      confirmed_at: null,
+      summary: "Cart promo stacking merged; address autocomplete is in review.",
+    };
+  }
+  if (userId === "U1009") {
+    return {
+      source: "unknown",
+      developer_confirmed: false,
+      summary: NON_STATUS_REPLY,
+      blockers: [],
+      blocker_details: [],
+      eta_change_days: null,
+      status_as_of: TODAY,
+      confirmed_at: null,
+    };
+  }
   if (userId !== "U1007") return consoleData.myStatus(userId);
   return {
     source: "unknown",
@@ -286,6 +315,16 @@ function podCheckins(podId) {
         summary: kai.summary,
       };
     }
+    if (d.developer_id === "U1009") {
+      // Replied without a status: the backend closes the day as unknown, with this summary.
+      return {
+        ...d,
+        state: "missing",
+        source: "unknown",
+        status_as_of: TODAY,
+        summary: NON_STATUS_REPLY,
+      };
+    }
     if (d.developer_id === "U1008") {
       // Confirmed yesterday, nothing today: stale to the board, though its source says confirmed.
       return { ...d, state: "stale", source: "confirmed", status_as_of: "2026-10-05" };
@@ -355,7 +394,10 @@ export function api(req, url, roles, userId, send, deny) {
     deny();
     return true;
   };
-  const noRecord = () => reply(send, 404, { detail: "status is not available" });
+  // The own-status routes answer 404 both for no member record and for no status yet, and
+  // say which in the detail (backend STATUS_NOT_A_MEMBER_DETAIL, STATUS_NONE_YET_DETAIL).
+  const noRecord = () =>
+    reply(send, 404, { detail: "status is not available: no member record for this person" });
   let m;
 
   if (p === "/me/status" && req.method === "GET") {

@@ -104,7 +104,7 @@ describe("the no pod row", () => {
         id: "u-elena",
         name: "Elena Fischer",
         rag: "green",
-        state: "confirmed",
+        state: "replied",
         why: "No pod, outside team colours: Confirmed status has no blockers.",
         reason: null,
         reasons: ["No pod, outside team colours: Confirmed status has no blockers."],
@@ -151,7 +151,7 @@ describe("the no pod row", () => {
     assert.deepEqual(
       tiles.map((tile) => [tile.name, tile.rag, tile.state]),
       [
-        ["Ben", "amber", "partial"],
+        ["Ben", "amber", "partly replied"],
         ["A team member", "unknown", "no status"],
       ],
     );

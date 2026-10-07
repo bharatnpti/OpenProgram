@@ -25,10 +25,10 @@ import {
   isNoReplyPlaceholder,
   isOwnWords,
   MAX_BLOCKER_TEXT,
+  noStatusWords,
   whyCheckinMatters,
   type BlockerRow,
 } from "./checkin";
-import { useMyCheckinPreference } from "../checkin/useMyCheckinPreference";
 import { WaitingOnYou } from "./WaitingOnYou";
 
 /**
@@ -190,11 +190,9 @@ function CheckinCard({
     onError: (e: unknown) => toast.error(actionError(e, "confirm this check-in")),
   });
   // The server answers 404 both for a member with no status yet and for someone
-  // with no member record. Only the second is told to ask an admin, so the
-  // member check (the own preference read, 404 only without a record) runs then.
+  // with no member record, and its detail says which: only the second is told to
+  // ask an admin.
   const noStatus = error instanceof ApiError && error.status === 404;
-  const preference = useMyCheckinPreference(noStatus);
-  const noMember = preference.error instanceof ApiError && preference.error.status === 404;
 
   const judged = today !== null;
   const provenance = status
@@ -217,6 +215,7 @@ function CheckinCard({
               source: status.source,
               confirmedAt: status.confirmed_at,
               developerConfirmed: status.developer_confirmed,
+              summary: status.summary,
             },
             { day: formatDay, time: formatTime },
           )
@@ -225,23 +224,36 @@ function CheckinCard({
           : "no check-in on record"
       : undefined;
   // Both are advice for today: with a past day shown the buttons beside them are off.
-  const hint = shown && judged ? checkinHint(shown.state, podNames, readOnly) : null;
-  const caption = shown && judged ? confirmCaption(shown, formatDay, readOnly) : null;
+  const hint =
+    shown && judged && status
+      ? checkinHint({
+          state: shown.state,
+          source: status.source,
+          statusAsOf: status.status_as_of,
+          summary: status.summary,
+          today: today ?? "",
+          podNames,
+          pastDay: readOnly,
+        })
+      : null;
+  const caption =
+    shown && judged
+      ? confirmCaption(
+          shown,
+          formatDay,
+          readOnly,
+          status?.source === "confirmed" && !status?.developer_confirmed,
+        )
+      : null;
 
   return (
     <Panel title="Your check-in" variant="grey" note={note}>
       <PanelState
         needs="anyone with a member record"
-        isLoading={
-          isLoading || (status !== undefined && !judged && !dayUnknown) || preference.isLoading
-        }
+        isLoading={isLoading || (status !== undefined && !judged && !dayUnknown)}
         error={noStatus ? null : error}
         isEmpty={noStatus}
-        emptyText={
-          noMember
-            ? "You have no member record yet, and only members are asked to check in. An admin adds you under Admin → Directory."
-            : "No check-in yet. Your first one comes in chat at your check-in time."
-        }
+        emptyText={noStatusWords(noStatus ? (error as ApiError).message : null)}
       >
         {status && shown ? (
           <div className="grid gap-3">

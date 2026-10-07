@@ -7,6 +7,7 @@ import type {
   Rag,
   StatusSource,
 } from "../../api/schema";
+import { REPLY_WORDS } from "../../lib/checkinWords.ts";
 
 /*
  * Portfolio heat, for the manager, executive and admin Today.
@@ -169,7 +170,7 @@ export type NoPodTile = {
   id: string;
   name: string;
   rag: Rag;
-  /** The person's check-in state in words: "confirmed", "partial", "no status". */
+  /** The person's check-in state in words: "replied", "partly replied", "no status". */
   state: string;
   why: string;
   /** The backend's short reason, e.g. "Check-in unanswered today"; null from an older one. */
@@ -181,10 +182,10 @@ export type NoPodTile = {
 const SEVERITY: Record<Rag, number> = { red: 3, amber: 2, unknown: 1, green: 0 };
 
 const STATE: Record<StatusSource, string> = {
-  confirmed: "confirmed",
-  partial: "partial",
-  stale: "stale",
-  inferred: "inferred",
+  confirmed: REPLY_WORDS.replied,
+  partial: REPLY_WORDS.partly,
+  stale: REPLY_WORDS.carried,
+  inferred: REPLY_WORDS.inferred,
   unknown: "no status",
 };
 

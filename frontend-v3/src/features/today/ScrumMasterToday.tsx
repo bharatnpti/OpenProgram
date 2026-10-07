@@ -3,7 +3,6 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
-import type { PodCheckinsResponse } from "../../api/schema";
 import {
   podsOfPerson,
   programsOfProjects,
@@ -18,30 +17,10 @@ import { PanelState } from "../../components/PanelState";
 import { ChipPicker, Greeting, Panel, Row } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
-import { ragSeverity, toneForRag, type BadgeTone } from "../../lib/status";
+import { boardMeta, boardRag, boardWord, repliedCount } from "../../lib/checkinWords";
+import { ragSeverity, toneForRag } from "../../lib/status";
 import { greetingTitle, plural, sourceLine, spaced, todayEyebrow } from "../../lib/words";
-import { podCheckinMeta } from "./checkin";
 import { WaitingOnYou } from "./WaitingOnYou";
-
-type CheckinState = PodCheckinsResponse["developers"][number]["state"];
-const STATE_TONE: Record<CheckinState, BadgeTone> = {
-  confirmed: "success",
-  partial: "warning",
-  stale: "warning",
-  missing: "neutral",
-};
-const STATE_RAG = {
-  confirmed: "green",
-  partial: "amber",
-  stale: "amber",
-  missing: "unknown",
-} as const;
-const STATE_WORD: Record<CheckinState, string> = {
-  confirmed: "confirmed",
-  partial: "partial",
-  stale: "stale",
-  missing: "no status",
-};
 
 const NEEDS = "a scrum master, manager or admin";
 
@@ -121,7 +100,9 @@ export function ScrumMasterToday() {
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
           <Panel
             title={`Check-ins ${day}`}
-            note={c ? `${c.confirmed} of ${total} confirmed` : undefined}
+            note={
+              c ? repliedCount({ confirmed: c.confirmed, partial: c.partial, total }) : undefined
+            }
           >
             <PanelState
               locked={!canReadPodDetail}
@@ -132,19 +113,22 @@ export function ScrumMasterToday() {
               emptyText="Nobody in this pod is asked to check in."
             >
               <ul>
-                {(c?.developers ?? []).map((dev) => (
-                  <Row
-                    key={dev.developer_id}
-                    rag={STATE_RAG[dev.state]}
-                    title={dev.developer_name}
-                    meta={podCheckinMeta(dev, c?.as_of ?? "", { day: formatDay })}
-                    right={
-                      <RagChip tone={STATE_TONE[dev.state]} className="h-6 px-2.5 text-[12px]">
-                        {STATE_WORD[dev.state]}
-                      </RagChip>
-                    }
-                  />
-                ))}
+                {(c?.developers ?? []).map((dev) => {
+                  const word = boardWord(dev, c?.as_of ?? "");
+                  return (
+                    <Row
+                      key={dev.developer_id}
+                      rag={boardRag(dev)}
+                      title={dev.developer_name}
+                      meta={boardMeta(dev, c?.as_of ?? "", { day: formatDay })}
+                      right={
+                        <RagChip tone={word.tone} className="h-6 px-2.5 text-[12px]">
+                          {word.word}
+                        </RagChip>
+                      }
+                    />
+                  );
+                })}
               </ul>
             </PanelState>
           </Panel>

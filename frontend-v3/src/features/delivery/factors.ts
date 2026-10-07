@@ -1,14 +1,7 @@
 // Pure helpers for Delivery panels, type imports only so `node --test` can run them.
-import type {
-  DirectoryItemResponse,
-  PodCheckinsResponse,
-  Rag,
-  RollupFactorDto,
-} from "../../api/schema";
-import { formatDate, formatDay } from "../../lib/format.ts";
+import type { DirectoryItemResponse, Rag, RollupFactorDto } from "../../api/schema";
+import { formatDate } from "../../lib/format.ts";
 import { ragSeverity } from "../../lib/status.ts";
-
-type CheckinDeveloper = PodCheckinsResponse["developers"][number];
 
 export const KINDS = ["program", "project", "workstream", "pod"] as const;
 export type Kind = (typeof KINDS)[number];
@@ -185,16 +178,4 @@ export function metadataFacts(metadata: DirectoryItemResponse["metadata"]): [str
     ["Repositories", repos],
   ];
   return facts.filter((pair): pair is [string, string] => Boolean(pair[1]));
-}
-
-/**
- * A member's check-in on the day shown, in words. "Stale" means the status
- * isn't from that day: an earlier day's answer, or one inferred from activity.
- */
-export function checkinStateWords(developer: CheckinDeveloper): string {
-  if (developer.state === "confirmed") return "confirmed";
-  if (developer.state === "partial") return "partly answered";
-  if (developer.state === "missing") return "no reply";
-  if (developer.source === "inferred") return "inferred";
-  return developer.status_as_of ? `from ${formatDay(developer.status_as_of)}` : "not confirmed";
 }

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  checkinStateWords,
   distinctBlockers,
   metadataFacts,
   reasonLine,
@@ -98,26 +97,6 @@ test("metadata shows what the seed sets, and nothing for empty or null keys", ()
     ],
   );
   assert.deepEqual(metadataFacts({}), []);
-});
-
-test("a check-in that isn't from the day shown says which day it is from", () => {
-  const dev = (
-    state: "confirmed" | "partial" | "stale" | "missing",
-    source: "confirmed" | "inferred" | "unknown",
-    day: string | null,
-  ) => ({
-    developer_id: "U1",
-    developer_name: "Kai Thompson",
-    state,
-    source,
-    status_as_of: day,
-    summary: "",
-  });
-  assert.equal(checkinStateWords(dev("confirmed", "confirmed", "2026-10-06")), "confirmed");
-  assert.equal(checkinStateWords(dev("stale", "confirmed", "2026-09-29")), "from Tue 29 Sept");
-  assert.equal(checkinStateWords(dev("stale", "inferred", "2026-10-01")), "inferred");
-  assert.equal(checkinStateWords(dev("missing", "unknown", "2026-09-29")), "no reply");
-  assert.equal(checkinStateWords(dev("stale", "confirmed", null)), "not confirmed");
 });
 
 test("the reason a reader sees first is the one that sets the colour", () => {

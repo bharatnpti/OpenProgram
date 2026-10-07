@@ -86,7 +86,10 @@ test("a DM that did not arrive says so, and tells the requester what to do", () 
 
 test("a signal's kind is a category, with the rule or drift kind after it", () => {
   assert.equal(signalKindLabel("blocker"), "Blocker");
-  assert.equal(signalKindLabel("unanswered"), "Check-in not answered");
+  assert.equal(signalKindLabel("unanswered"), "No reply to the check-in");
+  assert.equal(signalKindLabel("partial"), "Check-in partly replied to");
+  assert.equal(signalKindLabel("inferred"), "Status inferred, no reply");
+  assert.equal(signalKindLabel("stale"), "Update carried forward");
   assert.equal(signalKindLabel("risk:stale_work_item"), "Risk · stale work item");
   assert.equal(
     signalKindLabel("drift:claimed_progress_no_activity"),
@@ -101,7 +104,7 @@ test("a signal's age is days open, or new on the day it started", () => {
   assert.equal(signalAge(0), "new");
 });
 
-test("nobody asked yet is not 0 of 0 answered", () => {
+test("nobody asked yet is not 0 of 0 replied", () => {
   assert.equal(
     checkinsLine({ people: 13, asked: 0, answered: 0 }, null),
     "Check-ins today: none asked yet · 13 people in teams",
@@ -116,11 +119,11 @@ test("nobody asked yet is not 0 of 0 answered", () => {
   );
   assert.equal(
     checkinsLine({ people: 11, asked: 11, answered: 9 }, "07:00"),
-    "Check-ins today: 9 of 11 answered · asked from 07:00",
+    "Check-ins today: 9 of 11 replied · asked from 07:00",
   );
   assert.equal(
     checkinsLine({ people: 11, asked: 11, answered: 9 }, null),
-    "Check-ins today: 9 of 11 answered",
+    "Check-ins today: 9 of 11 replied",
   );
 });
 
@@ -128,11 +131,11 @@ test("the day's check-in count names the day shown, not always today", () => {
   const counts = { people: 10, asked: 10, answered: 0 };
   assert.equal(
     checkinsLine(counts, "13:16"),
-    "Check-ins today: 0 of 10 answered · asked from 13:16",
+    "Check-ins today: 0 of 10 replied · asked from 13:16",
   );
   assert.equal(
     checkinsLine(counts, "13:16", "on Mon 5 Oct"),
-    "Check-ins on Mon 5 Oct: 0 of 10 answered · asked from 13:16",
+    "Check-ins on Mon 5 Oct: 0 of 10 replied · asked from 13:16",
   );
   assert.equal(
     checkinsLine({ people: 10, asked: 0, answered: 0 }, null, "on Mon 5 Oct"),

@@ -7,13 +7,13 @@ import { useDayWords } from "../../app/viewingDate";
 import { PanelState, TableBox, td, th } from "../../components/PanelState";
 import { Panel, RagBadge, Row } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
+import { boardMeta, boardRag, boardWord, repliedCount } from "../../lib/checkinWords";
 import { formatDay } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
 import { plural } from "../../lib/words";
-import { podCheckinMeta } from "../today/checkin";
 import { FactorsPanel, NodeHeader, Related } from "./NodeBits";
 import { PodDeliveryCard } from "./PodDeliveryCard";
-import { checkinStateWords, reasonLine, type Finder } from "./factors";
+import { reasonLine, type Finder } from "./factors";
 
 const NEEDS = "a scrum master, manager or admin";
 
@@ -80,7 +80,9 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
         />
         <p className="text-[13px] text-grey-body">
           {pod.member_ids.length} {pod.member_ids.length === 1 ? "member" : "members"}
-          {c ? ` · ${c.confirmed} of ${total} confirmed ${day}` : ""}
+          {c
+            ? ` · ${repliedCount({ confirmed: c.confirmed, partial: c.partial, total })} ${day}`
+            : ""}
           {blockers.data ? ` · ${blockers.data.blockers.length} open blockers` : ""}
         </p>
       </div>
@@ -90,7 +92,9 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
             <Panel
               title={`Check-ins ${day}`}
-              note={c ? `${c.confirmed} of ${total} confirmed` : undefined}
+              note={
+                c ? repliedCount({ confirmed: c.confirmed, partial: c.partial, total }) : undefined
+              }
             >
               <PanelState
                 needs={NEEDS}
@@ -103,16 +107,10 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
                   {(c?.developers ?? []).map((dev) => (
                     <Row
                       key={dev.developer_id}
-                      rag={
-                        dev.state === "confirmed"
-                          ? "green"
-                          : dev.state === "missing"
-                            ? "unknown"
-                            : "amber"
-                      }
+                      rag={boardRag(dev)}
                       title={dev.developer_name}
-                      meta={podCheckinMeta(dev, c?.as_of ?? "", { day: formatDay })}
-                      right={checkinStateWords(dev)}
+                      meta={boardMeta(dev, c?.as_of ?? "", { day: formatDay })}
+                      right={boardWord(dev, c?.as_of ?? "").word}
                     />
                   ))}
                 </ul>

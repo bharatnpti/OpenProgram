@@ -15,7 +15,8 @@ import { ChipPicker, Panel, RagBadge, RagDot } from "../components/ui/Bits";
 import { RagChip } from "../components/ui/RagChip";
 import { formatDay, formatTime } from "../lib/format";
 import { ragSeverity } from "../lib/status";
-import { plural, sourceLine, spaced } from "../lib/words";
+import { ownerSourceWords, statedSourceWords } from "../lib/checkinWords";
+import { plural, spaced } from "../lib/words";
 import {
   DRIFT_EMPTY_WORDS,
   FLOW_EMPTY_TITLE,
@@ -197,7 +198,7 @@ function Stream({ risks, drift }: { risks: RiskFindingResponse[]; drift: DriftFi
             ) : (
               <p className="mt-2 text-[13px] text-grey-body">
                 Owner: {ownerWords(item.x.owner_id, names)}
-                {item.x.stated_source ? ` · stated ${sourceLine(item.x.stated_source)}` : ""}
+                {item.x.stated_source ? ` · ${statedSourceWords(item.x.stated_source)}` : ""}
                 {item.x.child_entity_ref
                   ? ` · hides ${spaced(item.x.child_entity_ref.kind)} ${item.x.child_entity_ref.id}`
                   : ""}
@@ -234,7 +235,10 @@ function RiskCard({ risk }: { risk: RiskFindingResponse }) {
             ? (risk.owner_status_summary ?? "Nothing reported.")
             : "Nobody owns this work item, so nobody has said anything about it."}
           {hasOwner && risk.owner_status_source ? (
-            <span className="text-grey-secondary"> ({sourceLine(risk.owner_status_source)})</span>
+            <span className="text-grey-secondary">
+              {" "}
+              ({ownerSourceWords(risk.owner_status_source)})
+            </span>
           ) : null}
         </p>
       </div>

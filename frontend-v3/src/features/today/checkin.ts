@@ -3,10 +3,10 @@
 import type {
   BlockerDetailDto,
   MyStatusResponse,
-  PodCheckinsResponse,
   StatusCorrectionRequest,
   StatusSource,
 } from "../../api/schema";
+import { REPLY_WORDS, boardWord, repliedWithoutStatus } from "../../lib/checkinWords.ts";
 
 /**
  * The placeholder blocker a check-in nobody answered carries when nothing is
@@ -74,7 +74,11 @@ export function checkinProvenance(input: {
 }
 
 /**
- * The line in the card's corner: what the status is and when it is from.
+ * The line in the card's corner: what the status is and when it is from, in the
+ * words every screen uses for a check-in (see lib/checkinWords.ts). A chat reply
+ * the person has not confirmed in the console says so: "replied in chat, not
+ * confirmed", where it used to say "answered in chat" beside a pod board that
+ * called the same reply "confirmed".
  * `day` and `time` format an ISO day and a timestamp in the viewer's words.
  */
 export function checkinNote(
@@ -83,21 +87,27 @@ export function checkinNote(
     source: StatusSource | undefined;
     confirmedAt: string | null | undefined;
     developerConfirmed: boolean;
+    summary?: string | null;
   },
   say: { day: (iso: string) => string; time: (iso: string) => string },
 ): string {
   if (provenance.kind === "none") return "no check-in on record";
   const when = input.confirmedAt ? ` · ${say.time(input.confirmedAt)}` : "";
   if (provenance.kind === "carried" && provenance.from) {
-    return `carried forward from ${say.day(provenance.from)} · not confirmed today`;
+    return `${REPLY_WORDS.carried} from ${say.day(provenance.from)} · no reply today`;
+  }
+  if (repliedWithoutStatus(input.summary, input.source)) {
+    return `${REPLY_WORDS.withoutStatus} · current status unknown`;
   }
   switch (input.source) {
     case "confirmed":
-      return input.developerConfirmed ? `confirmed by you${when}` : `answered in chat${when}`;
+      return input.developerConfirmed
+        ? `${REPLY_WORDS.confirmed} by you${when}`
+        : `${REPLY_WORDS.replied} in chat, not confirmed${when}`;
     case "partial":
-      return `partly answered${when}`;
+      return `${REPLY_WORDS.partly} in chat${when}`;
     case "inferred":
-      return "inferred from delivery signals";
+      return `no reply today · ${REPLY_WORDS.inferred} from delivery signals`;
     case "stale":
       return "no reply today · the last update is carried over";
     default:
@@ -106,31 +116,45 @@ export function checkinNote(
 }
 
 /**
- * What confirming does, said under the buttons when the status is an earlier
- * day's. Not on a past day: nothing can be confirmed then, so telling the
- * person what confirming would do is an instruction they cannot follow.
+ * What confirming does, said under the buttons: for an earlier day's status
+ * that it says the update still holds today; for a reply that stands today but
+ * has not been confirmed, that the reply already counts, so a person who sees
+ * "Confirm check-in" beside "replied" knows what it adds. Not on a past day:
+ * nothing can be confirmed then, so telling the person what confirming would do
+ * is an instruction they cannot follow.
  */
 export function confirmCaption(
   provenance: CheckinProvenance,
   day: (iso: string) => string,
   pastDay = false,
+  repliedNotConfirmed = false,
 ) {
-  if (pastDay || provenance.kind !== "carried" || !provenance.from) return null;
+  if (pastDay) return null;
+  if (provenance.kind === "today" && repliedNotConfirmed && !provenance.confirmedToday) {
+    return "Your reply counts as today's status. Confirm says what was recorded from it is right; correct it if not.";
+  }
+  if (provenance.kind !== "carried" || !provenance.from) return null;
   return `Confirming says the update from ${day(provenance.from)} still holds today, blockers included.`;
 }
 
 /**
  * How the person's pods read the check-in, or null when there is nothing to
- * flag: it is confirmed, still loading, there is no pod for it to reach, or a
+ * flag: it is replied, still loading, there is no pod for it to reach, or a
  * past day is shown. "Until you confirm or correct it" is advice for today: on
- * a past day both buttons are off, and the line sat beside them anyway.
+ * a past day both buttons are off, and the line sat beside them anyway. The
+ * word is the one the pod board uses for the same person (`boardWord`).
  */
-export function checkinHint(
-  state: CheckinState,
-  podNames: string[],
-  pastDay = false,
-): string | null {
-  if (pastDay || state === "confirmed" || podNames.length === 0) return null;
+export function checkinHint(input: {
+  state: CheckinState;
+  source: StatusSource | undefined;
+  statusAsOf: string | null | undefined;
+  summary: string | null | undefined;
+  today: string;
+  podNames: string[];
+  pastDay?: boolean;
+}): string | null {
+  const { state, podNames } = input;
+  if (input.pastDay || state === "confirmed" || podNames.length === 0) return null;
   const pods =
     podNames.length === 1
       ? podNames[0]
@@ -138,16 +162,52 @@ export function checkinHint(
         ? `${podNames[0]} and ${podNames[1]}`
         : `Your ${podNames.length} pods`;
   const shows = podNames.length === 1 ? "shows" : "show";
-  return state === "missing"
-    ? `${pods} ${shows} your check-in as missing. Silence is never read as green.`
-    : `${pods} ${shows} your check-in as ${state} until you confirm or correct it.`;
+  const { word } = boardWord(
+    {
+      state,
+      source: input.source ?? "unknown",
+      status_as_of: input.statusAsOf ?? null,
+      summary: input.summary ?? "",
+    },
+    input.today,
+  );
+  if (word === REPLY_WORDS.withoutStatus) {
+    return `${pods} ${shows} that you replied without a status, so your status stays unknown until you confirm or correct it.`;
+  }
+  if (state === "missing") {
+    return `${pods} ${shows} no reply from you. Silence is never read as green.`;
+  }
+  return `${pods} ${shows} your check-in as ${word} until you confirm or correct it.`;
 }
 
 /** What the card at the foot of Today says about why the check-in matters. */
 export function whyCheckinMatters(pastDay: boolean): string {
   return pastDay
-    ? "Your check-in fed every rollup above you: pod, project and program. Silence is never read as green: a status nobody confirmed stayed visible as stale, so leaders saw what was real."
-    : "Your check-in feeds every rollup above you: pod, project and program. Silence is never read as green: an unconfirmed status stays visible as stale until you confirm or correct it, so leaders see what is real.";
+    ? "Your check-in fed every rollup above you: pod, project and program. Silence is never read as green: a status nobody confirmed stayed visible as carried forward, so leaders saw what was real."
+    : "Your check-in feeds every rollup above you: pod, project and program. Silence is never read as green: a status you have not confirmed stays visible as carried forward until you confirm or correct it, so leaders see what is real.";
+}
+
+/**
+ * What an empty "Your check-in" says, from the detail of the 404 that
+ * `/me/status` answers with. The server answers 404 both for someone with no
+ * member record and for a member with no status on record yet, and says which in
+ * the detail ("status is not available: no member record for this person" or
+ * "...: no status on record yet for this member"). Only the first is told to ask
+ * an admin; it used to take a second request, the own check-in preference that
+ * 404s only without a record, to tell them apart.
+ *
+ * A server that has the plain old detail ("status is not available") cannot be
+ * told apart, so it gets words that are true of both.
+ */
+export function noStatusWords(detail: string | null | undefined): string {
+  const text = (detail ?? "").toLowerCase();
+  if (text.includes("no member record")) {
+    return "You have no member record yet, and only members are asked to check in. An admin adds you under Admin → Directory.";
+  }
+  if (text.includes("no status on record yet")) {
+    return "No check-in yet. Your first one comes in chat at your check-in time.";
+  }
+  return "No check-in to show. Only members are asked to check in, and a member's first one comes in chat at their check-in time. If you are no member yet, an admin adds you under Admin → Directory.";
 }
 
 /** Sources whose summary is the person's own words; the rest is wording the system wrote. */
@@ -247,23 +307,33 @@ export function buildCorrection(
   if (added.length > MAX_BLOCKER_TEXT) {
     return { ok: false, message: `A blocker is at most ${MAX_BLOCKER_TEXT} characters.` };
   }
-  // The server treats a blocker worded the same as one already listed as that
-  // blocker, so adding it while resolving it would close it, not keep it open.
+  // A listed blocker that carries no id (the flat list of an older status) is matched by
+  // its wording alone, so a new one worded like it would be counted as it. One that
+  // carries an id is matched by that id, and the new one stays a blocker of its own: it
+  // is refused only when it would be a second copy of one kept open.
   const same = added ? rows.find((row) => blockerKey(row.description) === blockerKey(added)) : null;
   if (same) {
-    return {
-      ok: false,
-      message: draft.resolved.includes(same.key)
-        ? "That is the blocker you marked resolved. Untick it to keep it open."
-        : "That blocker is already on your list.",
-    };
+    const resolved = draft.resolved.includes(same.key);
+    if (same.blocker_id === null) {
+      return {
+        ok: false,
+        message: resolved
+          ? "That is the blocker you marked resolved. Untick it to keep it open."
+          : "That blocker is already on your list.",
+      };
+    }
+    if (!resolved) return { ok: false, message: "That blocker is already on your list." };
   }
   if (rows.length + (added ? 1 : 0) > MAX_BLOCKERS) {
     return { ok: false, message: `At most ${MAX_BLOCKERS} blockers can be listed at once.` };
   }
-  // The server reads one report per wording and closes an open blocker left
-  // out, so of two open blockers worded alike a correction can only close both.
-  const clash = duplicateKept(rows, draft.resolved);
+  // Two open blockers worded alike can only be told apart by their ids. Without ids the
+  // server reads one report per wording and closes an open blocker left out, so a
+  // correction could only close both: say so before the round trip.
+  const clash = duplicateKept(
+    rows.filter((row) => row.blocker_id === null),
+    draft.resolved,
+  );
   if (clash) {
     return {
       ok: false,
@@ -277,14 +347,15 @@ export function buildCorrection(
       summary,
       eta_change_days: eta,
       blocker_items: [
-        // Only what the person says: the wording and whether it is resolved.
-        // The server matches a restated blocker by its wording and keeps the
-        // work item and pod it stored. The work item shown here is the one the
-        // server inferred, and sending it back would match the report to
-        // another blocker on the same work item.
+        // The wording, whether it is resolved, and the id the status named for it: the
+        // server matches a restated blocker by that id first, so two blockers on one work
+        // item, or worded alike, stay apart and a kept one keeps its age. Never the work
+        // item or pod shown here: those are what the server inferred, and it keeps the
+        // ones it stored.
         ...rows.map((row) => ({
           description: row.description,
           resolved: draft.resolved.includes(row.key),
+          ...(row.blocker_id === null ? {} : { blocker_id: row.blocker_id }),
         })),
         ...(added ? [{ description: added, resolved: false }] : []),
       ],
@@ -305,38 +376,4 @@ function duplicateKept(rows: BlockerRow[], resolved: string[]): string | null {
     }
   }
   return null;
-}
-
-/** The scrum master's line under a person on the pod board. */
-export function podCheckinMeta(
-  developer: Pick<
-    PodCheckinsResponse["developers"][number],
-    "state" | "source" | "status_as_of" | "summary"
-  >,
-  asOf: string,
-  say: { day: (iso: string) => string },
-): string {
-  const { state, source, status_as_of: from, summary } = developer;
-  if (state === "missing") return "no status yet";
-  let lead: string;
-  if (from && from !== asOf) {
-    // The status is an earlier day's, carried forward: name the day, and what
-    // it was then, so "confirmed" is never read as "answered today".
-    const day = say.day(from);
-    lead =
-      source === "confirmed"
-        ? `confirmed ${day}, nothing today`
-        : source === "partial"
-          ? `partly answered ${day}, nothing today`
-          : source === "inferred"
-            ? `inferred ${day}, nothing today`
-            : `no reply since ${day}`;
-  } else if (state === "confirmed") {
-    lead = "confirmed today";
-  } else if (state === "partial") {
-    lead = "partly answered today";
-  } else {
-    lead = source === "inferred" ? "inferred from delivery signals" : "no reply today";
-  }
-  return summary ? `${lead} · ${summary}` : lead;
 }

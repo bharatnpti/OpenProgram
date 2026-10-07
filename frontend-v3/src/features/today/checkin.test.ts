@@ -15,7 +15,7 @@ import {
   MAX_BLOCKER_TEXT,
   isNoReplyPlaceholder,
   NO_REPLY_BLOCKER,
-  podCheckinMeta,
+  noStatusWords,
   whyCheckinMatters,
 } from "./checkin.ts";
 
@@ -97,7 +97,10 @@ describe("where a check-in came from", () => {
 
 describe("what the card says", () => {
   const note = (
-    input: Parameters<typeof checkinProvenance>[0] & { confirmedAt?: string | null },
+    input: Parameters<typeof checkinProvenance>[0] & {
+      confirmedAt?: string | null;
+      summary?: string;
+    },
   ) => {
     const provenance = checkinProvenance(input);
     return checkinNote(
@@ -106,12 +109,13 @@ describe("what the card says", () => {
         source: input.source,
         confirmedAt: input.confirmedAt ?? null,
         developerConfirmed: input.developerConfirmed,
+        summary: input.summary,
       },
       say,
     );
   };
 
-  test("a carried-forward status names its day and says it is not confirmed today", () => {
+  test("a carried-forward status names its day and says nobody replied today", () => {
     assert.equal(
       note({
         source: "unknown",
@@ -119,11 +123,11 @@ describe("what the card says", () => {
         today: TODAY,
         developerConfirmed: false,
       }),
-      "carried forward from day 2026-09-29 · not confirmed today",
+      "carried forward from day 2026-09-29 · no reply today",
     );
   });
 
-  test("today's status says how it was given", () => {
+  test("today's status says how it was given: replied, or confirmed", () => {
     assert.equal(
       note({
         source: "confirmed",
@@ -134,17 +138,24 @@ describe("what the card says", () => {
       }),
       "confirmed by you · time T1",
     );
+    // Zoe: her chat reply is the day's status, and she has not confirmed it in the console.
     assert.equal(
-      note({ source: "confirmed", statusAsOf: TODAY, today: TODAY, developerConfirmed: false }),
-      "answered in chat",
+      note({
+        source: "confirmed",
+        statusAsOf: TODAY,
+        today: TODAY,
+        developerConfirmed: false,
+        confirmedAt: "T0",
+      }),
+      "replied in chat, not confirmed · time T0",
     );
     assert.equal(
       note({ source: "partial", statusAsOf: TODAY, today: TODAY, developerConfirmed: false }),
-      "partly answered",
+      "partly replied in chat",
     );
     assert.equal(
       note({ source: "inferred", statusAsOf: TODAY, today: TODAY, developerConfirmed: false }),
-      "inferred from delivery signals",
+      "no reply today · inferred from delivery signals",
     );
     assert.equal(
       note({ source: "unknown", statusAsOf: TODAY, today: TODAY, developerConfirmed: false }),
@@ -153,6 +164,31 @@ describe("what the card says", () => {
     assert.equal(
       note({ source: undefined, statusAsOf: null, today: TODAY, developerConfirmed: false }),
       "no check-in on record",
+    );
+  });
+
+  test("a reply that said nothing about the work is not read as silence", () => {
+    // Elena: replied "thanks, nothing from me"; the backend closes the day as unknown.
+    assert.equal(
+      note({
+        source: "unknown",
+        statusAsOf: TODAY,
+        today: TODAY,
+        developerConfirmed: false,
+        summary: "Replied without a status update. Current status is unknown.",
+      }),
+      "replied without a status · current status unknown",
+    );
+    // The same words on a person who never replied say nothing of the kind.
+    assert.equal(
+      note({
+        source: "unknown",
+        statusAsOf: TODAY,
+        today: TODAY,
+        developerConfirmed: false,
+        summary: "No confirmed check-in after a nudge. Current status is unknown.",
+      }),
+      "no reply today",
     );
   });
 
@@ -176,26 +212,90 @@ describe("what the card says", () => {
     assert.equal(confirmCaption(today, say.day), null);
   });
 
-  test("the hint says how the pods read it, and nothing when it is fine or has no pod", () => {
+  const hintFor = (over: Partial<Parameters<typeof checkinHint>[0]> = {}) =>
+    checkinHint({
+      state: "stale",
+      source: "unknown",
+      statusAsOf: "2026-10-05",
+      summary: "No confirmed check-in after a nudge.",
+      today: TODAY,
+      podNames: ["Payments Pod"],
+      ...over,
+    });
+
+  test("the hint says how the pods read it, in the board's own word", () => {
     assert.equal(
-      checkinHint("stale", ["Payments Pod"]),
-      "Payments Pod shows your check-in as stale until you confirm or correct it.",
+      hintFor(),
+      "Payments Pod shows your check-in as carried forward until you confirm or correct it.",
     );
     assert.equal(
-      checkinHint("missing", ["Payments Pod", "Storefront Pod"]),
-      "Payments Pod and Storefront Pod show your check-in as missing. Silence is never read as green.",
+      hintFor({ source: "inferred", statusAsOf: TODAY }),
+      "Payments Pod shows your check-in as inferred until you confirm or correct it.",
     );
     assert.equal(
-      checkinHint("partial", ["A", "B", "C"]),
-      "Your 3 pods show your check-in as partial until you confirm or correct it.",
+      hintFor({ state: "partial", source: "partial", statusAsOf: TODAY }),
+      "Payments Pod shows your check-in as partly replied until you confirm or correct it.",
     );
-    assert.equal(checkinHint("confirmed", ["Payments Pod"]), null);
-    assert.equal(checkinHint("stale", []), null);
+    assert.equal(
+      hintFor({
+        state: "missing",
+        statusAsOf: null,
+        podNames: ["Payments Pod", "Storefront Pod"],
+      }),
+      "Payments Pod and Storefront Pod show no reply from you. Silence is never read as green.",
+    );
+    assert.equal(
+      hintFor({
+        state: "partial",
+        source: "partial",
+        statusAsOf: TODAY,
+        podNames: ["A", "B", "C"],
+      }),
+      "Your 3 pods show your check-in as partly replied until you confirm or correct it.",
+    );
+  });
+
+  test("a reply with no status is said as that, not as silence", () => {
+    assert.equal(
+      hintFor({
+        state: "missing",
+        statusAsOf: TODAY,
+        summary: "Replied without a status update. Current status is unknown.",
+      }),
+      "Payments Pod shows that you replied without a status, so your status stays unknown until you confirm or correct it.",
+    );
+  });
+
+  test("nothing to flag once replied, with no pod to reach, or on a past day", () => {
+    assert.equal(hintFor({ state: "confirmed", source: "confirmed", statusAsOf: TODAY }), null);
+    assert.equal(hintFor({ podNames: [] }), null);
+    assert.equal(hintFor({ pastDay: true }), null);
+  });
+
+  test("a reply that counts says what Confirm adds, and nothing on a past day", () => {
+    const replied = checkinProvenance({
+      source: "confirmed",
+      statusAsOf: TODAY,
+      today: TODAY,
+      developerConfirmed: false,
+    });
+    assert.equal(
+      confirmCaption(replied, say.day, false, true),
+      "Your reply counts as today's status. Confirm says what was recorded from it is right; correct it if not.",
+    );
+    assert.equal(confirmCaption(replied, say.day, true, true), null);
+    assert.equal(confirmCaption(replied, say.day, false, false), null);
+    const confirmed = checkinProvenance({
+      source: "confirmed",
+      statusAsOf: TODAY,
+      today: TODAY,
+      developerConfirmed: true,
+    });
+    assert.equal(confirmCaption(confirmed, say.day, false, false), null);
   });
 
   test("on a past day nothing says to confirm or correct: both buttons are off", () => {
-    assert.equal(checkinHint("stale", ["Payments Pod"], true), null);
-    assert.equal(checkinHint("missing", ["Payments Pod"], true), null);
+    assert.equal(hintFor({ pastDay: true, state: "missing", statusAsOf: null }), null);
     const carried = checkinProvenance({
       source: "confirmed",
       statusAsOf: "2026-10-05",
@@ -263,13 +363,17 @@ describe("a correction restates every open blocker", () => {
       summary: "Done with the sandbox setup",
       eta_change_days: 2,
       blocker_items: [
-        { description: "3-D Secure sandbox credentials still not provisioned", resolved: true },
+        {
+          description: "3-D Secure sandbox credentials still not provisioned",
+          resolved: true,
+          blocker_id: "b1",
+        },
         { description: "Waiting on the key rotation", resolved: false },
       ],
     });
   });
 
-  test("a restated blocker carries only its wording, never the work item the server inferred", () => {
+  test("a restated blocker carries its id, so the server keeps this one and not another", () => {
     const built = buildCorrection(blockerRows(status), {
       summary: "x",
       eta: "",
@@ -278,26 +382,60 @@ describe("a correction restates every open blocker", () => {
     });
     assert.ok(built.ok);
     for (const item of built.body.blocker_items ?? []) {
-      assert.deepEqual(Object.keys(item).sort(), ["description", "resolved"]);
+      // The id the status named, never the work item or pod the server inferred.
+      assert.deepEqual(Object.keys(item).sort(), ["blocker_id", "description", "resolved"]);
     }
+    assert.equal(built.body.blocker_items?.[0]?.blocker_id, "b1");
   });
 
-  test("two open blockers worded alike are refused unless both are resolved", () => {
-    const twin = (key: string): BlockerRow => ({
+  test("a blocker the flat list stands in for has no id to send, and a new one never has", () => {
+    const rows = blockerRows({ blockers: ["Waiting on a key"], blocker_details: [] });
+    const built = buildCorrection(rows, {
+      summary: "x",
+      eta: "",
+      resolved: [],
+      added: "Another one",
+    });
+    assert.ok(built.ok);
+    assert.deepEqual(built.body.blocker_items, [
+      { description: "Waiting on a key", resolved: false },
+      { description: "Another one", resolved: false },
+    ]);
+  });
+
+  test("two open blockers worded alike are two, told apart by their ids", () => {
+    const twin = (key: string, description: string): BlockerRow => ({
       key,
       blocker_id: key,
-      description: "Waiting on CHK-14 review",
+      description,
       work_item_id: "CHK-14",
       pod_id: null,
       age_days: 3,
     });
-    const rows = [twin("a"), { ...twin("b"), description: "waiting on CHK-14 review." }];
+    const rows = [twin("a", "Waiting on CHK-14 review"), twin("b", "waiting on CHK-14 review.")];
     const draft = { summary: "x", eta: "", resolved: ["a"], added: "" };
-    const refused = buildCorrection(rows, draft);
+    // One kept, one closed: the server can now do exactly that, by id.
+    const kept = buildCorrection(rows, draft);
+    assert.ok(kept.ok);
+    assert.deepEqual(kept.body.blocker_items, [
+      { description: "Waiting on CHK-14 review", resolved: true, blocker_id: "a" },
+      { description: "waiting on CHK-14 review.", resolved: false, blocker_id: "b" },
+    ]);
+    assert.ok(buildCorrection(rows, { ...draft, resolved: [] }).ok);
+    assert.ok(buildCorrection(rows, { ...draft, resolved: ["a", "b"] }).ok);
+  });
+
+  test("without ids two open blockers worded alike still cannot be told apart", () => {
+    const flat = blockerRows({
+      blockers: ["Waiting on CHK-14 review", "waiting on CHK-14 review."],
+      blocker_details: [],
+    });
+    const draft = { summary: "x", eta: "", resolved: [flat[0].key], added: "" };
+    const refused = buildCorrection(flat, draft);
     assert.equal(refused.ok, false);
     assert.match(refused.ok ? "" : refused.message, /read the same/);
-    assert.equal(buildCorrection(rows, { ...draft, resolved: [] }).ok, false);
-    assert.ok(buildCorrection(rows, { ...draft, resolved: ["a", "b"] }).ok);
+    assert.equal(buildCorrection(flat, { ...draft, resolved: [] }).ok, false);
+    assert.ok(buildCorrection(flat, { ...draft, resolved: [flat[0].key, flat[1].key] }).ok);
   });
 
   test("an empty ETA is no change, and a blank summary is refused in words", () => {
@@ -345,7 +483,7 @@ describe("a correction restates every open blocker", () => {
     );
   });
 
-  test("a new blocker worded like a listed one is refused: the server would count it as the same", () => {
+  test("a new blocker worded like one kept open is refused: it would be a second copy", () => {
     const rows = blockerRows(status);
     const draft = { summary: "x", eta: "", resolved: [] as string[], added: "" };
     // Same words, other case, trailing full stop, extra spaces.
@@ -354,12 +492,40 @@ describe("a correction restates every open blocker", () => {
       ok: false,
       message: "That blocker is already on your list.",
     });
-    assert.deepEqual(buildCorrection(rows, { ...draft, resolved: ["b1"], added: reworded }), {
+    assert.equal(blockerKey(reworded), blockerKey(status.blockers[0]));
+    assert.ok(buildCorrection(rows, { ...draft, added: "A different blocker" }).ok);
+  });
+
+  test("one with an id that is marked resolved can be raised again: the server keeps them apart", () => {
+    const rows = blockerRows(status);
+    const built = buildCorrection(rows, {
+      summary: "x",
+      eta: "",
+      resolved: ["b1"],
+      added: "3-D secure sandbox credentials still not provisioned",
+    });
+    assert.ok(built.ok);
+    assert.deepEqual(built.body.blocker_items, [
+      {
+        description: "3-D Secure sandbox credentials still not provisioned",
+        resolved: true,
+        blocker_id: "b1",
+      },
+      { description: "3-D secure sandbox credentials still not provisioned", resolved: false },
+    ]);
+  });
+
+  test("without an id the server would count a new blocker as the listed one, so it is refused", () => {
+    const flat = blockerRows({ blockers: ["Waiting on a key"], blocker_details: [] });
+    const draft = { summary: "x", eta: "", resolved: [] as string[], added: "waiting on a key." };
+    assert.deepEqual(buildCorrection(flat, draft), {
+      ok: false,
+      message: "That blocker is already on your list.",
+    });
+    assert.deepEqual(buildCorrection(flat, { ...draft, resolved: [flat[0].key] }), {
       ok: false,
       message: "That is the blocker you marked resolved. Untick it to keep it open.",
     });
-    assert.equal(blockerKey(reworded), blockerKey(status.blockers[0]));
-    assert.ok(buildCorrection(rows, { ...draft, added: "A different blocker" }).ok);
   });
 
   test("only a person's own words are prefilled", () => {
@@ -371,62 +537,26 @@ describe("a correction restates every open blocker", () => {
   });
 });
 
-describe("the scrum master's line under a person", () => {
-  const dev = (over: Partial<Parameters<typeof podCheckinMeta>[0]>) => ({
-    state: "confirmed" as const,
-    source: "confirmed" as const,
-    status_as_of: TODAY,
-    summary: "Merged the handler",
-    ...over,
-  });
-
-  test("today's answers say today", () => {
-    assert.equal(podCheckinMeta(dev({}), TODAY, say), "confirmed today · Merged the handler");
-    assert.equal(
-      podCheckinMeta(dev({ state: "partial", source: "partial" }), TODAY, say),
-      "partly answered today · Merged the handler",
-    );
-  });
-
-  test("an earlier day's status names its day, so confirmed never reads as answered today", () => {
-    assert.equal(
-      podCheckinMeta(dev({ state: "stale", status_as_of: "2026-10-02" }), TODAY, say),
-      "confirmed day 2026-10-02, nothing today · Merged the handler",
-    );
-    assert.equal(
-      podCheckinMeta(
-        dev({ state: "stale", source: "unknown", status_as_of: "2026-09-29", summary: "" }),
-        TODAY,
-        say,
-      ),
-      "no reply since day 2026-09-29",
-    );
-  });
-
-  test("a status inferred today, and a person with none", () => {
-    assert.equal(
-      podCheckinMeta(dev({ state: "stale", source: "inferred", summary: "" }), TODAY, say),
-      "inferred from delivery signals",
-    );
-    assert.equal(
-      podCheckinMeta(
-        dev({
-          state: "missing",
-          source: "unknown",
-          status_as_of: null,
-          summary: "No check-in status is available.",
-        }),
-        TODAY,
-        say,
-      ),
-      "no status yet",
-    );
-  });
-});
-
 test("the no-reply placeholder is recognised however the server words it, and nothing else is", () => {
   assert.equal(isNoReplyPlaceholder(NO_REPLY_BLOCKER), true);
   assert.equal(isNoReplyPlaceholder("  No confirmed reply. "), true);
   assert.equal(isNoReplyPlaceholder("Waiting on a key"), false);
   assert.equal(isNoReplyPlaceholder("no confirmed reply from the vendor"), false);
+});
+
+test("an empty check-in card is told by the 404's own detail, not a second request", () => {
+  assert.match(
+    noStatusWords("status is not available: no member record for this person"),
+    /^You have no member record yet.*An admin adds you under Admin → Directory\.$/,
+  );
+  assert.equal(
+    noStatusWords("status is not available: no status on record yet for this member"),
+    "No check-in yet. Your first one comes in chat at your check-in time.",
+  );
+  // A server that has not been rebuilt answers the plain old detail, for both cases:
+  // words that are true of both, and a way to be added if you are no member.
+  const older = noStatusWords("status is not available");
+  assert.match(older, /^No check-in to show\./);
+  assert.match(older, /If you are no member yet, an admin adds you/);
+  assert.equal(noStatusWords(null), older);
 });
