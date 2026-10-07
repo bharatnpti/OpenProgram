@@ -39,7 +39,7 @@ export function GatesSection({
   projectId: string;
   releaseId?: string;
 }) {
-  const { editGates } = useReportAccess();
+  const { editGates, why } = useReportAccess();
   const queryClient = useQueryClient();
   const { query } = useGateBoard(projectId, releaseId || undefined);
   const data = query.data;
@@ -68,7 +68,9 @@ export function GatesSection({
               {scan.isPending ? "Reading Jira…" : "Read Jira now"}
             </Pill>
           ) : (
-            <Locked>Rereading Jira and keeping items is for {WHO.gates}.</Locked>
+            <Locked>
+              {why("editGates", `Rereading Jira and keeping items is for ${WHO.gates}.`)}
+            </Locked>
           )
         }
       />

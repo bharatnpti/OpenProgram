@@ -38,7 +38,7 @@ export function QuestionsSection({
   projectId: string;
   releaseId?: string;
 }) {
-  const { editGates } = useReportAccess();
+  const { editGates, why } = useReportAccess();
   const names = useNames();
   const queryClient = useQueryClient();
   const { query } = useGateBoard(projectId, releaseId || undefined);
@@ -85,7 +85,9 @@ export function QuestionsSection({
               </Pill>
             ) : undefined
           ) : (
-            <Locked>Keeping, answering and adding questions is for {WHO.gates}.</Locked>
+            <Locked>
+              {why("editGates", `Keeping, answering and adding questions is for ${WHO.gates}.`)}
+            </Locked>
           )
         }
       />
@@ -132,6 +134,7 @@ export function QuestionsSection({
                           size="sm"
                           variant="ghost"
                           className="h-8 px-3"
+                          aria-label={`Keep the question on ${q.issue_key}`}
                           disabled={update.isPending}
                           onClick={() => update.mutate({ question: q, body: { confirmed: true } })}
                         >
@@ -149,26 +152,13 @@ export function QuestionsSection({
                         </Pill>
                       </span>
                     ) : editGates ? (
-                      // Named by aria-label: a visually hidden label is positioned
-                      // outside the table's scroll box and widens a phone's page.
-                      <select
-                        aria-label={`Heard back on ${q.issue_key}?`}
-                        className="h-8 rounded-full border border-grey-border bg-white px-3 text-[13px] font-bold"
-                        value={q.status}
-                        disabled={update.isPending}
-                        onChange={(event) =>
-                          update.mutate({
-                            question: q,
-                            body: { status: event.target.value as QuestionStatus },
-                          })
+                      <HeardBack
+                        question={q}
+                        saving={update.isPending}
+                        onSave={(status, done) =>
+                          update.mutate({ question: q, body: { status } }, { onSuccess: done })
                         }
-                      >
-                        {QUESTION_STATUSES.map((status) => (
-                          <option key={status} value={status}>
-                            {QUESTION_LABELS[status]}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     ) : (
                       <RagChip tone={QUESTION_TONES[q.status]} className="h-6 px-2.5 text-[12px]">
                         {QUESTION_LABELS[q.status]}
@@ -293,5 +283,54 @@ function AddQuestionDialog({
         </div>
       </form>
     </ReportDialog>
+  );
+}
+
+/**
+ * What was heard back, chosen here and saved with its own button. A select
+ * that saved on every change saved a status nobody chose: a closed select
+ * changes with the arrow keys (Windows, Linux), one step per press, and a
+ * person's status is never corrected by the next Jira read.
+ */
+function HeardBack({
+  question,
+  saving,
+  onSave,
+}: {
+  question: TrackedQuestionResponse;
+  saving: boolean;
+  onSave: (status: QuestionStatus, done: () => void) => void;
+}) {
+  const [choice, setChoice] = useState<QuestionStatus | null>(null);
+  const value = choice ?? question.status;
+  const changed = value !== question.status;
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      {/* Named by aria-label: a visually hidden label is positioned outside
+          the table's scroll box and widens a phone's page. */}
+      <select
+        aria-label={`Heard back on ${question.issue_key}?`}
+        className="h-8 rounded-full border border-grey-border bg-white px-3 text-[13px] font-bold"
+        value={value}
+        onChange={(event) => setChoice(event.target.value as QuestionStatus)}
+      >
+        {QUESTION_STATUSES.map((status) => (
+          <option key={status} value={status}>
+            {QUESTION_LABELS[status]}
+          </option>
+        ))}
+      </select>
+      {changed ? (
+        <Pill
+          size="sm"
+          className="h-8 px-3"
+          aria-label={`Save what was heard back on ${question.issue_key}`}
+          disabled={saving}
+          onClick={() => onSave(value, () => setChoice(null))}
+        >
+          {saving ? "Saving…" : "Save"}
+        </Pill>
+      ) : null}
+    </span>
   );
 }

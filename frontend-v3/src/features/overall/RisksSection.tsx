@@ -157,7 +157,9 @@ function Matrix({ data }: { data: EscalationMatrixResponse }) {
           <tbody>
             {data.levels.map((level, i) => (
               <tr key={`${level.label}-${i}`}>
-                <td className={`${td} tabular-nums`}>{i + 1}</td>
+                {/* Level 1 is always the person the ask is for, so the matrix starts at 2,
+                    as the backend numbers it (escalation_matrix.py). */}
+                <td className={`${td} tabular-nums`}>{i + 2}</td>
                 <td className={td}>
                   <span className="font-bold">{level.label}</span>
                   <span className="block text-[12px] text-grey-secondary">
@@ -176,8 +178,8 @@ function Matrix({ data }: { data: EscalationMatrixResponse }) {
         </table>
       </TableBox>
       <p className="text-[12px] text-grey-secondary">
-        A dash means that kind of ask never reaches the level. A higher level is never reached
-        sooner than the one below it.
+        Level 1 is the person the ask is for. A dash means that kind of ask never reaches the level.
+        A higher level is never reached sooner than the one below it.
       </p>
     </div>
   );

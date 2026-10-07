@@ -108,7 +108,9 @@ export function ReleaseScope({
             </Pill>
           </>
         ) : (
-          <Locked>Releases are defined by {WHO.projectDates}.</Locked>
+          <Locked>
+            {access.why("setProjectDates", `Releases are defined by ${WHO.projectDates}.`)}
+          </Locked>
         )}
       </div>
       {adding ? (

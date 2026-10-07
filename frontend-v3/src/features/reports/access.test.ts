@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { accessFor, actionError, maySignOff, signOffWho } from "./access.ts";
+import { accessFor, actionError, maySignOff, signOffWho, withoutWrites } from "./access.ts";
 
 test("each lens gets the backend's capabilities, an admin all of them", () => {
   assert.deepEqual(accessFor(["po"]), {
@@ -67,4 +67,16 @@ test("validation errors name the field in words, a domain 422 keeps its sentence
   );
   assert.equal(actionError(new Error("Network down")), "Network down");
   assert.equal(actionError(undefined), "Something went wrong. Try again.");
+});
+
+test("a past day switches every change off and keeps every read", () => {
+  const manager = accessFor(["mgr"]);
+  assert.deepEqual(withoutWrites(manager), {
+    ...manager,
+    setProjectDates: false,
+    setPodDates: false,
+    editGates: false,
+  });
+  assert.equal(withoutWrites(manager).readProjectProgress, true);
+  assert.equal(withoutWrites(manager).readPodDelivery, true);
 });

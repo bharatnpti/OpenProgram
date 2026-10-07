@@ -35,6 +35,14 @@ export function accessFor(lens: readonly AppRole[]): ReportAccess {
   };
 }
 
+/**
+ * The same rights with every change switched off, for a past day being viewed.
+ * Reads stay as they are: looking back is still looking.
+ */
+export function withoutWrites(access: ReportAccess): ReportAccess {
+  return { ...access, setProjectDates: false, setPodDates: false, editGates: false };
+}
+
 /** Who does each thing, worded for "… opens for …" and "… is set by …". */
 export const WHO = {
   projectProgress: "a product owner, manager, executive or admin",

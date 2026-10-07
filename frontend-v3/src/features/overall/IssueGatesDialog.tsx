@@ -58,7 +58,7 @@ export function IssueGatesDialog({
   projectId: string;
   onClose: () => void;
 }) {
-  const { editGates } = useReportAccess();
+  const { editGates, why } = useReportAccess();
   const issue = board.issues.find((item) => item.key === issueKey);
   if (!issue) return null;
   const templates = board.templates.filter((template) =>
@@ -81,7 +81,9 @@ export function IssueGatesDialog({
           </p>
         ) : null}
         {!editGates ? (
-          <Locked>Keeping, adding and signing off items is for {WHO.gates}.</Locked>
+          <Locked>
+            {why("editGates", `Keeping, adding and signing off items is for ${WHO.gates}.`)}
+          </Locked>
         ) : null}
         {templates.length === 0 ? (
           <p className="text-[14px] text-grey-secondary">No gate applies to this issue type.</p>
@@ -231,6 +233,7 @@ function KindBlock({
                       size="sm"
                       variant="ghost"
                       className="h-8 px-3"
+                      aria-label={`Keep: ${item.text}`}
                       disabled={decide.isPending}
                       onClick={() => decide.mutate({ item, keep: true })}
                     >
@@ -367,7 +370,13 @@ function ItemRow({
             {ITEM_STATUS_LABELS[item.status]}
           </RagChip>
           {signs && !open ? (
-            <Pill size="sm" variant="ghost" className="h-8 px-3" onClick={() => setOpen(true)}>
+            <Pill
+              size="sm"
+              variant="ghost"
+              className="h-8 px-3"
+              aria-label={`Sign off: ${item.text}`}
+              onClick={() => setOpen(true)}
+            >
               Sign off
             </Pill>
           ) : null}

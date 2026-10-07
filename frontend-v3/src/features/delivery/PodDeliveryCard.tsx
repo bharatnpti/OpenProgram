@@ -22,11 +22,11 @@ type PodProjectDeliveryResponse = PodDeliveryResponse["projects"][number];
  * The date this pod commits for its part of each project it works on, beside
  * the project's own date, with the forecast for the pod's requirements. The
  * pod's scrum master sets it; a manager or admin may too. The server says per
- * pod whether this reader may (`can_set_dates`).
+ * pod whether this reader may (`can_set_dates`); on a past day nobody may.
  */
 export function PodDeliveryCard({ pod }: { pod: DirectoryItemResponse }) {
   const { roleLabel } = useRole();
-  const { readPodDelivery } = useReportAccess();
+  const { readPodDelivery, readOnly, reason } = useReportAccess();
   const delivery = useQuery({
     queryKey: ["pod-delivery", pod.id],
     queryFn: () => apiClient.podDelivery(pod.id),
@@ -42,7 +42,8 @@ export function PodDeliveryCard({ pod }: { pod: DirectoryItemResponse }) {
     );
   }
   const data = delivery.data;
-  const canSet = data?.can_set_dates ?? false;
+  const serverSays = data?.can_set_dates ?? false;
+  const canSet = serverSays && !readOnly;
 
   return (
     <Panel
@@ -69,7 +70,9 @@ export function PodDeliveryCard({ pod }: { pod: DirectoryItemResponse }) {
           ))}
         </ul>
         {!canSet ? (
-          <Locked className="mt-3">A pod&apos;s date is set by {WHO.podDates}.</Locked>
+          <Locked className="mt-3">
+            {readOnly && serverSays && reason ? reason : `A pod's date is set by ${WHO.podDates}.`}
+          </Locked>
         ) : null}
       </PanelState>
       {editing ? (
@@ -131,7 +134,12 @@ export function PodProjectRow({
           ) : null}
         </div>
         {canSet ? (
-          <Pill size="sm" variant="ghost" onClick={onEdit}>
+          <Pill
+            size="sm"
+            variant="ghost"
+            aria-label={`${target ? "Change" : "Set"} ${scope.name}'s date for ${item.project_name}`}
+            onClick={onEdit}
+          >
             {target ? "Change date" : "Set date"}
           </Pill>
         ) : null}

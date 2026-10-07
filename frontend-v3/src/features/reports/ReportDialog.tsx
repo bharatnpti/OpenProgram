@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
 
@@ -10,7 +10,10 @@ export const fieldLabel =
 /**
  * The frame every Reports dialog shares: title, one line on what saving does,
  * and the form. Controlled, so a dialog opened from a table row closes itself
- * when its change is saved.
+ * when its change is saved. These dialogs open from plain buttons, with no
+ * Dialog.Trigger for Radix to return focus to, so the control that had focus
+ * when one opened gets it back when it closes; without that, focus fell to the
+ * page and the next Tab started at the top.
  */
 export function ReportDialog({
   open,
@@ -27,11 +30,20 @@ export function ReportDialog({
   wide?: boolean;
   children: ReactNode;
 }) {
+  const returnTo = useRef<HTMLElement | null>(null);
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/30" />
         <Dialog.Content
+          onOpenAutoFocus={() => {
+            const focused = document.activeElement;
+            returnTo.current = focused instanceof HTMLElement ? focused : null;
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            returnTo.current?.focus();
+          }}
           className={cn(
             "fixed left-1/2 top-1/2 z-50 max-h-[90vh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-3xl bg-white p-6 shadow-op-palette animate-op-pop",
             wide ? "w-[min(94vw,760px)]" : "w-[min(92vw,520px)]",

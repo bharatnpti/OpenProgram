@@ -51,6 +51,20 @@ export function ForecastSection({
   const edit = (item: ScopeDeliveryResponse, title: string) => setEditing({ scope: item, title });
   const timeline = requirements.query.data?.timeline;
   const series = timeline ? burndownSeries(timeline) : null;
+  // The backend sets any pod's date for a manager or admin; anyone else only
+  // for a pod they run (`can_set_dates` per pod). Under real sign-in a product
+  // owner who is also a scrum master reads this table, so the rows they may
+  // change come from each pod's own answer, not from the scrum master role.
+  const managesPods = access.setPodDates && access.lens.some((r) => r === "mgr" || r === "admin");
+  const podIds =
+    access.setPodDates && !managesPods ? (data?.pods ?? []).map((p) => p.scope_id) : [];
+  const podReads = usePodDeliveries(podIds);
+  const runs = new Set(podIds.filter((_, index) => podReads[index]?.data?.can_set_dates));
+  const podLock = !access.setPodDates
+    ? access.why("setPodDates", `A pod's date is set by ${WHO.podDates}.`)
+    : !managesPods && (data?.pods ?? []).some((pod) => !runs.has(pod.scope_id))
+      ? `You set the date of the pods you run; another pod's is set by ${WHO.podDates}.`
+      : undefined;
 
   return (
     <section>
@@ -78,7 +92,9 @@ export function ForecastSection({
               {scope.commitment.target_date ? "Change date" : "Set date"}
             </Pill>
           ) : scope ? (
-            <Locked>The date is committed by {WHO.projectDates}.</Locked>
+            <Locked>
+              {access.why("setProjectDates", `The date is committed by ${WHO.projectDates}.`)}
+            </Locked>
           ) : undefined
         }
       />
@@ -101,11 +117,21 @@ export function ForecastSection({
                 {series ? (
                   <Burndown series={series} markers={markersFor(scope)} />
                 ) : (
-                  <p className="text-[13px] text-grey-secondary">Loading…</p>
+                  <PanelState
+                    needs={PROJECT_PROGRESS_READERS}
+                    isLoading={requirements.query.isLoading}
+                    error={requirements.query.error}
+                    onRetry={() => void requirements.query.refetch()}
+                    isEmpty
+                    emptyText="No requirements are counted yet, so there is nothing to burn down."
+                  >
+                    {null}
+                  </PanelState>
                 )}
               </Card>
               <Card padding="p-5" className="grid grid-cols-[minmax(0,1fr)] content-start gap-4">
                 <Completion
+                  unread={Boolean(requirements.query.error)}
                   percent={requirements.query.data?.percent_complete ?? null}
                   hasPoints={requirements.query.data?.has_points ?? false}
                   done={requirements.query.data?.done ?? 0}
@@ -123,7 +149,8 @@ export function ForecastSection({
                     ? (pod) => edit(pod, `${pod.name}'s date for ${data.project.name}`)
                     : undefined
                 }
-                locked={access.setPodDates ? undefined : `A pod's date is set by ${WHO.podDates}.`}
+                canEdit={managesPods ? undefined : (pod) => runs.has(pod.scope_id)}
+                locked={podLock}
               />
             ) : null}
             {data.releases.length > 0 ? (
@@ -139,7 +166,10 @@ export function ForecastSection({
                 locked={
                   access.setProjectDates
                     ? undefined
-                    : `A release's date is committed by ${WHO.projectDates}.`
+                    : access.why(
+                        "setProjectDates",
+                        `A release's date is committed by ${WHO.projectDates}.`,
+                      )
                 }
               />
             ) : null}
@@ -147,7 +177,7 @@ export function ForecastSection({
           </div>
         ) : null}
       </PanelState>
-      {delivery.locked && access.setPodDates ? (
+      {delivery.locked && access.role.setPodDates ? (
         <PodDatesForScrumMaster projectId={projectId} />
       ) : null}
       {editing ? (
@@ -168,6 +198,7 @@ export function ForecastSection({
  */
 function PodDatesForScrumMaster({ projectId }: { projectId: string }) {
   const { roleLabel } = useRole();
+  const { readOnly, reason } = useReportAccess();
   const projects = useProjects();
   const project = projects.data?.find((item) => item.id === projectId);
   const podIds = project?.pod_ids ?? [];
@@ -177,7 +208,9 @@ function PodDatesForScrumMaster({ projectId }: { projectId: string }) {
   );
   const rows = pods.flatMap((query) => {
     const item = query.data?.projects.find((entry) => entry.project_id === projectId);
-    return item && query.data ? [{ item, canSet: query.data.can_set_dates }] : [];
+    return item && query.data
+      ? [{ item, runs: query.data.can_set_dates, canSet: query.data.can_set_dates && !readOnly }]
+      : [];
   });
   const loading = projects.isLoading || pods.some((query) => query.isLoading);
   const error = pods.find((query) => query.error)?.error ?? null;
@@ -208,7 +241,9 @@ function PodDatesForScrumMaster({ projectId }: { projectId: string }) {
             />
           ))}
         </ul>
-        {rows.some((row) => !row.canSet) ? (
+        {readOnly && reason && rows.some((row) => row.runs) ? (
+          <Locked className="mt-2">{reason}</Locked>
+        ) : rows.some((row) => !row.canSet) ? (
           <Locked className="mt-2">
             You set the date of the pods you run as {roleLabel.toLowerCase()}; another pod&apos;s is
             set by {WHO.podDates}.
@@ -274,11 +309,13 @@ function Verdict({ scope }: { scope: ScopeDeliveryResponse }) {
 }
 
 function Completion({
+  unread,
   percent,
   hasPoints,
   done,
   total,
 }: {
+  unread: boolean;
   percent: number | null;
   hasPoints: boolean;
   done: number;
@@ -302,7 +339,9 @@ function Completion({
         />
       </div>
       <p className="mt-2 text-[12px] text-grey-secondary">
-        {done} of {total} requirements in production
+        {unread
+          ? "The requirements could not be read."
+          : `${done} of ${total} requirements in production`}
       </p>
     </div>
   );
@@ -368,12 +407,15 @@ function ScopeTable({
   scopes,
   current,
   onEdit,
+  canEdit,
   locked,
 }: {
   title: string;
   scopes: ScopeDeliveryResponse[];
   current?: string;
   onEdit?: (scope: ScopeDeliveryResponse) => void;
+  /** Which rows `onEdit` is offered on; every row when left out. */
+  canEdit?: (scope: ScopeDeliveryResponse) => boolean;
   locked?: string;
 }) {
   return (
@@ -428,14 +470,17 @@ function ScopeTable({
                 </td>
                 {onEdit ? (
                   <td className={td}>
-                    <Pill
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 whitespace-nowrap px-3"
-                      onClick={() => onEdit(scope)}
-                    >
-                      {scope.commitment.target_date ? "Change date" : "Set date"}
-                    </Pill>
+                    {canEdit === undefined || canEdit(scope) ? (
+                      <Pill
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 whitespace-nowrap px-3"
+                        aria-label={`${scope.commitment.target_date ? "Change" : "Set"} ${scope.name}'s date`}
+                        onClick={() => onEdit(scope)}
+                      >
+                        {scope.commitment.target_date ? "Change date" : "Set date"}
+                      </Pill>
+                    ) : null}
                   </td>
                 ) : null}
               </tr>

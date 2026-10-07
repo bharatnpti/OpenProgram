@@ -1,7 +1,8 @@
 import { useParams, useSearchParams } from "react-router-dom";
 
+import { ApiError } from "../api/client";
 import { ForecastSection } from "../features/overall/ForecastSection";
-import { useReleases } from "../features/overall/queries";
+import { useGateBoard, useReleases } from "../features/overall/queries";
 import { ReleaseScope } from "../features/overall/ReleaseScope";
 import { ReportsHeader } from "../features/reports/ReportsHeader";
 import { GatesSection } from "../features/overall/GatesSection";
@@ -21,10 +22,17 @@ export function OverallPage() {
   const asked = search.get("release") ?? "";
   const releases = useReleases(projectId);
   // A link to a release that is gone falls back to the whole project rather
-  // than a page of "No such release"; a reader who cannot list releases keeps
-  // the link's scope, which the gates still honour.
+  // than a page of "No such release". A reader who cannot list releases (a
+  // scrum master, a developer) learns it from the gate board, the read they
+  // have: it answers 404 for a release that no longer exists. That query is the
+  // gates section's own, so it costs no extra request.
   const list = releases.query.data;
-  const releaseId = asked && list && !list.some((r) => r.release_id === asked) ? "" : asked;
+  const probe = useGateBoard(projectId, releases.locked && asked ? asked : undefined);
+  const goneForReader =
+    releases.locked && probe.query.error instanceof ApiError && probe.query.error.status === 404;
+  const gone =
+    asked !== "" && ((list && !list.some((r) => r.release_id === asked)) || goneForReader);
+  const releaseId = gone ? "" : asked;
 
   return (
     <>
