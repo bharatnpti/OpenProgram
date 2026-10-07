@@ -19,7 +19,7 @@ import { ChipPicker, Greeting, Panel, ProgressRing, RagBadge, Row } from "../../
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
-import { greetingWord, PERSON_KEY_WORDS, plural, sourceLine, todayEyebrow } from "../../lib/words";
+import { greetingTitle, PERSON_KEY_WORDS, plural, sourceLine, todayEyebrow } from "../../lib/words";
 import { WaitingOnYou } from "./WaitingOnYou";
 
 const NEEDS = "a product owner, manager, executive or admin";
@@ -32,7 +32,7 @@ const ATTENTION_SHOWN = 8;
  */
 export function ProductOwnerToday() {
   const shownDay = useShownDay();
-  const { canReadProjectProgress, roleLabel } = useRole();
+  const { canReadProjectProgress, roleLabel, greetingName } = useRole();
   const memberId = useMemberId();
   const pods = usePods();
   const projects = useProjects();
@@ -72,7 +72,7 @@ export function ProductOwnerToday() {
           programsOfProjects(programs.data ?? [], project ? [project] : []).map((x) => x.name),
           shownDay,
         )}
-        title={`${greetingWord()}, ${roleLabel}`}
+        title={greetingTitle(greetingName, roleLabel)}
         sub="Project progress, task health and what needs a decision from you."
       />
       <PanelState
@@ -99,7 +99,10 @@ export function ProductOwnerToday() {
           <Panel
             title="Progress"
             note={
-              <Link to={`/reports/${projectId}/overall`} className="font-bold">
+              <Link
+                to={`/reports/${projectId}/overall`}
+                className="font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
+              >
                 Overall report
               </Link>
             }

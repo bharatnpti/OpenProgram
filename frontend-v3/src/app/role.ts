@@ -70,6 +70,11 @@ export type RoleContextValue = {
   actingAs: DevUserResponse | null;
   setActingAsId: (id: string) => void;
   displayName: string;
+  /**
+   * The first name the Today screens greet by, from the same name the header
+   * shows; null when nobody names the person (then they are greeted by role).
+   */
+  greetingName: string | null;
 };
 
 export const RoleContext = createContext<RoleContextValue | null>(null);

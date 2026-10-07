@@ -54,6 +54,48 @@ export function tileColours(cells: Cell[] | undefined): Map<string, Rag> {
   );
 }
 
+/**
+ * How many reasons each cell gives, by node kind and id. Among tiles of one
+ * colour the one with more reasons is listed first: it has more wrong with it.
+ */
+export function tileWeights(cells: Cell[] | undefined): Map<string, number> {
+  return new Map(
+    (cells ?? []).map((cell) => [
+      tileKey(cell.entity_ref.kind, cell.entity_ref.id),
+      cell.reasons?.length ?? (cell.reason ? 1 : 0),
+    ]),
+  );
+}
+
+/** The most tiles a heat row grows to, when ties at its edge would otherwise hide some. */
+export const HEAT_CAP = 8;
+
+/**
+ * The tiles a heat row shows, from the nodes ranked worst first: the first
+ * `columns`, and more when the row's last tile is not green and the next ones
+ * are just as bad. Ties are listed A to Z, so cutting them off hid a pod that
+ * may be the worst of them ("worst 4 of 5" with all five amber); up to `cap`
+ * tiles are shown instead, and a green tie is not worth the room.
+ */
+export function heatTiles<T>(
+  ranked: readonly T[],
+  colourOf: (item: T) => Rag,
+  columns: number,
+  cap: number = HEAT_CAP,
+): { shown: T[]; hidden: number; hiddenAsBad: boolean } {
+  let end = Math.min(columns, ranked.length);
+  const edge = end > 0 ? colourOf(ranked[end - 1]) : null;
+  if (edge !== null && edge !== "green") {
+    while (end < ranked.length && end < cap && colourOf(ranked[end]) === edge) end += 1;
+  }
+  return {
+    shown: ranked.slice(0, end),
+    hidden: ranked.length - end,
+    hiddenAsBad:
+      end < ranked.length && edge !== null && edge !== "green" && colourOf(ranked[end]) === edge,
+  };
+}
+
 /** The tooltip: the colour, then every reason, one per line. */
 export function tooltipText(rag: Rag, reason: string, reasons: string[]): string {
   const colour = rag === "unknown" ? "No status" : `${rag.charAt(0).toUpperCase()}${rag.slice(1)}`;
@@ -136,12 +178,31 @@ export function signalHref(link: AttentionLinkDto): string {
 export function momentum(points: NodeTrendResponse["points"] | undefined): {
   label: string;
   values: (number | null)[];
+  /** Days in the window, and how many of them reported a status. */
+  days: number;
+  reportedDays: number;
 } {
   const reported = (points ?? []).filter((p) => p.rag !== "unknown");
   const values = (points ?? []).map((p) => (p.rag === "unknown" ? null : (p.score - 1) / 2));
-  if (reported.length < 2) return { label: "not enough reported days", values };
+  const counts = { days: (points ?? []).length, reportedDays: reported.length };
+  if (reported.length < 2) return { label: "not enough reported days", values, ...counts };
   const first = reported[0].score;
   const last = reported[reported.length - 1];
   const direction = last.score > first ? "improving" : last.score < first ? "sliding" : "steady";
-  return { label: `${direction}, now ${last.rag}`, values };
+  return { label: `${direction}, now ${last.rag}`, values, ...counts };
+}
+
+/**
+ * The line under "Momentum": the window, and how much of it the direction rests
+ * on. "30 days" beside a line that is empty for most of them says more than it
+ * knows, so the days that reported are counted. The history may hold fewer
+ * entries than the window has days (it keeps working days only).
+ */
+export function momentumNote(
+  m: { label: string; days: number; reportedDays: number },
+  windowDays = 30,
+): string {
+  return m.reportedDays > 0 && m.reportedDays < m.days
+    ? `${windowDays} days · ${m.reportedDays} ${m.reportedDays === 1 ? "day" : "days"} reported · ${m.label}`
+    : `${windowDays} days · ${m.label}`;
 }

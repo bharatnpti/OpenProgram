@@ -3,7 +3,9 @@ import { test } from "node:test";
 
 import type { CheckinPreferenceResponse } from "../../api/schema";
 import {
+  askTimeWords,
   changeLines,
+  clockTime,
   draftFrom,
   noCheckinWords,
   refusalWords,
@@ -136,4 +138,21 @@ test("a refused save says why in the backend's own words", () => {
   );
   assert.equal(refusalWords({ detail: [] }), null);
   assert.equal(refusalWords(null), null);
+});
+
+test("the dialog reads out the time the bot asks, though it is not the person's to set", () => {
+  assert.equal(clockTime("09:30:00"), "09:30");
+  assert.match(
+    askTimeWords(preference({ timezone: "Asia/Kolkata" })),
+    /^The bot asks you at 09:30 Asia\/Kolkata time, the same time for your whole team/,
+  );
+  // A person who follows the team's zone is told the team's.
+  assert.match(askTimeWords(preference({ timezone: null })), /at 09:30 UTC time/);
+});
+
+test("the zone list offers only names a current server knows", () => {
+  const zones = timezoneOptions("Asia/Kolkata", "Europe/Berlin");
+  assert.ok(!zones.includes("Asia/Calcutta"));
+  assert.ok(!zones.includes("Europe/Kiev"));
+  assert.ok(zones.includes("Asia/Kolkata"));
 });

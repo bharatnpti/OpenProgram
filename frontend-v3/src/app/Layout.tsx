@@ -1,11 +1,12 @@
 import { Search } from "lucide-react";
-import { useEffect, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { AccountMenu } from "../components/shell/AccountMenu";
 import { ActingAsControls } from "../components/shell/ActingAs";
 import { CommandPalette } from "../components/shell/CommandPalette";
 import { HeaderLogo } from "../components/shell/HeaderLogo";
+import { TabTitle } from "../components/shell/TabTitle";
 import { ViewingDateBanner, ViewingDateControl } from "../components/shell/ViewingDate";
 import { cn } from "../lib/utils";
 import { shownNav } from "./nav";
@@ -18,6 +19,16 @@ export function Layout() {
   const roleState = useRole();
   const { asOf } = useViewingDate();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const nav = useRef<HTMLElement>(null);
+  const { pathname } = useLocation();
+
+  // On a phone the seven tabs do not fit and scroll: keep the one shown in view
+  // (Admin is the last, and would otherwise sit off the edge).
+  useEffect(() => {
+    nav.current
+      ?.querySelector<HTMLElement>('[aria-current="page"]')
+      ?.scrollIntoView?.({ inline: "center", block: "nearest" });
+  }, [pathname]);
 
   // ⌘K on a Mac, Ctrl+K elsewhere, from anywhere in the console.
   useEffect(() => {
@@ -33,6 +44,7 @@ export function Layout() {
 
   return (
     <div className="min-h-screen bg-white">
+      <TabTitle />
       <header className="sticky top-0 z-30 border-b border-grey-border bg-white">
         <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-x-6 gap-y-2 px-4 pt-3 sm:px-8">
           <NavLink to="/today" className="flex items-center gap-3 py-1 text-ink no-underline">
@@ -69,8 +81,10 @@ export function Layout() {
             <AccountMenu />
           </div>
           <nav
+            ref={nav}
             aria-label="Main"
-            className="-mx-1 flex w-full gap-1 overflow-x-auto px-1 [scrollbar-width:none]"
+            // Below md the tabs scroll sideways: the right edge fades out to say there are more.
+            className="-mx-1 flex w-full gap-1 overflow-x-auto px-1 [scrollbar-width:none] max-md:[mask-image:linear-gradient(to_right,black_calc(100%-28px),transparent)]"
           >
             {shownNav(roleState).map((item) =>
               item.offered(roleState) ? (

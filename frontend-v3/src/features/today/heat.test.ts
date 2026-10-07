@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import {
+  heatTiles,
   momentum,
+  momentumNote,
   noPodTiles,
   signalHref,
   tileColours,
   tileKey,
   tileReasons,
+  tileWeights,
   tooltipText,
 } from "./heat.ts";
 
@@ -191,11 +194,97 @@ describe("signals and momentum", () => {
     assert.equal(momentum(undefined).label, "not enough reported days");
   });
 
+  test("the note says how many of the days the direction rests on", () => {
+    const days = [
+      ...Array.from({ length: 25 }, () => point("unknown")),
+      point("amber"),
+      point("amber"),
+      point("amber"),
+      point("amber"),
+      point("amber"),
+    ];
+    assert.equal(momentumNote(momentum(days)), "30 days · 5 days reported · steady, now amber");
+    const full = Array.from({ length: 30 }, () => point("green"));
+    assert.equal(momentumNote(momentum(full)), "30 days · steady, now green");
+    assert.equal(momentumNote(momentum(undefined)), "30 days · not enough reported days");
+    // The history keeps working days only, so it can hold fewer entries than the window has days.
+    assert.equal(
+      momentumNote(momentum([point("unknown"), point("red")]), 14),
+      "14 days · 1 day reported · not enough reported days",
+    );
+  });
+
   test("unreported days leave a gap in the line, not a zero", () => {
     assert.deepEqual(momentum([point("unknown"), point("red"), point("green")]).values, [
       null,
       0,
       1,
     ]);
+  });
+});
+
+describe("a heat row", () => {
+  type Node = { id: string; rag: "red" | "amber" | "green" | "unknown" };
+  const rank = (...rags: Node["rag"][]): Node[] => rags.map((rag, i) => ({ id: `n${i}`, rag }));
+  const colour = (node: Node) => node.rag;
+
+  test("shows the worst four, and says how many it left out", () => {
+    const row = heatTiles(rank("red", "red", "amber", "green", "green", "green"), colour, 4);
+    assert.equal(row.shown.length, 4);
+    assert.equal(row.hidden, 2);
+    assert.equal(row.hiddenAsBad, false);
+  });
+
+  test("a tie at the edge is shown whole: five amber pods are five tiles, not four", () => {
+    const row = heatTiles(rank("amber", "amber", "amber", "amber", "amber"), colour, 4);
+    assert.equal(row.shown.length, 5);
+    assert.equal(row.hidden, 0);
+  });
+
+  test("a tie stops at the cap, and the row says what it left out is as bad", () => {
+    const row = heatTiles(rank(...Array<Node["rag"]>(12).fill("amber")), colour, 4, 8);
+    assert.equal(row.shown.length, 8);
+    assert.equal(row.hidden, 4);
+    assert.equal(row.hiddenAsBad, true);
+  });
+
+  test("only ties with the last tile are added: a worse tile above the edge never grows the row", () => {
+    const row = heatTiles(rank("red", "red", "red", "amber", "amber", "green"), colour, 4);
+    assert.deepEqual(
+      row.shown.map((node) => node.rag),
+      ["red", "red", "red", "amber", "amber"],
+    );
+    assert.equal(row.hidden, 1);
+  });
+
+  test("a green tie is not worth the room", () => {
+    const row = heatTiles(rank("green", "green", "green", "green", "green"), colour, 4);
+    assert.equal(row.shown.length, 4);
+    assert.equal(row.hidden, 1);
+  });
+
+  test("unknown is not green: ties with no status are shown whole too", () => {
+    assert.equal(
+      heatTiles(rank("unknown", "unknown", "unknown", "unknown", "unknown"), colour, 4).shown
+        .length,
+      5,
+    );
+  });
+
+  test("a short row and an empty one are as they are", () => {
+    assert.equal(heatTiles(rank("amber", "red"), colour, 4).shown.length, 2);
+    assert.deepEqual(heatTiles([], colour, 4), { shown: [], hidden: 0, hiddenAsBad: false });
+  });
+
+  test("tiles with more reasons rank first among equals", () => {
+    const weights = tileWeights([
+      reasonCell({ kind: "pod", id: "a", reasons: ["one"] }),
+      reasonCell({ kind: "pod", id: "b", reasons: ["one", "two"] }),
+      reasonCell({ kind: "pod", id: "c", reasons: undefined, reason: null }),
+    ]);
+    assert.equal(weights.get(tileKey("pod", "a")), 1);
+    assert.equal(weights.get(tileKey("pod", "b")), 2);
+    assert.equal(weights.get(tileKey("pod", "c")), 0);
+    assert.equal(tileWeights(undefined).size, 0);
   });
 });

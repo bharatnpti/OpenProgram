@@ -5,6 +5,7 @@ import type {
   SelfCheckinPreferenceUpdateRequest,
 } from "../../api/schema";
 import { weekdaysLabel } from "../../lib/format.ts";
+import { currentZoneName } from "../../lib/zones.ts";
 
 /** The person's own preference; one cache entry whatever day the console views. */
 export const MY_CHECKIN_PREFERENCE_KEY = ["checkin-preference", "me"] as const;
@@ -59,6 +60,23 @@ export function scheduleProblem(draft: ScheduleDraft): string | null {
   return !draft.teamDays && draft.weekdays.length === 0
     ? "Pick at least one day, or follow your team's days."
     : null;
+}
+
+/** The hour and minute of a clock time the API sends ("09:30:00"): "09:30". */
+export function clockTime(time: string): string {
+  return time.slice(0, 5);
+}
+
+/**
+ * What the dialog says about the time of the check-in. It is not the person's
+ * to set: the bot asks everyone at one clock time, on each person's own clock,
+ * so it is read out here rather than left out.
+ */
+export function askTimeWords(
+  preference: Pick<CheckinPreferenceResponse, "local_time" | "timezone" | "defaults">,
+): string {
+  const zone = preference.timezone ?? preference.defaults.timezone;
+  return `The bot asks you at ${clockTime(preference.local_time)} ${zone} time, the same time for your whole team, so the time isn't yours to set. You choose the days it asks you and your time zone.`;
 }
 
 /** "Mon–Fri", "Mon, Wed, Fri", "Every day". */
@@ -149,14 +167,8 @@ export function refusalWords(detail: unknown): string | null {
   return messages.length > 0 ? messages.join("; ") : null;
 }
 
-/** The zone this browser runs in, when it says. */
-export function deviceTimezone(): string | null {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
-  } catch {
-    return null;
-  }
-}
+/** The zone this browser runs in, under the name a current server knows; null when it doesn't say. */
+export { deviceTimezone } from "../../lib/zones.ts";
 
 /**
  * IANA zones to pick from, always including the ones given (the stored zone,
@@ -167,7 +179,8 @@ export function timezoneOptions(...keep: (string | null)[]): string[] {
   const intl = Intl as unknown as { supportedValuesOf?: (key: "timeZone") => string[] };
   const zones = new Set<string>(["UTC"]);
   try {
-    for (const zone of intl.supportedValuesOf?.("timeZone") ?? []) zones.add(zone);
+    // Under their current names: the browser lists a few by an old one the server rejects.
+    for (const zone of intl.supportedValuesOf?.("timeZone") ?? []) zones.add(currentZoneName(zone));
   } catch {
     // An older browser: the zones below still make a list.
   }

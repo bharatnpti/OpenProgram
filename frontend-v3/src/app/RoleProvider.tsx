@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 
 import { apiClient, apiUrl, setActingAs } from "../api/client";
 import type { AuthStatusResponse, DevUserResponse } from "../api/schema";
+import { firstName } from "../lib/words";
 import { describeAuthFailure } from "./authWords";
 import {
   appRolesOf,
@@ -192,6 +193,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         authStatus?.user?.name ??
         authStatus?.user?.username ??
         "OpenProgram",
+      // Only a real name: a username or the "OpenProgram" fallback is no first name.
+      greetingName: firstName(actingAsPerson?.name ?? authStatus?.user?.name),
     };
   }, [
     actingAsPerson,

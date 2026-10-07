@@ -13,6 +13,7 @@ import {
   confirmCaption,
   isOwnWords,
   MAX_BLOCKER_TEXT,
+  isNoReplyPlaceholder,
   NO_REPLY_BLOCKER,
   podCheckinMeta,
 } from "./checkin.ts";
@@ -405,4 +406,11 @@ describe("the scrum master's line under a person", () => {
       "no status yet",
     );
   });
+});
+
+test("the no-reply placeholder is recognised however the server words it, and nothing else is", () => {
+  assert.equal(isNoReplyPlaceholder(NO_REPLY_BLOCKER), true);
+  assert.equal(isNoReplyPlaceholder("  No confirmed reply. "), true);
+  assert.equal(isNoReplyPlaceholder("Waiting on a key"), false);
+  assert.equal(isNoReplyPlaceholder("no confirmed reply from the vendor"), false);
 });

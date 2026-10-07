@@ -53,11 +53,39 @@ export function todayEyebrow(
   return names.length > 0 ? `${label} · ${names.join(" · ")}` : label;
 }
 
-export function greetingWord(): string {
-  const hour = new Date().getHours();
+/** "Good morning", "Good afternoon" or "Good evening", by the browser's own clock. */
+export function greetingWord(now: Date = new Date()): string {
+  const hour = now.getHours();
   if (hour < 12) return "Good morning";
   if (hour < 18) return "Good afternoon";
   return "Good evening";
+}
+
+/**
+ * The first name in a person's full name, to greet them by: "Liam Chen" is
+ * "Liam", and "Chen, Liam" (surname first, as some directories write it) is
+ * "Liam" too. A name that is really an address ("liam@example.com") or empty
+ * has no first name: null, never a guess from the part before the "@".
+ */
+export function firstName(fullName: string | null | undefined): string | null {
+  const name = (fullName ?? "").trim().replace(/\s+/g, " ");
+  if (!name || name.includes("@")) return null;
+  const [before, after] = name.split(",").map((part) => part.trim());
+  const given = (after || before).split(" ")[0];
+  return given || null;
+}
+
+/**
+ * What every Today opens with: "Good morning, Liam". A person nobody names
+ * (no member record, or a sign-in that gave no name) is greeted by the role
+ * they are viewing as, as the screen always was, rather than by a guess.
+ */
+export function greetingTitle(
+  first: string | null | undefined,
+  roleLabel: string,
+  now: Date = new Date(),
+): string {
+  return `${greetingWord(now)}, ${first || roleLabel}`;
 }
 
 /** The people a workstream's metadata names, by their directory key. */
@@ -183,12 +211,13 @@ export function signalAge(ageDays: number): string {
 export function checkinsLine(
   checkins: { people: number; asked: number; answered: number },
   firstAsked: string | null,
+  day = "today",
 ): string {
   if (checkins.asked === 0) {
     return checkins.people > 0
-      ? `Check-ins today: none asked yet · ${plural(checkins.people, "person", "people")} in teams`
-      : "Check-ins today: nobody is in a team yet";
+      ? `Check-ins ${day}: none asked yet · ${plural(checkins.people, "person", "people")} in teams`
+      : `Check-ins ${day}: nobody is in a team yet`;
   }
-  const base = `Check-ins today: ${checkins.answered} of ${checkins.asked} answered`;
+  const base = `Check-ins ${day}: ${checkins.answered} of ${checkins.asked} answered`;
   return firstAsked ? `${base} · asked from ${firstAsked}` : base;
 }

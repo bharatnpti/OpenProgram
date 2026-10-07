@@ -11,6 +11,7 @@ import { cn } from "../../lib/utils";
 import { isNoCheckin, useMyCheckinPreference } from "./useMyCheckinPreference";
 import {
   MY_CHECKIN_PREFERENCE_KEY,
+  askTimeWords,
   changeLines,
   daysWords,
   deviceTimezone,
@@ -55,8 +56,9 @@ export function CheckinScheduleDialog({
         >
           <Dialog.Title className="text-[20px] font-extrabold">Your check-in schedule</Dialog.Title>
           <Dialog.Description className="mt-1 text-[13px] text-grey-body">
-            The bot asks your whole team at one time, so the time isn't yours to set. You choose the
-            days it asks you and your time zone.
+            {preference.data
+              ? askTimeWords(preference.data)
+              : "The bot asks your whole team at one time, so the time isn't yours to set. You choose the days it asks you and your time zone."}
           </Dialog.Description>
           {preference.data ? (
             <ScheduleForm preference={preference.data} onClose={() => onOpenChange(false)} />

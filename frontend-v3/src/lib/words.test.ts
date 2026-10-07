@@ -5,6 +5,9 @@ import {
   checkinsLine,
   daysLabel,
   deliveryNote,
+  firstName,
+  greetingTitle,
+  greetingWord,
   plural,
   requestKindLabel,
   requestSentence,
@@ -119,4 +122,47 @@ test("nobody asked yet is not 0 of 0 answered", () => {
     checkinsLine({ people: 11, asked: 11, answered: 9 }, null),
     "Check-ins today: 9 of 11 answered",
   );
+});
+
+test("the day's check-in count names the day shown, not always today", () => {
+  const counts = { people: 10, asked: 10, answered: 0 };
+  assert.equal(
+    checkinsLine(counts, "13:16"),
+    "Check-ins today: 0 of 10 answered · asked from 13:16",
+  );
+  assert.equal(
+    checkinsLine(counts, "13:16", "on Mon 5 Oct"),
+    "Check-ins on Mon 5 Oct: 0 of 10 answered · asked from 13:16",
+  );
+  assert.equal(
+    checkinsLine({ people: 10, asked: 0, answered: 0 }, null, "on Mon 5 Oct"),
+    "Check-ins on Mon 5 Oct: none asked yet · 10 people in teams",
+  );
+});
+
+test("a person is greeted by their first name, from the name the header shows", () => {
+  assert.equal(firstName("Liam Chen"), "Liam");
+  assert.equal(firstName("  Mina   Patel "), "Mina");
+  assert.equal(firstName("Elena"), "Elena");
+  // Some directories write the surname first.
+  assert.equal(firstName("Chen, Liam"), "Liam");
+  assert.equal(firstName("Chen,"), "Chen");
+});
+
+test("a name that is no name gives no first name, never a guess", () => {
+  assert.equal(firstName(null), null);
+  assert.equal(firstName(undefined), null);
+  assert.equal(firstName("   "), null);
+  assert.equal(firstName("liam.chen@example.com"), null);
+});
+
+test("the greeting names the person, else the role they are viewing as", () => {
+  const morning = new Date(2026, 9, 7, 9, 30);
+  const evening = new Date(2026, 9, 7, 19, 30);
+  assert.equal(greetingWord(morning), "Good morning");
+  assert.equal(greetingWord(new Date(2026, 9, 7, 12, 0)), "Good afternoon");
+  assert.equal(greetingWord(evening), "Good evening");
+  assert.equal(greetingTitle("Liam", "Developer", morning), "Good morning, Liam");
+  assert.equal(greetingTitle(null, "Scrum Master", morning), "Good morning, Scrum Master");
+  assert.equal(greetingTitle("", "Admin", evening), "Good evening, Admin");
 });

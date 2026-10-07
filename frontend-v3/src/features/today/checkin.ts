@@ -15,6 +15,11 @@ import type {
  */
 export const NO_REPLY_BLOCKER = "no confirmed reply";
 
+/** Whether a blocker's text is the placeholder, and so not a blocker anyone has. */
+export function isNoReplyPlaceholder(description: string): boolean {
+  return blockerKey(description) === NO_REPLY_BLOCKER;
+}
+
 /*
  * Where a check-in came from.
  *

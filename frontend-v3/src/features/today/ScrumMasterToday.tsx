@@ -13,13 +13,13 @@ import {
   useProjects,
 } from "../../app/directory";
 import { useRole } from "../../app/role";
-import { useShownDay } from "../../app/viewingDate";
+import { useDayWords, useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { ChipPicker, Greeting, Panel, Row } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
 import { ragSeverity, toneForRag, type BadgeTone } from "../../lib/status";
-import { greetingWord, plural, sourceLine, spaced, todayEyebrow } from "../../lib/words";
+import { greetingTitle, plural, sourceLine, spaced, todayEyebrow } from "../../lib/words";
 import { podCheckinMeta } from "./checkin";
 import { WaitingOnYou } from "./WaitingOnYou";
 
@@ -52,7 +52,9 @@ const NEEDS = "a scrum master, manager or admin";
  */
 export function ScrumMasterToday() {
   const shownDay = useShownDay();
-  const { canReadPodDetail, roleLabel } = useRole();
+  // "today", or "on Mon 5 Oct" while a past day is shown.
+  const day = useDayWords();
+  const { canReadPodDetail, roleLabel, greetingName } = useRole();
   const memberId = useMemberId();
   const pods = usePods();
   const projects = useProjects();
@@ -95,7 +97,7 @@ export function ScrumMasterToday() {
           programsOfProjects(programs.data ?? [], podProjects).map((p) => p.name),
           shownDay,
         )}
-        title={`${greetingWord()}, ${roleLabel}`}
+        title={greetingTitle(greetingName, roleLabel)}
         sub="Who has checked in across your pods, and how long each blocker has been open."
       />
       <PanelState
@@ -118,7 +120,7 @@ export function ScrumMasterToday() {
         />
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
           <Panel
-            title="Check-ins today"
+            title={`Check-ins ${day}`}
             note={c ? `${c.confirmed} of ${total} confirmed` : undefined}
           >
             <PanelState
@@ -184,7 +186,10 @@ export function ScrumMasterToday() {
             }
             note={
               pod ? (
-                <Link to={`/delivery/pod/${pod.id}`} className="font-bold">
+                <Link
+                  to={`/delivery/pod/${pod.id}`}
+                  className="font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
+                >
                   Open in Delivery
                 </Link>
               ) : undefined
@@ -196,7 +201,7 @@ export function ScrumMasterToday() {
               isLoading={rollup.isLoading}
               error={rollup.error}
               isEmpty={factors.length === 0}
-              emptyText="Nothing recorded for this pod today."
+              emptyText={`Nothing recorded for this pod ${day}.`}
             >
               <ul>
                 {factors.map((f, i) => (

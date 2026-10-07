@@ -25,7 +25,10 @@ export function WaitingOnYou() {
       title="Waiting on you"
       variant="grey"
       note={
-        <Link to="/coordination" className="font-bold">
+        <Link
+          to="/coordination"
+          className="font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
+        >
           All requests
         </Link>
       }

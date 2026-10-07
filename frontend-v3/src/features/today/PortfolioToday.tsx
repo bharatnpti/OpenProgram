@@ -6,27 +6,31 @@ import type { DirectoryItemResponse, Rag } from "../../api/schema";
 import { usePods, useProgramChoice, useProjects, useWorkstreams } from "../../app/directory";
 import { useRole } from "../../app/role";
 import { scopeToProgram } from "../../app/scope";
-import { useShownDay } from "../../app/viewingDate";
+import { useDayWords, useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { ChipPicker, Greeting, Panel, RagDot, Row, Sparkline } from "../../components/ui/Bits";
 import { formatDate, formatTime } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
 import { cn } from "../../lib/utils";
+import { deviceTimezone } from "../../lib/zones";
 import {
   checkinsLine,
-  greetingWord,
+  greetingTitle,
   plural,
   signalAge,
   signalKindLabel,
   todayEyebrow,
 } from "../../lib/words";
 import {
+  heatTiles,
   momentum,
+  momentumNote,
   noPodTiles,
   signalHref,
   tileKey,
   tileColours,
   tileReasons,
+  tileWeights,
   type NoPodTile,
   type TileReason,
 } from "./heat";
@@ -57,7 +61,9 @@ const TILE: Record<Rag, string> = {
  */
 export function PortfolioToday() {
   const shownDay = useShownDay();
-  const { roleLabel, canReadPortfolio } = useRole();
+  // "today", or "on Mon 5 Oct" while a past day is shown: the day words of the line below.
+  const day = useDayWords();
+  const { roleLabel, greetingName, canReadPortfolio } = useRole();
   const { query: programsQuery, programs, program, choose } = useProgramChoice();
   const programId = program?.id ?? "";
   const projects = useProjects();
@@ -67,11 +73,7 @@ export function PortfolioToday() {
   const attention = useQuery({
     queryKey: ["portfolio", "attention", programId],
     queryFn: () =>
-      apiClient.portfolioAttention(
-        undefined,
-        programId,
-        Intl.DateTimeFormat().resolvedOptions().timeZone,
-      ),
+      apiClient.portfolioAttention(undefined, programId, deviceTimezone() ?? undefined),
     enabled: Boolean(programId) && canReadPortfolio,
   });
   const trend = useQuery({
@@ -105,13 +107,14 @@ export function PortfolioToday() {
   ].filter((row) => row.kind !== "workstream" || row.items.length > 0);
   const reasons = tileReasons(heatmap.data?.cells);
   const colours = tileColours(heatmap.data?.cells);
+  const weights = tileWeights(heatmap.data?.cells);
   const noPod = noPodTiles(heatmap.data?.cells, HEAT_COLUMNS);
 
   return (
     <>
       <Greeting
         eyebrow={todayEyebrow(program?.name, shownDay)}
-        title={`${greetingWord()}, ${roleLabel}`}
+        title={greetingTitle(greetingName, roleLabel)}
         sub="A portfolio-wide read on delivery health, momentum, and what changed."
       />
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
@@ -143,6 +146,7 @@ export function PortfolioToday() {
                 {checkinsLine(
                   a.checkins,
                   a.checkins.first_asked_at ? formatTime(a.checkins.first_asked_at) : null,
+                  day,
                 )}
               </p>
             </section>
@@ -150,7 +154,7 @@ export function PortfolioToday() {
         </PanelState>
 
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
-          <Panel title="Momentum" note={`30 days · ${m.label}`}>
+          <Panel title="Momentum" note={momentumNote(m, trend.data?.window_days)}>
             <PanelState
               locked={!canReadPortfolio}
               needs="a manager, executive or admin"
@@ -166,7 +170,10 @@ export function PortfolioToday() {
           <Panel
             title="Executive brief"
             note={
-              <Link to="/coordination?brief=exec" className="font-bold">
+              <Link
+                to="/coordination?brief=exec"
+                className="font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
+              >
                 All briefs
               </Link>
             }
@@ -213,6 +220,7 @@ export function PortfolioToday() {
                 items={row.items}
                 reasons={reasons}
                 colours={colours}
+                weights={weights}
               />
             ))}
             {noPod.tiles.length > 0 ? <NoPodRow tiles={noPod.tiles} total={noPod.total} /> : null}
@@ -227,7 +235,10 @@ export function PortfolioToday() {
         <Panel
           title="Oldest open risks"
           note={
-            <Link to="/signals" className="font-bold">
+            <Link
+              to="/signals"
+              className="font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
+            >
               All signals
             </Link>
           }
@@ -274,26 +285,34 @@ function HeatRow({
   items,
   reasons,
   colours,
+  weights,
 }: {
   label: string;
   kind: string;
   items: DirectoryItemResponse[];
   reasons: Map<string, TileReason>;
   colours: Map<string, Rag>;
+  weights: Map<string, number>;
 }) {
   const colourOf = (item: DirectoryItemResponse): Rag =>
     colours.get(tileKey(kind, item.id)) ?? item.rag ?? "unknown";
+  const weightOf = (item: DirectoryItemResponse) => weights.get(tileKey(kind, item.id)) ?? 0;
+  // Worst colour first; among one colour, the one with more reasons; then A to Z.
   const ranked = [...items].sort(
-    (a, b) => ragSeverity(colourOf(b)) - ragSeverity(colourOf(a)) || a.name.localeCompare(b.name),
+    (a, b) =>
+      ragSeverity(colourOf(b)) - ragSeverity(colourOf(a)) ||
+      weightOf(b) - weightOf(a) ||
+      a.name.localeCompare(b.name),
   );
-  const shown = ranked.slice(0, HEAT_COLUMNS);
+  const { shown, hidden, hiddenAsBad } = heatTiles(ranked, colourOf, HEAT_COLUMNS);
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-2 sm:grid-cols-[110px_minmax(0,1fr)]">
       <p className="pt-2 text-[13px] font-bold text-grey-secondary">
         {label}
-        {ranked.length > HEAT_COLUMNS ? (
+        {hidden > 0 ? (
           <span className="block text-[11px] font-medium">
-            worst {HEAT_COLUMNS} of {ranked.length}
+            worst {shown.length} of {ranked.length}
+            {hiddenAsBad ? " · the rest are as bad" : ""}
           </span>
         ) : null}
       </p>

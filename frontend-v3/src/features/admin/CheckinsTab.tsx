@@ -13,6 +13,8 @@ import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { weekdaysLabel } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import { currentZoneName } from "../../lib/zones";
+import { clockTime } from "../checkin/schedule";
 import { AdminDialog, Problems, hintClass, inputClass, labelClass } from "./AdminBits";
 import { errorText, minutesLabel } from "./adminWords";
 import {
@@ -63,7 +65,9 @@ function timeZones(): string[] {
     (Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.(
       "timeZone",
     ) ?? [];
-  return all.includes("UTC") ? all : ["UTC", ...all];
+  // Under their current names: the browser lists a few by an old one the server rejects.
+  const current = Array.from(new Set(all.map(currentZoneName)));
+  return current.includes("UTC") ? current : ["UTC", ...current];
 }
 
 /**
@@ -114,8 +118,9 @@ export function CheckinsTab() {
           <p className="text-[13px] text-grey-body">
             Team default: {weekdaysLabel(defaults.weekdays)} · {defaults.timezone} · nudge after{" "}
             {minutesLabel(defaults.reply_wait_seconds)} · give up after{" "}
-            {minutesLabel(defaults.final_reply_wait_seconds)}. Check-ins go out at one tenant-wide
-            time.
+            {minutesLabel(defaults.final_reply_wait_seconds)}. Check-ins go out at{" "}
+            {clockTime(defaults.local_time)}, one time for everyone, read on each person's own
+            clock.
           </p>
         ) : null}
         <p className="text-[12px] text-grey-secondary">

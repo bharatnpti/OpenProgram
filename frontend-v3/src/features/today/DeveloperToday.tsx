@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ApiError, apiClient } from "../../api/client";
 import type { FocusResponse, MyStatusResponse, StatusCorrectionRequest } from "../../api/schema";
 import { usePods, usePrograms, useProjects } from "../../app/directory";
+import { useRole } from "../../app/role";
 import { useReadOnly, useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { Greeting, Panel, RagBadge, RagDot, Row } from "../../components/ui/Bits";
@@ -13,7 +14,7 @@ import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { actionError } from "../../lib/errors";
 import { formatDay, formatTime } from "../../lib/format";
-import { daysLabel, greetingWord, plural, sourceLine, todayEyebrow } from "../../lib/words";
+import { daysLabel, greetingTitle, plural, sourceLine, todayEyebrow } from "../../lib/words";
 import {
   blockerRows,
   buildCorrection,
@@ -21,6 +22,7 @@ import {
   checkinNote,
   checkinProvenance,
   confirmCaption,
+  isNoReplyPlaceholder,
   isOwnWords,
   MAX_BLOCKER_TEXT,
   type BlockerRow,
@@ -35,6 +37,7 @@ import { WaitingOnYou } from "./WaitingOnYou";
  */
 export function DeveloperToday() {
   const shownDay = useShownDay();
+  const { roleLabel, greetingName } = useRole();
   const status = useQuery({ queryKey: ["me", "status"], queryFn: () => apiClient.myStatus() });
   const focus = useQuery({ queryKey: ["me", "focus"], queryFn: () => apiClient.focus() });
   const rollup = useRollUp(focus.data?.developer_id);
@@ -50,7 +53,7 @@ export function DeveloperToday() {
           rollup.programs.map((program) => program.name),
           shownDay,
         )}
-        title={`${greetingWord()}, Developer`}
+        title={greetingTitle(greetingName, roleLabel)}
         sub="Confirm today's check-in and clear what's blocking you."
       />
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
@@ -72,15 +75,18 @@ export function DeveloperToday() {
               emptyText="Nothing ranked for today."
             >
               <ul>
-                {(focus.data?.focus ?? []).map((item, i) => (
-                  <Row
-                    key={`${item.kind}-${item.source_ref.id}-${i}`}
-                    rag={item.kind === "blocker" ? "red" : null}
-                    title={item.label}
-                    meta={focusMeta(item, focus.data)}
-                    right={item.kind.toUpperCase()}
-                  />
-                ))}
+                {(focus.data?.focus ?? []).map((item, i) => {
+                  const line = focusLine(item, focus.data);
+                  return (
+                    <Row
+                      key={`${item.kind}-${item.source_ref.id}-${i}`}
+                      rag={line.urgent ? "red" : null}
+                      title={line.title}
+                      meta={line.meta}
+                      right={line.tag}
+                    />
+                  );
+                })}
               </ul>
             </PanelState>
           </Panel>
@@ -122,10 +128,29 @@ export function DeveloperToday() {
 }
 
 /**
- * What a focus item says under it. A blocker names its work item and how long
- * it has stood (the status source it carries is the owner's, not worth saying);
- * a task its deadline, else where its status came from.
+ * One Focus row. A blocker names its work item and how long it has stood (the
+ * status source it carries is the owner's, not worth saying); a task its
+ * deadline, else where its status came from. The "blocker" the backend puts
+ * there when nobody answered a check-in is no blocker: it says the check-in
+ * wants confirming, and is not red.
  */
+function focusLine(item: FocusResponse["focus"][number], focus: FocusResponse | undefined) {
+  if (item.kind === "blocker" && isNoReplyPlaceholder(item.label)) {
+    return {
+      title: "Confirm your check-in",
+      meta: "no confirmed reply yet",
+      tag: "CHECK-IN",
+      urgent: false,
+    };
+  }
+  return {
+    title: item.label,
+    meta: focusMeta(item, focus),
+    tag: item.kind.toUpperCase(),
+    urgent: item.kind === "blocker",
+  };
+}
+
 function focusMeta(item: FocusResponse["focus"][number], focus: FocusResponse | undefined) {
   if (item.deadline) return `due ${formatDay(item.deadline)}`;
   if (item.kind === "blocker") {
@@ -226,6 +251,10 @@ function CheckinCard({
                 isOwnWords(status.source) ? "text-[16px] text-ink" : "text-[16px] text-grey-body"
               }
             >
+              {/* An earlier day's words carry their day, so "after a nudge" is not read as today's. */}
+              {judged && shown.kind === "carried" && shown.from && status.summary ? (
+                <span className="font-bold text-grey-secondary">{formatDay(shown.from)}: </span>
+              ) : null}
               {status.summary || "Nothing reported yet today."}
             </p>
             {status.eta_change_days ? (

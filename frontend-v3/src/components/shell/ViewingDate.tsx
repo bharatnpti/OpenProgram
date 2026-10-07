@@ -57,7 +57,7 @@ export function ViewingDateBanner() {
         <button
           type="button"
           onClick={() => setViewingDate(null)}
-          className="ml-auto font-bold text-magenta hover:underline"
+          className="ml-auto font-bold text-magenta hover:underline max-sm:min-h-11"
         >
           Back to today
         </button>
