@@ -81,6 +81,7 @@ async def correct_my_status(
                 issue_key=item.work_item_id,
                 pod_id=item.pod_id,
                 resolved=item.resolved,
+                blocker_id=item.blocker_id,
             )
             for item in request.blocker_items
         )

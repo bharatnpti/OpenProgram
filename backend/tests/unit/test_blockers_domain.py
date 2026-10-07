@@ -222,3 +222,143 @@ def test_unattributed_helper_filters_by_derived_attribution() -> None:
     with_item = _blocker(blocker_id="b-2", description="x", work_item_id="PROJ-1")
     with_pod = _blocker(blocker_id="b-3", description="y", pod_id="pod-a")
     assert unattributed_blockers((bare, with_item, with_pod)) == (bare,)
+
+
+# ---- a correction names the blockers it restates by id ----------------------------------
+
+
+def _on_one_work_item() -> tuple[DeveloperBlocker, DeveloperBlocker]:
+    """Two open blockers on one work item, the older one listed first."""
+    return (
+        _blocker(
+            blocker_id="b-review",
+            description="waiting on code review",
+            work_item_id="PROJ-1",
+            first_seen_on=date(2026, 1, 5),
+        ),
+        _blocker(
+            blocker_id="b-staging",
+            description="staging is down",
+            work_item_id="PROJ-1",
+            first_seen_on=DAY_1,
+        ),
+    )
+
+
+def test_correction_keeps_the_blocker_its_id_names_when_two_share_a_work_item() -> None:
+    review, staging = _on_one_work_item()
+
+    result = _reconcile(
+        (review, staging),
+        (BlockerReport(description="staging is down", issue_key="PROJ-1", blocker_id="b-staging"),),
+        mode=ReconcileMode.AUTHORITATIVE_SET,
+    )
+
+    # Matched by work item first, the review blocker took the staging wording
+    # and the staging blocker was closed as left out.
+    assert [(item.blocker_id, item.description) for item in result.open_after] == [
+        ("b-staging", "staging is down")
+    ]
+    assert result.open_after[0].first_seen_on == DAY_1
+    assert [(item.blocker_id, item.resolved_reason) for item in result.resolved] == [
+        ("b-review", BlockerResolutionReason.OMITTED_IN_CORRECTION)
+    ]
+    assert result.minted == ()
+
+
+def test_correction_by_id_never_swaps_two_blockers_on_one_work_item() -> None:
+    review, staging = _on_one_work_item()
+
+    result = _reconcile(
+        (review, staging),
+        (
+            BlockerReport(
+                description="staging is still down", issue_key="PROJ-1", blocker_id="b-staging"
+            ),
+            BlockerReport(
+                description="waiting on code review", issue_key="PROJ-1", blocker_id="b-review"
+            ),
+        ),
+        mode=ReconcileMode.AUTHORITATIVE_SET,
+    )
+
+    kept = {item.blocker_id: item for item in result.open_after}
+    assert kept["b-staging"].description == "staging is still down"
+    assert kept["b-staging"].first_seen_on == DAY_1
+    assert kept["b-review"].description == "waiting on code review"
+    assert kept["b-review"].first_seen_on == date(2026, 1, 5)
+    assert result.resolved == ()
+    assert result.minted == ()
+
+
+def test_correction_by_id_keeps_the_age_of_a_blocker_reworded_and_detached() -> None:
+    prior = _blocker(
+        blocker_id="b-1", description="staging is down", work_item_id="PROJ-1", first_seen_on=DAY_1
+    )
+
+    result = _reconcile(
+        (prior,),
+        (BlockerReport(description="staging is down, ops ticket filed", blocker_id="b-1"),),
+        mode=ReconcileMode.AUTHORITATIVE_SET,
+    )
+
+    # Without the id, neither the work item nor the wording matched, so the
+    # blocker restarted as a new one at age 0 and the old one was closed.
+    assert [(item.blocker_id, item.first_seen_on) for item in result.open_after] == [("b-1", DAY_1)]
+    assert result.open_after[0].description == "staging is down, ops ticket filed"
+    assert result.minted == ()
+    assert result.resolved == ()
+
+
+def test_correction_by_id_keeps_two_blockers_worded_alike() -> None:
+    first = _blocker(blocker_id="b-1", description="waiting on review", work_item_id="PROJ-1")
+    second = _blocker(blocker_id="b-2", description="waiting on review", work_item_id="PROJ-2")
+
+    result = _reconcile(
+        (first, second),
+        (
+            BlockerReport(description="waiting on review", blocker_id="b-1"),
+            BlockerReport(description="waiting on review", blocker_id="b-2", resolved=True),
+        ),
+        mode=ReconcileMode.AUTHORITATIVE_SET,
+    )
+
+    assert [item.blocker_id for item in result.open_after] == ["b-1"]
+    assert [(item.blocker_id, item.resolved_reason) for item in result.resolved] == [
+        ("b-2", BlockerResolutionReason.REPORTED_RESOLVED)
+    ]
+
+
+def test_correction_with_an_id_naming_no_open_blocker_is_matched_as_before() -> None:
+    # A legacy status's blocker is served as legacy:<dev>:<n> but reconciled
+    # as an unsaved shim:<dev>:<n> row, so its id names no open blocker.
+    shim = _blocker(blocker_id="shim:dev-1:1", description="waiting on DBA sign-off")
+
+    result = _reconcile(
+        (shim,),
+        (BlockerReport(description="waiting on DBA sign-off", blocker_id="legacy:dev-1:1"),),
+        mode=ReconcileMode.AUTHORITATIVE_SET,
+    )
+
+    assert [(item.blocker_id, item.first_seen_on) for item in result.open_after] == [
+        ("shim:dev-1:1", DAY_1)
+    ]
+    assert result.minted == ()
+
+
+def test_reports_without_ids_still_match_by_work_item_then_wording() -> None:
+    review, staging = _on_one_work_item()
+
+    result = _reconcile(
+        (review, staging),
+        (
+            BlockerReport(description="staging is down", blocker_id="b-staging"),
+            # No id: matched by work item among the blockers no id claimed.
+            BlockerReport(description="review requested again", issue_key="PROJ-1"),
+        ),
+        mode=ReconcileMode.AUTHORITATIVE_SET,
+    )
+
+    kept = {item.blocker_id: item.description for item in result.open_after}
+    assert kept == {"b-staging": "staging is down", "b-review": "review requested again"}
+    assert result.resolved == ()
