@@ -1,0 +1,26 @@
+frontend-v2/src/features/admin/DeliveryStagesPanel.tsx
+  s_8bfaa6d62bf2a2::t_c2bdbdb3d1641f 2,21,25,31-32,34,36-40,68-73,75-78,80-85,92,104-106,108-128,130-155,158-177,181,183-184,187-188,192-193,196-197,200-222,225,253-254,257-296,312,320,334,340,347-363,367,372,374,378
+  s_8bfaa6d62bf2a2::t_9d5bccdc602505 398-399
+frontend-v2/src/features/admin/stageMapping.ts
+  s_8bfaa6d62bf2a2::t_f4b8a1f4ec2656 56-83
+frontend-v2/src/features/admin/stageMapping.test.ts
+  s_8bfaa6d62bf2a2::t_9f432b53490f66 83
+  s_8bfaa6d62bf2a2::t_1525bbb57105dd 5-12
+  s_8bfaa6d62bf2a2::t_6ba5893759a5a3 51-82,84-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "61b9cc4cc43673b28a1d2ae4b6a5de79aefe4ad8",
+  "prompts": {},
+  "sessions": {
+    "s_8bfaa6d62bf2a2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88a73698-de1c-479c-841f-c9c10e9430a0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

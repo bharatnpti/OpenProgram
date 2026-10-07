@@ -1,0 +1,38 @@
+backend/core/application/directory_sync_service.py
+  s_239b3b1319ec3a::t_a87158d9647a47 38-47,54
+  s_239b3b1319ec3a::t_c2996e72a0e1a0 7-8,17,48-53
+  s_239b3b1319ec3a::t_3dab47d1dd759a 18
+backend/tests/unit/test_sync_status.py
+  s_239b3b1319ec3a::t_6b7a1a8194dbee 11-12,24,291-378
+  s_239b3b1319ec3a::t_c4629ceed0a255 379-380
+backend/tests/unit/test_psycopg_executor.py
+  s_239b3b1319ec3a::t_96d9be36267ec2 23,28
+  s_239b3b1319ec3a::t_20ebe477829880 1-22,24-27,29-116
+backend/tests/unit/test_connections.py
+  s_239b3b1319ec3a::t_b30f0cde87f971 5,13-14,541-543,559-569,571-575,577,580-581,585-593,595
+  s_239b3b1319ec3a::t_07594665bc7d1b 37,544-558,570,576,578-579,582-584,594,596
+  s_239b3b1319ec3a::t_192934b4c5f0f7 597-598
+backend/infra/adapters/connections/resolver.py
+  s_239b3b1319ec3a::t_a9dfce2a7b3ae5 10-12,17,29-30,39,52-53
+backend/infra/persistence/psycopg_executor.py
+  s_239b3b1319ec3a::t_9647890cfd3864 10
+  s_239b3b1319ec3a::t_752716efb8604e 17-21,39-45,52,55-56,58-66,78-88,91-97,102
+  s_239b3b1319ec3a::t_03a821b8e6fba9 57,98-101
+  s_239b3b1319ec3a::t_9afbf816b7911d 103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "791c550327ea79202543d5149d43619f48e96aaa",
+  "prompts": {},
+  "sessions": {
+    "s_239b3b1319ec3a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "edb8c1f2-3037-41fd-a1b3-6261f7f7734c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
