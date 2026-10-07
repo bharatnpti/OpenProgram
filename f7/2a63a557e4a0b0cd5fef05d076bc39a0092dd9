@@ -1,0 +1,148 @@
+backend/core/application/narrative_brief_service.py
+  s_f8ed429f872d0f::t_e3ce0607a1719d 120,369
+  s_f8ed429f872d0f::t_cd603308967044 156,163-165,171,289-292,373
+  s_f8ed429f872d0f::t_ccd1e5b9cca134 159,169
+backend/api/routers/config.py
+  s_f8ed429f872d0f::t_0fba5d35da43db 852
+backend/core/application/rollup_service.py
+  s_f8ed429f872d0f::t_e3ce0607a1719d 296
+backend/tests/unit/test_risk_api.py
+  s_f8ed429f872d0f::t_176a81b201111b 29-32
+  s_f8ed429f872d0f::t_c01d2337d5ad61 16
+backend/tests/unit/test_rollup_service.py
+  s_f8ed429f872d0f::t_4a1f3618349f08 1035-1037
+backend/infra/persistence/postgres_graph.py
+  s_f8ed429f872d0f::t_d7b71fe884d576 56-64,66-74,77-80,83,86,89,94-98,111,115-122,125,127-128,130-140,143,145,147-148,151-152,155
+  s_f8ed429f872d0f::t_75a4a17f0204d2 347,350-351,361,364
+  s_f8ed429f872d0f::t_958189d55ccde4 129
+  s_f8ed429f872d0f::t_2cff6df2137d56 400,415
+  s_f8ed429f872d0f::t_d0735740e18aa7 694-695,697-702,704-712,738-739
+  s_f8ed429f872d0f::t_523412a5976260 170,174,182
+  s_f8ed429f872d0f::t_4f371a77defe74 952-953,959
+  s_f8ed429f872d0f::t_7d117b013d9bd7 13
+  s_f8ed429f872d0f::t_bc31439c276123 224,226,228,230-272,275-276,279,283,296,300
+  s_f8ed429f872d0f::t_4862aa18817c56 375,378
+  s_f8ed429f872d0f::t_8bfbfcb52a761f 900-940
+backend/core/application/status_collector.py
+  s_f8ed429f872d0f::t_8eafcf1485a7c8 1044-1051
+docs/lld/graph-of-truth.md
+  s_f8ed429f872d0f::t_de10398a963e4b 47-55
+  s_f8ed429f872d0f::t_4a959495969ffd 14,16
+backend/infra/persistence/postgres_status.py
+  s_f8ed429f872d0f::t_10fb8eb7218ee6 771-782
+  s_f8ed429f872d0f::t_461a343998739a 20
+  s_f8ed429f872d0f::t_93c6f01995fa32 739-742
+backend/core/application/ask_service.py
+  s_f8ed429f872d0f::t_585d715b672e75 304,432,445,725,745,839,896,1146,1563-1566,1571,1970-1971,1974
+backend/core/application/gate_service.py
+  s_f8ed429f872d0f::t_44c77b1484c1d1 187
+backend/tests/contract/contracts.py
+  s_f8ed429f872d0f::t_c2b1a4181c642a 6-7,18-27
+  s_f8ed429f872d0f::t_da75d9a0c4d97e 730-823
+backend/tests/unit/test_optional_workstreams.py
+  s_f8ed429f872d0f::t_176a81b201111b 315
+  s_f8ed429f872d0f::t_c01d2337d5ad61 44
+backend/core/ports/repositories.py
+  s_f8ed429f872d0f::t_2b8d294d5ed102 42,44-47,49-52,54-72
+  s_f8ed429f872d0f::t_de927496ad3450 84-95,97-99
+backend/core/application/persona_views.py
+  s_f8ed429f872d0f::t_45101a0e6bf271 867,905,936,976,1036,1048-1051,1149
+  s_f8ed429f872d0f::t_ccd1e5b9cca134 1037
+backend/core/application/forecast_service.py
+  s_f8ed429f872d0f::t_ccd1e5b9cca134 498
+  s_f8ed429f872d0f::t_b5c93f28bcdca3 121-124,225,238,245,270,296,541,559-563
+backend/tests/integration/test_container_backed_phase0.py
+  s_f8ed429f872d0f::t_c2b1a4181c642a 38,350
+backend/tests/fixtures/config_day.py
+  s_f8ed429f872d0f::t_588f6dfcc71112 1-24
+backend/infra/persistence/in_memory_graph.py
+  s_f8ed429f872d0f::t_efc54559f1705f 91-93,97-100,105-108,111-119,121,123-129
+  s_f8ed429f872d0f::t_b26f0d89ff3227 57-58
+  s_f8ed429f872d0f::t_3db897a7bdaff8 1002-1005
+  s_f8ed429f872d0f::t_ad7a77f2e6b97e 20
+  s_f8ed429f872d0f::t_52e9f55943f5df 164-173,175,186
+  s_f8ed429f872d0f::t_5457a2cf2ec6f1 252
+  s_f8ed429f872d0f::t_ff5df81085a02d 224
+  s_f8ed429f872d0f::t_62a7931d825b58 1421-1431
+backend/core/application/risk_service.py
+  s_f8ed429f872d0f::t_9428e9d24dcf78 123,171,175,200-203,304,325,338,340-344,697,699-703,1344-1345
+backend/tests/unit/test_config_service.py
+  s_f8ed429f872d0f::t_176a81b201111b 135-137
+backend/tests/unit/test_persona_views.py
+  s_f8ed429f872d0f::t_4a1f3618349f08 1430-1432,1462-1464
+backend/tests/unit/test_graph_history.py
+  s_f8ed429f872d0f::t_c3d709d6eab7e0 1-178
+backend/tests/unit/test_day_reports.py
+  s_f8ed429f872d0f::t_d6556af54819ff 383
+  s_f8ed429f872d0f::t_275e030f1f904f 9,20,370-380
+  s_f8ed429f872d0f::t_d8860abbff2a27 381-382,384-385
+  s_f8ed429f872d0f::t_402bb9e4fdb817 831
+  s_f8ed429f872d0f::t_9e5d300996e3e6 386-387
+backend/api/routers/auth.py
+  s_f8ed429f872d0f::t_06d3b1ee3945ae 3
+  s_f8ed429f872d0f::t_cc98ad384929a1 108,110-114
+backend/core/application/flow_metrics_service.py
+  s_f8ed429f872d0f::t_1ec69feb5ef3e0 182-187,190-193
+  s_f8ed429f872d0f::t_9e2c8536f01eca 104,167-170
+  s_f8ed429f872d0f::t_dcb42e1aa32e47 127-129
+features.md
+  s_f8ed429f872d0f::t_0ff7cc48a1eea4 73,409
+backend/core/application/config_service.py
+  s_f8ed429f872d0f::t_41b28af130c434 1171,1173
+  s_f8ed429f872d0f::t_e8e72a66fe1c01 1008
+  s_f8ed429f872d0f::t_4aa991167d1a8b 996
+  s_f8ed429f872d0f::t_98fc4fb286b433 183-185
+  s_f8ed429f872d0f::t_1d1b1130728517 276
+  s_f8ed429f872d0f::t_9b931bb0257f09 3
+  s_f8ed429f872d0f::t_1ce7f6b32989c6 239,241
+  s_f8ed429f872d0f::t_0fba5d35da43db 389,391
+  s_f8ed429f872d0f::t_447b722bd369ff 843-848,851-861,869,875,882,889,891,904-914,916-917
+  s_f8ed429f872d0f::t_6d19df0744cbc8 1026-1031,1033-1037
+  s_f8ed429f872d0f::t_99dfa61017ea43 152-160,171
+  s_f8ed429f872d0f::t_e41b7a0d1f5dda 306,331,356,381,527,532,557
+backend/core/application/blocker_resolution.py
+  s_f8ed429f872d0f::t_3906ca1cf219f0 131-133,158,211,220,235-239
+backend/core/application/day_report_builder.py
+  s_f8ed429f872d0f::t_8122a21f69a850 245-247,256
+backend/tests/unit/test_graph_store.py
+  s_f8ed429f872d0f::t_402bb9e4fdb817 106-109,111-115
+  s_f8ed429f872d0f::t_ed24e1425a1a60 3
+backend/tests/contract/test_ports.py
+  s_f8ed429f872d0f::t_c2b1a4181c642a 23,110-111
+  s_f8ed429f872d0f::t_5ce6c70f657da7 112-113
+backend/api/dependencies.py
+  s_f8ed429f872d0f::t_0a469940ab986e 3-4,136-142,152
+backend/core/application/delivery_service.py
+  s_f8ed429f872d0f::t_e00eeabadbf5a5 349,369,372
+  s_f8ed429f872d0f::t_ccd1e5b9cca134 284
+  s_f8ed429f872d0f::t_09e1573db4399a 207-208,313
+  s_f8ed429f872d0f::t_44c77b1484c1d1 285-286
+backend/core/domain/graph.py
+  s_f8ed429f872d0f::t_428bf6828bcb00 4,10-14
+  s_f8ed429f872d0f::t_802b8c87c9228b 112-134
+  s_a5c95ae649948d::t_268acaac3ebff0 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f72a63a557e4a0b0cd5fef05d076bc39a0092dd9",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_f8ed429f872d0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "934bb81e-a294-4ccc-9e3b-1ebc1c09a9db",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
