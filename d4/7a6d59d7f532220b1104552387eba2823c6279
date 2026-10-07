@@ -1,0 +1,91 @@
+backend/tests/unit/test_cross_person_supersede.py
+  s_40db6a3679e58c::t_b4d881446a9e6b 66-67
+backend/tests/unit/test_rollup_refresh.py
+  s_40db6a3679e58c::t_7fc02104f7782a 116
+backend/core/application/portfolio_feed_service.py
+  s_40db6a3679e58c::t_9cdd764e7caee9 235,238,241-245
+  s_40db6a3679e58c::t_8d4190e4c10742 219-221
+  s_40db6a3679e58c::t_603d0baca400f5 222-225
+  s_40db6a3679e58c::t_b09f06eec23067 234,236-237,239-240,246-247
+backend/core/application/cross_person_service.py
+  s_40db6a3679e58c::t_1c11d74a51f8cc 932-934
+  s_40db6a3679e58c::t_b136fae6f0e0b9 342-345,347
+  s_40db6a3679e58c::t_6ba2c5d9b4cd5f 177-181
+  s_40db6a3679e58c::t_b623042f496656 276-278
+  s_40db6a3679e58c::t_37418311a95581 683-684,686-698,700-704,713,716-718,720,723,725-727
+  s_40db6a3679e58c::t_d848d80200d904 29,33
+  s_40db6a3679e58c::t_14418470df3dcc 150-151,159
+  s_40db6a3679e58c::t_f19d97cce4f03a 1016-1033
+  s_40db6a3679e58c::t_5bb936f92deb51 111
+  s_40db6a3679e58c::t_0a0fefe2eaf278 924,927-931,935
+  s_40db6a3679e58c::t_47c764167d3015 957
+  s_40db6a3679e58c::t_ffdbe1ce2fabdf 49-52
+  s_40db6a3679e58c::t_cd8bb03255d8a4 4
+  s_40db6a3679e58c::t_effded47825f9a 460
+  s_40db6a3679e58c::t_1a88039aed819d 657-660,665-667
+backend/api/routers/persona.py
+  s_40db6a3679e58c::t_2a9c6869cfc5d2 402-411,413-416
+  s_40db6a3679e58c::t_3f40d59de839f8 49-52
+backend/tests/unit/test_cross_person_service.py
+  s_40db6a3679e58c::t_c40b9c9504bd46 8-11,21-22
+  s_40db6a3679e58c::t_7fc02104f7782a 555-557
+  s_40db6a3679e58c::t_799a834211f4ba 650-687
+  s_40db6a3679e58c::t_4ad574f6351fed 15,18
+  s_40db6a3679e58c::t_1a4fda451b49d0 566-649,688-697
+frontend/src/api/openapi.json
+  s_40db6a3679e58c::t_174f35190c53d7 9288
+frontend-v2/src/api/generated.ts
+  s_40db6a3679e58c::t_174f35190c53d7 2106-2113
+backend/tests/unit/test_cross_person_repeats.py
+  s_40db6a3679e58c::t_b4d881446a9e6b 208-209,246-247
+  s_40db6a3679e58c::t_5cf81f8a371677 417-426
+  s_40db6a3679e58c::t_7fc02104f7782a 204
+  s_40db6a3679e58c::t_494ba7fa89d84f 33
+backend/tests/unit/test_cross_person_api.py
+  s_40db6a3679e58c::t_2f8051040ba701 301,303
+  s_40db6a3679e58c::t_caa3dec7033a5e 352-354,359,367,372-373
+  s_40db6a3679e58c::t_051d7aff2d08b3 258-259,261-264
+  s_40db6a3679e58c::t_bcc5acf2753d83 124,127,144-161,165,174-257,265-300,302,313-318
+  s_40db6a3679e58c::t_89e7526a64b88f 6,17
+  s_40db6a3679e58c::t_d4a21b720c101c 260
+frontend/src/api/generated.ts
+  s_40db6a3679e58c::t_174f35190c53d7 2106-2113
+backend/tests/unit/test_cross_person_notify_retry.py
+  s_40db6a3679e58c::t_7fc02104f7782a 238-240
+backend/tests/unit/test_portfolio_feed_risk.py
+  s_40db6a3679e58c::t_5b09d98c0217d0 6
+  s_40db6a3679e58c::t_8278d36ce5a492 145-195
+frontend-v2/src/features/coordination/RequestsBoard.tsx
+  s_40db6a3679e58c::t_2cdd7144f67a0e 212,218-225,234-254
+features.md
+  s_40db6a3679e58c::t_d8c575bc702aa7 438-440
+  s_40db6a3679e58c::t_c073d170e0d95f 272
+frontend-v2/src/api/openapi.json
+  s_40db6a3679e58c::t_174f35190c53d7 9288
+backend/core/domain/cross_person.py
+  s_40db6a3679e58c::t_9b1e20ad1ed24c 80-89,91-99
+  s_40db6a3679e58c::t_c383b167524582 90
+backend/tests/unit/test_concurrent_merge_passes.py
+  s_40db6a3679e58c::t_7fc02104f7782a 128-129
+frontend/src/pages/CrossPersonRequestsPage.tsx
+  s_40db6a3679e58c::t_71442ddf7de85f 34
+  s_40db6a3679e58c::t_9dfd057f1501ed 101-128,132-139,142
+  s_40db6a3679e58c::t_cd684a40a48f5b 129-131
+  s_40db6a3679e58c::t_1d3f5fdb276b2a 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d47a6d59d7f532220b1104552387eba2823c6279",
+  "prompts": {},
+  "sessions": {
+    "s_40db6a3679e58c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "16a9b1ac-2a15-45a9-91c7-a7ef79b7cb43",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
