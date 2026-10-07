@@ -1,0 +1,37 @@
+frontend/src/api/generated.ts
+  s_5ee99fc7bbaeb0::t_cd07137f102d4f 2473-2478,2643-2648,3732-3737,3925-3930
+backend/api/routers/admin.py
+  s_5ee99fc7bbaeb0::t_c3ce48258a1603 33,37,55,63,78,85,100,110,119,121-124,129-137
+  s_5ee99fc7bbaeb0::t_5a4c4f437649d9 34
+  s_5ee99fc7bbaeb0::t_9cc51ddaff1b26 120
+frontend/src/api/openapi.json
+  s_5ee99fc7bbaeb0::t_cd07137f102d4f 10326-10336,10377,10767-10777,10819,13810-13820,13840,14373-14383,14414
+backend/api/dtos.py
+  s_5ee99fc7bbaeb0::t_a5e6c5747f8df2 2072-2079,2082-2089,2096,2102,2107
+frontend-v2/src/api/generated.ts
+  s_5ee99fc7bbaeb0::t_cd07137f102d4f 2473-2478,2639-2644,3719-3724,3912-3917
+backend/tests/unit/test_api.py
+  s_5ee99fc7bbaeb0::t_b0ea049ab3e804 1140,1167
+  s_5ee99fc7bbaeb0::t_6e21350817dc1d 1078,1080,1083,1087
+  s_5ee99fc7bbaeb0::t_2fd481a4e2e500 1108,1114-1139,1141-1166,1168-1216,1226
+frontend/src/pages/MockSlackPage.tsx
+  s_5ee99fc7bbaeb0::t_c37291f9b32a62 187
+frontend-v2/src/api/openapi.json
+  s_5ee99fc7bbaeb0::t_cd07137f102d4f 10326-10336,10377,10767-10777,10819,13810-13820,13840,14373-14383,14414
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3053d824da88cc785093a48df6857188665d14a2",
+  "prompts": {},
+  "sessions": {
+    "s_5ee99fc7bbaeb0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "53621b4d-2c24-4a49-97e0-baea42a06a31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
