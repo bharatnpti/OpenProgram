@@ -1,0 +1,81 @@
+backend/tests/unit/test_cross_person_api.py
+  s_40db6a3679e58c::t_731a57711367f5 6,17,160,163,180-197,201,210-339,349-354,413-415,420,428,433-434
+backend/infra/adapters/connections/specs.py
+  s_40db6a3679e58c::t_731a57711367f5 68,76,102,126,162,196,257,265,273-274,286,345
+backend/core/domain/connections.py
+  s_40db6a3679e58c::t_731a57711367f5 68-72,218-233
+  s_40db6a3679e58c::t_87ca57ab8c3177 234-235
+backend/api/routers/persona.py
+  s_40db6a3679e58c::t_731a57711367f5 49-52,407-416,418-421
+backend/core/application/portfolio_feed_service.py
+  s_40db6a3679e58c::t_731a57711367f5 217-223,232-243
+  s_40db6a3679e58c::t_0aa0dd01f27dde 244-245
+backend/tests/unit/test_connections.py
+  s_40db6a3679e58c::t_731a57711367f5 22,31,35,435-436,440-446,463-705,932,936-946,962-969
+frontend-v2/src/api/generated.ts
+  s_40db6a3679e58c::t_731a57711367f5 2106-2113,2876-2881,2890
+backend/api/dtos.py
+  s_40db6a3679e58c::t_731a57711367f5 2765-2770,2776
+frontend/src/api/generated.ts
+  s_40db6a3679e58c::t_731a57711367f5 2106-2113,2880-2885,2894
+backend/tests/unit/test_cross_person_notify_retry.py
+  s_40db6a3679e58c::t_731a57711367f5 238-240
+backend/tests/unit/test_cross_person_supersede.py
+  s_40db6a3679e58c::t_731a57711367f5 66-67
+frontend-v2/src/api/openapi.json
+  s_40db6a3679e58c::t_731a57711367f5 9288,11602-11609,11617
+features.md
+  s_40db6a3679e58c::t_731a57711367f5 272,323,440-442
+frontend-v3/src/api/openapi.json
+  s_40db6a3679e58c::t_bcc3e895f6fb64 9288,11602-11609,11617
+backend/tests/unit/test_rollup_refresh.py
+  s_40db6a3679e58c::t_731a57711367f5 116
+frontend-v2/src/features/admin/connectionForm.ts
+  s_40db6a3679e58c::t_731a57711367f5 5,116-126,128
+backend/core/application/connection_service.py
+  s_40db6a3679e58c::t_731a57711367f5 16,26,31,53-56,73-77,80,240-245,249-252,254-263,265-282,347-357
+  s_40db6a3679e58c::t_abc17bf1938445 358-359
+frontend-v2/src/features/admin/connectionForm.test.ts
+  s_40db6a3679e58c::t_731a57711367f5 160,163-170
+frontend/src/pages/CrossPersonRequestsPage.tsx
+  s_40db6a3679e58c::t_731a57711367f5 7,34,101-139,142
+frontend-v3/src/api/generated.ts
+  s_40db6a3679e58c::t_bcc3e895f6fb64 2106-2113,2876-2881,2890
+backend/api/routers/integrations.py
+  s_40db6a3679e58c::t_731a57711367f5 27,135-136
+backend/core/domain/cross_person.py
+  s_40db6a3679e58c::t_731a57711367f5 80-99
+backend/tests/unit/test_portfolio_feed_risk.py
+  s_40db6a3679e58c::t_731a57711367f5 6,145-193
+  s_40db6a3679e58c::t_6f26eb54573780 194-195
+frontend/src/api/openapi.json
+  s_40db6a3679e58c::t_731a57711367f5 9288,11602-11609,11617
+backend/core/application/cross_person_service.py
+  s_40db6a3679e58c::t_731a57711367f5 4,29,33,49-52,111,150-151,159,177-181,276-278,342-345,347,460,657-660,665-667,683-684,686-698,700-704,713,716-718,720,723,725-727,924,927-935,957,1016-1033
+backend/tests/unit/test_cross_person_repeats.py
+  s_40db6a3679e58c::t_731a57711367f5 33,204,208-209,246-247,417-424
+  s_40db6a3679e58c::t_750ac42e082e81 425-426
+backend/tests/unit/test_cross_person_service.py
+  s_40db6a3679e58c::t_731a57711367f5 8-11,15,18,21-22,555-557,566-695
+  s_40db6a3679e58c::t_5d9c33d235b1ba 696-697
+backend/tests/unit/test_concurrent_merge_passes.py
+  s_40db6a3679e58c::t_731a57711367f5 128-129
+frontend-v2/src/features/coordination/RequestsBoard.tsx
+  s_40db6a3679e58c::t_731a57711367f5 212,218-225,234-254
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d211140ada649323bbcc532e2e236b00613646de",
+  "prompts": {},
+  "sessions": {
+    "s_40db6a3679e58c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "16a9b1ac-2a15-45a9-91c7-a7ef79b7cb43",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
