@@ -35,13 +35,14 @@ router = APIRouter(tags=["checkins"])
 async def get_my_status(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[SelfStatusService, Depends(get_self_status_service)],
+    registry: Annotated[ServiceRegistry, Depends(get_registry)],
     as_of: date | None = None,
 ) -> MyStatusResponse:
     _ensure_own_work(principal)
     effective_as_of = as_of or date.today()
     status = await service.my_status(principal.tenant_id, principal.subject, effective_as_of)
     if status is None:
-        raise HTTPException(status_code=404, detail="status is not available")
+        raise await _status_not_available(registry, principal)
     details = await service.my_blocker_details(
         principal.tenant_id, principal.subject, effective_as_of
     )
@@ -52,13 +53,14 @@ async def get_my_status(
 async def confirm_my_status(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[SelfStatusService, Depends(get_self_status_service)],
+    registry: Annotated[ServiceRegistry, Depends(get_registry)],
     as_of: date | None = None,
 ) -> MyStatusResponse:
     _ensure_own_work(principal)
     effective_as_of = as_of or date.today()
     status = await service.confirm(principal.tenant_id, principal.subject, effective_as_of)
     if status is None:
-        raise HTTPException(status_code=404, detail="status is not available")
+        raise await _status_not_available(registry, principal)
     details = await service.my_blocker_details(
         principal.tenant_id, principal.subject, effective_as_of
     )
@@ -70,6 +72,7 @@ async def correct_my_status(
     request: StatusCorrectionRequest,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[SelfStatusService, Depends(get_self_status_service)],
+    registry: Annotated[ServiceRegistry, Depends(get_registry)],
     as_of: date | None = None,
 ) -> MyStatusResponse:
     _ensure_own_work(principal)
@@ -98,7 +101,7 @@ async def correct_my_status(
         blocker_reports=blocker_reports,
     )
     if status is None:
-        raise HTTPException(status_code=404, detail="status is not available")
+        raise await _status_not_available(registry, principal)
     details = await service.my_blocker_details(
         principal.tenant_id, principal.subject, effective_as_of
     )
@@ -181,12 +184,31 @@ async def _ensure_member(registry: ServiceRegistry, principal: Principal) -> Non
     else is never read: answering with tenant defaults told them they had a
     schedule, and a save wrote a row nothing uses.
     """
-    node = await registry.graph_repository().get_node(principal.tenant_id, principal.subject)
-    if node is None or node.kind is not NodeKind.DEVELOPER:
+    if not await _is_member(registry, principal):
         raise HTTPException(
             status_code=404,
             detail="check-in preference is not available: no member record for this person",
         )
+
+
+#: The 404 details of the own-status routes. Both are 404, so a client that
+#: reads a 404 as "nothing to show" keeps working; the detail tells apart
+#: someone who is no member from a member with no status on record yet.
+STATUS_NOT_A_MEMBER_DETAIL = "status is not available: no member record for this person"
+STATUS_NONE_YET_DETAIL = "status is not available: no status on record yet for this member"
+
+
+async def _status_not_available(registry: ServiceRegistry, principal: Principal) -> HTTPException:
+    """The 404 for an own-status route with no status: no member record, or none yet."""
+    if not await _is_member(registry, principal):
+        return HTTPException(status_code=404, detail=STATUS_NOT_A_MEMBER_DETAIL)
+    return HTTPException(status_code=404, detail=STATUS_NONE_YET_DETAIL)
+
+
+async def _is_member(registry: ServiceRegistry, principal: Principal) -> bool:
+    """Whether the caller has a member (developer) record: who check-ins and statuses are for."""
+    node = await registry.graph_repository().get_node(principal.tenant_id, principal.subject)
+    return node is not None and node.kind is NodeKind.DEVELOPER
 
 
 def _ensure_own_work(principal: Principal) -> None:

@@ -1,4 +1,4 @@
-"""The own-status routes: a correction names the blockers it restates by id."""
+"""The own-status routes: corrections name blockers by id, and a 404 says why."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.main import create_app
+from api.routers.checkin import STATUS_NONE_YET_DETAIL, STATUS_NOT_A_MEMBER_DETAIL
 from config.settings import Settings
 from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
 from core.domain.graph import Developer
@@ -92,3 +93,33 @@ def test_a_correction_keeps_the_blocker_its_id_names_on_a_shared_work_item(
     ]
     details = response.json()["blocker_details"]
     assert [(item["blocker_id"], item["age_days"]) for item in details] == [("b-staging", 3)]
+
+
+def test_own_status_404_says_whether_the_caller_is_no_member(settings: Settings) -> None:
+    app = _app(settings, subject="not-a-member")
+    with TestClient(app) as client:
+        status = client.get(f"/me/status?as_of={DAY.isoformat()}")
+        confirm = client.post(f"/me/status/confirm?as_of={DAY.isoformat()}")
+        correct = client.post(
+            f"/me/status/correct?as_of={DAY.isoformat()}", json={"summary": "On it."}
+        )
+
+    for response in (status, confirm, correct):
+        assert response.status_code == 404
+        assert response.json()["detail"] == STATUS_NOT_A_MEMBER_DETAIL
+
+
+def test_own_status_404_says_a_member_has_no_status_yet(settings: Settings) -> None:
+    app = _app(settings)
+    with TestClient(app) as client:
+        asyncio.run(_member(app))
+        status = client.get(f"/me/status?as_of={DAY.isoformat()}")
+        confirm = client.post(f"/me/status/confirm?as_of={DAY.isoformat()}")
+        correct = client.post(
+            f"/me/status/correct?as_of={DAY.isoformat()}", json={"summary": "On it."}
+        )
+
+    for response in (status, confirm, correct):
+        assert response.status_code == 404
+        assert response.json()["detail"] == STATUS_NONE_YET_DETAIL
+    assert STATUS_NONE_YET_DETAIL != STATUS_NOT_A_MEMBER_DETAIL
