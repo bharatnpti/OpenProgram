@@ -4,6 +4,7 @@ import { useRef, type ChangeEvent } from "react";
 import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
+import { BRANDING_QUERY_KEY, sameOnEveryDay } from "../../app/queryCache";
 import type { TenantLogoUploadRequest } from "../../api/schema";
 import { ConfirmDialog } from "../../components/Dialogs";
 import { PanelState } from "../../components/PanelState";
@@ -14,12 +15,6 @@ import { LOGO_ACCEPT, formatName, logoFileProblem, logoUploadBody } from "./logo
 import { savedLine, useMemberNames } from "./members";
 
 /**
- * The key the header's logo query should share. A change invalidates it and
- * the config-scoped key, whichever the header ends up using.
- */
-const BRANDING_KEY = ["branding"] as const;
-
-/**
  * The tenant's logo, which the header shows to everyone in the tenant.
  * Uploading replaces it; removing it goes back to the OpenProgram mark. A file
  * is checked here before it is sent, and the server checks it again.
@@ -28,16 +23,18 @@ export function BrandingTab() {
   const queryClient = useQueryClient();
   const nameOf = useMemberNames();
   const fileInput = useRef<HTMLInputElement>(null);
+  // The header's own query (HeaderLogo): one cache entry whatever the day, so
+  // an upload or removal here shows in the header at once.
   const branding = useQuery({
-    queryKey: BRANDING_KEY,
+    queryKey: BRANDING_QUERY_KEY,
     queryFn: () => apiClient.branding(),
     staleTime: 5 * 60_000,
+    ...sameOnEveryDay,
   });
   const logo = branding.data?.logo ?? null;
 
   const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: BRANDING_KEY });
-    void queryClient.invalidateQueries({ queryKey: ["config", "branding"] });
+    void queryClient.invalidateQueries({ queryKey: BRANDING_QUERY_KEY });
   };
   const upload = useMutation({
     mutationFn: (body: TenantLogoUploadRequest) => apiClient.uploadBrandingLogo(body),

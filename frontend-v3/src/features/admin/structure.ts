@@ -1,7 +1,7 @@
 // What hangs off what, and what a change to it affects. Pure helpers, type imports only so
 // `node --test` can run them. The wording says what the backend really does: deleting a node
 // removes its links but never the nodes it was linked to.
-import type { ConfigNodeResponse, DirectoryItemResponse } from "../../api/schema";
+import type { ConfigNodeResponse, DirectoryItemResponse, PodTaskDto } from "../../api/schema";
 
 export type EntityKind = "program" | "project" | "pod" | "workstream" | "member";
 
@@ -216,6 +216,22 @@ export function unlinkWords(
   parent: string,
   child: string,
 ): { title: string; effect: string } {
+  const words = unlinkEffect(kind, parent, child);
+  return { ...words, effect: `${words.effect} ${PAST_DAYS_TOO}` };
+}
+
+/**
+ * The backend deletes the link itself, whatever days it was valid on, so
+ * looking back at a past day no longer shows it either.
+ */
+export const PAST_DAYS_TOO =
+  "This removes the link from past days too; adding it back starts today.";
+
+function unlinkEffect(
+  kind: LinkKind,
+  parent: string,
+  child: string,
+): { title: string; effect: string } {
   switch (kind) {
     case "program-project":
       return {
@@ -287,7 +303,12 @@ export function deleteImpact(
   node: ConfigNodeResponse,
   links: Links,
   name: (id: string) => string,
-  extra: { dayReports?: number; outsideScope?: { podId: string; repos: string[] }[] } = {},
+  extra: {
+    dayReports?: number;
+    outsideScope?: { podId: string; repos: string[] }[];
+    /** The tasks the project or pod holds (the directory's `task_ids`), when known. */
+    tasks?: number;
+  } = {},
 ): DeleteImpact {
   const lines: string[] = [];
   const warnings: string[] = [];
@@ -397,8 +418,17 @@ export function deleteImpact(
     }
   }
 
+  if ((kind === "project" || kind === "pod") && extra.tasks !== undefined && extra.tasks > 0) {
+    // The Jira sync files tasks and sprints under their project and pod; those
+    // links go with it, and no sync of a deleted one brings them back.
+    lines.push(
+      `${plural(extra.tasks, "task")} and any Jira sprints under it lose their ${kind}: they stay, but nothing groups them under it any more.`,
+    );
+  }
   if (lines.length === 0) lines.push("Nothing is linked to it.");
-  lines.push("Nothing else is deleted: the things it was linked to, and their history, stay.");
+  lines.push(
+    "Nothing else is deleted, but every link to it goes, from past days too: looking back no longer shows them together.",
+  );
 
   for (const item of extra.outsideScope ?? []) {
     warnings.push(scopeWarning(name(item.podId), item.repos));
@@ -411,4 +441,37 @@ export function scopeWarning(podName: string, repos: readonly string[]): string 
   return `${podName} lists ${listNames(repos)}, which none of its other projects provide. The Git sync reports a configuration error until you clear ${
     repos.length === 1 ? "it" : "them"
   } from the pod.`;
+}
+
+/**
+ * The tasks several pods hold, one per task. Each pod lists only its own
+ * members as a task's owners, and only its own blockers, so a task two pods
+ * share is the union of both copies: every owner and every open blocker, once.
+ * Keeping the first copy hid the other pod's owner, so their task was not
+ * listed under them and was offered to them again (409: already linked).
+ */
+export function mergePodTasks(lists: PodTaskDto[][]): PodTaskDto[] {
+  const byId = new Map<string, PodTaskDto>();
+  for (const tasks of lists) {
+    for (const task of tasks) {
+      const seen = byId.get(task.id);
+      if (!seen) {
+        byId.set(task.id, {
+          ...task,
+          owners: [...task.owners],
+          open_blockers: [...task.open_blockers],
+        });
+        continue;
+      }
+      for (const owner of task.owners) {
+        if (!seen.owners.some((known) => known.id === owner.id)) seen.owners.push(owner);
+      }
+      for (const blocker of task.open_blockers) {
+        if (!seen.open_blockers.some((known) => known.blocker_id === blocker.blocker_id)) {
+          seen.open_blockers.push(blocker);
+        }
+      }
+    }
+  }
+  return [...byId.values()];
 }

@@ -15,9 +15,9 @@ import { IntegrationsTab } from "../features/admin/IntegrationsTab";
 import { LinksTab } from "../features/admin/LinksTab";
 import { cn } from "../lib/utils";
 
-const CONSOLE_URL = import.meta.env.VITE_CONSOLE_URL ?? "http://127.0.0.1:5174";
-
-// One entry per line, so each lane's tabs merge as separate lines.
+// Every setting has its own tab here, so nothing links out to the frontend-v2
+// console any more. Escalation contacts sit beside Escalation: the matrix's
+// team scrum master and team manager levels are those contacts.
 const TABS = [
   { key: "checkins", label: "Check-ins" },
   { key: "sources", label: "Data sources" },
@@ -25,12 +25,11 @@ const TABS = [
   { key: "stages", label: "Delivery stages" },
   { key: "gates", label: "Gates" },
   { key: "escalation", label: "Escalation" },
+  { key: "contacts", label: "Escalation contacts" },
   { key: "branding", label: "Branding" },
   { key: "entities", label: "Entities" },
   { key: "links", label: "Links" },
   { key: "directory", label: "Directory" },
-  { key: "contacts", label: "Escalation contacts" },
-  { key: "more", label: "More settings" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 
@@ -76,42 +75,12 @@ export function AdminPage() {
         {tab === "stages" ? <DeliveryStagesTab /> : null}
         {tab === "gates" ? <GatesTab /> : null}
         {tab === "escalation" ? <EscalationTab /> : null}
+        {tab === "contacts" ? <ContactsTab /> : null}
         {tab === "branding" ? <BrandingTab /> : null}
         {tab === "entities" ? <EntitiesTab /> : null}
         {tab === "links" ? <LinksTab /> : null}
         {tab === "directory" ? <DirectoryTab /> : null}
-        {tab === "contacts" ? <ContactsTab /> : null}
-        {tab === "more" ? <MoreSettings /> : null}
       </PanelState>
     </>
-  );
-}
-
-const MORE = [
-  [
-    "Links",
-    "Which projects sit in which program, pods in projects and workstreams, members in pods, tasks to people.",
-  ],
-  [
-    "Directory",
-    "Sync people from the chat directory, import them as members, and set identity links to chat, Jira and Git.",
-  ],
-];
-
-function MoreSettings() {
-  return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2">
-      {MORE.map(([title, text]) => (
-        <a
-          key={title}
-          href={`${CONSOLE_URL}/admin`}
-          className="rounded-3xl border border-grey-border p-5 text-ink no-underline hover:shadow-op-hover"
-        >
-          <p className="text-[16px] font-extrabold">{title}</p>
-          <p className="mt-1 text-[13px] text-grey-body">{text}</p>
-          <p className="mt-2 text-[12px] font-bold text-magenta">Set in the console →</p>
-        </a>
-      ))}
-    </div>
   );
 }

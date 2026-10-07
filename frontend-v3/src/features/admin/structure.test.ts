@@ -7,6 +7,7 @@ import {
   deriveLinks,
   linkDone,
   listNames,
+  mergePodTasks,
   newlyOutsideScope,
   parentsOf,
   plural,
@@ -14,10 +15,10 @@ import {
   podRoleLabel,
   podsOutsideScope,
   suggestPodRole,
-  unlinkWords,
-  withoutLink,
   type Links,
   type RepoScope,
+  unlinkWords,
+  withoutLink,
 } from "./structure.ts";
 
 const item = (
@@ -179,7 +180,7 @@ test("every link says what taking it away does", () => {
   assert.deepEqual(unlinkWords("pod-member", "Payments Pod", "Kai Thompson"), {
     title: "Take Kai Thompson out of Payments Pod?",
     effect:
-      "Kai Thompson's check-in stops counting toward Payments Pod, and if they miss one, Payments Pod's scrum master and manager are no longer told. With no other pod, they show as in no team.",
+      "Kai Thompson's check-in stops counting toward Payments Pod, and if they miss one, Payments Pod's scrum master and manager are no longer told. With no other pod, they show as in no team. This removes the link from past days too; adding it back starts today.",
   });
   assert.match(
     unlinkWords("member-task", "Kai", "CHK-1").effect,
@@ -209,9 +210,20 @@ test("deleting a program says its projects stay but leave the portfolio", () => 
   );
   assert.equal(
     impact.lines.at(-1),
-    "Nothing else is deleted: the things it was linked to, and their history, stay.",
+    "Nothing else is deleted, but every link to it goes, from past days too: looking back no longer shows them together.",
   );
   assert.deepEqual(impact.warnings, []);
+});
+
+test("deleting a project or pod counts the tasks that lose it", () => {
+  const impact = deleteImpact("pod", node("pod", "pod-a"), links, names, { tasks: 3 });
+  assert.ok(
+    impact.lines.includes(
+      "3 tasks and any Jira sprints under it lose their pod: they stay, but nothing groups them under it any more.",
+    ),
+  );
+  const none = deleteImpact("pod", node("pod", "pod-a"), links, names, { tasks: 0 });
+  assert.ok(!none.lines.some((line) => line.includes("Jira sprints")));
 });
 
 test("deleting a project counts its pods, workstreams and reports", () => {
@@ -251,5 +263,30 @@ test("a delete that would break the Git sync warns, by name", () => {
   assert.equal(
     impact.warnings[0],
     "<pod1> lists acme/api, which none of its other projects provide. The Git sync reports a configuration error until you clear it from the pod.",
+  );
+});
+
+test("a task two pods hold is one, with both pods' owners and blockers", () => {
+  const task = (owner: string, blocker: string) => ({
+    id: "task-chk-12",
+    name: "CHK-12",
+    rag: "amber" as const,
+    owners: [{ id: owner, name: owner }],
+    open_blockers: [
+      { blocker_id: blocker, description: blocker, first_seen_on: "2026-10-01", age_days: 6 },
+    ],
+  });
+  const merged = mergePodTasks([
+    [task("U1007", "b1") as never],
+    [task("U1003", "b2") as never, task("U1007", "b1") as never],
+  ]);
+  assert.equal(merged.length, 1);
+  assert.deepEqual(
+    merged[0].owners.map((owner) => owner.id),
+    ["U1007", "U1003"],
+  );
+  assert.deepEqual(
+    merged[0].open_blockers.map((blocker) => blocker.blocker_id),
+    ["b1", "b2"],
   );
 });

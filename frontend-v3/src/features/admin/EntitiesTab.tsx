@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
 import type { ConfigNodeResponse } from "../../api/schema";
+import { usePods, useProjects } from "../../app/directory";
 import { PanelState } from "../../components/PanelState";
 import { Panel } from "../../components/ui/Bits";
 import { Pill } from "../../components/ui/Pill";
@@ -78,6 +79,9 @@ export function EntitiesTab() {
     member: useConfigList("member"),
   };
   const { links, inUse, error: linksError } = useLinks();
+  // The directory's own lists say how many tasks a project or pod holds.
+  const directoryProjects = useProjects();
+  const directoryPods = usePods();
   const [editing, setEditing] = useState<{ kind: EditableKind; node: ConfigNodeResponse } | null>(
     null,
   );
@@ -118,7 +122,17 @@ export function EntitiesTab() {
             projectRepos: withoutKey(scope.projectRepos, node.id),
           })
         : undefined;
-    const impact = deleteImpact(kind, node, links, nameOf, { dayReports, outsideScope });
+    const held =
+      kind === "project"
+        ? directoryProjects.data?.find((item) => item.id === node.id)
+        : kind === "pod"
+          ? directoryPods.data?.find((item) => item.id === node.id)
+          : undefined;
+    const impact = deleteImpact(kind, node, links, nameOf, {
+      dayReports,
+      outsideScope,
+      tasks: held?.task_ids.length,
+    });
     setPending({
       key: `delete:${node.id}:${Date.now()}`,
       title: `Delete ${node.name}?`,

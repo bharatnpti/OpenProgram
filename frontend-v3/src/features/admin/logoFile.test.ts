@@ -36,8 +36,10 @@ test("an SVG, another type, an empty file or one over 256 KB is refused with the
     logoFileProblem({ type: "image/svg+xml", size: 300 }) ?? "",
     /SVG logos are not accepted because an SVG can carry script/,
   );
+  // The bytes decide the format: a file the browser types oddly, or not at all,
+  // is read before it is judged (logoUploadBody refuses what is not an image).
   for (const type of ["image/gif", "application/pdf", ""]) {
-    assert.equal(logoFileProblem({ type, size: 300 }), "Choose a PNG, JPEG or WebP image.", type);
+    assert.equal(logoFileProblem({ type, size: 300 }), null, type);
   }
   assert.equal(logoFileProblem({ type: "image/png", size: 0 }), "That file is empty.");
   assert.equal(

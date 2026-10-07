@@ -120,11 +120,79 @@ export function savePayload(
   return { enabled: form.enabled, settings, secrets };
 }
 
-/** The unsaved values to test: typed secrets only; a blank one uses what is stored. */
+/**
+ * Fields that decide where a stored secret is sent, or who it signs in as: an
+ * address, a user, the port and transport, the deployment and the sign-in
+ * method. Changing one of them while a stored secret is reused would send that
+ * secret to an unsaved place.
+ */
+function routesSecrets(field: ConnectorFieldDto): boolean {
+  return (
+    field.kind === "url" ||
+    field.kind === "email" ||
+    ["host", "port", "security", "username", "deployment", "auth_method"].includes(field.key)
+  );
+}
+
+function storedValue(connection: ConnectionResponse, field: ConnectorFieldDto): string {
+  return (connection.settings[field.key] ?? field.default ?? "").trim();
+}
+
+/** The plain fields whose value differs from what is stored. */
+function changedFields(connection: ConnectionResponse, form: ConnectionForm): ConnectorFieldDto[] {
+  return connection.fields.filter(
+    (field) =>
+      field.kind !== "secret" &&
+      (form.values[field.key] ?? "").trim() !== storedValue(connection, field),
+  );
+}
+
+/**
+ * Why Test cannot run on these values, or null when it can. A test of unsaved
+ * values keeps every stored secret that is not typed again, and the server
+ * sends it wherever those values point, so:
+ *  - a secret marked to clear and not typed again would be tested with the
+ *    very secret being removed;
+ *  - a changed address or user with a stored secret left as it is would send
+ *    that secret to an address nobody saved.
+ */
+export function testBlock(connection: ConnectionResponse, form: ConnectionForm): string | null {
+  const typed = (key: string) => (form.secrets[key] ?? "").trim() !== "";
+  if (form.clearedSecrets.some((key) => !typed(key))) {
+    return "A secret is marked to clear. Type its new value to test, or save first.";
+  }
+  const reused = connection.secrets_set.filter((key) => !typed(key));
+  const moved = changedFields(connection, form).filter(routesSecrets);
+  if (reused.length > 0 && moved.length > 0) {
+    const labels = moved.map((field) => field.label);
+    const names =
+      labels.length > 1
+        ? `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}`
+        : labels[0];
+    return `${names} changed. Type the stored secret again to test it there, or save first.`;
+  }
+  return null;
+}
+
+/**
+ * The test request. Nothing changed: no body, so the server tests what is
+ * stored and records the result on the connection ("Last test passed").
+ * Otherwise the unsaved values, with typed secrets only; `testBlock` decides
+ * first whether reusing the stored ones is safe.
+ */
 export function testPayload(
   connection: ConnectionResponse,
   form: ConnectionForm,
-): ConnectionTestRequest {
+): ConnectionTestRequest | undefined {
+  const typedAny = Object.values(form.secrets).some((value) => value.trim() !== "");
+  if (
+    connection.configured &&
+    !typedAny &&
+    form.clearedSecrets.length === 0 &&
+    changedFields(connection, form).length === 0
+  ) {
+    return undefined;
+  }
   const payload = savePayload(connection, form);
   const secrets: Record<string, string> = {};
   Object.entries(payload.secrets ?? {}).forEach(([key, value]) => {

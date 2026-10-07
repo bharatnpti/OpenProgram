@@ -2,9 +2,9 @@ import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
 import { apiClient } from "../../api/client";
-import type { ConfigNodeResponse, PodTaskDto } from "../../api/schema";
+import type { ConfigNodeResponse } from "../../api/schema";
 import { usePods, usePrograms, useProjects, useWorkstreams } from "../../app/directory";
-import { deriveLinks, type EntityKind, type Links } from "./structure";
+import { deriveLinks, mergePodTasks, type EntityKind, type Links } from "./structure";
 
 const LISTERS: Record<EntityKind, () => Promise<ConfigNodeResponse[]>> = {
   program: () => apiClient.configPrograms(),
@@ -94,7 +94,10 @@ export function usePodRoles(podIds: string[]) {
   return roles;
 }
 
-/** The tasks the pods hold, for suggestions and for who has them; a task two pods hold is one. */
+/**
+ * The tasks the pods hold, for suggestions and for who has them; a task two
+ * pods hold is one, with the owners and blockers of both (`mergePodTasks`).
+ */
 export function useKnownTasks(podIds: string[]) {
   const queries = useQueries({
     queries: podIds.map((podId) => ({
@@ -102,11 +105,8 @@ export function useKnownTasks(podIds: string[]) {
       queryFn: () => apiClient.podTasks(podId),
     })),
   });
-  const byId = new Map<string, PodTaskDto>();
-  for (const query of queries) {
-    for (const task of query.data?.tasks ?? []) if (!byId.has(task.id)) byId.set(task.id, task);
-  }
-  return { tasks: [...byId.values()], isLoading: queries.some((query) => query.isLoading) };
+  const tasks = mergePodTasks(queries.map((query) => query.data?.tasks ?? []));
+  return { tasks, isLoading: queries.some((query) => query.isLoading) };
 }
 
 /**

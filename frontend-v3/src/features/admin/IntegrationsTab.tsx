@@ -28,6 +28,7 @@ import {
   optionLabel,
   savePayload,
   savedBy,
+  testBlock,
   testPayload,
   visibleFields,
   visibleOptions,
@@ -194,6 +195,7 @@ function ConnectionDialog({
     },
     onError: (error) => toast.error(errorText(error)),
   });
+  const testStop = testBlock(connection, form);
   const runTest = useMutation({
     mutationFn: () => apiClient.testConnection(connection.connector, testPayload(connection, form)),
     onSuccess: (response) => {
@@ -289,6 +291,7 @@ function ConnectionDialog({
             to save it as a draft.
           </p>
         ) : null}
+        {testStop ? <p className="text-[13px] text-grey-body">{testStop}</p> : null}
 
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <div>
@@ -311,7 +314,8 @@ function ConnectionDialog({
               type="button"
               variant="ghost"
               size="sm"
-              disabled={runTest.isPending}
+              disabled={runTest.isPending || testStop !== null}
+              title={testStop ?? undefined}
               onClick={() => runTest.mutate()}
             >
               {runTest.isPending ? "Testing…" : "Test connection"}

@@ -28,12 +28,16 @@ export function isLogoType(value: string): value is LogoType {
   return (LOGO_TYPES as readonly string[]).includes(value);
 }
 
-/** Why a file cannot be the logo, judged from its type and size before it is read. */
+/**
+ * Why a file cannot be the logo, from what is known before it is read: an SVG,
+ * an empty file, or one over the limit. Its format is decided by its bytes
+ * (`logoUploadBody`), not by the type the browser reports: a PNG saved without
+ * an extension reports no type, and the server would take it.
+ */
 export function logoFileProblem(file: { type: string; size: number }): string | null {
   if (file.type === "image/svg+xml") {
     return `SVG logos are not accepted because an SVG can carry script. Choose a ${FORMATS} image.`;
   }
-  if (!isLogoType(file.type)) return `Choose a ${FORMATS} image.`;
   if (file.size === 0) return "That file is empty.";
   if (file.size > LOGO_MAX_BYTES) {
     return `A logo must be at most 256 KB; this file is ${Math.ceil(file.size / 1024)} KB.`;
