@@ -1,0 +1,36 @@
+frontend-v3/src/features/admin/structure.ts
+  s_a5c95ae649948d::t_c4dd4c9e8e96fb 2-4,221,225-228,230-231,293-296,305-307,437
+frontend-v3/src/features/admin/EntitiesTab.tsx
+  s_a5c95ae649948d::t_c4dd4c9e8e96fb 139
+frontend-v3/src/pages/CoordinationPage.tsx
+  s_a5c95ae649948d::t_c4dd4c9e8e96fb 189-193
+frontend-v3/src/features/admin/connectionForm.test.ts
+  s_a5c95ae649948d::t_9c45a95ec755d3 208
+  s_a5c95ae649948d::t_b7d3c168f15b10 155,158-159,164-170,190,192,199-207
+  s_a5c95ae649948d::t_d2651cc3254a0c 181-184,209
+  s_a5c95ae649948d::t_5d8fa6c904360d 210-211
+frontend-v3/src/features/admin/connectionForm.ts
+  s_a5c95ae649948d::t_d2651cc3254a0c 184-189,194-198
+  s_a5c95ae649948d::t_b7d3c168f15b10 168-175,179-181,204-207,223
+  s_a5c95ae649948d::t_d7fbd970a55724 199-200
+frontend-v3/src/features/admin/structure.test.ts
+  s_a5c95ae649948d::t_c4dd4c9e8e96fb 183,213
+frontend-v3/scripts/mock/admin-config.mjs
+  s_a5c95ae649948d::t_d93cc04c1c0ff3 738-811,1060-1064,1066
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fa89b5ca75271d0e476359bb41658a7ad72bbe35",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
