@@ -45,6 +45,14 @@ test("the eyebrow names the program, every program, or none", () => {
   assert.equal(todayEyebrow(undefined), day);
 });
 
+test("the eyebrow names the day shown: a past day, or the server's today", () => {
+  assert.equal(todayEyebrow(null, "2026-09-28"), "Monday, September 28, 2026");
+  assert.equal(
+    todayEyebrow("Digital Platform Program", "2026-10-07"),
+    "Wednesday, October 7, 2026 · Digital Platform Program",
+  );
+});
+
 test("a request says what it asks of the person it waits on", () => {
   assert.equal(requestSentence("Sofia Bergmann", "review"), "Sofia Bergmann asks you for a review");
   assert.equal(requestSentence("Noah Weber", "input"), "Noah Weber asks for your input");

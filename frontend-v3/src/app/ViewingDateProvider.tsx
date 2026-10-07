@@ -1,18 +1,18 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useLocation, useNavigate, useNavigationType } from "react-router-dom";
 
-import { setViewingAsOf } from "../api/asOf";
+import { currentServerToday, setViewingAsOf, subscribeServerToday } from "../api/asOf";
 import { setReadOnlyReason } from "../api/client";
 import {
   VIEWING_DATE_PARAM,
   choseToday,
   formatDayLabel,
+  guessToday,
   markTodayChosen,
   parseViewingDate,
   readOnlyReason,
   resolveViewingDate,
   showsCurrentState,
-  todayIso,
   withViewingDateParam,
 } from "../lib/viewingDate";
 import { ViewingDateContext, type ViewingDateValue } from "./viewingDate";
@@ -30,7 +30,7 @@ export function ViewingDateProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigation = useNavigationType();
   const navigate = useNavigate();
-  const today = useTodayIso();
+  const today = useToday();
   const [carried, setCarried] = useState<string | null>(null);
 
   const raw = new URLSearchParams(location.search).get(VIEWING_DATE_PARAM);
@@ -103,17 +103,21 @@ export function ViewingDateProvider({ children }: { children: ReactNode }) {
 }
 
 /**
- * Today, kept current across midnight, so a console left open overnight does
+ * Today: the server's day once a read has said it (`learnServerToday`), and
+ * until then `guessToday`. The guess is kept current across midnight (UTC or
+ * the browser's, whichever comes first), so a console left open overnight does
  * not keep asking for yesterday (and refusing changes to it). Timers in a
  * hidden tab can run late, so coming back to the tab checks too.
  */
-function useTodayIso(): string {
-  const [today, setToday] = useState(() => todayIso());
+function useToday(): string {
+  const server = useSyncExternalStore(subscribeServerToday, currentServerToday, () => null);
+  const [guess, setGuess] = useState(() => guessToday());
   useEffect(() => {
-    const check = () => setToday(todayIso());
+    const check = () => setGuess(guessToday());
     const now = new Date();
-    const nextDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
-    const timer = window.setTimeout(check, nextDay - now.getTime() + 1000);
+    const nextUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+    const nextLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+    const timer = window.setTimeout(check, Math.min(nextUtc, nextLocal) - now.getTime() + 1000);
     window.addEventListener("focus", check);
     document.addEventListener("visibilitychange", check);
     return () => {
@@ -121,6 +125,6 @@ function useTodayIso(): string {
       window.removeEventListener("focus", check);
       document.removeEventListener("visibilitychange", check);
     };
-  }, [today]);
-  return today;
+  }, [guess]);
+  return server ?? guess;
 }

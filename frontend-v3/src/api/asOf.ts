@@ -80,3 +80,48 @@ export function withViewingAsOf(
   if (!acceptsAsOf(pathname) || new URLSearchParams(query).has("as_of")) return path;
   return `${path}${query ? "&" : "?"}as_of=${encodeURIComponent(day)}`;
 }
+
+/**
+ * The day the backend reads as today, or null until it has said. A dated read
+ * sent without `as_of` answers for the server's `date.today()` and echoes that
+ * day, so the console learns it from the answers it gets anyway. Counting by
+ * it keeps the console and the API on one calendar: a UTC browser and an IST
+ * server otherwise disagree from 00:00 to 05:30, and the day before cannot be
+ * picked.
+ */
+let serverToday: string | null = null;
+const serverTodayListeners = new Set<() => void>();
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+export function currentServerToday(): string | null {
+  return serverToday;
+}
+
+export function subscribeServerToday(listener: () => void): () => void {
+  serverTodayListeners.add(listener);
+  return () => {
+    serverTodayListeners.delete(listener);
+  };
+}
+
+/**
+ * Called with each successful answer and the path it was sent to. Only a read
+ * that accepts `as_of` and was sent without one teaches today; an answer for a
+ * past day, a change, or a body without a well-formed `as_of` is ignored.
+ */
+export function learnServerToday(
+  sentPath: string,
+  method: string | undefined,
+  body: unknown,
+): void {
+  if ((method ?? "GET").toUpperCase() !== "GET") return;
+  const queryAt = sentPath.indexOf("?");
+  const pathname = queryAt === -1 ? sentPath : sentPath.slice(0, queryAt);
+  const query = queryAt === -1 ? "" : sentPath.slice(queryAt + 1);
+  if (!acceptsAsOf(pathname) || new URLSearchParams(query).has("as_of")) return;
+  const day =
+    typeof body === "object" && body !== null ? (body as { as_of?: unknown }).as_of : undefined;
+  if (typeof day !== "string" || !ISO_DAY.test(day) || day === serverToday) return;
+  serverToday = day;
+  for (const listener of serverTodayListeners) listener();
+}

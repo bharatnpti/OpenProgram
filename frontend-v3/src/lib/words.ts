@@ -30,12 +30,18 @@ export function daysLabel(days: number): string {
 }
 
 /**
- * Today's date and the program, the way every Today opens. With several
- * programs (a person whose pods feed more than one) they are listed, so the
- * line never names one program for work that sits in another.
+ * The day shown and the program, the way every Today opens. `day` is the day
+ * the screen's numbers are for (a past day being viewed, or the server's
+ * today); without one it is the browser's today. With several programs (a
+ * person whose pods feed more than one) they are listed, so the line never
+ * names one program for work that sits in another.
  */
-export function todayEyebrow(programNames: string | string[] | null | undefined): string {
-  const day = new Date().toLocaleDateString("en-US", {
+export function todayEyebrow(
+  programNames: string | string[] | null | undefined,
+  day?: string | null,
+): string {
+  const moment = day ? new Date(`${day.slice(0, 10)}T12:00:00`) : new Date();
+  const label = moment.toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
     day: "numeric",
@@ -44,7 +50,7 @@ export function todayEyebrow(programNames: string | string[] | null | undefined)
   const names = (Array.isArray(programNames) ? programNames : [programNames]).filter(
     (name): name is string => Boolean(name),
   );
-  return names.length > 0 ? `${day} · ${names.join(" · ")}` : day;
+  return names.length > 0 ? `${label} · ${names.join(" · ")}` : label;
 }
 
 export function greetingWord(): string {

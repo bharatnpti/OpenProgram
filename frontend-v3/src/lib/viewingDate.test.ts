@@ -5,6 +5,7 @@ import {
   choseToday,
   dayWords,
   formatDayLabel,
+  guessToday,
   markTodayChosen,
   parseViewingDate,
   readOnlyReason,
@@ -16,6 +17,23 @@ import {
 } from "./viewingDate.ts";
 
 const TODAY = "2026-10-06";
+
+test("a year typed digit by digit never opens year 202 on the way", () => {
+  assert.equal(parseViewingDate("0202-10-06", TODAY), null);
+  assert.equal(parseViewingDate("1999-12-31", TODAY), null);
+  assert.equal(parseViewingDate("2000-01-01", TODAY), "2000-01-01");
+});
+
+test("until the server says, today is the later of the UTC and the browser's day", () => {
+  // Whatever zone the tests run in, the guess is never earlier than either day.
+  const now = new Date("2026-10-06T20:30:00Z");
+  const guess = guessToday(now);
+  assert.ok(guess >= todayIso(now));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const local = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  assert.ok(guess >= local);
+  assert.ok(guess === local || guess === todayIso(now));
+});
 
 test("only a real day before today is a past day", () => {
   assert.equal(parseViewingDate("2026-09-28", TODAY), "2026-09-28");

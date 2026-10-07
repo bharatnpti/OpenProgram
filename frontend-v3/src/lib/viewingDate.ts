@@ -13,20 +13,44 @@ export type NavigationKind = "POP" | "PUSH" | "REPLACE";
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-/**
- * Today's date as the console counts it: the UTC calendar day, as frontend-v2
- * does, so both consoles agree on which day is "today".
- */
+/** The UTC calendar day, as frontend-v2 counts today. */
 export function todayIso(now: Date = new Date()): string {
   return now.toISOString().slice(0, 10);
 }
+
+/** The browser's own calendar day. */
+export function localIso(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/**
+ * Today until the backend has said which day it reads as today (the console
+ * then counts by the server's day: see `learnServerToday`). The later of the
+ * UTC day and the browser's own, so a day that is already past by either clock
+ * is never taken for today, and dropped from a link, while that answer is on
+ * its way.
+ */
+export function guessToday(now: Date = new Date()): string {
+  const utc = todayIso(now);
+  const local = localIso(now);
+  return local > utc ? local : utc;
+}
+
+/**
+ * The earliest day the console will look back to. A year typed digit by digit
+ * in the day field passes through 0002, 0020 and 0202; each is a calendar day,
+ * and without a floor each one would be opened on the way to 2025.
+ */
+export const EARLIEST_VIEWING_DATE = "2000-01-01";
 
 /**
  * The past day a `?asOf=` value names, or null for today.
  *
  * Null covers every value that is not a real past day: absent or empty, not
- * YYYY-MM-DD, not on the calendar (2026-02-30), today itself, or later than
- * today. ISO dates order the same as strings, so the comparison is a string one.
+ * YYYY-MM-DD, not on the calendar (2026-02-30), before `EARLIEST_VIEWING_DATE`,
+ * today itself, or later than today. ISO dates order the same as strings, so
+ * the comparison is a string one.
  */
 export function parseViewingDate(raw: string | null, today: string): string | null {
   if (!raw) return null;
@@ -41,7 +65,7 @@ export function parseViewingDate(raw: string | null, today: string): string | nu
   ) {
     return null;
   }
-  return raw < today ? raw : null;
+  return raw >= EARLIEST_VIEWING_DATE && raw < today ? raw : null;
 }
 
 /**

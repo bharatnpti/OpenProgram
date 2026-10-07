@@ -7,7 +7,7 @@ export type ViewingDateValue = {
   chosen: string | null;
   /** The day this screen's reads ask for: the chosen day, or null (today, and always on Admin). */
   asOf: string | null;
-  /** Today, the way `todayIso` counts it. */
+  /** Today: the server's day once a read has said it, else `guessToday`. */
   today: string;
   /** The chosen day as people read it ("Mon 28 Sept"), or null for today. */
   label: string | null;
@@ -51,4 +51,13 @@ export function useReadOnly(): { readOnly: boolean; reason: string | null } {
 export function useDayWords(): string {
   const context = useContext(ViewingDateContext);
   return dayWords(context?.asOf ? context.label : null);
+}
+
+/**
+ * The day this screen's numbers are for: the past day chosen, else today as
+ * the server counts it. For the date at the top of Today.
+ */
+export function useShownDay(): string | null {
+  const context = useContext(ViewingDateContext);
+  return context ? (context.chosen ?? context.today) : null;
 }

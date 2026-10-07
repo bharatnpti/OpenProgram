@@ -101,7 +101,7 @@ import type {
   BrandingResponse,
   TenantLogoUploadRequest,
 } from "./schema";
-import { withViewingAsOf } from "./asOf";
+import { learnServerToday, withViewingAsOf } from "./asOf";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const CSRF_COOKIE_NAME = import.meta.env.VITE_AUTH_CSRF_COOKIE_NAME ?? "openprogram_csrf";
@@ -179,7 +179,8 @@ async function requestJson<T>(
   ) {
     throw new ApiError(409, readOnlyReason);
   }
-  const response = await fetch(`${API_BASE_URL}${withViewingAsOf(path, options.method)}`, {
+  const sent = withViewingAsOf(path, options.method);
+  const response = await fetch(`${API_BASE_URL}${sent}`, {
     method: options.method,
     credentials: "include",
     headers: {
@@ -197,7 +198,9 @@ async function requestJson<T>(
   if (response.status === 204) {
     return undefined as T;
   }
-  return (await response.json()) as T;
+  const body = (await response.json()) as T;
+  learnServerToday(sent, options.method, body);
+  return body;
 }
 
 export const apiClient = {

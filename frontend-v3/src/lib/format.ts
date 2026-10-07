@@ -1,19 +1,33 @@
 // Pure helpers, type imports only, so `node --test` can run them directly.
 
-/** "Tue 6 Oct" for an ISO day, read at midday so no timezone moves it. */
+/**
+ * The moment to read a day from. A calendar day ("2026-10-06") is that day
+ * wherever the viewer is, so it is read at its own midday. A timestamp
+ * ("2026-10-06T18:37:00Z") is an instant, so its day is the viewer's local one,
+ * the same day `formatTime` puts beside it: 00:07 on Wed 7 Oct in India, not
+ * Tue 6 Oct.
+ */
+function dayMoment(iso: string): Date {
+  const day = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  if (iso.length <= 10 || iso[10] !== "T") return day;
+  const instant = new Date(iso);
+  return Number.isNaN(instant.getTime()) ? day : instant;
+}
+
+/** "Tue 6 Oct" for an ISO day, or for a timestamp in the viewer's own day. */
 export function formatDay(iso: string | null | undefined): string {
   if (!iso) return "—";
-  return new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString("en-GB", {
+  return dayMoment(iso).toLocaleDateString("en-GB", {
     weekday: "short",
     day: "numeric",
     month: "short",
   });
 }
 
-/** "6 Oct 2026" for an ISO day or timestamp. */
+/** "6 Oct 2026" for an ISO day, or for a timestamp in the viewer's own day. */
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
-  return new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString("en-GB", {
+  return dayMoment(iso).toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",

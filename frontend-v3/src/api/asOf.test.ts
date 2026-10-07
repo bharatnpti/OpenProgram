@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { acceptsAsOf, DATED_READS, withViewingAsOf } from "./asOf.ts";
+import {
+  acceptsAsOf,
+  currentServerToday,
+  DATED_READS,
+  learnServerToday,
+  subscribeServerToday,
+  withViewingAsOf,
+} from "./asOf.ts";
 
 type Operation = { parameters?: { name: string; in: string }[] };
 const spec = JSON.parse(readFileSync(new URL("./openapi.json", import.meta.url), "utf8")) as {
@@ -56,4 +63,19 @@ test("path templates match one segment per parameter", () => {
   assert.equal(acceptsAsOf("/workstreams/ws-1/extra"), false);
   assert.equal(acceptsAsOf("/me/status/confirm"), false);
   assert.equal(acceptsAsOf("/portfolio/feed"), false);
+});
+
+test("today is learned from a dated read sent for today, and from nothing else", () => {
+  let heard = 0;
+  const stop = subscribeServerToday(() => (heard += 1));
+  learnServerToday("/pods/pod-a/checkins?as_of=2026-09-28", "GET", { as_of: "2026-09-28" });
+  learnServerToday("/pods/pod-a/checkins", "POST", { as_of: "2026-09-29" });
+  learnServerToday("/config/members", "GET", { as_of: "2026-09-30" });
+  learnServerToday("/me/focus", "GET", { as_of: "7 Oct" });
+  assert.equal(currentServerToday(), null);
+  learnServerToday("/me/focus", "GET", { as_of: "2026-10-07", focus: [] });
+  assert.equal(currentServerToday(), "2026-10-07");
+  learnServerToday("/portfolio/heatmap?program_root_id=p", "GET", { as_of: "2026-10-07" });
+  assert.equal(heard, 1, "the same day again tells nobody");
+  stop();
 });
