@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { DirectoryItemResponse } from "../../api/schema";
-import { directoryRows, matchRows, peopleRows, screenRows } from "./paletteRows.ts";
+import { directoryRows, matchRows, noPodNote, peopleRows, screenRows } from "./paletteRows.ts";
 
 const item = (
   kind: DirectoryItemResponse["kind"],
@@ -114,4 +114,46 @@ test("a query keeps rows holding every word, names starting with it first", () =
   assert.deepEqual(matchRows(rows, "nothing like this"), []);
   assert.equal(matchRows(rows, "", 3).length, 3);
   assert.equal(matchRows(rows, "  ")[0].label, "Today");
+});
+
+const crew = [
+  { id: "U1007", name: "Kai Thompson", title: "Backend Engineer" },
+  { id: "U1001", name: "Asha Rao", title: null },
+  { id: "U1011", name: "Elena Fischer", title: "Director" },
+];
+const twoPods = [
+  item("pod", "pod-identity", "Identity Pod", { member_ids: ["U1001", "U1007"] }),
+  item("pod", "pod-payments", "Payments Pod", { member_ids: ["U1001"] }),
+];
+
+test("a person is found by any of their pods, and the row names the pod that matched", () => {
+  const rows = peopleRows(crew, twoPods);
+  const asha = rows.find((row) => row.label === "Asha Rao");
+  // Alphabetically Identity Pod is her first pod, so by default that is what the row opens.
+  assert.equal(asha?.hint, "Person · Identity Pod and 1 more");
+  assert.equal(asha?.to, "/delivery/pod/pod-identity");
+
+  const found = matchRows(rows, "pay");
+  assert.deepEqual(
+    found.map((row) => [row.label, row.hint, row.to]),
+    [["Asha Rao", "Person · Payments Pod and 1 more", "/delivery/pod/pod-payments"]],
+  );
+  // A query that matches their first pod leaves the row as it is.
+  assert.equal(matchRows(rows, "identity")[0].to, "/delivery/pod/pod-identity");
+  assert.deepEqual(
+    matchRows(rows, "asha pay").map((row) => row.label),
+    ["Asha Rao"],
+  );
+  assert.deepEqual(matchRows(rows, "kai pay"), [], "every word still has to match");
+});
+
+test("a person in no pod is never offered, and the empty result says why", () => {
+  assert.deepEqual(matchRows(peopleRows(crew, twoPods), "elena"), []);
+  assert.equal(
+    noPodNote(crew, twoPods, "elena"),
+    "Elena Fischer is in no pod, so there is no Delivery page to open.",
+  );
+  assert.equal(noPodNote(crew, twoPods, "kai"), null, "someone in a pod is not the reason");
+  assert.equal(noPodNote(crew, twoPods, "nobody like this"), null);
+  assert.equal(noPodNote(crew, twoPods, "  "), null);
 });

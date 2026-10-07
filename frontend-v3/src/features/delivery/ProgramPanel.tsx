@@ -7,6 +7,7 @@ import { useRole } from "../../app/role";
 import { PanelState } from "../../components/PanelState";
 import { Panel, RagBadge, RagDot } from "../../components/ui/Bits";
 import { ragSeverity } from "../../lib/status";
+import { plural } from "../../lib/words";
 import { FactorsPanel, NodeHeader } from "./NodeBits";
 import { worstFirst } from "./factors";
 
@@ -62,11 +63,16 @@ export function ProgramPanel({ program }: { program: DirectoryItemResponse }) {
       >
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
           <div className="flex flex-wrap gap-2 text-[13px] text-grey-body">
-            {(["project", "workstream", "pod", "developer", "task"] as const).map((kind) => (
-              <span key={kind} className="rounded-full bg-grey-fill px-3 py-1 font-bold">
-                {count(kind)} {kind === "developer" ? "people" : `${kind}s`}
-              </span>
-            ))}
+            {(["project", "workstream", "pod", "developer", "task"] as const)
+              // Workstreams are optional: a program that uses none says nothing about them.
+              .filter((kind) => kind !== "workstream" || count(kind) > 0)
+              .map((kind) => (
+                <span key={kind} className="rounded-full bg-grey-fill px-3 py-1 font-bold">
+                  {kind === "developer"
+                    ? plural(count(kind), "person", "people")
+                    : plural(count(kind), kind, `${kind}s`)}
+                </span>
+              ))}
           </div>
           <Panel title="Projects" note="worst first">
             {projects.length === 0 ? (

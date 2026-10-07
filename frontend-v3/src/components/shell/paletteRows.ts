@@ -11,6 +11,12 @@ export type PaletteRow = {
   /** What it is and where it sits, e.g. "Pod · Checkout Revamp". */
   hint: string;
   to: string;
+  /**
+   * A person's pods, the one the row opens first, and what the hint says
+   * before them ("Backend Engineer · "). A query naming another of their pods
+   * finds them and opens that one.
+   */
+  person?: { lead: string; pods: { id: string; name: string }[] };
 };
 
 export type Directory = {
@@ -97,17 +103,51 @@ export function peopleRows(people: NamedPerson[], pods: DirectoryItemResponse[])
       .filter((pod) => pod.member_ids.includes(person.id))
       .sort((a, b) => a.name.localeCompare(b.name));
     if (theirs.length === 0) continue;
-    const more = theirs.length > 1 ? ` and ${theirs.length - 1} more` : "";
     const title = person.title?.trim();
+    const lead = title ? `${title} · ` : "Person · ";
     rows.push({
       key: `person:${person.id}`,
       kind: "person",
       label: person.name,
-      hint: `${title ? `${title} · ` : "Person · "}${theirs[0].name}${more}`,
+      hint: personHint(lead, theirs),
       to: delivery("pod", theirs[0].id),
+      person: { lead, pods: theirs.map((pod) => ({ id: pod.id, name: pod.name })) },
     });
   }
   return rows.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** "Backend Engineer · Payments Pod and 1 more": the first pod named, the others counted. */
+function personHint(lead: string, pods: { name: string }[]): string {
+  const more = pods.length > 1 ? ` and ${pods.length - 1} more` : "";
+  return `${lead}${pods[0].name}${more}`;
+}
+
+/**
+ * People the palette cannot take anywhere, because they are in no pod, whose
+ * name a query picks out. An empty result then says why, instead of reading as
+ * "no such person".
+ */
+export function noPodNote(
+  people: NamedPerson[],
+  pods: DirectoryItemResponse[],
+  query: string,
+): string | null {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return null;
+  const seen = new Set<string>();
+  const lonely = people.filter((person) => {
+    if (seen.has(person.id) || !person.name || person.name === person.id) return false;
+    seen.add(person.id);
+    const name = person.name.toLowerCase();
+    return (
+      words.every((word) => name.includes(word)) &&
+      !pods.some((pod) => pod.member_ids.includes(person.id))
+    );
+  });
+  if (lonely.length === 0) return null;
+  const names = lonely.map((person) => person.name).join(", ");
+  return `${names} ${lonely.length === 1 ? "is" : "are"} in no pod, so there is no Delivery page to open.`;
 }
 
 /**
@@ -127,11 +167,33 @@ export function matchRows(rows: PaletteRow[], query: string, limit = 12): Palett
     if (label.includes(needle)) return 2;
     return 3;
   };
+  // A person's row also answers to every pod they are in, not only the one it names.
+  const text = (row: PaletteRow) =>
+    [row.label, row.hint, ...(row.person?.pods.map((pod) => pod.name) ?? [])]
+      .join(" ")
+      .toLowerCase();
   return rows
-    .map((row, index) => ({ row, index, text: `${row.label} ${row.hint}`.toLowerCase() }))
-    .filter(({ text }) => words.every((word) => text.includes(word)))
-    .map((entry) => ({ ...entry, score: score(entry.row) }))
+    .map((row, index) => ({ row, index, text: text(row) }))
+    .filter((entry) => words.every((word) => entry.text.includes(word)))
+    .map((entry) => ({ ...entry, row: focusPod(entry.row, words), score: score(entry.row) }))
     .sort((a, b) => a.score - b.score || a.index - b.index)
     .slice(0, limit)
     .map(({ row }) => row);
+}
+
+/**
+ * A person found by one of their other pods opens that pod and names it, so the
+ * row says why it matched ("pay" finds someone whose first pod is Identity).
+ */
+function focusPod(row: PaletteRow, words: string[]): PaletteRow {
+  const person = row.person;
+  if (!person || person.pods.length < 2) return row;
+  const named = (pod: { name: string }) =>
+    words.some((word) => pod.name.toLowerCase().includes(word));
+  // Already first and named, or nothing of theirs named at all: as it was.
+  if (named(person.pods[0])) return row;
+  const hit = person.pods.find(named);
+  if (!hit) return row;
+  const pods = [hit, ...person.pods.filter((pod) => pod.id !== hit.id)];
+  return { ...row, hint: personHint(person.lead, pods), to: delivery("pod", hit.id) };
 }

@@ -10,6 +10,7 @@ import { cn } from "../../lib/utils";
 import {
   directoryRows,
   matchRows,
+  noPodNote,
   peopleRows,
   screenRows,
   type NamedPerson,
@@ -108,6 +109,11 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
       ),
     [directory, named, query, roleState],
   );
+  // A name that finds nobody may be a person in no pod: there is nowhere to take them.
+  const noPod = useMemo(
+    () => (rows.length === 0 ? noPodNote(named, directory.pods, query) : null),
+    [directory.pods, named, query, rows.length],
+  );
   const current = Math.min(active, Math.max(rows.length - 1, 0));
   const loading = programs.isLoading || projects.isLoading || pods.isLoading;
   const failed = programs.error ?? projects.error ?? pods.error ?? workstreams.error;
@@ -181,6 +187,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
         {rows.length === 0 ? (
           <li className="px-4 py-8 text-center text-[14px] text-grey-secondary">
             Nothing matches “{query.trim()}”.
+            {noPod ? <span className="mt-1 block">{noPod}</span> : null}
           </li>
         ) : (
           rows.map((row, index) => (

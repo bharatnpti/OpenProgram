@@ -29,7 +29,13 @@ export function ProjectPanel({ project, find }: { project: DirectoryItemResponse
         kind="Project"
         name={project.name}
         rag={p?.rag ?? project.rag}
-        reason={p ? reasonLine(p.factors, p.source_names) : undefined}
+        reason={
+          canReadProjectProgress
+            ? p
+              ? reasonLine(p.factors, p.source_names)
+              : undefined
+            : "The reasons behind a project's status open for a product owner, manager, executive or admin."
+        }
         actions={
           <>
             <Link

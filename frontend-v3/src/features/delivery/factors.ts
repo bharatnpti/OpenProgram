@@ -34,6 +34,10 @@ const FACTOR_WORDS: Record<string, string> = {
   aggregate: "rollup",
   target_date: "target date",
   no_pod: "in no pod",
+  // The reasons themselves read "Signals disagree: CHK-11 has a merge request open 5 days".
+  // Not "drift": Signals' Drift list counts only what was reported against what happened,
+  // while this also counts a merge request open too long that its owner never mentioned.
+  drift: "signals disagree",
 };
 
 const NODE_WORDS: Record<string, string> = {
@@ -76,6 +80,17 @@ export function reasonRows(factors: RollupFactorDto[], names: Record<string, str
     }
   }
   return [...rows.values()];
+}
+
+/**
+ * The count above the reasons: "2 reasons", "1 reason from 6 places". Merged
+ * rows say how many places they came from, in the singular too.
+ */
+export function reasonsNote(rows: number, places: number): string {
+  const reasons = `${rows} ${rows === 1 ? "reason" : "reasons"}`;
+  return rows === places
+    ? reasons
+    : `${reasons} from ${places} ${places === 1 ? "place" : "places"}`;
 }
 
 /** "a, b and 4 more": a few sources by name, then a count. */

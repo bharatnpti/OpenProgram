@@ -16,6 +16,13 @@ import { RagChip } from "../components/ui/RagChip";
 import { formatDay, formatTime } from "../lib/format";
 import { ragSeverity } from "../lib/status";
 import { plural, sourceLine, spaced } from "../lib/words";
+import {
+  DRIFT_EMPTY_WORDS,
+  FLOW_EMPTY_TITLE,
+  FLOW_EMPTY_WORDS,
+  findingSubject,
+  flowIsEmpty,
+} from "../features/signals/signalWords";
 
 const VIEWS = ["everything", "risks", "drift", "flow", "feed"] as const;
 type View = (typeof VIEWS)[number];
@@ -98,7 +105,7 @@ export function SignalsPage() {
                     ? d.length
                     : r.length + d.length) === 0
               }
-              emptyText="No open findings."
+              emptyText={view === "drift" ? DRIFT_EMPTY_WORDS : "No open findings."}
             >
               <Stream risks={view === "drift" ? [] : r} drift={view === "risks" ? [] : d} />
             </PanelState>
@@ -179,7 +186,7 @@ function Stream({ risks, drift }: { risks: RiskFindingResponse[]; drift: DriftFi
                   {spaced(ref.kind)} {ref.id}
                 </Link>
               ) : (
-                `${spaced(ref.kind)} ${ref.id}`
+                findingSubject(ref, item.type === "risk" ? item.x.person_name : null, names)
               )}
               {item.x.evidence && item.x.evidence.identifier !== ref.id
                 ? ` · ${item.x.evidence.identifier}`
@@ -242,6 +249,15 @@ function RiskCard({ risk }: { risk: RiskFindingResponse }) {
 }
 
 function FlowBlock({ flow, full }: { flow: PortfolioFlowResponse; full: boolean }) {
+  // Nothing measured is not "nothing moving": say so, rather than six zeros.
+  if (flowIsEmpty(flow)) {
+    return (
+      <div role="note" className="rounded-3xl bg-grey-fill p-5">
+        <p className="text-[15px] font-extrabold">{FLOW_EMPTY_TITLE}</p>
+        <p className="mt-1 text-[14px] text-grey-body">{FLOW_EMPTY_WORDS}</p>
+      </div>
+    );
+  }
   const kpi = (label: string, value: string, note?: string) => (
     <div className="rounded-2xl border border-grey-border p-3">
       <p className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary">{label}</p>

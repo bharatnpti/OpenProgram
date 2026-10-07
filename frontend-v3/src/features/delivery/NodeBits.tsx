@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import type { DirectoryItemResponse, Rag, RollupFactorDto } from "../../api/schema";
 import { Panel, RagBadge, RagDot, Row } from "../../components/ui/Bits";
 import { cn } from "../../lib/utils";
-import { reasonRows, sourcesLine } from "./factors";
+import { reasonsNote, reasonRows, sourcesLine } from "./factors";
 
 /** The top of every Delivery panel: kind, name, colour, and the one-line reason. */
 export function NodeHeader({
@@ -51,14 +51,7 @@ export function FactorsPanel({
   if (factors.length < 2) return null;
   const rows = reasonRows(factors, names);
   return (
-    <Panel
-      title="Every reason"
-      note={
-        rows.length === factors.length
-          ? `${factors.length} reasons`
-          : `${rows.length} reasons from ${factors.length} places`
-      }
-    >
+    <Panel title="Every reason" note={reasonsNote(rows.length, factors.length)}>
       <ul>
         {rows.map((row) => (
           <Row

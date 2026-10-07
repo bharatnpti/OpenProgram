@@ -6,6 +6,7 @@ import {
   metadataFacts,
   reasonLine,
   reasonRows,
+  reasonsNote,
   sourcesLine,
   worstFirst,
 } from "./factors.ts";
@@ -135,4 +136,26 @@ test("the reason names whom it comes from when the server names them", () => {
   );
   assert.equal(reasonLine([factor("stale", "amber", "U9")], {}), "stale");
   assert.equal(reasonLine([], {}), null);
+});
+
+test("the reasons count agrees with its word, and says how many places it merged", () => {
+  assert.equal(reasonsNote(3, 3), "3 reasons");
+  assert.equal(reasonsNote(2, 6), "2 reasons from 6 places");
+  assert.equal(reasonsNote(1, 6), "1 reason from 6 places");
+  assert.equal(reasonsNote(1, 2), "1 reason from 2 places");
+});
+
+test("a rollup's drift reason is called what it says, not 'drift'", () => {
+  const rows = reasonRows(
+    [
+      factor(
+        "Signals disagree: CHK-11 has a merge request open 5 days (storefront-web !2).",
+        "amber",
+        "U2",
+        "drift",
+      ),
+    ],
+    { U2: "Zoe Almeida" },
+  );
+  assert.equal(rows[0].kind, "signals disagree");
 });

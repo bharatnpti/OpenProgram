@@ -4,13 +4,14 @@ import { useState } from "react";
 import { apiClient } from "../../api/client";
 import type { DirectoryItemResponse, PodDeliveryResponse } from "../../api/schema";
 import { useRole } from "../../app/role";
+import { useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { Panel } from "../../components/ui/Bits";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDate, formatDay } from "../../lib/format";
 import { VERDICT_LABELS, toneForVerdict } from "../../lib/status";
-import { inScope, podLaterThanProject } from "../overall/overallWords";
+import { inScope, isPastDay, podLaterThanProject } from "../overall/overallWords";
 import { WHO } from "../reports/access";
 import { DeliveryDateDialog } from "../reports/DeliveryDateDialog";
 import { Locked } from "../reports/ReportDialog";
@@ -102,6 +103,7 @@ export function PodProjectRow({
   onEdit: () => void;
 }) {
   const scope = item.pod;
+  const shownDay = useShownDay();
   const counted = inScope(scope);
   const target = scope.commitment.target_date;
   const history = scope.history;
@@ -125,7 +127,7 @@ export function PodProjectRow({
           <p className="mt-1 text-[13px] text-grey-body">
             Pod: <strong className="text-ink">{target ? formatDate(target) : "no date"}</strong>
             {" · "}Project: {item.project_target ? formatDate(item.project_target) : "no date"}
-            {counted ? ` · ${scope.open} of ${scope.total} open` : ""}
+            {counted ? ` · ${scope.open} of ${scope.total} requirements open` : ""}
           </p>
           {podLaterThanProject(target, item.project_target) ? (
             <p className="mt-1 text-[13px] font-bold text-rag-amber">
@@ -151,7 +153,7 @@ export function PodProjectRow({
             ? `Completion rate says ${formatDay(history.p50)} (50% likely)${history.p85 ? `, ${formatDay(history.p85)} (85% likely)` : ""}.`
             : (history.reason ?? "Not enough history to forecast yet.")}
         {counted && scope.team.latest
-          ? ` The team's latest date is ${formatDay(scope.team.latest)}${scope.team.latest_key ? ` (${scope.team.latest_key})` : ""}.`
+          ? ` The team's latest date is ${formatDay(scope.team.latest)}${scope.team.latest_key ? ` (${scope.team.latest_key})` : ""}${isPastDay(scope.team.latest, shownDay) ? ", past its date" : ""}.`
           : ""}
       </p>
     </li>

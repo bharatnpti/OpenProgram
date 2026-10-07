@@ -9,7 +9,8 @@ import { Panel, RagBadge, Row } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
-import { sourceLine } from "../../lib/words";
+import { plural } from "../../lib/words";
+import { podCheckinMeta } from "../today/checkin";
 import { FactorsPanel, NodeHeader, Related } from "./NodeBits";
 import { PodDeliveryCard } from "./PodDeliveryCard";
 import { checkinStateWords, reasonLine, type Finder } from "./factors";
@@ -110,7 +111,7 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
                             : "amber"
                       }
                       title={dev.developer_name}
-                      meta={dev.summary || sourceLine(dev.source)}
+                      meta={podCheckinMeta(dev, c?.as_of ?? "", { day: formatDay })}
                       right={checkinStateWords(dev)}
                     />
                   ))}
@@ -144,58 +145,67 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
           {rollup.data ? (
             <FactorsPanel factors={rollup.data.factors} names={rollup.data.source_names} />
           ) : null}
-          <PanelState
-            needs={NEEDS}
-            isLoading={tasks.isLoading}
-            error={tasks.error}
-            isEmpty={sortedTasks.length === 0}
-            emptyText="No tasks are assigned to this pod's members within its remit."
+          <Panel
+            title="Tasks held by the pod's people"
+            note={plural(sortedTasks.length, "task", "tasks")}
           >
-            <TableBox>
-              <table className="w-full min-w-[680px] border-collapse">
-                <thead>
-                  <tr>
-                    <th className={th}>Task</th>
-                    <th className={th}>Status</th>
-                    <th className={th}>Owners</th>
-                    <th className={th}>Blockers</th>
-                    <th className={th}>Due</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedTasks.map((task) => (
-                    <tr key={task.id}>
-                      <td className={td}>
-                        <span className="font-bold">{task.name}</span>
-                        <span className="block text-[12px] text-grey-secondary">
-                          {task.id}
-                          {task.tracker_status ? ` · ${task.tracker_status}` : ""}
-                        </span>
-                      </td>
-                      <td className={td}>
-                        {task.blocked ? (
-                          <RagChip tone="danger" className="h-6 px-2.5 text-[12px]">
-                            blocked
-                          </RagChip>
-                        ) : (
-                          <RagBadge rag={task.rag} />
-                        )}
-                      </td>
-                      <td className={td}>{task.owners.map((o) => o.name).join(", ") || "—"}</td>
-                      <td className={td}>
-                        {task.open_blockers.length === 0
-                          ? "—"
-                          : task.open_blockers
-                              .map((b) => `${b.description} (${b.age_days}d)`)
-                              .join("; ")}
-                      </td>
-                      <td className={`${td} whitespace-nowrap`}>{formatDay(task.deadline)}</td>
+            <PanelState
+              needs={NEEDS}
+              isLoading={tasks.isLoading}
+              error={tasks.error}
+              isEmpty={sortedTasks.length === 0}
+              emptyText="No tasks are assigned to this pod's members within its remit."
+            >
+              <TableBox>
+                <table className="w-full min-w-[680px] border-collapse">
+                  <thead>
+                    <tr>
+                      <th className={th}>Task</th>
+                      <th className={th}>Status</th>
+                      <th className={th}>Owners</th>
+                      <th className={th}>Blockers</th>
+                      <th className={th}>Due</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableBox>
-          </PanelState>
+                  </thead>
+                  <tbody>
+                    {sortedTasks.map((task) => (
+                      <tr key={task.id}>
+                        <td className={td}>
+                          <span className="font-bold">{task.name}</span>
+                          <span className="block text-[12px] text-grey-secondary">
+                            {task.id}
+                            {task.tracker_status ? ` · ${task.tracker_status}` : ""}
+                          </span>
+                        </td>
+                        <td className={td}>
+                          {task.blocked ? (
+                            <RagChip tone="danger" className="h-6 px-2.5 text-[12px]">
+                              blocked
+                            </RagChip>
+                          ) : (
+                            <RagBadge rag={task.rag} />
+                          )}
+                        </td>
+                        <td className={td}>{task.owners.map((o) => o.name).join(", ") || "—"}</td>
+                        <td className={td}>
+                          {task.open_blockers.length === 0
+                            ? "—"
+                            : task.open_blockers
+                                .map((b) => `${b.description} (${b.age_days}d)`)
+                                .join("; ")}
+                        </td>
+                        <td className={`${td} whitespace-nowrap`}>{formatDay(task.deadline)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableBox>
+              <p className="mt-2 text-[12px] text-grey-secondary">
+                Counted by who holds each task. The open count under Delivery dates counts the
+                requirements linked to the pod, so the two can differ.
+              </p>
+            </PanelState>
+          </Panel>
         </div>
       </PanelState>
     </>

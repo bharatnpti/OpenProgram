@@ -42,7 +42,13 @@ export function WorkstreamPanel({
         kind="Workstream"
         name={workstream.name}
         rag={p?.rag ?? workstream.rag}
-        reason={p ? reasonLine(p.factors, p.source_names) : undefined}
+        reason={
+          canReadProjectProgress
+            ? p
+              ? reasonLine(p.factors, p.source_names)
+              : undefined
+            : "The reasons behind a workstream's status open for a product owner, manager, executive or admin."
+        }
       />
       <Facts facts={facts} />
       <div className="mb-5 grid gap-2">
