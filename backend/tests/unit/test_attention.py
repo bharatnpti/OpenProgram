@@ -495,6 +495,54 @@ def test_signals_rank_by_severity_then_age_and_stop_at_five() -> None:
     )
 
 
+def _merge_request_risk(entity: EntityRef, age: int, severity: Rag = Rag.RED) -> RiskFinding:
+    return RiskFinding(
+        tenant_id="demo",
+        rule_id=RiskRuleId.PR_AGE,
+        severity=severity,
+        entity_ref=entity,
+        workstream_id=None,
+        reason=f"Pull request open for {age} days.",
+        evidence=RiskEvidence(identifier="web#4"),
+        age_days=age,
+        threshold_days=3,
+        detected_at=datetime(2026, 3, 9, tzinfo=UTC),
+        status=RiskFindingStatus.OPEN,
+    )
+
+
+def test_the_second_line_names_the_oldest_risks_whatever_order_they_are_read_in() -> None:
+    day = _day(
+        [
+            _status_of(NodeKind.DEVELOPER, ADA, Rag.GREEN),
+            _status_of(NodeKind.POD, "pod-web", Rag.GREEN),
+        ]
+    )
+    # The risk read hands them over youngest first within a severity: the line keeps
+    # three, and the one a day younger must not take the place of an older one.
+    risks = [
+        _merge_request_risk(_ref(NodeKind.DEVELOPER, ADA), 4),
+        _merge_request_risk(_ref(NodeKind.DEVELOPER, BEN), 5),
+        _merge_request_risk(_ref(NodeKind.TASK, "SHOP-8"), 5),
+        _merge_request_risk(_ref(NodeKind.TASK, "SHOP-9"), 9, severity=Rag.AMBER),
+    ]
+
+    view = attention_view(day, "prog", risks=risks)
+
+    assert view.detail == (
+        "Also: a merge request for Ben Okafor has been open 5 days; "
+        "a merge request for SHOP-8 has been open 5 days; "
+        "a merge request for Ada Lind has been open 4 days."
+    )
+    # The list below names them in the same order: a worse risk first, then the oldest.
+    assert [signal.title for signal in view.signals] == [
+        "A merge request for Ben Okafor has been open 5 days",
+        "A merge request for SHOP-8 has been open 5 days",
+        "A merge request for Ada Lind has been open 4 days",
+        "A merge request for SHOP-9 has been open 9 days",
+    ]
+
+
 def test_nothing_reporting_is_never_green() -> None:
     day = _day([_status_of(NodeKind.POD, "pod-web", Rag.UNKNOWN)])
 

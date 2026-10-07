@@ -385,7 +385,8 @@ Functional requirements:
 - The system shall rate a finding amber at its threshold and red at double it.
 - The system shall present a finding's age as the age it has on the date being read, not the age it had when the rule fired.
 - The system shall re-derive a finding's severity from that current age, so an open finding escalates as it ages without needing to be re-detected.
-- The system shall keep a finding's stored reason as a statement about detection time, since it describes the evidence that opened the finding.
+- The system shall keep a finding's stored reason as a statement about detection time, since it describes the evidence that opened the finding, except for the day count the rules word into it (open, active or unchanged for N days), which is worded again with the age the finding has on the date being read, so a sentence never shows a second, older age beside the finding's own.
+- The system shall keep one finding per pull request, so a person with several open requests has several findings, and a portfolio read counts every one of them.
 - The system shall record a fact when a finding opens and when it clears, and shall not duplicate a finding that is already open.
 - The system shall show the owner's own narrative beside the signal that contradicts it.
 - The system shall detect drift such as work reported done with no pull request, and claimed progress with no activity.
