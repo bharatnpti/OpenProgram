@@ -18,7 +18,7 @@ import { reasonLine, type Finder } from "./factors";
 const NEEDS = "a scrum master, manager or admin";
 
 /**
- * A pod: members and who confirmed today, open blockers, and its tasks (blocked
+ * A pod: members and who replied today, open blockers, and its tasks (blocked
  * first, each with owners and the blockers on it). Check-ins and blockers are
  * per person, so they open for a scrum master, manager or admin only.
  */
@@ -109,7 +109,7 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
                       key={dev.developer_id}
                       rag={boardRag(dev)}
                       title={dev.developer_name}
-                      meta={boardMeta(dev, c?.as_of ?? "", { day: formatDay })}
+                      meta={boardMeta(dev, c?.as_of ?? "", { day: formatDay, today: day })}
                       right={boardWord(dev, c?.as_of ?? "").word}
                     />
                   ))}

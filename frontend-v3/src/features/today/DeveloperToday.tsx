@@ -7,7 +7,7 @@ import { ApiError, apiClient } from "../../api/client";
 import type { FocusResponse, MyStatusResponse, StatusCorrectionRequest } from "../../api/schema";
 import { usePods, usePrograms, useProjects } from "../../app/directory";
 import { useRole } from "../../app/role";
-import { useReadOnly, useShownDay } from "../../app/viewingDate";
+import { useDayWords, useReadOnly, useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { Greeting, Panel, RagBadge, RagDot, Row } from "../../components/ui/Bits";
 import { Pill } from "../../components/ui/Pill";
@@ -136,7 +136,7 @@ function focusLine(item: FocusResponse["focus"][number], focus: FocusResponse | 
   if (item.kind === "blocker" && isNoReplyPlaceholder(item.label)) {
     return {
       title: "Confirm your check-in",
-      meta: "no confirmed reply yet",
+      meta: "no reply yet",
       tag: "CHECK-IN",
       urgent: false,
     };
@@ -180,6 +180,7 @@ function CheckinCard({
 }) {
   const queryClient = useQueryClient();
   const { readOnly, reason } = useReadOnly();
+  const dayWords = useDayWords();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ["me"] });
   const confirm = useMutation({
     mutationFn: () => apiClient.confirmMyStatus(),
@@ -217,7 +218,7 @@ function CheckinCard({
               developerConfirmed: status.developer_confirmed,
               summary: status.summary,
             },
-            { day: formatDay, time: formatTime },
+            { day: formatDay, time: formatTime, today: dayWords },
           )
         : status.status_as_of
           ? `status from ${formatDay(status.status_as_of)}`
@@ -266,7 +267,7 @@ function CheckinCard({
               {judged && shown.kind === "carried" && shown.from && status.summary ? (
                 <span className="font-bold text-grey-secondary">{formatDay(shown.from)}: </span>
               ) : null}
-              {status.summary || "Nothing reported yet today."}
+              {status.summary || `Nothing reported yet ${dayWords}.`}
             </p>
             {status.eta_change_days ? (
               <p className="text-[13px] text-grey-body">

@@ -118,6 +118,19 @@ describe("a board's row", () => {
     );
   });
 
+  test("says the day it is for while a past day is shown", () => {
+    const past = { ...say, today: "on Mon 5 Oct" };
+    assert.equal(boardMeta(person({}), TODAY, past), "replied on Mon 5 Oct · Merged the handler");
+    assert.equal(
+      boardMeta(person({ state: "stale", source: "unknown", summary: "" }), TODAY, past),
+      "no reply on Mon 5 Oct",
+    );
+    assert.equal(
+      boardMeta(person({ state: "stale", status_as_of: "2026-10-02" }), TODAY, past),
+      "last replied day 2026-10-02, nothing on Mon 5 Oct · Merged the handler",
+    );
+  });
+
   test("says what stands in for a reply, and that a new person has no status", () => {
     assert.equal(
       boardMeta(person({ state: "stale", source: "inferred", summary: "" }), TODAY, say),

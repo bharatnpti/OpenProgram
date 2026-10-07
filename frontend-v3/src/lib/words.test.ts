@@ -19,9 +19,10 @@ import {
 } from "./words.ts";
 
 test("a source reads in plain words, with confidence when the server gives one", () => {
-  assert.equal(sourceLine("confirmed"), "confirmed");
-  assert.equal(sourceLine("partial", 0.5), "partly answered · 50% confidence");
-  // A person who never answered has no status: not "unknown".
+  // A task's or blocker's owner reported it: "confirmed" is a person's own act on their check-in.
+  assert.equal(sourceLine("confirmed"), "reported");
+  assert.equal(sourceLine("partial", 0.5), "partly reported · 50% confidence");
+  // An owner who never reported has no status: not "unknown".
   assert.equal(sourceLine("unknown"), "no status");
   assert.equal(sourceLine(null), "no status");
 });

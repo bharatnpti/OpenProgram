@@ -2,12 +2,15 @@
 import type { StatusSource } from "../api/schema";
 
 const SOURCE_WORDS: Record<StatusSource, string> = {
-  confirmed: "confirmed",
-  partial: "partly answered",
+  // What a task or blocker's owner reported. Not "confirmed": that is what a
+  // person does to their own check-in in the console (lib/checkinWords.ts), and
+  // a task row said "confirmed" beside a card that said "replied, not confirmed".
+  confirmed: "reported",
+  partial: "partly reported",
   inferred: "inferred",
   stale: "stale",
-  // The source of a row whose person never answered: nothing was reported, so
-  // say that rather than the word "unknown".
+  // The source of a row whose owner never reported: nothing was, so say that
+  // rather than the word "unknown".
   unknown: "no status",
 };
 

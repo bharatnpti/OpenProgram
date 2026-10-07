@@ -97,9 +97,11 @@ export function boardRag(person: BoardPerson): "green" | "amber" | "unknown" {
 export function boardMeta(
   person: BoardPerson,
   asOf: string,
-  say: { day: (iso: string) => string },
+  say: { day: (iso: string) => string; today?: string },
 ): string {
   const { state, source, status_as_of: from, summary } = person;
+  // "today", or "on Mon 5 Oct" while a past day is shown.
+  const today = say.today ?? "today";
   if (repliedWithoutStatus(summary, source)) return "replied without a status";
   if (state === "missing") return "no status yet";
   let lead: string;
@@ -107,18 +109,19 @@ export function boardMeta(
     const day = say.day(from);
     lead =
       source === "confirmed"
-        ? `last replied ${day}, nothing today`
+        ? `last replied ${day}, nothing ${today}`
         : source === "partial"
-          ? `last partly replied ${day}, nothing today`
+          ? `last partly replied ${day}, nothing ${today}`
           : source === "inferred"
-            ? `inferred ${day}, nothing today`
+            ? `inferred ${day}, nothing ${today}`
             : `no reply since ${day}`;
   } else if (state === "confirmed") {
-    lead = "replied today";
+    lead = `replied ${today}`;
   } else if (state === "partial") {
-    lead = "partly replied today";
+    lead = `partly replied ${today}`;
   } else {
-    lead = source === "inferred" ? "no reply · inferred from delivery signals" : "no reply today";
+    lead =
+      source === "inferred" ? "no reply · inferred from delivery signals" : `no reply ${today}`;
   }
   return summary ? `${lead} · ${summary}` : lead;
 }

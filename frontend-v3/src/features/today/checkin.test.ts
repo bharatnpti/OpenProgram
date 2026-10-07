@@ -167,6 +167,38 @@ describe("what the card says", () => {
     );
   });
 
+  test("a card for a past day says that day, not today", () => {
+    const past = { ...say, today: "on Mon 5 Oct" };
+    const provenance = checkinProvenance({
+      source: "inferred",
+      statusAsOf: TODAY,
+      today: TODAY,
+      developerConfirmed: false,
+    });
+    assert.equal(
+      checkinNote(
+        provenance,
+        { source: "inferred", confirmedAt: null, developerConfirmed: false },
+        past,
+      ),
+      "no reply on Mon 5 Oct · inferred from delivery signals",
+    );
+    const carried = checkinProvenance({
+      source: "unknown",
+      statusAsOf: "2026-09-29",
+      today: TODAY,
+      developerConfirmed: false,
+    });
+    assert.equal(
+      checkinNote(
+        carried,
+        { source: "unknown", confirmedAt: null, developerConfirmed: false },
+        past,
+      ),
+      "carried forward from day 2026-09-29 · no reply on Mon 5 Oct",
+    );
+  });
+
   test("a reply that said nothing about the work is not read as silence", () => {
     // Elena: replied "thanks, nothing from me"; the backend closes the day as unknown.
     assert.equal(

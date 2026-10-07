@@ -89,12 +89,14 @@ export function checkinNote(
     developerConfirmed: boolean;
     summary?: string | null;
   },
-  say: { day: (iso: string) => string; time: (iso: string) => string },
+  say: { day: (iso: string) => string; time: (iso: string) => string; today?: string },
 ): string {
   if (provenance.kind === "none") return "no check-in on record";
   const when = input.confirmedAt ? ` · ${say.time(input.confirmedAt)}` : "";
+  // "today", or "on Mon 5 Oct" while a past day is shown: the card is that day's.
+  const today = say.today ?? "today";
   if (provenance.kind === "carried" && provenance.from) {
-    return `${REPLY_WORDS.carried} from ${say.day(provenance.from)} · no reply today`;
+    return `${REPLY_WORDS.carried} from ${say.day(provenance.from)} · no reply ${today}`;
   }
   if (repliedWithoutStatus(input.summary, input.source)) {
     return `${REPLY_WORDS.withoutStatus} · current status unknown`;
@@ -107,11 +109,11 @@ export function checkinNote(
     case "partial":
       return `${REPLY_WORDS.partly} in chat${when}`;
     case "inferred":
-      return `no reply today · ${REPLY_WORDS.inferred} from delivery signals`;
+      return `no reply ${today} · ${REPLY_WORDS.inferred} from delivery signals`;
     case "stale":
-      return "no reply today · the last update is carried over";
+      return `no reply ${today} · the last update is carried over`;
     default:
-      return "no reply today";
+      return `no reply ${today}`;
   }
 }
 

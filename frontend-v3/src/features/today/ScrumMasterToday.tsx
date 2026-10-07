@@ -120,7 +120,7 @@ export function ScrumMasterToday() {
                       key={dev.developer_id}
                       rag={boardRag(dev)}
                       title={dev.developer_name}
-                      meta={boardMeta(dev, c?.as_of ?? "", { day: formatDay })}
+                      meta={boardMeta(dev, c?.as_of ?? "", { day: formatDay, today: day })}
                       right={
                         <RagChip tone={word.tone} className="h-6 px-2.5 text-[12px]">
                           {word.word}
