@@ -1,0 +1,28 @@
+features.md
+  s_f8ed429f872d0f::t_81f4c9b2d7aafa 212
+backend/api/routers/checkin.py
+  s_f8ed429f872d0f::t_81f4c9b2d7aafa 84
+backend/tests/unit/test_own_status_api.py
+  s_f8ed429f872d0f::t_81f4c9b2d7aafa 1
+  s_f8ed429f872d0f::t_45e6cbe64ba8b4 2-94
+backend/tests/unit/test_blockers_domain.py
+  s_f8ed429f872d0f::t_81f4c9b2d7aafa 225-364
+backend/core/domain/blockers.py
+  s_f8ed429f872d0f::t_81f4c9b2d7aafa 58-66,72,163-170,178-194,244-249,252-256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "54f8eff5d6774e4f620584d3c3960e4c8d839644",
+  "prompts": {},
+  "sessions": {
+    "s_f8ed429f872d0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "934bb81e-a294-4ccc-9e3b-1ebc1c09a9db",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
