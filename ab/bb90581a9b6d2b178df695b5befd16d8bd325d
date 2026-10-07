@@ -1,0 +1,26 @@
+frontend-v3/scripts/mock/shell.mjs
+  s_a5c95ae649948d::t_c8af24c8ca06e1 22-24
+  s_a5c95ae649948d::t_8be8fe67aac2a0 2-3
+frontend-v3/scripts/mock-api.mjs
+  s_a5c95ae649948d::t_1972d0c7d247b0 349-350
+frontend-v3/scripts/mock/admin-config.mjs
+  s_a5c95ae649948d::t_c8af24c8ca06e1 8-9,41-46,65-67,411-412,429,465,470,724,764-765,843
+frontend-v3/scripts/mock/admin-structure.mjs
+  s_a5c95ae649948d::t_c8af24c8ca06e1 199-201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "abbb90581a9b6d2b178df695b5befd16d8bd325d",
+  "prompts": {},
+  "sessions": {
+    "s_a5c95ae649948d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514997e6-b42b-4795-a073-4d125d9e1d95",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
