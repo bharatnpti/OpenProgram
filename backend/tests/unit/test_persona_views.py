@@ -6,6 +6,7 @@ import pytest
 
 from core.application.persona_views import PersonaViewService
 from core.application.rollup_service import RollupService
+from core.application.status_summaries import NO_REPLY_BLOCKER
 from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
@@ -1287,6 +1288,85 @@ async def test_focus_blocker_details_carry_attribution() -> None:
     assert detail.unattributed is False
     assert detail.first_seen_on == first_seen_on
     assert detail.age_days == 3
+
+
+async def test_focus_does_not_rank_the_no_reply_placeholder_as_a_blocker() -> None:
+    """A day nobody answered carries "no confirmed reply" so its status is never empty.
+
+    That is the person's status, not a blocker they have: the rollups, the pod
+    boards and `blocker_details` all drop it. The focus list used to rank it
+    first as a blocker with nothing behind it, on every day the earlier status
+    was carried forward.
+    """
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    developer = await _populate_developer_task_tree(store)
+    silent_day = as_of - timedelta(days=1)
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id=developer.id,
+            as_of=silent_day,
+            source=StatusSource.INFERRED,
+            blockers=(NO_REPLY_BLOCKER,),
+            summary="No confirmed check-in after a nudge. Inferred from 1 active issue.",
+        )
+    )
+
+    view = await _persona_service(store).focus("demo", developer.id, as_of)
+
+    # The earlier day's status still stands in for today, as it did.
+    assert (view.status_source, view.status_as_of) == (StatusSource.INFERRED, silent_day)
+    assert view.blockers == ()
+    assert view.blocker_details == ()
+    assert [(item.kind, item.label) for item in view.focus] == [("task", "API handoff")]
+
+
+async def test_focus_keeps_a_real_blocker_listed_beside_the_no_reply_placeholder() -> None:
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    developer = await _populate_developer_task_tree(store)
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id=developer.id,
+            as_of=as_of,
+            source=StatusSource.STALE,
+            # However the placeholder is cased or spaced, as the rollups read it.
+            blockers=("waiting on API review", " No Confirmed Reply "),
+            summary="No confirmed check-in after a nudge.",
+        )
+    )
+
+    view = await _persona_service(store).focus("demo", developer.id, as_of)
+
+    assert view.blockers == ("waiting on API review",)
+    assert [detail.description for detail in view.blocker_details] == ["waiting on API review"]
+    assert [(item.kind, item.label) for item in view.focus] == [
+        ("blocker", "waiting on API review"),
+        ("task", "API handoff"),
+    ]
+
+
+async def test_focus_without_a_graph_node_does_not_rank_the_no_reply_placeholder() -> None:
+    store = InMemoryGraphStore()
+    as_of = date(2026, 1, 10)
+    await store.record_developer_status(
+        DeveloperStatus(
+            tenant_id="demo",
+            developer_id="dev-missing",
+            as_of=as_of,
+            source=StatusSource.UNKNOWN,
+            blockers=(NO_REPLY_BLOCKER,),
+            summary="No confirmed check-in after a nudge. Current status is unknown.",
+        )
+    )
+
+    view = await _persona_service(store).focus("demo", "dev-missing", as_of)
+
+    assert view.status_source is StatusSource.UNKNOWN
+    assert view.blockers == ()
+    assert view.focus == ()
 
 
 def _persona_service(store: InMemoryGraphStore) -> PersonaViewService:

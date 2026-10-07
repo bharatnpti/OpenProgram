@@ -186,10 +186,8 @@ def _summary_for_fact(fact: FactEvent, names: Mapping[str, str]) -> str:
         blocker_count = _payload_int(payload, "blocker_count") or 0
         eta_change_days = _payload_int(payload, "eta_change_days")
         eta_text = f", eta change {eta_change_days:+d}d" if eta_change_days is not None else ""
-        return (
-            f"Check-in updated for {developer}: {status_source}, "
-            f"{blocker_count} blocker(s){eta_text}"
-        )
+        blockers = "1 blocker" if blocker_count == 1 else f"{blocker_count} blockers"
+        return f"Check-in updated for {developer}: {status_source}, {blockers}{eta_text}"
     if fact.source == "risk":
         return _risk_summary(fact)
     if fact.source == "cross_person_request":

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 
@@ -1411,26 +1411,16 @@ def _clean_answer(text: str) -> tuple[str, list[str]]:
     """The answer's own lines, and the items of every references line cut from it.
 
     A line that starts with References, Refs, Sources or Citations and a colon
-    goes, with the list under it when it has none of its own; a trailing
-    "(References: ...)" or "References: [...]" goes from the end of a line.
-    Code fences and a leading "Answer:" go too.
+    goes, with the list under it when it has none of its own, and a "[" list
+    that runs over several lines goes whole; a trailing "(References: ...)" or
+    "References: [...]" goes from the end of a line. Code fences and a leading
+    "Answer:" go too.
     """
     kept: list[str] = []
     cited: list[str] = []
-    listing = False
-    for line in text.splitlines():
-        if _FENCE_LINE.match(line):
-            continue
-        if listing:
-            entry = _LIST_ITEM.match(line)
-            if entry is not None or line.strip().startswith("[") or not line.strip():
-                cited.extend(_reference_items(entry.group("item") if entry else line))
-                continue
-            listing = False
-        heading = _REFERENCES_LINE.match(line)
-        if heading is not None:
-            cited.extend(_reference_items(heading.group("items")))
-            listing = not heading.group("items").strip()
+    for line, listed in _reference_lines(text.splitlines()):
+        if listed is not None:
+            cited.extend(_reference_items(listed))
             continue
         trailing = _TRAILING_REFERENCES.search(line) or _TRAILING_REFERENCE_LIST.search(line)
         if trailing is not None:
@@ -1438,6 +1428,56 @@ def _clean_answer(text: str) -> tuple[str, list[str]]:
             line = line[: trailing.start()]
         kept.append(line)
     return _ANSWER_LABEL.sub("", "\n".join(kept).strip(), count=1).strip(), cited
+
+
+def _reference_lines(lines: Iterable[str]) -> Iterator[tuple[str, str | None]]:
+    """Each line of a reply as ``(line, None)``, or ``("", list)`` for a references list.
+
+    A references heading and the bullets or ``[...]`` under a bare one belong to
+    the list. So does an array written one id to a line, as a model pretty-prints
+    it: "References: [" or a bare heading and a "[" line open it, and it runs to
+    the line that closes it, or to the end of the reply when that was cut off.
+    Its lines are given whole, newlines kept, for ``_reference_items`` to read.
+    """
+    listing = False
+    opened: list[str] = []
+    for line in lines:
+        if _FENCE_LINE.match(line):
+            continue
+        if opened or (listing and _opens_list(line)):
+            opened.append(line)
+            if not _is_open("\n".join(opened)):
+                yield "", "\n".join(opened)
+                opened = []
+            continue
+        if listing:
+            entry = _LIST_ITEM.match(line)
+            if entry is not None or line.strip().startswith("[") or not line.strip():
+                yield "", entry.group("item") if entry else line
+                continue
+            listing = False
+        heading = _REFERENCES_LINE.match(line)
+        if heading is None:
+            yield line, None
+            continue
+        items = heading.group("items")
+        if _opens_list(items):
+            opened = [items]
+        else:
+            yield "", items
+            listing = not items.strip()
+    if opened:
+        yield "", "\n".join(opened)
+
+
+def _opens_list(text: str) -> bool:
+    """Whether ``text`` opens a "[" list that it does not close itself."""
+    return text.strip().startswith("[") and _is_open(text)
+
+
+def _is_open(text: str) -> bool:
+    """Whether ``text`` has more "[" than "]", so a list in it is still being written."""
+    return text.count("[") > text.count("]")
 
 
 def _unique(items: Sequence[str]) -> tuple[str, ...]:

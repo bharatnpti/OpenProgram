@@ -1313,6 +1313,12 @@ async def _ask_once(store: InMemoryGraphStore, reply: str) -> AskResponseView:
         "References: [Digital Platform Program, CHK-8, Zoe Almeida]",
         f"**Sources:** program-platform; CHK-8; Zoe Almeida ({_ZOE}).",
         f"References:\n- program-platform\n- CHK-8\n- {_ZOE}",
+        # An array written one id to a line, as a model pretty-prints it.
+        f'References: [\n  "program-platform",\n  "CHK-8",\n  "{_ZOE}"\n]',
+        f'References:\n[\n  "program-platform",\n  "CHK-8",\n  "{_ZOE}"\n]',
+        '**References:**\n```json\n["Digital Platform Program",\n "CHK-8",\n "Zoe Almeida"\n]\n```',
+        f'References: ["program-platform",\n  "CHK-8", "{_ZOE}"]',
+        "References: [\n  Digital Platform Program\n  CHK-8\n  Zoe Almeida\n]",
     ],
 )
 async def test_a_plain_text_answer_loses_its_references_line_and_labels_its_sources(
@@ -1325,6 +1331,44 @@ async def test_a_plain_text_answer_loses_its_references_line_and_labels_its_sour
     assert view.answer == _LIVE_PROSE
     assert view.references == ("program-platform", "CHK-8", _ZOE)
     assert view.sources == _LABELLED_SOURCES
+
+
+async def test_a_references_array_over_several_lines_never_ends_up_in_the_answer() -> None:
+    """Live, "What is blocking Checkout?" came back with its answer ending on
+    `"Checkout Revamp",`, `"Payments Pod"` and `]`: the model had listed its
+    references as an array with one name to a line, and only the heading line
+    was cut. The array is the sources, in the order it lists them, not text."""
+    store = await _attention_store()
+    answer = (
+        "Checkout is not currently blocked.\n"
+        "Everything related to Checkout has no open blockers today.\n"
+        "Payments Pod, which covers Checkout, has zero blockers."
+    )
+    reply = f'{answer}\n\nReferences: [\n  "Checkout Revamp",\n  "Payments Pod"\n]'
+
+    view = await _ask_once(store, reply)
+
+    assert view.answer == answer
+    assert view.references == ("project-checkout", "pod-payments")
+    assert view.sources == (
+        AskSource(id="project-checkout", kind=NodeKind.PROJECT, label="Checkout Revamp"),
+        AskSource(id="pod-payments", kind=NodeKind.POD, label="Payments Pod"),
+    )
+
+
+async def test_a_references_array_inside_a_json_answer_is_cut_whole() -> None:
+    store = await _attention_store()
+    reply = json.dumps(
+        {
+            "answer": f'{_LIVE_PROSE}\nReferences: [\n  "Digital Platform Program",\n  "CHK-8"\n]',
+            "references": ["program-platform", _ZOE],
+        }
+    )
+
+    view = await _ask_once(store, reply)
+
+    assert view.answer == _LIVE_PROSE
+    assert view.references == ("program-platform", _ZOE, "CHK-8")
 
 
 async def test_a_references_line_keeps_only_what_names_a_node() -> None:
@@ -1467,6 +1511,40 @@ async def test_an_empty_reply_says_no_answer_came_back() -> None:
         (
             "• 2 issues merged but still open (source: Jira)",
             "• 2 issues merged but still open (source: Jira)",
+            (),
+            (),
+        ),
+        # A list over several lines is cut whole, closed or cut off.
+        (
+            'Program is red.\nReferences: [\n  "program-platform",\n  "CHK-8"\n]',
+            "Program is red.",
+            (),
+            ("program-platform", "CHK-8"),
+        ),
+        (
+            'Program is red.\nReferences:\n[\n  "program-platform",\n  "CHK-8"',
+            "Program is red.",
+            (),
+            ("program-platform", "CHK-8"),
+        ),
+        # A bracket inside an item does not close the list early.
+        (
+            'Program is red.\nReferences: [\n  "Checkout [v2]",\n  "CHK-8"\n]',
+            "Program is red.",
+            (),
+            ("Checkout [v2]", "CHK-8"),
+        ),
+        # Prose after the list is the answer's again.
+        (
+            'References: [\n  "CHK-8"\n]\nProgram is red.',
+            "Program is red.",
+            (),
+            ("CHK-8",),
+        ),
+        # Only a references heading opens a list: a "[" line elsewhere is the answer's.
+        (
+            "[Draft\nProgram is red.",
+            "[Draft\nProgram is red.",
             (),
             (),
         ),

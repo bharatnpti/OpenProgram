@@ -27,6 +27,7 @@ import {
   requestStatusLabel,
   spaced,
 } from "../lib/words";
+import { raisedStillOpen } from "../features/coordination/raised";
 
 const NEEDS = "a scrum master, product owner, manager, executive or admin";
 
@@ -76,6 +77,9 @@ function Requests() {
   });
   const live = (list: CrossPersonRequestResponse[] | undefined) =>
     (list ?? []).filter((r) => r.status === "open" || r.status === "acknowledged");
+  // What the viewer asked also waits on them when nobody was matched to it.
+  const stillOpen = (list: CrossPersonRequestResponse[] | undefined) =>
+    (list ?? []).filter((r) => raisedStillOpen(r.status));
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
@@ -127,11 +131,11 @@ function Requests() {
             needs="anyone with a member record"
             isLoading={raised.isLoading}
             error={raised.error}
-            isEmpty={live(raised.data?.requests).length === 0}
+            isEmpty={stillOpen(raised.data?.requests).length === 0}
             emptyText="You have no open asks of others."
           >
             <ul className="grid gap-2">
-              {live(raised.data?.requests).map((r) => (
+              {stillOpen(raised.data?.requests).map((r) => (
                 <RequestCard key={r.id} request={r} showStatus />
               ))}
             </ul>

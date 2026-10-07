@@ -370,6 +370,11 @@ async def my_cross_person_requests(
     """
     _ensure(principal, Capability.READ_OWN_WORK)
     active = (CrossPersonRequestStatus.OPEN, CrossPersonRequestStatus.ACKNOWLEDGED)
+    # An ask nobody was matched to (needs_resolution) has no counterpart, so it
+    # is in no inbox: it waits on its requester, who has to say who was meant.
+    # Listing only the active statuses told a requester they had no asks of
+    # others for exactly the one that waits on them.
+    raised = (*active, CrossPersonRequestStatus.NEEDS_RESOLUTION)
     requests: list[CrossPersonRequest] = []
     if relation in {MyRequestRelation.WAITING, MyRequestRelation.BOTH}:
         requests.extend(
@@ -377,7 +382,7 @@ async def my_cross_person_requests(
         )
     if relation in {MyRequestRelation.RAISED, MyRequestRelation.BOTH}:
         requests.extend(
-            await service.list_raised(principal.tenant_id, principal.subject, statuses=active)
+            await service.list_raised(principal.tenant_id, principal.subject, statuses=raised)
         )
     # A request one raised on oneself would otherwise appear twice under `both`.
     unique = list({request.id: request for request in requests}.values())

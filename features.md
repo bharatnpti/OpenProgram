@@ -440,7 +440,7 @@ Functional requirements:
 - The system shall record each status change as a fact, so requests appear in the activity feed.
 - Coordination shall show requests in Open, Acknowledged, and Needs resolution columns, naming requester and counterpart, with Acknowledge and Resolve actions on each card.
 - Team and executive readers shall see the portfolio-wide board; a developer shall see the requests waiting on them.
-- Coordination shall show "Raised by you": the open and acknowledged requests the person asked of others, and where each one has got to.
+- Coordination shall show "Raised by you": the open and acknowledged requests the person asked of others, and those that need resolution because nobody was matched (they wait on the requester, who has to say who was meant), and where each one has got to.
 - The developer, scrum master, and product owner Today shall show "Waiting on you": the open and acknowledged requests where the person is the counterpart.
 
 ### 4.23 Ask the Graph

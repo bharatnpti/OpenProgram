@@ -22,6 +22,7 @@ from core.application.rollup_service import (
     people_outside_teams,
     task_rag,
 )
+from core.application.status_summaries import NO_REPLY_BLOCKER
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
     EdgeKind,
@@ -379,7 +380,7 @@ class PersonaViewService:
             tree = await self._graph_repository.get_program_tree(tenant_id, developer_id, as_of)
         except GraphNotFound:
             status_source = status.source if status else StatusSource.UNKNOWN
-            blockers = status.blockers if status else ()
+            blockers = _listed_blockers(status)
             return FocusView(
                 developer_id=developer_id,
                 developer_name=developer_id,
@@ -412,7 +413,7 @@ class PersonaViewService:
                 tasks_list.append(await self._focus_task(node, as_of))
         tasks = tuple(tasks_list)
         status_source = status.source if status else StatusSource.UNKNOWN
-        blockers = status.blockers if status else ()
+        blockers = _listed_blockers(status)
         focus = tuple(
             FocusItemView(
                 kind="blocker",
@@ -1385,6 +1386,21 @@ def _blocker_view(
         pod_ref=blocker.explicit_pod_ref,
         unattributed=blocker.unattributed,
         first_seen_on=blocker.first_seen_on,
+    )
+
+
+def _listed_blockers(status: DeveloperStatus | None) -> tuple[str, ...]:
+    """The blockers a status lists, without the placeholder a day nobody answered carries.
+
+    A non-response status holds ``NO_REPLY_BLOCKER`` so it is never empty. The
+    rollups and the blocker resolver drop it -- silence is the person's status,
+    never a blocker they have -- and so do the blocker details, which left the
+    focus list a "blocker" with nothing behind it.
+    """
+    if status is None:
+        return ()
+    return tuple(
+        blocker for blocker in status.blockers if blocker.strip().lower() != NO_REPLY_BLOCKER
     )
 
 

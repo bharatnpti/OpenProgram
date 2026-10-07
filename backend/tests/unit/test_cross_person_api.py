@@ -118,6 +118,42 @@ def test_my_cross_person_requests_relation_filter(settings: Settings) -> None:
     assert raised_none["requests"] == []
 
 
+def test_my_raised_requests_hold_an_ask_nobody_was_matched_to(settings: Settings) -> None:
+    """An ask whose person was not matched waits on its requester, so it is theirs to see.
+
+    It has no counterpart, so it is in no inbox. Listing only open and
+    acknowledged asks told its requester "no open asks of others" for the one
+    ask that was waiting on them to say who was meant. A closed ask still goes.
+    """
+    store = InMemoryGraphStore()
+    for request_id, status in (
+        ("xreq-unmatched", CrossPersonRequestStatus.NEEDS_RESOLUTION),
+        ("xreq-resolved", CrossPersonRequestStatus.RESOLVED),
+        ("xreq-dismissed", CrossPersonRequestStatus.DISMISSED),
+    ):
+        asyncio.run(_seed_unmatched_request(store, request_id=request_id, status=status))
+
+    requester = _app_for_role(settings, "dev", "dev-1", store)
+    with TestClient(requester) as client:
+        raised = client.get("/me/cross-person-requests?relation=raised").json()
+        both = client.get("/me/cross-person-requests?relation=both").json()
+        waiting = client.get("/me/cross-person-requests").json()
+    assert [request["id"] for request in raised["requests"]] == ["xreq-unmatched"]
+    assert raised["requests"][0]["status"] == "needs_resolution"
+    assert raised["requests"][0]["counterpart_id"] is None
+    assert raised["requests"][0]["delivery"] is None
+    assert [request["id"] for request in both["requests"]] == ["xreq-unmatched"]
+    # Nobody was asked, so it is in no inbox: `waiting` is unchanged.
+    assert waiting["requests"] == []
+
+    someone_else = _app_for_role(settings, "dev", "dev-2", store)
+    with TestClient(someone_else) as client:
+        for relation in ("raised", "both", "waiting"):
+            assert client.get(f"/me/cross-person-requests?relation={relation}").json() == {
+                "requests": []
+            }
+
+
 def test_update_cross_person_request_status(settings: Settings) -> None:
     store = InMemoryGraphStore()
     asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.OPEN))
@@ -191,6 +227,31 @@ async def _seed_undelivered_request(
             notify_attempts=5 if not next_attempt else 2,
             notify_last_attempt_at=attempted_at,
             notify_next_attempt_at=attempted_at if next_attempt else None,
+        )
+    )
+
+
+async def _seed_unmatched_request(
+    store: InMemoryGraphStore,
+    *,
+    request_id: str,
+    status: CrossPersonRequestStatus,
+) -> None:
+    """A request raised by dev-1 whose named person matched nobody: no counterpart, no DM."""
+    await store.create(
+        CrossPersonRequest(
+            tenant_id="demo",
+            id=request_id,
+            requester_id="dev-1",
+            requester_chat_ref="U-dev",
+            counterpart_id=None,
+            kind=CrossPersonRequestKind.REVIEW,
+            note="Needs a reviewer assigned to the release MR",
+            source_correlation_id="corr-2",
+            status=status,
+            created_at=datetime(2026, 1, 10, 9, 10, tzinfo=UTC),
+            updated_at=datetime(2026, 1, 10, 9, 10, tzinfo=UTC),
+            raw_name="reviewer",
         )
     )
 

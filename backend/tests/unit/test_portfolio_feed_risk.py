@@ -282,10 +282,10 @@ async def test_feed_names_every_person_never_a_raw_chat_id() -> None:
     by_source = {(item.source, item.entity_ref.id): item for item in feed.items}
     member_checkin = by_source[("checkin", MEMBER_ID)]
     assert member_checkin.person_name == "Rosa Lind"
-    assert member_checkin.summary == "Check-in updated for Rosa Lind: confirmed, 0 blocker(s)"
+    assert member_checkin.summary == "Check-in updated for Rosa Lind: confirmed, 0 blockers"
     unknown_checkin = by_source[("checkin", UNKNOWN_ID)]
     assert unknown_checkin.person_name == "a team member"
-    assert unknown_checkin.summary == "Check-in updated for a team member: partial, 1 blocker(s)"
+    assert unknown_checkin.summary == "Check-in updated for a team member: partial, 1 blocker"
     request = by_source[("cross_person_request", MEMBER_ID)]
     assert request.person_name == "Rosa Lind"
     assert request.summary == (
