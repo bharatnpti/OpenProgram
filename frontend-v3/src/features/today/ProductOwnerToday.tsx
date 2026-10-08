@@ -25,6 +25,7 @@ import { greetingTitle, PERSON_KEY_WORDS, plural, sourceLine, todayEyebrow } fro
 import { ProjectDateStrip } from "../delivery/DeliveryStrips";
 import { FactorsPanel } from "../delivery/NodeBits";
 import { ProgressSummary, TaskTable } from "../delivery/ProgressBlock";
+import { CheckinCard } from "./CheckinCard";
 import { YourAsks } from "./YourAsks";
 
 const ATTENTION_SHOWN = 8;
@@ -241,7 +242,11 @@ export function ProductOwnerToday() {
               </ul>
             </Panel>
           ) : null}
-          <YourAsks />
+          {/* Their own check-in, asked in chat like everyone else's, and their asks. */}
+          <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-2">
+            <CheckinCard compact />
+            <YourAsks />
+          </div>
         </div>
       </PanelState>
     </>

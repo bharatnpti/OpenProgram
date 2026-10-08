@@ -22,6 +22,7 @@ import { FactorsPanel } from "../delivery/NodeBits";
 import { PodDateStrips } from "../delivery/DeliveryStrips";
 import { PodTasksPanel } from "../delivery/PodTasks";
 import { reasonsBeyondBoard } from "../delivery/factors";
+import { CheckinCard } from "./CheckinCard";
 import { YourAsks } from "./YourAsks";
 
 /**
@@ -209,7 +210,11 @@ export function ScrumMasterToday() {
             ) : null}
           </PanelState>
           {podId ? <PodTasksPanel podId={podId} /> : null}
-          <YourAsks />
+          {/* Their own check-in, asked in chat like everyone else's, and their asks. */}
+          <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-2">
+            <CheckinCard compact />
+            <YourAsks />
+          </div>
         </div>
       </PanelState>
     </>

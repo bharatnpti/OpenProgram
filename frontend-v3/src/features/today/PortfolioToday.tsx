@@ -39,6 +39,7 @@ import {
 } from "./heat";
 import { useProjectDeliveries } from "../overall/queries";
 import { DeliveryDatesPanel } from "./DeliveryDates";
+import { CheckinCard } from "./CheckinCard";
 import { YourAsks } from "./YourAsks";
 
 const HEAT_COLUMNS = 4;
@@ -307,7 +308,11 @@ export function PortfolioToday() {
             </PanelState>
           </Panel>
         </div>
-        <YourAsks />
+        {/* Their own check-in, asked in chat like everyone else's, and their asks. */}
+        <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-2">
+          <CheckinCard compact />
+          <YourAsks />
+        </div>
       </div>
     </>
   );
