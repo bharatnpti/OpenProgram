@@ -1092,6 +1092,22 @@ class PodTaskDto(BaseModel):
     # The issue tracker's own status name, e.g. "In Progress"; null for a task
     # that did not come from a tracker. Optional, so older clients are unaffected.
     tracker_status: str | None = None
+    # What the task's owners said and expect, optional for the same reason.
+    last_update: TaskStatementDto | None = Field(
+        default=None,
+        description="The latest statement any owner made on the task: a state or a note.",
+    )
+    last_update_by: str | None = Field(
+        default=None, description="The name of the owner who made that statement."
+    )
+    eta: date | None = Field(
+        default=None,
+        description="The owners' own ETA for the task: the latest day any of them gave.",
+    )
+    eta_label: str | None = Field(
+        default=None,
+        description="That ETA as it was given: 'Oct 9' from the console, 'Tuesday' from chat.",
+    )
 
     @classmethod
     def from_view(cls, task: PodTaskView) -> PodTaskDto:
@@ -1106,6 +1122,10 @@ class PodTaskDto(BaseModel):
             blocked=task.blocked,
             open_blockers=[PodTaskBlockerDto.from_view(item) for item in task.open_blockers],
             tracker_status=task.tracker_status,
+            last_update=TaskStatementDto.from_view(task.last_update),
+            last_update_by=task.last_update_by,
+            eta=task.eta.day if task.eta is not None else None,
+            eta_label=task.eta.label if task.eta is not None else None,
         )
 
 

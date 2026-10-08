@@ -27,6 +27,7 @@ from core.application.status_summaries import NO_REPLY_BLOCKER
 from core.application.sync_services import ISSUE_FACT_SOURCE
 from core.application.task_update_service import (
     TASK_UPDATE_FACT_SOURCE,
+    StatedEta,
     TaskStatement,
     last_statement,
     own_eta,
@@ -220,6 +221,11 @@ class PodTaskView:
     open_blockers: tuple[PodTaskBlockerView, ...]
     #: The issue tracker's own status name, e.g. "In Progress" (see `_tracker_status_name`).
     tracker_status: str | None = None
+    #: The latest statement any owner made on the task (a state or a note), and who made it.
+    last_update: TaskStatement | None = None
+    last_update_by: str | None = None
+    #: The owners' own ETA for the task: the latest day any of them gave.
+    eta: StatedEta | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -597,6 +603,8 @@ class PersonaViewService:
                 continue
             node = nodes[task_id]
             status = await self._task_status(node, as_of)
+            facts = await task_facts(self._time_series_repository, node, as_of)
+            said = _owners_last_statement(facts, owners, as_of)
             open_blockers = tuple(
                 PodTaskBlockerView(
                     blocker_id=blocker.blocker_id,
@@ -623,6 +631,9 @@ class PersonaViewService:
                     blocked=status.rag is Rag.RED or bool(open_blockers),
                     open_blockers=open_blockers,
                     tracker_status=_tracker_status_name(node.metadata),
+                    last_update=said[0] if said is not None else None,
+                    last_update_by=said[1] if said is not None else None,
+                    eta=_owners_eta(facts, owners, as_of),
                 )
             )
         tasks.sort(key=lambda task: (not task.blocked, _TRIAGE_RANK[task.rag], task.name, task.id))
@@ -1514,6 +1525,26 @@ def _task_owners(
                 attributable.add(parent_id)
                 queue.append(parent_id)
     return frozenset(owners), frozenset(attributable)
+
+
+def _owners_last_statement(
+    facts: Sequence[FactEvent], owners: Sequence[GraphNode], as_of: date
+) -> tuple[TaskStatement, str] | None:
+    """The latest statement any owner made on a task, with that owner's name."""
+    said = [
+        (statement, owner.name)
+        for owner in owners
+        if (statement := last_statement(facts, owner.id, as_of)) is not None
+    ]
+    return max(said, key=lambda item: item[0].at, default=None)
+
+
+def _owners_eta(
+    facts: Sequence[FactEvent], owners: Sequence[GraphNode], as_of: date
+) -> StatedEta | None:
+    """The owners' ETA for a task: the latest day any of them gave, since the task ends with it."""
+    etas = [eta for owner in owners if (eta := own_eta(facts, owner.id, as_of)) is not None]
+    return max(etas, key=lambda eta: eta.day, default=None)
 
 
 def _since_for_as_of(as_of: date) -> datetime:

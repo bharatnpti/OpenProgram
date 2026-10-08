@@ -4305,6 +4305,23 @@ export interface components {
       open_blockers: components["schemas"]["PodTaskBlockerDto"][];
       /** Tracker Status */
       tracker_status?: string | null;
+      /** @description The latest statement any owner made on the task: a state or a note. */
+      last_update?: components["schemas"]["TaskStatementDto"] | null;
+      /**
+       * Last Update By
+       * @description The name of the owner who made that statement.
+       */
+      last_update_by?: string | null;
+      /**
+       * Eta
+       * @description The owners' own ETA for the task: the latest day any of them gave.
+       */
+      eta?: string | null;
+      /**
+       * Eta Label
+       * @description That ETA as it was given: 'Oct 9' from the console, 'Tuesday' from chat.
+       */
+      eta_label?: string | null;
     };
     /** PodTaskOwnerDto */
     PodTaskOwnerDto: {

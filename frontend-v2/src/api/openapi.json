@@ -15357,6 +15357,54 @@
               }
             ],
             "title": "Tracker Status"
+          },
+          "last_update": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskStatementDto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest statement any owner made on the task: a state or a note."
+          },
+          "last_update_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Update By",
+            "description": "The name of the owner who made that statement."
+          },
+          "eta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta",
+            "description": "The owners' own ETA for the task: the latest day any of them gave."
+          },
+          "eta_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Label",
+            "description": "That ETA as it was given: 'Oct 9' from the console, 'Tuesday' from chat."
           }
         },
         "type": "object",

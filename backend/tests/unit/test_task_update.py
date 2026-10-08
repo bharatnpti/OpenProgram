@@ -930,3 +930,47 @@ async def test_statements_never_mask_the_trackers_colour() -> None:
     assert (chk4.rag, chk4.source) == (Rag.RED, StatusSource.INFERRED)
     # With no synced issue fact in the window, the person's own assignment stands in.
     assert next(task for task in view.tasks if task.id == "CHK-5").can_move_in_tracker
+
+
+async def test_the_pod_task_list_says_what_each_task_s_owners_last_said_and_their_eta() -> None:
+    store = InMemoryGraphStore()
+    await _team(store)
+    # Liam shares CHK-4, and gave a later ETA; Kai spoke last.
+    await store.add_edge(_edge(_OTHER, "CHK-4", EdgeKind.ASSIGNED_TO))
+    liam = _service(store)
+    liam._clock = lambda: datetime(2026, 10, 8, 8, 0, tzinfo=UTC)  # noqa: SLF001
+    await liam.update(
+        _TENANT,
+        _OTHER,
+        "CHK-4",
+        _TODAY,
+        TaskUpdate(state=WriteBackTarget.IN_PROGRESS, eta=date(2026, 10, 14), eta_sent=True),
+    )
+    await _update(
+        store,
+        state=WriteBackTarget.IN_REVIEW,
+        note="MR !3 open, waiting on Liam",
+        eta=date(2026, 10, 9),
+        eta_sent=True,
+    )
+
+    view = await _persona(store).pod_tasks(_TENANT, "pod-pay", _TODAY)
+
+    rows = {task.id: task for task in view.tasks}
+    chk4 = rows["CHK-4"]
+    assert chk4.last_update is not None
+    assert (chk4.last_update.state, chk4.last_update.note, chk4.last_update.via) == (
+        WriteBackTarget.IN_REVIEW,
+        "MR !3 open, waiting on Liam",
+        "console",
+    )
+    assert chk4.last_update_by == "Kai Thompson"
+    # The task ends with its last owner's day.
+    assert chk4.eta is not None and (chk4.eta.day, chk4.eta.label) == (date(2026, 10, 14), "Oct 14")
+    # Nothing said, nothing shown; and the statements never repaint a task.
+    assert (rows["CHK-9"].last_update, rows["CHK-9"].last_update_by, rows["CHK-9"].eta) == (
+        None,
+        None,
+        None,
+    )
+    assert chk4.rag is Rag.UNKNOWN
