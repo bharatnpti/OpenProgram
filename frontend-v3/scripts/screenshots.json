@@ -2,7 +2,7 @@
   {
     "name": "01-today-developer.png",
     "path": "/today",
-    "storage": { "openprogram.acting-as": "U1002" }
+    "storage": { "openprogram.acting-as": "U1007" }
   },
   {
     "name": "02-today-scrum-master.png",
@@ -30,8 +30,8 @@
     "storage": { "openprogram.acting-as": "U1011" }
   },
   {
-    "name": "07-signals.png",
-    "path": "/signals",
+    "name": "07-signals-risks.png",
+    "path": "/signals?view=risks",
     "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
   },
   {
@@ -72,9 +72,17 @@
     "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
   },
   {
-    "name": "15-overall-developer.png",
-    "path": "/reports/project-checkout/overall",
-    "storage": { "openprogram.acting-as": "U1007" }
+    "name": "15-today-task-update.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1007" },
+    "full_page": false,
+    "steps": [
+      { "click": { "role": "button", "name": "Update Checkout error copy" } },
+      { "click": { "css": "form label", "text": "Done" } },
+      { "click": { "css": "form label", "text": "Also move" } },
+      { "click": { "css": "form textarea" } },
+      { "type": "Merged after Liam's review" }
+    ]
   },
   {
     "name": "16-today-mobile.png",
