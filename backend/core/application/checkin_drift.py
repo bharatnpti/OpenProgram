@@ -501,23 +501,29 @@ def eta_stated_fact(
     *,
     tenant_id: str,
     issue_key: str,
-    eta: IssueEta,
+    eta: IssueEta | None,
     developer_id: str,
     developer_name: str,
     as_of: date,
     observed_at: datetime,
     correlation_id: str,
 ) -> FactEvent:
+    """The ETA a person states for an issue; ``eta=None`` is one they cleared.
+
+    A cleared ETA (the console's Clear) is recorded with null days, so the
+    person's latest ETA for the issue is none: the forecast's team date
+    (``ForecastService._etas``) and the ETA drift (``_eta_window``) leave it out.
+    """
     payload: dict[str, JsonScalar] = {
         "kind": ETA_STATED,
         "issue_key": issue_key,
         "developer_id": developer_id,
         "developer_name": developer_name,
         "as_of": as_of.isoformat(),
-        "eta_label": eta.label,
+        "eta_label": eta.label if eta is not None else None,
         # The window's first and last day; one day has both the same.
-        "eta_start": eta.first_day.isoformat(),
-        "eta_date": eta.day.isoformat(),
+        "eta_start": eta.first_day.isoformat() if eta is not None else None,
+        "eta_date": eta.day.isoformat() if eta is not None else None,
     }
     return FactEvent(
         tenant_id=tenant_id,

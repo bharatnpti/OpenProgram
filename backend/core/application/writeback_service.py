@@ -59,6 +59,9 @@ OPEN_MR_SOURCE = "open_mr"
 # before the check-in closed. Neither makes a tracker call.
 CONSENT_REPLY_SOURCE = "consent_reply"
 CHECKIN_CLOSED_SOURCE = "checkin_closed"
+# ``source`` of the rows a console task update writes: the person ticked "Also
+# move CHK-4 in Jira" while updating the task, which is their yes.
+CONSOLE_SOURCE = "console"
 # How many synced merge request facts the open merge request check reads.
 _MERGE_REQUEST_FACT_SCAN_LIMIT = 5000
 
@@ -96,6 +99,33 @@ class OpenMergeRequestHold:
     issue_key: str
     current_state: str
     merge_requests: tuple[str, ...]
+
+
+# Where a write-back was asked for: a check-in claim, or a console task update.
+WriteBackVia = Literal["checkin", "console"]
+# How a person's own updates reach the tracker: written right away (auto_apply),
+# written once they say yes (always_ask; the console's tick is that yes), or not
+# at all (never, or a closed system or capability gate).
+WriteBackMode = Literal["auto", "ask", "off"]
+# What a console move did, as the task row says it.
+ConsoleWriteBackOutcome = Literal[
+    "applied", "held_open_mr", "not_owner", "no_change", "off", "failed"
+]
+
+
+@dataclass(frozen=True, kw_only=True)
+class ConsoleWriteBack:
+    """The outcome of one console move: what happened, in plain words, and why.
+
+    ``merge_requests`` names the open requests that held a ``done`` back
+    (``insights-pipeline !1``). ``audit`` is the row recorded, if any: none for
+    ``off`` and ``no_change``, as for a claim the tracker already shows.
+    """
+
+    outcome: ConsoleWriteBackOutcome
+    detail: str
+    merge_requests: tuple[str, ...] = ()
+    audit: WriteBackAudit | None = None
 
 
 class WriteBackService:
@@ -268,6 +298,126 @@ class WriteBackService:
             return None
         consent = await self._consent(tenant_id, developer_id)
         return None if consent is WriteBackConsent.NEVER else consent
+
+    async def write_back_mode(self, tenant_id: str, developer_id: str) -> WriteBackMode:
+        """How this developer's own updates reach the tracker: ``auto``, ``ask`` or ``off``.
+
+        Read-only: the capability and system gates and the stored consent, as
+        the claim path reads them. The console offers its "Also move in Jira"
+        tick only when this is not ``off``.
+        """
+        consent = await self._writing_consent(tenant_id, developer_id)
+        if consent is None:
+            return "off"
+        return "auto" if consent is WriteBackConsent.AUTO_APPLY else "ask"
+
+    async def apply_from_console(
+        self,
+        *,
+        tenant_id: str,
+        developer_id: str,
+        correlation_id: str,
+        issue_key: str,
+        target: WriteBackTarget,
+        reported_on: date | None = None,
+        tracker_name: str = "the issue tracker",
+    ) -> ConsoleWriteBack:
+        """Move one issue its owner ticked "Also move in Jira" for, behind the same gates.
+
+        The system, capability, ownership, held-done and canonical-target gates
+        are the claim path's. The tick is the person's yes: under ``always_ask``
+        the move is written at once as an ``applied`` row with source
+        ``console``, never a ``proposed`` row, and ``never`` is refused
+        (``off``). An issue the tracker already shows in the target is no change,
+        with no row. Only the state moves: an ETA is never written to the
+        issue's due date, which belongs to whoever plans it.
+        """
+        if await self._writing_consent(tenant_id, developer_id) is None:
+            return ConsoleWriteBack(
+                outcome="off", detail=f"Not moved in {tracker_name}: write-back is off."
+            )
+        target_state = target.value
+        label = target_state_label(target_state)
+        not_moved = f"Not moved in {tracker_name}:"
+        claim = IssueClaim(issue_key=issue_key, claimed_state=target_state)
+        issue = await self._read_issue(tenant_id, issue_key)
+        if issue is None:
+            synced = await self._synced_state(tenant_id, issue_key)
+            if synced is not None and synced is _issue_state_for(target_state):
+                # The read failed, but OpenProgram's own copy already shows it.
+                return ConsoleWriteBack(
+                    outcome="no_change", detail=f"Already {label} in {tracker_name}."
+                )
+            failed = await self._record(
+                tenant_id=tenant_id,
+                developer_id=developer_id,
+                correlation_id=correlation_id,
+                issue_key=issue_key,
+                target_state=target_state,
+                status=WriteBackStatus.FAILED,
+                before_state=None,
+                after_state=None,
+                comment=None,
+                source=CONSOLE_SOURCE,
+            )
+            return ConsoleWriteBack(
+                outcome="failed",
+                detail=f"{not_moved} {issue_key} could not be read.",
+                audit=failed,
+            )
+        refusal = await self._ownership_refusal(tenant_id, developer_id, issue)
+        if refusal is not None:
+            refused = await self._refuse(
+                tenant_id, developer_id, correlation_id, issue, target_state, refusal
+            )
+            whose = (
+                "is not assigned to anyone"
+                if refusal == UNASSIGNED_SOURCE
+                else ("is assigned to someone else")
+            )
+            return ConsoleWriteBack(
+                outcome="not_owner",
+                detail=f"{not_moved} {issue.key} {whose}.",
+                audit=refused,
+            )
+        if _already_in_target_state(issue, target_state):
+            shown = issue.metadata.get("status")
+            named = shown.strip() if isinstance(shown, str) and shown.strip() else label
+            return ConsoleWriteBack(
+                outcome="no_change", detail=f"Already {named} in {tracker_name}."
+            )
+        open_requests = await self._open_merge_requests(tenant_id, issue.key, target_state)
+        if open_requests:
+            held = await self._refuse(
+                tenant_id, developer_id, correlation_id, issue, target_state, OPEN_MR_SOURCE
+            )
+            verb = "is" if len(open_requests) == 1 else "are"
+            return ConsoleWriteBack(
+                outcome="held_open_mr",
+                detail=f"{not_moved} {', '.join(open_requests)} {verb} still open.",
+                merge_requests=open_requests,
+                audit=held,
+            )
+        applied = await self._apply(
+            tenant_id,
+            developer_id,
+            correlation_id,
+            claim,
+            target_state,
+            CONSOLE_SOURCE,
+            before_state=issue.state.value,
+            reported_on=reported_on,
+            via="console",
+        )
+        if applied.status is WriteBackStatus.APPLIED:
+            return ConsoleWriteBack(
+                outcome="applied", detail=f"Moved to {label} in {tracker_name}.", audit=applied
+            )
+        return ConsoleWriteBack(
+            outcome="failed",
+            detail=f"{not_moved} the move to {label} failed.",
+            audit=applied,
+        )
 
     async def open_merge_request_holds(
         self, tenant_id: str, rows: Sequence[WriteBackAudit]
@@ -978,6 +1128,7 @@ class WriteBackService:
         before_state: str | None,
         tracker_state: str | None = None,
         reported_on: date | None = None,
+        via: WriteBackVia = "checkin",
     ) -> WriteBackAudit:
         # ``target_state`` keys the audit row; ``tracker_state`` (default: the
         # same) is what the tracker is asked to move to.
@@ -1005,6 +1156,7 @@ class WriteBackService:
             to_state,
             written=written,
             reported_on=reported_on,
+            via=via,
         )
         try:
             await self._issue_tracker.add_comment(tenant_id, claim.issue_key, comment or "")
@@ -1035,6 +1187,7 @@ class WriteBackService:
         *,
         written: Issue | None,
         reported_on: date | None,
+        via: WriteBackVia = "checkin",
     ) -> str:
         """The note an applied write posts: what moved, who reported it, when (N20).
 
@@ -1050,6 +1203,7 @@ class WriteBackService:
             reported=_reported_phrase(claim, to_state),
             merge_requests=await self._backing_merge_requests(tenant_id, claim.issue_key, to_state),
             reported_on=reported_on or self._clock().date(),
+            via=via,
         )
 
     async def _person_name(self, tenant_id: str, developer_id: str) -> str:
@@ -1731,17 +1885,22 @@ def write_back_comment(
     reported: str,
     merge_requests: Sequence[str],
     reported_on: date,
+    via: WriteBackVia = "checkin",
 ) -> str:
     """The tracker note for an applied write-back.
 
     "Moved to Done by OpenProgram: Raj Iyer reported it merged
-    (acme/insights-pipeline !2) in the 2026-10-04 check-in."
+    (acme/insights-pipeline !2) in the 2026-10-04 check-in." A move a person
+    ticked when updating the task in the console says so: "... reported it in
+    review in OpenProgram on 2026-10-08."
     """
     backing = f" ({', '.join(merge_requests)})" if merge_requests else ""
-    return (
-        f"Moved to {destination} by OpenProgram: {person} reported {reported}{backing} "
-        f"in the {reported_on.isoformat()} check-in."
+    where = (
+        f"in OpenProgram on {reported_on.isoformat()}"
+        if via == "console"
+        else f"in the {reported_on.isoformat()} check-in"
     )
+    return f"Moved to {destination} by OpenProgram: {person} reported {reported}{backing} {where}."
 
 
 def _claim_for(claims: Sequence[IssueClaim], proposal: WriteBackAudit) -> IssueClaim | None:

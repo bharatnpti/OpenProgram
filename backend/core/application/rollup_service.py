@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from datetime import date
 from typing import Protocol
 
@@ -10,6 +10,7 @@ from core.application.blocker_resolution import (
     ResolvedBlocker,
 )
 from core.application.status_summaries import NO_REPLY_BLOCKER
+from core.domain.errors import GraphNotFound
 from core.domain.graph import (
     EdgeKind,
     EntityRef,
@@ -308,6 +309,60 @@ async def people_outside_teams(
 def is_outside_teams(status: NodeStatus) -> bool:
     """Whether a stored status is a person-in-no-team's own cell (N5)."""
     return any(factor.kind is FactorKind.NO_POD for factor in status.factors)
+
+
+class PersonRollups:
+    """Re-record a day's rollup of the trees one person is in, right after their own update.
+
+    A task update, a confirm or a correction changes the person's status and
+    blockers, and the stored rollup is what every pod, project and program
+    read prefers: without this the pod showed the old colour until the next
+    hourly rollup ("inferred for up to an hour"). The person's own
+    developer-rooted tree holds only them and their tasks, so the trees
+    recorded are the programs that contain the person: the pod, its projects
+    and the programme, exactly as the hourly rollup records them. A person in
+    no team gets their own cell (N5), as the hourly run records it beside a
+    program's rollup. Read and recorded under ``exclusive_day``, so it never
+    interleaves with the hourly run or a refresh; a fresh ``RollupService`` per
+    call, since one keeps the day's drift.
+    """
+
+    def __init__(
+        self,
+        *,
+        graph_repository: GraphRepository,
+        rollup_repository: RollupRepository,
+        service_factory: Callable[[], RollupService],
+    ) -> None:
+        self._graph = graph_repository
+        self._rollups = rollup_repository
+        self._service_factory = service_factory
+
+    async def record(
+        self, tenant_id: str, developer_id: str, as_of: date
+    ) -> tuple[NodeStatus, ...]:
+        service = self._service_factory()
+        programs = await self._graph.list_nodes(tenant_id, NodeKind.PROGRAM, as_of=as_of)
+        recorded: tuple[NodeStatus, ...] = ()
+        async with self._rollups.exclusive_day(tenant_id, as_of):
+            in_a_program = False
+            for program in programs:
+                try:
+                    tree = await self._graph.get_program_tree(tenant_id, program.id, as_of)
+                except GraphNotFound:
+                    continue
+                if not any(node.id == developer_id for node in tree.nodes):
+                    continue
+                in_a_program = True
+                recorded += await service.compute_and_record(tree, as_of)
+            if programs and not in_a_program:
+                outside = [
+                    person
+                    for person in await people_outside_teams(self._graph, tenant_id, as_of)
+                    if person.id == developer_id
+                ]
+                recorded += await service.compute_and_record_outside_teams(outside, as_of)
+        return recorded
 
 
 class _TreeIndex:
@@ -877,3 +932,27 @@ def _approaching_target_date(node: GraphNode, as_of: date) -> bool:
     if deadline is None:
         return False
     return as_of <= deadline <= date.fromordinal(as_of.toordinal() + 14)
+
+
+async def refresh_person_rollups(
+    rollups: PersonRollups | None, tenant_id: str, developer_id: str, as_of: date
+) -> None:
+    """Roll the person's trees up again now; a failure leaves the update as recorded.
+
+    The update is stored by then, so a failed rollup only means the pod reads
+    it at the next hourly rollup, as before.
+    """
+    if rollups is None:
+        return
+    try:
+        await rollups.record(tenant_id, developer_id, as_of)
+    except Exception:
+        _log_warning("person_rollup_refresh_failed", tenant_id=tenant_id, developer_id=developer_id)
+
+
+def _log_warning(event: str, **fields: str) -> None:
+    # Imported here, not at module load, as in writeback_service: the workflow
+    # sandbox refuses structlog's import-time randomness.
+    import structlog
+
+    structlog.get_logger(__name__).warning(event, **fields)

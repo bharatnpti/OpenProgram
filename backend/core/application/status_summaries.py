@@ -42,6 +42,11 @@ CLARIFICATION_CAP_LEAD = "Clarification cap reached:"
 # Opens the summary of a status recorded from a reply that came after its
 # check-in closed, with the time it came (G9): "Late update 15:11 UTC: ...".
 LATE_UPDATE_LEAD = "Late update"
+# Opens the summary of a status written from the day's task updates in the
+# console, when no reply was on record that day: "Updated tasks in OpenProgram:
+# CHK-4 in review, ETA Oct 9." The summary is rebuilt from the day's updates
+# while it still opens with this lead; any other summary is the person's own.
+TASK_UPDATE_LEAD = "Updated tasks in OpenProgram:"
 # The placeholder blocker a non-response status carries when nothing is open.
 NO_REPLY_BLOCKER = "no confirmed reply"
 # Who made a tracker update a summary sentence is marked with (N48): "CHK-17

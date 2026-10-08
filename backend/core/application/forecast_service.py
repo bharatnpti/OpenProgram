@@ -500,20 +500,27 @@ class ForecastService:
         )
 
     async def _etas(self, tenant_id: str, keys: set[str]) -> dict[str, date]:
-        """The last day of each issue's latest check-in ETA, the assignee's first."""
+        """The last day of each issue's latest stated ETA, from a check-in or the console.
+
+        An ETA cleared in the console is recorded with no day: when it is the
+        latest, the issue has no ETA, so an earlier one no longer counts.
+        """
         facts = await self._facts.list_recent_facts(
             tenant_id, sources=(CHECKIN_DRIFT_FACT_SOURCE,), limit=_ETA_FACT_LIMIT
         )
-        latest: dict[str, tuple[datetime, date]] = {}
+        latest: dict[str, tuple[datetime, date | None]] = {}
         for fact in sorted(facts, key=lambda item: item.observed_at):
             payload = fact.payload
             key = payload.get("issue_key")
             if payload.get("kind") != ETA_STATED or not isinstance(key, str) or key not in keys:
                 continue
+            if "eta_date" in payload and payload["eta_date"] is None:
+                latest[key] = (fact.observed_at, None)
+                continue
             day = _iso_date(payload.get("eta_date"))
             if day is not None:
                 latest[key] = (fact.observed_at, day)
-        return {key: day for key, (_seen, day) in latest.items()}
+        return {key: day for key, (_seen, day) in latest.items() if day is not None}
 
     async def _pod_keys(
         self, tenant_id: str, project_id: str, tasks: Mapping[str, GraphNode], as_of: date
