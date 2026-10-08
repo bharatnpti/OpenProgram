@@ -1,0 +1,42 @@
+frontend-v3/src/features/today/PortfolioToday.tsx
+  s_d09685699e5b37::t_895093108ae256 259,262
+frontend-v3/scripts/mock/redesign.mjs
+  s_d09685699e5b37::t_6f14e77e884d0b 1-32
+frontend-v3/src/features/overall/RisksSection.tsx
+  s_d09685699e5b37::t_895093108ae256 65
+frontend-v3/src/pages/SignalsPage.tsx
+  s_d09685699e5b37::t_a91efd96df9461 72-75
+  s_d09685699e5b37::t_2acfded4ebcd2d 150-152,159,165-170
+  s_d09685699e5b37::t_11cb0acce0cc79 136
+  s_d09685699e5b37::t_6a851d2ee825e5 2,6-15,17-18,20-21,23-29,31,34-38,41,43-46,49,51-53,60-62,65,70-71,76-80,82-88,90-92,97-107,110,114-120,126-135,137-149,153-154,157-158,160-164,171-177,179-190,194,196-203,205-213,216-227,229-232
+  s_d09685699e5b37::t_34b20f29fcd795 108-109,111-113,121-125
+  s_d09685699e5b37::t_6b61411cbd7b78 1,5
+frontend-v3/src/App.tsx
+  s_d09685699e5b37::t_895093108ae256 27
+frontend-v3/src/features/signals/signalWords.test.ts
+  s_d09685699e5b37::t_ac1d506624f669 4-12,14,16-33,36-74,76,79-86,91-93,98-120,122,125-129,134-135,137-138,140-143,146-148,153
+  s_d09685699e5b37::t_34b20f29fcd795 87-90,94-97,123-124,130-133,150-151
+frontend-v3/src/features/signals/signalWords.ts
+  s_d09685699e5b37::t_635823af5435a4 1-12,15-17,19-43,47-58,60-64,66-110,113-115,117-136
+frontend-v3/src/features/signals/PrFlowSection.tsx
+  s_d09685699e5b37::t_01bd3c2efb8872 40-49,51-52
+  s_d09685699e5b37::t_b5bb4a072f7dfe 90,94
+frontend-v3/scripts/mock-api.mjs
+  s_d09685699e5b37::t_75de697c8ac479 26,395
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6b4dbe468793ee9c781a1281e1bb16d8a842abf2",
+  "prompts": {},
+  "sessions": {
+    "s_d09685699e5b37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac999ca-e6f7-4dc8-80ef-2b794b6036cf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
