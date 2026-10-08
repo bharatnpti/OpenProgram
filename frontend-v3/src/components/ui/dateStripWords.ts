@@ -126,6 +126,29 @@ export function pastDue(
   return deadline.slice(0, 10) < shownDay.slice(0, 10);
 }
 
+/**
+ * The compact strip's three parts, each said once: the date (null when none is
+ * committed), the forecast in a few words, and the verdict chip. A verdict that
+ * says what the line already says (no committed date, not enough history) does
+ * not say it twice: the chip goes, or the forecast words do.
+ */
+export function compactParts(scope: Scope): {
+  date: string | null;
+  forecast: string | null;
+  chip: { label: string; tone: BadgeTone } | null;
+} {
+  const chip = verdictChip(scope);
+  const inScope = counted(scope);
+  if (inScope && scope.verdict === "no_date") {
+    return { date: null, forecast: compactForecast(scope), chip: null };
+  }
+  if (inScope && scope.verdict === "not_enough_data") {
+    const team = scope.team.latest ? `team says ${formatDay(scope.team.latest)}` : null;
+    return { date: scope.target, forecast: team, chip };
+  }
+  return { date: scope.target, forecast: compactForecast(scope), chip };
+}
+
 /** The forecast in a few words for the compact strip. */
 export function compactForecast(scope: Scope): string {
   if (!counted(scope)) return "nothing to forecast";

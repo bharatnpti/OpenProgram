@@ -5,6 +5,7 @@ import type { ScopeDeliveryResponse } from "../../api/schema";
 import {
   committedBy,
   compactForecast,
+  compactParts,
   forecastGap,
   historyWords,
   pastDue,
@@ -162,6 +163,37 @@ test("a task is past due once its day has gone by, unless the tracker has it don
   assert.equal(pastDue("2026-10-05", "2026-10-06", "In Review"), true);
   assert.equal(pastDue(null, "2026-10-06"), false);
   assert.equal(pastDue("2026-10-05", null), false);
+});
+
+test("the compact strip says each thing once", () => {
+  assert.deepEqual(compactParts(scope()), {
+    date: "2026-10-30",
+    forecast: "forecast: Wed 4 Nov, +5 days",
+    chip: { label: "Off track", tone: "danger" },
+  });
+  const short = { ...scope().history, p50: null, p85: null };
+  // "Not enough history to forecast" is the chip: the line does not say it again.
+  assert.deepEqual(compactParts(scope({ verdict: "not_enough_data", history: short })), {
+    date: "2026-10-30",
+    forecast: "team says Tue 3 Nov",
+    chip: { label: "Not enough history to forecast", tone: "neutral" },
+  });
+  // "No committed date" is the line: no chip says it again.
+  assert.deepEqual(
+    compactParts(
+      scope({
+        verdict: "no_date",
+        target: null,
+        history: short,
+        team: { latest: null, latest_key: null, dated: 0, undated: 2 },
+      }),
+    ),
+    { date: null, forecast: "forecast: not enough history", chip: null },
+  );
+  assert.deepEqual(compactParts(scope({ total: 0, target: null })).chip, {
+    label: "Nothing in scope",
+    tone: "neutral",
+  });
 });
 
 test("the compact strip's forecast in a few words", () => {

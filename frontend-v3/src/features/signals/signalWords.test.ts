@@ -134,6 +134,19 @@ test("the owner's line says who says what, and how they said it", () => {
     "Noah Weber has reported nothing (inferred)",
   );
   assert.equal(
+    ownerLine(
+      row(
+        risk({
+          owner_status_summary: "No confirmed check-in after a nudge.",
+          owner_status_source: "inferred",
+        }),
+      ),
+      "Noah Weber",
+    ),
+    "Noah Weber: No confirmed check-in after a nudge. (inferred)",
+    "words the system wrote are not what the owner says",
+  );
+  assert.equal(
     ownerLine(row(risk({ owner_id: null, person_name: null })), null),
     "Nobody owns this work item, so nobody has said anything about it.",
   );

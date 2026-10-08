@@ -9,7 +9,7 @@ import { Card } from "./Card";
 import { RagChip } from "./RagChip";
 import {
   committedBy,
-  compactForecast,
+  compactParts,
   counted,
   forecastGap,
   historyWords,
@@ -76,9 +76,12 @@ export function DateStrip({
         <h2 className="text-[12px] font-bold uppercase tracking-wider text-grey-secondary">
           {title ?? "Delivery dates"}
         </h2>
-        <RagChip tone={chip.tone} className="h-6 px-2.5 text-[12px]">
-          {chip.label}
-        </RagChip>
+        {/* "No committed date" is what the first cell says; the chip does not repeat it. */}
+        {inScope && scope.verdict === "no_date" ? null : (
+          <RagChip tone={chip.tone} className="h-6 px-2.5 text-[12px]">
+            {chip.label}
+          </RagChip>
+        )}
       </div>
       <dl className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-3">
         <Cell label="Committed">
@@ -179,7 +182,7 @@ export function CompactDateStrip({
   scope: ScopeDeliveryResponse;
   className?: string;
 }) {
-  const chip = verdictChip(scope);
+  const { date, forecast, chip } = compactParts(scope);
   return (
     <p
       className={cn(
@@ -187,14 +190,20 @@ export function CompactDateStrip({
         className,
       )}
     >
-      <strong className={scope.target ? "text-ink tabular-nums" : "font-bold text-grey-secondary"}>
-        {scope.target ? formatDate(scope.target) : "No committed date"}
+      <strong className={date ? "text-ink tabular-nums" : "font-bold text-grey-secondary"}>
+        {date ? formatDate(date) : "No committed date"}
       </strong>
-      <span aria-hidden>·</span>
-      <span>{compactForecast(scope)}</span>
-      <RagChip tone={chip.tone} className="h-5 px-2 text-[11px]">
-        {chip.label}
-      </RagChip>
+      {forecast ? (
+        <>
+          <span aria-hidden>·</span>
+          <span>{forecast}</span>
+        </>
+      ) : null}
+      {chip ? (
+        <RagChip tone={chip.tone} className="h-5 px-2 text-[11px]">
+          {chip.label}
+        </RagChip>
+      ) : null}
     </p>
   );
 }

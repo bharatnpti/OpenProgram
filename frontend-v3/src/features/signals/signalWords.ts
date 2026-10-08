@@ -126,7 +126,10 @@ export function ownerLine(item: Finding, who: string | null): string {
   const name = who ?? "The owner";
   const said = risk.owner_status_summary?.trim();
   const how = ownerSourceWords(risk.owner_status_source);
-  return said ? `${name} says: ${said} (${how})` : `${name} has reported nothing (${how})`;
+  if (!said) return `${name} has reported nothing (${how})`;
+  // Only a reply is the owner's own words; an inferred or carried status was written for them.
+  const own = risk.owner_status_source === "confirmed" || risk.owner_status_source === "partial";
+  return own ? `${name} says: ${said} (${how})` : `${name}: ${said} (${how})`;
 }
 
 /** How old a finding is: a risk's days open, a drift finding's first day. */
