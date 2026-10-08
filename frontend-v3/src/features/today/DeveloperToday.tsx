@@ -9,9 +9,17 @@ import { usePods, usePrograms, useProjects } from "../../app/directory";
 import { useRole } from "../../app/role";
 import { useDayWords, useReadOnly, useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
-import { Greeting, Panel, RagBadge, RagDot, Row } from "../../components/ui/Bits";
+import {
+  BlockerChip,
+  DueDate,
+  Greeting,
+  Panel,
+  RagBadge,
+  RagDot,
+  Row,
+} from "../../components/ui/Bits";
+import { pastDue } from "../../components/ui/dateStripWords";
 import { Pill } from "../../components/ui/Pill";
-import { RagChip } from "../../components/ui/RagChip";
 import { actionError } from "../../lib/errors";
 import { formatDay, formatTime } from "../../lib/format";
 import { readState, type ReadState } from "../../lib/readState";
@@ -48,6 +56,21 @@ export function DeveloperToday() {
   // judged by the same calendar the pod board uses. Never the browser's day:
   // it can be a day off the server's.
   const today = focus.data?.as_of ?? null;
+  // Each task with its own open blockers: blocked work first and red-edged, then work
+  // past its due date; the check-in card keeps only the blockers no task here holds.
+  const details = focus.data?.blocker_details ?? [];
+  const tasks = (focus.data?.tasks ?? [])
+    .map((task) => ({
+      task,
+      blockers: details.filter((blocker) => blocker.work_item_id === task.id),
+      late: pastDue(task.deadline, shownDay),
+    }))
+    .sort(
+      (a, b) =>
+        Number(b.blockers.length > 0) - Number(a.blockers.length > 0) ||
+        Number(b.late) - Number(a.late),
+    );
+  const taskIds = new Set(tasks.map(({ task }) => task.id));
 
   return (
     <>
@@ -68,6 +91,7 @@ export function DeveloperToday() {
             today={today}
             dayUnknown={focus.isError}
             podNames={rollup.pods.map((pod) => pod.name)}
+            shownOnTasks={taskIds}
           />
           <Panel title="Focus today" note="ranked by urgency">
             <PanelState
@@ -100,13 +124,31 @@ export function DeveloperToday() {
               emptyText="No tasks are assigned to you."
             >
               <ul>
-                {(focus.data?.tasks ?? []).map((task) => (
+                {tasks.map(({ task, blockers, late }) => (
                   <Row
                     key={task.id}
                     title={task.name}
-                    meta={`${task.id} · ${sourceLine(task.source, task.confidence)}${task.deadline ? ` · due ${formatDay(task.deadline)}` : ""}`}
-                    right={<RagBadge rag={task.rag} />}
-                  />
+                    accent={blockers.length > 0 ? "red" : late ? "amber" : undefined}
+                    meta={`${task.id} · ${sourceLine(task.source, task.confidence)}`}
+                    right={<RagBadge rag={task.rag} quiet />}
+                  >
+                    {task.deadline ? (
+                      <p className="mt-0.5 text-[12px]">
+                        <DueDate prefix="Due " deadline={task.deadline} />
+                      </p>
+                    ) : null}
+                    {blockers.length > 0 ? (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {blockers.map((blocker) => (
+                          <BlockerChip
+                            key={blocker.blocker_id}
+                            description={blocker.description}
+                            ageDays={blocker.age_days}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </Row>
                 ))}
               </ul>
             </PanelState>
@@ -167,6 +209,7 @@ function CheckinCard({
   today,
   dayUnknown,
   podNames,
+  shownOnTasks,
 }: {
   status: MyStatusResponse | undefined;
   isLoading: boolean;
@@ -176,7 +219,12 @@ function CheckinCard({
   /** /me/focus failed, so the status cannot be judged against the server's day. */
   dayUnknown: boolean;
   podNames: string[];
+  /** Tasks listed with their own blockers below: the card leaves those blockers out. */
+  shownOnTasks: Set<string>;
 }) {
+  const ownBlockers = (status?.blocker_details ?? []).filter(
+    (blocker) => !blocker.work_item_id || !shownOnTasks.has(blocker.work_item_id),
+  );
   const queryClient = useQueryClient();
   const { readOnly, reason } = useReadOnly();
   const dayWords = useDayWords();
@@ -273,14 +321,15 @@ function CheckinCard({
                 {plural(Math.abs(status.eta_change_days), "day", "days")}
               </p>
             ) : null}
-            {(status.blocker_details ?? []).length > 0 ? (
+            {ownBlockers.length > 0 ? (
               <div className="flex flex-wrap gap-2">
-                {(status.blocker_details ?? []).map((blocker) => (
-                  <RagChip key={blocker.blocker_id} tone="danger" dot>
-                    {blocker.description}
-                    {blocker.work_item_id ? ` · ${blocker.work_item_id}` : ""} ·{" "}
-                    {blocker.age_days > 0 ? `${blocker.age_days}d` : "new"}
-                  </RagChip>
+                {ownBlockers.map((blocker) => (
+                  <BlockerChip
+                    key={blocker.blocker_id}
+                    description={blocker.description}
+                    detail={blocker.work_item_id}
+                    ageDays={blocker.age_days}
+                  />
                 ))}
               </div>
             ) : null}

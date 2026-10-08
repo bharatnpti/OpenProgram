@@ -8,6 +8,7 @@ import { Pill } from "../components/ui/Pill";
 import { ReportHeader } from "../features/daily/ReportHeader";
 import { noDayReportWords } from "../features/daily/reportView";
 import { ReportPreview } from "../features/daily/ReportPreview";
+import { ProjectCompactStrip } from "../features/delivery/DeliveryStrips";
 import { RunHistory } from "../features/daily/RunHistory";
 import { ReportSetupDialog } from "../features/reports/ReportSetupDialog";
 import { ReportsHeader } from "../features/reports/ReportsHeader";
@@ -20,7 +21,7 @@ import { cn } from "../lib/utils";
 export function DailyPage() {
   const { projectId = "" } = useParams();
   const [search, setSearch] = useSearchParams();
-  const { canSetUpDayReports } = useRole();
+  const { canSetUpDayReports, canReadProjectProgress } = useRole();
 
   const reports = useQuery({
     queryKey: ["day-reports", "project", projectId],
@@ -89,6 +90,9 @@ export function DailyPage() {
               </nav>
             ) : null}
             <ReportHeader report={selected} />
+            {canReadProjectProgress ? (
+              <ProjectCompactStrip projectId={projectId} className="" />
+            ) : null}
             <ReportPreview reportId={selected.report_id} />
             <RunHistory reportId={selected.report_id} />
           </div>

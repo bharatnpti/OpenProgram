@@ -19,7 +19,7 @@ import { formatDay } from "../../lib/format";
 import { boardMeta, boardRag, boardWord, repliedCount } from "../../lib/checkinWords";
 import { greetingTitle, plural, sourceLine, todayEyebrow } from "../../lib/words";
 import { FactorsPanel } from "../delivery/NodeBits";
-import { PodDeliveryCard } from "../delivery/PodDeliveryCard";
+import { PodDateStrips } from "../delivery/DeliveryStrips";
 import { PodTasksPanel } from "../delivery/PodTasks";
 import { reasonsBeyondBoard } from "../delivery/factors";
 import { YourAsks } from "./YourAsks";
@@ -114,7 +114,7 @@ export function ScrumMasterToday() {
           }
         />
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-          {pod ? <PodDeliveryCard pod={pod} /> : null}
+          {pod ? <PodDateStrips pod={pod} /> : null}
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
             <Panel
               title="Open blockers"
@@ -132,6 +132,7 @@ export function ScrumMasterToday() {
                     <Row
                       key={b.id}
                       rag={b.age_days >= 7 ? "red" : "amber"}
+                      accent={b.age_days >= 7 ? "red" : "amber"}
                       title={b.description}
                       meta={[
                         b.owner_name,

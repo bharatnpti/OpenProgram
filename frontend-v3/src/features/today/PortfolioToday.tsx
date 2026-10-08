@@ -9,7 +9,7 @@ import { scopeToProgram } from "../../app/scope";
 import { useDayWords, useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { ChipPicker, Greeting, Panel, RagDot, Row, Sparkline } from "../../components/ui/Bits";
-import { formatDate, formatTime } from "../../lib/format";
+import { formatDate, formatDay, formatTime } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
 import { cn } from "../../lib/utils";
 import { readState } from "../../lib/readState";
@@ -37,6 +37,8 @@ import {
   type NoPodTile,
   type TileReason,
 } from "./heat";
+import { useProjectDeliveries } from "../overall/queries";
+import { DeliveryDatesPanel } from "./DeliveryDates";
 import { YourAsks } from "./YourAsks";
 
 const HEAT_COLUMNS = 4;
@@ -57,9 +59,10 @@ const TILE: Record<Rag, string> = {
 
 /**
  * The portfolio read shared by manager, executive and admin: a one-line
- * verdict with its reason, 30-day momentum, the newest executive brief,
- * heat for projects, workstreams and pods (worst first, each saying why), the
- * people in no team, and the oldest risks. A tenant with several programs shows
+ * verdict with its reason, every project's delivery dates (worst first), heat
+ * for projects, workstreams and pods (worst first, each saying why, a project
+ * with its due date), the people in no team, the oldest risks, then 30-day
+ * momentum, the newest executive brief and the person's own asks. A tenant with several programs shows
  * one at a time: pick it in the verdict area; each chip carries the program's
  * colour and the screen opens on the worst.
  */
@@ -118,6 +121,13 @@ export function PortfolioToday() {
     { label: "Workstreams", kind: "workstream", items: scoped.workstreams },
     { label: "Pods", kind: "pod", items: scoped.pods },
   ].filter((row) => row.kind !== "workstream" || row.items.length > 0);
+  const deliveries = useProjectDeliveries(scoped.projects.map((project) => project.id));
+  const due = new Map(
+    scoped.projects.flatMap((project, index) => {
+      const target = deliveries[index]?.data?.project.target;
+      return target ? [[project.id, target] as const] : [];
+    }),
+  );
   const reasons = tileReasons(heatmap.data?.cells);
   const colours = tileColours(heatmap.data?.cells);
   const weights = tileWeights(heatmap.data?.cells);
@@ -170,6 +180,82 @@ export function PortfolioToday() {
           ) : null}
         </PanelState>
 
+        <DeliveryDatesPanel
+          projects={scoped.projects}
+          reads={deliveries}
+          waiting={directoryRead.isLoading}
+        />
+
+        <Panel
+          title="Portfolio heat"
+          note="worst first · click a tile to open it in Delivery · hover for every reason"
+        >
+          <PanelState
+            isLoading={directoryRead.isLoading || heatmapRead.isLoading}
+            error={directoryRead.error}
+          >
+            <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-3">
+              {heat.map((row) => (
+                <HeatRow
+                  key={row.kind}
+                  label={row.label}
+                  kind={row.kind}
+                  items={row.items}
+                  reasons={reasons}
+                  colours={colours}
+                  weights={weights}
+                  due={row.kind === "project" ? due : undefined}
+                />
+              ))}
+              {noPod.tiles.length > 0 ? <NoPodRow tiles={noPod.tiles} total={noPod.total} /> : null}
+            </div>
+            {heatmap.isError ? (
+              <p className="mt-3 text-[12px] text-grey-secondary">
+                The reasons under each tile could not be loaded, so only the colours show.
+              </p>
+            ) : null}
+          </PanelState>
+        </Panel>
+
+        <Panel
+          title="Oldest open risks"
+          note={
+            <Link
+              to="/signals?view=risks"
+              className="font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
+            >
+              All risks
+            </Link>
+          }
+        >
+          <PanelState
+            {...attentionRead}
+            isEmpty={(a?.signals ?? []).length === 0}
+            emptyText="Nothing needs attention right now."
+          >
+            {programs.length > 1 ? (
+              <p className="mb-1 text-[12px] text-grey-secondary">
+                Risks are read across the whole portfolio, not one program.
+              </p>
+            ) : null}
+            <ul>
+              {(a?.signals ?? []).slice(0, SIGNALS_SHOWN).map((s, i) => (
+                <Row
+                  key={`${s.kind}-${i}`}
+                  rag={s.severity}
+                  title={
+                    <Link to={signalHref(s.link)} className="text-ink no-underline hover:underline">
+                      {s.title}
+                    </Link>
+                  }
+                  meta={signalKindLabel(s.kind)}
+                  right={signalAge(s.age_days)}
+                />
+              ))}
+            </ul>
+          </PanelState>
+        </Panel>
+
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
           <Panel
             title="Momentum"
@@ -221,75 +307,6 @@ export function PortfolioToday() {
             </PanelState>
           </Panel>
         </div>
-
-        <Panel
-          title="Portfolio heat"
-          note="worst first · click a tile to open it in Delivery · hover for every reason"
-        >
-          <PanelState
-            isLoading={directoryRead.isLoading || heatmapRead.isLoading}
-            error={directoryRead.error}
-          >
-            <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-3">
-              {heat.map((row) => (
-                <HeatRow
-                  key={row.kind}
-                  label={row.label}
-                  kind={row.kind}
-                  items={row.items}
-                  reasons={reasons}
-                  colours={colours}
-                  weights={weights}
-                />
-              ))}
-              {noPod.tiles.length > 0 ? <NoPodRow tiles={noPod.tiles} total={noPod.total} /> : null}
-            </div>
-            {heatmap.isError ? (
-              <p className="mt-3 text-[12px] text-grey-secondary">
-                The reasons under each tile could not be loaded, so only the colours show.
-              </p>
-            ) : null}
-          </PanelState>
-        </Panel>
-
-        <Panel
-          title="Oldest open risks"
-          note={
-            <Link
-              to="/signals?view=risks"
-              className="font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
-            >
-              All risks
-            </Link>
-          }
-        >
-          <PanelState
-            {...attentionRead}
-            isEmpty={(a?.signals ?? []).length === 0}
-            emptyText="Nothing needs attention right now."
-          >
-            {programs.length > 1 ? (
-              <p className="mb-1 text-[12px] text-grey-secondary">
-                Risks are read across the whole portfolio, not one program.
-              </p>
-            ) : null}
-            <ul>
-              {(a?.signals ?? []).slice(0, SIGNALS_SHOWN).map((s, i) => (
-                <Row
-                  key={`${s.kind}-${i}`}
-                  rag={s.severity}
-                  title={
-                    <Link to={signalHref(s.link)} className="text-ink no-underline hover:underline">
-                      {s.title}
-                    </Link>
-                  }
-                  meta={signalKindLabel(s.kind)}
-                  right={signalAge(s.age_days)}
-                />
-              ))}
-            </ul>
-          </PanelState>
-        </Panel>
         <YourAsks />
       </div>
     </>
@@ -304,6 +321,7 @@ function HeatRow({
   reasons,
   colours,
   weights,
+  due,
 }: {
   label: string;
   kind: string;
@@ -311,6 +329,8 @@ function HeatRow({
   reasons: Map<string, TileReason>;
   colours: Map<string, Rag>;
   weights: Map<string, number>;
+  /** A project's committed date, for "Due Fri 30 Oct" on its tile. */
+  due?: Map<string, string>;
 }) {
   const colourOf = (item: DirectoryItemResponse): Rag =>
     colours.get(tileKey(kind, item.id)) ?? item.rag ?? "unknown";
@@ -356,14 +376,24 @@ function HeatRow({
                       TILE[rag],
                     )}
                   >
-                    <TileText name={item.name} colour={rag} why={why?.reason} />
+                    <TileText
+                      name={item.name}
+                      colour={rag}
+                      why={why?.reason}
+                      due={due?.get(item.id)}
+                    />
                   </Link>
                 ) : (
                   <div
                     title={why?.tooltip}
                     className={cn("min-h-[76px] rounded-2xl px-3 py-3", TILE[rag])}
                   >
-                    <TileText name={item.name} colour={rag} why={why?.reason} />
+                    <TileText
+                      name={item.name}
+                      colour={rag}
+                      why={why?.reason}
+                      due={due?.get(item.id)}
+                    />
                   </div>
                 )}
               </li>
@@ -414,16 +444,21 @@ function TileText({
   name,
   colour,
   why,
+  due,
 }: {
   name: string;
   colour: string;
   why: string | undefined;
+  due?: string;
 }) {
   return (
     <>
       <span className="block truncate text-[14px] font-bold">{name}</span>
       <span className="mt-1 block text-[11px] font-extrabold uppercase tracking-wider">
         {colour}
+        {due ? (
+          <span className="font-bold normal-case tracking-normal"> · Due {formatDay(due)}</span>
+        ) : null}
       </span>
       {why ? (
         <span className="mt-0.5 block line-clamp-2 text-[12px] font-semibold">{why}</span>

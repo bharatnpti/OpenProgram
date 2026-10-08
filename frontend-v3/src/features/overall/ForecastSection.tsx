@@ -1,29 +1,22 @@
 import { useState } from "react";
 
 import type { ScopeDeliveryResponse } from "../../api/schema";
-import { useProjects } from "../../app/directory";
+import { usePods, useProjects } from "../../app/directory";
 import { useRole } from "../../app/role";
-import { useShownDay } from "../../app/viewingDate";
 import { PanelState, SectionHeader, TableBox, td, th } from "../../components/PanelState";
 import { Card } from "../../components/ui/Card";
+import { DateStrip } from "../../components/ui/DateStrip";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
-import { formatDate, formatDay, progressWidth } from "../../lib/format";
+import { formatDate, progressWidth } from "../../lib/format";
 import { VERDICT_LABELS, toneForVerdict } from "../../lib/status";
-import { PodProjectRow } from "../delivery/PodDeliveryCard";
+import { PodDateStrips } from "../delivery/DeliveryStrips";
 import { DeliveryDateDialog } from "../reports/DeliveryDateDialog";
 import { Locked } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
 import { Burndown } from "./Burndown";
 import { burndownSeries, type Marker } from "./charts";
-import {
-  inScope,
-  isPastDay,
-  reasonsAfterCause,
-  releaseName,
-  teamDatesLine,
-  verdictCause,
-} from "./overallWords";
+import { inScope, reasonsAfterCause, releaseName, verdictCause } from "./overallWords";
 import { useDelivery, usePodDeliveries, useRequirements } from "./queries";
 
 type Editing = { scope: ScopeDeliveryResponse; title: string } | null;
@@ -82,27 +75,6 @@ function ProjectForecast({ projectId, releaseId }: { projectId: string; releaseI
             ? `Delivery date and forecast: ${releaseName(release.name)}`
             : "Delivery date and forecast"
         }
-        meta={scope ? commitmentLine(scope) : undefined}
-        actions={
-          scope && access.setProjectDates ? (
-            <Pill
-              size="sm"
-              variant="ghost"
-              onClick={() =>
-                edit(
-                  scope,
-                  release
-                    ? `${releaseName(release.name)}: delivery date`
-                    : `${scope.name}: delivery date`,
-                )
-              }
-            >
-              {scope.commitment.target_date ? "Change date" : "Set date"}
-            </Pill>
-          ) : scope && datesOffNow ? (
-            <Locked>{datesOffNow}</Locked>
-          ) : undefined
-        }
       />
       <PanelState
         isLoading={delivery.query.isLoading}
@@ -111,7 +83,34 @@ function ProjectForecast({ projectId, releaseId }: { projectId: string; releaseI
       >
         {data && scope ? (
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-            <Verdict scope={scope} />
+            {/* One strip for the date, the forecast and the team's date (it was three places). */}
+            <DateStrip
+              scope={scope}
+              title={release ? releaseName(release.name) : scope.name}
+              action={
+                access.setProjectDates ? (
+                  <Pill
+                    size="sm"
+                    variant="ghost"
+                    onClick={() =>
+                      edit(
+                        scope,
+                        release
+                          ? `${releaseName(release.name)}: delivery date`
+                          : `${scope.name}: delivery date`,
+                      )
+                    }
+                  >
+                    {scope.commitment.target_date ? "Change date" : "Set date"}
+                  </Pill>
+                ) : datesOffNow ? (
+                  <Locked>{datesOffNow}</Locked>
+                ) : null
+              }
+              caption={jiraDateLine(scope)}
+            >
+              <VerdictReasons scope={scope} />
+            </DateStrip>
             <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
               <Card padding="p-5">
                 <h3 className="text-[15px] font-extrabold">Burn-down</h3>
@@ -142,7 +141,6 @@ function ProjectForecast({ projectId, releaseId }: { projectId: string; releaseI
                   done={requirements.query.data?.done ?? 0}
                   total={requirements.query.data?.total ?? 0}
                 />
-                <TwoAnswers scope={scope} />
               </Card>
             </div>
             {data.pods.length > 0 ? (
@@ -195,22 +193,10 @@ function ProjectForecast({ projectId, releaseId }: { projectId: string; releaseI
  * button where the server says the pod is theirs.
  */
 function PodDatesForScrumMaster({ projectId }: { projectId: string }) {
-  const { readOnly, reason } = useReportAccess();
   const projects = useProjects();
+  const pods = usePods();
   const project = projects.data?.find((item) => item.id === projectId);
-  const podIds = project?.pod_ids ?? [];
-  const pods = usePodDeliveries(podIds);
-  const [editing, setEditing] = useState<{ scope: ScopeDeliveryResponse; title: string } | null>(
-    null,
-  );
-  const rows = pods.flatMap((query) => {
-    const item = query.data?.projects.find((entry) => entry.project_id === projectId);
-    return item && query.data
-      ? [{ item, runs: query.data.can_set_dates, canSet: query.data.can_set_dates && !readOnly }]
-      : [];
-  });
-  const loading = projects.isLoading || pods.some((query) => query.isLoading);
-  const error = pods.find((query) => query.error)?.error ?? null;
+  const projectPods = (pods.data ?? []).filter((pod) => project?.pod_ids.includes(pod.id));
 
   return (
     <section>
@@ -219,88 +205,46 @@ function PodDatesForScrumMaster({ projectId }: { projectId: string }) {
         meta="Each pod's date for its part of this project, and the forecast behind it"
       />
       <PanelState
-        isLoading={loading}
-        error={error}
-        isEmpty={rows.length === 0}
+        isLoading={projects.isLoading || pods.isLoading}
+        error={projects.error ?? pods.error}
+        isEmpty={projectPods.length === 0}
         emptyText="No pod works on this project yet."
       >
-        <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">
-          {rows.map(({ item, canSet }) => (
-            <PodProjectRow
-              key={item.pod.scope_id}
-              title={item.pod.name}
-              item={item}
-              canSet={canSet}
-              onEdit={() =>
-                setEditing({
-                  scope: item.pod,
-                  title: `${item.pod.name}'s date for ${item.project_name}`,
-                })
-              }
-            />
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
+          {projectPods.map((pod) => (
+            <PodDateStrips key={pod.id} pod={pod} projectId={projectId} />
           ))}
-        </ul>
-        {readOnly && reason && rows.some((row) => row.runs) ? (
-          <Locked className="mt-2">{reason}</Locked>
-        ) : null}
+        </div>
       </PanelState>
-      {editing ? (
-        <DeliveryDateDialog
-          scope={editing.scope}
-          title={editing.title}
-          onClose={() => setEditing(null)}
-        />
-      ) : null}
     </section>
   );
 }
 
-function commitmentLine(scope: ScopeDeliveryResponse): string {
-  const c = scope.commitment;
-  if (!scope.target) return "No committed date yet.";
-  const source = scope.target_source === "jira_release" ? "from the Jira release" : "committed";
-  const moved =
-    c.times_moved > 0
-      ? ` · moved ${c.times_moved}×${c.moved_days ? `, ${c.moved_days > 0 ? "+" : ""}${c.moved_days} days` : ""}`
-      : "";
-  const jira =
-    scope.jira_release_date && scope.jira_release_date !== scope.target
-      ? ` · Jira release date ${formatDate(scope.jira_release_date)}`
-      : "";
-  return `${formatDate(scope.target)} ${source}${moved}${jira}`;
+/** Under the strip, when the Jira release names another date than the one committed. */
+function jiraDateLine(scope: ScopeDeliveryResponse): string | null {
+  return scope.jira_release_date && scope.jira_release_date !== scope.target
+    ? `The Jira release says ${formatDate(scope.jira_release_date)}.`
+    : null;
 }
 
-function Verdict({ scope }: { scope: ScopeDeliveryResponse }) {
-  const tone = inScope(scope) ? toneForVerdict(scope.verdict) : "neutral";
-  const cause = inScope(scope) ? verdictCause(scope) : null;
-  const reasons = reasonsAfterCause(scope.reasons, cause);
-  const bg =
-    tone === "danger"
-      ? "bg-rag-red-bg text-rag-red"
-      : tone === "warning"
-        ? "bg-rag-amber-bg text-rag-amber"
-        : tone === "success"
-          ? "bg-rag-green-bg text-rag-green"
-          : "bg-grey-fill text-grey-body";
+/**
+ * The server's reasons for the verdict, under the strip's cause, without the
+ * one the cause already says, and how much is still open.
+ */
+function VerdictReasons({ scope }: { scope: ScopeDeliveryResponse }) {
+  if (!inScope(scope)) return null;
+  const reasons = reasonsAfterCause(scope.reasons, verdictCause(scope));
   return (
-    <div className={`rounded-3xl p-5 ${bg}`}>
-      <p className="text-[20px] font-extrabold">
-        {inScope(scope) ? VERDICT_LABELS[scope.verdict] : "Nothing in scope yet"}
-        {scope.target ? ` for ${formatDate(scope.target)}` : ""}
-      </p>
-      {cause ? <p className="mt-2 text-[15px] font-bold">{cause.because}</p> : null}
-      {cause?.also ? <p className="mt-1 text-[13px] font-medium">{cause.also}</p> : null}
-      {inScope(scope) && reasons.length > 0 ? (
-        <ul className="mt-2 grid list-disc gap-1 pl-5 text-[14px] font-medium">
+    <div className="mt-2 text-[13px] text-grey-body">
+      {reasons.length > 0 ? (
+        <ul className="grid list-disc gap-1 pl-5">
           {reasons.map((reason) => (
             <li key={reason}>{reason}</li>
           ))}
         </ul>
       ) : null}
-      <p className="mt-2 text-[13px] opacity-80">
-        {inScope(scope)
-          ? `${scope.open} of ${scope.total} still open`
-          : "No requirements are counted for it yet, so there is nothing to forecast."}
+      <p className="mt-1 text-[12px] text-grey-secondary">
+        {scope.open} of {scope.total} requirements still open
       </p>
     </div>
   );
@@ -348,50 +292,6 @@ function Completion({
             ? "The requirements could not be read."
             : `${done} of ${total} requirements in production`}
       </p>
-    </div>
-  );
-}
-
-function TwoAnswers({ scope }: { scope: ScopeDeliveryResponse }) {
-  const h = scope.history;
-  const shownDay = useShownDay();
-  return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
-      <div className="rounded-2xl border border-grey-border p-3">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary">
-          Completion rate says
-        </p>
-        {!inScope(scope) ? (
-          <p className="mt-1 text-[13px] text-grey-body">Nothing to forecast yet.</p>
-        ) : h.p50 ? (
-          <>
-            <p className="mt-1 text-[18px] font-extrabold">{formatDay(h.p50)}</p>
-            <p className="text-[12px] text-grey-secondary">
-              50% likely · {h.p85 ? `85% likely ${formatDay(h.p85)}` : "no 85% date"} · from{" "}
-              {h.sample_days} days of history
-            </p>
-          </>
-        ) : (
-          <p className="mt-1 text-[13px] text-grey-body">{h.reason ?? "Not enough history yet."}</p>
-        )}
-      </div>
-      <div className="rounded-2xl border border-grey-border p-3">
-        <p className="text-[11px] font-bold uppercase tracking-wider text-grey-secondary">
-          The team says
-        </p>
-        {scope.team.latest ? (
-          <>
-            <p className="mt-1 text-[18px] font-extrabold">{formatDay(scope.team.latest)}</p>
-            <p className="text-[12px] text-grey-secondary">
-              {teamDatesLine(scope.team, isPastDay(scope.team.latest, shownDay))}
-            </p>
-          </>
-        ) : (
-          <p className="mt-1 text-[13px] text-grey-body">
-            No check-in estimates or Jira due dates.
-          </p>
-        )}
-      </div>
     </div>
   );
 }

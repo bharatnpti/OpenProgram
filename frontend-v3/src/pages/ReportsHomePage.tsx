@@ -2,29 +2,46 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { apiClient } from "../api/client";
-import { useProjects } from "../app/directory";
+import {
+  podsOfPerson,
+  projectsOfPerson,
+  useMemberId,
+  usePods,
+  useProjects,
+} from "../app/directory";
 import { useRole } from "../app/role";
 import { PanelState, SectionHeader } from "../components/PanelState";
 import { RagBadge } from "../components/ui/Bits";
 import { dayReportCountWords } from "../features/daily/reportView";
+import { ProjectCompactStrip } from "../features/delivery/DeliveryStrips";
 import { ReportSetupDialog } from "../features/reports/ReportSetupDialog";
 import { Pill } from "../components/ui/Pill";
 import { ragSeverity } from "../lib/status";
 
 /**
  * Every project with its two report views one click away: Daily (the
- * end-of-day report) and Overall (the state since it started). Whoever may
+ * end-of-day report) and Overall (the state since it started), and, for whoever
+ * reads a project's progress, its dates on one line. A developer sees the
+ * projects of their own pods (every project when they are in none). Whoever may
  * set reports up can start one here.
  */
 export function ReportsHomePage() {
-  const { canSetUpDayReports } = useRole();
+  const { canSetUpDayReports, canReadProjectProgress, canReadAggregate } = useRole();
+  const memberId = useMemberId();
   const projects = useProjects();
+  const pods = usePods();
   const reports = useQuery({
     queryKey: ["day-reports", "all"],
     queryFn: () => apiClient.dayReports(),
   });
 
-  const sorted = [...(projects.data ?? [])].sort(
+  // Only a developer's list is narrowed: every other role reads across projects.
+  const own = podsOfPerson(pods.data ?? [], memberId);
+  const narrowed = !canReadAggregate;
+  const shownProjects = narrowed
+    ? projectsOfPerson(projects.data ?? [], own.pods, own.own).projects
+    : (projects.data ?? []);
+  const sorted = [...shownProjects].sort(
     (a, b) => ragSeverity(b.rag) - ragSeverity(a.rag) || a.name.localeCompare(b.name),
   );
   const reportsOf = (projectId: string) =>
@@ -34,7 +51,11 @@ export function ReportsHomePage() {
     <>
       <SectionHeader
         title="Reports"
-        meta="Each project's end-of-day report and its overall state, worst first."
+        meta={
+          narrowed && own.own
+            ? "The end-of-day report and overall state of your pods' projects, worst first."
+            : "Each project's end-of-day report and its overall state, worst first."
+        }
         actions={
           canSetUpDayReports ? (
             <ReportSetupDialog trigger={<Pill size="sm">Set up a day report</Pill>} />
@@ -42,8 +63,8 @@ export function ReportsHomePage() {
         }
       />
       <PanelState
-        isLoading={projects.isLoading}
-        error={projects.error}
+        isLoading={projects.isLoading || (narrowed && pods.isLoading)}
+        error={projects.error ?? (narrowed ? pods.error : null)}
         onRetry={() => void projects.refetch()}
         isEmpty={sorted.length === 0}
         emptyText="No projects are configured yet. An admin adds them under Admin → Entities."
@@ -51,7 +72,7 @@ export function ReportsHomePage() {
         <ul className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {sorted.map((project) => {
             const list = reportsOf(project.id);
-            const pods = project.pod_ids.length;
+            const podCount = project.pod_ids.length;
             return (
               <li
                 key={project.id}
@@ -61,9 +82,12 @@ export function ReportsHomePage() {
                   <span className="text-[17px] font-extrabold">{project.name}</span>
                   <RagBadge rag={project.rag} />
                 </div>
+                {canReadProjectProgress ? (
+                  <ProjectCompactStrip projectId={project.id} className="" />
+                ) : null}
                 <span className="text-[13px] text-grey-secondary">
                   {dayReportCountWords(reports.data ? list.length : undefined, reports.isError)}
-                  {pods > 0 ? ` · ${pods} ${pods === 1 ? "pod" : "pods"}` : ""}
+                  {podCount > 0 ? ` · ${podCount} ${podCount === 1 ? "pod" : "pods"}` : ""}
                 </span>
                 <div className="mt-auto flex flex-wrap gap-2">
                   <Link

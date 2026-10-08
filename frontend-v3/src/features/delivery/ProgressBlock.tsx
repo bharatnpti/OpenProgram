@@ -1,8 +1,7 @@
 import type { ProjectProgressResponse, WorkstreamProgressResponse } from "../../api/schema";
 import { TableBox, td, th } from "../../components/PanelState";
-import { Panel, ProgressRing, RagBadge } from "../../components/ui/Bits";
+import { DueDate, Panel, ProgressRing, RagBadge } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
-import { formatDay } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
 import { sourceLine } from "../../lib/words";
 
@@ -74,11 +73,13 @@ export function TaskTable({ tasks }: { tasks: Progress["tasks"] }) {
                 <span className="block text-[12px] text-grey-secondary">{task.id}</span>
               </td>
               <td className={td}>
-                <RagBadge rag={task.rag} />
+                <RagBadge rag={task.rag} quiet />
               </td>
               <td className={td}>{sourceLine(task.source, task.confidence)}</td>
-              <td className={td}>{task.tracker_status ?? "—"}</td>
-              <td className={`${td} whitespace-nowrap`}>{formatDay(task.deadline)}</td>
+              <td className={`${td} text-grey-secondary`}>{task.tracker_status ?? "—"}</td>
+              <td className={`${td} whitespace-nowrap`}>
+                <DueDate deadline={task.deadline} trackerStatus={task.tracker_status} />
+              </td>
             </tr>
           ))}
         </tbody>

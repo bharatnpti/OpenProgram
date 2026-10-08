@@ -2,9 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../../api/client";
 import { PanelState, TableBox, td, th } from "../../components/PanelState";
-import { Panel, RagBadge } from "../../components/ui/Bits";
+import { BlockerChip, DueDate, Panel, RagBadge } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
-import { formatDay } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
 import { plural } from "../../lib/words";
 
@@ -48,7 +47,15 @@ export function PodTasksPanel({ podId }: { podId: string }) {
             </thead>
             <tbody>
               {sorted.map((task) => (
-                <tr key={task.id}>
+                <tr
+                  key={task.id}
+                  // Blocked work is the bad news: a red bar on its left edge, and first.
+                  className={
+                    task.blocked
+                      ? "[&>td:first-child]:border-l-4 [&>td:first-child]:border-l-rag-red"
+                      : undefined
+                  }
+                >
                   <td className={td}>
                     {/* Capped on a phone, so the status beside it is in the first screenful. */}
                     <div className="max-w-[12rem] sm:max-w-none">
@@ -65,18 +72,28 @@ export function PodTasksPanel({ podId }: { podId: string }) {
                         blocked
                       </RagChip>
                     ) : (
-                      <RagBadge rag={task.rag} />
+                      <RagBadge rag={task.rag} quiet />
                     )}
                   </td>
                   <td className={td}>{task.owners.map((o) => o.name).join(", ") || "—"}</td>
                   <td className={td}>
-                    {task.open_blockers.length === 0
-                      ? "—"
-                      : task.open_blockers
-                          .map((b) => `${b.description} (${b.age_days}d)`)
-                          .join("; ")}
+                    {task.open_blockers.length === 0 ? (
+                      "—"
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {task.open_blockers.map((b) => (
+                          <BlockerChip
+                            key={b.blocker_id}
+                            description={b.description}
+                            ageDays={b.age_days}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </td>
-                  <td className={`${td} whitespace-nowrap`}>{formatDay(task.deadline)}</td>
+                  <td className={`${td} whitespace-nowrap`}>
+                    <DueDate deadline={task.deadline} trackerStatus={task.tracker_status} />
+                  </td>
                 </tr>
               ))}
             </tbody>

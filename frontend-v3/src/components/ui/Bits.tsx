@@ -1,8 +1,11 @@
 import type { ReactNode } from "react";
 
 import type { Rag } from "../../api/schema";
+import { useShownDay } from "../../app/viewingDate";
+import { formatDay } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { toneForRag, type BadgeTone } from "../../lib/status";
+import { pastDue } from "./dateStripWords";
 import { RagChip } from "./RagChip";
 
 const dotTone: Record<BadgeTone, string> = {
@@ -27,11 +30,89 @@ export function RagDot({ rag, className }: { rag: Rag | null | undefined; classN
   );
 }
 
-/** "red", "amber"… as a chip, with "unknown" for anything not reported. */
-export function RagBadge({ rag, label }: { rag: Rag | null | undefined; label?: string }) {
+/**
+ * "red", "amber"… as a chip, with "unknown" for anything not reported. `quiet`
+ * draws "unknown" as plain grey text: on a task list most rows are unknown, and
+ * colour is kept for bad news.
+ */
+export function RagBadge({
+  rag,
+  label,
+  quiet = false,
+}: {
+  rag: Rag | null | undefined;
+  label?: string;
+  quiet?: boolean;
+}) {
+  if (quiet && (!rag || rag === "unknown")) {
+    return <span className="text-[12px] font-bold text-grey-secondary">{label ?? "unknown"}</span>;
+  }
   return (
     <RagChip tone={toneForRag(rag)} className="h-6 px-2.5 text-[12px]">
       {label ?? rag ?? "unknown"}
+    </RagChip>
+  );
+}
+
+/**
+ * A task's due date in bold ink, and a red "past due" chip once its day has gone
+ * by on the day shown (and the tracker does not have it done). "—" with none.
+ */
+export function DueDate({
+  deadline,
+  trackerStatus,
+  prefix = "",
+}: {
+  deadline: string | null | undefined;
+  trackerStatus?: string | null;
+  /** Words before the date, such as "Due ". */
+  prefix?: string;
+}) {
+  const shownDay = useShownDay();
+  if (!deadline) return <>—</>;
+  const late = pastDue(deadline, shownDay, trackerStatus);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span className="font-bold text-ink">
+        {prefix}
+        {formatDay(deadline)}
+      </span>
+      {late ? (
+        <RagChip tone="danger" className="h-5 px-2 text-[11px]">
+          past due
+        </RagChip>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * An open blocker, the same everywhere: a danger chip with its age, whose dot
+ * pulses once it has been open a week (the pulse stops for reduced motion).
+ */
+export function BlockerChip({
+  description,
+  ageDays,
+  detail,
+}: {
+  description: string;
+  ageDays: number | null;
+  /** A work item or owner to name after the text. */
+  detail?: string | null;
+}) {
+  const age = ageDays === null ? null : ageDays > 0 ? `${ageDays}d` : "new";
+  return (
+    <RagChip
+      tone="danger"
+      dot
+      pulse={(ageDays ?? 0) >= 7}
+      className="h-auto min-h-6 max-w-full whitespace-normal px-2.5 py-0.5 text-[12px]"
+    >
+      <span className="min-w-0">
+        {description}
+        {detail ? ` · ${detail}` : ""}
+        {age ? ` · ${age}` : ""}
+      </span>
     </RagChip>
   );
 }
@@ -174,24 +255,45 @@ export function Sparkline({
   );
 }
 
-/** A list row: optional dot, title and meta on the left, something short on the right. */
+const ACCENT = {
+  red: "border-l-4 border-l-rag-red pl-3",
+  amber: "border-l-4 border-l-rag-amber pl-3",
+};
+
+/**
+ * A list row: optional dot, title and meta on the left, something short on the
+ * right. `accent` draws a bar on its left edge, for the rows that are bad news:
+ * red for blocked work and blockers a week old, amber for work past due or
+ * likely to be, and younger blockers.
+ */
 export function Row({
   rag,
   title,
   meta,
   right,
+  accent,
+  children,
 }: {
   rag?: Rag | null;
   title: ReactNode;
   meta?: ReactNode;
   right?: ReactNode;
+  accent?: "red" | "amber";
+  /** More under the meta line, such as blocker chips. */
+  children?: ReactNode;
 }) {
   return (
-    <li className="flex min-w-0 items-start gap-3 border-t border-grey-border py-3 first:border-t-0">
+    <li
+      className={cn(
+        "flex min-w-0 items-start gap-3 border-t border-grey-border py-3 first:border-t-0",
+        accent ? ACCENT[accent] : null,
+      )}
+    >
       {rag !== undefined ? <RagDot rag={rag} className="mt-1.5" /> : null}
       <div className="min-w-0 flex-1">
         <p className="text-[14px] font-bold text-ink">{title}</p>
         {meta ? <p className="mt-0.5 text-[12px] text-grey-secondary">{meta}</p> : null}
+        {children}
       </div>
       {right ? (
         <div className="flex-none text-right text-[12px] font-bold text-grey-secondary">

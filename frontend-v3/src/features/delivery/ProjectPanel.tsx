@@ -8,6 +8,7 @@ import { PanelState } from "../../components/PanelState";
 import { readState } from "../../lib/readState";
 import { PERSON_KEY_WORDS } from "../../lib/words";
 import { Facts, FactorsPanel, NodeHeader, Related } from "./NodeBits";
+import { ProjectDateStrip } from "./DeliveryStrips";
 import { ProgressBlock } from "./ProgressBlock";
 import { metadataFacts, reasonLine, type Finder } from "./factors";
 
@@ -70,6 +71,9 @@ export function ProjectPanel({ project, find }: { project: DirectoryItemResponse
           items={project.workstream_ids.map((id) => find("workstream", id))}
         />
         <Related label="Pods" kind="pod" items={project.pod_ids.map((id) => find("pod", id))} />
+      </div>
+      <div className="mb-5">
+        <ProjectDateStrip projectId={project.id} />
       </div>
       <PanelState isLoading={progress.isLoading} error={progress.error}>
         {p ? (

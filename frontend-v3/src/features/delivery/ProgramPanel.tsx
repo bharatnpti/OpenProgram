@@ -9,6 +9,7 @@ import { Panel, RagBadge, RagDot } from "../../components/ui/Bits";
 import { readState } from "../../lib/readState";
 import { ragSeverity } from "../../lib/status";
 import { plural } from "../../lib/words";
+import { ProjectCompactStrip } from "./DeliveryStrips";
 import { FactorsPanel, NodeHeader } from "./NodeBits";
 import { setBy } from "./factors";
 
@@ -90,6 +91,7 @@ export function ProgramPanel({ program }: { program: DirectoryItemResponse }) {
                         </Link>
                         <RagBadge rag={project.rag} />
                       </div>
+                      <ProjectCompactStrip projectId={project.id} />
                       <p className="mt-1 text-[13px] text-grey-body">
                         {top ? top.text : "Nothing recorded for it yet."}
                       </p>

@@ -40,6 +40,18 @@ export function useDelivery(projectId: string) {
   };
 }
 
+/** Several projects' delivery reads at once (a portfolio's), each the same query as `useDelivery`. */
+export function useProjectDeliveries(projectIds: string[]) {
+  const { canReadProjectProgress } = useRole();
+  return useQueries({
+    queries: projectIds.map((projectId) => ({
+      queryKey: ["delivery", projectId],
+      queryFn: () => apiClient.projectDelivery(projectId),
+      enabled: canReadProjectProgress,
+    })),
+  });
+}
+
 /** The project's releases: read with its progress, so a scrum master or developer gets none. */
 export function useReleases(projectId: string) {
   const { readProjectProgress } = useReportAccess();

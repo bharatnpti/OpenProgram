@@ -16,11 +16,13 @@ import {
 import { useRole } from "../../app/role";
 import { useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
-import { ChipPicker, Greeting, Panel, RagBadge, Row } from "../../components/ui/Bits";
+import { ChipPicker, DueDate, Greeting, Panel, RagBadge, Row } from "../../components/ui/Bits";
+import { pastDue } from "../../components/ui/dateStripWords";
 import { Pill } from "../../components/ui/Pill";
 import { formatDay } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
 import { greetingTitle, PERSON_KEY_WORDS, plural, sourceLine, todayEyebrow } from "../../lib/words";
+import { ProjectDateStrip } from "../delivery/DeliveryStrips";
 import { FactorsPanel } from "../delivery/NodeBits";
 import { ProgressSummary, TaskTable } from "../delivery/ProgressBlock";
 import { YourAsks } from "./YourAsks";
@@ -126,6 +128,7 @@ export function ProductOwnerToday() {
           }
         />
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+          {projectId ? <ProjectDateStrip projectId={projectId} /> : null}
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
             <Panel
               title="Progress"
@@ -164,9 +167,20 @@ export function ProductOwnerToday() {
                       key={t.id}
                       rag={t.rag}
                       title={t.name}
-                      meta={`${t.id}${t.tracker_status ? ` · ${t.tracker_status}` : ""} · ${sourceLine(t.source, t.confidence)}${t.deadline ? ` · due ${formatDay(t.deadline)}` : ""}`}
-                      right={<RagBadge rag={t.rag} />}
-                    />
+                      accent={pastDue(t.deadline, shownDay, t.tracker_status) ? "amber" : undefined}
+                      meta={`${t.id}${t.tracker_status ? ` · ${t.tracker_status}` : ""} · ${sourceLine(t.source, t.confidence)}`}
+                      right={<RagBadge rag={t.rag} quiet />}
+                    >
+                      {t.deadline ? (
+                        <p className="mt-0.5 text-[12px]">
+                          <DueDate
+                            prefix="Due "
+                            deadline={t.deadline}
+                            trackerStatus={t.tracker_status}
+                          />
+                        </p>
+                      ) : null}
+                    </Row>
                   ))}
                 </ul>
               </PanelState>

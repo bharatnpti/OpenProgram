@@ -10,7 +10,7 @@ import { boardMeta, boardRag, boardWord, repliedCount } from "../../lib/checkinW
 import { formatDay } from "../../lib/format";
 import { readState } from "../../lib/readState";
 import { FactorsPanel, NodeHeader, Related } from "./NodeBits";
-import { PodDeliveryCard } from "./PodDeliveryCard";
+import { PodDateStrips } from "./DeliveryStrips";
 import { PodTasksPanel } from "./PodTasks";
 import { reasonLine, type Finder } from "./factors";
 
@@ -74,7 +74,9 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
           {blockers.data ? ` · ${blockers.data.blockers.length} open blockers` : ""}
         </p>
       </div>
-      <PodDeliveryCard pod={pod} />
+      <div className="mb-5">
+        <PodDateStrips pod={pod} />
+      </div>
       {/* Per person, so only for the roles that read a pod's people. */}
       {on ? (
         <PanelState isLoading={rollup.isLoading} error={rollup.error}>
@@ -121,6 +123,7 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
                         <Row
                           key={b.id}
                           rag={b.age_days >= 7 ? "red" : "amber"}
+                          accent={b.age_days >= 7 ? "red" : "amber"}
                           title={b.description}
                           meta={`${b.owner_name}${b.work_item_ref ? ` · ${b.work_item_ref.id}` : ""} · since ${formatDay(b.first_seen_on)}`}
                           right={`${b.age_days}d`}
