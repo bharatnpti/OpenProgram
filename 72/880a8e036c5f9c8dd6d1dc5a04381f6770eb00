@@ -1,0 +1,22 @@
+backend/tests/unit/test_task_update_chat.py
+  s_d09685699e5b37::t_83259a4e8cd486 1-54
+backend/core/application/status_collector.py
+  s_d09685699e5b37::t_3542f644be4f0c 70
+  s_d09685699e5b37::t_c63757ef00c4c8 1108-1148,2544,3089
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "72880a8e036c5f9c8dd6d1dc5a04381f6770eb00",
+  "prompts": {},
+  "sessions": {
+    "s_d09685699e5b37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac999ca-e6f7-4dc8-80ef-2b794b6036cf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
