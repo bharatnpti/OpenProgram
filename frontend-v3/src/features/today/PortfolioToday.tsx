@@ -37,6 +37,7 @@ import {
   type NoPodTile,
   type TileReason,
 } from "./heat";
+import { YourAsks } from "./YourAsks";
 
 const HEAT_COLUMNS = 4;
 const SIGNALS_SHOWN = 5;
@@ -289,6 +290,7 @@ export function PortfolioToday() {
             </ul>
           </PanelState>
         </Panel>
+        <YourAsks />
       </div>
     </>
   );

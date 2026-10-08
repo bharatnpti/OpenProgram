@@ -1,51 +1,53 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { apiClient } from "../api/client";
-import type {
-  AskResponse,
-  BriefKind,
-  CrossPersonRequestResponse,
-  CrossPersonRequestStatus,
-} from "../api/schema";
-import { useMemberId, useNames } from "../app/directory";
+import type { AskResponse, BriefKind, CrossPersonRequestStatus } from "../api/schema";
+import type { Scope } from "../app/access";
+import {
+  podsOfPerson,
+  projectsOfPerson,
+  useMemberId,
+  usePods,
+  useProjects,
+} from "../app/directory";
 import { useRole } from "../app/role";
-import { useReadOnly } from "../app/viewingDate";
 import { PanelState, SectionHeader } from "../components/PanelState";
 import { ChipPicker, Panel } from "../components/ui/Bits";
 import { Pill } from "../components/ui/Pill";
 import { RagChip } from "../components/ui/RagChip";
 import { actionError } from "../lib/errors";
-import { daysBetween, formatDate } from "../lib/format";
-import {
-  daysLabel,
-  deliveryNote,
-  plural,
-  requestKindLabel,
-  requestStatusLabel,
-  spaced,
-} from "../lib/words";
-import { raisedStillOpen } from "../features/coordination/raised";
+import { formatDate } from "../lib/format";
+import { plural, spaced } from "../lib/words";
+import { RequestCard } from "../features/coordination/RequestCard";
+import { requestsAmong, scopePeople } from "../features/coordination/raised";
 
 /**
- * Who is waiting on whom, the narrative briefs, and a plain-language question
- * answered from the graph. Team and executive readers see the portfolio-wide
- * board; everyone sees what waits on them and what they raised.
+ * Who is waiting on whom across the teams, the narrative briefs, and a
+ * plain-language question answered from the graph. What waits on the viewer,
+ * and what they raised, is on their Today (Your asks). The board is for those
+ * who may act on some of its cards: not an executive, whom the waits reach
+ * through the exec brief and the Daily report.
  */
 export function CoordinationPage() {
+  const { coordination } = useRole().access;
   return (
     <>
       <SectionHeader
         title="Coordination"
-        meta="Requests between people, briefs, and Ask the graph."
+        meta={
+          coordination.board
+            ? "Requests between people, briefs, and Ask the graph. Your own asks are on Today."
+            : "Briefs, and Ask the graph. Your own asks are on Today."
+        }
       />
       <div className="grid grid-cols-[minmax(0,1fr)] gap-8">
-        <Requests />
+        {coordination.board ? <Requests defaultScope={coordination.boardScope} /> : null}
         <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <Briefs />
-          <AskTheGraph />
+          {coordination.briefs ? <Briefs fallback={coordination.defaultBrief} /> : null}
+          {coordination.ask ? <AskTheGraph /> : null}
         </div>
       </div>
     </>
@@ -58,199 +60,112 @@ const COLUMNS: { status: CrossPersonRequestStatus; label: string }[] = [
   { status: "needs_resolution", label: "Needs resolution" },
 ];
 
-function Requests() {
-  const { canReadAggregate } = useRole();
+const SCOPE_WORDS: Record<Exclude<Scope, "all">, string> = {
+  pods: "Your pods",
+  projects: "Your projects",
+};
+
+/**
+ * The board opens on the viewer's own part of it: a scrum master's pods, a
+ * product owner's projects (the people of every pod on them), and everything
+ * for a manager or admin, who can narrow it to the pods they run. Someone with
+ * no pod of their own sees everything, with no choice to make.
+ */
+function useBoardScope(defaultScope: Scope) {
+  const memberId = useMemberId();
+  const pods = usePods();
+  const projects = useProjects();
+  const own = podsOfPerson(pods.data ?? [], memberId);
+  const ownProjects = projectsOfPerson(projects.data ?? [], own.pods, own.own);
+  const narrow: Exclude<Scope, "all"> | null =
+    defaultScope === "projects" ? (ownProjects.own ? "projects" : null) : own.own ? "pods" : null;
+  const people =
+    narrow === "projects"
+      ? scopePeople(pods.data ?? [], { projectIds: ownProjects.projects.map((p) => p.id) })
+      : narrow === "pods"
+        ? scopePeople(pods.data ?? [], { podIds: own.pods.map((p) => p.id) })
+        : null;
+  return {
+    narrow,
+    people,
+    opensOn: (narrow && defaultScope !== "all" ? narrow : "all") as Scope,
+    loading: pods.isLoading || projects.isLoading,
+  };
+}
+
+function Requests({ defaultScope }: { defaultScope: Scope }) {
+  const [search, setSearch] = useSearchParams();
+  const scope = useBoardScope(defaultScope);
   const board = useQuery({
     queryKey: ["requests", "portfolio"],
     queryFn: () => apiClient.portfolioCrossPersonRequests(null),
-    enabled: canReadAggregate,
   });
-  const waiting = useQuery({
-    queryKey: ["requests", "mine", "waiting"],
-    queryFn: () => apiClient.myCrossPersonRequests("waiting"),
-  });
-  const raised = useQuery({
-    queryKey: ["requests", "mine", "raised"],
-    queryFn: () => apiClient.myCrossPersonRequests("raised"),
-  });
-  const live = (list: CrossPersonRequestResponse[] | undefined) =>
-    (list ?? []).filter((r) => r.status === "open" || r.status === "acknowledged");
-  // What the viewer asked also waits on them when nobody was matched to it.
-  const stillOpen = (list: CrossPersonRequestResponse[] | undefined) =>
-    (list ?? []).filter((r) => raisedStillOpen(r.status));
+  const asked = search.get("requests");
+  const chosen: Scope =
+    asked === "all" ? "all" : asked === "own" && scope.narrow ? scope.narrow : scope.opensOn;
+  const all = board.data?.requests ?? [];
+  const shown = chosen !== "all" && scope.people ? requestsAmong(all, scope.people) : all;
+  const pick = (next: Scope) =>
+    setSearch(
+      (current) => {
+        // Other parameters (the day being viewed, the brief kind) are not the board's.
+        const params = new URLSearchParams(current);
+        if (next === scope.opensOn) params.delete("requests");
+        else params.set("requests", next === "all" ? "all" : "own");
+        return params;
+      },
+      { replace: true },
+    );
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-      {canReadAggregate ? (
-        <Panel title="Requests board" note="every open ask across the portfolio">
-          <PanelState isLoading={board.isLoading} error={board.error}>
-            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-3">
-              {COLUMNS.map((col) => {
-                const items = (board.data?.requests ?? []).filter((r) => r.status === col.status);
-                return (
-                  <div key={col.status} className="min-w-0 rounded-2xl bg-grey-fill p-3">
-                    <p className="mb-2 text-[12px] font-bold uppercase tracking-wider text-grey-secondary">
-                      {col.label} · {items.length}
-                    </p>
-                    {items.length === 0 ? (
-                      <p className="text-[13px] text-grey-secondary">None.</p>
-                    ) : (
-                      <ul className="grid gap-2">
-                        {items.map((r) => (
-                          <RequestCard key={r.id} request={r} />
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </PanelState>
-        </Panel>
+    <Panel
+      title="Requests board"
+      note={
+        chosen === "all"
+          ? "every open ask across the teams"
+          : `asks made or received by the people of ${chosen === "pods" ? "your pods" : "your projects"}`
+      }
+    >
+      {scope.narrow ? (
+        <ChipPicker
+          label="Requests of"
+          value={chosen}
+          onChange={pick}
+          options={[
+            ...(scope.opensOn === "all" ? [{ value: "all" as Scope, label: "Everything" }] : []),
+            { value: scope.narrow as Scope, label: SCOPE_WORDS[scope.narrow] },
+            ...(scope.opensOn === "all" ? [] : [{ value: "all" as Scope, label: "Everything" }]),
+          ]}
+        />
       ) : null}
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
-        <Panel title="Waiting on you">
-          <PanelState
-            isLoading={waiting.isLoading}
-            error={waiting.error}
-            isEmpty={live(waiting.data?.requests).length === 0}
-            emptyText="Nothing waiting on you."
-          >
-            <ul className="grid gap-2">
-              {live(waiting.data?.requests).map((r) => (
-                <RequestCard key={r.id} request={r} showStatus />
-              ))}
-            </ul>
-          </PanelState>
-        </Panel>
-        <Panel title="Raised by you" note="and where each one has got to">
-          <PanelState
-            isLoading={raised.isLoading}
-            error={raised.error}
-            isEmpty={stillOpen(raised.data?.requests).length === 0}
-            emptyText="You have no open asks of others."
-          >
-            <ul className="grid gap-2">
-              {stillOpen(raised.data?.requests).map((r) => (
-                <RequestCard key={r.id} request={r} showStatus />
-              ))}
-            </ul>
-          </PanelState>
-        </Panel>
-      </div>
-    </div>
-  );
-}
-
-/**
- * One request. The person asking and the person asked are named (you, when it
- * is the viewer); the board's column already says where it stands, the two
- * personal lists say it on the card (`showStatus`).
- */
-function RequestCard({
-  request,
-  showStatus = false,
-}: {
-  request: CrossPersonRequestResponse;
-  showStatus?: boolean;
-}) {
-  const names = useNames();
-  const memberId = useMemberId();
-  const { readOnly, reason } = useReadOnly();
-  const queryClient = useQueryClient();
-  const today = new Date().toISOString().slice(0, 10);
-  const age = daysBetween(request.created_at, today);
-  const update = useMutation({
-    mutationFn: (status: CrossPersonRequestStatus) =>
-      apiClient.updateCrossPersonRequestStatus(request.id, { status }),
-    onSuccess: (_r, status) => {
-      toast.success(status === "resolved" ? "Request resolved." : "Request acknowledged.");
-      void queryClient.invalidateQueries({ queryKey: ["requests"] });
-    },
-    onError: (e: unknown) => {
-      toast.error(actionError(e, "update this request"));
-      // Someone else may have closed or removed it: show the lists as they are now.
-      void queryClient.invalidateQueries({ queryKey: ["requests"] });
-    },
-  });
-
-  const raisedByViewer = Boolean(memberId && request.requester_id === memberId);
-  const askedOfViewer = Boolean(memberId && request.counterpart_id === memberId);
-  const requester = raisedByViewer ? "You" : names.or(request.requester_id, "Someone");
-  const counterpart = askedOfViewer
-    ? "you"
-    : (request.counterpart_display_name ?? request.raw_name ?? "someone not matched yet");
-  const delivery = deliveryNote(request.delivery, raisedByViewer);
-  const live = request.status === "open" || request.status === "acknowledged";
-  // The backend's rule, and it refuses anyone else with a 403 whatever role they
-  // read (an admin too): only the person asked acknowledges a request, and only
-  // while it is open; they or the requester resolve it. Each change records who
-  // made it. The buttons show only where the viewer is one of those people; the
-  // board's readers see the request and the line below, not a button that is refused.
-  const canAcknowledge = request.status === "open" && askedOfViewer;
-  const canResolve = askedOfViewer || raisedByViewer;
-
-  return (
-    <li className="rounded-2xl border border-grey-border bg-white p-3">
-      <p className="text-[13px] font-bold">
-        {requester} → {counterpart}
-      </p>
-      <p className="mt-0.5 text-[13px] text-grey-body">{request.note || "No note."}</p>
-      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-grey-secondary">
-        <RagChip tone="neutral" className="h-5 px-2 text-[11px]">
-          {requestKindLabel(request.kind)}
-        </RagChip>
-        {showStatus ? (
-          <RagChip
-            tone={request.status === "acknowledged" ? "success" : "warning"}
-            className="h-5 px-2 text-[11px]"
-          >
-            {requestStatusLabel(request.status)}
-          </RagChip>
-        ) : null}
-        <span>{age <= 0 ? "raised today" : `waiting ${daysLabel(age)}`}</span>
-        {delivery ? (
-          <span className={delivery.bad ? "font-bold text-rag-red" : ""}>· {delivery.text}</span>
-        ) : null}
-      </div>
-      {request.status === "needs_resolution" ? (
-        <p className="mt-2 text-[12px] text-grey-secondary">
-          The name wasn't matched to anyone. OpenProgram asked the requester who was meant; it stays
-          here until they answer.
-        </p>
-      ) : null}
-      {(live || request.status === "needs_resolution") && !canResolve ? (
-        <p className="mt-2 text-[12px] text-grey-secondary">
-          Only the people on this request acknowledge or resolve it.
-        </p>
-      ) : null}
-      {(live || request.status === "needs_resolution") && canResolve ? (
-        <div className="mt-2 flex gap-1.5">
-          {canAcknowledge ? (
-            <Pill
-              size="sm"
-              variant="ghost"
-              disabled={update.isPending || readOnly}
-              title={reason ?? undefined}
-              aria-label={`Acknowledge: ${request.note || requestKindLabel(request.kind)}`}
-              onClick={() => update.mutate("acknowledged")}
-            >
-              Acknowledge
-            </Pill>
-          ) : null}
-          <Pill
-            size="sm"
-            variant="dark"
-            disabled={update.isPending || readOnly}
-            title={reason ?? undefined}
-            aria-label={`Resolve: ${request.note || requestKindLabel(request.kind)}`}
-            onClick={() => update.mutate("resolved")}
-          >
-            Resolve
-          </Pill>
+      <PanelState
+        isLoading={board.isLoading || scope.loading}
+        error={board.error}
+        onRetry={() => void board.refetch()}
+      >
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-3">
+          {COLUMNS.map((col) => {
+            const items = shown.filter((r) => r.status === col.status);
+            return (
+              <div key={col.status} className="min-w-0 rounded-2xl bg-grey-fill p-3">
+                <p className="mb-2 text-[12px] font-bold uppercase tracking-wider text-grey-secondary">
+                  {col.label} · {items.length}
+                </p>
+                {items.length === 0 ? (
+                  <p className="text-[13px] text-grey-secondary">None.</p>
+                ) : (
+                  <ul className="grid gap-2">
+                    {items.map((r) => (
+                      <RequestCard key={r.id} request={r} />
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
         </div>
-      ) : null}
-    </li>
+      </PanelState>
+    </Panel>
   );
 }
 
@@ -264,16 +179,20 @@ const BRIEF_FILTERS: { value: "all" | BriefKind; label: string }[] = [
 /** The newest few; real briefs are paragraphs, and a page of twenty buries the rest. */
 const BRIEFS_SHOWN = 5;
 
-function Briefs() {
-  const { canReadAggregate } = useRole();
+/**
+ * The briefs, newest first, opening on the kind the role reads: the daily pod
+ * brief for a scrum master, the weekly project brief for a product owner, the
+ * exec brief for a manager, executive or admin. "All" is a pick like the others
+ * (`?brief=all`); a link with no kind opens on the role's own.
+ */
+function Briefs({ fallback }: { fallback: BriefKind }) {
   const [search, setSearch] = useSearchParams();
   const [showAll, setShowAll] = useState(false);
   const raw = search.get("brief");
-  const kind = BRIEF_FILTERS.some((f) => f.value === raw) ? (raw as "all" | BriefKind) : "all";
+  const kind = BRIEF_FILTERS.some((f) => f.value === raw) ? (raw as "all" | BriefKind) : fallback;
   const briefs = useQuery({
     queryKey: ["briefs", kind],
     queryFn: () => apiClient.personaBriefs(kind === "all" ? undefined : kind, 20),
-    enabled: canReadAggregate,
   });
   const all = briefs.data?.briefs ?? [];
   const shown = showAll ? all : all.slice(0, BRIEFS_SHOWN);
@@ -290,7 +209,7 @@ function Briefs() {
               (current) => {
                 // Other parameters (the day being viewed) are the shell's; leave them.
                 const params = new URLSearchParams(current);
-                if (next === "all") params.delete("brief");
+                if (next === fallback) params.delete("brief");
                 else params.set("brief", next);
                 return params;
               },
@@ -351,7 +270,6 @@ const EXAMPLES = [
 ];
 
 function AskTheGraph() {
-  const { canReadAggregate } = useRole();
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<AskResponse | null>(null);
   const ask = useMutation({
@@ -362,58 +280,56 @@ function AskTheGraph() {
 
   return (
     <Panel title="Ask the graph" note="answered from the delivery graph, not a guess">
-      {!canReadAggregate ? null : (
-        <div className="grid gap-3">
-          <form
-            className="grid gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (question.trim()) ask.mutate(question.trim());
-            }}
-          >
-            <label htmlFor="ask-q" className="sr-only">
-              Question
-            </label>
-            <textarea
-              id="ask-q"
-              className="min-h-20 w-full rounded-2xl border border-grey-border p-3 text-[14px]"
-              placeholder={EXAMPLES[0]}
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-            />
-            <div className="flex flex-wrap items-center gap-2">
-              <Pill type="submit" size="sm" disabled={!question.trim() || ask.isPending}>
-                {ask.isPending ? "Asking…" : "Ask"}
-              </Pill>
-              {EXAMPLES.slice(1).map((ex) => (
-                <button
-                  key={ex}
-                  type="button"
-                  className="text-[12px] font-bold text-magenta"
-                  onClick={() => setQuestion(ex)}
-                >
-                  {ex}
-                </button>
-              ))}
-            </div>
-          </form>
-          {answer ? (
-            <div className="rounded-2xl bg-grey-fill p-4 text-[14px]">
-              <p className="whitespace-pre-line">{answer.answer}</p>
-              {(answer.sources ?? []).length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {(answer.sources ?? []).map((s) => (
-                    <RagChip key={s.id} tone="info" className="h-6 px-2.5 text-[11px]">
-                      {s.label ?? s.id}
-                      {s.kind ? ` · ${spaced(s.kind)}` : ""}
-                    </RagChip>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      )}
+      <div className="grid gap-3">
+        <form
+          className="grid gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (question.trim()) ask.mutate(question.trim());
+          }}
+        >
+          <label htmlFor="ask-q" className="sr-only">
+            Question
+          </label>
+          <textarea
+            id="ask-q"
+            className="min-h-20 w-full rounded-2xl border border-grey-border p-3 text-[14px]"
+            placeholder={EXAMPLES[0]}
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Pill type="submit" size="sm" disabled={!question.trim() || ask.isPending}>
+              {ask.isPending ? "Asking…" : "Ask"}
+            </Pill>
+            {EXAMPLES.slice(1).map((ex) => (
+              <button
+                key={ex}
+                type="button"
+                className="text-[12px] font-bold text-magenta"
+                onClick={() => setQuestion(ex)}
+              >
+                {ex}
+              </button>
+            ))}
+          </div>
+        </form>
+        {answer ? (
+          <div className="rounded-2xl bg-grey-fill p-4 text-[14px]">
+            <p className="whitespace-pre-line">{answer.answer}</p>
+            {(answer.sources ?? []).length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {(answer.sources ?? []).map((s) => (
+                  <RagChip key={s.id} tone="info" className="h-6 px-2.5 text-[11px]">
+                    {s.label ?? s.id}
+                    {s.kind ? ` · ${spaced(s.kind)}` : ""}
+                  </RagChip>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </Panel>
   );
 }

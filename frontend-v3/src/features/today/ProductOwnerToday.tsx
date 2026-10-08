@@ -21,7 +21,7 @@ import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
 import { greetingTitle, PERSON_KEY_WORDS, plural, sourceLine, todayEyebrow } from "../../lib/words";
-import { WaitingOnYou } from "./WaitingOnYou";
+import { YourAsks } from "./YourAsks";
 
 const ATTENTION_SHOWN = 8;
 
@@ -208,7 +208,7 @@ export function ProductOwnerToday() {
               </ul>
             </PanelState>
           </Panel>
-          <WaitingOnYou />
+          <YourAsks />
         </div>
       </PanelState>
     </>

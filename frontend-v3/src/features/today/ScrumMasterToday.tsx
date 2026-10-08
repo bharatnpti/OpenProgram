@@ -20,7 +20,7 @@ import { formatDay } from "../../lib/format";
 import { boardMeta, boardRag, boardWord, repliedCount } from "../../lib/checkinWords";
 import { ragSeverity, toneForRag } from "../../lib/status";
 import { greetingTitle, plural, sourceLine, spaced, todayEyebrow } from "../../lib/words";
-import { WaitingOnYou } from "./WaitingOnYou";
+import { YourAsks } from "./YourAsks";
 
 /**
  * A scrum master's two morning questions: who has checked in across my pods,
@@ -199,7 +199,7 @@ export function ScrumMasterToday() {
               </ul>
             </PanelState>
           </Panel>
-          <WaitingOnYou />
+          <YourAsks />
         </div>
       </PanelState>
     </>

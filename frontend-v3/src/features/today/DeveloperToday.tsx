@@ -30,7 +30,7 @@ import {
   whyCheckinMatters,
   type BlockerRow,
 } from "./checkin";
-import { WaitingOnYou } from "./WaitingOnYou";
+import { YourAsks } from "./YourAsks";
 
 /**
  * A developer's day: the check-in to confirm or correct, what to work on next,
@@ -113,7 +113,7 @@ export function DeveloperToday() {
           </Panel>
         </div>
         <div className="grid grid-cols-[minmax(0,1fr)] content-start gap-4">
-          <WaitingOnYou />
+          <YourAsks />
           <RollsUpInto rollup={rollup} read={readState(focus)} />
           <Panel title="Why this matters">
             <p className="text-[14px] text-grey-body">{whyCheckinMatters(readOnly)}</p>
