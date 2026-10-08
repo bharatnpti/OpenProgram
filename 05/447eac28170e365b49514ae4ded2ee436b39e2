@@ -1,0 +1,28 @@
+backend/tests/unit/test_console_answer.py
+  s_d09685699e5b37::t_295ad4c110318c 201,204
+  s_d09685699e5b37::t_2dce44bf888f14 1-200,202-203,205-235
+backend/core/application/status_collector.py
+  s_d09685699e5b37::t_1f0833143bd55a 61,1798-1802,1814-1815,1849-1856
+  s_d09685699e5b37::t_adc97ec5113819 1857
+backend/core/application/status_summaries.py
+  s_d09685699e5b37::t_1f0833143bd55a 245-260
+backend/infra/workflows/nudge.py
+  s_d09685699e5b37::t_1f0833143bd55a 149-161,173,219,272,279-281,285
+  s_d09685699e5b37::t_ac130a17091151 286
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "05447eac28170e365b49514ae4ded2ee436b39e2",
+  "prompts": {},
+  "sessions": {
+    "s_d09685699e5b37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac999ca-e6f7-4dc8-80ef-2b794b6036cf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
