@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { DirectoryItemResponse } from "../../api/schema";
+import { accessOf, capabilitiesFor, paletteTargets } from "../../app/access.ts";
+import type { AppRole } from "../../app/roleWords.ts";
 import { directoryRows, matchRows, noPodNote, peopleRows, screenRows } from "./paletteRows.ts";
+
+const targetsOf = (role: AppRole) =>
+  paletteTargets(accessOf({ lens: [role], chatEnabled: false }), capabilitiesFor([role]));
+const manager = targetsOf("mgr");
 
 const item = (
   kind: DirectoryItemResponse["kind"],
@@ -50,8 +56,8 @@ const directory = {
   ],
 };
 
-test("every node opens its Delivery panel, and an empty workstream is left out", () => {
-  const rows = directoryRows(directory);
+test("for a manager every node opens its Delivery panel, and an empty workstream is left out", () => {
+  const rows = directoryRows(directory, manager);
   assert.deepEqual(
     rows.map((row) => [row.label, row.hint, row.to]),
     [
@@ -78,6 +84,7 @@ test("a person opens their pod; someone in no pod or with no name is not offered
       { id: "U1007", name: "Kai Thompson" },
     ],
     directory.pods,
+    manager.person,
   );
   assert.deepEqual(
     rows.map((row) => [row.label, row.hint, row.to]),
@@ -94,7 +101,7 @@ test("a query keeps rows holding every word, names starting with it first", () =
       { to: "/today", label: "Today", hint: "Your day" },
       { to: "/delivery", label: "Delivery", hint: "Programs, projects, workstreams and pods" },
     ]),
-    ...directoryRows(directory),
+    ...directoryRows(directory, manager),
   ];
   assert.deepEqual(
     matchRows(rows, "pay").map((row) => row.label),
@@ -127,7 +134,7 @@ const twoPods = [
 ];
 
 test("a person is found by any of their pods, and the row names the pod that matched", () => {
-  const rows = peopleRows(crew, twoPods);
+  const rows = peopleRows(crew, twoPods, manager.person);
   const asha = rows.find((row) => row.label === "Asha Rao");
   // Alphabetically Identity Pod is her first pod, so by default that is what the row opens.
   assert.equal(asha?.hint, "Person · Identity Pod and 1 more");
@@ -148,12 +155,50 @@ test("a person is found by any of their pods, and the row names the pod that mat
 });
 
 test("a person in no pod is never offered, and the empty result says why", () => {
-  assert.deepEqual(matchRows(peopleRows(crew, twoPods), "elena"), []);
+  assert.deepEqual(matchRows(peopleRows(crew, twoPods, manager.person), "elena"), []);
   assert.equal(
     noPodNote(crew, twoPods, "elena"),
-    "Elena Fischer is in no pod, so there is no Delivery page to open.",
+    "Elena Fischer is in no pod, so there is no pod page to open.",
   );
   assert.equal(noPodNote(crew, twoPods, "kai"), null, "someone in a pod is not the reason");
   assert.equal(noPodNote(crew, twoPods, "nobody like this"), null);
   assert.equal(noPodNote(crew, twoPods, "  "), null);
+});
+
+const rowsFor = (role: AppRole) =>
+  [
+    ...directoryRows(directory, targetsOf(role)),
+    ...peopleRows(crew, directory.pods, targetsOf(role).person),
+  ].map((row) => [row.kind, row.label, row.to]);
+
+test("an executive gets programs, projects and workstreams in Delivery, and no pods or people", () => {
+  assert.deepEqual(rowsFor("exec"), [
+    ["program", "Digital Platform Program", "/delivery/program/program-platform"],
+    ["project", "Checkout Revamp", "/delivery/project/project-checkout"],
+    ["workstream", "Payments API", "/delivery/workstream/ws-payments"],
+  ]);
+});
+
+test("a scrum master's pods and people open the pod on Today", () => {
+  assert.deepEqual(rowsFor("sm"), [
+    ["pod", "Storefront Pod", "/today?pod=pod-storefront"],
+    ["pod", "Payments Pod", "/today?pod=pod-payments"],
+    ["person", "Asha Rao", "/today?pod=pod-payments"],
+    ["person", "Kai Thompson", "/today?pod=pod-payments"],
+  ]);
+  // Found by another of their pods, a person opens that pod there too.
+  const found = matchRows(peopleRows(crew, directory.pods, targetsOf("sm").person), "storefront");
+  assert.deepEqual(
+    found.map((row) => [row.label, row.to]),
+    [["Asha Rao", "/today?pod=pod-storefront"]],
+  );
+});
+
+test("a product owner's projects open on Today; a developer's in Reports; neither gets people", () => {
+  assert.deepEqual(rowsFor("po"), [
+    ["project", "Checkout Revamp", "/today?project=project-checkout"],
+  ]);
+  assert.deepEqual(rowsFor("dev"), [
+    ["project", "Checkout Revamp", "/reports/project-checkout/daily"],
+  ]);
 });

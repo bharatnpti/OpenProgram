@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 
 import type { AuthStatusResponse, DevUserResponse } from "../api/schema";
+import type { Access } from "./access";
 import { appRoles, rolePriority, type AppRole } from "./roleWords";
 
 /*
@@ -44,8 +45,15 @@ export type RoleContextValue = {
   /** Persona switching is served (backend `demo_mode`). */
   demoMode: boolean;
   /**
-   * These mirror the backend's capabilities only so the app can say up front
-   * which role opens a panel. The backend still decides: every panel also
+   * The roles the API is told: the one lens under local dev sign-in, every held
+   * role under a real one. Capabilities and `access` follow these.
+   */
+  lens: AppRole[];
+  /** What this lens is offered: tabs, Delivery's lists, sections, palette rows (app/access.ts). */
+  access: Access;
+  /**
+   * These mirror the backend's capabilities only so the app can leave out what
+   * a role is not offered. The backend still decides: every panel also
    * handles a 403 and shows the server's reason.
    */
   /** `READ_PROJECT_PROGRESS`: product owner, manager, executive, admin. */

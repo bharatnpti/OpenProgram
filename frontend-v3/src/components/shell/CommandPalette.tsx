@@ -3,8 +3,9 @@ import { CornerDownLeft, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { paletteTargets } from "../../app/access";
 import { usePods, usePrograms, useProjects, useWorkstreams } from "../../app/directory";
-import { offeredNav } from "../../app/nav";
+import { shownNav } from "../../app/nav";
 import { useRole } from "../../app/role";
 import { cn } from "../../lib/utils";
 import {
@@ -27,10 +28,11 @@ const KIND_DOT: Record<PaletteRow["kind"], string> = {
 };
 
 /**
- * ⌘K / Ctrl+K: jump to a screen this role is offered, or to any program,
- * project, workstream (one that holds work), pod or named person. Typing
- * filters; the arrow keys move, Enter opens, Escape closes, so it works by
- * keyboard alone. A jump keeps the day being viewed.
+ * ⌘K / Ctrl+K: jump to a screen this role is offered, or to a program,
+ * project, workstream (one that holds work), pod or named person, each where
+ * this role has it (app/access.ts `paletteTargets`): a kind the role does not
+ * read is not listed. Typing filters; the arrow keys move, Enter opens, Escape
+ * closes, so it works by keyboard alone. A jump keeps the day being viewed.
  */
 export function CommandPalette({
   open,
@@ -97,22 +99,23 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
     return [...roleState.people, ...fromDirectory];
   }, [directory, roleState.people]);
 
+  const targets = useMemo(() => paletteTargets(roleState.access, roleState), [roleState]);
   const rows = useMemo(
     () =>
       matchRows(
         [
-          ...screenRows(offeredNav(roleState)),
-          ...directoryRows(directory),
-          ...peopleRows(named, directory.pods),
+          ...screenRows(shownNav(roleState.access)),
+          ...directoryRows(directory, targets),
+          ...peopleRows(named, directory.pods, targets.person),
         ],
         query,
       ),
-    [directory, named, query, roleState],
+    [directory, named, query, roleState.access, targets],
   );
   // A name that finds nobody may be a person in no pod: there is nowhere to take them.
   const noPod = useMemo(
-    () => (rows.length === 0 ? noPodNote(named, directory.pods, query) : null),
-    [directory.pods, named, query, rows.length],
+    () => (rows.length === 0 && targets.person ? noPodNote(named, directory.pods, query) : null),
+    [directory.pods, named, query, rows.length, targets.person],
   );
   const current = Math.min(active, Math.max(rows.length - 1, 0));
   const loading =

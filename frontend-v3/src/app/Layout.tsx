@@ -10,6 +10,7 @@ import { TabTitle } from "../components/shell/TabTitle";
 import { ViewingDateBanner, ViewingDateControl } from "../components/shell/ViewingDate";
 import { cn } from "../lib/utils";
 import { shownNav } from "./nav";
+import { RouteGuard } from "./RouteGuard";
 import { useRole } from "./role";
 import { useViewingDate } from "./viewingDate";
 
@@ -22,8 +23,8 @@ export function Layout() {
   const nav = useRef<HTMLElement>(null);
   const { pathname } = useLocation();
 
-  // On a phone the seven tabs do not fit and scroll: keep the one shown in view
-  // (Admin is the last, and would otherwise sit off the edge).
+  // On a phone an admin's seven tabs do not fit and scroll: keep the one shown in
+  // view (Admin is the last, and would otherwise sit off the edge).
   useEffect(() => {
     nav.current
       ?.querySelector<HTMLElement>('[aria-current="page"]')
@@ -86,39 +87,32 @@ export function Layout() {
             // Below md the tabs scroll sideways: the right edge fades out to say there are more.
             className="-mx-1 flex w-full gap-1 overflow-x-auto px-1 [scrollbar-width:none] max-md:[mask-image:linear-gradient(to_right,black_calc(100%-28px),transparent)]"
           >
-            {shownNav(roleState).map((item) =>
-              item.offered(roleState) ? (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    cn(
-                      "relative flex-none px-3 pb-3 pt-2 text-[15px] font-bold no-underline",
-                      isActive
-                        ? "text-ink after:absolute after:inset-x-3 after:bottom-0 after:h-[3px] after:rounded-full after:bg-magenta"
-                        : "text-grey-body hover:text-ink",
-                    )
-                  }
-                >
-                  {item.label}
-                </NavLink>
-              ) : (
-                <span
-                  key={item.to}
-                  title={`Not offered to the ${roleState.roleLabel.toLowerCase()} role`}
-                  className="flex-none px-3 pb-3 pt-2 text-[15px] font-bold text-grey-disabled line-through"
-                >
-                  {item.label}
-                </span>
-              ),
-            )}
+            {shownNav(roleState.access).map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  cn(
+                    "relative flex-none px-3 pb-3 pt-2 text-[15px] font-bold no-underline",
+                    isActive
+                      ? "text-ink after:absolute after:inset-x-3 after:bottom-0 after:h-[3px] after:rounded-full after:bg-magenta"
+                      : "text-grey-body hover:text-ink",
+                  )
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
           </nav>
         </div>
         <ViewingDateBanner />
       </header>
       <main className="mx-auto max-w-[1240px] px-4 py-8 sm:px-8">
-        {/* A different day remounts the screen, so every query on it asks for that day. */}
-        <Outlet key={asOf ?? "today"} />
+        {/* A link to a page this role is not offered opens the closest one it has. */}
+        <RouteGuard>
+          {/* A different day remounts the screen, so every query on it asks for that day. */}
+          <Outlet key={asOf ?? "today"} />
+        </RouteGuard>
       </main>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>

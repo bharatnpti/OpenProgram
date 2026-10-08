@@ -1,56 +1,38 @@
-import type { AppRole } from "./roleWords";
+import type { Access, Page } from "./access";
 
 export type NavItem = {
   to: string;
+  page: Page;
   label: string;
   /** What is there, in a few words, for the ⌘K palette. */
   hint: string;
-  offered: (role: Roles) => boolean;
-};
-type Roles = {
-  role: AppRole;
-  canReadAggregate: boolean;
-  canManageConfig: boolean;
-  chatEnabled: boolean;
 };
 
 /**
- * The seven destinations, in the design's order. A destination the viewing
- * role is not offered stays visible but struck through, so people can see the
- * shape of the product and what another role would open. Chat only exists on
- * a tenant that serves the built-in chat.
+ * The seven destinations, in the design's order. Each role sees only the ones
+ * it is offered (app/access.ts); there is no struck-through tab for the rest.
  */
 export const NAV: NavItem[] = [
-  { to: "/today", label: "Today", hint: "Your day", offered: () => true },
+  { to: "/today", page: "today", label: "Today", hint: "Your day" },
   {
     to: "/delivery",
+    page: "delivery",
     label: "Delivery",
     hint: "Programs, projects, workstreams and pods",
-    offered: () => true,
   },
+  { to: "/signals", page: "signals", label: "Signals", hint: "Flow and risks" },
   {
-    to: "/signals",
-    label: "Signals",
-    hint: "Risks, drift and flow",
-    offered: (r) => r.canReadAggregate,
+    to: "/coordination",
+    page: "coordination",
+    label: "Coordination",
+    hint: "Requests, briefs and Ask the graph",
   },
-  { to: "/coordination", label: "Coordination", hint: "Requests and briefs", offered: () => true },
-  { to: "/reports", label: "Reports", hint: "Daily and Overall", offered: () => true },
-  {
-    to: "/chat",
-    label: "Chat",
-    hint: "The check-in conversation",
-    offered: (r) => r.chatEnabled,
-  },
-  { to: "/admin", label: "Admin", hint: "Configuration", offered: (r) => r.canManageConfig },
+  { to: "/reports", page: "reports", label: "Reports", hint: "Daily and Overall" },
+  { to: "/chat", page: "chat", label: "Chat", hint: "The check-in conversation" },
+  { to: "/admin", page: "admin", label: "Admin", hint: "Configuration" },
 ];
 
-/** The destinations shown in the navigation: all of them, except Chat where it isn't served. */
-export function shownNav(roles: Roles): NavItem[] {
-  return NAV.filter((item) => item.to !== "/chat" || roles.chatEnabled);
-}
-
-/** The destinations this role may open, for the palette. */
-export function offeredNav(roles: Roles): NavItem[] {
-  return NAV.filter((item) => item.offered(roles));
+/** The destinations this role is offered: the navigation's tabs and the palette's screens. */
+export function shownNav(access: Pick<Access, "pages">): NavItem[] {
+  return NAV.filter((item) => access.pages[item.page]);
 }

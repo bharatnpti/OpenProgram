@@ -1,6 +1,7 @@
 // What the ⌘K palette offers and how a query picks from it. Type imports only,
 // so `node --test` can run it.
 import type { DirectoryItemResponse } from "../../api/schema";
+import type { PaletteTargets } from "../../app/access";
 
 export type PaletteKind = "screen" | "program" | "project" | "workstream" | "pod" | "person";
 
@@ -16,7 +17,7 @@ export type PaletteRow = {
    * before them ("Backend Engineer · "). A query naming another of their pods
    * finds them and opens that one.
    */
-  person?: { lead: string; pods: { id: string; name: string }[] };
+  person?: { lead: string; pods: { id: string; name: string }[]; toPod: (podId: string) => string };
 };
 
 export type Directory = {
@@ -40,8 +41,6 @@ export function screenRows(screens: { to: string; label: string; hint: string }[
   }));
 }
 
-const delivery = (kind: string, id: string) => `/delivery/${kind}/${encodeURIComponent(id)}`;
-
 function namesOf(ids: string[], items: DirectoryItemResponse[]): string {
   return ids
     .map((id) => items.find((item) => item.id === id)?.name)
@@ -54,11 +53,13 @@ function hint(kind: string, where: string): string {
 }
 
 /**
- * Programs, projects, workstreams and pods, each opening its Delivery panel.
- * Workstreams are optional, so one that holds no work is left out, as every
- * persona view does.
+ * Programs, projects, workstreams and pods, each opening where the role has it
+ * (`targets`, from the access map): its Delivery panel, or for a role without
+ * Delivery its Today or its reports. A kind the role gets no rows of is left
+ * out. Workstreams are optional, so one that holds no work is left out, as
+ * every persona view does.
  */
-export function directoryRows(directory: Directory): PaletteRow[] {
+export function directoryRows(directory: Directory, targets: PaletteTargets): PaletteRow[] {
   const { programs, projects, workstreams, pods } = directory;
   return [
     ...programs.map((item) => ({ item, kind: "program" as const, where: "" })),
@@ -79,21 +80,34 @@ export function directoryRows(directory: Directory): PaletteRow[] {
       kind: "pod" as const,
       where: namesOf(item.project_ids, projects),
     })),
-  ].map(({ item, kind, where }) => ({
-    key: `${kind}:${item.id}`,
-    kind,
-    label: item.name,
-    hint: hint(kind.charAt(0).toUpperCase() + kind.slice(1), where),
-    to: delivery(kind, item.id),
-  }));
+  ].flatMap(({ item, kind, where }) => {
+    const to = targets[kind];
+    return to
+      ? [
+          {
+            key: `${kind}:${item.id}`,
+            kind,
+            label: item.name,
+            hint: hint(kind.charAt(0).toUpperCase() + kind.slice(1), where),
+            to: to(item.id),
+          },
+        ]
+      : [];
+  });
 }
 
 /**
  * People, each opening the pod they work in (their check-in and blockers are
- * there). Someone in no pod has no place in Delivery, so isn't offered; an id
- * nobody names is never offered as a name.
+ * there), for the roles that read a pod's people (`toPod`; none for the rest).
+ * Someone in no pod has no place to open, so isn't offered; an id nobody names
+ * is never offered as a name.
  */
-export function peopleRows(people: NamedPerson[], pods: DirectoryItemResponse[]): PaletteRow[] {
+export function peopleRows(
+  people: NamedPerson[],
+  pods: DirectoryItemResponse[],
+  toPod: ((podId: string) => string) | null,
+): PaletteRow[] {
+  if (!toPod) return [];
   const seen = new Set<string>();
   const rows: PaletteRow[] = [];
   for (const person of people) {
@@ -110,8 +124,8 @@ export function peopleRows(people: NamedPerson[], pods: DirectoryItemResponse[])
       kind: "person",
       label: person.name,
       hint: personHint(lead, theirs),
-      to: delivery("pod", theirs[0].id),
-      person: { lead, pods: theirs.map((pod) => ({ id: pod.id, name: pod.name })) },
+      to: toPod(theirs[0].id),
+      person: { lead, pods: theirs.map((pod) => ({ id: pod.id, name: pod.name })), toPod },
     });
   }
   return rows.sort((a, b) => a.label.localeCompare(b.label));
@@ -147,7 +161,7 @@ export function noPodNote(
   });
   if (lonely.length === 0) return null;
   const names = lonely.map((person) => person.name).join(", ");
-  return `${names} ${lonely.length === 1 ? "is" : "are"} in no pod, so there is no Delivery page to open.`;
+  return `${names} ${lonely.length === 1 ? "is" : "are"} in no pod, so there is no pod page to open.`;
 }
 
 /**
@@ -195,5 +209,5 @@ function focusPod(row: PaletteRow, words: string[]): PaletteRow {
   const hit = person.pods.find(named);
   if (!hit) return row;
   const pods = [hit, ...person.pods.filter((pod) => pod.id !== hit.id)];
-  return { ...row, hint: personHint(person.lead, pods), to: delivery("pod", hit.id) };
+  return { ...row, hint: personHint(person.lead, pods), to: person.toPod(hit.id) };
 }

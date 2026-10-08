@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { apiClient, apiUrl, setActingAs } from "../api/client";
 import type { AuthStatusResponse, DevUserResponse } from "../api/schema";
 import { firstName } from "../lib/words";
+import { accessOf, capabilitiesFor } from "./access";
 import { describeAuthFailure } from "./authWords";
 import {
   appRolesOf,
@@ -136,8 +137,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     const selectedRole = isDevMode ? activeRole : highestRole(heldRoles);
     const authenticated = isDevMode || authStatus?.authenticated === true;
     // Capabilities follow the one role the backend is told, not every held role.
-    const lens = new Set<AppRole>(isDevMode ? [selectedRole] : heldRoles);
-    const admin = lens.has("admin");
+    const lens: AppRole[] = isDevMode ? [selectedRole] : heldRoles;
+    const chatEnabled = authStatus?.chat_enabled === true;
 
     return {
       role: selectedRole,
@@ -161,14 +162,10 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       user: authStatus?.user ?? null,
       isDevMode,
       demoMode,
-      canReadProjectProgress: admin || lens.has("po") || lens.has("mgr") || lens.has("exec"),
-      canReadAggregate:
-        admin || lens.has("exec") || lens.has("mgr") || lens.has("po") || lens.has("sm"),
-      canManageConfig: admin,
-      canReadPodDetail: admin || lens.has("sm") || lens.has("mgr"),
-      canReadPortfolio: admin || lens.has("mgr") || lens.has("exec"),
-      canSetUpDayReports: admin || lens.has("sm") || lens.has("mgr"),
-      chatEnabled: authStatus?.chat_enabled === true,
+      lens,
+      access: accessOf({ lens, chatEnabled }),
+      ...capabilitiesFor(lens),
+      chatEnabled,
       signIn: () => {
         window.location.assign(authStatus?.login_url ?? "/api/v1/auth/login?return_url=/");
       },
