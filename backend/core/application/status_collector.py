@@ -67,6 +67,7 @@ from core.application.status_summaries import (
     summary_with_tracker_updates,
     with_no_active_work,
 )
+from core.application.task_update_service import CHAT, stated_task_state, task_update_fact
 from core.application.team_context import (
     coordinates_team,
     gives_team_context,
@@ -1101,6 +1102,47 @@ class StatusCollector:
                     as_of=status.as_of,
                     observed_at=checkin.replied_at,
                     correlation_id=checkin.correlation_id,
+                )
+            )
+
+    async def _record_task_updates(self, checkin: CheckIn, status: DeveloperStatus) -> None:
+        """Keep what the check-in said of each issue's state, for that task's row.
+
+        The console's task row shows the person's last statement on the task,
+        from the console or from chat: each finalized check-in records one
+        ``task_update`` fact per issue it named with a canonical state (the
+        write-back's reading of the claim). The fact carries the state only,
+        never the claim's note: a fact holds no reply or claim text. A claim
+        that names no state ("on track") records nothing.
+        """
+        if (
+            self._time_series_repository is None
+            or checkin.replied_at is None
+            or checkin.signals is None
+        ):
+            return
+        stated = {
+            claim.issue_key: state
+            for claim in checkin.signals.issue_updates
+            if claim.issue_key and (state := stated_task_state(claim)) is not None
+        }
+        if not stated:
+            return
+        name = await self._developer_display_name(checkin.tenant_id, checkin.developer_id)
+        for key, state in stated.items():
+            await self._time_series_repository.append_fact_once(
+                task_update_fact(
+                    tenant_id=checkin.tenant_id,
+                    task_id=key,
+                    issue_key=key,
+                    task_label=key,
+                    developer_id=checkin.developer_id,
+                    developer_name=name,
+                    as_of=status.as_of,
+                    observed_at=checkin.replied_at,
+                    correlation_id=checkin.correlation_id,
+                    via=CHAT,
+                    state=state,
                 )
             )
 
@@ -2499,6 +2541,7 @@ class StatusCollector:
         await self._append_blocker_resolved_facts(updated, status, reconciliation)
         await self._record_review_without_merge_request(updated, status)
         await self._record_issue_etas(updated, status)
+        await self._record_task_updates(updated, status)
         written = await self._maybe_write_back(updated, final_signals, closing=closing)
         status = await self._with_tracker_updates(status, written)
         # Send exactly one "Got it" ack per accepted reply. Gated on the
@@ -3043,6 +3086,7 @@ class StatusCollector:
         await self._append_blocker_resolved_facts(updated, status, reconciliation)
         await self._record_review_without_merge_request(updated, status)
         await self._record_issue_etas(updated, status)
+        await self._record_task_updates(updated, status)
         written = await self._late_update_write_back(updated, final_signals)
         status = await self._with_tracker_updates(status, written)
         await self._send_late_update_ack(checkin=updated, applied=written)
