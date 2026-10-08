@@ -1,0 +1,103 @@
+frontend-v3/src/features/overall/RequirementsSection.tsx
+  s_d09685699e5b37::t_65cff42baa8932 16,29
+frontend-v3/src/pages/AdminPage.tsx
+  s_d09685699e5b37::t_69bc4b62189936 3,48,81
+frontend-v3/src/pages/OverallPage.tsx
+  s_d09685699e5b37::t_65cff42baa8932 36,38
+  s_d09685699e5b37::t_62d8737b0fec40 81,88-89
+  s_d09685699e5b37::t_f1429930baa8ac 4,18-21,27,52,58-59,64-66,68,74-80,82-87
+  s_d09685699e5b37::t_aa9836c8bcf359 90
+frontend-v3/src/features/reports/access.ts
+  s_d09685699e5b37::t_82e263aa712250 46
+frontend-v3/src/features/delivery/PodDeliveryCard.tsx
+  s_d09685699e5b37::t_935512d16f72ea 42
+  s_d09685699e5b37::t_753bff366fd4b4 70-71
+frontend-v3/src/features/daily/ReportHeader.tsx
+  s_d09685699e5b37::t_7536bb1c19b3bf 25-27
+frontend-v3/src/components/PanelState.tsx
+  s_d09685699e5b37::t_163fcbee9c69a0 9-12
+  s_d09685699e5b37::t_f577a04ad3f813 42
+frontend-v3/src/features/admin/EscalationTab.tsx
+  s_d09685699e5b37::t_f00867fc3a426b 108
+frontend-v3/src/features/today/ProductOwnerToday.tsx
+  s_d09685699e5b37::t_026dca8cfa2ebe 113
+frontend-v3/src/features/daily/reportView.ts
+  s_d09685699e5b37::t_7536bb1c19b3bf 119-121,128,130
+frontend-v3/src/features/overall/QuestionsSection.tsx
+  s_d09685699e5b37::t_5fc09d36452eb2 83-85
+  s_d09685699e5b37::t_b42a30ee447bd3 14
+  s_d09685699e5b37::t_6789c040b0df39 43
+frontend-v3/src/pages/SignalsPage.tsx
+  s_d09685699e5b37::t_e06562eec4ac25 139
+  s_d09685699e5b37::t_edffff9b7232c7 70
+frontend-v3/src/features/delivery/ProgramPanel.tsx
+  s_d09685699e5b37::t_5bedfc2e627a2d 52
+  s_d09685699e5b37::t_026dca8cfa2ebe 55
+frontend-v3/src/features/reports/ReportDialog.tsx
+  s_d09685699e5b37::t_82e263aa712250 63
+frontend-v3/src/features/delivery/ProjectPanel.tsx
+  s_d09685699e5b37::t_e7d413cf5bb260 33
+  s_d09685699e5b37::t_026dca8cfa2ebe 74
+frontend-v3/src/features/overall/queries.ts
+  s_d09685699e5b37::t_7047ff299421cf 10-12,21,34,47,74,86
+frontend-v3/src/features/overall/IssueGatesDialog.tsx
+  s_d09685699e5b37::t_1f9d2df7036324 61
+  s_d09685699e5b37::t_a35d287fd759b2 83
+  s_d09685699e5b37::t_b42a30ee447bd3 19
+frontend-v3/src/features/daily/reportView.test.ts
+  s_d09685699e5b37::t_7536bb1c19b3bf 101-104,110-111
+frontend-v3/src/features/today/PortfolioToday.tsx
+  s_d09685699e5b37::t_026dca8cfa2ebe 178
+frontend-v3/src/features/overall/ForecastSection.tsx
+  s_d09685699e5b37::t_bd6a8005e1234f 33-36,45,48-51
+  s_d09685699e5b37::t_c8c5bc2e0123da 73-75,102-103,158,171,216-220,254
+  s_d09685699e5b37::t_026dca8cfa2ebe 27,46-47
+frontend-v3/src/features/signals/PrFlowSection.tsx
+  s_d09685699e5b37::t_026dca8cfa2ebe 90
+frontend-v3/src/features/delivery/PodPanel.tsx
+  s_d09685699e5b37::t_59955b7fe19a67 22
+  s_d09685699e5b37::t_fdf651d500b12e 62-64,66
+  s_d09685699e5b37::t_b6da41c23b31aa 211
+  s_d09685699e5b37::t_026dca8cfa2ebe 90-99,101-108,110-114,117-206,210
+  s_d09685699e5b37::t_5b99776dce5948 88-89
+frontend-v3/src/features/admin/LinksTab.tsx
+  s_d09685699e5b37::t_f00867fc3a426b 159
+frontend-v3/src/pages/CoordinationPage.tsx
+  s_d09685699e5b37::t_ceac42587b58f0 365
+  s_d09685699e5b37::t_026dca8cfa2ebe 283
+  s_d09685699e5b37::t_f00867fc3a426b 86
+frontend-v3/src/features/overall/GatesSection.tsx
+  s_d09685699e5b37::t_5f0485226d455e 71-73
+  s_d09685699e5b37::t_f5b0dc1216079e 42-43
+  s_d09685699e5b37::t_b42a30ee447bd3 12
+frontend-v3/src/features/overall/ReleaseScope.tsx
+  s_d09685699e5b37::t_9cfdc244e11202 105-107
+  s_d09685699e5b37::t_65cff42baa8932 47,52
+  s_d09685699e5b37::t_efdadaa8f07546 51,53,55-58,60,62
+  s_d09685699e5b37::t_b42a30ee447bd3 10
+frontend-v3/src/features/overall/RisksSection.tsx
+  s_d09685699e5b37::t_9bda7ffd0a3017 1-3,5,10,14-15,19,22-49
+frontend-v3/src/features/delivery/WorkstreamPanel.tsx
+  s_d09685699e5b37::t_105d0f3cfd7dff 46
+  s_d09685699e5b37::t_026dca8cfa2ebe 58
+frontend-v3/src/features/reports/useReportAccess.ts
+  s_d09685699e5b37::t_66ca634851a9a8 42
+  s_d09685699e5b37::t_c674c836482910 17-18,20
+  s_d09685699e5b37::t_2fe8d9711125f5 28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a0298f47b1ce64f3018da0ac2fdc0802cacb629c",
+  "prompts": {},
+  "sessions": {
+    "s_d09685699e5b37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac999ca-e6f7-4dc8-80ef-2b794b6036cf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
