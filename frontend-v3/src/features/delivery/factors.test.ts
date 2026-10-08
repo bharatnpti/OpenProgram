@@ -6,6 +6,7 @@ import {
   metadataFacts,
   reasonLine,
   reasonRows,
+  reasonsBeyondBoard,
   reasonsNote,
   redFromBlockerCount,
   setBy,
@@ -197,4 +198,21 @@ test("more than three blockers are named three, then counted", () => {
     setBy("red", many)?.text,
     "5 different blockers are open at once: a is stuck; b is stuck; c is stuck and 2 more.",
   );
+});
+
+test("a scrum master's Why leaves out the blockers and check-ins listed above it, and counts them", () => {
+  const { rest, tally } = reasonsBeyondBoard([
+    blocker("Blocker: waiting on sandbox credentials", "b1", "U1007"),
+    blocker("Blocker: waiting on sandbox credentials", "b1", "U1008"),
+    factor("Kai Thompson's status is inferred", "amber", "U1007", "inferred"),
+    factor("Noah Weber has not replied", "amber", "U1008", "missing"),
+    factor("Signals disagree: CHK-6 has an MR open 6 days", "amber", "CHK-6", "drift", "task"),
+  ]);
+  assert.deepEqual(
+    rest.map((f) => f.kind),
+    ["drift"],
+  );
+  assert.equal(tally, "1 open blocker, 1 inferred check-in and 1 missing check-in");
+  const target = factor("Target date passed", "red", "P", "target_date");
+  assert.deepEqual(reasonsBeyondBoard([target]), { rest: [target], tally: null });
 });

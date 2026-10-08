@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
 import {
@@ -16,27 +16,33 @@ import {
 import { useRole } from "../../app/role";
 import { useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
-import { ChipPicker, Greeting, Panel, ProgressRing, RagBadge, Row } from "../../components/ui/Bits";
-import { RagChip } from "../../components/ui/RagChip";
+import { ChipPicker, Greeting, Panel, RagBadge, Row } from "../../components/ui/Bits";
+import { Pill } from "../../components/ui/Pill";
 import { formatDay } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
 import { greetingTitle, PERSON_KEY_WORDS, plural, sourceLine, todayEyebrow } from "../../lib/words";
+import { FactorsPanel } from "../delivery/NodeBits";
+import { ProgressSummary, TaskTable } from "../delivery/ProgressBlock";
 import { YourAsks } from "./YourAsks";
 
 const ATTENTION_SHOWN = 8;
 
 /**
- * A product owner's day: how far along the project is, which workstreams are
- * worst, and the tasks that need a decision. Defaults to the projects of the
- * pods the person belongs to.
+ * A product owner's day, one project at a time (`?project=`): how far along it
+ * is, the tasks that need a decision (and every task a click away), why it has
+ * its colour, and its workstreams where it has any. Opens on the projects of
+ * the pods the person belongs to, the worst first; a project named in the link
+ * is offered too.
  */
 export function ProductOwnerToday() {
   const shownDay = useShownDay();
-  const { canReadProjectProgress, roleLabel, greetingName } = useRole();
+  const { roleLabel, greetingName } = useRole();
   const memberId = useMemberId();
   const pods = usePods();
   const projects = useProjects();
   const programs = usePrograms();
+  const [search, setSearch] = useSearchParams();
+  const [allTasks, setAllTasks] = useState(false);
   const ownPods = podsOfPerson(pods.data ?? [], memberId);
   const { projects: ofPods, fallback } = projectsOfPerson(
     projects.data ?? [],
@@ -45,14 +51,32 @@ export function ProductOwnerToday() {
   );
   // Opens on the worst of them; equally bad ones, on the project of the person's first pod.
   const mine = rankProjects(ofPods, ownPods.pods);
-  const [chosen, setChosen] = useState("");
-  const projectId = mine.some((p) => p.id === chosen) ? chosen : (mine[0]?.id ?? "");
-  const project = mine.find((p) => p.id === projectId);
+  const asked = search.get("project");
+  // A project a link names (a palette jump, a Delivery link) is offered even when it is not theirs.
+  const linked =
+    asked && !mine.some((p) => p.id === asked)
+      ? (projects.data ?? []).find((p) => p.id === asked)
+      : undefined;
+  const options = linked ? [linked, ...mine] : mine;
+  const projectId = options.some((p) => p.id === asked) ? (asked ?? "") : (options[0]?.id ?? "");
+  const project = options.find((p) => p.id === projectId);
+  const choose = (next: string) => {
+    setAllTasks(false);
+    setSearch(
+      (current) => {
+        // Other parameters (the day being viewed) are the shell's; leave them.
+        const params = new URLSearchParams(current);
+        params.set("project", next);
+        return params;
+      },
+      { replace: true },
+    );
+  };
 
   const progress = useQuery({
     queryKey: ["project", projectId, "progress"],
     queryFn: () => apiClient.projectProgress(projectId),
-    enabled: Boolean(projectId) && canReadProjectProgress,
+    enabled: Boolean(projectId),
   });
   const workstreams = useQuery({
     queryKey: ["project", projectId, "workstreams"],
@@ -64,7 +88,10 @@ export function ProductOwnerToday() {
   const attention = [...(p?.tasks ?? [])]
     .filter((t) => t.rag === "red" || t.rag === "amber" || t.rag === "unknown")
     .sort((a, b) => ragSeverity(b.rag) - ragSeverity(a.rag));
-  const ws = [...(workstreams.data ?? [])].sort((a, b) => ragSeverity(b.rag) - ragSeverity(a.rag));
+  // Workstreams are optional: one with no work is left out, and so is the panel with none.
+  const ws = [...(workstreams.data ?? [])]
+    .filter((w) => w.in_use !== false)
+    .sort((a, b) => ragSeverity(b.rag) - ragSeverity(a.rag));
   const meta = (value: unknown) => (typeof value === "string" && value ? value : null);
 
   return (
@@ -80,14 +107,14 @@ export function ProductOwnerToday() {
       <PanelState
         isLoading={projects.isLoading || pods.isLoading}
         error={projects.error ?? pods.error}
-        isEmpty={mine.length === 0}
+        isEmpty={options.length === 0}
         emptyText="No projects are configured yet."
       >
         <ChipPicker
           label="Project"
           value={projectId}
-          onChange={setChosen}
-          options={mine.map((x) => ({ value: x.id, label: x.name, rag: x.rag }))}
+          onChange={choose}
+          options={options.map((x) => ({ value: x.id, label: x.name, rag: x.rag }))}
           note={
             fallback === "no-pod"
               ? "you are in no pod yet, so every project is shown"
@@ -98,55 +125,83 @@ export function ProductOwnerToday() {
                   : "the projects of your pods"
           }
         />
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
-          <Panel
-            title="Progress"
-            note={
-              <Link
-                to={`/reports/${projectId}/overall`}
-                className="font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
+            <Panel
+              title="Progress"
+              note={
+                <Link
+                  to={`/reports/${projectId}/overall`}
+                  className="font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
+                >
+                  Overall report
+                </Link>
+              }
+            >
+              <PanelState isLoading={progress.isLoading} error={progress.error}>
+                {p ? <ProgressSummary progress={p} /> : null}
+              </PanelState>
+            </Panel>
+            <Panel
+              title="Needs your attention"
+              note={
+                p
+                  ? attention.length > ATTENTION_SHOWN
+                    ? `worst ${ATTENTION_SHOWN} of ${attention.length} tasks`
+                    : plural(attention.length, "task", "tasks")
+                  : undefined
+              }
+            >
+              <PanelState
+                isLoading={progress.isLoading}
+                error={progress.error}
+                isEmpty={attention.length === 0}
+                emptyText="Every task is green."
               >
-                Overall report
-              </Link>
-            }
-          >
-            <PanelState isLoading={progress.isLoading} error={progress.error}>
-              {p ? (
-                <div className="flex flex-wrap items-center gap-5">
-                  <ProgressRing percent={p.total_tasks > 0 ? p.percent_complete : null} />
-                  <div className="grid gap-2">
-                    <div className="flex flex-wrap gap-1.5">
-                      <RagChip tone="success" className="h-6 px-2.5 text-[12px]">
-                        {p.green_tasks} green
-                      </RagChip>
-                      <RagChip tone="warning" className="h-6 px-2.5 text-[12px]">
-                        {p.amber_tasks} amber
-                      </RagChip>
-                      <RagChip tone="danger" className="h-6 px-2.5 text-[12px]">
-                        {p.red_tasks} red
-                      </RagChip>
-                      <RagChip tone="neutral" className="h-6 px-2.5 text-[12px]">
-                        {p.unknown_tasks} unknown
-                      </RagChip>
-                    </div>
-                    <p className="text-[12px] text-grey-secondary">
-                      {plural(p.total_tasks, "task", "tasks")}
-                      {p.total_tasks > 0 && p.confidence != null
-                        ? ` · ${Math.round(p.confidence * 100)}% average confidence`
-                        : ""}
-                    </p>
-                  </div>
+                <ul>
+                  {attention.slice(0, ATTENTION_SHOWN).map((t) => (
+                    <Row
+                      key={t.id}
+                      rag={t.rag}
+                      title={t.name}
+                      meta={`${t.id}${t.tracker_status ? ` · ${t.tracker_status}` : ""} · ${sourceLine(t.source, t.confidence)}${t.deadline ? ` · due ${formatDay(t.deadline)}` : ""}`}
+                      right={<RagBadge rag={t.rag} />}
+                    />
+                  ))}
+                </ul>
+              </PanelState>
+              {p && p.tasks.length > 0 ? (
+                <div className="mt-3">
+                  <Pill
+                    size="sm"
+                    variant="ghost"
+                    aria-expanded={allTasks}
+                    aria-controls="po-all-tasks"
+                    onClick={() => setAllTasks((on) => !on)}
+                  >
+                    {allTasks
+                      ? "Hide the task list"
+                      : `Show all ${plural(p.tasks.length, "task", "tasks")}`}
+                  </Pill>
                 </div>
               ) : null}
-            </PanelState>
-          </Panel>
-          <Panel title="Workstreams" note="worst first">
-            <PanelState
-              isLoading={workstreams.isLoading}
-              error={workstreams.error}
-              isEmpty={ws.length === 0}
-              emptyText="This project runs without workstreams."
-            >
+            </Panel>
+          </div>
+          {allTasks && p ? (
+            <div id="po-all-tasks">
+              <TaskTable tasks={p.tasks} />
+            </div>
+          ) : null}
+          {p ? (
+            <FactorsPanel
+              always
+              title={`Why ${project?.name ?? "this project"} is ${p.rag}`}
+              factors={p.factors}
+              names={p.source_names}
+            />
+          ) : null}
+          {ws.length > 0 ? (
+            <Panel title="Workstreams" note="worst first">
               <ul>
                 {ws.map((w) => {
                   const bits = [
@@ -163,51 +218,15 @@ export function ProductOwnerToday() {
                     <Row
                       key={w.id}
                       rag={w.rag}
-                      title={
-                        <Link
-                          to={`/delivery/workstream/${w.id}`}
-                          className="text-ink no-underline hover:underline"
-                        >
-                          {w.name}
-                        </Link>
-                      }
+                      title={w.name}
                       meta={bits.join(" · ") || undefined}
                       right={<RagBadge rag={w.rag} />}
                     />
                   );
                 })}
               </ul>
-            </PanelState>
-          </Panel>
-          <Panel
-            title="Needs your attention"
-            note={
-              p
-                ? attention.length > ATTENTION_SHOWN
-                  ? `worst ${ATTENTION_SHOWN} of ${attention.length} tasks`
-                  : plural(attention.length, "task", "tasks")
-                : undefined
-            }
-          >
-            <PanelState
-              isLoading={progress.isLoading}
-              error={progress.error}
-              isEmpty={attention.length === 0}
-              emptyText="Every task is green."
-            >
-              <ul>
-                {attention.slice(0, ATTENTION_SHOWN).map((t) => (
-                  <Row
-                    key={t.id}
-                    rag={t.rag}
-                    title={t.name}
-                    meta={`${t.id}${t.tracker_status ? ` · ${t.tracker_status}` : ""} · ${sourceLine(t.source, t.confidence)}${t.deadline ? ` · due ${formatDay(t.deadline)}` : ""}`}
-                    right={<RagBadge rag={t.rag} />}
-                  />
-                ))}
-              </ul>
-            </PanelState>
-          </Panel>
+            </Panel>
+          ) : null}
           <YourAsks />
         </div>
       </PanelState>

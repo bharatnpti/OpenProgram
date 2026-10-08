@@ -315,6 +315,10 @@ function HeatRow({
   const colourOf = (item: DirectoryItemResponse): Rag =>
     colours.get(tileKey(kind, item.id)) ?? item.rag ?? "unknown";
   const weightOf = (item: DirectoryItemResponse) => weights.get(tileKey(kind, item.id)) ?? 0;
+  // A tile opens its Delivery panel where this role's Delivery lists the kind (an
+  // executive's lists no pods, so a pod tile is only its colour and reason).
+  const { delivery } = useRole().access;
+  const linked = kind in delivery && delivery[kind as keyof typeof delivery];
   // Worst colour first; among one colour, the one with more reasons; then A to Z.
   const ranked = [...items].sort(
     (a, b) =>
@@ -343,16 +347,25 @@ function HeatRow({
             const why = reasons.get(tileKey(kind, item.id));
             return (
               <li key={item.id}>
-                <Link
-                  to={`/delivery/${kind}/${encodeURIComponent(item.id)}`}
-                  title={why?.tooltip}
-                  className={cn(
-                    "block min-h-[76px] rounded-2xl px-3 py-3 no-underline hover:shadow-op-hover",
-                    TILE[rag],
-                  )}
-                >
-                  <TileText name={item.name} colour={rag} why={why?.reason} />
-                </Link>
+                {linked ? (
+                  <Link
+                    to={`/delivery/${kind}/${encodeURIComponent(item.id)}`}
+                    title={why?.tooltip}
+                    className={cn(
+                      "block min-h-[76px] rounded-2xl px-3 py-3 no-underline hover:shadow-op-hover",
+                      TILE[rag],
+                    )}
+                  >
+                    <TileText name={item.name} colour={rag} why={why?.reason} />
+                  </Link>
+                ) : (
+                  <div
+                    title={why?.tooltip}
+                    className={cn("min-h-[76px] rounded-2xl px-3 py-3", TILE[rag])}
+                  >
+                    <TileText name={item.name} colour={rag} why={why?.reason} />
+                  </div>
+                )}
               </li>
             );
           })}

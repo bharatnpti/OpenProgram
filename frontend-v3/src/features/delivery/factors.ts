@@ -157,6 +157,42 @@ export function sourcesLine(sources: string[], shown = 3): string {
   return `${sources.slice(0, shown).join(", ")} and ${sources.length - shown} more`;
 }
 
+/** A check-in state a pod's reasons can hold, in the words of its count. */
+const CHECKIN_KINDS: Record<string, [string, string]> = {
+  inferred: ["inferred check-in", "inferred check-ins"],
+  missing: ["missing check-in", "missing check-ins"],
+  unanswered: ["unanswered check-in", "unanswered check-ins"],
+  partial: ["partly replied check-in", "partly replied check-ins"],
+  stale: ["carried-forward check-in", "carried-forward check-ins"],
+};
+
+/**
+ * A pod's reasons less the ones a scrum master's Today already lists above
+ * them: its open blockers and its people's check-ins. What is left is shown
+ * under "Why <pod> is <colour>", and `tally` counts what was taken out ("1 open
+ * blocker and 1 inferred check-in"), so the colour still adds up.
+ */
+export function reasonsBeyondBoard(factors: RollupFactorDto[]): {
+  rest: RollupFactorDto[];
+  tally: string | null;
+} {
+  const rest = factors.filter((f) => f.kind !== "blocker" && !(f.kind in CHECKIN_KINDS));
+  const parts: string[] = [];
+  const blockers = distinctBlockers(factors).length;
+  if (blockers > 0) parts.push(`${blockers} open ${blockers === 1 ? "blocker" : "blockers"}`);
+  for (const [kind, [one, many]] of Object.entries(CHECKIN_KINDS)) {
+    const count = factors.filter((f) => f.kind === kind).length;
+    if (count > 0) parts.push(`${count} ${count === 1 ? one : many}`);
+  }
+  const tally =
+    parts.length === 0
+      ? null
+      : parts.length === 1
+        ? parts[0]
+        : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  return { rest, tally };
+}
+
 /**
  * The facts a node's metadata holds, as label and value, in a fixed order.
  * Admins set type, phase and target date; the tracker and code links come

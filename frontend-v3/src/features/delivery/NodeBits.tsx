@@ -56,14 +56,24 @@ export function NodeHeader({
 export function FactorsPanel({
   factors,
   names,
+  title = "Every reason",
+  always = false,
+  footer,
 }: {
   factors: RollupFactorDto[];
   names: Record<string, string>;
+  title?: string;
+  /**
+   * Shown with a single reason too. A Delivery panel's header already says its
+   * one reason, so there it waits for a second; a Today has no such header.
+   */
+  always?: boolean;
+  footer?: ReactNode;
 }) {
-  if (factors.length < 2) return null;
+  if (factors.length < (always ? 1 : 2)) return null;
   const rows = reasonRows(factors, names);
   return (
-    <Panel title="Every reason" note={reasonsNote(rows.length, factors.length)}>
+    <Panel title={title} note={reasonsNote(rows.length, factors.length)}>
       <ul>
         {rows.map((row) => (
           <Row
@@ -74,6 +84,7 @@ export function FactorsPanel({
           />
         ))}
       </ul>
+      {footer}
     </Panel>
   );
 }

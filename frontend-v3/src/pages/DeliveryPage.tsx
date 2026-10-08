@@ -4,6 +4,7 @@ import { Navigate, NavLink, useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import type { DirectoryItemResponse } from "../api/schema";
 import { usePods, usePrograms, useProjects, useWorkstreams } from "../app/directory";
+import { useRole } from "../app/role";
 import { useDayWords } from "../app/viewingDate";
 import { PanelState } from "../components/PanelState";
 import { RagDot } from "../components/ui/Bits";
@@ -16,13 +17,16 @@ import { ragSeverity } from "../lib/status";
 import { cn } from "../lib/utils";
 
 /**
- * Walk the delivery graph. The navigator lists every program, project,
- * workstream and pod; the selection lives in the URL (/delivery/:kind/:id) so
- * any panel can be linked. Each panel says what its colour is and why.
+ * Walk the delivery graph, for a manager, executive or admin. The navigator
+ * lists the programs, projects, workstreams (those that hold work) and pods the
+ * role's Delivery offers (an executive's lists no pods); the selection lives in
+ * the URL (/delivery/:kind/:id) so any panel can be linked. Each panel says what
+ * its colour is and why.
  */
 export function DeliveryPage() {
   const { kind, id } = useParams();
   const day = useDayWords();
+  const { access } = useRole();
   const programs = usePrograms();
   const projects = useProjects();
   const workstreams = useWorkstreams();
@@ -32,12 +36,20 @@ export function DeliveryPage() {
     programs.isLoading || projects.isLoading || workstreams.isLoading || pods.isLoading;
   const error = programs.error ?? projects.error ?? pods.error ?? workstreams.error;
 
-  const groups: { kind: Kind; label: string; items: DirectoryItemResponse[] }[] = [
-    { kind: "program", label: "Programs", items: programs.data ?? [] },
-    { kind: "project", label: "Projects", items: projects.data ?? [] },
-    { kind: "workstream", label: "Workstreams", items: workstreams.data ?? [] },
-    { kind: "pod", label: "Pods", items: pods.data ?? [] },
-  ];
+  // Only the kinds this role's Delivery lists (an executive's has no pods), and
+  // only workstreams that hold work: they are optional.
+  const groups: { kind: Kind; label: string; items: DirectoryItemResponse[] }[] = (
+    [
+      { kind: "program", label: "Programs", items: programs.data ?? [] },
+      { kind: "project", label: "Projects", items: projects.data ?? [] },
+      {
+        kind: "workstream",
+        label: "Workstreams",
+        items: (workstreams.data ?? []).filter((item) => item.in_use !== false),
+      },
+      { kind: "pod", label: "Pods", items: pods.data ?? [] },
+    ] as const
+  ).filter((group) => access.delivery[group.kind]);
   const all = groups.flatMap((g) => g.items.map((item) => ({ kind: g.kind, item })));
 
   if (!loading && !kind && all.length > 0) {
