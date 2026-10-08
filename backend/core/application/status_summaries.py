@@ -242,6 +242,22 @@ def stale_summary(basis: DeveloperStatus | None) -> str:
     )
 
 
+def answered_in_console(status: DeveloperStatus | None, day: date) -> bool:
+    """Whether the person gave ``day``'s status themselves in the console.
+
+    The one rule the check-in ladder reads for an answer that came outside
+    chat: a confirm or a correction (``developer_confirmed``), or a task update
+    (a summary under ``TASK_UPDATE_LEAD``, which stays while the day's console
+    updates rebuild it). Such a day is answered: no nudge or escalation goes
+    out for it, and its close-out leaves the status as it is. A chat reply
+    needs no such mark: it sets the check-in's ``replied_at``, or leaves user
+    turns on its correlation (``StatusCollector.has_reply_on_record``).
+    """
+    if status is None or status.as_of != day:
+        return False
+    return status.developer_confirmed or status.summary.startswith(TASK_UPDATE_LEAD)
+
+
 def confirmed_summary(
     existing: DeveloperStatus,
     basis: DeveloperStatus | None,

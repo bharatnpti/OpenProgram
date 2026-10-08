@@ -58,6 +58,7 @@ from core.application.status_summaries import (
     NON_STATUS_REPLY_SUMMARY,
     UNKNOWN_SUMMARY,
     TrackerUpdate,
+    answered_in_console,
     basis_status,
     clarification_cap_note,
     inferred_summary,
@@ -1794,6 +1795,11 @@ class StatusCollector:
             for turn in turns
         )
 
+    async def answered_in_console(self, tenant_id: str, developer_id: str, day: date) -> bool:
+        """Whether the person answered ``day`` in the console (``answered_in_console``)."""
+        status = await self._status_repository.latest_developer_status(tenant_id, developer_id, day)
+        return answered_in_console(status, day)
+
     async def record_non_response(
         self,
         *,
@@ -1805,7 +1811,8 @@ class StatusCollector:
     ) -> DeveloperStatus:
         """Close a check-in at the end of its ladder, with the status of the day.
 
-        A reply on record is finalized; otherwise the day is inferred, stale or
+        A reply on record is finalized; a status the person gave in the console
+        that day stands as it is; otherwise the day is inferred, stale or
         unknown, never confirmed. Either way the check-in's correlation is
         consumed: the check-in is closed, and a reply from now on is a late
         update for its day (G9), never a reply to an open question.
@@ -1838,6 +1845,15 @@ class StatusCollector:
             )
             if finalized is not None:
                 return finalized
+
+        answered = await self._status_repository.latest_developer_status(
+            tenant_id, developer_id, as_of
+        )
+        if answered is not None and answered_in_console(answered, as_of):
+            # The person gave the day's status in the console (a task update, a
+            # confirm or a correction): that is their answer, never overwritten
+            # by an inferred, stale or unknown one. The check-in still closes.
+            return answered
 
         inferred, no_active_work = await self._fallback_inference(
             tenant_id=tenant_id,
