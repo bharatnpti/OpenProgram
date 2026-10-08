@@ -16,7 +16,6 @@ import {
   isNoReplyPlaceholder,
   NO_REPLY_BLOCKER,
   noStatusWords,
-  whyCheckinMatters,
 } from "./checkin.ts";
 
 const say = {
@@ -152,6 +151,18 @@ describe("what the card says", () => {
     assert.equal(
       note({ source: "partial", statusAsOf: TODAY, today: TODAY, developerConfirmed: false }),
       "partly replied in chat",
+    );
+    // Kai updated his tasks in the console and said nothing in chat: not "in chat".
+    assert.equal(
+      note({
+        source: "partial",
+        statusAsOf: TODAY,
+        today: TODAY,
+        developerConfirmed: false,
+        summary: "Updated tasks in OpenProgram: CHK-4 in review, ETA Oct 9.",
+        confirmedAt: "T2",
+      }),
+      "partly replied through your task updates · time T2",
     );
     assert.equal(
       note({ source: "inferred", statusAsOf: TODAY, today: TODAY, developerConfirmed: false }),
@@ -335,9 +346,6 @@ describe("what the card says", () => {
       developerConfirmed: true,
     });
     assert.equal(confirmCaption(carried, say.day, true), null);
-    assert.doesNotMatch(whyCheckinMatters(true), /until you confirm or correct it/);
-    assert.match(whyCheckinMatters(true), /fed every rollup/);
-    assert.match(whyCheckinMatters(false), /until you confirm or correct it/);
   });
 });
 
@@ -384,12 +392,16 @@ describe("a correction restates every open blocker", () => {
   });
 
   test("a valid correction marks resolved rows and appends the new blocker", () => {
-    const built = buildCorrection(blockerRows(status), {
-      summary: "  Done with the sandbox setup  ",
-      eta: "2",
-      resolved: ["b1"],
-      added: " Waiting on the key rotation ",
-    });
+    const built = buildCorrection(
+      blockerRows(status),
+      {
+        summary: "  Done with the sandbox setup  ",
+        resolved: ["b1"],
+        added: " Waiting on the key rotation ",
+      },
+      // The day's ETA change, as the task updates left it, is carried as it stands.
+      { etaChangeDays: 2 },
+    );
     assert.ok(built.ok);
     assert.deepEqual(built.body, {
       summary: "Done with the sandbox setup",
@@ -408,7 +420,6 @@ describe("a correction restates every open blocker", () => {
   test("a restated blocker carries its id, so the server keeps this one and not another", () => {
     const built = buildCorrection(blockerRows(status), {
       summary: "x",
-      eta: "",
       resolved: [],
       added: "",
     });
@@ -424,7 +435,6 @@ describe("a correction restates every open blocker", () => {
     const rows = blockerRows({ blockers: ["Waiting on a key"], blocker_details: [] });
     const built = buildCorrection(rows, {
       summary: "x",
-      eta: "",
       resolved: [],
       added: "Another one",
     });
@@ -445,7 +455,7 @@ describe("a correction restates every open blocker", () => {
       age_days: 3,
     });
     const rows = [twin("a", "Waiting on CHK-14 review"), twin("b", "waiting on CHK-14 review.")];
-    const draft = { summary: "x", eta: "", resolved: ["a"], added: "" };
+    const draft = { summary: "x", resolved: ["a"], added: "" };
     // One kept, one closed: the server can now do exactly that, by id.
     const kept = buildCorrection(rows, draft);
     assert.ok(kept.ok);
@@ -462,7 +472,7 @@ describe("a correction restates every open blocker", () => {
       blockers: ["Waiting on CHK-14 review", "waiting on CHK-14 review."],
       blocker_details: [],
     });
-    const draft = { summary: "x", eta: "", resolved: [flat[0].key], added: "" };
+    const draft = { summary: "x", resolved: [flat[0].key], added: "" };
     const refused = buildCorrection(flat, draft);
     assert.equal(refused.ok, false);
     assert.match(refused.ok ? "" : refused.message, /read the same/);
@@ -470,29 +480,30 @@ describe("a correction restates every open blocker", () => {
     assert.ok(buildCorrection(flat, { ...draft, resolved: [flat[0].key, flat[1].key] }).ok);
   });
 
-  test("an empty ETA is no change, and a blank summary is refused in words", () => {
-    const ok = buildCorrection([], { summary: "On track", eta: "", resolved: [], added: "" });
+  test("with no ETA change on the day none is sent, and a blank summary is refused in words", () => {
+    const ok = buildCorrection([], { summary: "On track", resolved: [], added: "" });
     assert.ok(ok.ok);
     assert.equal(ok.body.eta_change_days, null);
-    assert.deepEqual(buildCorrection([], { summary: "  ", eta: "", resolved: [], added: "" }), {
+    assert.deepEqual(buildCorrection([], { summary: "  ", resolved: [], added: "" }), {
       ok: false,
       message: "Say what you did and what's next.",
     });
   });
 
+  test("the form has no ETA of its own: the ETA is set per task", () => {
+    const built = buildCorrection(
+      [],
+      { summary: "x", resolved: [], added: "" },
+      { etaChangeDays: -1 },
+    );
+    assert.ok(built.ok);
+    assert.equal(built.body.eta_change_days, -1);
+  });
+
   test("the server's limits are said before the round trip", () => {
-    assert.deepEqual(buildCorrection([], { summary: "x", eta: "1.5", resolved: [], added: "" }), {
-      ok: false,
-      message: "The ETA change is a whole number of days, like 2 or -1.",
-    });
-    assert.deepEqual(buildCorrection([], { summary: "x", eta: "soon", resolved: [], added: "" }), {
-      ok: false,
-      message: "The ETA change is a whole number of days, like 2 or -1.",
-    });
     assert.deepEqual(
       buildCorrection([], {
         summary: "x",
-        eta: "",
         resolved: [],
         added: "y".repeat(MAX_BLOCKER_TEXT + 1),
       }),
@@ -506,18 +517,15 @@ describe("a correction restates every open blocker", () => {
       pod_id: null,
       age_days: 1,
     }));
-    assert.deepEqual(
-      buildCorrection(twenty, { summary: "x", eta: "", resolved: [], added: "one more" }),
-      {
-        ok: false,
-        message: "At most 20 blockers can be listed at once.",
-      },
-    );
+    assert.deepEqual(buildCorrection(twenty, { summary: "x", resolved: [], added: "one more" }), {
+      ok: false,
+      message: "At most 20 blockers can be listed at once.",
+    });
   });
 
   test("a new blocker worded like one kept open is refused: it would be a second copy", () => {
     const rows = blockerRows(status);
-    const draft = { summary: "x", eta: "", resolved: [] as string[], added: "" };
+    const draft = { summary: "x", resolved: [] as string[], added: "" };
     // Same words, other case, trailing full stop, extra spaces.
     const reworded = "  3-D  secure sandbox credentials still not provisioned. ";
     assert.deepEqual(buildCorrection(rows, { ...draft, added: reworded }), {
@@ -532,7 +540,6 @@ describe("a correction restates every open blocker", () => {
     const rows = blockerRows(status);
     const built = buildCorrection(rows, {
       summary: "x",
-      eta: "",
       resolved: ["b1"],
       added: "3-D secure sandbox credentials still not provisioned",
     });
@@ -549,7 +556,7 @@ describe("a correction restates every open blocker", () => {
 
   test("without an id the server would count a new blocker as the listed one, so it is refused", () => {
     const flat = blockerRows({ blockers: ["Waiting on a key"], blocker_details: [] });
-    const draft = { summary: "x", eta: "", resolved: [] as string[], added: "waiting on a key." };
+    const draft = { summary: "x", resolved: [] as string[], added: "waiting on a key." };
     assert.deepEqual(buildCorrection(flat, draft), {
       ok: false,
       message: "That blocker is already on your list.",

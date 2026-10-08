@@ -10,6 +10,11 @@ const FIELD_WORDS: Record<string, string> = {
   eta_change_days: "The ETA change",
   blocker_items: "The blockers",
   status: "The status",
+  state: "The status",
+  eta: "The ETA",
+  note: "The note",
+  add_blocker: "The blocker",
+  resolve_blocker_ids: "The blockers to resolve",
 };
 
 /**

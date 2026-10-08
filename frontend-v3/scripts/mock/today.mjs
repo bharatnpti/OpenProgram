@@ -9,6 +9,10 @@
 //     Confirm and Correct really change, so the round trip can be watched;
 //   - request status changes that stick (Acknowledge, Resolve);
 //   - pod check-ins with real dates (the API sends a day, not a time);
+//   - Kai's tasks, each with the tracker's status, a due date, his own ETA and what he
+//     last said, and a per-task Update (POST /me/tasks/{id}/update) that holds the
+//     backend's rules and shows on his scrum master's pod task table. Write-back is
+//     "ask" (MOCK_WRITE_BACK=auto or off to change it);
 //   - the team graph (/graph/programs/{id}/tree), which names people for a scrum
 //     master or product owner;
 //   - more briefs, because a real tenant has dozens;
@@ -274,12 +278,346 @@ function confirmed(userId, body) {
   return next;
 }
 
+// ---- tasks, one at a time ---------------------------------------------------------
+
+const WRITE_BACK = ["auto", "ask", "off"].includes(process.env.MOCK_WRITE_BACK)
+  ? process.env.MOCK_WRITE_BACK
+  : "ask";
+const STATES = ["todo", "in_progress", "in_review", "blocked", "done"];
+const STATE_WORDS = {
+  todo: "to do",
+  in_progress: "in progress",
+  in_review: "in review",
+  blocked: "blocked",
+  done: "done",
+};
+const TRACKER_NAMES = {
+  todo: "To Do",
+  in_progress: "In Progress",
+  in_review: "In Review",
+  blocked: "Blocked",
+  done: "Done",
+};
+// As the backend's IssueState reads a tracker status: a review status is "in progress".
+const trackerAs = (status) =>
+  /done|closed|resolved/i.test(status ?? "")
+    ? "done"
+    : /to ?do|backlog|open/i.test(status ?? "")
+      ? "todo"
+      : /block/i.test(status ?? "")
+        ? "blocked"
+        : "in_progress";
+// The backend's day label (day_label): "Oct 9".
+const dayLabel = (iso) =>
+  new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const daysBetween = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
+const stamp = () => `${TODAY}T${new Date().toISOString().slice(11)}`;
+const said = (state, note, at, via) => ({ state, note, at, via });
+
+const task = (id, name, tracker_status, deadline, extra = {}) => ({
+  id,
+  name,
+  rag: "unknown",
+  source: "unknown",
+  confidence: null,
+  deadline,
+  tracker_status,
+  my_eta: null,
+  my_eta_label: null,
+  last_update: null,
+  blocker_ids: [],
+  can_move_in_tracker: true,
+  ...extra,
+});
+
+/**
+ * Kai's tasks, one of each kind the list sorts: blocked (the sandbox blocker), past due,
+ * an ETA after the due date, in progress, to do, and two done. Anyone else keeps the
+ * generic two, with the fields the backend now sends.
+ */
+function initialTasks(userId) {
+  if (userId === "U1007") {
+    return [
+      task("CHK-103", "3-D Secure step-up", "In Progress", "2026-10-23", {
+        blocker_ids: ["b-sandbox"],
+        last_update: said("in_progress", null, "2026-10-05T08:40:00Z", "chat"),
+        merge_request: "payments-api !12",
+      }),
+      task("CHK-106", "Card vault token rotation", "In Progress", "2026-10-02", {
+        my_eta: "2026-10-08",
+        my_eta_label: "Thursday",
+        last_update: said("in_progress", null, "2026-10-02T09:05:00Z", "chat"),
+      }),
+      task("CHK-107", "Checkout error copy", "In Review", "2026-10-07", {
+        my_eta: "2026-10-09",
+        my_eta_label: "Oct 9",
+        last_update: said("in_review", "MR !41 waits on Liam", "2026-10-05T15:10:00Z", "console"),
+      }),
+      task("CHK-108", "Apple Pay domain check", "In Progress", "2026-10-16", {
+        my_eta: "2026-10-14",
+        my_eta_label: "Oct 14",
+      }),
+      task("CHK-109", "3-D Secure analytics events", "To Do", "2026-10-30"),
+      task("CHK-099", "Saved cards list", "Done", "2026-09-25"),
+      task("CHK-100", "Payment method picker", "Done", "2026-09-30"),
+    ];
+  }
+  const status = statusOf(userId);
+  return consoleData.focus(userId).tasks.map((t) => ({
+    ...task(t.id, t.name, null, t.deadline),
+    ...t,
+    blocker_ids: status.blocker_details
+      .filter((b) => b.work_item_id === t.id)
+      .map((b) => b.blocker_id),
+    can_move_in_tracker: false,
+  }));
+}
+const taskLists = new Map();
+const tasksOf = (userId) => {
+  if (!taskLists.has(userId)) taskLists.set(userId, initialTasks(userId));
+  return taskLists.get(userId);
+};
+// Without the mock's own `merge_request`, the shape /me/focus sends.
+const taskDto = ({ merge_request: _mr, ...rest }) => rest;
+
+// Each person's task updates of the day, in order: today's partial summary is built from them.
+const dayUpdates = new Map();
+const UPDATE_LEAD = "Updated tasks in OpenProgram:";
+
+function daySummary(userId) {
+  const byTask = new Map();
+  for (const u of dayUpdates.get(userId) ?? []) {
+    const now = byTask.get(u.id) ?? { label: u.id, words: [] };
+    if (u.state) now.state = u.state;
+    if (u.eta !== undefined) now.eta = u.eta;
+    if (u.added) now.added = true;
+    if (u.resolved) now.resolved = true;
+    byTask.set(u.id, now);
+  }
+  const parts = [...byTask.values()].map((t) =>
+    [
+      `${t.label}${t.state ? ` ${STATE_WORDS[t.state]}` : ""}`,
+      t.eta ? `ETA ${dayLabel(t.eta)}` : null,
+      t.added ? "blocker added" : null,
+      t.resolved ? "blocker resolved" : null,
+    ]
+      .filter(Boolean)
+      .join(", "),
+  );
+  return `${UPDATE_LEAD} ${parts.join("; ")}.`;
+}
+
+// The largest ETA change of the day: the biggest slip, else the biggest pull-in (largest_slip).
+const largestSlip = (changes) =>
+  changes
+    .filter(Boolean)
+    .reduce(
+      (best, days) =>
+        best === null ||
+        (days > 0 && best < 0) ||
+        (days > 0 === best > 0 && Math.abs(days) > Math.abs(best))
+          ? days
+          : best,
+      null,
+    );
+
+const fieldError = (send, loc, msg, type = "value_error") =>
+  send(422, { detail: [{ type, loc: ["body", loc], msg }] });
+
+/** POST /me/tasks/{id}/update: the rules of backend task_update_service, checked before writing. */
+function updateTask(userId, taskId, body, send) {
+  const t = tasksOf(userId).find((item) => item.id === taskId);
+  if (!t) return send(404, { detail: "task is not assigned to you" });
+  const known = ["state", "eta", "note", "add_blocker", "resolve_blocker_ids", "move_in_tracker"];
+  const unknown = Object.keys(body).find((key) => !known.includes(key));
+  if (unknown)
+    return fieldError(send, unknown, "Extra inputs are not permitted", "extra_forbidden");
+  if (body.state != null && !STATES.includes(body.state)) {
+    return fieldError(
+      send,
+      "state",
+      "Input should be 'todo', 'in_progress', 'in_review', 'blocked' or 'done'",
+    );
+  }
+  for (const field of ["note", "add_blocker"]) {
+    if ((body[field] ?? "").length > 500) {
+      return fieldError(
+        send,
+        field,
+        "String should have at most 500 characters",
+        "string_too_long",
+      );
+    }
+  }
+  const note = (body.note ?? "").trim() || null;
+  const added = (body.add_blocker ?? "").trim() || null;
+  const resolving = body.resolve_blocker_ids ?? [];
+  const etaSent = "eta" in body;
+  if (!body.state && !etaSent && !note && !added && resolving.length === 0) {
+    return send(422, {
+      detail:
+        "Nothing to update: send a state, an ETA, a note, a blocker to add or one to resolve.",
+    });
+  }
+  if (etaSent && body.eta && body.eta < TODAY) {
+    return send(422, { detail: "The ETA can't be before today." });
+  }
+  const notOpen = resolving.filter((id) => !t.blocker_ids.includes(id));
+  if (notOpen.length > 0) {
+    return send(422, {
+      detail: `Not an open blocker of this task: ${notOpen.join(", ")}. Reload the task and try again.`,
+    });
+  }
+  const left = t.blocker_ids.filter((id) => !resolving.includes(id));
+  if (body.state === "blocked" && !added && left.length === 0) {
+    return send(422, {
+      detail: "Blocked needs a blocker: add one, or keep one of the task's open blockers.",
+    });
+  }
+
+  // Blockers: the task's own change; every other blocker of the person stays as it was.
+  const status = statusOf(userId);
+  let details = status.blocker_details.filter((b) => !resolving.includes(b.blocker_id));
+  if (added) {
+    const blocker = {
+      blocker_id: `b-${Date.now()}`,
+      description: added,
+      work_item_id: t.id,
+      work_item_name: t.name,
+      pod_id: "pod-payments",
+      unattributed: false,
+      first_seen_on: TODAY,
+      age_days: 0,
+    };
+    details = [...details, blocker];
+    left.push(blocker.blocker_id);
+  }
+  t.blocker_ids = left;
+
+  // The ETA, and how far it moved against the one the task had.
+  let slip = null;
+  if (etaSent) {
+    if (body.eta && t.my_eta) slip = daysBetween(t.my_eta, body.eta);
+    t.my_eta = body.eta ?? null;
+    t.my_eta_label = body.eta ? dayLabel(body.eta) : null;
+  }
+  // A statement is a state or a note; an ETA or a blocker alone is not one.
+  if (body.state || note) t.last_update = said(body.state ?? null, note, stamp(), "console");
+
+  dayUpdates.set(userId, [
+    ...(dayUpdates.get(userId) ?? []),
+    {
+      id: t.id,
+      state: body.state ?? null,
+      eta: etaSent ? body.eta : undefined,
+      added: Boolean(added),
+      resolved: resolving.length > 0,
+    },
+  ]);
+  const replied =
+    status.status_as_of === TODAY &&
+    ["confirmed", "partial"].includes(status.source) &&
+    !status.summary.startsWith(UPDATE_LEAD);
+  const slips = [slip, status.status_as_of === TODAY ? status.eta_change_days : null].filter(
+    Boolean,
+  );
+  const next = {
+    ...status,
+    ...(replied
+      ? {}
+      : {
+          source: "partial",
+          developer_confirmed: false,
+          summary: daySummary(userId),
+          confirmed_at: new Date().toISOString(),
+        }),
+    status_as_of: TODAY,
+    blocker_details: details,
+    blockers: details.map((b) => b.description),
+    eta_change_days: largestSlip(slips),
+  };
+  statuses.set(userId, next);
+
+  // Jira, behind the gates: write-back on, the assignee, a state sent, the tick.
+  let tracker = null;
+  if (body.move_in_tracker && body.state) {
+    const target = TRACKER_NAMES[body.state];
+    if (WRITE_BACK === "off" || !t.can_move_in_tracker) {
+      tracker = {
+        outcome: "off",
+        detail: "Not moved in Jira: write-back is off.",
+        merge_requests: [],
+      };
+    } else if (body.state === "done" && t.merge_request) {
+      tracker = {
+        outcome: "held_open_mr",
+        detail: `Not moved in Jira: ${t.merge_request} is still open.`,
+        merge_requests: [t.merge_request],
+      };
+    } else if (
+      trackerAs(t.tracker_status) === (body.state === "in_review" ? "in_progress" : body.state)
+    ) {
+      tracker = {
+        outcome: "no_change",
+        detail: `Already ${t.tracker_status} in Jira.`,
+        merge_requests: [],
+      };
+    } else {
+      t.tracker_status = target;
+      tracker = { outcome: "applied", detail: `Moved to ${target} in Jira.`, merge_requests: [] };
+    }
+  }
+  return send(200, { task: taskDto(t), status: next, tracker });
+}
+
+/**
+ * The pod's task table with what each owner last said and their ETA. Kai's tasks join
+ * the generic list, with his blockers as they stand.
+ */
+function podTasksOf(podId) {
+  const base = consoleData.podTasks(podId);
+  if (podId !== "pod-payments") return base;
+  const kai = tasksOf("U1007");
+  const details = statusOf("U1007").blocker_details;
+  const rows = base.tasks.filter((row) => !kai.some((t) => t.id === row.id));
+  const kaiRows = kai.map((t) => {
+    const open_blockers = details
+      .filter((b) => t.blocker_ids.includes(b.blocker_id))
+      .map(({ blocker_id, description, first_seen_on, age_days }) => ({
+        blocker_id,
+        description,
+        first_seen_on,
+        age_days,
+      }));
+    return {
+      id: t.id,
+      name: t.name,
+      rag: t.tracker_status === "Done" ? "green" : "unknown",
+      source: "inferred",
+      confidence: null,
+      deadline: t.deadline,
+      owners: [{ id: "U1007", name: "Kai Thompson" }],
+      blocked: open_blockers.length > 0,
+      open_blockers,
+      tracker_status: t.tracker_status,
+      last_update: t.last_update,
+      last_update_by: t.last_update ? "Kai Thompson" : null,
+      eta: t.my_eta,
+      eta_label: t.my_eta_label,
+    };
+  });
+  const all = [...kaiRows, ...rows].sort((a, b) => Number(b.blocked) - Number(a.blocked));
+  return { ...base, tasks: all };
+}
+
 function focusOf(userId) {
   const status = statusOf(userId);
   const base = consoleData.focus(userId);
   return {
     ...base,
     as_of: TODAY,
+    write_back: WRITE_BACK,
+    tasks: tasksOf(userId).map(taskDto),
     status_source: status.source,
     developer_confirmed: status.developer_confirmed,
     status_as_of: status.status_as_of,
@@ -307,13 +645,9 @@ function podCheckins(podId) {
   const developers = base.developers.map((d) => {
     const kai = d.developer_id === "U1007" ? statuses.get("U1007") : null;
     if (kai?.status_as_of === TODAY) {
-      return {
-        ...d,
-        state: "confirmed",
-        source: "confirmed",
-        status_as_of: TODAY,
-        summary: kai.summary,
-      };
+      // Confirmed in the console, or partly replied through task updates.
+      const state = kai.source === "partial" ? "partial" : "confirmed";
+      return { ...d, state, source: kai.source, status_as_of: TODAY, summary: kai.summary };
     }
     if (d.developer_id === "U1009") {
       // Replied without a status: the backend closes the day as unknown, with this summary.
@@ -430,6 +764,19 @@ export function api(req, url, roles, userId, send, deny) {
     return true;
   }
   if (p === "/me/focus") return reply(send, 200, focusOf(userId));
+  if ((m = p.match(/^\/me\/tasks\/([^/]+)\/update$/)) && post) {
+    if (!nameOf(userId)) return reply(send, 404, { detail: "task is not assigned to you" });
+    const taskId = decodeURIComponent(m[1]);
+    let raw = "";
+    req.on("data", (chunk) => (raw += chunk));
+    req.on("end", () => updateTask(userId, taskId, JSON.parse(raw || "{}"), send));
+    return true;
+  }
+  if ((m = p.match(/^\/pods\/([^/]+)\/tasks$/))) {
+    // The generic mock's rule: a pod's detail is for its scrum master, a manager or an admin.
+    if (!has(roles, "sm", "mgr", "admin")) return refuse();
+    return reply(send, 200, podTasksOf(m[1]));
+  }
 
   if (p === "/portfolio/heatmap") {
     if (!has(roles, "mgr", "exec", "admin")) return refuse();

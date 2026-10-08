@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 
 import { ApiError, apiClient } from "../../api/client";
@@ -41,12 +41,15 @@ export function CheckinCard({
   compact = false,
   podNames = [],
   shownOnTasks = NONE,
+  footer = null,
 }: {
   compact?: boolean;
   /** The person's pods, which the advice under a missing reply names. */
   podNames?: string[];
   /** Tasks listed with their own blockers on the page: the card leaves those blockers out. */
   shownOnTasks?: Set<string>;
+  /** A last grey line, such as where the check-in rolls up. */
+  footer?: ReactNode;
 }) {
   const status = useQuery({ queryKey: ["me", "status"], queryFn: () => apiClient.myStatus() });
   const focus = useQuery({ queryKey: ["me", "focus"], queryFn: () => apiClient.focus() });
@@ -63,6 +66,7 @@ export function CheckinCard({
       podNames={podNames}
       shownOnTasks={shownOnTasks}
       compact={compact}
+      footer={footer}
     />
   );
 }
@@ -78,6 +82,7 @@ function CheckinPanel({
   podNames,
   shownOnTasks,
   compact,
+  footer,
 }: {
   status: MyStatusResponse | undefined;
   isLoading: boolean;
@@ -90,6 +95,7 @@ function CheckinPanel({
   /** Tasks listed with their own blockers below: the card leaves those blockers out. */
   shownOnTasks: Set<string>;
   compact: boolean;
+  footer: ReactNode;
 }) {
   const ownBlockers = (status?.blocker_details ?? []).filter(
     (blocker) => !blocker.work_item_id || !shownOnTasks.has(blocker.work_item_id),
@@ -230,11 +236,17 @@ function CheckinPanel({
                   {confirm.isPending ? "Confirming…" : "Confirm check-in"}
                 </Pill>
               )}
-              <CorrectDialog status={status} onDone={refresh} size={size} />
+              <CorrectDialog
+                status={status}
+                onDone={refresh}
+                size={size}
+                shownOnTasks={shownOnTasks}
+              />
             </div>
             {caption && !shown.confirmedToday && !compact ? (
               <p className="text-[12px] text-grey-secondary">{caption}</p>
             ) : null}
+            {footer ? <p className="text-[12px] text-grey-secondary">{footer}</p> : null}
           </div>
         ) : null}
       </PanelState>
@@ -245,26 +257,30 @@ function CheckinPanel({
 const LABEL = "mb-1 block text-[12px] font-bold uppercase tracking-wide text-grey-secondary";
 
 /**
- * A correction is a full statement: summary, ETA change and every blocker,
- * each either still open or resolved, plus any new one. A summary the system
- * wrote (nobody answered, or it was inferred) is not prefilled as if the
- * person had said it.
+ * A correction is a full statement: the summary and every blocker, each either
+ * still open or resolved, plus any new one. The ETA lives on each task now, so
+ * the day's ETA change is kept as it stands. Blockers on a task listed on the
+ * page are updated on that task's row: they are left out of the form and
+ * restated as they are. A summary the system wrote (nobody answered, or it was
+ * inferred) is not prefilled as if the person had said it.
  */
 function CorrectDialog({
   status,
   onDone,
   size,
+  shownOnTasks,
 }: {
   status: MyStatusResponse;
   onDone: () => void;
   size: "sm" | "md";
+  shownOnTasks: Set<string>;
 }) {
   const { readOnly, reason } = useReadOnly();
   const rows = blockerRows(status);
+  const listed = rows.filter((row) => !row.work_item_id || !shownOnTasks.has(row.work_item_id));
   const ownWords = isOwnWords(status.source);
   const [open, setOpen] = useState(false);
   const [summary, setSummary] = useState("");
-  const [eta, setEta] = useState("");
   const [resolved, setResolved] = useState<string[]>([]);
   const [added, setAdded] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -286,7 +302,6 @@ function CorrectDialog({
         setOpen(next);
         if (next) {
           setSummary(ownWords ? status.summary : "");
-          setEta(status.eta_change_days == null ? "" : String(status.eta_change_days));
           setResolved([]);
           setAdded("");
           setProblem(null);
@@ -312,7 +327,11 @@ function CorrectDialog({
             noValidate
             onSubmit={(event) => {
               event.preventDefault();
-              const built = buildCorrection(rows, { summary, eta, resolved, added });
+              const built = buildCorrection(
+                rows,
+                { summary, resolved, added },
+                { etaChangeDays: status.eta_change_days ?? null },
+              );
               if (!built.ok) {
                 setProblem(built.message);
                 return;
@@ -338,23 +357,10 @@ function CorrectDialog({
                 </p>
               ) : null}
             </div>
-            <div>
-              <label htmlFor="cc-eta" className={LABEL}>
-                ETA change in days (negative if earlier)
-              </label>
-              <input
-                id="cc-eta"
-                type="number"
-                step={1}
-                className="h-10 w-32 rounded-xl border border-grey-border px-3 text-[14px]"
-                value={eta}
-                onChange={(e) => setEta(e.target.value)}
-              />
-            </div>
-            {rows.length > 0 ? (
+            {listed.length > 0 ? (
               <fieldset className="grid gap-2">
                 <legend className={`${LABEL} mb-1`}>Blockers</legend>
-                {rows.map((row) => (
+                {listed.map((row) => (
                   <BlockerCheckbox
                     key={row.key}
                     row={row}

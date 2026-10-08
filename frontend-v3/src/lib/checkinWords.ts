@@ -56,6 +56,21 @@ export function repliedWithoutStatus(
   return (summary ?? "").trim().startsWith(NON_STATUS_LEAD);
 }
 
+/**
+ * The lead of the summary the backend writes for a day answered through task
+ * updates in the console, while no other reply is on record (status_summaries
+ * `TASK_UPDATE_LEAD`): "Updated tasks in OpenProgram: CHK-4 in review, ETA Oct 9".
+ */
+export const TASK_UPDATE_LEAD = "Updated tasks in OpenProgram:";
+
+/** Whether a partial status was given through the person's task updates, not in chat. */
+export function answeredByTaskUpdates(
+  summary: string | null | undefined,
+  source?: StatusSource | null,
+): boolean {
+  return source === "partial" && (summary ?? "").trim().startsWith(TASK_UPDATE_LEAD);
+}
+
 type BoardPerson = Pick<
   PodCheckinsResponse["developers"][number],
   "state" | "source" | "status_as_of" | "summary"

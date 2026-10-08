@@ -6,7 +6,12 @@ import type {
   StatusCorrectionRequest,
   StatusSource,
 } from "../../api/schema";
-import { REPLY_WORDS, boardWord, repliedWithoutStatus } from "../../lib/checkinWords.ts";
+import {
+  REPLY_WORDS,
+  answeredByTaskUpdates,
+  boardWord,
+  repliedWithoutStatus,
+} from "../../lib/checkinWords.ts";
 
 /**
  * The placeholder blocker a check-in nobody answered carries when nothing is
@@ -107,7 +112,9 @@ export function checkinNote(
         ? `${REPLY_WORDS.confirmed} by you${when}`
         : `${REPLY_WORDS.replied} in chat, not confirmed${when}`;
     case "partial":
-      return `${REPLY_WORDS.partly} in chat${when}`;
+      return answeredByTaskUpdates(input.summary, input.source)
+        ? `${REPLY_WORDS.partly} through your task updates${when}`
+        : `${REPLY_WORDS.partly} in chat${when}`;
     case "inferred":
       return `no reply ${today} · ${REPLY_WORDS.inferred} from delivery signals`;
     case "stale":
@@ -180,13 +187,6 @@ export function checkinHint(input: {
     return `${pods} ${shows} no reply from you. Silence is never read as green.`;
   }
   return `${pods} ${shows} your check-in as ${word} until you confirm or correct it.`;
-}
-
-/** What the card at the foot of Today says about why the check-in matters. */
-export function whyCheckinMatters(pastDay: boolean): string {
-  return pastDay
-    ? "Your check-in fed every rollup above you: pod, project and program. Silence is never read as green: a status nobody confirmed stayed visible as carried forward, so leaders saw what was real."
-    : "Your check-in feeds every rollup above you: pod, project and program. Silence is never read as green: a status you have not confirmed stays visible as carried forward until you confirm or correct it, so leaders see what is real.";
 }
 
 /**
@@ -279,7 +279,6 @@ export const MAX_BLOCKERS = 20;
 
 export type CorrectionDraft = {
   summary: string;
-  eta: string;
   /** Keys of the rows marked resolved. */
   resolved: string[];
   added: string;
@@ -287,23 +286,18 @@ export type CorrectionDraft = {
 
 /**
  * The request a correction sends, or what to tell the person is wrong first:
- * the same rules the server holds, said before the round trip.
+ * the same rules the server holds, said before the round trip. The ETA is set
+ * per task now, so a correction carries the day's ETA change as it stands
+ * (`keep.etaChangeDays`): the server writes what the request says, and sending
+ * none would wipe the slip the day's task updates recorded.
  */
 export function buildCorrection(
   rows: BlockerRow[],
   draft: CorrectionDraft,
+  keep: { etaChangeDays: number | null } = { etaChangeDays: null },
 ): { ok: true; body: StatusCorrectionRequest } | { ok: false; message: string } {
   const summary = draft.summary.trim();
   if (!summary) return { ok: false, message: "Say what you did and what's next." };
-
-  const etaText = draft.eta.trim();
-  let eta: number | null = null;
-  if (etaText !== "") {
-    eta = Number(etaText);
-    if (!Number.isInteger(eta)) {
-      return { ok: false, message: "The ETA change is a whole number of days, like 2 or -1." };
-    }
-  }
 
   const added = draft.added.trim();
   if (added.length > MAX_BLOCKER_TEXT) {
@@ -347,7 +341,7 @@ export function buildCorrection(
     ok: true,
     body: {
       summary,
-      eta_change_days: eta,
+      eta_change_days: keep.etaChangeDays,
       blocker_items: [
         // The wording, whether it is resolved, and the id the status named for it: the
         // server matches a restated blocker by that id first, so two blockers on one work

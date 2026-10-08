@@ -95,6 +95,8 @@ import type {
   MyStatusResponse,
   SelfCheckinPreferenceUpdateRequest,
   StatusCorrectionRequest,
+  TaskUpdateRequest,
+  TaskUpdateResponse,
   WorkstreamFlowResponse,
   WorkstreamProgressResponse,
   WorkflowDispatchResponse,
@@ -229,6 +231,12 @@ export const apiClient = {
     }),
   correctMyStatus: (input: StatusCorrectionRequest, asOf?: string) =>
     requestJson<MyStatusResponse>(withAsOf("/me/status/correct", asOf), {
+      method: "POST",
+      body: input,
+    }),
+  /** One of the caller's own tasks, for today only: only the fields sent change. */
+  updateMyTask: (taskId: string, input: TaskUpdateRequest) =>
+    requestJson<TaskUpdateResponse>(`/me/tasks/${encodeURIComponent(taskId)}/update`, {
       method: "POST",
       body: input,
     }),
