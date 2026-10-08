@@ -1,0 +1,43 @@
+frontend-v3/src/features/coordination/raised.test.ts
+  s_d09685699e5b37::t_d6851024281e00 30-34
+  s_d09685699e5b37::t_cd1890503ed9b1 4,13-29,35-50
+frontend-v3/src/features/coordination/RequestCard.tsx
+  s_d09685699e5b37::t_9263486982d623 13
+  s_d09685699e5b37::t_c326052ff2d91c 1,3-12,14-121
+  s_d09685699e5b37::t_90424bb4b2090c 2
+frontend-v3/src/features/today/PortfolioToday.tsx
+  s_d09685699e5b37::t_35c17b7ee92c87 293
+  s_d09685699e5b37::t_f71fa98e3a5ec9 40
+frontend-v3/src/features/today/YourAsks.tsx
+  s_d09685699e5b37::t_19ab7ab8fc4a01 1-43,45-97
+  s_d09685699e5b37::t_d6851024281e00 44
+frontend-v3/src/features/today/DeveloperToday.tsx
+  s_d09685699e5b37::t_860102ca8cbd42 33,116
+frontend-v3/src/pages/CoordinationPage.tsx
+  s_d09685699e5b37::t_61c2f635fd4b8b 182-188,192,212
+  s_d09685699e5b37::t_d6851024281e00 81,283-332
+  s_d09685699e5b37::t_6e92b1f335e6fe 1,7-15,22-25,28-32,35,40-44,47,49-50,63-66,69-72,74,76-80,82-94,96-118,121-139,141-165,167-168
+frontend-v3/src/features/today/ProductOwnerToday.tsx
+  s_d09685699e5b37::t_860102ca8cbd42 24,211
+frontend-v3/src/features/coordination/raised.ts
+  s_d09685699e5b37::t_205437dc577cf1 1,11-39,44-49
+  s_d09685699e5b37::t_d6851024281e00 40-43
+frontend-v3/src/features/today/ScrumMasterToday.tsx
+  s_d09685699e5b37::t_860102ca8cbd42 23,202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "49953432d38a29a17ad145773fe6d91000aa35c3",
+  "prompts": {},
+  "sessions": {
+    "s_d09685699e5b37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac999ca-e6f7-4dc8-80ef-2b794b6036cf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

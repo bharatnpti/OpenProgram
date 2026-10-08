@@ -1,0 +1,42 @@
+frontend-v3/src/app/access.ts
+  s_d09685699e5b37::t_19942dd160353a 1-83,91-119,125-234,237-334
+  s_d09685699e5b37::t_3ef4fd5f8c19ca 84-90,120-124,235-236
+frontend-v3/src/components/shell/paletteRows.ts
+  s_d09685699e5b37::t_708fb0fce0f3b6 4,20,56-60,62,83-96,101-103,105-110,127-128,164,212
+frontend-v3/src/app/RoleProvider.tsx
+  s_d09685699e5b37::t_71a0e7ca6671db 7,140-141,165-168
+frontend-v3/src/app/nav.ts
+  s_d09685699e5b37::t_f785fc03488a3d 1,5,12-13,16,19,23,25-28,30-32,35-37
+frontend-v3/src/app/RouteGuard.tsx
+  s_d09685699e5b37::t_3ef4fd5f8c19ca 7-13
+  s_d09685699e5b37::t_8718fff201cfdf 1-6,14-93
+frontend-v3/src/components/shell/paletteRows.test.ts
+  s_d09685699e5b37::t_f0d705430535d2 5-6,9-12,59-60,87,104,137,158,161,167-204
+frontend-v3/src/app/role.ts
+  s_d09685699e5b37::t_71a0e7ca6671db 4,48-56
+frontend-v3/src/app/Layout.tsx
+  s_d09685699e5b37::t_407349a2aee456 13,111-115
+  s_d09685699e5b37::t_24f6c76f1dac14 26-27,90-105
+frontend-v3/src/app/access.test.ts
+  s_d09685699e5b37::t_02e4de7049de6c 1-50,55-58,64-84,89-242,247-316
+  s_d09685699e5b37::t_3ef4fd5f8c19ca 51-54,59-63,85-88,243-246
+frontend-v3/src/components/shell/CommandPalette.tsx
+  s_d09685699e5b37::t_3ef4fd5f8c19ca 117
+  s_d09685699e5b37::t_7ae1d629e4b318 6,8,31-35,102,107-109,113,118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bec9b99531313402b96ef6c0c778fa72257d6182",
+  "prompts": {},
+  "sessions": {
+    "s_d09685699e5b37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac999ca-e6f7-4dc8-80ef-2b794b6036cf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
