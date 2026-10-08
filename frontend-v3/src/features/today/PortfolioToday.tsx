@@ -142,8 +142,6 @@ export function PortfolioToday() {
           />
         ) : null}
         <PanelState
-          locked={!canReadPortfolio}
-          needs="a manager, executive or admin"
           // The heat map too: its program cell can turn the verdict, and the amber one
           // drawn first would flip to red a moment later.
           isLoading={attentionRead.isLoading || heatmapRead.isLoading}
@@ -177,11 +175,7 @@ export function PortfolioToday() {
             // "not enough reported days" is a finding about a trend, so only once it is read.
             note={trend.data ? momentumNote(m, trend.data.window_days) : undefined}
           >
-            <PanelState
-              locked={!canReadPortfolio}
-              needs="a manager, executive or admin"
-              {...trendRead}
-            >
+            <PanelState {...trendRead}>
               <Sparkline values={m.values} label={`Program health over 30 days: ${m.label}`} />
               <p className="mt-2 text-[12px] text-grey-secondary">
                 Measured only over days that reported a status.
@@ -200,7 +194,6 @@ export function PortfolioToday() {
             }
           >
             <PanelState
-              needs="a scrum master, product owner, manager, executive or admin"
               isLoading={brief.isLoading}
               error={brief.error}
               isEmpty={!newest}
@@ -233,7 +226,6 @@ export function PortfolioToday() {
           note="worst first · click a tile to open it in Delivery · hover for every reason"
         >
           <PanelState
-            needs="anyone with a member record"
             isLoading={directoryRead.isLoading || heatmapRead.isLoading}
             error={directoryRead.error}
           >
@@ -271,8 +263,6 @@ export function PortfolioToday() {
           }
         >
           <PanelState
-            locked={!canReadPortfolio}
-            needs="a manager, executive or admin"
             {...attentionRead}
             isEmpty={(a?.signals ?? []).length === 0}
             emptyText="Nothing needs attention right now."

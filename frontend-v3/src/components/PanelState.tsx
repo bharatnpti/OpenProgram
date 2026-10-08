@@ -1,18 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { ApiError } from "../api/client";
-import { useRole } from "../app/role";
 import { Pill } from "./ui/Pill";
 
 /**
  * The one way a panel shows that it is loading, refused, empty or broken.
  *
- * A refused read says which role opens it instead of rendering dashes or a 0%
- * bar, and nothing that failed or is still loading is ever drawn as on track.
+ * A panel the viewing role is not offered is not drawn at all (app/access.ts),
+ * so this never says which role would open it. A read the server refuses anyway
+ * says so, with the server's reason, instead of rendering dashes or a 0% bar;
+ * nothing that failed or is still loading is ever drawn as on track.
  */
 export function PanelState({
-  locked,
-  needs,
   isLoading,
   error,
   onRetry,
@@ -20,10 +19,6 @@ export function PanelState({
   emptyText,
   children,
 }: {
-  /** The viewing role cannot read this; the query was not sent. */
-  locked?: boolean;
-  /** Who opens it, in words: "a product owner, manager, executive or admin". */
-  needs: string;
   /**
    * The read has not answered. Empty text is drawn only when this is false, so a
    * read that is held back (`enabled: false`) until another answers must count as
@@ -37,15 +32,6 @@ export function PanelState({
   emptyText?: ReactNode;
   children: ReactNode;
 }) {
-  const { roleLabel } = useRole();
-
-  if (locked) {
-    return (
-      <Notice>
-        Opens for {needs}. You are viewing as {roleLabel.toLowerCase()}.
-      </Notice>
-    );
-  }
   if (isLoading) {
     return <Notice>Loading…</Notice>;
   }
@@ -53,7 +39,7 @@ export function PanelState({
     if (error instanceof ApiError && error.status === 403) {
       return (
         <Notice>
-          Opens for {needs}.{" "}
+          Not available to you.{" "}
           <span className="text-grey-secondary">The server said: {error.message}</span>
         </Notice>
       );

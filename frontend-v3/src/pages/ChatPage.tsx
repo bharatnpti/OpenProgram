@@ -240,7 +240,6 @@ function Thread({
     <section className="flex min-w-0 flex-col rounded-3xl border border-grey-border">
       <div className="max-h-[60vh] min-h-[320px] overflow-y-auto p-4">
         <PanelState
-          needs="anyone with a member record"
           isLoading={isLoading}
           error={error}
           isEmpty={top.length === 0}

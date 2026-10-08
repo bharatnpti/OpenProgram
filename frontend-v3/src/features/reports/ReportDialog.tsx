@@ -60,7 +60,7 @@ export function ReportDialog({
   );
 }
 
-/** Why a control is not offered, and who uses it: shown where the control would be. */
+/** Why a control is off just now (a past day is shown), where the control would be. */
 export function Locked({ children, className }: { children: ReactNode; className?: string }) {
   return <p className={cn("text-[12px] text-grey-secondary", className)}>{children}</p>;
 }

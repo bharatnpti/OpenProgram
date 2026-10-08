@@ -63,7 +63,6 @@ export function IntegrationsTab() {
 
   return (
     <PanelState
-      needs="an admin"
       isLoading={connections.isLoading}
       error={connections.error}
       onRetry={() => void connections.refetch()}

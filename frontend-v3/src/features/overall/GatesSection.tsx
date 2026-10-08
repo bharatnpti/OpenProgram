@@ -9,7 +9,7 @@ import { PanelState, SectionHeader, TableBox, td, th } from "../../components/Pa
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { STAGE_LABELS } from "../../lib/status";
-import { WHO, actionError } from "../reports/access";
+import { actionError } from "../reports/access";
 import { Locked } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
 import {
@@ -39,7 +39,8 @@ export function GatesSection({
   projectId: string;
   releaseId?: string;
 }) {
-  const { editGates, why } = useReportAccess();
+  const { editGates, pastDay } = useReportAccess();
+  const offNow = pastDay("editGates");
   const queryClient = useQueryClient();
   const { query } = useGateBoard(projectId, releaseId || undefined);
   const data = query.data;
@@ -67,15 +68,12 @@ export function GatesSection({
             <Pill size="sm" variant="ghost" disabled={scan.isPending} onClick={() => scan.mutate()}>
               {scan.isPending ? "Reading Jira…" : "Read Jira now"}
             </Pill>
-          ) : (
-            <Locked>
-              {why("editGates", `Rereading Jira and keeping items is for ${WHO.gates}.`)}
-            </Locked>
-          )
+          ) : offNow ? (
+            <Locked>{offNow}</Locked>
+          ) : undefined
         }
       />
       <PanelState
-        needs="anyone but an executive, or a project-progress reader"
         isLoading={query.isLoading}
         error={query.error}
         onRetry={() => void query.refetch()}

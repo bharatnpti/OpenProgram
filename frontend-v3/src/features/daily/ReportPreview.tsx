@@ -22,7 +22,6 @@ export function ReportPreview({ reportId }: { reportId: string }) {
 
   return (
     <PanelState
-      needs="anyone with a member record"
       isLoading={preview.isLoading}
       error={preview.error}
       onRetry={() => void preview.refetch()}

@@ -3,7 +3,6 @@ import { useState } from "react";
 
 import { apiClient } from "../../api/client";
 import type { DirectoryItemResponse, PodDeliveryResponse } from "../../api/schema";
-import { useRole } from "../../app/role";
 import { useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { Panel } from "../../components/ui/Bits";
@@ -18,7 +17,6 @@ import {
   undatedWords,
   verdictCause,
 } from "../overall/overallWords";
-import { WHO } from "../reports/access";
 import { DeliveryDateDialog } from "../reports/DeliveryDateDialog";
 import { Locked } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
@@ -33,7 +31,6 @@ type PodProjectDeliveryResponse = PodDeliveryResponse["projects"][number];
  * pod whether this reader may (`can_set_dates`); on a past day nobody may.
  */
 export function PodDeliveryCard({ pod }: { pod: DirectoryItemResponse }) {
-  const { roleLabel } = useRole();
   const { readPodDelivery, readOnly, reason } = useReportAccess();
   const delivery = useQuery({
     queryKey: ["pod-delivery", pod.id],
@@ -42,13 +39,7 @@ export function PodDeliveryCard({ pod }: { pod: DirectoryItemResponse }) {
   });
   const [editing, setEditing] = useState<PodProjectDeliveryResponse | null>(null);
 
-  if (!readPodDelivery) {
-    return (
-      <Locked className="mb-5">
-        Delivery dates open for {WHO.podDelivery}. You are viewing as {roleLabel.toLowerCase()}.
-      </Locked>
-    );
-  }
+  if (!readPodDelivery) return null;
   const data = delivery.data;
   const serverSays = data?.can_set_dates ?? false;
   const canSet = serverSays && !readOnly;
@@ -60,7 +51,6 @@ export function PodDeliveryCard({ pod }: { pod: DirectoryItemResponse }) {
       note={canSet ? "Yours to set for this pod" : undefined}
     >
       <PanelState
-        needs={WHO.podDelivery}
         isLoading={delivery.isLoading}
         error={delivery.error}
         onRetry={() => void delivery.refetch()}
@@ -77,11 +67,8 @@ export function PodDeliveryCard({ pod }: { pod: DirectoryItemResponse }) {
             />
           ))}
         </ul>
-        {!canSet ? (
-          <Locked className="mt-3">
-            {readOnly && serverSays && reason ? reason : `A pod's date is set by ${WHO.podDates}.`}
-          </Locked>
-        ) : null}
+        {/* A past day is no role rule: who could set the date today is told why not now. */}
+        {readOnly && serverSays && reason ? <Locked className="mt-3">{reason}</Locked> : null}
       </PanelState>
       {editing ? (
         <DeliveryDateDialog

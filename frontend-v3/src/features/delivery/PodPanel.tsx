@@ -16,12 +16,10 @@ import { FactorsPanel, NodeHeader, Related } from "./NodeBits";
 import { PodDeliveryCard } from "./PodDeliveryCard";
 import { reasonLine, type Finder } from "./factors";
 
-const NEEDS = "a scrum master, manager or admin";
-
 /**
  * A pod: members and who replied today, open blockers, and its tasks (blocked
  * first, each with owners and the blockers on it). Check-ins and blockers are
- * per person, so they open for a scrum master, manager or admin only.
+ * per person, so only the roles that read a pod's people get them.
  */
 export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Finder }) {
   const { canReadPodDetail } = useRole();
@@ -61,13 +59,11 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
         name={pod.name}
         rag={rollup.data?.rag ?? pod.rag}
         reason={
-          on
-            ? rollup.data
-              ? reasonLine(rollup.data.factors, rollup.data.source_names, rollup.data.rag)
-              : undefined
-            : "Check-ins, blockers and the reasons behind this pod's colour open for a scrum master, manager or admin."
+          rollup.data
+            ? reasonLine(rollup.data.factors, rollup.data.source_names, rollup.data.rag)
+            : undefined
         }
-        read={readState(rollup)}
+        read={on ? readState(rollup) : undefined}
       />
       <div className="mb-5 grid gap-2">
         <Related
@@ -89,128 +85,130 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
         </p>
       </div>
       <PodDeliveryCard pod={pod} />
-      <PanelState locked={!on} needs={NEEDS} isLoading={rollup.isLoading} error={rollup.error}>
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
-            <Panel
-              title={`Check-ins ${day}`}
-              note={
-                c ? repliedCount({ confirmed: c.confirmed, partial: c.partial, total }) : undefined
-              }
-            >
-              <PanelState
-                needs={NEEDS}
-                isLoading={checkins.isLoading}
-                error={checkins.error}
-                isEmpty={(c?.developers ?? []).length === 0}
-                emptyText="Nobody in this pod is asked to check in."
+      {/* Per person, so only for the roles that read a pod's people. */}
+      {on ? (
+        <PanelState isLoading={rollup.isLoading} error={rollup.error}>
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
+              <Panel
+                title={`Check-ins ${day}`}
+                note={
+                  c
+                    ? repliedCount({ confirmed: c.confirmed, partial: c.partial, total })
+                    : undefined
+                }
               >
-                <ul>
-                  {(c?.developers ?? []).map((dev) => (
-                    <Row
-                      key={dev.developer_id}
-                      rag={boardRag(dev)}
-                      title={dev.developer_name}
-                      meta={boardMeta(dev, c?.as_of ?? "", { day: formatDay, today: day })}
-                      right={boardWord(dev, c?.as_of ?? "").word}
-                    />
-                  ))}
-                </ul>
-              </PanelState>
-            </Panel>
-            <Panel title="Open blockers" note="oldest first">
-              <PanelState
-                needs={NEEDS}
-                isLoading={blockers.isLoading}
-                error={blockers.error}
-                isEmpty={(blockers.data?.blockers ?? []).length === 0}
-                emptyText="No open blockers."
-              >
-                <ul>
-                  {[...(blockers.data?.blockers ?? [])]
-                    .sort((a, b) => b.age_days - a.age_days)
-                    .map((b) => (
+                <PanelState
+                  isLoading={checkins.isLoading}
+                  error={checkins.error}
+                  isEmpty={(c?.developers ?? []).length === 0}
+                  emptyText="Nobody in this pod is asked to check in."
+                >
+                  <ul>
+                    {(c?.developers ?? []).map((dev) => (
                       <Row
-                        key={b.id}
-                        rag={b.age_days >= 7 ? "red" : "amber"}
-                        title={b.description}
-                        meta={`${b.owner_name}${b.work_item_ref ? ` · ${b.work_item_ref.id}` : ""} · since ${formatDay(b.first_seen_on)}`}
-                        right={`${b.age_days}d`}
+                        key={dev.developer_id}
+                        rag={boardRag(dev)}
+                        title={dev.developer_name}
+                        meta={boardMeta(dev, c?.as_of ?? "", { day: formatDay, today: day })}
+                        right={boardWord(dev, c?.as_of ?? "").word}
                       />
                     ))}
-                </ul>
+                  </ul>
+                </PanelState>
+              </Panel>
+              <Panel title="Open blockers" note="oldest first">
+                <PanelState
+                  isLoading={blockers.isLoading}
+                  error={blockers.error}
+                  isEmpty={(blockers.data?.blockers ?? []).length === 0}
+                  emptyText="No open blockers."
+                >
+                  <ul>
+                    {[...(blockers.data?.blockers ?? [])]
+                      .sort((a, b) => b.age_days - a.age_days)
+                      .map((b) => (
+                        <Row
+                          key={b.id}
+                          rag={b.age_days >= 7 ? "red" : "amber"}
+                          title={b.description}
+                          meta={`${b.owner_name}${b.work_item_ref ? ` · ${b.work_item_ref.id}` : ""} · since ${formatDay(b.first_seen_on)}`}
+                          right={`${b.age_days}d`}
+                        />
+                      ))}
+                  </ul>
+                </PanelState>
+              </Panel>
+            </div>
+            {rollup.data ? (
+              <FactorsPanel factors={rollup.data.factors} names={rollup.data.source_names} />
+            ) : null}
+            <Panel
+              title="Tasks held by the pod's people"
+              note={tasks.data ? plural(sortedTasks.length, "task", "tasks") : undefined}
+            >
+              <PanelState
+                isLoading={tasks.isLoading}
+                error={tasks.error}
+                isEmpty={sortedTasks.length === 0}
+                emptyText="No tasks are assigned to this pod's members within its remit."
+              >
+                <TableBox>
+                  <table className="w-full min-w-[500px] sm:min-w-[680px] border-collapse">
+                    <thead>
+                      <tr>
+                        <th className={th}>Task</th>
+                        <th className={th}>Status</th>
+                        <th className={th}>Owners</th>
+                        <th className={th}>Blockers</th>
+                        <th className={th}>Due</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedTasks.map((task) => (
+                        <tr key={task.id}>
+                          <td className={td}>
+                            {/* Capped on a phone, so the status beside it is in the first screenful. */}
+                            <div className="max-w-[12rem] sm:max-w-none">
+                              <span className="font-bold">{task.name}</span>
+                              <span className="block text-[12px] text-grey-secondary">
+                                {task.id}
+                                {task.tracker_status ? ` · ${task.tracker_status}` : ""}
+                              </span>
+                            </div>
+                          </td>
+                          <td className={td}>
+                            {task.blocked ? (
+                              <RagChip tone="danger" className="h-6 px-2.5 text-[12px]">
+                                blocked
+                              </RagChip>
+                            ) : (
+                              <RagBadge rag={task.rag} />
+                            )}
+                          </td>
+                          <td className={td}>{task.owners.map((o) => o.name).join(", ") || "—"}</td>
+                          <td className={td}>
+                            {task.open_blockers.length === 0
+                              ? "—"
+                              : task.open_blockers
+                                  .map((b) => `${b.description} (${b.age_days}d)`)
+                                  .join("; ")}
+                          </td>
+                          <td className={`${td} whitespace-nowrap`}>{formatDay(task.deadline)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableBox>
+                <p className="mt-2 text-[12px] text-grey-secondary">
+                  Counted by who holds each task. The open count under Delivery dates counts the
+                  requirements linked to the pod, so the two can differ.
+                </p>
               </PanelState>
             </Panel>
           </div>
-          {rollup.data ? (
-            <FactorsPanel factors={rollup.data.factors} names={rollup.data.source_names} />
-          ) : null}
-          <Panel
-            title="Tasks held by the pod's people"
-            note={tasks.data ? plural(sortedTasks.length, "task", "tasks") : undefined}
-          >
-            <PanelState
-              needs={NEEDS}
-              isLoading={tasks.isLoading}
-              error={tasks.error}
-              isEmpty={sortedTasks.length === 0}
-              emptyText="No tasks are assigned to this pod's members within its remit."
-            >
-              <TableBox>
-                <table className="w-full min-w-[500px] sm:min-w-[680px] border-collapse">
-                  <thead>
-                    <tr>
-                      <th className={th}>Task</th>
-                      <th className={th}>Status</th>
-                      <th className={th}>Owners</th>
-                      <th className={th}>Blockers</th>
-                      <th className={th}>Due</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedTasks.map((task) => (
-                      <tr key={task.id}>
-                        <td className={td}>
-                          {/* Capped on a phone, so the status beside it is in the first screenful. */}
-                          <div className="max-w-[12rem] sm:max-w-none">
-                            <span className="font-bold">{task.name}</span>
-                            <span className="block text-[12px] text-grey-secondary">
-                              {task.id}
-                              {task.tracker_status ? ` · ${task.tracker_status}` : ""}
-                            </span>
-                          </div>
-                        </td>
-                        <td className={td}>
-                          {task.blocked ? (
-                            <RagChip tone="danger" className="h-6 px-2.5 text-[12px]">
-                              blocked
-                            </RagChip>
-                          ) : (
-                            <RagBadge rag={task.rag} />
-                          )}
-                        </td>
-                        <td className={td}>{task.owners.map((o) => o.name).join(", ") || "—"}</td>
-                        <td className={td}>
-                          {task.open_blockers.length === 0
-                            ? "—"
-                            : task.open_blockers
-                                .map((b) => `${b.description} (${b.age_days}d)`)
-                                .join("; ")}
-                        </td>
-                        <td className={`${td} whitespace-nowrap`}>{formatDay(task.deadline)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </TableBox>
-              <p className="mt-2 text-[12px] text-grey-secondary">
-                Counted by who holds each task. The open count under Delivery dates counts the
-                requirements linked to the pod, so the two can differ.
-              </p>
-            </PanelState>
-          </Panel>
-        </div>
-      </PanelState>
+        </PanelState>
+      ) : null}
     </>
   );
 }

@@ -66,7 +66,6 @@ export function EscalationTab() {
 
   return (
     <PanelState
-      needs="an admin"
       isLoading={overview.isLoading}
       error={overview.error}
       onRetry={() => void overview.refetch()}
@@ -106,7 +105,7 @@ export function EscalationTab() {
           ) : null}
         </div>
         {scope !== TENANT && project.error ? (
-          <PanelState needs="an admin" isLoading={false} error={project.error}>
+          <PanelState isLoading={false} error={project.error}>
             {null}
           </PanelState>
         ) : !matrix ? (

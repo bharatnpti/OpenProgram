@@ -7,7 +7,7 @@ import type { ReleaseMatchKind, ReleaseResponse } from "../../api/schema";
 import { ConfirmDialog } from "../../components/Dialogs";
 import { Pill } from "../../components/ui/Pill";
 import { formatDay } from "../../lib/format";
-import { WHO, actionError } from "../reports/access";
+import { actionError } from "../reports/access";
 import { FormProblem, Locked, ReportDialog, field, fieldLabel } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
 import { candidateLabel, releaseName } from "./overallWords";
@@ -44,27 +44,22 @@ export function ReleaseScope({
   onChange: (releaseId: string) => void;
 }) {
   const access = useReportAccess();
-  const { locked, query } = useReleases(projectId);
+  const { readable, query } = useReleases(projectId);
   const releases = query.data ?? [];
   const [adding, setAdding] = useState(false);
 
-  if (locked) {
-    return (
+  // A reader who does not list releases has no picker; a link to one release still says so.
+  if (!readable) {
+    return releaseId ? (
       <div className="mb-8 flex flex-wrap items-center gap-3 rounded-2xl bg-grey-fill px-4 py-3 text-[13px] text-grey-body">
-        {releaseId ? (
-          <>
-            <span>Showing one release of this project, from the link.</span>
-            <button type="button" className="font-bold underline" onClick={() => onChange("")}>
-              Show the whole project
-            </button>
-          </>
-        ) : (
-          <span>Covers the whole project.</span>
-        )}
-        <Locked>Picking a release opens for {WHO.projectProgress}.</Locked>
+        <span>Showing one release of this project, from the link.</span>
+        <button type="button" className="font-bold underline" onClick={() => onChange("")}>
+          Show the whole project
+        </button>
       </div>
-    );
+    ) : null;
   }
+  const offNow = access.pastDay("setProjectDates");
 
   const selected = releases.find((release) => release.release_id === releaseId);
   return (
@@ -107,11 +102,9 @@ export function ReleaseScope({
               Add a release
             </Pill>
           </>
-        ) : (
-          <Locked>
-            {access.why("setProjectDates", `Releases are defined by ${WHO.projectDates}.`)}
-          </Locked>
-        )}
+        ) : offNow ? (
+          <Locked>{offNow}</Locked>
+        ) : null}
       </div>
       {adding ? (
         <ReleaseDialog

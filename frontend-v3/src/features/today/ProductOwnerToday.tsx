@@ -23,7 +23,6 @@ import { ragSeverity } from "../../lib/status";
 import { greetingTitle, PERSON_KEY_WORDS, plural, sourceLine, todayEyebrow } from "../../lib/words";
 import { WaitingOnYou } from "./WaitingOnYou";
 
-const NEEDS = "a product owner, manager, executive or admin";
 const ATTENTION_SHOWN = 8;
 
 /**
@@ -79,7 +78,6 @@ export function ProductOwnerToday() {
         sub="Project progress, task health and what needs a decision from you."
       />
       <PanelState
-        needs="anyone with a member record"
         isLoading={projects.isLoading || pods.isLoading}
         error={projects.error ?? pods.error}
         isEmpty={mine.length === 0}
@@ -112,12 +110,7 @@ export function ProductOwnerToday() {
               </Link>
             }
           >
-            <PanelState
-              locked={!canReadProjectProgress}
-              needs={NEEDS}
-              isLoading={progress.isLoading}
-              error={progress.error}
-            >
+            <PanelState isLoading={progress.isLoading} error={progress.error}>
               {p ? (
                 <div className="flex flex-wrap items-center gap-5">
                   <ProgressRing percent={p.total_tasks > 0 ? p.percent_complete : null} />
@@ -149,7 +142,6 @@ export function ProductOwnerToday() {
           </Panel>
           <Panel title="Workstreams" note="worst first">
             <PanelState
-              needs="anyone"
               isLoading={workstreams.isLoading}
               error={workstreams.error}
               isEmpty={ws.length === 0}
@@ -198,8 +190,6 @@ export function ProductOwnerToday() {
             }
           >
             <PanelState
-              locked={!canReadProjectProgress}
-              needs={NEEDS}
               isLoading={progress.isLoading}
               error={progress.error}
               isEmpty={attention.length === 0}

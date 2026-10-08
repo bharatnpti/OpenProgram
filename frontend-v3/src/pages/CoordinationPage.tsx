@@ -29,8 +29,6 @@ import {
 } from "../lib/words";
 import { raisedStillOpen } from "../features/coordination/raised";
 
-const NEEDS = "a scrum master, product owner, manager, executive or admin";
-
 /**
  * Who is waiting on whom, the narrative briefs, and a plain-language question
  * answered from the graph. Team and executive readers see the portfolio-wide
@@ -85,7 +83,7 @@ function Requests() {
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       {canReadAggregate ? (
         <Panel title="Requests board" note="every open ask across the portfolio">
-          <PanelState needs={NEEDS} isLoading={board.isLoading} error={board.error}>
+          <PanelState isLoading={board.isLoading} error={board.error}>
             <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-3">
               {COLUMNS.map((col) => {
                 const items = (board.data?.requests ?? []).filter((r) => r.status === col.status);
@@ -113,7 +111,6 @@ function Requests() {
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
         <Panel title="Waiting on you">
           <PanelState
-            needs="anyone with a member record"
             isLoading={waiting.isLoading}
             error={waiting.error}
             isEmpty={live(waiting.data?.requests).length === 0}
@@ -128,7 +125,6 @@ function Requests() {
         </Panel>
         <Panel title="Raised by you" note="and where each one has got to">
           <PanelState
-            needs="anyone with a member record"
             isLoading={raised.isLoading}
             error={raised.error}
             isEmpty={stillOpen(raised.data?.requests).length === 0}
@@ -284,12 +280,7 @@ function Briefs() {
 
   return (
     <Panel title="Briefs" note="written from facts only, no raw chat">
-      <PanelState
-        locked={!canReadAggregate}
-        needs={NEEDS}
-        isLoading={briefs.isLoading}
-        error={briefs.error}
-      >
+      <PanelState isLoading={briefs.isLoading} error={briefs.error}>
         <ChipPicker
           label="Brief kind"
           value={kind}
@@ -371,12 +362,7 @@ function AskTheGraph() {
 
   return (
     <Panel title="Ask the graph" note="answered from the delivery graph, not a guess">
-      {!canReadAggregate ? (
-        <p className="text-[14px] text-grey-body">
-          Questions are answered from team and portfolio reads, which open for {NEEDS}. Your own
-          work is on Today.
-        </p>
-      ) : (
+      {!canReadAggregate ? null : (
         <div className="grid gap-3">
           <form
             className="grid gap-2"

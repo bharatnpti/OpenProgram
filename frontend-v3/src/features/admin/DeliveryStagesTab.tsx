@@ -68,7 +68,6 @@ export function DeliveryStagesTab() {
 
   return (
     <PanelState
-      needs="an admin"
       isLoading={stages.isLoading}
       error={stages.error}
       onRetry={() => void stages.refetch()}

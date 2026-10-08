@@ -16,7 +16,7 @@ import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
 import { STAGE_LABELS } from "../../lib/status";
-import { WHO, actionError, maySignOff, signOffWho } from "../reports/access";
+import { actionError, maySignOff, signOffWho } from "../reports/access";
 import { FormProblem, Locked, ReportDialog, field, fieldLabel } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
 import {
@@ -58,7 +58,7 @@ export function IssueGatesDialog({
   projectId: string;
   onClose: () => void;
 }) {
-  const { editGates, why } = useReportAccess();
+  const { editGates, pastDay } = useReportAccess();
   const issue = board.issues.find((item) => item.key === issueKey);
   if (!issue) return null;
   const templates = board.templates.filter((template) =>
@@ -80,11 +80,7 @@ export function IssueGatesDialog({
             {issue.passed_without.join(" and ")} passing.
           </p>
         ) : null}
-        {!editGates ? (
-          <Locked>
-            {why("editGates", `Keeping, adding and signing off items is for ${WHO.gates}.`)}
-          </Locked>
-        ) : null}
+        {!editGates && pastDay("editGates") ? <Locked>{pastDay("editGates")}</Locked> : null}
         {templates.length === 0 ? (
           <p className="text-[14px] text-grey-secondary">No gate applies to this issue type.</p>
         ) : (
@@ -209,7 +205,6 @@ function KindBlock({
         <p className="text-[12px] text-grey-secondary">
           Signed off by {signOffWho(kind)}
           {kind.evidence_required ? ", met only with a link to the evidence" : ""}.
-          {editGates && !signs ? " Not by your role." : ""}
         </p>
       </div>
 

@@ -1,7 +1,6 @@
 import { useSearchParams } from "react-router-dom";
 
-import { useRole } from "../app/role";
-import { PanelState, SectionHeader } from "../components/PanelState";
+import { SectionHeader } from "../components/PanelState";
 import { BrandingTab } from "../features/admin/BrandingTab";
 import { CheckinsTab } from "../features/admin/CheckinsTab";
 import { ContactsTab } from "../features/admin/ContactsTab";
@@ -35,7 +34,6 @@ type Tab = (typeof TABS)[number]["key"];
 
 /** Runtime configuration. Always shows current configuration, whatever day is being viewed. */
 export function AdminPage() {
-  const { canManageConfig } = useRole();
   const [search, setSearch] = useSearchParams();
   const tab: Tab = TABS.some((t) => t.key === search.get("tab"))
     ? (search.get("tab") as Tab)
@@ -47,7 +45,7 @@ export function AdminPage() {
         title="Admin"
         meta="Check-ins, where data comes from and goes to, how delivery is counted and escalated, and the hierarchy."
       />
-      <PanelState locked={!canManageConfig} needs="an admin" isLoading={false} error={null}>
+      <>
         <nav
           aria-label="Admin sections"
           className="mb-6 flex gap-1 overflow-x-auto border-b border-grey-border"
@@ -80,7 +78,7 @@ export function AdminPage() {
         {tab === "entities" ? <EntitiesTab /> : null}
         {tab === "links" ? <LinksTab /> : null}
         {tab === "directory" ? <DirectoryTab /> : null}
-      </PanelState>
+      </>
     </>
   );
 }

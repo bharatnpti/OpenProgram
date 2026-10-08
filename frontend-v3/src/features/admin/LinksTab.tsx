@@ -156,7 +156,7 @@ export function LinksTab() {
     : null;
 
   return (
-    <PanelState needs="an admin" isLoading={loading} error={failure} onRetry={() => void changed()}>
+    <PanelState isLoading={loading} error={failure} onRetry={() => void changed()}>
       {ready && ctx ? (
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
           <p className="max-w-[720px] text-[13px] text-grey-body">

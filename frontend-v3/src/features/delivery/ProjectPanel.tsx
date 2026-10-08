@@ -30,13 +30,7 @@ export function ProjectPanel({ project, find }: { project: DirectoryItemResponse
         kind="Project"
         name={project.name}
         rag={p?.rag ?? project.rag}
-        reason={
-          canReadProjectProgress
-            ? p
-              ? reasonLine(p.factors, p.source_names, p.rag)
-              : undefined
-            : "The reasons behind a project's status open for a product owner, manager, executive or admin."
-        }
+        reason={p ? reasonLine(p.factors, p.source_names, p.rag) : undefined}
         read={readState(progress)}
         actions={
           <>
@@ -77,12 +71,7 @@ export function ProjectPanel({ project, find }: { project: DirectoryItemResponse
         />
         <Related label="Pods" kind="pod" items={project.pod_ids.map((id) => find("pod", id))} />
       </div>
-      <PanelState
-        locked={!canReadProjectProgress}
-        needs="a product owner, manager, executive or admin"
-        isLoading={progress.isLoading}
-        error={progress.error}
-      >
+      <PanelState isLoading={progress.isLoading} error={progress.error}>
         {p ? (
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
             <ProgressBlock progress={p} />

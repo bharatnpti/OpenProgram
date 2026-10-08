@@ -11,7 +11,6 @@ import { RagChip } from "../../components/ui/RagChip";
 import { formatDate, formatDay, progressWidth } from "../../lib/format";
 import { VERDICT_LABELS, toneForVerdict } from "../../lib/status";
 import { PodProjectRow } from "../delivery/PodDeliveryCard";
-import { WHO } from "../reports/access";
 import { DeliveryDateDialog } from "../reports/DeliveryDateDialog";
 import { Locked } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
@@ -25,20 +24,16 @@ import {
   teamDatesLine,
   verdictCause,
 } from "./overallWords";
-import {
-  PROJECT_PROGRESS_READERS,
-  useDelivery,
-  usePodDeliveries,
-  useRequirements,
-} from "./queries";
+import { useDelivery, usePodDeliveries, useRequirements } from "./queries";
 
 type Editing = { scope: ScopeDeliveryResponse; title: string } | null;
 
 /**
  * The committed date, whether it will hold, why, and the burn-down behind it,
- * for the whole project or the release picked above. The product owner or a
- * manager commits the project's and a release's date; a pod's part is its
- * scrum master's.
+ * for the whole project or the release picked above, for the project's
+ * progress readers. The product owner or a manager commits the project's and a
+ * release's date; a pod's part is its scrum master's, who reads only the dates
+ * of the project's pods here. A developer gets neither.
  */
 export function ForecastSection({
   projectId,
@@ -47,6 +42,13 @@ export function ForecastSection({
   projectId: string;
   releaseId?: string;
 }) {
+  const { access } = useRole();
+  if (access.overall.forecast)
+    return <ProjectForecast projectId={projectId} releaseId={releaseId} />;
+  return access.overall.podDates ? <PodDatesForScrumMaster projectId={projectId} /> : null;
+}
+
+function ProjectForecast({ projectId, releaseId }: { projectId: string; releaseId: string }) {
   const access = useReportAccess();
   const delivery = useDelivery(projectId);
   const requirements = useRequirements(projectId, releaseId || undefined);
@@ -68,13 +70,9 @@ export function ForecastSection({
     access.setPodDates && !managesPods ? (data?.pods ?? []).map((p) => p.scope_id) : [];
   const podReads = usePodDeliveries(podIds);
   const runs = new Set(podIds.filter((_, index) => podReads[index]?.data?.can_set_dates));
-  // Which pods are theirs is each pod's own answer: until they are all in, no pod is said not to be.
-  const podsRead = podReads.every((read) => !read.isLoading);
-  const podLock = !access.setPodDates
-    ? access.why("setPodDates", `A pod's date is set by ${WHO.podDates}.`)
-    : !managesPods && podsRead && (data?.pods ?? []).some((pod) => !runs.has(pod.scope_id))
-      ? `You set the date of the pods you run; another pod's is set by ${WHO.podDates}.`
-      : undefined;
+  // A past day switches the buttons off; who could use them today is told why.
+  const datesOffNow = access.pastDay("setProjectDates");
+  const podDatesOffNow = access.pastDay("setPodDates");
 
   return (
     <section>
@@ -101,16 +99,12 @@ export function ForecastSection({
             >
               {scope.commitment.target_date ? "Change date" : "Set date"}
             </Pill>
-          ) : scope ? (
-            <Locked>
-              {access.why("setProjectDates", `The date is committed by ${WHO.projectDates}.`)}
-            </Locked>
+          ) : scope && datesOffNow ? (
+            <Locked>{datesOffNow}</Locked>
           ) : undefined
         }
       />
       <PanelState
-        locked={delivery.locked}
-        needs={PROJECT_PROGRESS_READERS}
         isLoading={delivery.query.isLoading}
         error={delivery.query.error}
         onRetry={() => void delivery.query.refetch()}
@@ -129,7 +123,6 @@ export function ForecastSection({
                   <Burndown series={series} markers={markersFor(scope)} />
                 ) : (
                   <PanelState
-                    needs={PROJECT_PROGRESS_READERS}
                     isLoading={requirements.query.isLoading}
                     error={requirements.query.error}
                     onRetry={() => void requirements.query.refetch()}
@@ -162,7 +155,7 @@ export function ForecastSection({
                     : undefined
                 }
                 canEdit={managesPods ? undefined : (pod) => runs.has(pod.scope_id)}
-                locked={podLock}
+                locked={podDatesOffNow ?? undefined}
               />
             ) : null}
             {data.releases.length > 0 ? (
@@ -175,14 +168,7 @@ export function ForecastSection({
                     ? (item) => edit(item, `${releaseName(item.name)}: delivery date`)
                     : undefined
                 }
-                locked={
-                  access.setProjectDates
-                    ? undefined
-                    : access.why(
-                        "setProjectDates",
-                        `A release's date is committed by ${WHO.projectDates}.`,
-                      )
-                }
+                locked={datesOffNow ?? undefined}
               />
             ) : null}
             {scope.commitment.changes.length > 0 ? <DateChanges scope={scope} /> : null}
@@ -192,10 +178,6 @@ export function ForecastSection({
           </div>
         ) : null}
       </PanelState>
-      {delivery.locked && access.role.setPodDates ? (
-        <PodDatesForScrumMaster projectId={projectId} />
-      ) : null}
-      {delivery.locked && !access.readPodDelivery ? <PodDatesLocked /> : null}
       {editing ? (
         <DeliveryDateDialog
           scope={editing.scope}
@@ -213,7 +195,6 @@ export function ForecastSection({
  * button where the server says the pod is theirs.
  */
 function PodDatesForScrumMaster({ projectId }: { projectId: string }) {
-  const { roleLabel } = useRole();
   const { readOnly, reason } = useReportAccess();
   const projects = useProjects();
   const project = projects.data?.find((item) => item.id === projectId);
@@ -232,10 +213,12 @@ function PodDatesForScrumMaster({ projectId }: { projectId: string }) {
   const error = pods.find((query) => query.error)?.error ?? null;
 
   return (
-    <div className="mt-4">
-      <h3 className="mb-2 text-[15px] font-extrabold">Dates by pod</h3>
+    <section>
+      <SectionHeader
+        title="Dates by pod"
+        meta="Each pod's date for its part of this project, and the forecast behind it"
+      />
       <PanelState
-        needs={WHO.podDelivery}
         isLoading={loading}
         error={error}
         isEmpty={rows.length === 0}
@@ -259,11 +242,6 @@ function PodDatesForScrumMaster({ projectId }: { projectId: string }) {
         </ul>
         {readOnly && reason && rows.some((row) => row.runs) ? (
           <Locked className="mt-2">{reason}</Locked>
-        ) : rows.some((row) => !row.canSet) ? (
-          <Locked className="mt-2">
-            You set the date of the pods you run as {roleLabel.toLowerCase()}; another pod&apos;s is
-            set by {WHO.podDates}.
-          </Locked>
         ) : null}
       </PanelState>
       {editing ? (
@@ -273,23 +251,7 @@ function PodDatesForScrumMaster({ projectId }: { projectId: string }) {
           onClose={() => setEditing(null)}
         />
       ) : null}
-    </div>
-  );
-}
-
-/**
- * "Dates by pod" for someone who may not open it (a developer). The forecast
- * above says who opens the project's own; the pods' dates have their own
- * readers, so their absence is said where they would be, not left as a gap.
- */
-function PodDatesLocked() {
-  return (
-    <div className="mt-4">
-      <h3 className="mb-2 text-[15px] font-extrabold">Dates by pod</h3>
-      <PanelState locked needs={WHO.podDelivery} isLoading={false} error={null}>
-        {null}
-      </PanelState>
-    </div>
+    </section>
   );
 }
 

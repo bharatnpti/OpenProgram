@@ -11,7 +11,7 @@ import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
 import { cn } from "../../lib/utils";
-import { WHO, actionError } from "../reports/access";
+import { actionError } from "../reports/access";
 import { FormProblem, Locked, ReportDialog, field, fieldLabel } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
 import {
@@ -40,7 +40,7 @@ export function QuestionsSection({
   projectId: string;
   releaseId?: string;
 }) {
-  const { editGates, why } = useReportAccess();
+  const { editGates, pastDay } = useReportAccess();
   const names = useNames();
   const queryClient = useQueryClient();
   const { query } = useGateBoard(projectId, releaseId || undefined);
@@ -80,15 +80,12 @@ export function QuestionsSection({
                 Add a question
               </Pill>
             ) : undefined
-          ) : (
-            <Locked>
-              {why("editGates", `Keeping, answering and adding questions is for ${WHO.gates}.`)}
-            </Locked>
-          )
+          ) : pastDay("editGates") ? (
+            <Locked>{pastDay("editGates")}</Locked>
+          ) : undefined
         }
       />
       <PanelState
-        needs="anyone but an executive, or a project-progress reader"
         isLoading={query.isLoading}
         error={query.error}
         isEmpty={questions.length === 0}

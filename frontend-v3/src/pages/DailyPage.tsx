@@ -43,7 +43,6 @@ export function DailyPage() {
     <>
       <ReportsHeader projectId={projectId} />
       <PanelState
-        needs="anyone with a member record"
         isLoading={reports.isLoading}
         error={reports.error}
         onRetry={() => void reports.refetch()}

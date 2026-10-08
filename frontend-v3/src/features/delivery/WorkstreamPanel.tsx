@@ -43,13 +43,7 @@ export function WorkstreamPanel({
         kind="Workstream"
         name={workstream.name}
         rag={p?.rag ?? workstream.rag}
-        reason={
-          canReadProjectProgress
-            ? p
-              ? reasonLine(p.factors, p.source_names, p.rag)
-              : undefined
-            : "The reasons behind a workstream's status open for a product owner, manager, executive or admin."
-        }
+        reason={p ? reasonLine(p.factors, p.source_names, p.rag) : undefined}
         read={readState(progress)}
       />
       <Facts facts={facts} />
@@ -61,12 +55,7 @@ export function WorkstreamPanel({
         />
         <Related label="Pods" kind="pod" items={workstream.pod_ids.map((id) => find("pod", id))} />
       </div>
-      <PanelState
-        locked={!canReadProjectProgress}
-        needs="a product owner, manager, executive or admin"
-        isLoading={progress.isLoading}
-        error={progress.error}
-      >
+      <PanelState isLoading={progress.isLoading} error={progress.error}>
         {p ? (
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
             <ProgressBlock progress={p} />

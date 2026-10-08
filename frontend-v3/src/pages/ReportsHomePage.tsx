@@ -42,7 +42,6 @@ export function ReportsHomePage() {
         }
       />
       <PanelState
-        needs="anyone with a member record"
         isLoading={projects.isLoading}
         error={projects.error}
         onRetry={() => void projects.refetch()}

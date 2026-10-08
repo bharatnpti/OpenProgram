@@ -22,7 +22,6 @@ import { DRIFT_EMPTY_WORDS, findingSubject, flowIsEmpty } from "../features/sign
 
 const VIEWS = ["everything", "risks", "drift", "flow", "feed"] as const;
 type View = (typeof VIEWS)[number];
-const NEEDS = "a scrum master, product owner, manager, executive or admin";
 
 const LINKABLE = new Set(["program", "project", "workstream", "pod"]);
 
@@ -68,7 +67,7 @@ export function SignalsPage() {
             : "Risks, drift, flow and activity from Jira and Git, independent of what anyone reports."
         }
       />
-      <PanelState locked={!canReadAggregate} needs={NEEDS} isLoading={false} error={null}>
+      <>
         <ChipPicker
           label="Show"
           value={view}
@@ -92,7 +91,6 @@ export function SignalsPage() {
           ) : null}
           {view === "everything" || view === "risks" || view === "drift" ? (
             <PanelState
-              needs={NEEDS}
               isLoading={risks.isLoading}
               error={risks.error}
               isEmpty={
@@ -110,7 +108,6 @@ export function SignalsPage() {
           {view === "everything" || view === "feed" ? (
             <Panel title="Activity" note="last 7 days · current, whatever the day">
               <PanelState
-                needs={NEEDS}
                 isLoading={feed.isLoading}
                 error={feed.error}
                 isEmpty={(feed.data?.items ?? []).length === 0}
@@ -139,7 +136,7 @@ export function SignalsPage() {
             </Panel>
           ) : null}
         </div>
-      </PanelState>
+      </>
     </>
   );
 }

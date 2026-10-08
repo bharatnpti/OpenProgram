@@ -34,7 +34,6 @@ export function WaitingOnYou() {
       }
     >
       <PanelState
-        needs="anyone with a member record"
         isLoading={requests.isLoading}
         error={requests.error}
         isEmpty={open.length === 0}

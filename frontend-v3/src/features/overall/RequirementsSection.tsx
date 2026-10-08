@@ -13,7 +13,7 @@ import {
   releaseName,
   timelineTitle,
 } from "./overallWords";
-import { PROJECT_PROGRESS_READERS, REQUIREMENT_DAYS, useRequirements } from "./queries";
+import { REQUIREMENT_DAYS, useRequirements } from "./queries";
 
 /**
  * How many requirements sit in each delivery stage, how that changed, and each
@@ -26,7 +26,7 @@ export function RequirementsSection({
   projectId: string;
   releaseId?: string;
 }) {
-  const { locked, query } = useRequirements(projectId, releaseId || undefined);
+  const { query } = useRequirements(projectId, releaseId || undefined);
   const { asOf, label } = useViewingDate();
   const data = query.data;
 
@@ -47,8 +47,6 @@ export function RequirementsSection({
         }
       />
       <PanelState
-        locked={locked}
-        needs={PROJECT_PROGRESS_READERS}
         isLoading={query.isLoading}
         error={query.error}
         onRetry={() => void query.refetch()}

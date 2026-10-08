@@ -103,7 +103,6 @@ export function CheckinsTab() {
 
   return (
     <PanelState
-      needs="an admin"
       isLoading={members.isLoading || prefs.isLoading}
       error={members.error ?? prefs.error}
       onRetry={() => {

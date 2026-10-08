@@ -14,9 +14,10 @@ export type ReportAccessNow = ReportAccess & {
   reason: string | null;
   /**
    * What a control that is off says: the past day's reason when the role could
-   * use it today, else the role's own words ("The date is committed by …").
+   * use it today, else nothing. A control the role never uses is not drawn, and
+   * no line says who would use it.
    */
-  why: (capability: keyof ReportAccess, roleWords: string) => string;
+  pastDay: (capability: keyof ReportAccess) => string | null;
 };
 
 /**
@@ -24,7 +25,7 @@ export type ReportAccessNow = ReportAccess & {
  * is told under local dev auth, and every held role under real sign-in, as in
  * RoleProvider. Every write control in Reports reads this one hook, so a rule
  * that stops all writes has one place to join: while a past day is shown every
- * write flag is false, and `why` says so.
+ * write flag is false, and `pastDay` says so.
  */
 export function useReportAccess(): ReportAccessNow {
   const { role, roles, isDevMode } = useRole();
@@ -38,8 +39,7 @@ export function useReportAccess(): ReportAccessNow {
       role: byRole,
       readOnly,
       reason,
-      why: (capability, roleWords) =>
-        readOnly && reason && byRole[capability] ? reason : roleWords,
+      pastDay: (capability) => (readOnly && reason && byRole[capability] ? reason : null),
     };
   }, [isDevMode, role, roles, readOnly, reason]);
 }

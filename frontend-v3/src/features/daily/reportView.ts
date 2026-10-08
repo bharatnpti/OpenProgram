@@ -2,7 +2,6 @@
 // so `node --test` runs them.
 import type { DayReportResponse, Rag, ReportRunResponse } from "../../api/schema";
 import type { BadgeTone } from "../../lib/status";
-import { WHO } from "../reports/access.ts";
 
 /** The section whose groups are people, each with what is needed from them. */
 export const ASKS_SECTION = "What we need, and from whom";
@@ -94,35 +93,6 @@ export function scheduleTime(localTime: string): string {
 }
 
 /**
- * One line per control this reader may not use, saying who does. Each line is
- * named by the button it is about ("Send now", "Change", "Today's note"): the
- * three have three rules, and "changing it" was read as covering the note, which
- * a product owner may write. The server decides per report: a scrum master sends
- * and sets up only the reports of a project one of their pods works on; the note
- * is `can_write_note` (the capability that sets project dates: product owner,
- * manager, admin).
- */
-export function reportLocks(
-  report: Pick<DayReportResponse, "can_send" | "can_edit" | "can_write_note" | "project_name">,
-): string[] {
-  const project = report.project_name ?? "the project";
-  const runners = `a scrum master of a pod working on ${project}, a manager or an admin`;
-  const lines: string[] = [];
-  if (!report.can_send && !report.can_edit) {
-    lines.push(`Send now and Change: ${runners}.`);
-  } else if (!report.can_send) {
-    lines.push(`Send now: ${runners}.`);
-  } else if (!report.can_edit) {
-    lines.push(`Change: ${runners}.`);
-  }
-  if (!report.can_write_note) lines.push(`Today's note: ${NOTE_WRITERS}.`);
-  return lines;
-}
-
-/** Who writes today's note: what `can_write_note` stands for. */
-export const NOTE_WRITERS = WHO.note;
-
-/**
  * One destination of a send, as a line: who or where, and what happened. A
  * failure says so first, so it is not read as delivered by its detail alone.
  */
@@ -146,20 +116,16 @@ export function dayReportCountWords(count: number | undefined, failed: boolean):
 
 /**
  * What an empty Daily page says after "No day report is set up for this
- * project yet.": who sets one up, and whether this reader may. That depends on
- * where they may set reports up (`setup`), a second read: until it answers the
- * page does not guess "Set one up" and take it back, and when it fails the
- * reader is told who sets one up, not that they may.
+ * project yet.": an offer to set one up, to someone who may here. That depends
+ * on where they may set reports up (`setup`), a second read: until it answers
+ * the page does not offer and take it back. Nobody else is told who does.
  */
 export function noDayReportWords(
   canSetUp: boolean,
   setup: "loading" | "failed" | "ready",
   mayHere: boolean,
 ): string {
-  const who = "A scrum master of one of its pods, a manager or an admin sets one up.";
-  if (!canSetUp || setup === "failed") return who;
-  if (setup === "loading") return "";
-  return mayHere
+  return canSetUp && setup === "ready" && mayHere
     ? "Set one up to send it at the end of each day."
-    : "A scrum master of one of its pods, a manager or an admin sets one up, and you run no pod in this project.";
+    : "";
 }

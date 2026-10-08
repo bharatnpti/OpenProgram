@@ -51,7 +51,6 @@ export function DeliveryPage() {
 
   return (
     <PanelState
-      needs="anyone with a member record"
       isLoading={loading}
       error={error}
       isEmpty={all.length === 0}

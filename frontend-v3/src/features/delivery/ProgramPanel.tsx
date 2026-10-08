@@ -49,21 +49,10 @@ export function ProgramPanel({ program }: { program: DirectoryItemResponse }) {
         kind="Program"
         name={program.name}
         rag={root?.rag ?? program.rag}
-        reason={
-          canReadPortfolio
-            ? rootBy
-              ? `Set by: ${rootBy.text}`
-              : undefined
-            : "The reasons behind a program's status open for a manager, executive or admin."
-        }
+        reason={rootBy ? `Set by: ${rootBy.text}` : undefined}
         read={readState(tree)}
       />
-      <PanelState
-        locked={!canReadPortfolio}
-        needs="a manager, executive or admin"
-        isLoading={tree.isLoading}
-        error={tree.error}
-      >
+      <PanelState isLoading={tree.isLoading} error={tree.error}>
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
           <div className="flex flex-wrap gap-2 text-[13px] text-grey-body">
             {(["project", "workstream", "pod", "developer", "task"] as const)

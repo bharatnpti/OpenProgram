@@ -69,7 +69,6 @@ export function DataSourcesTab() {
 
   return (
     <PanelState
-      needs="an admin"
       isLoading={status.isLoading}
       error={status.error}
       onRetry={() => void status.refetch()}

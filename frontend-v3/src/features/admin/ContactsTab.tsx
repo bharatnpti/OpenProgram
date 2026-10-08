@@ -51,7 +51,6 @@ export function ContactsTab() {
         the person.
       </p>
       <PanelState
-        needs="an admin"
         isLoading={pods.isLoading}
         error={pods.error}
         isEmpty={list.length === 0}

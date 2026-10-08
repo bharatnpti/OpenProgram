@@ -60,7 +60,6 @@ export function GatesTab() {
 
   return (
     <PanelState
-      needs="an admin"
       isLoading={gates.isLoading}
       error={gates.error}
       onRetry={() => void gates.refetch()}

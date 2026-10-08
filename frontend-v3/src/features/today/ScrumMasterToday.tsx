@@ -22,8 +22,6 @@ import { ragSeverity, toneForRag } from "../../lib/status";
 import { greetingTitle, plural, sourceLine, spaced, todayEyebrow } from "../../lib/words";
 import { WaitingOnYou } from "./WaitingOnYou";
 
-const NEEDS = "a scrum master, manager or admin";
-
 /**
  * A scrum master's two morning questions: who has checked in across my pods,
  * and how old is each blocker. Defaults to the pods the person runs: a member
@@ -80,7 +78,6 @@ export function ScrumMasterToday() {
         sub="Who has checked in across your pods, and how long each blocker has been open."
       />
       <PanelState
-        needs="anyone with a member record"
         isLoading={pods.isLoading}
         error={pods.error}
         isEmpty={mine.length === 0}
@@ -105,8 +102,6 @@ export function ScrumMasterToday() {
             }
           >
             <PanelState
-              locked={!canReadPodDetail}
-              needs={NEEDS}
               isLoading={checkins.isLoading}
               error={checkins.error}
               isEmpty={(c?.developers ?? []).length === 0}
@@ -138,8 +133,6 @@ export function ScrumMasterToday() {
             note={blockers.data ? `${sortedBlockers.length} · oldest first` : "oldest first"}
           >
             <PanelState
-              locked={!canReadPodDetail}
-              needs={NEEDS}
               isLoading={blockers.isLoading}
               error={blockers.error}
               isEmpty={sortedBlockers.length === 0}
@@ -184,8 +177,6 @@ export function ScrumMasterToday() {
             }
           >
             <PanelState
-              locked={!canReadPodDetail}
-              needs={NEEDS}
               isLoading={rollup.isLoading}
               error={rollup.error}
               isEmpty={factors.length === 0}

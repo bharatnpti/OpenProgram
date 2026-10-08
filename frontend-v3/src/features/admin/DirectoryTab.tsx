@@ -216,7 +216,6 @@ function ImportCard() {
       </div>
       <div className="mt-3">
         <PanelState
-          needs="an admin"
           isLoading={search.isLoading}
           error={search.error}
           onRetry={() => void search.refetch()}
@@ -391,7 +390,6 @@ function IdentityCard() {
       </div>
       <div className="mt-3">
         <PanelState
-          needs="an admin"
           isLoading={members.isLoading}
           error={members.error}
           isEmpty={all.length === 0}

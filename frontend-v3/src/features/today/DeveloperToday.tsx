@@ -71,7 +71,6 @@ export function DeveloperToday() {
           />
           <Panel title="Focus today" note="ranked by urgency">
             <PanelState
-              needs="anyone with a member record"
               isLoading={focus.isLoading}
               error={focus.error}
               isEmpty={(focus.data?.focus ?? []).length === 0}
@@ -95,7 +94,6 @@ export function DeveloperToday() {
           </Panel>
           <Panel title="Your tasks" note="source-linked · silence is never green">
             <PanelState
-              needs="anyone with a member record"
               isLoading={focus.isLoading}
               error={focus.error}
               isEmpty={(focus.data?.tasks ?? []).length === 0}
@@ -251,7 +249,6 @@ function CheckinCard({
   return (
     <Panel title="Your check-in" variant="grey" note={note}>
       <PanelState
-        needs="anyone with a member record"
         isLoading={isLoading || (status !== undefined && !judged && !dayUnknown)}
         error={noStatus ? null : error}
         isEmpty={noStatus}
@@ -528,7 +525,6 @@ function RollsUpInto({ rollup, read }: { rollup: ReturnType<typeof useRollUp>; r
   return (
     <Panel title="Where you roll up" note="your check-in feeds each of these">
       <PanelState
-        needs="anyone with a member record"
         isLoading={read.isLoading || rollup.isLoading}
         error={read.error ?? rollup.error}
         isEmpty={chain.length === 0}

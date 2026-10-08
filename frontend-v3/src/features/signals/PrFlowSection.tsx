@@ -30,7 +30,6 @@ import {
   type Percentile,
 } from "./prFlow";
 
-const NEEDS = "a scrum master, product owner, manager, executive or admin";
 const WINDOWS = [30, 90] as const;
 
 /**
@@ -88,12 +87,7 @@ export function PrFlowSection({ full, enabled }: { full: boolean; enabled: boole
           onTable={() => setAsTable((on) => !on)}
         />
       ) : null}
-      <PanelState
-        needs={NEEDS}
-        isLoading={flow.isLoading}
-        error={flow.error}
-        onRetry={() => void flow.refetch()}
-      >
+      <PanelState isLoading={flow.isLoading} error={flow.error} onRetry={() => void flow.refetch()}>
         {flow.data ? (
           <div
             className={cn(

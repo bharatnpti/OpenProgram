@@ -15,7 +15,6 @@ import {
   RUN_TONES,
   localDay,
   outcomeLine,
-  reportLocks,
   scheduleTime,
   sendConfirmation,
   todaysNote,
@@ -23,9 +22,9 @@ import {
 
 /**
  * When the report goes out and to whom, and what this reader may do with it.
- * The server decides `can_send` and `can_write_note` per report, so the buttons
- * follow the project as well as the role; what this reader may not do is said
- * with who does it.
+ * The server decides `can_send`, `can_edit` and `can_write_note` per report, so
+ * the buttons follow the project as well as the role; a button this reader may
+ * not use is not there, and no line says who would use it.
  */
 export function ReportHeader({ report }: { report: DayReportResponse }) {
   const queryClient = useQueryClient();
@@ -51,7 +50,6 @@ export function ReportHeader({ report }: { report: DayReportResponse }) {
   });
 
   const confirm = sendConfirmation(report);
-  const locks = reportLocks(report);
   const { schedule, last_run: lastRun } = report;
 
   return (
@@ -119,13 +117,6 @@ export function ReportHeader({ report }: { report: DayReportResponse }) {
             />
           ) : null}
         </div>
-        {locks.length > 0 ? (
-          <ul className="grid gap-1 text-[12px] text-grey-secondary sm:text-right">
-            {locks.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
-        ) : null}
       </div>
     </section>
   );

@@ -306,7 +306,6 @@ function EntityPanel({
     <Panel title={title} note={loading ? undefined : `${nodes.length}`}>
       {hint ? <p className="mb-2 text-[12px] text-grey-secondary">{hint}</p> : null}
       <PanelState
-        needs="an admin"
         isLoading={loading}
         error={error}
         isEmpty={nodes.length === 0}

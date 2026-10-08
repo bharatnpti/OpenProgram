@@ -74,7 +74,6 @@ export function BrandingTab() {
 
   return (
     <PanelState
-      needs="an admin"
       isLoading={branding.isLoading}
       error={branding.error}
       onRetry={() => void branding.refetch()}

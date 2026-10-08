@@ -17,7 +17,6 @@ export function RunHistory({ reportId }: { reportId: string }) {
     <section>
       <SectionHeader title="Past sends" />
       <PanelState
-        needs="anyone with a member record"
         isLoading={runs.isLoading}
         error={runs.error}
         isEmpty={(runs.data ?? []).length === 0}

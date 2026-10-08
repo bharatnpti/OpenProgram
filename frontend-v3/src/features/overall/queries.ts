@@ -7,14 +7,10 @@ import { useReportAccess } from "../reports/useReportAccess";
 /*
  * One hook per endpoint the Overall view reads, keyed so two sections asking
  * for the same data share one request. `enabled` skips a read the viewing role
- * is known not to have, so the panel can say who opens it without a 403. A
- * release scope is part of the key: the whole project and each release are
- * cached apart.
+ * is known not to have (`readable` is false), and the section is then not
+ * drawn at all. A release scope is part of the key: the whole project and each
+ * release are cached apart.
  */
-
-export const PROJECT_PROGRESS_READERS = "a product owner, manager, executive or admin";
-export const AGGREGATE_READERS = "a scrum master, product owner, manager, executive or admin";
-export const CONFIG_READERS = "an admin";
 
 /** How many days of daily snapshots the requirements read asks for. */
 export const REQUIREMENT_DAYS = 30;
@@ -22,7 +18,7 @@ export const REQUIREMENT_DAYS = 30;
 export function useRequirements(projectId: string, releaseId?: string) {
   const { canReadProjectProgress } = useRole();
   return {
-    locked: !canReadProjectProgress,
+    readable: canReadProjectProgress,
     query: useQuery({
       queryKey: ["requirements", projectId, releaseId ?? ""],
       queryFn: () =>
@@ -35,7 +31,7 @@ export function useRequirements(projectId: string, releaseId?: string) {
 export function useDelivery(projectId: string) {
   const { canReadProjectProgress } = useRole();
   return {
-    locked: !canReadProjectProgress,
+    readable: canReadProjectProgress,
     query: useQuery({
       queryKey: ["delivery", projectId],
       queryFn: () => apiClient.projectDelivery(projectId),
@@ -48,7 +44,7 @@ export function useDelivery(projectId: string) {
 export function useReleases(projectId: string) {
   const { readProjectProgress } = useReportAccess();
   return {
-    locked: !readProjectProgress,
+    readable: readProjectProgress,
     query: useQuery({
       queryKey: ["releases", projectId],
       queryFn: () => apiClient.releases(projectId),
@@ -75,7 +71,7 @@ export function usePodDeliveries(podIds: string[]) {
 /** Gates open to project-progress readers and to everyone who may edit gates (all but exec). */
 export function useGateBoard(projectId: string, releaseId?: string) {
   return {
-    locked: false,
+    readable: true,
     query: useQuery({
       queryKey: ["gates", projectId, releaseId ?? ""],
       queryFn: () => apiClient.gateBoard(projectId, undefined, releaseId),
@@ -87,23 +83,11 @@ export function useGateBoard(projectId: string, releaseId?: string) {
 export function useRisks(projectId: string) {
   const { canReadAggregate } = useRole();
   return {
-    locked: !canReadAggregate,
+    readable: canReadAggregate,
     query: useQuery({
       queryKey: ["risks", projectId],
       queryFn: () => apiClient.projectRisks(projectId),
       enabled: canReadAggregate && projectId !== "",
-    }),
-  };
-}
-
-export function useEscalation(projectId: string) {
-  const { canManageConfig } = useRole();
-  return {
-    locked: !canManageConfig,
-    query: useQuery({
-      queryKey: ["escalation", projectId],
-      queryFn: () => apiClient.projectEscalation(projectId),
-      enabled: canManageConfig && projectId !== "",
     }),
   };
 }

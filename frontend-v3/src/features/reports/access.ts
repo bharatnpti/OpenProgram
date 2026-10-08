@@ -43,7 +43,7 @@ export function withoutWrites(access: ReportAccess): ReportAccess {
   return { ...access, setProjectDates: false, setPodDates: false, editGates: false };
 }
 
-/** Who does each thing, worded for "… opens for …" and "… is set by …". */
+/** Who does each thing, for a refusal the server sends anyway: "Only … can do this." */
 export const WHO = {
   projectProgress: "a product owner, manager, executive or admin",
   projectDates: "a product owner, manager or admin",
