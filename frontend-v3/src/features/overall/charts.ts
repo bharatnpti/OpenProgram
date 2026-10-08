@@ -65,6 +65,48 @@ export function burndownSeries(timeline: RequirementTimelinePointResponse[]): Bu
 
 export type Marker = { key: string; day: string; label: string };
 
+type Anchor = "start" | "middle" | "end";
+
+export type AxisLabel = { x: number; label: string; anchor: Anchor };
+
+// A date label at 11px is about this wide per character, and two labels keep at
+// least this much air between them.
+const LABEL_CHAR_WIDTH = 6.2;
+const LABEL_GAP = 8;
+
+/**
+ * The axis labels that fit. `candidates` come most important first and each
+ * names the x of its day; one is kept when it stays inside the drawing and
+ * clears every label already kept, else it is dropped. Two days a few pixels
+ * apart ("6 Oct" and "7 Oct" under an axis that runs weeks on) print as "76Oct"
+ * otherwise. A label near an edge turns to read inward instead of off the page.
+ * Returned left to right.
+ */
+export function thinAxisLabels(
+  candidates: { x: number; label: string; anchor: Anchor }[],
+  width: number,
+): AxisLabel[] {
+  const kept: { label: AxisLabel; from: number; to: number }[] = [];
+  for (const candidate of candidates) {
+    const span = candidate.label.length * LABEL_CHAR_WIDTH;
+    let anchor = candidate.anchor;
+    const reach = (a: Anchor) =>
+      a === "start"
+        ? { from: candidate.x, to: candidate.x + span }
+        : a === "end"
+          ? { from: candidate.x - span, to: candidate.x }
+          : { from: candidate.x - span / 2, to: candidate.x + span / 2 };
+    if (reach(anchor).from < 0) anchor = "start";
+    else if (reach(anchor).to > width) anchor = "end";
+    const { from, to } = reach(anchor);
+    const clear = kept.every(
+      (other) => to + LABEL_GAP <= other.from || from >= other.to + LABEL_GAP,
+    );
+    if (clear) kept.push({ label: { ...candidate, anchor }, from, to });
+  }
+  return kept.sort((a, b) => a.label.x - b.label.x).map((entry) => entry.label);
+}
+
 export type BurndownGeometry = {
   width: number;
   height: number;
@@ -74,7 +116,7 @@ export type BurndownGeometry = {
   area: string;
   last: { x: number; y: number; remaining: number } | null;
   yTicks: { y: number; value: number }[];
-  xLabels: { x: number; label: string; anchor: "start" | "middle" | "end" }[];
+  xLabels: AxisLabel[];
   markers: (Marker & { x: number })[];
 };
 
@@ -105,6 +147,7 @@ export function burndownGeometry(
   const start = points[0].day;
   const lastDay = points[points.length - 1].day;
   const end = [lastDay, ...markers.map((m) => m.day)].reduce((a, b) => (b > a ? b : a));
+  const committed = markers.find((m) => m.key === "committed" && m.day >= start)?.day;
   const span = Math.max(1, daysBetween(start, end));
   const max = Math.max(1, ...points.map((p) => p.remaining));
   const yMax = niceCeiling(max);
@@ -126,13 +169,24 @@ export function burndownGeometry(
     area,
     last: { x: x(tail.day), y: y(tail.remaining), remaining: tail.remaining },
     yTicks: [0, yMax / 2, yMax].map((value) => ({ y: y(value), value })),
-    xLabels: [
-      { x: x(start), label: formatLabel(start), anchor: "start" as const },
-      ...(lastDay !== start && lastDay !== end
-        ? [{ x: x(lastDay), label: formatLabel(lastDay), anchor: "middle" as const }]
-        : []),
-      ...(end !== start ? [{ x: x(end), label: formatLabel(end), anchor: "end" as const }] : []),
-    ],
+    xLabels: thinAxisLabels(
+      // Most important first: where the axis starts and ends, then the
+      // committed date, then the last day with history ("today"), which is the
+      // one that crowds the first when the axis runs weeks on.
+      [...new Set([start, end, committed, lastDay].filter((day): day is string => !!day))].map(
+        (day) => ({
+          x: x(day),
+          label: formatLabel(day),
+          anchor:
+            day === start
+              ? ("start" as const)
+              : day === end
+                ? ("end" as const)
+                : ("middle" as const),
+        }),
+      ),
+      width,
+    ),
     markers: markers.filter((m) => m.day >= start).map((m) => ({ ...m, x: x(m.day) })),
   };
 }

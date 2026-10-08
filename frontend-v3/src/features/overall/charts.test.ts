@@ -8,6 +8,7 @@ import {
   burndownSeries,
   niceCeiling,
   stageStack,
+  thinAxisLabels,
 } from "./charts.ts";
 
 const timeline = [
@@ -79,6 +80,80 @@ test("a committed date after today stretches the axis so its marker stays on the
   assert.ok(marker.x > geometry.last.x, "committed date is to the right of today");
   assert.ok(marker.x <= geometry.width, "and still inside the drawing");
   assert.equal(geometry.xLabels.at(-1)?.label, "2026-10-30");
+});
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const shortDay = (iso: string) =>
+  `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]}`;
+
+test("two days a few pixels apart under a long axis print one label, not '76Oct'", () => {
+  // Two snapshots, a day apart, and a committed date and a forecast weeks on: the
+  // axis is 70 days wide, so 6 Oct and 7 Oct sit about seven pixels from each other.
+  const geometry = burndownGeometry(
+    [
+      { day: "2026-10-06", remaining: 18 },
+      { day: "2026-10-07", remaining: 18 },
+    ],
+    [
+      { key: "committed", day: "2026-12-01", label: "Committed" },
+      { key: "p85", day: "2026-12-15", label: "85% likely" },
+    ],
+    shortDay,
+  );
+  // The first, the committed date and the last stay; today's label, which sat on the first, goes.
+  assert.deepEqual(
+    geometry.xLabels.map((label) => label.label),
+    ["6 Oct", "1 Dec", "15 Dec"],
+  );
+  assert.deepEqual(
+    geometry.xLabels.map((label) => label.anchor),
+    ["start", "middle", "end"],
+  );
+});
+
+test("a day far enough from the first keeps its label", () => {
+  const geometry = burndownGeometry(
+    [
+      { day: "2026-10-06", remaining: 18 },
+      { day: "2026-10-20", remaining: 12 },
+    ],
+    [{ key: "committed", day: "2026-10-30", label: "Committed" }],
+    shortDay,
+  );
+  // 14 days of a 24-day axis: today is well clear of both ends.
+  assert.deepEqual(
+    geometry.xLabels.map((label) => label.label),
+    ["6 Oct", "20 Oct", "30 Oct"],
+  );
+});
+
+test("a label never overlaps another, and the most important one wins a clash", () => {
+  const labels = thinAxisLabels(
+    [
+      { x: 36, label: "6 Oct", anchor: "start" },
+      { x: 544, label: "15 Dec", anchor: "end" },
+      { x: 520, label: "13 Dec", anchor: "middle" },
+      { x: 43, label: "7 Oct", anchor: "middle" },
+      { x: 300, label: "20 Nov", anchor: "middle" },
+    ],
+    560,
+  );
+  assert.deepEqual(
+    labels.map((label) => label.label),
+    ["6 Oct", "20 Nov", "15 Dec"],
+  );
+  // Left to right, so the figure reads in order.
+  assert.deepEqual(
+    labels.map((label) => label.x),
+    [36, 300, 544],
+  );
+});
+
+test("a label at an edge reads inward instead of running off the drawing", () => {
+  const [near] = thinAxisLabels([{ x: 556, label: "15 Dec", anchor: "middle" }], 560);
+  assert.equal(near.anchor, "end");
+  const [far] = thinAxisLabels([{ x: 4, label: "6 Oct", anchor: "middle" }], 560);
+  assert.equal(far.anchor, "start");
 });
 
 test("no history draws nothing rather than a flat green line", () => {
