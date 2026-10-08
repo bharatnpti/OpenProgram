@@ -685,6 +685,58 @@ async def test_recent_facts_reads_a_window_that_ends_on_the_as_of_date() -> None
     assert window == {"start": "2026-09-21", "end": "2026-09-25"}
 
 
+async def test_recent_facts_say_states_in_words_not_in_raw_names() -> None:
+    """An answer read "Issue CHK-12 moved to in_progress": the model copies what it is handed."""
+    store = InMemoryGraphStore()
+    await store.append_fact(
+        FactEvent(
+            tenant_id="demo",
+            source="issue",
+            entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="CHK-12"),
+            payload={"key": "CHK-12", "title": "Cart totals", "state": "in_progress"},
+            observed_at=datetime(2026, 9, 25, 9, 0, tzinfo=UTC),
+            correlation_id="fact-issue",
+        )
+    )
+    await store.append_fact(
+        FactEvent(
+            tenant_id="demo",
+            source="work_item",
+            entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.WORK_ITEM, id="wi-refunds"),
+            payload={"name": "Refund flow", "from_state": "in_progress", "to_state": "done"},
+            observed_at=datetime(2026, 9, 25, 8, 0, tzinfo=UTC),
+            correlation_id="fact-work-item",
+        )
+    )
+    tool = RecentFactsTool(tenant_id="demo", repository=store, as_of=AS_OF)
+
+    facts = json.loads(await tool.run({"period": "today"}))["facts"]
+
+    assert [fact["summary"] for fact in facts] == [
+        "Issue CHK-12 moved to In progress: Cart totals",
+        "Refund flow moved from In progress to Done",
+    ]
+    assert facts[0]["details"]["state"] == "In progress"
+    assert facts[1]["details"] == {
+        "from_state": "In progress",
+        "to_state": "Done",
+        "item_type": None,
+        "repo": None,
+        "branch": None,
+        "pr_id": None,
+    }
+    assert "in_progress" not in json.dumps(facts)
+
+
+async def test_workstream_flow_says_a_work_items_state_in_words() -> None:
+    store = await _delivery_store()
+    flow = _tool(_ask_service(store, FakeLlmProvider()), _principal(Role.MGR), "workstream_flow")
+
+    payload = json.loads(await flow.run({"workstream_id": "ws-payments"}))
+
+    assert [item["state"] for item in payload["work_items"]] == ["In progress"]
+
+
 def test_a_fact_window_is_at_most_a_month() -> None:
     assert fact_window({"since": "2025-01-01"}, AS_OF) == DateWindow(
         start=AS_OF - timedelta(days=30), end=AS_OF

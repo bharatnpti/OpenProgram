@@ -19,7 +19,11 @@ from core.application.persona_views import (
     TreeNodeView,
     WorkstreamProgressView,
 )
-from core.application.portfolio_feed_service import DEFAULT_FEED_SOURCES, PortfolioFeedService
+from core.application.portfolio_feed_service import (
+    DEFAULT_FEED_SOURCES,
+    PortfolioFeedService,
+    state_label,
+)
 from core.application.risk_service import RiskService
 from core.application.rollup_service import NO_WORK_REASON
 from core.application.status_summaries import NO_REPLY_BLOCKER
@@ -330,6 +334,23 @@ class SearchGraphNodesTool:
         return json.dumps(matches, ensure_ascii=False)
 
 
+# The details keys that hold a tracker or work-item state ("in_progress").
+_STATE_DETAILS = ("state", "from_state", "to_state")
+
+
+def _spoken_states(details: Mapping[str, JsonScalar]) -> dict[str, JsonScalar]:
+    """A fact's details with its states in words ("In progress", not "in_progress").
+
+    A model that is handed ``in_progress`` writes it into the answer as it came.
+    """
+    return {
+        key: state_label(value)
+        if key in _STATE_DETAILS and isinstance(value, str) and value
+        else value
+        for key, value in details.items()
+    }
+
+
 def _search_match(node: GraphNode, in_use: frozenset[str]) -> dict[str, object]:
     match: dict[str, object] = {
         "id": node.id,
@@ -558,7 +579,7 @@ class RecentFactsTool:
                         "entity_kind": item.entity_ref.kind.value,
                         "entity_id": item.entity_ref.id,
                         "observed_at": item.observed_at.isoformat(),
-                        "details": dict(item.details),
+                        "details": _spoken_states(item.details),
                     }
                     for item in items[:limit]
                 ],
@@ -1839,7 +1860,7 @@ def _workstream_flow_payload(view: WorkstreamFlowView) -> dict[str, object]:
             {
                 "id": item.id,
                 "name": item.name,
-                "state": item.state,
+                "state": state_label(item.state),
                 "item_type": item.item_type,
                 "repo": item.repo,
                 "branch": item.branch,

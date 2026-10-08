@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -19,6 +20,34 @@ DEFAULT_FEED_SOURCES = (
     "risk",
     "cross_person_request",
 )
+
+
+# A tracker's broad issue states and a work item's lifecycle states, in the words
+# the console uses for them. The facts keep the raw value (``details`` and the
+# brief read it); only a sentence a person reads says "In progress".
+_STATE_WORDS: Mapping[str, str] = {
+    "todo": "To do",
+    "in_progress": "In progress",
+    "in_review": "In review",
+    "blocked": "Blocked",
+    "done": "Done",
+}
+_STATE_KEY = re.compile(r"[a-z][a-z0-9_]*")
+
+
+def state_label(state: str) -> str:
+    """A state in words a person reads: ``in_progress`` is "In progress".
+
+    A state the table does not know but that is written like a key (``proposed``,
+    ``on_hold``) reads as its words, sentence-cased. Anything else is a name the
+    tracker or a person chose ("Code review") and is left as written.
+    """
+    known = _STATE_WORDS.get(state.strip().lower())
+    if known is not None:
+        return known
+    if _STATE_KEY.fullmatch(state):
+        return state.replace("_", " ").capitalize()
+    return state
 
 
 # Canonical cross-person fact keys first, then the legacy aliases older facts carry.
@@ -156,9 +185,11 @@ def _summary_for_fact(fact: FactEvent, names: Mapping[str, str]) -> str:
     payload = fact.payload
     if fact.source == "work_item":
         label = _payload_string(payload, "name") or fact.entity_ref.id
-        from_state = _payload_string(payload, "from_state") or "unknown"
-        to_state = _payload_string(payload, "to_state") or "updated"
-        return f"{label} moved from {from_state} to {to_state}"
+        from_state = _payload_string(payload, "from_state")
+        to_state = _payload_string(payload, "to_state")
+        before = state_label(from_state) if from_state else "unknown"
+        after = state_label(to_state) if to_state else "updated"
+        return f"{label} moved from {before} to {after}"
     if fact.source == "vcs_pull_request":
         repo = _payload_string(payload, "repo") or "unknown repo"
         pr_id = _payload_string(payload, "id") or "?"
@@ -173,9 +204,9 @@ def _summary_for_fact(fact: FactEvent, names: Mapping[str, str]) -> str:
         return f"Commit {sha[:7]} in {repo}: {message}"
     if fact.source == "issue":
         key = _payload_string(payload, "key") or fact.entity_ref.id
-        state = _payload_string(payload, "state") or "updated"
+        state = _payload_string(payload, "state")
         title = _payload_string(payload, "title") or key
-        return f"Issue {key} moved to {state}: {title}"
+        return f"Issue {key} moved to {state_label(state) if state else 'updated'}: {title}"
     if fact.source == "checkin":
         # The member's name, else the directory's, else the one the collector
         # recorded: an older fact recorded none, or only the id.
