@@ -90,7 +90,7 @@ export function ReleaseScope({
         <span className="text-[12px] text-grey-secondary">
           Requirements with the Jira {MATCH_WORDS[selected.match_kind]} “{selected.match_value}”
         </span>
-      ) : releases.length === 0 && !query.isLoading ? (
+      ) : releases.length === 0 && query.isSuccess ? (
         <span className="text-[12px] text-grey-secondary">No releases defined yet.</span>
       ) : null}
       <div className="ml-auto flex flex-wrap items-center gap-2">

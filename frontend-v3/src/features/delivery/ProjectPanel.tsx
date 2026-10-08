@@ -5,6 +5,7 @@ import { apiClient } from "../../api/client";
 import type { DirectoryItemResponse } from "../../api/schema";
 import { useRole } from "../../app/role";
 import { PanelState } from "../../components/PanelState";
+import { readState } from "../../lib/readState";
 import { PERSON_KEY_WORDS } from "../../lib/words";
 import { Facts, FactorsPanel, NodeHeader, Related } from "./NodeBits";
 import { ProgressBlock } from "./ProgressBlock";
@@ -36,6 +37,7 @@ export function ProjectPanel({ project, find }: { project: DirectoryItemResponse
               : undefined
             : "The reasons behind a project's status open for a product owner, manager, executive or admin."
         }
+        read={readState(progress)}
         actions={
           <>
             <Link

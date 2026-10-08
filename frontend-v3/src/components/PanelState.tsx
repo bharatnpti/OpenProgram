@@ -24,6 +24,12 @@ export function PanelState({
   locked?: boolean;
   /** Who opens it, in words: "a product owner, manager, executive or admin". */
   needs: string;
+  /**
+   * The read has not answered. Empty text is drawn only when this is false, so a
+   * read that is held back (`enabled: false`) until another answers must count as
+   * loading here: `read.isLoading` is false for it. Spread `readState(read, other)`
+   * (lib/readState.ts) for `isLoading` and `error` together.
+   */
   isLoading: boolean;
   error: unknown;
   onRetry?: () => void;

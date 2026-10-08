@@ -6,6 +6,7 @@ import { useProjects } from "../app/directory";
 import { useRole } from "../app/role";
 import { PanelState, SectionHeader } from "../components/PanelState";
 import { RagBadge } from "../components/ui/Bits";
+import { dayReportCountWords } from "../features/daily/reportView";
 import { ReportSetupDialog } from "../features/reports/ReportSetupDialog";
 import { Pill } from "../components/ui/Pill";
 import { ragSeverity } from "../lib/status";
@@ -62,11 +63,7 @@ export function ReportsHomePage() {
                   <RagBadge rag={project.rag} />
                 </div>
                 <span className="text-[13px] text-grey-secondary">
-                  {list.length === 0
-                    ? "No day report set up yet"
-                    : list.length === 1
-                      ? "1 day report"
-                      : `${list.length} day reports`}
+                  {dayReportCountWords(reports.data ? list.length : undefined, reports.isError)}
                   {pods > 0 ? ` · ${pods} ${pods === 1 ? "pod" : "pods"}` : ""}
                 </span>
                 <div className="mt-auto flex flex-wrap gap-2">

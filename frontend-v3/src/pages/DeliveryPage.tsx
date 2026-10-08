@@ -27,7 +27,9 @@ export function DeliveryPage() {
   const projects = useProjects();
   const workstreams = useWorkstreams();
   const pods = usePods();
-  const loading = programs.isLoading || projects.isLoading || pods.isLoading;
+  // The workstreams too: a link to one reads "not in the directory" until its list arrives.
+  const loading =
+    programs.isLoading || projects.isLoading || workstreams.isLoading || pods.isLoading;
   const error = programs.error ?? projects.error ?? pods.error ?? workstreams.error;
 
   const groups: { kind: Kind; label: string; items: DirectoryItemResponse[] }[] = [

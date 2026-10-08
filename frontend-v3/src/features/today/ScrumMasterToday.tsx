@@ -132,7 +132,11 @@ export function ScrumMasterToday() {
               </ul>
             </PanelState>
           </Panel>
-          <Panel title="Open blockers" note={`${sortedBlockers.length} · oldest first`}>
+          <Panel
+            title="Open blockers"
+            // A count is only true once the blockers are read: "0" is not "not read yet".
+            note={blockers.data ? `${sortedBlockers.length} · oldest first` : "oldest first"}
+          >
             <PanelState
               locked={!canReadPodDetail}
               needs={NEEDS}

@@ -6,6 +6,7 @@ import type { DirectoryItemResponse, PersonaTreeNodeDto } from "../../api/schema
 import { useRole } from "../../app/role";
 import { PanelState } from "../../components/PanelState";
 import { Panel, RagBadge, RagDot } from "../../components/ui/Bits";
+import { readState } from "../../lib/readState";
 import { ragSeverity } from "../../lib/status";
 import { plural } from "../../lib/words";
 import { FactorsPanel, NodeHeader } from "./NodeBits";
@@ -55,6 +56,7 @@ export function ProgramPanel({ program }: { program: DirectoryItemResponse }) {
               : undefined
             : "The reasons behind a program's status open for a manager, executive or admin."
         }
+        read={readState(tree)}
       />
       <PanelState
         locked={!canReadPortfolio}

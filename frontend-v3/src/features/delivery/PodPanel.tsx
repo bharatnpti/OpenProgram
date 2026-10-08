@@ -9,6 +9,7 @@ import { Panel, RagBadge, Row } from "../../components/ui/Bits";
 import { RagChip } from "../../components/ui/RagChip";
 import { boardMeta, boardRag, boardWord, repliedCount } from "../../lib/checkinWords";
 import { formatDay } from "../../lib/format";
+import { readState } from "../../lib/readState";
 import { ragSeverity } from "../../lib/status";
 import { plural } from "../../lib/words";
 import { FactorsPanel, NodeHeader, Related } from "./NodeBits";
@@ -66,6 +67,7 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
               : undefined
             : "Check-ins, blockers and the reasons behind this pod's colour open for a scrum master, manager or admin."
         }
+        read={readState(rollup)}
       />
       <div className="mb-5 grid gap-2">
         <Related
@@ -145,7 +147,7 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
           ) : null}
           <Panel
             title="Tasks held by the pod's people"
-            note={plural(sortedTasks.length, "task", "tasks")}
+            note={tasks.data ? plural(sortedTasks.length, "task", "tasks") : undefined}
           >
             <PanelState
               needs={NEEDS}

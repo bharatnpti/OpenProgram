@@ -12,6 +12,7 @@ import { ChipPicker, Greeting, Panel, RagDot, Row, Sparkline } from "../../compo
 import { formatDate, formatTime } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
 import { cn } from "../../lib/utils";
+import { readState } from "../../lib/readState";
 import { deviceTimezone } from "../../lib/zones";
 import {
   checkinsLine,
@@ -94,6 +95,15 @@ export function PortfolioToday() {
     queryFn: () => apiClient.personaBriefs("exec", 1),
   });
 
+  // Each of these is asked only once the program is known, so it is still to come, not empty,
+  // while the programs load.
+  const attentionRead = readState(attention, programsQuery);
+  const trendRead = readState(trend, programsQuery);
+  const heatmapRead = readState(heatmap, programsQuery);
+  // The tiles are the directory's, scoped to the program and coloured by the heat map; the
+  // heat map failing leaves them in the directory's colours, with a line saying so.
+  const directoryRead = readState(projects, programsQuery, workstreams, pods);
+
   const a = attention.data;
   const m = momentum(trend.data?.points);
   const newest = brief.data?.briefs[0];
@@ -136,7 +146,7 @@ export function PortfolioToday() {
           needs="a manager, executive or admin"
           // The heat map too: its program cell can turn the verdict, and the amber one
           // drawn first would flip to red a moment later.
-          isLoading={programsQuery.isLoading || attention.isLoading || heatmap.isLoading}
+          isLoading={attentionRead.isLoading || heatmapRead.isLoading}
           error={programsQuery.error ?? attention.error}
           isEmpty={!programsQuery.isLoading && !program}
           emptyText="No program is configured yet. An admin adds one under Admin → Entities."
@@ -162,12 +172,15 @@ export function PortfolioToday() {
         </PanelState>
 
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
-          <Panel title="Momentum" note={momentumNote(m, trend.data?.window_days)}>
+          <Panel
+            title="Momentum"
+            // "not enough reported days" is a finding about a trend, so only once it is read.
+            note={trend.data ? momentumNote(m, trend.data.window_days) : undefined}
+          >
             <PanelState
               locked={!canReadPortfolio}
               needs="a manager, executive or admin"
-              isLoading={trend.isLoading}
-              error={trend.error}
+              {...trendRead}
             >
               <Sparkline values={m.values} label={`Program health over 30 days: ${m.label}`} />
               <p className="mt-2 text-[12px] text-grey-secondary">
@@ -219,25 +232,31 @@ export function PortfolioToday() {
           title="Portfolio heat"
           note="worst first · click a tile to open it in Delivery · hover for every reason"
         >
-          <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-3">
-            {heat.map((row) => (
-              <HeatRow
-                key={row.kind}
-                label={row.label}
-                kind={row.kind}
-                items={row.items}
-                reasons={reasons}
-                colours={colours}
-                weights={weights}
-              />
-            ))}
-            {noPod.tiles.length > 0 ? <NoPodRow tiles={noPod.tiles} total={noPod.total} /> : null}
-          </div>
-          {heatmap.isError ? (
-            <p className="mt-3 text-[12px] text-grey-secondary">
-              The reasons under each tile could not be loaded, so only the colours show.
-            </p>
-          ) : null}
+          <PanelState
+            needs="anyone with a member record"
+            isLoading={directoryRead.isLoading || heatmapRead.isLoading}
+            error={directoryRead.error}
+          >
+            <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-3">
+              {heat.map((row) => (
+                <HeatRow
+                  key={row.kind}
+                  label={row.label}
+                  kind={row.kind}
+                  items={row.items}
+                  reasons={reasons}
+                  colours={colours}
+                  weights={weights}
+                />
+              ))}
+              {noPod.tiles.length > 0 ? <NoPodRow tiles={noPod.tiles} total={noPod.total} /> : null}
+            </div>
+            {heatmap.isError ? (
+              <p className="mt-3 text-[12px] text-grey-secondary">
+                The reasons under each tile could not be loaded, so only the colours show.
+              </p>
+            ) : null}
+          </PanelState>
         </Panel>
 
         <Panel
@@ -254,8 +273,7 @@ export function PortfolioToday() {
           <PanelState
             locked={!canReadPortfolio}
             needs="a manager, executive or admin"
-            isLoading={attention.isLoading}
-            error={attention.error}
+            {...attentionRead}
             isEmpty={(a?.signals ?? []).length === 0}
             emptyText="Nothing needs attention right now."
           >

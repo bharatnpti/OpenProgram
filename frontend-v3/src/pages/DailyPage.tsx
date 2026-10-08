@@ -6,6 +6,7 @@ import { useRole } from "../app/role";
 import { PanelState } from "../components/PanelState";
 import { Pill } from "../components/ui/Pill";
 import { ReportHeader } from "../features/daily/ReportHeader";
+import { noDayReportWords } from "../features/daily/reportView";
 import { ReportPreview } from "../features/daily/ReportPreview";
 import { RunHistory } from "../features/daily/RunHistory";
 import { ReportSetupDialog } from "../features/reports/ReportSetupDialog";
@@ -51,11 +52,11 @@ export function DailyPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span>
               No day report is set up for this project yet.{" "}
-              {!canSetUpDayReports
-                ? "A scrum master of one of its pods, a manager or an admin sets one up."
-                : setup.isSuccess && !mayHere
-                  ? "A scrum master of one of its pods, a manager or an admin sets one up, and you run no pod in this project."
-                  : "Set one up to send it at the end of each day."}
+              {noDayReportWords(
+                canSetUpDayReports,
+                setup.isSuccess ? "ready" : setup.isError ? "failed" : "loading",
+                mayHere,
+              )}
             </span>
             {canSetUpDayReports && mayHere ? (
               <ReportSetupDialog

@@ -3,21 +3,29 @@ import { Link } from "react-router-dom";
 
 import type { DirectoryItemResponse, Rag, RollupFactorDto } from "../../api/schema";
 import { Panel, RagBadge, RagDot, Row } from "../../components/ui/Bits";
+import type { ReadState } from "../../lib/readState";
 import { cn } from "../../lib/utils";
 import { reasonsNote, reasonRows, sourcesLine } from "./factors";
 
-/** The top of every Delivery panel: kind, name, colour, and the one-line reason. */
+/**
+ * The top of every Delivery panel: kind, name, colour, and the one-line reason.
+ * `read` is the read the reason comes from: "No reason recorded." is a finding,
+ * said once that read has answered. Loading, the line says so; failed, the
+ * panel below says it, and the line says nothing.
+ */
 export function NodeHeader({
   kind,
   name,
   rag,
   reason,
+  read,
   actions,
 }: {
   kind: string;
   name: string;
   rag: Rag | null | undefined;
   reason?: string | null;
+  read?: ReadState;
   actions?: ReactNode;
 }) {
   return (
@@ -28,10 +36,14 @@ export function NodeHeader({
         <RagBadge rag={rag} />
         {actions ? <div className="ml-auto flex flex-wrap gap-2">{actions}</div> : null}
       </div>
-      <p className="mt-1 text-[15px] text-grey-body">
-        {reason ??
-          (rag && rag !== "unknown" ? "No reason recorded." : "Nothing recorded for it yet.")}
-      </p>
+      {read?.error ? null : (
+        <p className="mt-1 text-[15px] text-grey-body">
+          {read?.isLoading
+            ? "Loading…"
+            : (reason ??
+              (rag && rag !== "unknown" ? "No reason recorded." : "Nothing recorded for it yet."))}
+        </p>
+      )}
     </div>
   );
 }

@@ -203,12 +203,23 @@ export function CheckinsTab() {
           </table>
         </TableBox>
         <p className="text-[13px] text-grey-body">
-          Write-back is <b>{tenant.isLoading ? "…" : tenant.data?.enabled ? "on" : "off"}</b> for
-          this tenant
+          Write-back is{" "}
+          <b>
+            {tenant.data
+              ? tenant.data.enabled
+                ? "on"
+                : "off"
+              : tenant.isError
+                ? "not known"
+                : "…"}
+          </b>{" "}
+          for this tenant
           {tenant.data?.source === "default" ? " (the default)" : ""}.{" "}
-          {tenant.data?.enabled
-            ? "A member's consent decides whether their check-in moves their Jira issues."
-            : "Consent is recorded, but nothing is written to Jira until the switch is on."}
+          {tenant.data
+            ? tenant.data.enabled
+              ? "A member's consent decides whether their check-in moves their Jira issues."
+              : "Consent is recorded, but nothing is written to Jira until the switch is on."
+            : null}
         </p>
       </div>
     </PanelState>

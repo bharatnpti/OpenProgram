@@ -3,7 +3,9 @@ import { test } from "node:test";
 
 import {
   askParts,
+  dayReportCountWords,
   localDay,
+  noDayReportWords,
   NOTE_WRITERS,
   outcomeLine,
   outcomeText,
@@ -116,4 +118,27 @@ test("a send names every destination and what happened to it", () => {
   );
   assert.equal(outcomeText({ label: "#checkout", ok: true, detail: "" }), "#checkout: delivered");
   assert.equal(outcomeText({ label: "Teams", ok: false, detail: "" }), "Teams: not delivered");
+});
+
+test("a project's day reports are counted only once they are read", () => {
+  assert.equal(dayReportCountWords(undefined, false), "Loading day reports…");
+  assert.equal(dayReportCountWords(undefined, true), "Day reports could not be read");
+  assert.equal(dayReportCountWords(0, false), "No day report set up yet");
+  assert.equal(dayReportCountWords(1, false), "1 day report");
+  assert.equal(dayReportCountWords(3, false), "3 day reports");
+});
+
+test("an empty Daily page says who sets a report up, and whether this reader may, once it knows", () => {
+  const who = "A scrum master of one of its pods, a manager or an admin sets one up.";
+  // A role that never sets reports up needs no second read.
+  assert.equal(noDayReportWords(false, "loading", false), who);
+  // Waiting for where this reader may set one up: nothing is promised or refused yet.
+  assert.equal(noDayReportWords(true, "loading", false), "");
+  assert.equal(
+    noDayReportWords(true, "ready", true),
+    "Set one up to send it at the end of each day.",
+  );
+  assert.match(noDayReportWords(true, "ready", false), /you run no pod in this project\.$/);
+  // The read failed: say who sets one up, not that this reader may.
+  assert.equal(noDayReportWords(true, "failed", true), who);
 });

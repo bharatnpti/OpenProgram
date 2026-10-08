@@ -131,3 +131,35 @@ export function outcomeText(outcome: { label: string; ok: boolean; detail: strin
   if (outcome.ok) return detail ? `${outcome.label}: ${detail}` : `${outcome.label}: delivered`;
   return detail ? `${outcome.label}: not delivered. ${detail}` : `${outcome.label}: not delivered`;
 }
+
+/**
+ * How many day reports a project has, in words, for the Reports list. `count`
+ * is undefined until the reports are read: "No day report set up yet" is a
+ * finding, so it is not said while they load or when they could not be read.
+ */
+export function dayReportCountWords(count: number | undefined, failed: boolean): string {
+  if (failed) return "Day reports could not be read";
+  if (count === undefined) return "Loading day reports…";
+  if (count === 0) return "No day report set up yet";
+  return count === 1 ? "1 day report" : `${count} day reports`;
+}
+
+/**
+ * What an empty Daily page says after "No day report is set up for this
+ * project yet.": who sets one up, and whether this reader may. That depends on
+ * where they may set reports up (`setup`), a second read: until it answers the
+ * page does not guess "Set one up" and take it back, and when it fails the
+ * reader is told who sets one up, not that they may.
+ */
+export function noDayReportWords(
+  canSetUp: boolean,
+  setup: "loading" | "failed" | "ready",
+  mayHere: boolean,
+): string {
+  const who = "A scrum master of one of its pods, a manager or an admin sets one up.";
+  if (!canSetUp || setup === "failed") return who;
+  if (setup === "loading") return "";
+  return mayHere
+    ? "Set one up to send it at the end of each day."
+    : "A scrum master of one of its pods, a manager or an admin sets one up, and you run no pod in this project.";
+}

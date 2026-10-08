@@ -4,6 +4,7 @@ import { apiClient } from "../../api/client";
 import type { DirectoryItemResponse } from "../../api/schema";
 import { useRole } from "../../app/role";
 import { PanelState } from "../../components/PanelState";
+import { readState } from "../../lib/readState";
 import { PERSON_KEY_WORDS } from "../../lib/words";
 import { Facts, FactorsPanel, NodeHeader, Related } from "./NodeBits";
 import { ProgressBlock } from "./ProgressBlock";
@@ -49,6 +50,7 @@ export function WorkstreamPanel({
               : undefined
             : "The reasons behind a workstream's status open for a product owner, manager, executive or admin."
         }
+        read={readState(progress)}
       />
       <Facts facts={facts} />
       <div className="mb-5 grid gap-2">

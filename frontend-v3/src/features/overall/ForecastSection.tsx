@@ -68,9 +68,11 @@ export function ForecastSection({
     access.setPodDates && !managesPods ? (data?.pods ?? []).map((p) => p.scope_id) : [];
   const podReads = usePodDeliveries(podIds);
   const runs = new Set(podIds.filter((_, index) => podReads[index]?.data?.can_set_dates));
+  // Which pods are theirs is each pod's own answer: until they are all in, no pod is said not to be.
+  const podsRead = podReads.every((read) => !read.isLoading);
   const podLock = !access.setPodDates
     ? access.why("setPodDates", `A pod's date is set by ${WHO.podDates}.`)
-    : !managesPods && (data?.pods ?? []).some((pod) => !runs.has(pod.scope_id))
+    : !managesPods && podsRead && (data?.pods ?? []).some((pod) => !runs.has(pod.scope_id))
       ? `You set the date of the pods you run; another pod's is set by ${WHO.podDates}.`
       : undefined;
 
@@ -120,7 +122,8 @@ export function ForecastSection({
               <Card padding="p-5">
                 <h3 className="text-[15px] font-extrabold">Burn-down</h3>
                 <p className="mb-3 text-[12px] text-grey-secondary">
-                  {series?.caption ?? "Not yet in production"}
+                  {series?.caption ??
+                    (requirements.query.isSuccess ? "Not yet in production" : null)}
                 </p>
                 {series ? (
                   <Burndown series={series} markers={markersFor(scope)} />
@@ -139,6 +142,7 @@ export function ForecastSection({
               </Card>
               <Card padding="p-5" className="grid grid-cols-[minmax(0,1fr)] content-start gap-4">
                 <Completion
+                  loading={requirements.query.isLoading}
                   unread={Boolean(requirements.query.error)}
                   percent={requirements.query.data?.percent_complete ?? null}
                   hasPoints={requirements.query.data?.has_points ?? false}
@@ -341,12 +345,15 @@ function Verdict({ scope }: { scope: ScopeDeliveryResponse }) {
 }
 
 function Completion({
+  loading,
   unread,
   percent,
   hasPoints,
   done,
   total,
 }: {
+  /** The requirements are being read: "0 of 0 in production" is not what they say yet. */
+  loading: boolean;
   unread: boolean;
   percent: number | null;
   hasPoints: boolean;
@@ -360,9 +367,11 @@ function Completion({
       </p>
       <p className="mt-1 text-[26px] font-extrabold tabular-nums">
         {percent === null ? "—" : `${Math.round(percent)}%`}
-        <span className="ml-2 text-[12px] font-bold text-grey-secondary">
-          {hasPoints ? "by story points" : "by count"}
-        </span>
+        {loading ? null : (
+          <span className="ml-2 text-[12px] font-bold text-grey-secondary">
+            {hasPoints ? "by story points" : "by count"}
+          </span>
+        )}
       </p>
       <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-grey-fill">
         <div
@@ -371,9 +380,11 @@ function Completion({
         />
       </div>
       <p className="mt-2 text-[12px] text-grey-secondary">
-        {unread
-          ? "The requirements could not be read."
-          : `${done} of ${total} requirements in production`}
+        {loading
+          ? "Loading the requirements…"
+          : unread
+            ? "The requirements could not be read."
+            : `${done} of ${total} requirements in production`}
       </p>
     </div>
   );

@@ -14,6 +14,7 @@ import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { actionError } from "../../lib/errors";
 import { formatDay, formatTime } from "../../lib/format";
+import { readState, type ReadState } from "../../lib/readState";
 import { daysLabel, greetingTitle, plural, sourceLine, todayEyebrow } from "../../lib/words";
 import {
   blockerRows,
@@ -115,7 +116,7 @@ export function DeveloperToday() {
         </div>
         <div className="grid grid-cols-[minmax(0,1fr)] content-start gap-4">
           <WaitingOnYou />
-          <RollsUpInto rollup={rollup} loading={focus.isLoading} />
+          <RollsUpInto rollup={rollup} read={readState(focus)} />
           <Panel title="Why this matters">
             <p className="text-[14px] text-grey-body">{whyCheckinMatters(readOnly)}</p>
           </Panel>
@@ -514,26 +515,25 @@ function useRollUp(developerId: string | undefined) {
     projects: myProjects,
     programs: myPrograms,
     isLoading: pods.isLoading || projects.isLoading || programs.isLoading,
+    error: pods.error ?? projects.error ?? programs.error,
   };
 }
 
-function RollsUpInto({
-  rollup,
-  loading,
-}: {
-  rollup: ReturnType<typeof useRollUp>;
-  loading: boolean;
-}) {
+/**
+ * The chain is the pods, projects and programs of the person `focus` names, so
+ * "you are in no pod" is only said once that read has answered.
+ */
+function RollsUpInto({ rollup, read }: { rollup: ReturnType<typeof useRollUp>; read: ReadState }) {
   const chain = [...rollup.pods, ...rollup.projects, ...rollup.programs];
   return (
     <Panel title="Where you roll up" note="your check-in feeds each of these">
-      {loading || rollup.isLoading ? (
-        <p className="text-[14px] text-grey-body">Loading…</p>
-      ) : chain.length === 0 ? (
-        <p className="text-[14px] text-grey-body">
-          You are in no pod yet, so your check-in counts toward no pod, project or program.
-        </p>
-      ) : (
+      <PanelState
+        needs="anyone with a member record"
+        isLoading={read.isLoading || rollup.isLoading}
+        error={read.error ?? rollup.error}
+        isEmpty={chain.length === 0}
+        emptyText="You are in no pod yet, so your check-in counts toward no pod, project or program."
+      >
         <ul className="mt-2 flex flex-wrap items-center gap-2">
           {chain.map((item) => (
             <li
@@ -546,7 +546,7 @@ function RollsUpInto({
             </li>
           ))}
         </ul>
-      )}
+      </PanelState>
     </Panel>
   );
 }

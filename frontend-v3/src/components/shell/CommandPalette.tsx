@@ -115,7 +115,8 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
     [directory.pods, named, query, rows.length],
   );
   const current = Math.min(active, Math.max(rows.length - 1, 0));
-  const loading = programs.isLoading || projects.isLoading || pods.isLoading;
+  const loading =
+    programs.isLoading || projects.isLoading || workstreams.isLoading || pods.isLoading;
   const failed = programs.error ?? projects.error ?? pods.error ?? workstreams.error;
 
   useEffect(() => {
@@ -186,8 +187,15 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
       >
         {rows.length === 0 ? (
           <li className="px-4 py-8 text-center text-[14px] text-grey-secondary">
-            Nothing matches “{query.trim()}”.
-            {noPod ? <span className="mt-1 block">{noPod}</span> : null}
+            {loading ? (
+              // The programs, projects and pods a name could match are not in yet.
+              "Loading programs, projects and pods…"
+            ) : (
+              <>
+                Nothing matches “{query.trim()}”.
+                {noPod ? <span className="mt-1 block">{noPod}</span> : null}
+              </>
+            )}
           </li>
         ) : (
           rows.map((row, index) => (
@@ -218,7 +226,7 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
       </ul>
       <p className="flex flex-wrap gap-x-4 border-t border-grey-border px-5 py-2.5 text-[12px] text-grey-secondary">
         <span>↑ ↓ to move · Enter to open · Esc to close</span>
-        {loading ? <span>Loading programs, projects and pods…</span> : null}
+        {loading && rows.length > 0 ? <span>Loading programs, projects and pods…</span> : null}
         {failed ? (
           <span className="text-rag-red">
             Only screens for now: {(failed as Error).message || "the directory did not load."}
