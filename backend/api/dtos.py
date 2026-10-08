@@ -67,6 +67,8 @@ from core.application.pull_request_flow_service import (
     RequestTypeCountView,
     StageFlowView,
 )
+from core.application.task_update_service import TASK_UPDATE_TEXT_MAX, TaskStatement, TaskUpdate
+from core.application.writeback_service import ConsoleWriteBack
 from core.domain.auth import Role
 from core.domain.branding import LogoContentType, TenantLogo
 from core.domain.brief import BriefKind, NarrativeBrief
@@ -149,6 +151,7 @@ from core.domain.writeback import (
     WriteBackGate,
     WriteBackGateSource,
     WriteBackStatus,
+    WriteBackTarget,
 )
 from core.ports.auth import AuthenticatedUser
 
@@ -746,6 +749,38 @@ class RollupFactorDto(BaseModel):
         )
 
 
+# A task's state as a person states it, and as the tracker is moved to.
+TaskStateName = Literal["todo", "in_progress", "in_review", "blocked", "done"]
+TaskUpdateVia = Literal["chat", "console"]
+WriteBackModeName = Literal["auto", "ask", "off"]
+TaskTrackerOutcome = Literal["applied", "held_open_mr", "not_owner", "no_change", "off", "failed"]
+
+
+class TaskStatementDto(BaseModel):
+    """The person's latest statement on a task: a state or a note, when and where.
+
+    A chat statement carries its state only; a note is typed in the console.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    state: TaskStateName | None
+    note: str | None
+    at: datetime
+    via: TaskUpdateVia
+
+    @classmethod
+    def from_view(cls, statement: TaskStatement | None) -> TaskStatementDto | None:
+        if statement is None:
+            return None
+        return cls(
+            state=statement.state.value if statement.state is not None else None,
+            note=statement.note,
+            at=statement.at,
+            via=statement.via,
+        )
+
+
 class FocusTaskDto(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -755,6 +790,24 @@ class FocusTaskDto(BaseModel):
     source: StatusSource
     confidence: float | None
     deadline: date | None
+    tracker_status: str | None = Field(
+        description="The tracker's own status name, for a synced task; null otherwise."
+    )
+    my_eta: date | None = Field(
+        description="The person's own latest ETA for the task (its last day); null when none."
+    )
+    my_eta_label: str | None = Field(
+        description="That ETA as it was given: 'Oct 9' from the console, 'early next week' "
+        "from chat."
+    )
+    last_update: TaskStatementDto | None
+    blocker_ids: list[str] = Field(
+        description="The person's open blockers on this task, ids from blocker_details."
+    )
+    can_move_in_tracker: bool = Field(
+        description="The person is the synced tracker issue's assignee through their identity "
+        "link. The tick to move the issue also needs write_back other than off."
+    )
 
     @classmethod
     def from_view(cls, task: FocusTaskView) -> FocusTaskDto:
@@ -765,6 +818,12 @@ class FocusTaskDto(BaseModel):
             source=task.source,
             confidence=task.confidence,
             deadline=task.deadline,
+            tracker_status=task.tracker_status,
+            my_eta=task.my_eta,
+            my_eta_label=task.my_eta_label,
+            last_update=TaskStatementDto.from_view(task.last_update),
+            blocker_ids=list(task.blocker_ids),
+            can_move_in_tracker=task.can_move_in_tracker,
         )
 
 
@@ -834,10 +893,15 @@ class FocusResponse(BaseModel):
     blocker_details: list[BlockerDetailDto]
     tasks: list[FocusTaskDto]
     focus: list[FocusItemDto]
+    write_back: WriteBackModeName = Field(
+        description="How the person's updates reach the tracker: auto (written at once), ask "
+        "(written when they tick it in the console, or say yes in chat) or off."
+    )
 
     @classmethod
-    def from_view(cls, view: FocusView) -> FocusResponse:
+    def from_view(cls, view: FocusView, *, write_back: WriteBackModeName = "off") -> FocusResponse:
         return cls(
+            write_back=write_back,
             developer_id=view.developer_id,
             developer_name=view.developer_name,
             as_of=view.as_of,
@@ -2737,6 +2801,75 @@ _NOT_SELF_SET_CHECKIN_FIELDS = {
     ),
     "local_time": "is not set per person: check-ins go out at one time for the whole team",
 }
+
+
+class TaskUpdateRequest(BaseModel):
+    """One person's update of one of their tasks: only the fields that changed.
+
+    Every field is optional and at least one change must be sent
+    (``move_in_tracker`` alone is none). ``eta: null`` clears the ETA; leaving
+    ``eta`` out keeps it. A field this model does not know is refused.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: TaskStateName | None = None
+    eta: date | None = None
+    note: str | None = Field(default=None, max_length=TASK_UPDATE_TEXT_MAX)
+    add_blocker: str | None = Field(default=None, max_length=TASK_UPDATE_TEXT_MAX)
+    resolve_blocker_ids: list[str] = Field(default_factory=list, max_length=50)
+    move_in_tracker: bool | None = Field(
+        default=None,
+        description="True also moves the tracker issue to `state`; ignored without a state. "
+        "Left out or null: the tracker is not touched.",
+    )
+
+    @field_validator("note", "add_blocker")
+    @classmethod
+    def blank_is_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+    def to_update(self) -> TaskUpdate:
+        return TaskUpdate(
+            state=WriteBackTarget(self.state) if self.state is not None else None,
+            eta=self.eta,
+            eta_sent="eta" in self.model_fields_set,
+            note=self.note,
+            add_blocker=self.add_blocker,
+            resolve_blocker_ids=tuple(item for item in self.resolve_blocker_ids if item),
+            move_in_tracker=self.move_in_tracker is True,
+        )
+
+
+class TaskTrackerResultDto(BaseModel):
+    """What the tracker move did, as the task row says it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    outcome: TaskTrackerOutcome
+    detail: str
+    merge_requests: list[str]
+
+    @classmethod
+    def from_result(cls, result: ConsoleWriteBack | None) -> TaskTrackerResultDto | None:
+        if result is None:
+            return None
+        return cls(
+            outcome=result.outcome,
+            detail=result.detail,
+            merge_requests=list(result.merge_requests),
+        )
+
+
+class TaskUpdateResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    task: FocusTaskDto
+    status: MyStatusResponse
+    tracker: TaskTrackerResultDto | None
 
 
 class SelfCheckinPreferenceUpdateRequest(BaseModel):

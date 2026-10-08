@@ -7950,6 +7950,86 @@
         }
       }
     },
+    "/me/tasks/{task_id}/update": {
+      "post": {
+        "tags": ["checkins"],
+        "summary": "Update My Task",
+        "description": "Update one of the caller's own tasks for today: only the fields sent change.\n\nThe state and the note are recorded on the task, the ETA as the person's\nstated ETA, a blocker through the blocker lifecycle (their other blockers\ncarry forward), and today's status keeps or gains a reply. With\n``move_in_tracker`` and a state, the tracker issue moves behind the\nwrite-back gates; the ETA never reaches the tracker.",
+        "operationId": "update_my_task_me_tasks__task_id__update_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskUpdateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The task is not in the caller's own tree: not theirs."
+          },
+          "422": {
+            "description": "Nothing to update, a day other than today, an ETA before today, Blocked with no blocker, or a blocker to resolve that is not open on this task."
+          }
+        }
+      }
+    },
     "/me/checkin-preference": {
       "get": {
         "tags": ["checkins"],
@@ -13531,6 +13611,12 @@
             },
             "type": "array",
             "title": "Focus"
+          },
+          "write_back": {
+            "type": "string",
+            "enum": ["auto", "ask", "off"],
+            "title": "Write Back",
+            "description": "How the person's updates reach the tracker: auto (written at once), ask (written when they tick it in the console, or say yes in chat) or off."
           }
         },
         "type": "object",
@@ -13545,7 +13631,8 @@
           "blockers",
           "blocker_details",
           "tasks",
-          "focus"
+          "focus",
+          "write_back"
         ],
         "title": "FocusResponse"
       },
@@ -13587,10 +13674,83 @@
               }
             ],
             "title": "Deadline"
+          },
+          "tracker_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracker Status",
+            "description": "The tracker's own status name, for a synced task; null otherwise."
+          },
+          "my_eta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Eta",
+            "description": "The person's own latest ETA for the task (its last day); null when none."
+          },
+          "my_eta_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Eta Label",
+            "description": "That ETA as it was given: 'Oct 9' from the console, 'early next week' from chat."
+          },
+          "last_update": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskStatementDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blocker_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocker Ids",
+            "description": "The person's open blockers on this task, ids from blocker_details."
+          },
+          "can_move_in_tracker": {
+            "type": "boolean",
+            "title": "Can Move In Tracker",
+            "description": "The person is the synced tracker issue's assignee through their identity link. The tick to move the issue also needs write_back other than off."
           }
         },
         "type": "object",
-        "required": ["id", "name", "rag", "source", "confidence", "deadline"],
+        "required": [
+          "id",
+          "name",
+          "rag",
+          "source",
+          "confidence",
+          "deadline",
+          "tracker_status",
+          "my_eta",
+          "my_eta_label",
+          "last_update",
+          "blocker_ids",
+          "can_move_in_tracker"
+        ],
         "title": "FocusTaskDto"
       },
       "GateBoardResponse": {
@@ -17890,6 +18050,170 @@
         "type": "object",
         "required": ["id", "name", "rag", "source", "confidence", "deadline"],
         "title": "TaskProgressDto"
+      },
+      "TaskStatementDto": {
+        "properties": {
+          "state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["todo", "in_progress", "in_review", "blocked", "done"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "via": {
+            "type": "string",
+            "enum": ["chat", "console"],
+            "title": "Via"
+          }
+        },
+        "type": "object",
+        "required": ["state", "note", "at", "via"],
+        "title": "TaskStatementDto",
+        "description": "The person's latest statement on a task: a state or a note, when and where.\n\nA chat statement carries its state only; a note is typed in the console."
+      },
+      "TaskTrackerResultDto": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": ["applied", "held_open_mr", "not_owner", "no_change", "off", "failed"],
+            "title": "Outcome"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "merge_requests": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Merge Requests"
+          }
+        },
+        "type": "object",
+        "required": ["outcome", "detail", "merge_requests"],
+        "title": "TaskTrackerResultDto",
+        "description": "What the tracker move did, as the task row says it."
+      },
+      "TaskUpdateRequest": {
+        "properties": {
+          "state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["todo", "in_progress", "in_review", "blocked", "done"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "eta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "add_blocker": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Add Blocker"
+          },
+          "resolve_blocker_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Resolve Blocker Ids"
+          },
+          "move_in_tracker": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move In Tracker",
+            "description": "True also moves the tracker issue to `state`; ignored without a state. Left out or null: the tracker is not touched."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TaskUpdateRequest",
+        "description": "One person's update of one of their tasks: only the fields that changed.\n\nEvery field is optional and at least one change must be sent\n(``move_in_tracker`` alone is none). ``eta: null`` clears the ETA; leaving\n``eta`` out keeps it. A field this model does not know is refused."
+      },
+      "TaskUpdateResponse": {
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/FocusTaskDto"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MyStatusResponse"
+          },
+          "tracker": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskTrackerResultDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["task", "status", "tracker"],
+        "title": "TaskUpdateResponse"
       },
       "TeamForecastResponse": {
         "properties": {

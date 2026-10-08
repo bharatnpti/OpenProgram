@@ -80,10 +80,14 @@ async def my_focus(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+    write_back_service: Annotated[WriteBackService, Depends(get_write_back_service)],
 ) -> FocusResponse:
     _ensure(principal, Capability.READ_OWN_WORK)
     view = await persona_service.focus(principal.tenant_id, principal.subject, as_of)
-    return FocusResponse.from_view(view)
+    return FocusResponse.from_view(
+        view,
+        write_back=await write_back_service.write_back_mode(principal.tenant_id, principal.subject),
+    )
 
 
 @router.get("/pods/{pod_id}/blockers", response_model=PodBlockersResponse)

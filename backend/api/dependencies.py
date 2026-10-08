@@ -29,6 +29,7 @@ from core.application.pull_request_flow_service import PullRequestFlowService
 from core.application.risk_service import RiskService
 from core.application.self_status_service import SelfStatusService
 from core.application.sync_status_service import SyncStatusService
+from core.application.task_update_service import TaskUpdateService
 from core.application.writeback_service import WriteBackService
 from core.domain.auth import Principal, Role
 from core.domain.errors import (
@@ -277,6 +278,7 @@ def get_persona_view_service(request: Request) -> PersonaViewService:
         # A day with no stored rollup is computed with the drift the stored
         # ones carry (N3), read by the Signals list's own reader.
         drift_signals=get_risk_service(request),
+        identity_link_repository=registry.identity_link_repository(),
     )
 
 
@@ -288,6 +290,10 @@ def get_provider_names(request: Request) -> ProviderNames:
 def get_self_status_service(request: Request) -> SelfStatusService:
     registry = get_registry(request)
     return registry.self_status_service()
+
+
+def get_task_update_service(request: Request) -> TaskUpdateService:
+    return get_registry(request).task_update_service()
 
 
 def get_branding_service(request: Request) -> BrandingService:

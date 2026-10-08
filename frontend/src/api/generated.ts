@@ -1757,6 +1757,32 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/me/tasks/{task_id}/update": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Update My Task
+     * @description Update one of the caller's own tasks for today: only the fields sent change.
+     *
+     *     The state and the note are recorded on the task, the ETA as the person's
+     *     stated ETA, a blocker through the blocker lifecycle (their other blockers
+     *     carry forward), and today's status keeps or gains a reply. With
+     *     ``move_in_tracker`` and a state, the tracker issue moves behind the
+     *     write-back gates; the ETA never reaches the tracker.
+     */
+    post: operations["update_my_task_me_tasks__task_id__update_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/me/checkin-preference": {
     parameters: {
       query?: never;
@@ -3615,6 +3641,12 @@ export interface components {
       tasks: components["schemas"]["FocusTaskDto"][];
       /** Focus */
       focus: components["schemas"]["FocusItemDto"][];
+      /**
+       * Write Back
+       * @description How the person's updates reach the tracker: auto (written at once), ask (written when they tick it in the console, or say yes in chat) or off.
+       * @enum {string}
+       */
+      write_back: "auto" | "ask" | "off";
     };
     /** FocusTaskDto */
     FocusTaskDto: {
@@ -3628,6 +3660,32 @@ export interface components {
       confidence: number | null;
       /** Deadline */
       deadline: string | null;
+      /**
+       * Tracker Status
+       * @description The tracker's own status name, for a synced task; null otherwise.
+       */
+      tracker_status: string | null;
+      /**
+       * My Eta
+       * @description The person's own latest ETA for the task (its last day); null when none.
+       */
+      my_eta: string | null;
+      /**
+       * My Eta Label
+       * @description That ETA as it was given: 'Oct 9' from the console, 'early next week' from chat.
+       */
+      my_eta_label: string | null;
+      last_update: components["schemas"]["TaskStatementDto"] | null;
+      /**
+       * Blocker Ids
+       * @description The person's open blockers on this task, ids from blocker_details.
+       */
+      blocker_ids: string[];
+      /**
+       * Can Move In Tracker
+       * @description The person is the synced tracker issue's assignee through their identity link. The tick to move the issue also needs write_back other than off.
+       */
+      can_move_in_tracker: boolean;
     };
     /**
      * GateBoardResponse
@@ -5272,6 +5330,74 @@ export interface components {
       deadline: string | null;
       /** Tracker Status */
       tracker_status?: string | null;
+    };
+    /**
+     * TaskStatementDto
+     * @description The person's latest statement on a task: a state or a note, when and where.
+     *
+     *     A chat statement carries its state only; a note is typed in the console.
+     */
+    TaskStatementDto: {
+      /** State */
+      state: ("todo" | "in_progress" | "in_review" | "blocked" | "done") | null;
+      /** Note */
+      note: string | null;
+      /**
+       * At
+       * Format: date-time
+       */
+      at: string;
+      /**
+       * Via
+       * @enum {string}
+       */
+      via: "chat" | "console";
+    };
+    /**
+     * TaskTrackerResultDto
+     * @description What the tracker move did, as the task row says it.
+     */
+    TaskTrackerResultDto: {
+      /**
+       * Outcome
+       * @enum {string}
+       */
+      outcome: "applied" | "held_open_mr" | "not_owner" | "no_change" | "off" | "failed";
+      /** Detail */
+      detail: string;
+      /** Merge Requests */
+      merge_requests: string[];
+    };
+    /**
+     * TaskUpdateRequest
+     * @description One person's update of one of their tasks: only the fields that changed.
+     *
+     *     Every field is optional and at least one change must be sent
+     *     (``move_in_tracker`` alone is none). ``eta: null`` clears the ETA; leaving
+     *     ``eta`` out keeps it. A field this model does not know is refused.
+     */
+    TaskUpdateRequest: {
+      /** State */
+      state?: ("todo" | "in_progress" | "in_review" | "blocked" | "done") | null;
+      /** Eta */
+      eta?: string | null;
+      /** Note */
+      note?: string | null;
+      /** Add Blocker */
+      add_blocker?: string | null;
+      /** Resolve Blocker Ids */
+      resolve_blocker_ids?: string[];
+      /**
+       * Move In Tracker
+       * @description True also moves the tracker issue to `state`; ignored without a state. Left out or null: the tracker is not touched.
+       */
+      move_in_tracker?: boolean | null;
+    };
+    /** TaskUpdateResponse */
+    TaskUpdateResponse: {
+      task: components["schemas"]["FocusTaskDto"];
+      status: components["schemas"]["MyStatusResponse"];
+      tracker: components["schemas"]["TaskTrackerResultDto"] | null;
     };
     /** TeamForecastResponse */
     TeamForecastResponse: {
@@ -10297,6 +10423,50 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
         };
+      };
+    };
+  };
+  update_my_task_me_tasks__task_id__update_post: {
+    parameters: {
+      query?: {
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        task_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TaskUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TaskUpdateResponse"];
+        };
+      };
+      /** @description The task is not in the caller's own tree: not theirs. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Nothing to update, a day other than today, an ETA before today, Blocked with no blocker, or a blocker to resolve that is not open on this task. */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

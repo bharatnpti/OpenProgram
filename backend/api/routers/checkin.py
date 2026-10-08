@@ -8,19 +8,32 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from api.dependencies import (
     get_current_principal,
+    get_persona_view_service,
     get_registry,
     get_self_status_service,
     get_settings_from_request,
+    get_task_update_service,
 )
 from api.dtos import (
     CheckinPreferenceResponse,
+    FocusTaskDto,
     MyStatusResponse,
     SelfCheckinPreferenceUpdateRequest,
     StatusCorrectionRequest,
+    TaskTrackerResultDto,
+    TaskUpdateRequest,
+    TaskUpdateResponse,
 )
 from config.settings import Settings
 from core.application.authorization import AuthorizationPolicy, Capability
+from core.application.persona_views import PersonaViewService
 from core.application.self_status_service import SelfStatusService
+from core.application.task_update_service import (
+    TASK_NOT_ASSIGNED,
+    TaskNotAssigned,
+    TaskUpdateRejected,
+    TaskUpdateService,
+)
 from core.domain.auth import Principal
 from core.domain.blockers import BlockerReport
 from core.domain.errors import AuthorizationDenied
@@ -106,6 +119,63 @@ async def correct_my_status(
         principal.tenant_id, principal.subject, effective_as_of
     )
     return MyStatusResponse.from_domain(status, blocker_details=details)
+
+
+@router.post(
+    "/me/tasks/{task_id}/update",
+    response_model=TaskUpdateResponse,
+    responses={
+        404: {"description": "The task is not in the caller's own tree: not theirs."},
+        422: {
+            "description": "Nothing to update, a day other than today, an ETA before today, "
+            "Blocked with no blocker, or a blocker to resolve that is not open on this task."
+        },
+    },
+)
+async def update_my_task(
+    task_id: str,
+    request: TaskUpdateRequest,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[TaskUpdateService, Depends(get_task_update_service)],
+    persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+    self_status: Annotated[SelfStatusService, Depends(get_self_status_service)],
+    as_of: date | None = None,
+) -> TaskUpdateResponse:
+    """Update one of the caller's own tasks for today: only the fields sent change.
+
+    The state and the note are recorded on the task, the ETA as the person's
+    stated ETA, a blocker through the blocker lifecycle (their other blockers
+    carry forward), and today's status keeps or gains a reply. With
+    ``move_in_tracker`` and a state, the tracker issue moves behind the
+    write-back gates; the ETA never reaches the tracker.
+    """
+    _ensure_own_work(principal)
+    effective_as_of = as_of or date.today()
+    try:
+        result = await service.update(
+            principal.tenant_id,
+            principal.subject,
+            task_id,
+            effective_as_of,
+            request.to_update(),
+        )
+    except TaskNotAssigned as exc:
+        raise HTTPException(status_code=404, detail=TASK_NOT_ASSIGNED) from exc
+    except TaskUpdateRejected as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    task = await persona_service.focus_task(
+        principal.tenant_id, principal.subject, result.task_id, effective_as_of
+    )
+    if task is None:  # pragma: no cover - the update just found it in the same tree
+        raise HTTPException(status_code=404, detail=TASK_NOT_ASSIGNED)
+    details = await self_status.my_blocker_details(
+        principal.tenant_id, principal.subject, effective_as_of
+    )
+    return TaskUpdateResponse(
+        task=FocusTaskDto.from_view(task),
+        status=MyStatusResponse.from_domain(result.status, blocker_details=details),
+        tracker=TaskTrackerResultDto.from_result(result.tracker),
+    )
 
 
 @router.get("/me/checkin-preference", response_model=CheckinPreferenceResponse)
