@@ -2,38 +2,35 @@ import { CalendarDays, History } from "lucide-react";
 import { useLocation } from "react-router-dom";
 
 import { useViewingDate } from "../../app/viewingDate";
+import { DayInput } from "../ui/DayInput";
 import { cn } from "../../lib/utils";
 import { showsCurrentState, viewingDateNote } from "../../lib/viewingDate";
 
 /**
  * Which day the console shows, picked in the header: the day belongs to the
  * console, not to one page, so it stays put while you move between screens.
- * A native date field, so it works by keyboard and on a phone's own picker.
+ * The browser's own date field underneath, so it works by keyboard and on a
+ * phone's own picker, with the day written the console's way ("Wed 7 Oct").
  */
 export function ViewingDateControl() {
   const { chosen, today, setViewingDate } = useViewingDate();
   return (
-    <label
+    <DayInput
+      aria-label="Day shown"
+      value={chosen ?? today}
+      max={today}
+      onChange={(day) => {
+        // A half-typed or cleared value is empty; keep the day until it's whole.
+        if (day) setViewingDate(day);
+      }}
+      icon={<CalendarDays size={15} aria-hidden className="flex-none" />}
       className={cn(
-        "flex h-10 flex-none items-center gap-2 rounded-full border pl-3 pr-2",
+        "h-10 flex-none gap-2 rounded-full border px-3 text-[13px] font-bold",
         chosen
           ? "border-rag-amber bg-rag-amber-bg text-rag-amber-deep"
-          : "border-grey-border bg-white text-ink hover:border-grey-disabled",
+          : "border-grey-border bg-white text-ink peer-hover:border-grey-disabled",
       )}
-    >
-      <CalendarDays size={15} aria-hidden className="flex-none" />
-      <span className="sr-only">Day shown</span>
-      <input
-        type="date"
-        value={chosen ?? today}
-        max={today}
-        onChange={(event) => {
-          // A half-typed or cleared value is empty; keep the day until it's whole.
-          if (event.target.value) setViewingDate(event.target.value);
-        }}
-        className="h-8 w-[8.5rem] bg-transparent text-[13px] font-bold outline-none"
-      />
-    </label>
+    />
   );
 }
 

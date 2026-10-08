@@ -40,21 +40,35 @@ test("a wait reads as days, or today", () => {
   assert.equal(daysLabel(16), "16 days");
 });
 
+// A fixed clock, so the year the eyebrow leaves out is the same whenever this runs.
+const NOW = new Date(2026, 9, 7, 14, 0);
+
 test("the eyebrow names the program, every program, or none", () => {
-  const day = todayEyebrow(null);
+  const day = todayEyebrow(null, null, NOW);
   assert.ok(!day.includes("·"));
-  assert.equal(todayEyebrow("Digital Platform Program"), `${day} · Digital Platform Program`);
-  assert.equal(todayEyebrow(["Platform", "Operations"]), `${day} · Platform · Operations`);
-  assert.equal(todayEyebrow([]), day);
-  assert.equal(todayEyebrow(undefined), day);
+  assert.equal(
+    todayEyebrow("Digital Platform Program", null, NOW),
+    `${day} · Digital Platform Program`,
+  );
+  assert.equal(
+    todayEyebrow(["Platform", "Operations"], null, NOW),
+    `${day} · Platform · Operations`,
+  );
+  assert.equal(todayEyebrow([], null, NOW), day);
+  assert.equal(todayEyebrow(undefined, null, NOW), day);
 });
 
-test("the eyebrow names the day shown: a past day, or the server's today", () => {
-  assert.equal(todayEyebrow(null, "2026-09-28"), "Monday, September 28, 2026");
+test("the eyebrow writes the day the way every other screen does, not in US order", () => {
+  assert.equal(todayEyebrow(null, null, NOW), "Wed 7 Oct");
+  assert.equal(todayEyebrow(null, "2026-09-28", NOW), "Mon 28 Sept");
   assert.equal(
-    todayEyebrow("Digital Platform Program", "2026-10-07"),
-    "Wednesday, October 7, 2026 · Digital Platform Program",
+    todayEyebrow("Digital Platform Program", "2026-10-07", NOW),
+    "Wed 7 Oct · Digital Platform Program",
   );
+  // A day of another year says which year.
+  assert.equal(todayEyebrow(null, "2025-12-31", NOW), "Wed 31 Dec 2025");
+  // The server may give a timestamp for the day; only the day is read.
+  assert.equal(todayEyebrow(null, "2026-10-07T00:07:00+05:30", NOW), "Wed 7 Oct");
 });
 
 test("a request says what it asks of the person it waits on", () => {

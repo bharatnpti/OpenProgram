@@ -1,5 +1,6 @@
 // Pure wording helpers, type imports only so `node --test` can run them.
 import type { StatusSource } from "../api/schema";
+import { formatDayLabel, localIso } from "./viewingDate.ts";
 
 const SOURCE_WORDS: Record<StatusSource, string> = {
   // What a task or blocker's owner reported. Not "confirmed": that is what a
@@ -39,21 +40,18 @@ export function daysLabel(days: number): string {
 /**
  * The day shown and the program, the way every Today opens. `day` is the day
  * the screen's numbers are for (a past day being viewed, or the server's
- * today); without one it is the browser's today. With several programs (a
- * person whose pods feed more than one) they are listed, so the line never
- * names one program for work that sits in another.
+ * today); without one it is the browser's today. The day is written the way
+ * every other screen writes one ("Wed 7 Oct"), not in the browser's or a
+ * country's own order. With several programs (a person whose pods feed more
+ * than one) they are listed, so the line never names one program for work
+ * that sits in another.
  */
 export function todayEyebrow(
   programNames: string | string[] | null | undefined,
   day?: string | null,
+  now: Date = new Date(),
 ): string {
-  const moment = day ? new Date(`${day.slice(0, 10)}T12:00:00`) : new Date();
-  const label = moment.toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  const label = formatDayLabel(day ? day.slice(0, 10) : localIso(now), localIso(now));
   const names = (Array.isArray(programNames) ? programNames : [programNames]).filter(
     (name): name is string => Boolean(name),
   );

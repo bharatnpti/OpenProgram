@@ -40,6 +40,21 @@ export function formatTime(iso: string | null | undefined): string {
   return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
+/**
+ * A typed time of day as "HH:MM" on the 24-hour clock, or null when it is not
+ * one. "9:00", "9" and "0900" are 09:00, "18:30" and "1830" are 18:30; "24:00",
+ * "6 PM" and "18:75" are not times. A field that takes this reads the same on
+ * every browser, where a time input follows the browser's own 12 or 24 hours.
+ */
+export function clockTime(text: string): string | null {
+  const match = /^(\d{1,2})(?::?(\d{2}))?$/.exec(text.trim());
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2] ?? "0");
+  if (hour > 23 || minute > 59) return null;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 /** "Mon–Fri" for [0,1,2,3,4]; a broken run is listed ("Mon, Wed, Fri"). Monday is 0. */

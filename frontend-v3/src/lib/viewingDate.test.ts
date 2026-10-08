@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   choseToday,
+  dayFieldWords,
   dayWords,
   formatDayLabel,
   guessToday,
@@ -107,6 +108,13 @@ test("a day reads the way every screen writes one, with the year only when it di
     readOnlyReason("Mon 5 Oct"),
     "You're viewing Mon 5 Oct. Go back to today to make changes.",
   );
+});
+
+test("a day field shows its day the console's way, and nothing for a day not whole yet", () => {
+  assert.equal(dayFieldWords("2026-10-07", TODAY), "Wed 7 Oct");
+  assert.equal(dayFieldWords("2025-12-31", TODAY), "Wed 31 Dec 2025");
+  assert.equal(dayFieldWords("", TODAY), null);
+  assert.equal(dayFieldWords("2026-10-", TODAY), null);
 });
 
 test("Admin shows current configuration; the banner says so, and what else stays current", () => {

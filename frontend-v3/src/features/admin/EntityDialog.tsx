@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
 import type { ConfigNodeResponse, ConfigNodeUpdateRequest } from "../../api/schema";
+import { DayInput } from "../../components/ui/DayInput";
 import { Pill } from "../../components/ui/Pill";
 import { cn } from "../../lib/utils";
 import { refusal } from "./adminErrors";
@@ -350,12 +351,11 @@ export function EntityDialog({
                 </Field>
               ))}
               <Field id="entity-target" label="Target date" error={errors.targetDate}>
-                <input
+                <DayInput
                   id="entity-target"
-                  type="date"
                   className={fieldInput}
                   value={form.targetDate}
-                  onChange={(event) => set({ targetDate: event.target.value })}
+                  onChange={(day) => set({ targetDate: day })}
                 />
               </Field>
               <Field

@@ -8,6 +8,7 @@ import type { DayReportRequest, DayReportResponse } from "../../api/schema";
 import { useReadOnly } from "../../app/viewingDate";
 import { LockedTrigger } from "../../components/Dialogs";
 import { Pill } from "../../components/ui/Pill";
+import { clockTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { deviceTimezone, reportZone } from "../../lib/zones";
 import { useMyCheckinPreference } from "../checkin/useMyCheckinPreference";
@@ -262,12 +263,22 @@ export function ReportSetupDialog({
                   </label>
                   <input
                     id="rs-time"
-                    type="time"
+                    inputMode="numeric"
+                    autoComplete="off"
                     className={field}
                     value={draft.time}
+                    placeholder="18:00"
+                    pattern="([01][0-9]|2[0-3]):[0-5][0-9]"
+                    title="A time on the 24-hour clock, like 18:00"
+                    aria-describedby="rs-time-hint"
                     required
                     onChange={(e) => set("time", e.target.value)}
+                    // 9:00, 900 and 9 become 09:00; what is not a time is left to say so.
+                    onBlur={(e) => set("time", clockTime(e.target.value) ?? e.target.value)}
                   />
+                  <p id="rs-time-hint" className="mt-1 text-[11px] text-grey-secondary">
+                    24-hour, like 18:00.
+                  </p>
                 </div>
                 <div>
                   <label htmlFor="rs-tz" className={label}>

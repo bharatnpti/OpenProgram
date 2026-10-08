@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
 import type { DeliveryDateRequest, ScopeDeliveryResponse } from "../../api/schema";
+import { DayInput } from "../../components/ui/DayInput";
 import { Pill } from "../../components/ui/Pill";
 import { formatDate } from "../../lib/format";
 import { dateProblem } from "../overall/overallWords";
@@ -85,13 +86,7 @@ export function DeliveryDateDialog({
           <label htmlFor="delivery-date" className={fieldLabel}>
             Delivery date
           </label>
-          <input
-            id="delivery-date"
-            type="date"
-            className={field}
-            value={target}
-            onChange={(event) => setTarget(event.target.value)}
-          />
+          <DayInput id="delivery-date" className={field} value={target} onChange={setTarget} />
         </div>
         <div>
           <label htmlFor="delivery-note" className={fieldLabel}>

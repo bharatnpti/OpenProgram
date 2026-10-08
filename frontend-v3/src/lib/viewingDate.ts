@@ -132,6 +132,14 @@ export function formatDayLabel(isoDate: string, today: string): string {
   return isoDate.slice(0, 4) === today.slice(0, 4) ? day : `${day} ${isoDate.slice(0, 4)}`;
 }
 
+/**
+ * What a day field shows: the day in the console's own style, or null for a
+ * field with no day in it (empty, or not a whole YYYY-MM-DD yet).
+ */
+export function dayFieldWords(value: string, today: string): string | null {
+  return ISO_DATE.test(value) ? formatDayLabel(value, today) : null;
+}
+
 /** Admin edits the current configuration, so it never reads or writes a past day. */
 export function showsCurrentState(pathname: string): boolean {
   return pathname === "/admin" || pathname.startsWith("/admin/");
