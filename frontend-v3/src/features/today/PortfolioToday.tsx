@@ -256,10 +256,10 @@ export function PortfolioToday() {
           title="Oldest open risks"
           note={
             <Link
-              to="/signals"
+              to="/signals?view=risks"
               className="font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
             >
-              All signals
+              All risks
             </Link>
           }
         >

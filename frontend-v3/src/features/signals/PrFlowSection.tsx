@@ -37,9 +37,19 @@ const WINDOWS = [30, 90] as const;
  * review, in review and waiting to merge, and what kind of work they are. The
  * scope, window and percentile live in the URL; the backend times the stages.
  */
-export function PrFlowSection({ full, enabled }: { full: boolean; enabled: boolean }) {
+export function PrFlowSection({
+  full,
+  enabled,
+  defaultScope = "all",
+}: {
+  full: boolean;
+  enabled: boolean;
+  /** The scope with no `?scope=`: the viewer's own pod or project, else "all". */
+  defaultScope?: string;
+}) {
   const [search, setSearch] = useSearchParams();
-  const scope = parseScope(search.get("scope"));
+  const scopeValue = search.get("scope") ?? defaultScope;
+  const scope = parseScope(scopeValue);
   const days = search.get("days") === "90" ? 90 : 30;
   const pct: Percentile = search.get("pct") === "p50" ? "p50" : "p75";
   const [paused, setPaused] = useState(false);
@@ -77,11 +87,11 @@ export function PrFlowSection({ full, enabled }: { full: boolean; enabled: boole
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       {full ? (
         <Controls
-          scope={search.get("scope") ?? "all"}
+          scope={scopeValue}
           days={days}
           pct={pct}
           asTable={asTable}
-          onScope={(value) => set("scope", value === "all" ? null : value)}
+          onScope={(value) => set("scope", value === defaultScope ? null : value)}
           onDays={(value) => set("days", value === 30 ? null : String(value))}
           onPct={(value) => set("pct", value === "p75" ? null : value)}
           onTable={() => setAsTable((on) => !on)}

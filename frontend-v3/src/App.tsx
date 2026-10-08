@@ -24,7 +24,7 @@ const AdminPage = page(() => import("./pages/AdminPage"), "AdminPage");
  *   /today                          the role's own home (developer, scrum master,
  *                                   product owner, or the portfolio view)
  *   /delivery[/:kind/:id]           walk the graph: program, project, workstream, pod
- *   /signals                        risks, drift, flow and activity
+ *   /signals                        flow through review; risks across projects (portfolio roles)
  *   /coordination                   requests, briefs, ask the graph
  *   /reports                        every project's reports
  *   /reports/:projectId/daily       the end-of-day report (?report= picks one)

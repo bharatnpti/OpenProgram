@@ -62,7 +62,7 @@ function RiskTable({ data }: { data: ProjectRisksResponse }) {
       severity: r.severity,
       what: r.reason,
       ref: r.evidence.identifier,
-      kind: r.is_watermelon ? "Watermelon" : "Risk",
+      kind: "Risk",
       owner: r.person_name ?? names(r.owner_id),
       ownerSays: r.owner_status_summary,
       age: `${r.age_days}d`,

@@ -1,65 +1,154 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { indexNames, nameLookup } from "../../app/names.ts";
-import { findingSubject, flowIsEmpty } from "./signalWords.ts";
+import type { DriftFindingResponse, RiskFindingResponse } from "../../api/schema";
+import {
+  ageWords,
+  findingsOf,
+  groupByProject,
+  ownerLine,
+  riskCountLine,
+  type Finding,
+} from "./signalWords.ts";
 
-const none = {
-  active_count: 0,
-  features_in_flight: 0,
-  completed_count: 0,
-  stale_count: 0,
-  abandoned_count: 0,
-  avg_cycle_time_days: null,
-  avg_pr_age_days: null,
-  workstreams: [],
-};
+const ref = (kind: string, id: string) => ({ tenant_id: "demo", kind, id }) as never;
 
-test("flow that measured nothing is not a row of zeros", () => {
-  assert.equal(flowIsEmpty(none), true);
+const risk = (over: Partial<RiskFindingResponse> = {}): RiskFindingResponse => ({
+  rule_id: "pr_age",
+  severity: "red",
+  entity_ref: ref("developer", "U1008"),
+  workstream_id: null,
+  reason: "A merge request for Noah Weber has been open 6 days",
+  evidence: { identifier: "checkout-web!12", url: null, url_is_user_supplied: false },
+  age_days: 6,
+  detected_at: "2026-10-02T09:00:00Z",
+  status: "open",
+  owner_id: "U1008",
+  owner_status_summary: "CHK-6 MR will be ready for review tomorrow",
+  owner_status_source: "confirmed",
+  owner_status_as_of: "2026-10-06",
+  owner_status_has_blockers: false,
+  is_watermelon: true,
+  person_name: "Noah Weber",
+  ...over,
 });
 
-test("any count, any average or any workstream makes it a measurement", () => {
-  assert.equal(flowIsEmpty({ ...none, active_count: 1 }), false);
-  assert.equal(flowIsEmpty({ ...none, stale_count: 2 }), false);
-  assert.equal(flowIsEmpty({ ...none, avg_pr_age_days: 0 }), false);
-  assert.equal(flowIsEmpty({ ...none, avg_cycle_time_days: 3.5 }), false);
-  assert.equal(
-    flowIsEmpty({
-      ...none,
-      workstreams: [
-        {
-          workstream_id: "ws",
-          workstream_name: "Checkout",
-          active_count: 0,
-          features_in_flight: 0,
-          completed_count: 0,
-          stale_count: 0,
-          abandoned_count: 0,
-          avg_cycle_time_days: null,
-          avg_pr_age_days: null,
-        },
-      ],
-    }),
-    false,
+const drift = (over: Partial<DriftFindingResponse> = {}): DriftFindingResponse => ({
+  kind: "said_done_no_merge",
+  severity: "amber",
+  entity_ref: ref("task", "CHK-4"),
+  workstream_id: null,
+  reason: "CHK-4 was said done, but no merge request has merged",
+  detected_at: "2026-10-05T09:00:00Z",
+  owner_id: "U1007",
+  stated_source: "confirmed",
+  evidence: null,
+  child_entity_ref: null,
+  ...over,
+});
+
+const none = { risks: [], drift: [] };
+
+test("the header counts open risks, and drift only when there is some", () => {
+  assert.equal(riskCountLine(7, 0), "7 open risks");
+  assert.equal(riskCountLine(1, 2), "1 open risk · 2 drift");
+  assert.equal(riskCountLine(0, 0), "0 open risks");
+});
+
+test("rows run worst first, then oldest; each finding keeps its own evidence", () => {
+  const rows = findingsOf({
+    risks: [
+      risk({ severity: "amber", age_days: 9, evidence: { ...risk().evidence, identifier: "a!1" } }),
+      risk({ age_days: 2, evidence: { ...risk().evidence, identifier: "a!2" } }),
+      risk({ age_days: 6, evidence: { ...risk().evidence, identifier: "a!3" } }),
+    ],
+    drift: [drift()],
+  });
+  assert.deepEqual(
+    rows.map((row) => [row.type, row.severity, row.type === "risk" ? row.finding.age_days : null]),
+    [
+      ["risk", "red", 6],
+      ["risk", "red", 2],
+      ["risk", "amber", 9],
+      ["drift", "amber", null],
+    ],
+  );
+  assert.equal(new Set(rows.map((row) => row.key)).size, 4);
+});
+
+test("risks are grouped by project, the worst project first, nothing dropped", () => {
+  const projects = [
+    { id: "p-insights", name: "Customer Insights" },
+    { id: "p-checkout", name: "Checkout Revamp" },
+    { id: "p-identity", name: "Identity Platform" },
+  ];
+  const noah = risk();
+  const reads: Record<string, { risks: RiskFindingResponse[]; drift: DriftFindingResponse[] }> = {
+    "p-insights": {
+      risks: [risk({ severity: "amber", entity_ref: ref("task", "INS-2") })],
+      drift: [],
+    },
+    "p-checkout": { risks: [noah], drift: [drift()] },
+    "p-identity": none,
+  };
+  const orphan = risk({
+    entity_ref: ref("repository", "infra"),
+    evidence: { ...noah.evidence, identifier: "infra!3" },
+  });
+  const groups = groupByProject(projects, (id) => reads[id], {
+    risks: [noah, ...reads["p-insights"].risks, orphan],
+    drift: [drift()],
+  });
+  assert.deepEqual(
+    groups.map((group) => [group.name, group.worst, group.findings.length]),
+    [
+      ["Checkout Revamp", "red", 2],
+      ["Customer Insights", "amber", 1],
+      ["Not tied to a project", "red", 1],
+    ],
+    "a project with none is left out; the portfolio's own come last",
+  );
+  // A project's read still loading leaves its findings to the leftover group, not to nowhere.
+  const loading = groupByProject(projects, (id) => (id === "p-checkout" ? undefined : reads[id]), {
+    risks: [noah],
+    drift: [],
+  });
+  assert.deepEqual(
+    loading.map((group) => group.name),
+    ["Customer Insights", "Not tied to a project"],
   );
 });
 
-const names = nameLookup(indexNames([{ id: "U1", name: "Noah Weber" }]));
-
-test("a finding about a person names the person, never their id", () => {
-  assert.equal(findingSubject({ kind: "developer", id: "U1" }, "Noah W.", names), "Noah W.");
-  assert.equal(findingSubject({ kind: "developer", id: "U1" }, null, names), "Noah Weber");
+test("the owner's line says who says what, and how they said it", () => {
+  const row = (finding: RiskFindingResponse): Finding =>
+    findingsOf({ risks: [finding], drift: [] })[0];
   assert.equal(
-    findingSubject({ kind: "developer", id: "U9" }, undefined, names),
-    "unnamed person (U9)",
+    ownerLine(row(risk()), "Noah Weber"),
+    "Noah Weber says: CHK-6 MR will be ready for review tomorrow (replied)",
   );
+  assert.equal(
+    ownerLine(
+      row(risk({ owner_status_summary: null, owner_status_source: "inferred" })),
+      "Noah Weber",
+    ),
+    "Noah Weber has reported nothing (inferred)",
+  );
+  assert.equal(
+    ownerLine(row(risk({ owner_id: null, person_name: null })), null),
+    "Nobody owns this work item, so nobody has said anything about it.",
+  );
+  const driftRow = findingsOf({ risks: [], drift: [drift()] })[0];
+  assert.equal(ownerLine(driftRow, "Kai Thompson"), "Kai Thompson: stated in a reply");
+  const unowned = findingsOf({ risks: [], drift: [drift({ owner_id: null })] })[0];
+  assert.equal(ownerLine(unowned, null), "Nobody is named as the owner: stated in a reply");
 });
 
-test("a finding about anything else is kind and id", () => {
+test("a risk's age is its days open; a drift finding's is the day it was found", () => {
+  const day = (iso: string) => iso.slice(0, 10);
+  assert.equal(ageWords(findingsOf({ risks: [risk()], drift: [] })[0], day), "6d");
   assert.equal(
-    findingSubject({ kind: "pod", id: "pod-payments" }, null, names),
-    "pod pod-payments",
+    ageWords(findingsOf({ risks: [risk({ age_days: 0 })], drift: [] })[0], day),
+    "today",
   );
-  assert.equal(findingSubject({ kind: "work_item", id: "CHK-6" }, null, names), "work item CHK-6");
+  assert.equal(ageWords(findingsOf({ risks: [], drift: [drift()] })[0], day), "since 2026-10-05");
 });
