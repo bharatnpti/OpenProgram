@@ -4800,6 +4800,26 @@ export interface components {
       /** Updated By */
       updated_by: string;
     };
+    /** ReportAskFactsResponse */
+    ReportAskFactsResponse: {
+      need: components["schemas"]["NeedType"];
+      /** Text */
+      text: string;
+      /** Detail */
+      detail: string;
+      /** Waited Days */
+      waited_days: number | null;
+      /** Issue Key */
+      issue_key: string | null;
+      /** Escalated To */
+      escalated_to: string | null;
+      /** Escalation Label */
+      escalation_label: string | null;
+      /** Needed Most */
+      needed_most: boolean;
+      /** Open Question */
+      open_question: boolean;
+    };
     /**
      * ReportAudienceResponse
      * @description How many places of one kind a report goes to, and the people among them by name.
@@ -4813,6 +4833,45 @@ export interface components {
        * @description For people, the names of those who are members; anyone else is only counted.
        */
       names: string[];
+    };
+    /** ReportBypassResponse */
+    ReportBypassResponse: {
+      /** Key */
+      key: string;
+      stage: components["schemas"]["DeliveryStage"];
+      /** Gates */
+      gates: string[];
+    };
+    /**
+     * ReportDateFactsResponse
+     * @description The delivery date as the report states it; what it leaves unsaid is null.
+     */
+    ReportDateFactsResponse: {
+      verdict: components["schemas"]["Verdict"];
+      /** Target */
+      target: string | null;
+      /** Target Source */
+      target_source: string | null;
+      /** Committed By */
+      committed_by: string | null;
+      /** Times Moved */
+      times_moved: number;
+      /** Moved Days */
+      moved_days: number | null;
+      /** P50 */
+      p50: string | null;
+      /** P85 */
+      p85: string | null;
+      /** History Days */
+      history_days: number | null;
+      /** History Needed */
+      history_needed: number | null;
+      /** No Forecast Reason */
+      no_forecast_reason: string | null;
+      /** Team Latest */
+      team_latest: string | null;
+      /** Team Latest Key */
+      team_latest_key: string | null;
     };
     /** ReportDestinationDto */
     ReportDestinationDto: {
@@ -4834,12 +4893,77 @@ export interface components {
       /** Note */
       note: string;
     };
+    /**
+     * ReportFactsResponse
+     * @description The report as structured facts, for the console to draw.
+     *
+     *     Built from the same computation as the report's lines, and holding nothing
+     *     the sent text does not say. Never part of what is sent.
+     */
+    ReportFactsResponse: {
+      note: components["schemas"]["ReportNoteFactsResponse"] | null;
+      delivery: components["schemas"]["ReportDateFactsResponse"] | null;
+      progress: components["schemas"]["ReportProgressFactsResponse"];
+      /** Gates */
+      gates: components["schemas"]["ReportGateFactsResponse"][];
+      important: components["schemas"]["ReportImportantFactsResponse"];
+      /** Asks */
+      asks: components["schemas"]["ReportOwnerAsksResponse"][];
+    };
+    /**
+     * ReportGateFactsResponse
+     * @description One gate's requirements, each counted once: moved on without it, else by state.
+     */
+    ReportGateFactsResponse: {
+      /** Name */
+      name: string;
+      guards_stage: components["schemas"]["DeliveryStage"];
+      /** Total */
+      total: number;
+      /** Passed */
+      passed: number;
+      /** Bypassed */
+      bypassed: number;
+      /** Failed */
+      failed: number;
+      /** Open */
+      open: number;
+      /** Missing */
+      missing: number;
+    };
     /** ReportGroupResponse */
     ReportGroupResponse: {
       /** Heading */
       heading: string;
       /** Lines */
       lines: string[];
+    };
+    /** ReportImportantFactsResponse */
+    ReportImportantFactsResponse: {
+      /** Drawn */
+      drawn: string[];
+      /** Bypassed */
+      bypassed: components["schemas"]["ReportBypassResponse"][];
+      /** Risks */
+      risks: number;
+      /** Lines */
+      lines: string[];
+    };
+    /** ReportNoteFactsResponse */
+    ReportNoteFactsResponse: {
+      /** Author */
+      author: string;
+      /** Text */
+      text: string;
+    };
+    /** ReportOwnerAsksResponse */
+    ReportOwnerAsksResponse: {
+      /** Heading */
+      heading: string;
+      /** Named */
+      named: boolean;
+      /** Asks */
+      asks: components["schemas"]["ReportAskFactsResponse"][];
     };
     /**
      * ReportPreviewResponse
@@ -4866,6 +4990,26 @@ export interface components {
       console_path: string | null;
       /** Text */
       text: string;
+      facts?: components["schemas"]["ReportFactsResponse"] | null;
+    };
+    /** ReportProgressFactsResponse */
+    ReportProgressFactsResponse: {
+      /** Percent */
+      percent: number | null;
+      /** Since */
+      since: string | null;
+      /** Total */
+      total: number;
+      /** Stages */
+      stages: components["schemas"]["ReportStageCountResponse"][];
+      /** Moves */
+      moves: components["schemas"]["ReportStageMoveResponse"][];
+      /** More Moves */
+      more_moves: number;
+      /** Other Changes */
+      other_changes: string[];
+      /** Notes */
+      notes: string[];
     };
     /** ReportRunResponse */
     ReportRunResponse: {
@@ -4948,6 +5092,23 @@ export interface components {
       release_id: string;
       /** Name */
       name: string;
+    };
+    /** ReportStageCountResponse */
+    ReportStageCountResponse: {
+      stage: components["schemas"]["DeliveryStage"];
+      /** Count */
+      count: number;
+      /** Previous */
+      previous: number | null;
+    };
+    /** ReportStageMoveResponse */
+    ReportStageMoveResponse: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      from_stage: components["schemas"]["DeliveryStage"] | null;
+      to_stage: components["schemas"]["DeliveryStage"] | null;
     };
     /** ReportTableResponse */
     ReportTableResponse: {

@@ -125,6 +125,8 @@ class Ask:
     level: int = 1
     escalated_to: str | None = None
     escalation_label: str | None = None
+    #: A question asked on an issue, which the report also lists under Open questions.
+    open_question: bool = False
 
     def line(self) -> str:
         context = [
@@ -470,6 +472,7 @@ def open_question_asks(board: GateBoardView, scope: AskScope, day: date) -> list
                 waited_days=max(0, (day - question.asked_at.date()).days),
                 team=scope.team_of_member(question.asked_to) or scope.team_of_task(task_id),
                 issue_key=question.issue_key,
+                open_question=True,
             )
         )
     return asks

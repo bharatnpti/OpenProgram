@@ -22,6 +22,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from core.domain.errors import OpenProgramError
+from core.domain.report_facts import DayReportFacts
 from core.domain.rollup import Rag
 
 #: How long after its send time a scheduled report may still go out, so a
@@ -297,6 +298,9 @@ class DayReport:
     #: Lines a renderer may emphasise, such as items that need action.
     attention_count: int = 0
     footer: str = field(default="Sent by OpenProgram.")
+    #: The same report as structured facts, for the console to draw. No renderer
+    #: reads it: what is sent is the sections above, unchanged by it.
+    facts: DayReportFacts | None = None
 
 
 RAG_WORDS = {

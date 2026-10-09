@@ -16592,6 +16592,86 @@
         ],
         "title": "ReleaseResponse"
       },
+      "ReportAskFactsResponse": {
+        "properties": {
+          "need": {
+            "$ref": "#/components/schemas/NeedType"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "waited_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waited Days"
+          },
+          "issue_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue Key"
+          },
+          "escalated_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalated To"
+          },
+          "escalation_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalation Label"
+          },
+          "needed_most": {
+            "type": "boolean",
+            "title": "Needed Most"
+          },
+          "open_question": {
+            "type": "boolean",
+            "title": "Open Question"
+          }
+        },
+        "type": "object",
+        "required": [
+          "need",
+          "text",
+          "detail",
+          "waited_days",
+          "issue_key",
+          "escalated_to",
+          "escalation_label",
+          "needed_most",
+          "open_question"
+        ],
+        "title": "ReportAskFactsResponse"
+      },
       "ReportAudienceResponse": {
         "properties": {
           "kind": {
@@ -16614,6 +16694,181 @@
         "required": ["kind", "count", "names"],
         "title": "ReportAudienceResponse",
         "description": "How many places of one kind a report goes to, and the people among them by name."
+      },
+      "ReportBypassResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/DeliveryStage"
+          },
+          "gates": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Gates"
+          }
+        },
+        "type": "object",
+        "required": ["key", "stage", "gates"],
+        "title": "ReportBypassResponse"
+      },
+      "ReportDateFactsResponse": {
+        "properties": {
+          "verdict": {
+            "$ref": "#/components/schemas/Verdict"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "target_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Source"
+          },
+          "committed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed By"
+          },
+          "times_moved": {
+            "type": "integer",
+            "title": "Times Moved"
+          },
+          "moved_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moved Days"
+          },
+          "p50": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50"
+          },
+          "p85": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P85"
+          },
+          "history_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Days"
+          },
+          "history_needed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Needed"
+          },
+          "no_forecast_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Forecast Reason"
+          },
+          "team_latest": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Latest"
+          },
+          "team_latest_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Latest Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "verdict",
+          "target",
+          "target_source",
+          "committed_by",
+          "times_moved",
+          "moved_days",
+          "p50",
+          "p85",
+          "history_days",
+          "history_needed",
+          "no_forecast_reason",
+          "team_latest",
+          "team_latest_key"
+        ],
+        "title": "ReportDateFactsResponse",
+        "description": "The delivery date as the report states it; what it leaves unsaid is null."
       },
       "ReportDestinationDto": {
         "properties": {
@@ -16654,6 +16909,102 @@
         "required": ["kind", "label", "available", "note"],
         "title": "ReportDestinationOptionResponse"
       },
+      "ReportFactsResponse": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportNoteFactsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportDateFactsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ReportProgressFactsResponse"
+          },
+          "gates": {
+            "items": {
+              "$ref": "#/components/schemas/ReportGateFactsResponse"
+            },
+            "type": "array",
+            "title": "Gates"
+          },
+          "important": {
+            "$ref": "#/components/schemas/ReportImportantFactsResponse"
+          },
+          "asks": {
+            "items": {
+              "$ref": "#/components/schemas/ReportOwnerAsksResponse"
+            },
+            "type": "array",
+            "title": "Asks"
+          }
+        },
+        "type": "object",
+        "required": ["note", "delivery", "progress", "gates", "important", "asks"],
+        "title": "ReportFactsResponse",
+        "description": "The report as structured facts, for the console to draw.\n\nBuilt from the same computation as the report's lines, and holding nothing\nthe sent text does not say. Never part of what is sent."
+      },
+      "ReportGateFactsResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "guards_stage": {
+            "$ref": "#/components/schemas/DeliveryStage"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "passed": {
+            "type": "integer",
+            "title": "Passed"
+          },
+          "bypassed": {
+            "type": "integer",
+            "title": "Bypassed"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open"
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "guards_stage",
+          "total",
+          "passed",
+          "bypassed",
+          "failed",
+          "open",
+          "missing"
+        ],
+        "title": "ReportGateFactsResponse",
+        "description": "One gate's requirements, each counted once: moved on without it, else by state."
+      },
       "ReportGroupResponse": {
         "properties": {
           "heading": {
@@ -16671,6 +17022,75 @@
         "type": "object",
         "required": ["heading", "lines"],
         "title": "ReportGroupResponse"
+      },
+      "ReportImportantFactsResponse": {
+        "properties": {
+          "drawn": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Drawn"
+          },
+          "bypassed": {
+            "items": {
+              "$ref": "#/components/schemas/ReportBypassResponse"
+            },
+            "type": "array",
+            "title": "Bypassed"
+          },
+          "risks": {
+            "type": "integer",
+            "title": "Risks"
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": ["drawn", "bypassed", "risks", "lines"],
+        "title": "ReportImportantFactsResponse"
+      },
+      "ReportNoteFactsResponse": {
+        "properties": {
+          "author": {
+            "type": "string",
+            "title": "Author"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": ["author", "text"],
+        "title": "ReportNoteFactsResponse"
+      },
+      "ReportOwnerAsksResponse": {
+        "properties": {
+          "heading": {
+            "type": "string",
+            "title": "Heading"
+          },
+          "named": {
+            "type": "boolean",
+            "title": "Named"
+          },
+          "asks": {
+            "items": {
+              "$ref": "#/components/schemas/ReportAskFactsResponse"
+            },
+            "type": "array",
+            "title": "Asks"
+          }
+        },
+        "type": "object",
+        "required": ["heading", "named", "asks"],
+        "title": "ReportOwnerAsksResponse"
       },
       "ReportPreviewResponse": {
         "properties": {
@@ -16726,6 +17146,16 @@
           "text": {
             "type": "string",
             "title": "Text"
+          },
+          "facts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportFactsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -16742,6 +17172,81 @@
         ],
         "title": "ReportPreviewResponse",
         "description": "What the report would say if it were sent now. Nothing is sent or stored."
+      },
+      "ReportProgressFactsResponse": {
+        "properties": {
+          "percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/ReportStageCountResponse"
+            },
+            "type": "array",
+            "title": "Stages"
+          },
+          "moves": {
+            "items": {
+              "$ref": "#/components/schemas/ReportStageMoveResponse"
+            },
+            "type": "array",
+            "title": "Moves"
+          },
+          "more_moves": {
+            "type": "integer",
+            "title": "More Moves"
+          },
+          "other_changes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Other Changes"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "percent",
+          "since",
+          "total",
+          "stages",
+          "moves",
+          "more_moves",
+          "other_changes",
+          "notes"
+        ],
+        "title": "ReportProgressFactsResponse"
       },
       "ReportRunResponse": {
         "properties": {
@@ -16947,6 +17452,66 @@
         "type": "object",
         "required": ["release_id", "name"],
         "title": "ReportSetupReleaseResponse"
+      },
+      "ReportStageCountResponse": {
+        "properties": {
+          "stage": {
+            "$ref": "#/components/schemas/DeliveryStage"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          }
+        },
+        "type": "object",
+        "required": ["stage", "count", "previous"],
+        "title": "ReportStageCountResponse"
+      },
+      "ReportStageMoveResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "from_stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to_stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["key", "title", "from_stage", "to_stage"],
+        "title": "ReportStageMoveResponse"
       },
       "ReportTableResponse": {
         "properties": {

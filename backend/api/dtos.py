@@ -111,6 +111,15 @@ from core.domain.gates import (
 )
 from core.domain.graph import EdgeKind, EntityRef, GraphEdge, GraphNode, GraphTree, NodeKind
 from core.domain.identity import IdentityLink
+from core.domain.report_facts import (
+    AskFacts,
+    DateFacts,
+    DayReportFacts,
+    GateFacts,
+    ImportantFacts,
+    OwnerAsks,
+    ProgressFacts,
+)
 from core.domain.reports import (
     DayReport,
     DayReportDefinition,
@@ -3754,6 +3763,257 @@ class ReportSectionResponse(BaseModel):
         )
 
 
+class ReportNoteFactsResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    #: The writer's display name; empty when no member is named.
+    author: str
+    text: str
+
+
+class ReportDateFactsResponse(BaseModel):
+    """The delivery date as the report states it; what it leaves unsaid is null."""
+
+    model_config = ConfigDict(frozen=True)
+
+    verdict: Verdict
+    target: date | None
+    target_source: str | None
+    committed_by: str | None
+    times_moved: int
+    moved_days: int | None
+    p50: date | None
+    p85: date | None
+    history_days: int | None
+    history_needed: int | None
+    no_forecast_reason: str | None
+    team_latest: date | None
+    team_latest_key: str | None
+
+    @classmethod
+    def from_domain(cls, facts: DateFacts) -> ReportDateFactsResponse:
+        return cls(
+            verdict=facts.verdict,
+            target=facts.target,
+            target_source=facts.target_source,
+            committed_by=facts.committed_by,
+            times_moved=facts.times_moved,
+            moved_days=facts.moved_days,
+            p50=facts.p50,
+            p85=facts.p85,
+            history_days=facts.history_days,
+            history_needed=facts.history_needed,
+            no_forecast_reason=facts.no_forecast_reason,
+            team_latest=facts.team_latest,
+            team_latest_key=facts.team_latest_key,
+        )
+
+
+class ReportStageCountResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    stage: DeliveryStage
+    count: int
+    #: The previous snapshot day's count; null without one.
+    previous: int | None
+
+
+class ReportStageMoveResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    title: str
+    #: Null for a requirement new today.
+    from_stage: DeliveryStage | None
+    #: Null for one that left the scope.
+    to_stage: DeliveryStage | None
+
+
+class ReportProgressFactsResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    percent: float | None
+    since: date | None
+    total: int
+    stages: list[ReportStageCountResponse]
+    #: The moves the report lists, in its order; ``more_moves`` it only counts.
+    moves: list[ReportStageMoveResponse]
+    more_moves: int
+    #: The other "What changed" lines, in the report's words.
+    other_changes: list[str]
+    #: Lines under Progress the stage strip does not draw.
+    notes: list[str]
+
+    @classmethod
+    def from_domain(cls, facts: ProgressFacts) -> ReportProgressFactsResponse:
+        return cls(
+            percent=facts.percent,
+            since=facts.since,
+            total=facts.total,
+            stages=[
+                ReportStageCountResponse(stage=item.stage, count=item.count, previous=item.previous)
+                for item in facts.stages
+            ],
+            moves=[
+                ReportStageMoveResponse(
+                    key=move.key,
+                    title=move.title,
+                    from_stage=move.from_stage,
+                    to_stage=move.to_stage,
+                )
+                for move in facts.moves
+            ],
+            more_moves=facts.more_moves,
+            other_changes=list(facts.other_changes),
+            notes=list(facts.notes),
+        )
+
+
+class ReportGateFactsResponse(BaseModel):
+    """One gate's requirements, each counted once: moved on without it, else by state."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    guards_stage: DeliveryStage
+    total: int
+    passed: int
+    bypassed: int
+    failed: int
+    open: int
+    missing: int
+
+    @classmethod
+    def from_domain(cls, facts: GateFacts) -> ReportGateFactsResponse:
+        return cls(
+            name=facts.name,
+            guards_stage=facts.guards_stage,
+            total=facts.total,
+            passed=facts.passed,
+            bypassed=facts.bypassed,
+            failed=facts.failed,
+            open=facts.open,
+            missing=facts.missing,
+        )
+
+
+class ReportBypassResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    stage: DeliveryStage
+    gates: list[str]
+
+
+class ReportImportantFactsResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    #: What the delivery lines say that the date bar draws: committed, no_date,
+    #: jira, forecast, history or team.
+    drawn: list[str]
+    #: Every requirement that went around a gate.
+    bypassed: list[ReportBypassResponse]
+    #: Red risks the message lists, each also a fix under What we need.
+    risks: int
+    #: The lines no picture draws, in the report's words.
+    lines: list[str]
+
+    @classmethod
+    def from_domain(cls, facts: ImportantFacts) -> ReportImportantFactsResponse:
+        return cls(
+            drawn=list(facts.drawn),
+            bypassed=[
+                ReportBypassResponse(key=item.key, stage=item.stage, gates=list(item.gates))
+                for item in facts.bypassed
+            ],
+            risks=facts.risks,
+            lines=list(facts.lines),
+        )
+
+
+class ReportAskFactsResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    need: NeedType
+    text: str
+    detail: str
+    #: Null when OpenProgram cannot tell how long it waited.
+    waited_days: int | None
+    issue_key: str | None
+    escalated_to: str | None
+    escalation_label: str | None
+    needed_most: bool
+    #: A question the report also lists under Open questions.
+    open_question: bool
+
+    @classmethod
+    def from_domain(cls, facts: AskFacts) -> ReportAskFactsResponse:
+        return cls(
+            need=facts.need,
+            text=facts.text,
+            detail=facts.detail,
+            waited_days=facts.waited_days,
+            issue_key=facts.issue_key,
+            escalated_to=facts.escalated_to,
+            escalation_label=facts.escalation_label,
+            needed_most=facts.needed_most,
+            open_question=facts.open_question,
+        )
+
+
+class ReportOwnerAsksResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    heading: str
+    #: False for the asks nobody is named for yet.
+    named: bool
+    asks: list[ReportAskFactsResponse]
+
+    @classmethod
+    def from_domain(cls, facts: OwnerAsks) -> ReportOwnerAsksResponse:
+        return cls(
+            heading=facts.heading,
+            named=facts.named,
+            asks=[ReportAskFactsResponse.from_domain(ask) for ask in facts.asks],
+        )
+
+
+class ReportFactsResponse(BaseModel):
+    """The report as structured facts, for the console to draw.
+
+    Built from the same computation as the report's lines, and holding nothing
+    the sent text does not say. Never part of what is sent.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    note: ReportNoteFactsResponse | None
+    delivery: ReportDateFactsResponse | None
+    progress: ReportProgressFactsResponse
+    gates: list[ReportGateFactsResponse]
+    important: ReportImportantFactsResponse
+    asks: list[ReportOwnerAsksResponse]
+
+    @classmethod
+    def from_domain(cls, facts: DayReportFacts) -> ReportFactsResponse:
+        return cls(
+            note=(
+                ReportNoteFactsResponse(author=facts.note.author, text=facts.note.text)
+                if facts.note is not None
+                else None
+            ),
+            delivery=(
+                ReportDateFactsResponse.from_domain(facts.delivery)
+                if facts.delivery is not None
+                else None
+            ),
+            progress=ReportProgressFactsResponse.from_domain(facts.progress),
+            gates=[ReportGateFactsResponse.from_domain(gate) for gate in facts.gates],
+            important=ReportImportantFactsResponse.from_domain(facts.important),
+            asks=[ReportOwnerAsksResponse.from_domain(owner) for owner in facts.asks],
+        )
+
+
 class ReportPreviewResponse(BaseModel):
     """What the report would say if it were sent now. Nothing is sent or stored."""
 
@@ -3770,7 +4030,11 @@ class ReportPreviewResponse(BaseModel):
     #: (``/reports/<project>/daily?report=<id>``), for the console to link in place.
     #: The absolute address a sent message carries is in ``text``, never read from here.
     console_path: str | None
+    #: Exactly what Send now and the schedule send as plain text.
     text: str
+    #: The same report as structured facts, for the console's pictures. Optional:
+    #: added after ``text``, which it never changes.
+    facts: ReportFactsResponse | None = None
 
     @classmethod
     def from_preview(cls, report: DayReport, text: str) -> ReportPreviewResponse:
@@ -3784,6 +4048,9 @@ class ReportPreviewResponse(BaseModel):
             sections=[ReportSectionResponse.from_domain(section) for section in report.sections],
             console_path=report.console_path,
             text=text,
+            facts=(
+                ReportFactsResponse.from_domain(report.facts) if report.facts is not None else None
+            ),
         )
 
 
