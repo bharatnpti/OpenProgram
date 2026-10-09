@@ -434,10 +434,12 @@ test("who acts: one line for the escalations, a lane per person, bars against on
     view.escalated,
     "4 escalated: 3 to Ira Novak (Scrum master), 1 to Asha Rao (Manager)",
   );
+  // Numbers only on the track, the unit once beside it: "4" and "6 days" crowded.
   assert.deepEqual(
     view.scale.ticks.map((tick) => tick.label),
-    ["0", "2", "4", "6 days"],
+    ["0", "2", "4", "6"],
   );
+  assert.equal(view.scale.unit, "days");
   assert.deepEqual(
     view.lanes.map((lane) => lane.heading),
     ["Liam Chen", "Zoe Almeida", "Asha Rao", "Mina Patel", "Nobody named yet"],
@@ -460,12 +462,18 @@ test("who acts: one line for the escalations, a lane per person, bars against on
   assert.deepEqual(view.kinds, ["fix", "review", "answer"]);
 });
 
-test("a long wait puts a short unit on the scale's last step", () => {
+test("a long wait keeps plain numbers on the scale, at even steps", () => {
   const view = whoActs([{ ...asks[0], asks: [{ ...asks[0].asks[0], waited_days: 29 }] }]);
   assert.deepEqual(
-    view.scale.ticks.map((tick) => tick.label),
-    ["0", "10", "20", "30 d"],
+    view.scale.ticks.map((tick) => [tick.label, Math.round(tick.at)]),
+    [
+      ["0", 0],
+      ["10", 33],
+      ["20", 67],
+      ["30", 100],
+    ],
   );
+  assert.equal(view.scale.unit, "days");
 });
 
 test("a date bar with nothing to say under it is shorter, as on a tenant new to forecasts", () => {

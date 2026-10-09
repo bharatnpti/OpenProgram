@@ -747,7 +747,8 @@ export type WhoActsView = {
   lanes: LaneView[];
   /** "6 escalated: 5 to Ira Novak (Scrum master), 1 to Asha Rao (Manager)". */
   escalated: string | null;
-  scale: { ticks: { at: number; label: string }[] };
+  /** Plain numbers on the bars' track; the unit sits once, in the day-count column. */
+  scale: { ticks: { at: number; label: string }[]; unit: string };
   kinds: NeedType[];
   anyEscalated: boolean;
 };
@@ -766,9 +767,6 @@ export function dayScale(longest: number): { max: number; ticks: number[] } {
 
 // The legend's order, as the mockup reads it.
 const NEED_ORDER: NeedType[] = ["fix", "review", "answer", "decision"];
-
-/** The scale's last label: "6 days", or "30 d" where two digits leave no room for the word. */
-const lastTick = (at: number) => (at >= 10 ? `${at} d` : `${at} ${at === 1 ? "day" : "days"}`);
 
 /** D3: the asks by person, in the report's order, each with its kind, wait and escalation. */
 export function whoActs(owners: OwnerAsks[]): WhoActsView {
@@ -799,10 +797,8 @@ export function whoActs(owners: OwnerAsks[]): WhoActsView {
         : `${total} escalated: ${ordered.map((item) => `${item.count} to ${item.who}`).join(", ")}`
       : null,
     scale: {
-      ticks: scale.ticks.map((at, index) => ({
-        at: (at / scale.max) * 100,
-        label: index === scale.ticks.length - 1 ? lastTick(at) : String(at),
-      })),
+      ticks: scale.ticks.map((at) => ({ at: (at / scale.max) * 100, label: String(at) })),
+      unit: "days",
     },
     kinds: NEED_ORDER.filter((need) => asks.some((ask) => ask.need === need)),
     anyEscalated: total > 0,

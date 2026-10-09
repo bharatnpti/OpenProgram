@@ -331,7 +331,13 @@
   padding-block: 10px;
   border-top: 1px solid var(--op-day-grid);
 }
+/* The scale row: on a phone only the bars' scale, at the track's width, above the
+   lanes; from 600 px the Who and Asked headings beside it too. */
 .dv-lane-scale {
+  padding-block: 0 4px;
+  border-top: 0;
+}
+.dv-scale-head {
   display: none;
 }
 .dv-ask {
@@ -369,6 +375,12 @@
 .dv-scale span:last-child {
   transform: translateX(-100%);
 }
+.dv-scale-unit {
+  font-size: 11px;
+  line-height: 16px;
+  text-align: right;
+  color: var(--op-day-muted);
+}
 @container dv-report (min-width: 600px) {
   .dv-lane {
     grid-template-columns: 136px minmax(0, 1fr);
@@ -376,9 +388,10 @@
     align-items: start;
   }
   .dv-lane-scale {
-    display: grid;
     padding-block: 0 6px;
-    border-top: 0;
+  }
+  .dv-scale-head {
+    display: inline;
   }
   .dv-ask,
   .dv-scale-row {

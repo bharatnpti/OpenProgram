@@ -24,12 +24,14 @@ export function WhoActs({ owners, emptyText }: { owners: OwnerAsks[]; emptyText:
           <span className="min-w-0">{view.escalated}</span>
         </p>
       ) : null}
+      {/* The bars' scale: numbers on the track, the unit once over the day counts. On a
+          phone only the scale shows, above the lanes, at the bars' own width. */}
       <div className="dv-lane dv-lane-scale" aria-hidden>
-        <span className="text-[11px] font-bold uppercase tracking-wider text-(--op-day-secondary)">
+        <span className="dv-scale-head text-[11px] font-bold uppercase tracking-wider text-(--op-day-secondary)">
           Who
         </span>
         <div className="dv-scale-row">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-(--op-day-secondary)">
+          <span className="dv-scale-head text-[11px] font-bold uppercase tracking-wider text-(--op-day-secondary)">
             Asked
           </span>
           <div className="dv-wait">
@@ -40,7 +42,7 @@ export function WhoActs({ owners, emptyText }: { owners: OwnerAsks[]; emptyText:
                 </span>
               ))}
             </div>
-            <span />
+            <span className="dv-scale-unit">{view.scale.unit}</span>
             <span />
           </div>
         </div>
