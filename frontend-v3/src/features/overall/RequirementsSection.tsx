@@ -1,23 +1,28 @@
 import type { DeliveryStage, RequirementsResponse } from "../../api/schema";
 import { useViewingDate } from "../../app/viewingDate";
 import { PanelState, SectionHeader, TableBox, td, th } from "../../components/PanelState";
-import { Card } from "../../components/ui/Card";
-import { formatDay, signedChange } from "../../lib/format";
-import { STAGE_LABELS, STAGE_ORDER, stageColor } from "../../lib/status";
-import { stageStack } from "./charts";
+import { STAGE_LABELS, STAGE_ORDER, stageColor } from "../../components/viz/stages";
+import { formatDay } from "../../lib/format";
 import {
-  historyStart,
-  inStageSinceWords,
-  noRequirementsWords,
-  noSnapshotsWords,
-  releaseName,
-  timelineTitle,
-} from "./overallWords";
+  flowDrawable,
+  flowFinding,
+  flowGeometry,
+  flowSpoken,
+  shortHistoryNote,
+  splitFinding,
+} from "./flow";
+import { historyStart, inStageSinceWords, noRequirementsWords, releaseName } from "./overallWords";
 import { REQUIREMENT_DAYS, useRequirements } from "./queries";
+import { Fold, Legend, Swatch, VizCard } from "./viz";
+import { SVG_TEXT } from "./vizStyles";
 
 /**
- * How many requirements sit in each delivery stage, how that changed, and each
- * one's place, for the whole project or one release.
+ * O3, "Requirements by stage": where work piles up. A cumulative flow of each
+ * stage over the daily snapshots, with today's counts at its right edge; under
+ * ten working days of history, one bar of today's split with the six counts
+ * beside it. It replaces the six stage cards, the 30-day stacked bars and the
+ * "Moved since" list (since yesterday is Daily's). Every requirement, with its
+ * stage and how long it has been there, folds behind "Show all".
  */
 export function RequirementsSection({
   projectId,
@@ -31,8 +36,13 @@ export function RequirementsSection({
   const data = query.data;
 
   return (
-    <section>
+    <section
+      aria-labelledby="o3-h"
+      // Drawn as it nears the viewport: a month of bands is the page's heaviest SVG.
+      className="[contain-intrinsic-size:auto_520px] [content-visibility:auto]"
+    >
       <SectionHeader
+        id="o3-h"
         title={
           data?.release_name
             ? `Requirements by stage: ${releaseName(data.release_name)}`
@@ -40,9 +50,7 @@ export function RequirementsSection({
         }
         meta={
           data
-            ? `${data.total} requirements · ${data.live ? "read live today" : `as of ${formatDay(data.as_of)}`}${
-                data.previous_day ? ` · change since ${formatDay(data.previous_day)}` : ""
-              }`
+            ? `${data.total} requirements · ${data.live ? "read live today" : `as of ${formatDay(data.as_of)}`}`
             : undefined
         }
       />
@@ -54,24 +62,18 @@ export function RequirementsSection({
         emptyText={noRequirementsWords(asOf ? label : null)}
       >
         {data ? (
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-            <StageCards data={data} />
-            <Card padding="p-5">
-              <h3 className="text-[15px] font-extrabold">{timelineTitle(data.timeline.length)}</h3>
-              <p className="mb-3 text-[12px] text-grey-secondary">
-                One bar per day, from the daily snapshot
-              </p>
-              <StageTimeline data={data} />
-            </Card>
-            {data.moves.length > 0 ? <Moves data={data} /> : null}
-            <RequirementTable data={data} />
+          <VizCard>
+            {flowDrawable(data.timeline) ? <Flow data={data} /> : <Split data={data} />}
+            <Fold summary={`Show all ${data.total} requirements`}>
+              <RequirementTable data={data} />
+            </Fold>
             {data.unmapped_statuses.length > 0 ? (
               <p className="text-[12px] text-grey-secondary">
                 Not placed in a stage, counted by their broad state:{" "}
                 {data.unmapped_statuses.join(", ")}.
               </p>
             ) : null}
-          </div>
+          </VizCard>
         ) : null}
       </PanelState>
     </section>
@@ -82,153 +84,198 @@ function labelFor(data: RequirementsResponse, stage: DeliveryStage): string {
   return data.stages.find((s) => s.stage === stage)?.label ?? STAGE_LABELS[stage];
 }
 
-function StageCards({ data }: { data: RequirementsResponse }) {
+function countOf(data: RequirementsResponse, stage: DeliveryStage): number {
+  return data.stages.find((s) => s.stage === stage)?.count ?? 0;
+}
+
+/** Under ten working days: one bar of today's split, nothing coloured that history can't back. */
+function Split({ data }: { data: RequirementsResponse }) {
+  const label = (stage: DeliveryStage) => labelFor(data, stage);
+  const counts = Object.fromEntries(STAGE_ORDER.map((stage) => [stage, countOf(data, stage)]));
+  const shown = STAGE_ORDER.filter((stage) => countOf(data, stage) > 0);
   return (
-    <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-      {STAGE_ORDER.map((stage) => {
-        const row = data.stages.find((s) => s.stage === stage);
-        const change = row?.change ?? null;
-        return (
-          <li
-            key={stage}
-            className="rounded-2xl border-t-4 bg-grey-header p-3"
-            style={{ borderTopColor: stageColor(stage) }}
+    <div className="grid gap-2.5">
+      <p className="text-[15px] font-extrabold">{splitFinding(counts, label)}</p>
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-x-6 gap-y-3 xl:grid-cols-[minmax(0,620px)_minmax(0,1fr)] xl:items-start">
+        <div>
+          <div
+            className="flex h-[22px] max-w-[520px] gap-0.5 overflow-hidden rounded-md"
+            role="img"
+            aria-label={`Today's split of ${data.total} requirements: ${shown.map((stage) => `${label(stage)} ${countOf(data, stage)}`).join(", ")}`}
           >
-            <p className="text-[11px] font-bold uppercase tracking-wide text-grey-secondary">
-              {labelFor(data, stage)}
-            </p>
-            <p className="mt-1 text-[24px] font-extrabold tabular-nums">
-              {row?.count ?? 0}
-              {change !== null ? (
-                <span
-                  className={`ml-1.5 text-[12px] font-bold ${change > 0 ? "text-rag-green" : "text-grey-secondary"}`}
-                >
-                  {signedChange(change)}
-                </span>
-              ) : null}
-            </p>
-            {data.has_points && row ? (
-              <p className="text-[11px] text-grey-secondary">{row.points} points</p>
-            ) : null}
-          </li>
-        );
-      })}
+            {shown.map((stage) => (
+              <span
+                key={stage}
+                className="block h-full"
+                style={{ flex: countOf(data, stage), background: stageColor(stage) }}
+              />
+            ))}
+          </div>
+          <p className="mt-2 text-[12.5px] text-grey-secondary">
+            {shortHistoryNote(data.timeline)}
+          </p>
+        </div>
+        <StageCounts data={data} />
+      </div>
+    </div>
+  );
+}
+
+/** The six stages and today's count of each: what the stage cards said. */
+function StageCounts({ data }: { data: RequirementsResponse }) {
+  return (
+    <ul
+      className="m-0 grid list-none grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-x-3.5 gap-y-1.5 p-0 text-[13px] text-grey-body"
+      aria-label="Requirements per stage today"
+    >
+      {STAGE_ORDER.map((stage) => (
+        <li key={stage} className="flex items-center gap-2">
+          <Swatch style={{ background: stageColor(stage) }} />
+          {labelFor(data, stage)}
+          <b className="ml-auto tabular-nums text-ink">{countOf(data, stage)}</b>
+        </li>
+      ))}
     </ul>
   );
 }
 
-function StageTimeline({ data }: { data: RequirementsResponse }) {
-  const { asOf, label } = useViewingDate();
-  const width = 1000;
-  const height = 220;
-  const { bars, yTicks } = stageStack(data.timeline, STAGE_ORDER, {
-    width,
-    height,
-    left: 30,
-    right: 8,
-    top: 10,
-    bottom: 24,
-  });
-  if (bars.length === 0) {
-    return (
-      <p className="text-[13px] text-grey-secondary">
-        {asOf ? noSnapshotsWords(label) : "No daily snapshots yet."}
-      </p>
-    );
-  }
-  // One day is a single block, not a timeline: say what it holds instead.
-  if (bars.length === 1) {
-    return (
-      <p className="rounded-2xl bg-grey-fill px-4 py-3 text-[13px] text-grey-body">
-        Only one daily snapshot so far ({formatDay(bars[0].day)}); the counts are in the cards
-        above. The bars draw from the second day.
-      </p>
-    );
-  }
-  const first = bars[0];
-  const last = bars[bars.length - 1];
-
+function Flow({ data }: { data: RequirementsResponse }) {
+  const label = (stage: DeliveryStage) => labelFor(data, stage);
+  const g = flowGeometry(data.timeline, label);
+  const { width, height, left, plotRight, top, bottom } = g.size;
   return (
-    <figure className="m-0">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="block h-auto w-full max-w-full"
-        role="img"
-        aria-label={`Requirements in each delivery stage, one bar per day from ${formatDay(first.day)} to ${formatDay(last.day)}.`}
-      >
-        {yTicks.map((tick) => (
-          <g key={tick.value}>
-            <line x1={30} x2={width - 8} y1={tick.y} y2={tick.y} stroke="var(--op-grey-border)" />
-            <text
-              x={25}
-              y={tick.y + 4}
-              textAnchor="end"
-              fontSize="11"
-              fill="var(--op-grey-secondary)"
-            >
-              {tick.value}
-            </text>
-          </g>
-        ))}
-        {bars.map((bar) => (
-          <g key={bar.day}>
-            {bar.segments.map((segment) => (
-              <rect
-                key={segment.stage}
-                x={bar.x}
-                y={segment.y}
-                width={bar.width}
-                height={segment.height}
-                fill={stageColor(segment.stage)}
-              >
-                <title>{`${formatDay(bar.day)} · ${labelFor(data, segment.stage)}: ${segment.count}`}</title>
-              </rect>
-            ))}
-          </g>
-        ))}
-        <text x={first.x} y={height - 6} fontSize="11" fill="var(--op-grey-secondary)">
-          {formatDay(first.day)}
-        </text>
-        <text
-          x={last.x + last.width}
-          y={height - 6}
-          textAnchor="end"
-          fontSize="11"
-          fill="var(--op-grey-secondary)"
+    <div className="grid gap-2.5">
+      <p className="text-[15px] font-extrabold">{flowFinding(data.timeline, label).text}</p>
+      <figure className="m-0 min-w-0 max-w-[620px]">
+        <div
+          className="overflow-x-auto rounded-lg"
+          tabIndex={0}
+          role="region"
+          aria-label="Cumulative flow, scrolls sideways"
         >
-          {formatDay(last.day)}
-        </text>
-      </svg>
-      <figcaption className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-grey-body">
-        {STAGE_ORDER.map((stage) => (
-          <span key={stage} className="inline-flex items-center gap-1.5">
-            <span
-              className="inline-block h-2.5 w-2.5 rounded-sm"
-              style={{ background: stageColor(stage) }}
-            />
-            {labelFor(data, stage)}
-          </span>
-        ))}
-      </figcaption>
-    </figure>
-  );
-}
-
-function Moves({ data }: { data: RequirementsResponse }) {
-  return (
-    <div>
-      <h3 className="mb-2 text-[15px] font-extrabold">
-        Moved since {data.previous_day ? formatDay(data.previous_day) : "the last snapshot"}
-      </h3>
-      <ul className="grid grid-cols-[minmax(0,1fr)] gap-1 text-[14px] text-grey-body">
-        {data.moves.map((move) => (
-          <li key={move.key}>
-            <span className="font-bold text-ink">{move.key}</span> {move.title}:{" "}
-            {move.from_stage ? labelFor(data, move.from_stage) : "new in scope"} →{" "}
-            {move.to_stage ? labelFor(data, move.to_stage) : "out of scope"}
-          </li>
-        ))}
-      </ul>
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            className="block h-auto w-full min-w-[480px] overflow-visible"
+            role="img"
+            aria-label={flowSpoken(data.timeline, label)}
+          >
+            {g.yTicks.map((tick) => (
+              <g key={tick.value}>
+                <line
+                  x1={left}
+                  x2={plotRight}
+                  y1={tick.y}
+                  y2={tick.y}
+                  stroke={tick.value === 0 ? "var(--op-viz-axis)" : "var(--op-viz-grid)"}
+                />
+                <text x={left - 8} y={tick.y + 4} textAnchor="end" style={SVG_TEXT.muted}>
+                  {tick.value}
+                </text>
+              </g>
+            ))}
+            {g.xLabels.map((tick) => (
+              <text
+                key={tick.label}
+                x={tick.x}
+                y={bottom + 18}
+                textAnchor={tick.anchor}
+                style={SVG_TEXT.muted}
+              >
+                {tick.label}
+              </text>
+            ))}
+            <text
+              x={plotRight}
+              y={bottom + 18}
+              textAnchor="end"
+              style={{ ...SVG_TEXT.muted, fontWeight: 700 }}
+            >
+              Today
+            </text>
+            {g.bands.map((band) => (
+              <polygon key={band.stage} points={band.points} fill={stageColor(band.stage)}>
+                <title>{band.title}</title>
+              </polygon>
+            ))}
+            {g.edges.map((points) => (
+              <polyline
+                key={points.slice(-40)}
+                points={points}
+                fill="none"
+                stroke="var(--op-viz-surface)"
+                strokeWidth={1.5}
+                strokeLinejoin="round"
+              />
+            ))}
+            {g.callout ? (
+              <g>
+                <line
+                  x1={left + 120}
+                  y1={top + 25}
+                  x2={g.callout.x}
+                  y2={g.callout.y - 5}
+                  stroke="var(--op-black)"
+                  strokeWidth={1.25}
+                />
+                <rect
+                  x={left + 8}
+                  y={top + 1}
+                  width={g.callout.text.length * 6.6 + 20}
+                  height={24}
+                  rx={8}
+                  fill="var(--op-viz-surface)"
+                  stroke="var(--op-grey-border)"
+                />
+                <text x={left + 18} y={top + 17} style={SVG_TEXT.ink}>
+                  {g.callout.text}
+                </text>
+                <circle
+                  cx={g.callout.x}
+                  cy={g.callout.y}
+                  r={4}
+                  fill="var(--op-black)"
+                  stroke="var(--op-viz-surface)"
+                  strokeWidth={2}
+                />
+              </g>
+            ) : null}
+            {g.labels.map((item) => (
+              <g key={item.stage}>
+                <rect
+                  x={plotRight + 12}
+                  y={item.y - 9}
+                  width={10}
+                  height={10}
+                  rx={2}
+                  fill={stageColor(item.stage)}
+                />
+                <text x={plotRight + 28} y={item.y} style={SVG_TEXT.ink}>
+                  {item.text}
+                </text>
+                {item.was ? (
+                  <text x={plotRight + 28} y={item.y + 14} style={SVG_TEXT.amber}>
+                    {item.was}
+                  </text>
+                ) : null}
+              </g>
+            ))}
+          </svg>
+        </div>
+        <div className="mt-2.5">
+          <Legend>
+            {STAGE_ORDER.map((stage) => (
+              <span key={stage}>
+                <Swatch style={{ background: stageColor(stage) }} />
+                {labelFor(data, stage)}
+              </span>
+            ))}
+          </Legend>
+        </div>
+        <p className="mt-2 text-[12.5px] text-grey-secondary">
+          A band that widens means work arrives faster than it leaves. Today&apos;s counts are at
+          the right edge.
+        </p>
+      </figure>
     </div>
   );
 }
@@ -237,20 +284,36 @@ function RequirementTable({ data }: { data: RequirementsResponse }) {
   const start = historyStart(data.timeline, REQUIREMENT_DAYS);
   const rows = [...data.requirements].sort(
     (a, b) =>
-      STAGE_ORDER.indexOf(b.stage) - STAGE_ORDER.indexOf(a.stage) || a.key.localeCompare(b.key),
+      STAGE_ORDER.indexOf(b.stage) - STAGE_ORDER.indexOf(a.stage) ||
+      a.key.localeCompare(b.key, undefined, { numeric: true }),
   );
   return (
     <>
       <TableBox>
-        <table className="w-full min-w-[520px] sm:min-w-[760px] border-collapse">
+        <table className="w-full min-w-[520px] border-collapse sm:min-w-[760px]">
+          <caption className="sr-only">All {data.total} requirements, furthest stage first</caption>
           <thead>
             <tr>
-              <th className={th}>Requirement</th>
-              <th className={th}>Stage</th>
-              <th className={th}>In stage since</th>
-              <th className={th}>Jira status</th>
-              <th className={th}>Assignee</th>
-              {data.has_points ? <th className={`${th} text-right`}>Points</th> : null}
+              <th scope="col" className={th}>
+                Requirement
+              </th>
+              <th scope="col" className={th}>
+                Stage
+              </th>
+              <th scope="col" className={th}>
+                In stage since
+              </th>
+              <th scope="col" className={th}>
+                Jira status
+              </th>
+              <th scope="col" className={th}>
+                Assignee
+              </th>
+              {data.has_points ? (
+                <th scope="col" className={`${th} text-right`}>
+                  Points
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -263,14 +326,8 @@ function RequirementTable({ data }: { data: RequirementsResponse }) {
                   </div>
                 </td>
                 <td className={`${td} whitespace-nowrap`}>
-                  <span
-                    className="inline-flex items-center gap-1.5 font-bold"
-                    style={{ color: stageColor(req.stage) }}
-                  >
-                    <span
-                      className="inline-block h-2 w-2 rounded-full"
-                      style={{ background: stageColor(req.stage) }}
-                    />
+                  <span className="inline-flex items-center gap-1.5 font-bold">
+                    <Swatch style={{ background: stageColor(req.stage) }} />
                     {labelFor(data, req.stage)}
                   </span>
                 </td>

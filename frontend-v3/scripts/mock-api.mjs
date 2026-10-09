@@ -27,6 +27,7 @@ import * as redesignMock from "./mock/redesign.mjs";
 import * as assistantMock from "./mock/assistant.mjs";
 import * as datesMock from "./mock/dates.mjs";
 import * as vizDaily from "./mock/viz-daily.mjs";
+import * as vizOverall from "./mock/viz-overall.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
@@ -246,6 +247,7 @@ function api(req, res, url) {
   const userId = req.headers["x-openprogram-dev-user"] ?? "U1001";
   // The shell mock goes first: of the reads the lane mocks share, it answers
   // only past-day ones (as_of), which the today mock would answer as today.
+  if (vizOverall.api(req, url, roles, userId, send, deny)) return;
   if (shellMock.api(req, url, roles, userId, send, deny)) return;
   if (datesMock.api(req, url, roles, userId, send, deny)) return;
   if (assistantMock.api(req, url, roles, userId, send, deny)) return;

@@ -10,12 +10,6 @@ export function releaseName(name: string): string {
   return /^release\b/i.test(name.trim()) ? name.trim() : `Release ${name.trim()}`;
 }
 
-/** "Last day", "Last 30 days": the timeline card's title for its snapshot count. */
-export function timelineTitle(days: number): string {
-  if (days <= 0) return "Daily snapshots";
-  return days === 1 ? "Last day" : `Last ${days} days`;
-}
-
 /**
  * What the server would refuse about a delivery date, said first by the form.
  * Mirrors core/domain/forecast.py: a date more than a year back is not a plan.
@@ -161,17 +155,6 @@ export function verdictCause(
   return null;
 }
 
-const UNDATED_REASON = /^\d+ open requirements? (?:has|have) no ETA or due date\.?$/;
-
-/**
- * The server's reasons without the one a verdict's cause already says, so a
- * card reads "At risk because 6 open requirements have no ETA or due date" once.
- */
-export function reasonsAfterCause(reasons: string[], cause: VerdictCause | null): string[] {
-  if (!cause?.saysUndated) return reasons;
-  return reasons.filter((reason) => !UNDATED_REASON.test(reason.trim()));
-}
-
 /** "Mon 6 Oct 2026 · 20 Nov 2026 · Ira Novak · why": one change of a delivery date, in a line. */
 export function dateChangeLine(change: {
   target_date: string | null;
@@ -193,13 +176,6 @@ export function noRequirementsWords(dayLabel: string | null): string {
   return dayLabel
     ? `No requirements were recorded for this project on ${dayLabel}. The history starts on the day its first daily snapshot was kept.`
     : "No requirements are counted for this project yet. An admin places Jira statuses in stages on the console's Admin → Delivery stages tab.";
-}
-
-/** Why a chart of daily snapshots is empty, for today or for a past day. */
-export function noSnapshotsWords(dayLabel: string | null): string {
-  return dayLabel
-    ? `No daily snapshot goes back to ${dayLabel}. The history starts on a later day.`
-    : "No daily snapshots yet. The burn-down starts once the first one is kept.";
 }
 
 /** A scope with no requirements counted has no verdict worth showing. */

@@ -9,12 +9,9 @@ import {
   inStageSinceWords,
   isPastDay,
   noRequirementsWords,
-  noSnapshotsWords,
   podLaterThanProject,
-  reasonsAfterCause,
   releaseName,
   teamDatesLine,
-  timelineTitle,
   undatedWords,
   verdictCause,
 } from "./overallWords.ts";
@@ -23,12 +20,6 @@ test("a release is named once, whether or not its name says release", () => {
   assert.equal(releaseName("Checkout 1.0"), "Release Checkout 1.0");
   assert.equal(releaseName("Release 1.1"), "Release 1.1");
   assert.equal(releaseName("release-2026.4"), "release-2026.4");
-});
-
-test("the timeline title reads 'Last day' for one snapshot, never 'Last 1 days'", () => {
-  assert.equal(timelineTitle(1), "Last day");
-  assert.equal(timelineTitle(30), "Last 30 days");
-  assert.equal(timelineTitle(0), "Daily snapshots");
 });
 
 test("a delivery date needs a day, and not one more than a year back", () => {
@@ -88,8 +79,6 @@ test("an empty requirements panel blames set-up only today, and says history on 
   const past = noRequirementsWords("Mon 5 Oct");
   assert.match(past, /on Mon 5 Oct/);
   assert.doesNotMatch(past, /Admin/);
-  assert.match(noSnapshotsWords(null), /No daily snapshots yet/);
-  assert.match(noSnapshotsWords("Mon 5 Oct"), /goes back to Mon 5 Oct/);
 });
 
 test("a requirement that has not moved since the history began is not given a false 'since'", () => {
@@ -228,28 +217,6 @@ test("the cause says whether it already counted the requirements with no date", 
   assert.equal(
     verdictCause(scope({ verdict: "off_track", team: { latest: "2027-01-08" } }))?.saysUndated,
     false,
-  );
-});
-
-test("the server's own undated line is not said twice beside the cause", () => {
-  const reasons = [
-    "Committed for Tue 15 Dec 2026 by Mina Patel.",
-    "Only 1 working day of history; a forecast needs 10.",
-    "Team dates: the latest open requirement is due Fri 9 Oct 2026 (CHK-4).",
-    "6 open requirements have no ETA or due date.",
-  ];
-  const cause = verdictCause(scope({ verdict: "at_risk" }));
-  assert.deepEqual(reasonsAfterCause(reasons, cause), reasons.slice(0, 3));
-  // Without such a cause nothing is taken out.
-  assert.deepEqual(reasonsAfterCause(reasons, null), reasons);
-  assert.deepEqual(
-    reasonsAfterCause(
-      reasons,
-      verdictCause(
-        scope({ verdict: "off_track", history: { p50: "2026-12-30", p85: "2027-01-20" } }),
-      ),
-    ),
-    reasons,
   );
 });
 

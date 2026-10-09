@@ -1,6 +1,6 @@
-// Only type imports here: node --test strips types but cannot resolve
-// extensionless runtime imports.
-import type { DeliveryStage, Rag, Verdict } from "../api/schema";
+// Only type imports, and runtime imports by their .ts path: node --test strips
+// types but cannot resolve extensionless runtime imports.
+import type { Rag, Verdict } from "../api/schema";
 
 export type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
 
@@ -35,27 +35,6 @@ export function toneForVerdict(verdict: Verdict): BadgeTone {
   return "neutral";
 }
 
-/** The six delivery stages in the order a requirement moves through them. */
-export const STAGE_ORDER: DeliveryStage[] = [
-  "raised",
-  "groomed",
-  "in_development",
-  "in_testing",
-  "business_testing",
-  "production",
-];
-
-/** Fallback wording; the requirements response carries the tenant's own labels. */
-export const STAGE_LABELS: Record<DeliveryStage, string> = {
-  raised: "Raised",
-  groomed: "Groomed",
-  in_development: "In development",
-  in_testing: "In testing",
-  business_testing: "Business testing",
-  production: "Production",
-};
-
-/** CSS custom property for a stage's colour, defined in index.css. */
-export function stageColor(stage: DeliveryStage): string {
-  return `var(--op-stage-${stage.replace(/_/g, "-")})`;
-}
+// The stage order, labels and colours moved to components/viz/stages.ts, the one
+// source for every chart; this path stays for the screens that import it here.
+export { STAGE_LABELS, STAGE_ORDER, stageColor } from "../components/viz/stages.ts";

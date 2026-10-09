@@ -105,6 +105,87 @@
   --op-flow-jam: #e66767;
 }
 
+/* Report visuals (Reports › Overall): the slip chart, pod dates, cumulative flow
+   and gate heatmap. Light is the console's own palette; the extra steps are a
+   chart's grid and axis, and the red hatch a bypassed gate is drawn with (it also
+   says "Bypassed"). Text tokens meet 4.5:1 on their surfaces, strokes 3:1. */
+:root {
+  --op-viz-surface: #ffffff;
+  --op-viz-grid: #e7e7e7;
+  --op-viz-axis: #b6b6b6;
+  --op-viz-red-solid: #c20d00;
+  --op-viz-red-hatch: #ffc4bf;
+  --op-viz-on-red: #ffffff;
+}
+
+/* The same in dark, on the data-theme hook the flow view uses (the console has no
+   dark theme yet): the stage colours stepped for a dark surface, and inside the
+   Overall page (.op-viz) every grey, ink and RAG token remapped, so its cards,
+   chips and charts read as one dark view rather than dark charts on white cards. */
+:root[data-theme="dark"] {
+  --op-stage-raised: #8a8a8a;
+  --op-stage-groomed: #5a6cf0;
+  --op-stage-in-development: #e8338a;
+  --op-stage-in-testing: #d06a17;
+  --op-stage-business-testing: #9a6ad8;
+  --op-stage-production: #1f9d62;
+  --op-viz-surface: #1a1a19;
+  --op-viz-grid: #2c2c2a;
+  --op-viz-axis: #5c5b56;
+  --op-viz-red-solid: #c62f25;
+  --op-viz-red-hatch: #5a1f1a;
+}
+:root[data-theme="dark"] .op-viz {
+  color-scheme: dark;
+  margin: -16px;
+  padding: 16px;
+  border-radius: 28px;
+  background: #0d0d0d;
+  color: #ffffff;
+  --op-black: #ffffff;
+  --op-black-hover: #e3e2dc;
+  --op-grey-table-header: #141413;
+  --op-grey-fill: #262625;
+  --op-grey-hover: #2c2c2a;
+  --op-grey-border: #383835;
+  --op-grey-disabled: #5c5b56;
+  --op-grey-secondary: #c3c2b7;
+  --op-grey-body: #e3e2dc;
+  --op-green: #4cc38a;
+  --op-green-bg: #0e2f21;
+  --op-amber: #f0a060;
+  --op-amber-bg: #3d2312;
+  --op-amber-deep: #f0a060;
+  --op-red: #ff7b72;
+  --op-red-bg: #3f1512;
+  --op-unknown: #b0afa8;
+  --op-unknown-bg: #3a3a37;
+  --op-info: #8f9cff;
+  --op-info-bg: #1c2353;
+  /* The utilities read the theme's --color-* names, resolved at :root: point
+     them at the remapped tokens inside the page. */
+  --color-ink: var(--op-black);
+  --color-ink-hover: var(--op-black-hover);
+  --color-grey-header: var(--op-grey-table-header);
+  --color-grey-fill: var(--op-grey-fill);
+  --color-grey-hover: var(--op-grey-hover);
+  --color-grey-border: var(--op-grey-border);
+  --color-grey-disabled: var(--op-grey-disabled);
+  --color-grey-secondary: var(--op-grey-secondary);
+  --color-grey-body: var(--op-grey-body);
+  --color-rag-green: var(--op-green);
+  --color-rag-green-bg: var(--op-green-bg);
+  --color-rag-amber: var(--op-amber);
+  --color-rag-amber-bg: var(--op-amber-bg);
+  --color-rag-amber-deep: var(--op-amber-deep);
+  --color-rag-red: var(--op-red);
+  --color-rag-red-bg: var(--op-red-bg);
+  --color-rag-unknown: var(--op-unknown);
+  --color-rag-unknown-bg: var(--op-unknown-bg);
+  --color-rag-info: var(--op-info);
+  --color-rag-info-bg: var(--op-info-bg);
+}
+
 @theme {
   --color-magenta: var(--op-magenta);
   --color-magenta-hover: var(--op-magenta-hover);

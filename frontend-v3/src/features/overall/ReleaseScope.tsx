@@ -69,7 +69,7 @@ export function ReleaseScope({
       </label>
       <select
         id="release-scope"
-        className="h-10 max-w-full rounded-full border border-grey-border bg-white px-4 text-[14px] font-bold"
+        className="h-10 max-w-full rounded-full border border-grey-border bg-(--op-viz-surface) px-4 text-[14px] font-bold"
         value={selected ? releaseId : ""}
         disabled={query.isLoading}
         onChange={(event) => onChange(event.target.value)}
