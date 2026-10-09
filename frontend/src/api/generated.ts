@@ -2685,6 +2685,7 @@ export interface components {
       /**
        * Local Time
        * Format: time
+       * @description Never used to send: check-ins go out for everyone on the response's `send`.
        */
       local_time: string;
       /** Timezone */
@@ -2736,6 +2737,7 @@ export interface components {
       /**
        * Local Time
        * Format: time
+       * @description Stored for the member, and never used to send: check-ins go out for everyone on `send`.
        */
       local_time: string;
       /** Timezone */
@@ -2752,6 +2754,8 @@ export interface components {
        */
       inherited: components["schemas"]["CheckInPreferenceField"][];
       defaults: components["schemas"]["CheckinDefaultsResponse"];
+      /** @description When the bot asks: one tenant-wide send. The member's `weekdays` decide whether they are asked on a send day; their `timezone` decides which day a reply counts for, not when they are asked. */
+      send: components["schemas"]["CheckinSendResponse"];
     };
     /**
      * CheckinPreferenceUpdateRequest
@@ -2771,6 +2775,32 @@ export interface components {
       reply_wait_seconds?: number | null;
       /** Final Reply Wait Seconds */
       final_reply_wait_seconds?: number | null;
+    };
+    /**
+     * CheckinSendResponse
+     * @description When the bot asks: one send of the day's check-ins for the whole tenant.
+     */
+    CheckinSendResponse: {
+      /**
+       * Cron
+       * @description The tenant's check-in schedule as configured (OPENPROGRAM_CHECKIN_FANOUT_CRON). Every member is asked on it; nobody has a time of their own.
+       */
+      cron: string;
+      /**
+       * Timezone
+       * @description The zone the schedule is read in: always UTC.
+       */
+      timezone: string;
+      /**
+       * Local Time
+       * @description The clock time of the send in `timezone`, or null when the schedule names more than one time of day.
+       */
+      local_time: string | null;
+      /**
+       * Weekdays
+       * @description The days the bot sends, Monday 0, judged by the send's date in `timezone`; null when the schedule also depends on the day of the month or the month. A member is asked only on those of these days that are in their own `weekdays`.
+       */
+      weekdays: number[] | null;
     };
     /** CommitmentResponse */
     CommitmentResponse: {

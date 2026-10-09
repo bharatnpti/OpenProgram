@@ -142,6 +142,7 @@ from core.domain.status import (
     CheckInDefaults,
     CheckInPreference,
     CheckInPreferenceField,
+    CheckInSendSchedule,
     DeveloperStatus,
     EffectiveCheckInPreference,
     StatusSource,
@@ -2425,7 +2426,9 @@ class CheckinDefaultsResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    local_time: time
+    local_time: time = Field(
+        description="Never used to send: check-ins go out for everyone on the response's `send`.",
+    )
     timezone: str
     weekdays: list[int]
     reply_wait_seconds: int
@@ -2442,13 +2445,54 @@ class CheckinDefaultsResponse(BaseModel):
         )
 
 
+class CheckinSendResponse(BaseModel):
+    """When the bot asks: one send of the day's check-ins for the whole tenant."""
+
+    model_config = ConfigDict(frozen=True)
+
+    cron: str = Field(
+        description=(
+            "The tenant's check-in schedule as configured (OPENPROGRAM_CHECKIN_FANOUT_CRON). "
+            "Every member is asked on it; nobody has a time of their own."
+        ),
+    )
+    timezone: str = Field(description="The zone the schedule is read in: always UTC.")
+    local_time: time | None = Field(
+        description=(
+            "The clock time of the send in `timezone`, or null when the schedule names "
+            "more than one time of day."
+        ),
+    )
+    weekdays: list[int] | None = Field(
+        description=(
+            "The days the bot sends, Monday 0, judged by the send's date in `timezone`; "
+            "null when the schedule also depends on the day of the month or the month. "
+            "A member is asked only on those of these days that are in their own `weekdays`."
+        ),
+    )
+
+    @classmethod
+    def from_domain(cls, schedule: CheckInSendSchedule) -> CheckinSendResponse:
+        return cls(
+            cron=schedule.cron,
+            timezone=schedule.timezone,
+            local_time=schedule.local_time,
+            weekdays=list(schedule.weekdays) if schedule.weekdays is not None else None,
+        )
+
+
 class CheckinPreferenceResponse(BaseModel):
     """A member's check-in preference as it applies: their own values, else the team's."""
 
     model_config = ConfigDict(frozen=True)
 
     developer_id: str
-    local_time: time
+    local_time: time = Field(
+        description=(
+            "Stored for the member, and never used to send: check-ins go out for everyone "
+            "on `send`."
+        ),
+    )
     timezone: str | None
     weekdays: list[int]
     reply_wait_seconds: int
@@ -2460,9 +2504,18 @@ class CheckinPreferenceResponse(BaseModel):
         ),
     )
     defaults: CheckinDefaultsResponse
+    send: CheckinSendResponse = Field(
+        description=(
+            "When the bot asks: one tenant-wide send. The member's `weekdays` decide whether "
+            "they are asked on a send day; their `timezone` decides which day a reply counts "
+            "for, not when they are asked."
+        ),
+    )
 
     @classmethod
-    def from_domain(cls, preference: EffectiveCheckInPreference) -> CheckinPreferenceResponse:
+    def from_domain(
+        cls, preference: EffectiveCheckInPreference, send: CheckInSendSchedule
+    ) -> CheckinPreferenceResponse:
         return cls(
             developer_id=preference.developer_id,
             local_time=preference.local_time,
@@ -2472,6 +2525,7 @@ class CheckinPreferenceResponse(BaseModel):
             final_reply_wait_seconds=preference.final_reply_wait_seconds,
             inherited=list(preference.inherited),
             defaults=CheckinDefaultsResponse.from_domain(preference.defaults),
+            send=CheckinSendResponse.from_domain(send),
         )
 
 

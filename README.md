@@ -255,7 +255,7 @@ All settings are `OPENPROGRAM_`-prefixed pydantic-settings, documented in [.env.
 | `OPENPROGRAM_WORKFLOW_PROVIDER` | `dbos` or `temporal` |
 | `OPENPROGRAM_CHAT_PROVIDER` | `slack`, `mock_slack`, or `fake` |
 | `OPENPROGRAM_ISSUE_TRACKER_PROVIDER` / `VCS_PROVIDER` / `CALENDAR_PROVIDER` | `jira` / `github`\|`gitlab` / `google` |
-| `OPENPROGRAM_CHECKIN_FANOUT_CRON` | when daily check-ins go out — one schedule for the whole tenant; each member's check-in days are honoured, but a per-member check-in time is stored and not used |
+| `OPENPROGRAM_CHECKIN_FANOUT_CRON` | when daily check-ins go out — one schedule for the whole tenant, read in UTC (`30 9 * * 1-5`, 09:30 UTC Monday to Friday, by default); each member's check-in days are honoured, but a per-member check-in time is stored and not used. The check-in preference API returns it as `send`, and the console names it in UTC and on the viewer's clock |
 | `OPENPROGRAM_CONVERSATION_RETENTION_DAYS` | retention for raw chat conversation history |
 
 Jira write-back is **default-deny behind three independent gates**: a tenant flag (`jira_writeback_enabled`), the `WRITE_ISSUE_TRACKER` capability, and per-developer consent (`always_ask` / `auto_apply` / `never`). Only `writeback_service.py` may call the write path, and every applied change is audited and revertible.

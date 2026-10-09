@@ -1169,6 +1169,7 @@ def test_checkin_preference_routes_merge_and_validate(settings: Settings) -> Non
                 "tenant_default_timezone": "Asia/Kolkata",
                 "checkin_reply_wait_seconds": 60,
                 "checkin_final_reply_wait_seconds": 120,
+                "checkin_fanout_cron": "0 7 * * 1-4",
             }
         )
     )
@@ -1204,6 +1205,14 @@ def test_checkin_preference_routes_merge_and_validate(settings: Settings) -> Non
         "reply_wait_seconds": 60,
         "final_reply_wait_seconds": 120,
     }
+    # When the bot asks is the tenant's one schedule, read in UTC, whatever the
+    # member's or the team's zone.
+    send = {
+        "cron": "0 7 * * 1-4",
+        "timezone": "UTC",
+        "local_time": "07:00:00",
+        "weekdays": [0, 1, 2, 3],
+    }
     assert default_response.status_code == 200
     assert default_response.json() == {
         "developer_id": "dev-asha",
@@ -1216,6 +1225,7 @@ def test_checkin_preference_routes_merge_and_validate(settings: Settings) -> Non
             "final_reply_wait_seconds",
         ],
         "defaults": defaults,
+        "send": send,
     }
     assert updated_response.status_code == 200
     assert updated_response.json() == {
@@ -1227,6 +1237,7 @@ def test_checkin_preference_routes_merge_and_validate(settings: Settings) -> Non
         "final_reply_wait_seconds": 120,
         "inherited": ["local_time", "reply_wait_seconds", "final_reply_wait_seconds"],
         "defaults": defaults,
+        "send": send,
     }
     # Only what the member set is stored; the rest still follows the defaults.
     assert stored == CheckInPreference(
@@ -1406,6 +1417,13 @@ def test_checkin_preference_partial_save_keeps_the_other_stored_values(
             "reply_wait_seconds": settings.checkin_reply_wait_seconds,
             "final_reply_wait_seconds": settings.checkin_final_reply_wait_seconds,
         },
+        # Noah's stored 08:05 is not when he is asked: the send is everyone's.
+        "send": {
+            "cron": "30 9 * * 1-5",
+            "timezone": "UTC",
+            "local_time": "09:30:00",
+            "weekdays": [0, 1, 2, 3, 4],
+        },
     }
     assert days_only.status_code == 200
     assert zone_only.status_code == 200
@@ -1484,6 +1502,7 @@ def test_checkin_preference_follows_later_changes_to_the_defaults(settings: Sett
                 "tenant_default_timezone": "Asia/Kolkata",
                 "checkin_reply_wait_seconds": 600,
                 "checkin_final_reply_wait_seconds": 1200,
+                "checkin_fanout_cron": "45 8 * * *",
             }
         )
         member = client.get(path)
@@ -1498,6 +1517,13 @@ def test_checkin_preference_follows_later_changes_to_the_defaults(settings: Sett
     assert body["inherited"] == ["local_time", "weekdays", "final_reply_wait_seconds"]
     assert body["defaults"]["timezone"] == "Asia/Kolkata"
     assert body["defaults"]["reply_wait_seconds"] == 600
+    # The send is the deployment's one schedule, in UTC, never the team's zone.
+    assert body["send"] == {
+        "cron": "45 8 * * *",
+        "timezone": "UTC",
+        "local_time": "08:45:00",
+        "weekdays": [0, 1, 2, 3, 4, 5, 6],
+    }
     assert next(item for item in listed.json() if item["developer_id"] == "dev-ada") == body
 
 

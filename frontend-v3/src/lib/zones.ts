@@ -100,3 +100,29 @@ export function formatInZone(iso: string | null | undefined, zone: string): stri
     return `${clock("UTC")} UTC`;
   }
 }
+
+/**
+ * An instant on the wall clock of `zone` ("11:30"), and whether that is the
+ * day before (-1) or after (1) its UTC day: 09:30 UTC is 23:30 the day before
+ * in Honolulu. Null for a zone this browser does not know.
+ */
+export function clockIn(at: Date, zone: string): { clock: string; dayShift: -1 | 0 | 1 } | null {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(at);
+    const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+    const local = Date.UTC(Number(part("year")), Number(part("month")) - 1, Number(part("day")));
+    const utc = Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate());
+    const shift = Math.sign(local - utc) as -1 | 0 | 1;
+    return { clock: `${part("hour")}:${part("minute")}`, dayShift: shift };
+  } catch {
+    return null;
+  }
+}

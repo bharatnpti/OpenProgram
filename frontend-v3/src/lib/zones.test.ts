@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { currentZoneName, deviceTimezone, formatInZone, reportZone } from "./zones.ts";
+import { clockIn, currentZoneName, deviceTimezone, formatInZone, reportZone } from "./zones.ts";
+
+test("an instant on another zone's clock says when it falls on another day", () => {
+  const at = new Date("2026-10-09T09:30:00Z");
+  assert.deepEqual(clockIn(at, "UTC"), { clock: "09:30", dayShift: 0 });
+  assert.deepEqual(clockIn(at, "Europe/Berlin"), { clock: "11:30", dayShift: 0 });
+  assert.deepEqual(clockIn(at, "Pacific/Honolulu"), { clock: "23:30", dayShift: -1 });
+  assert.deepEqual(clockIn(new Date("2026-10-09T22:30:00Z"), "Asia/Tokyo"), {
+    clock: "07:30",
+    dayShift: 1,
+  });
+  assert.equal(clockIn(at, "Mars/Olympus_Mons"), null);
+});
 
 test("a zone a browser reports under its old name is sent under its current one", () => {
   assert.equal(currentZoneName("Asia/Calcutta"), "Asia/Kolkata");

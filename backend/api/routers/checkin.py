@@ -243,7 +243,8 @@ def _preference_response(
             principal.subject,
             preference,
             settings.checkin_defaults(),
-        )
+        ),
+        settings.checkin_send_schedule(),
     )
 
 

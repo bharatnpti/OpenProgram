@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import type { CheckinPreferenceResponse } from "../../api/schema";
 import {
+  askedDays,
   changesFrom,
   draftFrom,
   draftProblems,
@@ -10,6 +11,7 @@ import {
   inheritedSummary,
   isTimeZone,
   secondsFromMinutes,
+  sendDays,
   toDefault,
   toEveryDefault,
 } from "./checkinForm.ts";
@@ -22,6 +24,14 @@ const DEFAULTS = {
   final_reply_wait_seconds: 28800,
 };
 
+// The backend's default send: 09:30 UTC, Monday to Friday.
+const SEND = {
+  cron: "30 9 * * 1-5",
+  timezone: "UTC",
+  local_time: "09:30:00",
+  weekdays: [0, 1, 2, 3, 4],
+};
+
 // As the seeded demo tenant has every member: each field set, even where it equals the default.
 const SET: CheckinPreferenceResponse = {
   developer_id: "U1007",
@@ -32,7 +42,22 @@ const SET: CheckinPreferenceResponse = {
   final_reply_wait_seconds: 28800,
   inherited: [],
   defaults: DEFAULTS,
+  send: SEND,
 };
+
+test("only the days the bot sends on are offered, and a stored weekend is not shown as asked", () => {
+  assert.deepEqual(sendDays(SET), [0, 1, 2, 3, 4]);
+  assert.deepEqual(sendDays({ send: { ...SEND, weekdays: null } }), [0, 1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(askedDays([6, 0, 5, 2], SET), [0, 2]);
+  const everyDay: CheckinPreferenceResponse = { ...SET, weekdays: [0, 1, 2, 3, 4, 5, 6] };
+  const draft = draftFrom(everyDay);
+  assert.deepEqual(draft.weekdays, [0, 1, 2, 3, 4]);
+  // Untouched, nothing is sent; an edit sends only days the bot sends on.
+  assert.deepEqual(changesFrom(everyDay, draft), {});
+  assert.deepEqual(changesFrom(everyDay, editField(draft, everyDay, "weekdays", [0, 1, 2, 3])), {
+    weekdays: [0, 1, 2, 3],
+  });
+});
 
 const FOLLOWING: CheckinPreferenceResponse = {
   ...SET,

@@ -940,6 +940,14 @@ const defaults = {
   reply_wait_seconds: 7200,
   final_reply_wait_seconds: 18000,
 };
+// When the bot asks: the tenant's one fan-out, read in UTC (CheckinSendResponse,
+// the backend's default OPENPROGRAM_CHECKIN_FANOUT_CRON). No member's time is used.
+export const checkinSend = {
+  cron: "30 9 * * 1-5",
+  timezone: "UTC",
+  local_time: "09:30:00",
+  weekdays: [0, 1, 2, 3, 4],
+};
 export const configMembers = roster
   .filter((r) => !r.roles.includes("exec"))
   .map((r) => ({ id: r.id, kind: "developer", name: r.name, metadata: {} }));
@@ -957,7 +965,7 @@ export const checkinPreferences = configMembers.map((m) => {
     "reply_wait_seconds",
     "final_reply_wait_seconds",
   ].filter((f) => !(f in custom));
-  return { developer_id: m.id, ...defaults, ...custom, inherited, defaults };
+  return { developer_id: m.id, ...defaults, ...custom, inherited, defaults, send: checkinSend };
 });
 export const consent = (id) => ({
   developer_id: id,

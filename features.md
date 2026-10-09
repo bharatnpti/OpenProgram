@@ -91,7 +91,9 @@ Functional requirements:
 - A member shall open their own check-in schedule from the avatar menu and change the days the bot asks them and their time zone.
 - The member's own schedule shall refuse any other field: reply windows and write-back consent stay with an admin, and there is no per-person check-in time.
 - Only a configured member shall have a check-in schedule; the avatar-menu entry shall not be offered to anyone without a member record, since the bot never asks them.
-- A member's time zone shall decide which day their reply counts for.
+- A member's time zone shall decide which day their reply counts for (a reply is matched to a check-in by the member's own calendar day). It shall not change when they are asked.
+- The member's own schedule and the admin's Check-ins tab shall name the tenant-wide send time from the API (`send` on the check-in preference) in UTC, with the viewer's clock beside it when it reads differently there; a stored per-member time shall never be shown as when someone is asked.
+- Only the days the bot sends on shall be offered or shown as a member's check-in days: a stored day it never sends on asks nobody.
 - Admins shall view check-in preferences for all configured members.
 - Admins shall update a member's timezone.
 - Admins shall choose active weekdays for check-ins.
@@ -110,7 +112,7 @@ Functional requirements:
 Functional requirements:
 
 - The system shall dispatch developer check-ins through the workflow layer.
-- The system shall send the day's check-ins to every member on one tenant-wide schedule (`OPENPROGRAM_CHECKIN_FANOUT_CRON`), skipping a member whose check-in days exclude that weekday.
+- The system shall send the day's check-ins to every member on one tenant-wide schedule (`OPENPROGRAM_CHECKIN_FANOUT_CRON`, read in UTC: 09:30 UTC, Monday to Friday, by default), skipping a member whose check-in days exclude that weekday, judged by the send's UTC date.
 - The system shall run a reconcile pass after a configured local cutoff that dispatches a check-in to any member who has none recorded for the day.
 - The system shall send at most one check-in per member per day.
 - The system shall send direct chat messages with correlation IDs.

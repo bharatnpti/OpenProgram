@@ -12,6 +12,7 @@ import { isNoCheckin, useMyCheckinPreference } from "./useMyCheckinPreference";
 import {
   MY_CHECKIN_PREFERENCE_KEY,
   askTimeWords,
+  askedDays,
   changeLines,
   daysWords,
   deviceTimezone,
@@ -20,9 +21,11 @@ import {
   refusalWords,
   scheduleChanges,
   scheduleProblem,
+  sendDays,
   timezoneOptions,
   toggleDay,
   waitWords,
+  zoneEffectWords,
   type ScheduleDraft,
 } from "./schedule";
 
@@ -30,6 +33,7 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 // The select's value for following the team's zone.
 const TEAM_ZONE = "";
 const legend = "mb-2 text-[12px] font-bold uppercase tracking-wide text-grey-secondary";
+const description = "mt-1 text-[13px] text-grey-body";
 
 export function CheckinScheduleDialog({
   open,
@@ -55,33 +59,37 @@ export function CheckinScheduleDialog({
           }}
         >
           <Dialog.Title className="text-[20px] font-extrabold">Your check-in schedule</Dialog.Title>
-          <Dialog.Description className="mt-1 text-[13px] text-grey-body">
-            {preference.data
-              ? askTimeWords(preference.data)
-              : "The bot asks your whole team at one time, so the time isn't yours to set. You choose the days it asks you and your time zone."}
-          </Dialog.Description>
           {preference.data ? (
+            // The form says when the bot asks, on the clock of the zone it shows.
             <ScheduleForm preference={preference.data} onClose={() => onOpenChange(false)} />
-          ) : preference.isError ? (
-            <div className="mt-4 grid gap-4">
-              <p className="rounded-2xl bg-grey-fill px-4 py-3 text-[14px] text-grey-body">
-                {isNoCheckin(preference.error)
-                  ? noCheckinWords(
-                      (preference.error as ApiError).status,
-                      (preference.error as ApiError).message,
-                    )
-                  : `Your schedule could not be loaded: ${(preference.error as Error).message}`}
-              </p>
-              <div className="flex justify-end">
-                <Dialog.Close asChild>
-                  <Pill variant="ghost" size="sm">
-                    Close
-                  </Pill>
-                </Dialog.Close>
-              </div>
-            </div>
           ) : (
-            <p className="mt-4 text-[14px] text-grey-secondary">Loading…</p>
+            <>
+              <Dialog.Description className={description}>
+                The bot asks your whole team at one time, so the time isn't yours to set. You choose
+                the days it asks you and your time zone.
+              </Dialog.Description>
+              {preference.isError ? (
+                <div className="mt-4 grid gap-4">
+                  <p className="rounded-2xl bg-grey-fill px-4 py-3 text-[14px] text-grey-body">
+                    {isNoCheckin(preference.error)
+                      ? noCheckinWords(
+                          (preference.error as ApiError).status,
+                          (preference.error as ApiError).message,
+                        )
+                      : `Your schedule could not be loaded: ${(preference.error as Error).message}`}
+                  </p>
+                  <div className="flex justify-end">
+                    <Dialog.Close asChild>
+                      <Pill variant="ghost" size="sm">
+                        Close
+                      </Pill>
+                    </Dialog.Close>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-4 text-[14px] text-grey-secondary">Loading…</p>
+              )}
+            </>
           )}
         </Dialog.Content>
       </Dialog.Portal>
@@ -108,6 +116,10 @@ function ScheduleForm({
   const device = deviceTimezone();
   const [zones] = useState(() => timezoneOptions(initial.timezone, device));
   const team = preference.defaults;
+  const send = preference.send;
+  // Only the days the bot sends on: a day it never sends on would change nothing.
+  const offered = sendDays(send);
+  const teamDays = askedDays(team.weekdays, send);
 
   const changes = scheduleChanges(initial, draft);
   const changed = Object.keys(changes).length > 0;
@@ -129,154 +141,160 @@ function ScheduleForm({
       ),
   });
 
-  const chooseTeamDays = (teamDays: boolean) =>
+  const chooseTeamDays = (follow: boolean) =>
     setDraft((current) => ({
       ...current,
-      teamDays,
+      teamDays: follow,
       // Following the team shows the team's days; choosing starts from what is shown.
-      weekdays: teamDays ? [...team.weekdays] : current.weekdays,
+      weekdays: follow ? [...teamDays] : current.weekdays,
     }));
 
   return (
-    <form
-      className="mt-5 grid gap-5"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (changed && !problem && !readOnly) save.mutate();
-      }}
-    >
-      <fieldset>
-        <legend className={legend}>Days the bot asks you</legend>
-        <div className="grid gap-2 text-[14px]">
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="schedule-days"
-              checked={draft.teamDays}
-              onChange={() => chooseTeamDays(true)}
-            />
-            Your team's days: {daysWords(team.weekdays)}
+    <>
+      <Dialog.Description className={description}>
+        {askTimeWords(send, draft.timezone ?? team.timezone)}
+      </Dialog.Description>
+      <form
+        className="mt-5 grid gap-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (changed && !problem && !readOnly) save.mutate();
+        }}
+      >
+        <fieldset>
+          <legend className={legend}>Days the bot asks you</legend>
+          <div className="grid gap-2 text-[14px]">
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="schedule-days"
+                checked={draft.teamDays}
+                onChange={() => chooseTeamDays(true)}
+              />
+              Your team's days: {daysWords(teamDays)}
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="schedule-days"
+                checked={!draft.teamDays}
+                onChange={() => chooseTeamDays(false)}
+              />
+              Days you choose
+            </label>
+          </div>
+          <div role="group" aria-label="Days of the week" className="mt-3 flex flex-wrap gap-1.5">
+            {offered.map((day) => {
+              const label = DAYS[day];
+              const on = draft.weekdays.includes(day);
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={on}
+                  disabled={draft.teamDays}
+                  onClick={() =>
+                    setDraft((current) => ({
+                      ...current,
+                      weekdays: toggleDay(current.weekdays, day),
+                    }))
+                  }
+                  className={cn(
+                    "h-9 rounded-full border px-3.5 text-[13px] font-bold disabled:cursor-not-allowed disabled:opacity-50",
+                    on
+                      ? "border-ink bg-ink text-white"
+                      : "border-grey-border text-grey-body hover:bg-grey-fill",
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[12px] text-grey-secondary">
+            {draft.teamDays
+              ? "Following your team: when its days change, yours do too."
+              : "On days you leave off, the bot doesn't ask you. These stay yours if the team's change."}
+          </p>
+          {problem ? <p className="mt-1 text-[12px] font-bold text-rag-red">{problem}</p> : null}
+        </fieldset>
+
+        <div>
+          <label htmlFor="schedule-zone" className={cn(legend, "block")}>
+            Your time zone
           </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="schedule-days"
-              checked={!draft.teamDays}
-              onChange={() => chooseTeamDays(false)}
-            />
-            Days you choose
-          </label>
-        </div>
-        <div role="group" aria-label="Days of the week" className="mt-3 flex flex-wrap gap-1.5">
-          {DAYS.map((label, day) => {
-            const on = draft.weekdays.includes(day);
-            return (
-              <button
-                key={label}
-                type="button"
-                aria-pressed={on}
-                disabled={draft.teamDays}
-                onClick={() =>
-                  setDraft((current) => ({
-                    ...current,
-                    weekdays: toggleDay(current.weekdays, day),
-                  }))
-                }
-                className={cn(
-                  "h-9 rounded-full border px-3.5 text-[13px] font-bold disabled:cursor-not-allowed disabled:opacity-50",
-                  on
-                    ? "border-ink bg-ink text-white"
-                    : "border-grey-border text-grey-body hover:bg-grey-fill",
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-2 text-[12px] text-grey-secondary">
-          {draft.teamDays
-            ? "Following your team: when its days change, yours do too."
-            : "On days you leave off, the bot doesn't ask you. These stay yours if the team's change."}
-        </p>
-        {problem ? <p className="mt-1 text-[12px] font-bold text-rag-red">{problem}</p> : null}
-      </fieldset>
-
-      <div>
-        <label htmlFor="schedule-zone" className={cn(legend, "block")}>
-          Your time zone
-        </label>
-        <select
-          id="schedule-zone"
-          className="h-10 w-full rounded-xl border border-grey-border bg-white px-3 text-[14px]"
-          value={draft.timezone ?? TEAM_ZONE}
-          onChange={(event) =>
-            setDraft((current) => ({
-              ...current,
-              timezone: event.target.value === TEAM_ZONE ? null : event.target.value,
-            }))
-          }
-        >
-          {/* Always offered, so someone with a zone of their own can go back to the team's. */}
-          <option value={TEAM_ZONE}>Your team's time zone ({team.timezone})</option>
-          {zones.map((zone) => (
-            <option key={zone} value={zone}>
-              {zone}
-            </option>
-          ))}
-        </select>
-        <p className="mt-2 text-[12px] text-grey-secondary">
-          Decides which day your reply counts for.
-          {device && device !== draft.timezone ? (
-            <>
-              {" "}
-              <button
-                type="button"
-                className="font-bold text-magenta"
-                onClick={() => setDraft((current) => ({ ...current, timezone: device }))}
-              >
-                Use this device's ({device})
-              </button>
-            </>
-          ) : null}
-        </p>
-      </div>
-
-      <p className="text-[12px] text-grey-secondary">
-        How long the bot waits for your reply ({waitWords(preference.reply_wait_seconds)}, then{" "}
-        {waitWords(preference.final_reply_wait_seconds)}) is set by an admin: it decides when your
-        scrum master and manager hear about a missed check-in.
-      </p>
-
-      {lines.length > 0 ? (
-        <div className="rounded-2xl bg-grey-fill px-4 py-3 text-[13px]">
-          <p className="font-bold">What changes</p>
-          {lines.map((line) => (
-            <p key={line} className="mt-1">
-              {line}
-            </p>
-          ))}
-          <p className="mt-1 text-grey-secondary">
-            It applies from your next check-in. One the bot has already sent isn't changed.
+          <select
+            id="schedule-zone"
+            className="h-10 w-full rounded-xl border border-grey-border bg-white px-3 text-[14px]"
+            value={draft.timezone ?? TEAM_ZONE}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                timezone: event.target.value === TEAM_ZONE ? null : event.target.value,
+              }))
+            }
+          >
+            {/* Always offered, so someone with a zone of their own can go back to the team's. */}
+            <option value={TEAM_ZONE}>Your team's time zone ({team.timezone})</option>
+            {zones.map((zone) => (
+              <option key={zone} value={zone}>
+                {zone}
+              </option>
+            ))}
+          </select>
+          <p className="mt-2 text-[12px] text-grey-secondary">
+            {zoneEffectWords(send)}
+            {device && device !== draft.timezone ? (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  className="font-bold text-magenta"
+                  onClick={() => setDraft((current) => ({ ...current, timezone: device }))}
+                >
+                  Use this device's ({device})
+                </button>
+              </>
+            ) : null}
           </p>
         </div>
-      ) : null}
 
-      {readOnly ? <p className="text-[13px] font-bold text-rag-amber-deep">{reason}</p> : null}
+        <p className="text-[12px] text-grey-secondary">
+          How long the bot waits for your reply ({waitWords(preference.reply_wait_seconds)}, then{" "}
+          {waitWords(preference.final_reply_wait_seconds)}) is set by an admin: it decides when your
+          scrum master and manager hear about a missed check-in.
+        </p>
 
-      <div className="flex justify-end gap-2">
-        <Pill type="button" variant="ghost" size="sm" onClick={onClose}>
-          Cancel
-        </Pill>
-        <Pill
-          type="submit"
-          size="sm"
-          disabled={!changed || problem !== null || readOnly || save.isPending}
-          title={reason ?? undefined}
-        >
-          {save.isPending ? "Saving…" : "Save"}
-        </Pill>
-      </div>
-    </form>
+        {lines.length > 0 ? (
+          <div className="rounded-2xl bg-grey-fill px-4 py-3 text-[13px]">
+            <p className="font-bold">What changes</p>
+            {lines.map((line) => (
+              <p key={line} className="mt-1">
+                {line}
+              </p>
+            ))}
+            <p className="mt-1 text-grey-secondary">
+              It applies from your next check-in. One the bot has already sent isn't changed.
+            </p>
+          </div>
+        ) : null}
+
+        {readOnly ? <p className="text-[13px] font-bold text-rag-amber-deep">{reason}</p> : null}
+
+        <div className="flex justify-end gap-2">
+          <Pill type="button" variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Pill>
+          <Pill
+            type="submit"
+            size="sm"
+            disabled={!changed || problem !== null || readOnly || save.isPending}
+            title={reason ?? undefined}
+          >
+            {save.isPending ? "Saving…" : "Save"}
+          </Pill>
+        </div>
+      </form>
+    </>
   );
 }

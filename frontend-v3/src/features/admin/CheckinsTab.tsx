@@ -13,14 +13,15 @@ import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { weekdaysLabel } from "../../lib/format";
 import { cn } from "../../lib/utils";
-import { currentZoneName } from "../../lib/zones";
-import { clockTime } from "../checkin/schedule";
+import { currentZoneName, deviceTimezone } from "../../lib/zones";
+import { sendWords } from "../checkin/schedule";
 import { AdminDialog, Problems, hintClass, inputClass, labelClass } from "./AdminBits";
 import { errorText, minutesLabel } from "./adminWords";
 import {
   type PrefDraft,
   type PrefField,
   PREF_FIELDS,
+  askedDays,
   changesFrom,
   defaultValue,
   draftFrom,
@@ -28,6 +29,7 @@ import {
   editField,
   inheritedSummary,
   sameValue,
+  sendDays,
   toDefault,
   toEveryDefault,
 } from "./checkinForm";
@@ -48,9 +50,17 @@ const CONSENT_OPTIONS: { value: WriteBackConsent; label: string }[] = [
   { value: "never", label: "Never change their Jira issues" },
 ];
 
-/** A value as the table shows it: "Mon–Fri", "Europe/Berlin", "4 h". */
-function valueLabel(field: PrefField, value: unknown): string {
-  if (field === "weekdays") return weekdaysLabel(value as number[]);
+/**
+ * A value as the table shows it: "Mon–Fri", "Europe/Berlin", "4 h". Days are
+ * the ones the bot sends on (`askedDays`): a stored day it never sends on asks
+ * nobody, so it is not shown as one they are asked.
+ */
+function valueLabel(
+  field: PrefField,
+  value: unknown,
+  pref: Pick<CheckinPreferenceResponse, "send">,
+): string {
+  if (field === "weekdays") return weekdaysLabel(askedDays(value as number[], pref));
   if (field === "timezone") return String(value ?? "—");
   return minutesLabel(value as number);
 }
@@ -99,7 +109,10 @@ export function CheckinsTab() {
   const consentOf = (id: string) =>
     consents.find((c) => c.data?.developer_id === id)?.data?.consent;
   const prefOf = (id: string) => prefs.data?.find((p) => p.developer_id === id);
-  const defaults = prefs.data?.[0]?.defaults;
+  const first = prefs.data?.[0];
+  const defaults = first?.defaults;
+  // The admin's own zone, for reading the UTC send time on their clock.
+  const viewerZone = deviceTimezone();
 
   return (
     <PanelState
@@ -113,13 +126,14 @@ export function CheckinsTab() {
       emptyText="No members yet. Import people from the chat directory first."
     >
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
-        {defaults ? (
+        {first && defaults ? (
           <p className="text-[13px] text-grey-body">
-            Team default: {weekdaysLabel(defaults.weekdays)} · {defaults.timezone} · nudge after{" "}
-            {minutesLabel(defaults.reply_wait_seconds)} · give up after{" "}
-            {minutesLabel(defaults.final_reply_wait_seconds)}. Check-ins go out at{" "}
-            {clockTime(defaults.local_time)}, one time for everyone, read on each person's own
-            clock.
+            Team default: {weekdaysLabel(askedDays(defaults.weekdays, first))} · {defaults.timezone}{" "}
+            · nudge after {minutesLabel(defaults.reply_wait_seconds)} · give up after{" "}
+            {minutesLabel(defaults.final_reply_wait_seconds)}. The bot asks everyone{" "}
+            {sendWords(first.send, viewerZone, new Date())}: one send for the whole tenant. A
+            member's days decide whether they are asked that day; their time zone decides which day
+            a reply counts for, not when they are asked.
           </p>
         ) : null}
         <p className="text-[12px] text-grey-secondary">
@@ -146,7 +160,7 @@ export function CheckinsTab() {
                 const cell = (field: PrefField) =>
                   p ? (
                     <>
-                      {valueLabel(field, storedValue(p, field))}
+                      {valueLabel(field, storedValue(p, field), p)}
                       <SourceTag
                         set={!p.inherited.includes(field)}
                         sameAsDefault={sameValue(
@@ -294,7 +308,7 @@ function EditMember({
   });
 
   const source = (field: PrefField) => {
-    const fallback = valueLabel(field, defaultValue(pref, field));
+    const fallback = valueLabel(field, defaultValue(pref, field), pref);
     return draft.inherited.includes(field) ? (
       <p className={hintClass}>Team default ({fallback}). It changes when the default does.</p>
     ) : (
@@ -355,7 +369,9 @@ function EditMember({
           <fieldset>
             <legend className={labelClass}>Asked on</legend>
             <div className="flex flex-wrap gap-1.5">
-              {WEEKDAYS.map((day, index) => {
+              {/* Only the days the bot sends on: any other would change nothing. */}
+              {sendDays(pref).map((index) => {
+                const day = WEEKDAYS[index];
                 const on = draft.weekdays.includes(index);
                 return (
                   <button

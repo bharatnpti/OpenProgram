@@ -10969,7 +10969,8 @@
           "local_time": {
             "type": "string",
             "format": "time",
-            "title": "Local Time"
+            "title": "Local Time",
+            "description": "Never used to send: check-ins go out for everyone on the response's `send`."
           },
           "timezone": {
             "type": "string",
@@ -11106,7 +11107,8 @@
           "local_time": {
             "type": "string",
             "format": "time",
-            "title": "Local Time"
+            "title": "Local Time",
+            "description": "Stored for the member, and never used to send: check-ins go out for everyone on `send`."
           },
           "timezone": {
             "anyOf": [
@@ -11144,6 +11146,10 @@
           },
           "defaults": {
             "$ref": "#/components/schemas/CheckinDefaultsResponse"
+          },
+          "send": {
+            "$ref": "#/components/schemas/CheckinSendResponse",
+            "description": "When the bot asks: one tenant-wide send. The member's `weekdays` decide whether they are asked on a send day; their `timezone` decides which day a reply counts for, not when they are asked."
           }
         },
         "type": "object",
@@ -11155,7 +11161,8 @@
           "reply_wait_seconds",
           "final_reply_wait_seconds",
           "inherited",
-          "defaults"
+          "defaults",
+          "send"
         ],
         "title": "CheckinPreferenceResponse",
         "description": "A member's check-in preference as it applies: their own values, else the team's."
@@ -11229,6 +11236,52 @@
         "type": "object",
         "title": "CheckinPreferenceUpdateRequest",
         "description": "An admin's change to a member's check-in preference.\n\nA field left out keeps what is stored. A field sent as ``null`` is cleared,\nso the member follows the team default for it again."
+      },
+      "CheckinSendResponse": {
+        "properties": {
+          "cron": {
+            "type": "string",
+            "title": "Cron",
+            "description": "The tenant's check-in schedule as configured (OPENPROGRAM_CHECKIN_FANOUT_CRON). Every member is asked on it; nobody has a time of their own."
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "The zone the schedule is read in: always UTC."
+          },
+          "local_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Time",
+            "description": "The clock time of the send in `timezone`, or null when the schedule names more than one time of day."
+          },
+          "weekdays": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekdays",
+            "description": "The days the bot sends, Monday 0, judged by the send's date in `timezone`; null when the schedule also depends on the day of the month or the month. A member is asked only on those of these days that are in their own `weekdays`."
+          }
+        },
+        "type": "object",
+        "required": ["cron", "timezone", "local_time", "weekdays"],
+        "title": "CheckinSendResponse",
+        "description": "When the bot asks: one send of the day's check-ins for the whole tenant."
       },
       "CommitmentResponse": {
         "properties": {

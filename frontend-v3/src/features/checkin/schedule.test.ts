@@ -1,21 +1,35 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { CheckinPreferenceResponse } from "../../api/schema";
+import type { CheckinPreferenceResponse, CheckinSendResponse } from "../../api/schema";
 import {
   askTimeWords,
+  askedDays,
   changeLines,
   clockTime,
   draftFrom,
+  nextSendAt,
   noCheckinWords,
   refusalWords,
   scheduleChanges,
   scheduleProblem,
   scheduleSummary,
+  sendDays,
+  sendTimeWords,
+  sendWords,
   timezoneOptions,
   toggleDay,
   waitWords,
+  zoneEffectWords,
 } from "./schedule.ts";
+
+// The backend's default: one send at 09:30 UTC, Monday to Friday.
+const SEND: CheckinSendResponse = {
+  cron: "30 9 * * 1-5",
+  timezone: "UTC",
+  local_time: "09:30:00",
+  weekdays: [0, 1, 2, 3, 4],
+};
 
 const preference = (
   overrides: Partial<CheckinPreferenceResponse> = {},
@@ -34,8 +48,14 @@ const preference = (
     reply_wait_seconds: 14400,
     final_reply_wait_seconds: 28800,
   },
+  send: SEND,
   ...overrides,
 });
+
+// Friday 9 October 2026, 08:00 UTC (summer time in Berlin, UTC+2), and a
+// winter Monday, 7 December 2026, 08:00 UTC (UTC+1).
+const FRIDAY_SUMMER = new Date("2026-10-09T08:00:00Z");
+const MONDAY_WINTER = new Date("2026-12-07T08:00:00Z");
 
 test("a value the person never set follows the team, and says so", () => {
   const draft = draftFrom(preference({ inherited: ["weekdays", "timezone"], timezone: "UTC" }));
@@ -140,14 +160,98 @@ test("a refused save says why in the backend's own words", () => {
   assert.equal(refusalWords(null), null);
 });
 
-test("the dialog reads out the time the bot asks, though it is not the person's to set", () => {
+test("the dialog names the one send in UTC and on the person's own clock, never their stored time", () => {
   assert.equal(clockTime("09:30:00"), "09:30");
-  assert.match(
-    askTimeWords(preference({ timezone: "Asia/Kolkata" })),
-    /^The bot asks you at 09:30 Asia\/Kolkata time, the same time for your whole team/,
+  // Liam's own row says 07:00 Europe/Berlin; the bot still asks everyone at 09:30 UTC.
+  assert.equal(
+    askTimeWords(SEND, "Europe/Berlin", FRIDAY_SUMMER),
+    "The bot asks everyone at 09:30 UTC (11:30 in Europe/Berlin), Mon–Fri: one time for the whole team, so it isn't yours to set. You choose which of those days it asks you, and your time zone.",
   );
-  // A person who follows the team's zone is told the team's.
-  assert.match(askTimeWords(preference({ timezone: null })), /at 09:30 UTC time/);
+  assert.match(
+    askTimeWords(SEND, "UTC", FRIDAY_SUMMER),
+    /^The bot asks everyone at 09:30 UTC, Mon–Fri:/,
+  );
+  assert.match(
+    askTimeWords(SEND, null, FRIDAY_SUMMER),
+    /^The bot asks everyone at 09:30 UTC, Mon–Fri:/,
+  );
+});
+
+test("the clock in another zone is the next send's, so summer time and the date line show", () => {
+  assert.equal(
+    sendTimeWords(SEND, "Europe/Berlin", FRIDAY_SUMMER),
+    "09:30 UTC (11:30 in Europe/Berlin)",
+  );
+  assert.equal(
+    sendTimeWords(SEND, "Europe/Berlin", MONDAY_WINTER),
+    "09:30 UTC (10:30 in Europe/Berlin)",
+  );
+  assert.equal(
+    sendTimeWords(SEND, "Asia/Kolkata", FRIDAY_SUMMER),
+    "09:30 UTC (15:00 in Asia/Kolkata)",
+  );
+  assert.equal(
+    sendTimeWords(SEND, "Pacific/Honolulu", FRIDAY_SUMMER),
+    "09:30 UTC (23:30 the day before in Pacific/Honolulu)",
+  );
+  // The same clock in a zone that is UTC in winter is not said twice.
+  assert.equal(sendTimeWords(SEND, "Europe/London", MONDAY_WINTER), "09:30 UTC");
+  // A zone this browser doesn't know: UTC only.
+  assert.equal(sendTimeWords(SEND, "Mars/Olympus_Mons", FRIDAY_SUMMER), "09:30 UTC");
+});
+
+test("the next send skips the days the bot doesn't send on", () => {
+  // Friday 08:00: today's 09:30 is still to come.
+  assert.equal(nextSendAt(SEND, FRIDAY_SUMMER)?.toISOString(), "2026-10-09T09:30:00.000Z");
+  // Friday 10:00: the next is Monday.
+  assert.equal(
+    nextSendAt(SEND, new Date("2026-10-09T10:00:00Z"))?.toISOString(),
+    "2026-10-12T09:30:00.000Z",
+  );
+  assert.equal(nextSendAt({ ...SEND, local_time: null }, FRIDAY_SUMMER), null);
+});
+
+test("a schedule the backend can't read as one time says its cron, and in UTC", () => {
+  const several = {
+    cron: "0 9,15 * * 1-5",
+    timezone: "UTC",
+    local_time: null,
+    weekdays: [0, 1, 2, 3, 4],
+  };
+  assert.equal(
+    sendWords(several, "Europe/Berlin", FRIDAY_SUMMER),
+    "on the schedule 0 9,15 * * 1-5 (UTC), Mon–Fri",
+  );
+  const monthly = { cron: "30 9 1 * *", timezone: "UTC", local_time: "09:30:00", weekdays: null };
+  assert.equal(sendWords(monthly, "UTC", FRIDAY_SUMMER), "at 09:30 UTC");
+});
+
+test("the time zone says what it changes, and that the send time isn't one of those things", () => {
+  assert.equal(
+    zoneEffectWords(SEND),
+    "Decides which day your reply counts for. It doesn't change when the bot asks you: that is 09:30 UTC for everyone.",
+  );
+});
+
+test("only the days the bot sends on are offered or shown as asked", () => {
+  assert.deepEqual(sendDays(SEND), [0, 1, 2, 3, 4]);
+  assert.deepEqual(sendDays({ weekdays: null }), [0, 1, 2, 3, 4, 5, 6]);
+  // Liam chose every day; the bot sends Monday to Friday, so that is when he is asked.
+  assert.deepEqual(askedDays([0, 1, 2, 3, 4, 5, 6], SEND), [0, 1, 2, 3, 4]);
+  assert.deepEqual(askedDays([4, 5, 0], SEND), [0, 4]);
+  const everyDay = preference({ weekdays: [0, 1, 2, 3, 4, 5, 6] });
+  assert.equal(scheduleSummary(everyDay), "Mon–Fri · Europe/Berlin");
+  const initial = draftFrom(everyDay);
+  assert.deepEqual(initial.weekdays, [0, 1, 2, 3, 4]);
+  // Opening and saving changes nothing, so a stored Saturday is not rewritten by a look.
+  assert.deepEqual(scheduleChanges(initial, { ...initial }), {});
+  // Leaving out Wednesday sends the days the bot sends on, without the unused weekend.
+  assert.deepEqual(
+    scheduleChanges(initial, { ...initial, weekdays: toggleDay(initial.weekdays, 2) }),
+    {
+      weekdays: [0, 1, 3, 4],
+    },
+  );
 });
 
 test("the zone list offers only names a current server knows", () => {

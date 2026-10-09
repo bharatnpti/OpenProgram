@@ -13,7 +13,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.domain.auth import Role
 from core.domain.escalation import EscalationPolicy, default_escalation_policy
-from core.domain.status import CheckInDefaults
+from core.domain.status import CheckInDefaults, CheckInSendSchedule, checkin_send_schedule
 
 # The Fernet key committed to `.env.example`/`docker-compose.yml` for local bring-up.
 # It is public, so it must never protect a shared (non-local) deployment.
@@ -760,6 +760,10 @@ class Settings(BaseSettings):
     @property
     def default_llm_model(self) -> str:
         return self.litellm_model
+
+    def checkin_send_schedule(self) -> CheckInSendSchedule:
+        """When the bot asks everyone: the fan-out schedule, read in UTC."""
+        return checkin_send_schedule(self.checkin_fanout_cron)
 
     def checkin_defaults(self) -> CheckInDefaults:
         """The team defaults a member's check-in follows for anything not set for them."""

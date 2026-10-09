@@ -185,6 +185,93 @@ class CheckInDefaults:
     final_reply_wait_seconds: int = 28800
 
 
+# The zone the check-in schedule is read in: the workflow layer registers the
+# cron with no zone of its own, so every workflow provider reads it in UTC.
+CHECKIN_SEND_TIMEZONE = "UTC"
+
+_CRON_DAY_NAMES = {"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6}
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckInSendSchedule:
+    """When the bot asks: one send of the day's check-ins for the whole tenant.
+
+    The workflow layer starts one fan-out on ``cron``
+    (``OPENPROGRAM_CHECKIN_FANOUT_CRON``), read in ``timezone`` (always UTC),
+    and asks every member then. A member's own days only decide whether they
+    are skipped that day, judged by the send's UTC date; no member's own time
+    is used. ``local_time`` and ``weekdays`` (Monday 0) read the cron when it
+    names one second, minute and hour on days of the week (``30 9 * * 1-5``:
+    09:30, Monday to Friday). Either is ``None`` when the cron says more than
+    that, and ``cron`` is then the only account of when the bot asks.
+    """
+
+    cron: str
+    timezone: str = CHECKIN_SEND_TIMEZONE
+    local_time: time | None = None
+    weekdays: tuple[int, ...] | None = None
+
+
+def checkin_send_schedule(cron: str) -> CheckInSendSchedule:
+    """Read the tenant's check-in cron as a time of day and days of the week.
+
+    Five fields, or six with the seconds first (as the workflow layer reads one). Only a
+    single value is read as the time, and only a cron that runs on any day of
+    the month in any month gives its days.
+    """
+    fields = cron.split()
+    seconds = "0"
+    if len(fields) == 6:
+        seconds, *fields = fields
+    if len(fields) != 5:
+        return CheckInSendSchedule(cron=cron)
+    minute, hour, day_of_month, month, day_of_week = fields
+    second_value = _cron_single(seconds, 59)
+    minute_value = _cron_single(minute, 59)
+    hour_value = _cron_single(hour, 23)
+    send_time = (
+        time(hour_value, minute_value, second_value)
+        if hour_value is not None and minute_value is not None and second_value is not None
+        else None
+    )
+    weekdays = _cron_weekdays(day_of_week) if day_of_month in {"*", "?"} and month == "*" else None
+    return CheckInSendSchedule(cron=cron, local_time=send_time, weekdays=weekdays)
+
+
+def _cron_single(field: str, highest: int) -> int | None:
+    return int(field) if field.isdigit() and int(field) <= highest else None
+
+
+def _cron_weekdays(field: str) -> tuple[int, ...] | None:
+    """A cron's day-of-week field (Sunday 0 or 7) as days with Monday 0."""
+    if field in {"*", "?"}:
+        return (0, 1, 2, 3, 4, 5, 6)
+    days: set[int] = set()
+    for part in field.lower().split(","):
+        base, slash, step_text = part.partition("/")
+        if slash and not (step_text.isdigit() and int(step_text) > 0):
+            return None
+        step = int(step_text) if slash else 1
+        if base == "*":
+            start, end = 0, 6
+        else:
+            low, dash, high = base.partition("-")
+            start_day = _cron_day(low)
+            end_day = _cron_day(high) if dash else (6 if slash else start_day)
+            if start_day is None or end_day is None or start_day > end_day:
+                return None
+            start, end = start_day, end_day
+        days.update(range(start, end + 1, step))
+    # Sunday is 0 (or 7) in a cron and 6 here.
+    return tuple(sorted({(day - 1) % 7 for day in days}))
+
+
+def _cron_day(text: str) -> int | None:
+    if text.isdigit():
+        return int(text) if int(text) <= 7 else None
+    return _CRON_DAY_NAMES.get(text)
+
+
 @dataclass(frozen=True, kw_only=True)
 class EffectiveCheckInPreference:
     """A member's check-in preference with every gap filled from the team defaults.

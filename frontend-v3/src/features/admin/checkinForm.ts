@@ -64,9 +64,27 @@ export function secondsFromMinutes(text: string): number | null {
   return seconds <= MAX_WAIT_SECONDS ? seconds : null;
 }
 
+/**
+ * The days the bot sends on at all, Monday 0 (`send`, the tenant's one
+ * schedule): every day when it doesn't say. Only these are offered, since a
+ * member's day it never sends on asks nobody.
+ */
+export function sendDays(pref: Pick<CheckinPreferenceResponse, "send">): number[] {
+  const days = pref.send.weekdays ?? [0, 1, 2, 3, 4, 5, 6];
+  return [...new Set(days)].sort((a, b) => a - b);
+}
+
+/** Of `weekdays`, the days the bot sends on: the days they are really asked. */
+export function askedDays(weekdays: number[], pref: Pick<CheckinPreferenceResponse, "send">) {
+  const sent = sendDays(pref);
+  return [...new Set(weekdays)].filter((day) => sent.includes(day)).sort((a, b) => a - b);
+}
+
 export function draftFrom(pref: CheckinPreferenceResponse): PrefDraft {
   return {
-    weekdays: [...pref.weekdays],
+    // A stored day the bot never sends on is not offered; a save that changes
+    // the days sends only days it sends on.
+    weekdays: askedDays(pref.weekdays, pref),
     timezone: pref.timezone ?? pref.defaults.timezone,
     nudgeMinutes: minutesText(pref.reply_wait_seconds),
     giveUpMinutes: minutesText(pref.final_reply_wait_seconds),
