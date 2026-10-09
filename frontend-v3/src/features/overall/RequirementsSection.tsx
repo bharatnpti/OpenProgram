@@ -253,8 +253,13 @@ function Flow({ data }: { data: RequirementsResponse }) {
                 <text x={plotRight + 28} y={item.y} style={SVG_TEXT.ink}>
                   {item.text}
                 </text>
+                {/* Secondary words, not amber: amber means a verdict or a gate state. */}
                 {item.was ? (
-                  <text x={plotRight + 28} y={item.y + 14} style={SVG_TEXT.amber}>
+                  <text
+                    x={plotRight + 28}
+                    y={item.y + 14}
+                    style={{ ...SVG_TEXT.muted, fontWeight: 700 }}
+                  >
                     {item.was}
                   </text>
                 ) : null}

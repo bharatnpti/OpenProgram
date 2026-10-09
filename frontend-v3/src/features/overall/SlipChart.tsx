@@ -1,7 +1,9 @@
 import type { ScopeDeliveryResponse } from "../../api/schema";
 import { PanelState, SectionHeader } from "../../components/PanelState";
+import { counted, forecastTone } from "../../components/ui/dateStripWords";
 import { formatDay } from "../../lib/format";
 import { readState } from "../../lib/readState";
+import type { BadgeTone } from "../../lib/status";
 import { useDelivery, useForecastHistory } from "./queries";
 import {
   changeKeys,
@@ -48,6 +50,19 @@ export function SlipSection({ projectId, releaseId }: { projectId: string; relea
   );
 }
 
+/**
+ * The forecast range's colours: the strip's Forecast cell's (forecastTone, the
+ * server's verdict rule against the committed date), so the band never says
+ * "at risk" beside a red cell. Grey with no committed date to meet.
+ */
+const BAND: Record<BadgeTone, { fill: string; stroke: string }> = {
+  success: { fill: "var(--op-green-bg)", stroke: "var(--op-green)" },
+  warning: { fill: "var(--op-amber-bg)", stroke: "var(--op-amber)" },
+  danger: { fill: "var(--op-red-bg)", stroke: "var(--op-red)" },
+  info: { fill: "var(--op-unknown-bg)", stroke: "var(--op-unknown)" },
+  neutral: { fill: "var(--op-unknown-bg)", stroke: "var(--op-unknown)" },
+};
+
 function SlipCard({
   scope,
   days,
@@ -71,6 +86,10 @@ function SlipCard({
   }
   const g = slipGeometry(changes, days, today);
   const keys = changeKeys(changes);
+  const band =
+    BAND[
+      counted(scope) ? forecastTone(scope.target, scope.history.p50, scope.history.p85) : "neutral"
+    ];
   const { width, height, left, plotRight, top, bottom } = g.size;
 
   return (
@@ -131,8 +150,8 @@ function SlipCard({
                 <polygon
                   key={points.slice(0, 24)}
                   points={points}
-                  fill="var(--op-amber-bg)"
-                  stroke="var(--op-amber)"
+                  fill={band.fill}
+                  stroke={band.stroke}
                   strokeOpacity={0.6}
                 >
                   <title>Forecast range, 50% to 85% likely, as it stood each day</title>
@@ -142,7 +161,7 @@ function SlipCard({
                 <text
                   x={Math.min(g.bandStart.x + 4, plotRight - 150)}
                   y={Math.max(g.bandStart.y - 6, top - 2)}
-                  style={SVG_TEXT.amber}
+                  style={{ ...SVG_TEXT.amber, fill: band.stroke }}
                 >
                   Forecast from {formatDay(g.bandStart.day)}
                 </text>
@@ -240,10 +259,7 @@ function SlipCard({
             </span>
             <span>
               <Swatch
-                style={{
-                  background: "var(--op-amber-bg)",
-                  boxShadow: "inset 0 0 0 1.5px var(--op-amber)",
-                }}
+                style={{ background: band.fill, boxShadow: `inset 0 0 0 1.5px ${band.stroke}` }}
               />
               Forecast, 50% to 85% likely
             </span>
