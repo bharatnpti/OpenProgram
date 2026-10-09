@@ -3766,7 +3766,10 @@ class ReportPreviewResponse(BaseModel):
     percent_complete: float | None
     progress_line: str
     sections: list[ReportSectionResponse]
-    console_url: str | None
+    #: The report's own page in the console, relative to the console's address
+    #: (``/reports/<project>/daily?report=<id>``), for the console to link in place.
+    #: The absolute address a sent message carries is in ``text``, never read from here.
+    console_path: str | None
     text: str
 
     @classmethod
@@ -3779,7 +3782,7 @@ class ReportPreviewResponse(BaseModel):
             percent_complete=report.percent_complete,
             progress_line=report.progress_line,
             sections=[ReportSectionResponse.from_domain(section) for section in report.sections],
-            console_url=report.console_url,
+            console_path=report.console_path,
             text=text,
         )
 

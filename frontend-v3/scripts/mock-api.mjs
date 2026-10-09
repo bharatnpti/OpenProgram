@@ -134,7 +134,7 @@ const preview = {
   headline: "3 fixes, 1 decision, 1 answer and 1 review needed, 2 escalated.",
   percent_complete: 58.2,
   progress_line: "58% complete: 99 of 170 story points in production (55% on Mon 5 Oct 2026).",
-  console_url: null,
+  console_path: "/reports/project-checkout/daily?report=rep-checkout",
   text: "",
   sections: [
     {
@@ -379,6 +379,7 @@ function api(req, res, url) {
         ? {
             ...preview,
             title: "Checkout Revamp, Release 1.0: day report, Tue 6 Oct 2026",
+            console_path: "/reports/project-checkout/daily?report=rep-checkout-r1",
             rag: "amber",
           }
         : preview,

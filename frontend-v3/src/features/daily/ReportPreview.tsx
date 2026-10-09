@@ -1,12 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
 import type { ReportSectionResponse } from "../../api/schema";
+import { useViewingDate } from "../../app/viewingDate";
 import { PanelState, TableBox, td, th } from "../../components/PanelState";
 import { RagChip } from "../../components/ui/RagChip";
 import { progressWidth } from "../../lib/format";
 import { toneForRag } from "../../lib/status";
-import { ASKS_SECTION, RAG_WORDS, askParts } from "./reportView";
+import { ASKS_SECTION, RAG_WORDS, askParts, openInConsoleTarget } from "./reportView";
 
 /**
  * Today's report built live from the project's state, exactly as it would be
@@ -19,6 +21,10 @@ export function ReportPreview({ reportId }: { reportId: string }) {
     queryFn: () => apiClient.previewDayReport(reportId),
   });
   const data = preview.data;
+  const { asOf } = useViewingDate();
+  // The report's own page, as a link inside the console: the address a sent message
+  // carries is for opening elsewhere, and is never read here.
+  const consoleLink = openInConsoleTarget(data?.console_path, asOf);
 
   return (
     <PanelState
@@ -60,9 +66,9 @@ export function ReportPreview({ reportId }: { reportId: string }) {
               <Section key={section.title} section={section} />
             ))}
           </div>
-          {data.console_url ? (
+          {consoleLink ? (
             <footer className="border-t border-grey-border p-5 text-[13px]">
-              <a href={data.console_url}>Open in OpenProgram</a>
+              <Link to={consoleLink}>Open in OpenProgram</Link>
             </footer>
           ) : null}
         </article>

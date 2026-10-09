@@ -234,8 +234,12 @@ product decision. "Remaining work" is the numbered list further down.
    it; release creation on the QA tenant (no fix versions there); Test
    connection against a real host; gate template edits; a directory import with
    people left to import.
-7. **Config:** the day report's footer links to `OPENPROGRAM_CONSOLE_URL`. Point
-   it at this console once it replaces the older one.
+7. **Config:** a day report that is sent links to its own page,
+   `/reports/<project>/daily?report=<id>`, under `OPENPROGRAM_CONSOLE_URL`. Point
+   it at this console once it replaces the older one. Inside this console the
+   same footer is a router link to the `console_path` the preview carries.
+   Reports sent before this change linked `/delivery/project/<id>`, which the
+   route guard sends a developer, scrum master or product owner on to their own page.
 8. **Decide where this file lives.** The repo keeps working notes out (decisions
    go in commit trailers), so it could move to `frontend-v3/docs/` or fold into
    the README before the PR merges.

@@ -152,6 +152,7 @@ class DayReportService:
             definition.project_id,
             day,
             release_id=definition.release_id,
+            report_id=definition.report_id,
             note=note,
         )
 

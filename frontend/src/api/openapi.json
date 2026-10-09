@@ -16712,7 +16712,7 @@
             "type": "array",
             "title": "Sections"
           },
-          "console_url": {
+          "console_path": {
             "anyOf": [
               {
                 "type": "string"
@@ -16721,7 +16721,7 @@
                 "type": "null"
               }
             ],
-            "title": "Console Url"
+            "title": "Console Path"
           },
           "text": {
             "type": "string",
@@ -16737,7 +16737,7 @@
           "percent_complete",
           "progress_line",
           "sections",
-          "console_url",
+          "console_path",
           "text"
         ],
         "title": "ReportPreviewResponse",

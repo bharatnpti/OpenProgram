@@ -4862,8 +4862,8 @@ export interface components {
       progress_line: string;
       /** Sections */
       sections: components["schemas"]["ReportSectionResponse"][];
-      /** Console Url */
-      console_url: string | null;
+      /** Console Path */
+      console_path: string | null;
       /** Text */
       text: string;
     };

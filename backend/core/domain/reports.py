@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from enum import StrEnum
+from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from core.domain.errors import OpenProgramError
@@ -264,6 +265,18 @@ class ReportSection:
         return not (self.lines or self.groups or (self.table is not None and self.table.rows))
 
 
+def day_report_path(project_id: str, report_id: str | None = None) -> str:
+    """Where the console shows a report, as a path from the console's own address.
+
+    The report's own page, ``/reports/<project>/daily?report=<id>``: every role
+    may open it, which the project's Delivery page is not (it is closed to
+    developers, scrum masters and product owners). A link that goes out in a
+    message must be a page whoever receives it can open.
+    """
+    path = f"/reports/{quote(project_id, safe='')}/daily"
+    return f"{path}?report={quote(report_id, safe='')}" if report_id else path
+
+
 @dataclass(frozen=True, kw_only=True)
 class DayReport:
     title: str
@@ -274,6 +287,12 @@ class DayReport:
     percent_complete: float | None
     progress_line: str
     sections: tuple[ReportSection, ...] = ()
+    #: The report's page in the console, relative to the console's address (see
+    #: ``day_report_path``). The console links it in place; never as an absolute URL.
+    console_path: str | None = None
+    #: That page as an address for a message: the console's public address and
+    #: ``console_path``, only where the address is set and its readers can open it.
+    #: None sends no link rather than one that does not work.
     console_url: str | None = None
     #: Lines a renderer may emphasise, such as items that need action.
     attention_count: int = 0

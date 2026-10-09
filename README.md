@@ -251,7 +251,7 @@ All settings are `OPENPROGRAM_`-prefixed pydantic-settings, documented in [.env.
 | `OPENPROGRAM_ENVIRONMENT` | `local` enables dev conveniences; anything else hard-fails on dev auth or a default secret key |
 | `OPENPROGRAM_RUNTIME_MODE` | `container` (Postgres/Redis) or `memory` (in-process fakes) |
 | `OPENPROGRAM_AUTH_PROVIDER` | `dev` (unauthenticated admin, local only) or `oidc_bff` (cookie-based OIDC BFF) |
-| `OPENPROGRAM_CONSOLE_URL` | the console's public address for links in what OpenProgram sends (the day report's "Open in OpenProgram"); unset, `OPENPROGRAM_AUTH_FRONTEND_URL` is used. Outside `local` a local address (localhost, 127.0.0.1, [::1], *.localhost) is never linked, so set it in every deployment |
+| `OPENPROGRAM_CONSOLE_URL` | the console's public address for links in what OpenProgram sends (the day report's "Open in OpenProgram", which opens the report's own page, `/reports/<project>/daily?report=<id>`, that every role may open); unset, `OPENPROGRAM_AUTH_FRONTEND_URL` is used. Outside `local` a local address (localhost, 127.0.0.1, [::1], *.localhost) is never linked, so set it in every deployment |
 | `OPENPROGRAM_WORKFLOW_PROVIDER` | `dbos` or `temporal` |
 | `OPENPROGRAM_CHAT_PROVIDER` | `slack`, `mock_slack`, or `fake` |
 | `OPENPROGRAM_ISSUE_TRACKER_PROVIDER` / `VCS_PROVIDER` / `CALENDAR_PROVIDER` | `jira` / `github`\|`gitlab` / `google` |

@@ -69,6 +69,7 @@ from core.domain.reports import (
     ReportTable,
     RunStatus,
     RunTrigger,
+    day_report_path,
     due_date,
     progress_bar,
     render_text,
@@ -355,8 +356,8 @@ def _blocker(
     )
 
 
-async def _build(registry: ServiceRegistry) -> DayReport:
-    return await registry.day_report_builder().build(TENANT, "checkout", TODAY)
+async def _build(registry: ServiceRegistry, report_id: str | None = None) -> DayReport:
+    return await registry.day_report_builder().build(TENANT, "checkout", TODAY, report_id=report_id)
 
 
 def _section(report: DayReport, title: str) -> ReportSection:
@@ -465,7 +466,8 @@ async def test_in_short_names_the_date_and_what_is_needed_most() -> None:
     assert report.rag is Rag.UNKNOWN
     assert report.percent_complete == pytest.approx(100 / 3)
     assert report.progress_line == "33% complete: 1 of 3 requirements in production."
-    assert report.console_url == "https://console.example.com/delivery/project/checkout"
+    assert report.console_path == "/reports/checkout/daily"
+    assert report.console_url == "https://console.example.com/reports/checkout/daily"
     assert _section(report, "In short").lines == (
         "Delivery: no delivery date set.",
         "Needed most: a fix from Omar on PLT-9 (5 days), a fix from Asha on CHK-3 (2 days) "
@@ -476,11 +478,16 @@ async def test_in_short_names_the_date_and_what_is_needed_most() -> None:
 @pytest.mark.parametrize(
     ("environment", "console_url", "link"),
     [
-        pytest.param("local", None, "http://localhost:5173/delivery/project/checkout", id="local"),
+        pytest.param(
+            "local",
+            None,
+            "http://localhost:5173/reports/checkout/daily?report=rep-1",
+            id="local",
+        ),
         pytest.param(
             "production",
             "https://openprogram.example.com",
-            "https://openprogram.example.com/delivery/project/checkout",
+            "https://openprogram.example.com/reports/checkout/daily?report=rep-1",
             id="set",
         ),
         # A deployment that never set its address would link to a local one.
@@ -499,10 +506,45 @@ async def test_the_report_links_the_console_only_where_its_readers_can_open_it(
         }
     )
 
-    report = await _build(_RegistryOnTheDay(settings, graph_store=store))
+    report = await _build(_RegistryOnTheDay(settings, graph_store=store), "rep-1")
 
     assert report.console_url == link
+    # The console links its own page in place, whether or not a message may carry an address.
+    assert report.console_path == "/reports/checkout/daily?report=rep-1"
     assert ("Open in OpenProgram" in render_text(report)) is (link is not None)
+    assert ("Open in OpenProgram" in slack_text(report)) is (link is not None)
+    assert ("Open in OpenProgram" in email_html(report)) is (link is not None)
+    card = json.dumps(teams_payload(report))
+    # A message is opened outside the console: with no public address it carries no
+    # link at all, never the bare path.
+    for rendered in (render_text(report), slack_text(report), email_html(report), card):
+        assert ("/reports/checkout/daily" in rendered) is (link is not None)
+        assert link is None or link in rendered
+
+
+def test_the_link_is_the_reports_own_page_which_every_role_may_open() -> None:
+    # Never the project's Delivery page: a developer, scrum master or product owner has none.
+    assert day_report_path("checkout") == "/reports/checkout/daily"
+    assert day_report_path("checkout", "rep-1") == "/reports/checkout/daily?report=rep-1"
+    assert day_report_path("check out/1", "a&b=c#d") == (
+        "/reports/check%20out%2F1/daily?report=a%26b%3Dc%23d"
+    )
+
+
+async def test_a_sent_report_carries_the_absolute_link_to_its_own_page() -> None:
+    sender = _RecordingSender()
+    service, _registry = await _service_with_sender(sender)
+    saved = await service.save(_definition(report_id=""), actor="admin")
+    link = f"https://console.example.com/reports/checkout/daily?report={saved.report_id}"
+
+    preview = await service.preview(TENANT, saved.report_id)
+    run = await service.send_now(TENANT, saved.report_id, actor="admin")
+
+    assert preview.report.console_path == f"/reports/checkout/daily?report={saved.report_id}"
+    assert preview.report.console_url == link
+    assert f"Open in OpenProgram: {link}" in preview.text
+    assert f"Open in OpenProgram: {link}" in run.text
+    assert "/delivery/" not in run.text
 
 
 async def test_where_we_stand_says_what_changed_and_why() -> None:
@@ -864,7 +906,8 @@ def _report() -> DayReport:
             ),
             ReportSection(title="Most important", empty_text="No open risk signals."),
         ),
-        console_url="https://console.example.com/delivery/project/checkout",
+        console_path="/reports/checkout/daily?report=rep-1",
+        console_url="https://console.example.com/reports/checkout/daily?report=rep-1",
     )
 
 
@@ -1006,7 +1049,9 @@ async def test_teams_posts_a_card_to_the_connections_webhook() -> None:
     assert outcome.ok
     card = json.loads(hook.calls.last.request.content)["attachments"][0]["content"]
     assert card["body"][0]["text"] == "Checkout Revamp: day report, Mon 5 Oct 2026"
-    assert card["actions"][0]["url"] == "https://console.example.com/delivery/project/checkout"
+    assert card["actions"][0]["url"] == (
+        "https://console.example.com/reports/checkout/daily?report=rep-1"
+    )
 
 
 def test_every_format_carries_the_same_report() -> None:
@@ -1170,6 +1215,10 @@ def test_api_creates_previews_sends_and_lists_a_report(settings: Settings) -> No
     assert preview.status_code == 200
     assert preview.json()["title"].startswith("Checkout: day report")
     assert "WHERE WE STAND" in preview.json()["text"]
+    # The console links the report's own page by its path; the absolute address is only
+    # in what is sent, so the preview carries none.
+    assert preview.json()["console_path"] == f"/reports/checkout/daily?report={report_id}"
+    assert "console_url" not in preview.json()
     assert sent.status_code == 200
     assert sent.json()["trigger"] == "manual"
     assert sent.json()["status"] == "sent"
@@ -1307,6 +1356,8 @@ def test_every_role_reads_the_reports_todays_report_and_past_sends(
     assert {item["name"] for item in listed.json()} == {"Checkout daily", "Insights daily"}
     assert read.json()["project_name"] == "Checkout Revamp"
     assert preview.json()["title"].startswith("Checkout Revamp: day report")
+    # The page the link opens is the one every role reads, whatever Delivery offers the role.
+    assert preview.json()["console_path"] == f"/reports/checkout/daily?report={checkout}"
     assert runs.json()[0]["actor"] == "dev-user"
 
 
