@@ -30,18 +30,9 @@
   --op-info: #2238df;
   --op-info-bg: #d3d7f9;
 
-  /* Delivery stages: one ordinal blue ramp from raised to business testing
-     (validated: monotone lightness, every step gap >= 0.06, light end 2.1:1 on
-     white), and the brand magenta for production, the stage that means done. */
-  --op-stage-raised: #86b6ef;
-  --op-stage-groomed: #5598e7;
-  --op-stage-in-development: #2a78d6;
-  --op-stage-in-testing: #1c5cab;
-  --op-stage-business-testing: #104281;
-  --op-stage-production: #e20074;
-
   /* Delivery stages: one hue per stage, ordered cool to warm to green so a
-     stacked bar reads left to right as raised -> production. */
+     stacked bar reads left to right as raised -> production. The dark steps are
+     in their own block below. */
   --op-stage-raised: #9a9a9a;
   --op-stage-groomed: #2238df;
   --op-stage-in-development: #e20074;
@@ -105,6 +96,21 @@
   --op-flow-jam: #e66767;
 }
 
+/* The six delivery stages in dark: the same hues stepped for a dark surface, on the
+   same data-theme hook. A stage colour means a stage, with its name beside it, on
+   Daily's stage strip, Overall's flow, requirement list and gate table alike. Every
+   step meets 3:1 on each dark surface it is drawn on (the #0d0d0d page, #141413,
+   the #1a1a19 card and the #262625 tile): 3.49:1 at the least, groomed on a tile.
+   components/viz/stages.test.ts checks it. */
+:root[data-theme="dark"] {
+  --op-stage-raised: #8a8a8a;
+  --op-stage-groomed: #5a6cf0;
+  --op-stage-in-development: #e8338a;
+  --op-stage-in-testing: #d06a17;
+  --op-stage-business-testing: #9a6ad8;
+  --op-stage-production: #1f9d62;
+}
+
 /* Report visuals (Reports › Overall): the slip chart, pod dates, cumulative flow
    and gate heatmap. Light is the console's own palette; the extra steps are a
    chart's grid and axis, and the red hatch a bypassed gate is drawn with (it also
@@ -119,16 +125,10 @@
 }
 
 /* The same in dark, on the data-theme hook the flow view uses (the console has no
-   dark theme yet): the stage colours stepped for a dark surface, and inside the
-   Overall page (.op-viz) every grey, ink and RAG token remapped, so its cards,
-   chips and charts read as one dark view rather than dark charts on white cards. */
+   dark theme yet), and inside the Overall page (.op-viz) every grey, ink and RAG
+   token remapped, so its cards, chips and charts read as one dark view rather than
+   dark charts on white cards. The stage colours' dark steps are above. */
 :root[data-theme="dark"] {
-  --op-stage-raised: #8a8a8a;
-  --op-stage-groomed: #5a6cf0;
-  --op-stage-in-development: #e8338a;
-  --op-stage-in-testing: #d06a17;
-  --op-stage-business-testing: #9a6ad8;
-  --op-stage-production: #1f9d62;
   --op-viz-surface: #1a1a19;
   --op-viz-grid: #2c2c2a;
   --op-viz-axis: #5c5b56;
