@@ -8,7 +8,7 @@
 // label for one of them.
 import type { components } from "../../api/generated";
 import { formatDay } from "../../lib/format.ts";
-import { STAGE_LABELS, STAGE_ORDER } from "../../lib/status.ts";
+import { STAGE_LABELS, STAGE_ORDER } from "../../components/viz/stages.ts";
 
 type Schemas = components["schemas"];
 export type ReportFacts = Schemas["ReportFactsResponse"];

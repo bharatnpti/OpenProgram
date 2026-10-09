@@ -1,7 +1,7 @@
 import { useId } from "react";
 
 import { formatDay, progressWidth } from "../../lib/format";
-import { stageColor } from "../../lib/status";
+import { stageColor } from "../../components/viz/stages";
 import { type ProgressFacts, progressParts, stageStrip, tileName } from "./dailyViz";
 
 /** A tile's width on the 600-wide strip: six tiles, five 8 px gaps. */

@@ -34,7 +34,3 @@ export function toneForVerdict(verdict: Verdict): BadgeTone {
   if (verdict === "off_track") return "danger";
   return "neutral";
 }
-
-// The stage order, labels and colours moved to components/viz/stages.ts, the one
-// source for every chart; this path stays for the screens that import it here.
-export { STAGE_LABELS, STAGE_ORDER, stageColor } from "../components/viz/stages.ts";

@@ -2,7 +2,7 @@
    acts) and the text Send now sends. The values are v3's own tokens (index.css) for
    light; the dark steps follow a theme set on the document (data-theme="dark"), the
    hook the flow view uses until the console has a dark theme. Only the report, the
-   sent text and past sends take them; the stage colours are lib/status.ts's. */
+   sent text and past sends take them; the stage colours are components/viz/stages.ts's. */
 :root {
   --op-day-surface: #ffffff;
   --op-day-surface-2: #f1f1f1;

@@ -12,7 +12,7 @@ import type {
 import { PanelState, TableBox, th } from "../../components/PanelState";
 import { Panel } from "../../components/ui/Bits";
 import { Pill } from "../../components/ui/Pill";
-import { STAGE_LABELS, stageColor } from "../../lib/status";
+import { STAGE_LABELS, stageColor } from "../../components/viz/stages";
 import { cn } from "../../lib/utils";
 import { TabIntro, hintClass, inputClass, labelClass } from "./AdminBits";
 import { errorText } from "./adminWords";
