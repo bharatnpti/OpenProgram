@@ -128,6 +128,9 @@ export function ReportHeader({
           <Pill
             size="sm"
             variant={preview.open ? "dark" : "ghost"}
+            // Pressed, it is filled with ink, which the dark page (.op-viz) turns white:
+            // its words take the surface colour, as Overall's numbered markers do.
+            className={preview.open ? "text-(color:--op-viz-surface)" : undefined}
             aria-pressed={preview.open}
             aria-controls={preview.open ? preview.controls : undefined}
             onClick={preview.onToggle}

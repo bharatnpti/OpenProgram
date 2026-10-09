@@ -93,16 +93,19 @@ export function DailyPage() {
                 ))}
               </nav>
             ) : null}
-            <ReportHeader
-              report={selected}
-              preview={{
-                open: showText,
-                onToggle: () => setShowText((open) => !open),
-                controls: textId,
-              }}
-            />
-            <ReportPreview reportId={selected.report_id} showText={showText} textId={textId} />
-            <RunHistory key={selected.report_id} reportId={selected.report_id} />
+            {/* The report's page in the dark theme turns as Overall's does (.op-viz). */}
+            <div className="op-viz grid grid-cols-[minmax(0,1fr)] gap-5">
+              <ReportHeader
+                report={selected}
+                preview={{
+                  open: showText,
+                  onToggle: () => setShowText((open) => !open),
+                  controls: textId,
+                }}
+              />
+              <ReportPreview reportId={selected.report_id} showText={showText} textId={textId} />
+              <RunHistory key={selected.report_id} reportId={selected.report_id} />
+            </div>
           </div>
         ) : null}
       </PanelState>
