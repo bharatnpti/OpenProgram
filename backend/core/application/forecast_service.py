@@ -50,6 +50,8 @@ from core.ports.repositories import GraphRepository, TimeSeriesRepository
 
 #: Past this many working days apart, history and the team disagree.
 DISAGREEMENT_WORKING_DAYS = 5
+#: The most days of the forecast's own history one read replays.
+MAX_FORECAST_HISTORY_DAYS = 90
 _ETA_FACT_LIMIT = 5000
 
 
@@ -82,6 +84,23 @@ class ProjectDeliveryView:
     project: ScopeDeliveryView
     pods: tuple[ScopeDeliveryView, ...]
     releases: tuple[ScopeDeliveryView, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class ForecastDay:
+    """What history forecast on one day with a snapshot: p50 and p85 when it could."""
+
+    day: date
+    p50: date | None
+    p85: date | None
+    sample_days: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class ForecastHistoryView:
+    scope: CommitmentScope
+    #: Oldest first; a day without a snapshot is left out, never guessed.
+    days: tuple[ForecastDay, ...]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -327,6 +346,70 @@ class ForecastService:
                 return candidate
         raise GraphNotFound(f"No {scope.kind.value} {scope.id!r} in project {scope.project_id!r}.")
 
+    async def forecast_history(
+        self,
+        tenant_id: str,
+        project_id: str,
+        as_of: date,
+        *,
+        release_id: str | None = None,
+        days: int = HISTORY_DAYS,
+    ) -> ForecastHistoryView:
+        """The project's (or one release's) history forecast as it stood on each of the
+        last ``days`` days that kept a snapshot, up to ``as_of``.
+
+        Each day is forecast the way :meth:`project_delivery` forecasts it on that
+        day, from the same snapshots, keys and seed, so the last day is the forecast
+        the delivery view shows and an earlier one is what it showed then.
+        """
+        await self._project(tenant_id, project_id, as_of)
+        release = await self.release(tenant_id, release_id) if release_id else None
+        if release is not None and release.project_id != project_id:
+            raise GraphNotFound(f"No release {release_id!r} in project {project_id!r}.")
+        days = max(1, min(days, MAX_FORECAST_HISTORY_DAYS))
+        first = as_of - timedelta(days=days - 1)
+        before = as_of - timedelta(days=1)
+        stored = await self._delivery.history(
+            tenant_id, project_id, first - timedelta(days=HISTORY_DAYS), before
+        )
+        own_days: dict[date, RequirementsSnapshot | None] = {
+            item.day: item
+            for item in (
+                await self._delivery.history(tenant_id, project_id, first, before, release)
+                if release is not None
+                else stored
+            )
+        }
+        own_days[as_of] = await self._delivery.snapshot(tenant_id, project_id, as_of, release)
+        scope = (
+            CommitmentScope(
+                kind=CommitmentScopeKind.RELEASE, id=release.release_id, project_id=project_id
+            )
+            if release is not None
+            else CommitmentScope(
+                kind=CommitmentScopeKind.PROJECT, id=project_id, project_id=project_id
+            )
+        )
+        forecasts: list[ForecastDay] = []
+        for offset in range(days):
+            day = first + timedelta(days=offset)
+            own = own_days.get(day)
+            if own is None:
+                continue
+            window = [
+                item for item in stored if day - timedelta(days=HISTORY_DAYS) <= item.day < day
+            ]
+            keys = frozenset(own.items) if release is not None else None
+            if keys is not None:
+                window = [_restricted(item, keys) for item in window]
+            forecast = _scope_forecast(scope, own, window, keys, day)
+            forecasts.append(
+                ForecastDay(
+                    day=day, p50=forecast.p50, p85=forecast.p85, sample_days=forecast.sample_days
+                )
+            )
+        return ForecastHistoryView(scope=scope, days=tuple(forecasts))
+
     # ---- internals ---------------------------------------------------------
 
     async def _release_view(
@@ -410,27 +493,8 @@ class ForecastService:
         as_of: date,
         extra_reasons: Sequence[str],
     ) -> ScopeDeliveryView:
-        series = [*history, snapshot] if snapshot is not None else list(history)
-        by_points = bool(series) and all(item.has_points for item in series)
-        open_keys = (
-            [key for key, stage in snapshot.items.items() if stage is not DeliveryStage.PRODUCTION]
-            if snapshot is not None
-            else []
-        )
-        remaining: float
-        if snapshot is None:
-            remaining = 0
-        elif by_points:
-            remaining = snapshot.points_total - snapshot.points_done
-        else:
-            remaining = float(len(open_keys))
-        forecast = history_forecast(
-            daily_completions(series, keys=keys, by_points=by_points),
-            remaining,
-            start=as_of,
-            seed=f"{scope.key}:{as_of.isoformat()}",
-            unit="story points" if by_points else "requirements",
-        )
+        open_keys = _open_keys(snapshot)
+        forecast = _scope_forecast(scope, snapshot, history, keys, as_of)
         team = team_forecast(
             OpenItem(
                 key=key,
@@ -581,6 +645,40 @@ class _Context:
     etas: Mapping[str, date]
     pod_keys: Mapping[str, frozenset[str]]
     names: Mapping[str, str]
+
+
+def _open_keys(snapshot: RequirementsSnapshot | None) -> list[str]:
+    if snapshot is None:
+        return []
+    return [key for key, stage in snapshot.items.items() if stage is not DeliveryStage.PRODUCTION]
+
+
+def _scope_forecast(
+    scope: CommitmentScope,
+    snapshot: RequirementsSnapshot | None,
+    history: Sequence[RequirementsSnapshot],
+    keys: frozenset[str] | None,
+    as_of: date,
+) -> HistoryForecast:
+    """What history forecast for the scope on ``as_of``: the one rule the delivery view
+    and the forecast's own history both use, seeded by the scope and the day, so a past
+    day's forecast reads the same as the delivery view read on that day."""
+    series = [*history, snapshot] if snapshot is not None else list(history)
+    by_points = bool(series) and all(item.has_points for item in series)
+    remaining: float
+    if snapshot is None:
+        remaining = 0
+    elif by_points:
+        remaining = snapshot.points_total - snapshot.points_done
+    else:
+        remaining = float(len(_open_keys(snapshot)))
+    return history_forecast(
+        daily_completions(series, keys=keys, by_points=by_points),
+        remaining,
+        start=as_of,
+        seed=f"{scope.key}:{as_of.isoformat()}",
+        unit="story points" if by_points else "requirements",
+    )
 
 
 def _reasons(

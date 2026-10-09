@@ -1195,6 +1195,27 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/projects/{project_id}/delivery/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Project Forecast History
+     * @description The history forecast (p50, p85) as it stood on each day with a snapshot, oldest
+     *     first, for the project or one release: what the delivery read said on that day.
+     */
+    get: operations["project_forecast_history_projects__project_id__delivery_history_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/projects/{project_id}/delivery-date": {
     parameters: {
       query?: never;
@@ -3686,6 +3707,37 @@ export interface components {
        * @description The person is the synced tracker issue's assignee through their identity link. The tick to move the issue also needs write_back other than off.
        */
       can_move_in_tracker: boolean;
+    };
+    /**
+     * ForecastDayResponse
+     * @description What history forecast on one day that kept a snapshot; p50 and p85 are null when
+     *     there was too little history, or nothing finished in it, to forecast.
+     */
+    ForecastDayResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** P50 */
+      p50: string | null;
+      /** P85 */
+      p85: string | null;
+      /** Sample Days */
+      sample_days: number;
+    };
+    /**
+     * ForecastHistoryResponse
+     * @description The project's, or one release's, history forecast as it stood on each day.
+     */
+    ForecastHistoryResponse: {
+      /** Project Id */
+      project_id: string;
+      /** Release Id */
+      release_id: string | null;
+      scope_kind: components["schemas"]["CommitmentScopeKind"];
+      /** Days */
+      days: components["schemas"]["ForecastDayResponse"][];
     };
     /**
      * GateBoardResponse
@@ -9243,6 +9295,44 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ProjectDeliveryResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_forecast_history_projects__project_id__delivery_history_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        days?: number;
+        /** @description One release of the project. */
+        release_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ForecastHistoryResponse"];
         };
       };
       /** @description Validation Error */

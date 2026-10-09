@@ -5534,6 +5534,103 @@
         }
       }
     },
+    "/projects/{project_id}/delivery/history": {
+      "get": {
+        "tags": ["delivery"],
+        "summary": "Project Forecast History",
+        "description": "The history forecast (p50, p85) as it stood on each day with a snapshot, oldest\nfirst, for the project or one release: what the delivery read said on that day.",
+        "operationId": "project_forecast_history_projects__project_id__delivery_history_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One release of the project.",
+              "title": "Release Id"
+            },
+            "description": "One release of the project."
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForecastHistoryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/projects/{project_id}/delivery-date": {
       "put": {
         "tags": ["delivery"],
@@ -13752,6 +13849,80 @@
           "can_move_in_tracker"
         ],
         "title": "FocusTaskDto"
+      },
+      "ForecastDayResponse": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "p50": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50"
+          },
+          "p85": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P85"
+          },
+          "sample_days": {
+            "type": "integer",
+            "title": "Sample Days"
+          }
+        },
+        "type": "object",
+        "required": ["day", "p50", "p85", "sample_days"],
+        "title": "ForecastDayResponse",
+        "description": "What history forecast on one day that kept a snapshot; p50 and p85 are null when\nthere was too little history, or nothing finished in it, to forecast."
+      },
+      "ForecastHistoryResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "scope_kind": {
+            "$ref": "#/components/schemas/CommitmentScopeKind"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/ForecastDayResponse"
+            },
+            "type": "array",
+            "title": "Days"
+          }
+        },
+        "type": "object",
+        "required": ["project_id", "release_id", "scope_kind", "days"],
+        "title": "ForecastHistoryResponse",
+        "description": "The project's, or one release's, history forecast as it stood on each day."
       },
       "GateBoardResponse": {
         "properties": {

@@ -14,6 +14,7 @@ import type {
   DeliveryDateRequest,
   PodDeliveryResponse,
   ProjectDeliveryResponse,
+  ForecastHistoryResponse,
   ReleaseCandidateResponse,
   ReleaseRequest,
   ReleaseResponse,
@@ -536,6 +537,15 @@ export const apiClient = {
   projectDelivery: (projectId: string, asOf?: string) =>
     requestJson<ProjectDeliveryResponse>(
       withAsOf(`/projects/${encodeURIComponent(projectId)}/delivery`, asOf),
+    ),
+  /** The history forecast as it stood each day, for Overall's "How the date moved". */
+  projectForecastHistory: (projectId: string, asOf?: string, releaseId?: string, days?: number) =>
+    requestJson<ForecastHistoryResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/delivery/history`, {
+        as_of: asOf,
+        days: days ? String(days) : undefined,
+        release_id: releaseId,
+      }),
     ),
   podDelivery: (podId: string, asOf?: string) =>
     requestJson<PodDeliveryResponse>(withAsOf(`/pods/${encodeURIComponent(podId)}/delivery`, asOf)),

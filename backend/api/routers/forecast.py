@@ -18,6 +18,7 @@ from api.dependencies import get_current_principal, get_forecast_service
 from api.dtos import (
     CommitmentResponse,
     DeliveryDateRequest,
+    ForecastHistoryResponse,
     PodDeliveryResponse,
     PodProjectDeliveryResponse,
     ProjectDeliveryResponse,
@@ -27,10 +28,11 @@ from api.dtos import (
     ScopeDeliveryResponse,
 )
 from core.application.authorization import AuthorizationPolicy, Capability
-from core.application.forecast_service import ForecastService
+from core.application.forecast_service import MAX_FORECAST_HISTORY_DAYS, ForecastService
 from core.domain.auth import Principal, Role
 from core.domain.errors import AuthorizationDenied, GraphNotFound, OpenProgramError
 from core.domain.forecast import (
+    HISTORY_DAYS,
     CommitmentError,
     CommitmentScope,
     CommitmentScopeKind,
@@ -53,6 +55,27 @@ async def project_delivery(
     except GraphNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return ProjectDeliveryResponse.from_view(view)
+
+
+@router.get("/projects/{project_id}/delivery/history", response_model=ForecastHistoryResponse)
+async def project_forecast_history(
+    project_id: str,
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[ForecastService, Depends(get_forecast_service)],
+    as_of: Annotated[date, Query(default_factory=date.today)],
+    days: Annotated[int, Query(ge=1, le=MAX_FORECAST_HISTORY_DAYS)] = HISTORY_DAYS,
+    release_id: Annotated[str | None, Query(description="One release of the project.")] = None,
+) -> ForecastHistoryResponse:
+    """The history forecast (p50, p85) as it stood on each day with a snapshot, oldest
+    first, for the project or one release: what the delivery read said on that day."""
+    _ensure(principal, Capability.READ_PROJECT_PROGRESS)
+    try:
+        view = await service.forecast_history(
+            principal.tenant_id, project_id, as_of, release_id=release_id, days=days
+        )
+    except GraphNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    return ForecastHistoryResponse.from_view(view)
 
 
 @router.put("/projects/{project_id}/delivery-date", response_model=CommitmentResponse)

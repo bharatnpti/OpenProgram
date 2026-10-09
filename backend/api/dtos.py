@@ -32,7 +32,11 @@ from core.application.flow_metrics_service import (
     WorkstreamFlowSummaryView,
     WorkstreamFlowView,
 )
-from core.application.forecast_service import ProjectDeliveryView, ScopeDeliveryView
+from core.application.forecast_service import (
+    ForecastHistoryView,
+    ProjectDeliveryView,
+    ScopeDeliveryView,
+)
 from core.application.gate_service import GateBoardView
 from core.application.persona_views import (
     BlockerDetailView,
@@ -4231,6 +4235,43 @@ class ProjectDeliveryResponse(BaseModel):
             project=ScopeDeliveryResponse.from_view(view.project),
             pods=[ScopeDeliveryResponse.from_view(item) for item in view.pods],
             releases=[ScopeDeliveryResponse.from_view(item) for item in view.releases],
+        )
+
+
+class ForecastDayResponse(BaseModel):
+    """What history forecast on one day that kept a snapshot; p50 and p85 are null when
+    there was too little history, or nothing finished in it, to forecast."""
+
+    model_config = ConfigDict(frozen=True)
+
+    day: date
+    p50: date | None
+    p85: date | None
+    sample_days: int
+
+
+class ForecastHistoryResponse(BaseModel):
+    """The project's, or one release's, history forecast as it stood on each day."""
+
+    model_config = ConfigDict(frozen=True)
+
+    project_id: str
+    release_id: str | None
+    scope_kind: CommitmentScopeKind
+    days: list[ForecastDayResponse]
+
+    @classmethod
+    def from_view(cls, view: ForecastHistoryView) -> ForecastHistoryResponse:
+        return cls(
+            project_id=view.scope.project_id,
+            release_id=view.scope.id if view.scope.kind is CommitmentScopeKind.RELEASE else None,
+            scope_kind=view.scope.kind,
+            days=[
+                ForecastDayResponse(
+                    day=item.day, p50=item.p50, p85=item.p85, sample_days=item.sample_days
+                )
+                for item in view.days
+            ],
         )
 
 
