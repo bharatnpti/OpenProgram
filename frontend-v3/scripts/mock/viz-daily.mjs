@@ -1,15 +1,16 @@
 // viz-daily lane: the day report's preview with its `facts`, for Daily's pictures.
 //
-// Two datasets, made up and shaped like the demo's Checkout Revamp on Fri 9 Oct:
-// "short" (3 working days of history, no forecast yet) and "month" (a forecast, a
-// date moved once). The whole-project report answers with the short one, or with
-// the month when VIZ_DAILY_HISTORY=month or a `viz-history=month` cookie (the
-// viz-overall mock's switch, so one server shows either dataset on both pages);
-// the Release 1.0 report always with the month. `text` is rendered here the way the server's render_text renders the
-// sections, so the preview drawer shows what a send would carry.
+// Two datasets, made up and shaped like the demo's Checkout Revamp on Tue 6 Oct, the
+// day every other mock answers for (mock-api.mjs TODAY): "short" (3 working days of
+// history, no forecast yet) and "month" (a forecast, a date moved once). The
+// whole-project report answers with the short one, or with the month when
+// VIZ_DAILY_HISTORY=month or a `viz-history=month` cookie (the viz-overall mock's
+// switch, so one server shows either dataset on both pages); the Release 1.0 report
+// always with the month. `text` is rendered here the way the server's render_text
+// renders the sections, so the preview drawer shows what a send would carry.
 
-const DAY = "2026-10-09";
-const SINCE = "2026-10-08";
+const DAY = "2026-10-06";
+const SINCE = "2026-10-05";
 const HISTORY = process.env.VIZ_DAILY_HISTORY === "month" ? "month" : "short";
 
 /** The dataset a request asks for: its `viz-history` cookie, else the server's. */
@@ -187,20 +188,20 @@ function preview(history, release) {
   const month = history === "month";
   const name = release ? "Checkout Revamp, Release 1.0" : "Checkout Revamp";
   const reportId = release ? "rep-checkout-r1" : "rep-checkout";
-  const progress = "28% complete: 5 of 18 requirements in production (28% on Thu 8 Oct 2026).";
+  const progress = "28% complete: 5 of 18 requirements in production (28% on Mon 5 Oct 2026).";
   const delivery = month
-    ? "Delivery Tue 15 Dec 2026: at risk. History says 85% likely by Mon 21 Dec 2026. The team's latest date is Fri 9 Oct 2026 (CHK-4)."
-    : "Delivery Tue 15 Dec 2026: at risk. The team's latest date is Fri 9 Oct 2026 (CHK-4).";
+    ? "Delivery Tue 15 Dec 2026: at risk. History says 85% likely by Mon 21 Dec 2026. The team's latest date is Tue 6 Oct 2026 (CHK-4)."
+    : "Delivery Tue 15 Dec 2026: at risk. The team's latest date is Tue 6 Oct 2026 (CHK-4).";
   const reasons = month
     ? [
         "Committed for Tue 15 Dec 2026 by Mina Patel; moved once, 14 days later than first set.",
         "History: 50% likely by Wed 2 Dec 2026, 85% by Mon 21 Dec 2026 (13 requirements to go; 5 finished in the last 15 working days).",
-        "Team dates: the latest open requirement is due Fri 9 Oct 2026 (CHK-4).",
+        "Team dates: the latest open requirement is due Tue 6 Oct 2026 (CHK-4).",
       ]
     : [
         "Committed for Tue 15 Dec 2026 by Mina Patel.",
         "Only 3 working days of history; a forecast needs 10.",
-        "Team dates: the latest open requirement is due Fri 9 Oct 2026 (CHK-4).",
+        "Team dates: the latest open requirement is due Tue 6 Oct 2026 (CHK-4).",
       ];
   const bypassLines = BYPASSED.map(
     (item) =>
@@ -208,7 +209,7 @@ function preview(history, release) {
   );
   const important = [...reasons, ...bypassLines].slice(0, 8);
   const body = {
-    title: `${name}: day report, Fri 9 Oct 2026`,
+    title: `${name}: day report, Tue 6 Oct 2026`,
     report_date: DAY,
     rag: "amber",
     headline: "4 fixes, 1 answer and 4 reviews needed, 6 escalated.",
@@ -239,7 +240,7 @@ function preview(history, release) {
             ],
           },
           {
-            heading: "What changed since Thu 8 Oct 2026",
+            heading: "What changed since Mon 5 Oct 2026",
             lines: [
               "CHK-16 Q4 checkout roadmap review: Raised → In development",
               "CHK-12 Promo code validation: In development → Business testing",
@@ -284,7 +285,7 @@ function preview(history, release) {
               "CHK-12",
               "Does a promo code apply to the subtotal only, or to the shipping fee as well?",
               "Mina Patel",
-              "Tue 6 Oct 2026",
+              "Fri 2 Oct 2026",
               "Partly",
             ],
           ],
