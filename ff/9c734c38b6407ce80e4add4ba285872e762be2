@@ -1,0 +1,26 @@
+frontend-v3/src/features/daily/dailyViz.test.ts
+  s_1715cbbf3832ec::t_ba728737efff75 335-336,341-349
+  s_1715cbbf3832ec::t_0debc1d2daf912 350-351
+frontend-v3/src/features/daily/DailyReport.tsx
+  s_1715cbbf3832ec::t_14dfd9f08e3b1e 102-104
+frontend-v3/src/features/daily/dailyViz.ts
+  s_1715cbbf3832ec::t_0a50fe4fb0e1e3 693
+  s_1715cbbf3832ec::t_a010313c7eabfa 700-701,705-713,715-717
+  s_1715cbbf3832ec::t_9e872827c1a2bd 674
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ff9c734c38b6407ce80e4add4ba285872e762be2",
+  "prompts": {},
+  "sessions": {
+    "s_1715cbbf3832ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b324c31-3952-4113-96ba-8972b213e210",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
