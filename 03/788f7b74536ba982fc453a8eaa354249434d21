@@ -1,0 +1,86 @@
+frontend-v3/src/features/assistant/persona.ts
+  s_1715cbbf3832ec::t_4b1ad5c57dfd91 97-100
+  s_d09685699e5b37::t_f07f4579463747 1-96,101-170
+frontend-v3/src/app/access.test.ts
+  s_d09685699e5b37::t_1685b3f0ce867c 316-323
+  s_d09685699e5b37::t_f033cc5cacf696 324
+frontend-v3/src/features/today/ProductOwnerToday.tsx
+  s_1715cbbf3832ec::t_0d82fe7bef3ee4 25,67
+frontend-v3/src/App.tsx
+  s_1715cbbf3832ec::t_edc074428fc425 9,59-62
+  s_d09685699e5b37::t_4cf80eb7b55531 29
+frontend-v3/src/app/Layout.tsx
+  s_1715cbbf3832ec::t_edc074428fc425 11,111-117,125
+frontend-v3/src/pages/SignalsPage.tsx
+  s_d09685699e5b37::t_4cf80eb7b55531 38
+frontend-v3/src/features/assistant/persona.test.ts
+  s_1715cbbf3832ec::t_4b1ad5c57dfd91 38-41,86-89,99-107,115-117,120-122
+  s_1715cbbf3832ec::t_bf55076065668f 1-37,42-85,90-98,108-114,118-119,123-154
+frontend-v3/scripts/mock/assistant.mjs
+  s_1715cbbf3832ec::t_fa9d8dd81ce6bb 3-4,8-58,60-104
+  s_1715cbbf3832ec::t_f60eb56ba51324 1-2,5-7,59
+frontend-v3/src/components/shell/CommandPalette.tsx
+  s_d09685699e5b37::t_1a47da9eabe4bc 125-126,129-130,222-253
+  s_d09685699e5b37::t_f79ccb342fa640 10-11,14,108-109,111-112,114-124,146-151
+  s_1715cbbf3832ec::t_c861b034d4c93d 38-41,113
+  s_1715cbbf3832ec::t_00564b83ec41c6 26
+frontend-v3/src/features/assistant/assistantContext.ts
+  s_d09685699e5b37::t_0703eb690b1316 1-68
+frontend-v3/src/app/access.ts
+  s_d09685699e5b37::t_1685b3f0ce867c 50-55,108
+frontend-v3/src/features/reports/ReportsHeader.tsx
+  s_1715cbbf3832ec::t_4ac46373085e7d 5,13-14
+frontend-v3/src/app/nav.ts
+  s_d09685699e5b37::t_4cf80eb7b55531 28
+frontend-v3/src/pages/DeliveryPage.tsx
+  s_1715cbbf3832ec::t_4ac46373085e7d 15,55-56
+frontend-v3/src/pages/CoordinationPage.tsx
+  s_d09685699e5b37::t_4cf80eb7b55531 221
+  s_d09685699e5b37::t_5863407f8bf1a9 1,6,25-29,39-40,45
+frontend-v3/src/components/shell/paletteRows.test.ts
+  s_1715cbbf3832ec::t_15d280dc65ddd6 7-14,212-228
+  s_1715cbbf3832ec::t_fe9dfb75794422 229
+frontend-v3/src/components/shell/paletteRows.ts
+  s_1715cbbf3832ec::t_c861b034d4c93d 48-51
+  s_1715cbbf3832ec::t_4b1ad5c57dfd91 7
+  s_d09685699e5b37::t_f79ccb342fa640 6,22-23,47,52-74
+  s_1715cbbf3832ec::t_22a0b369776636 75-76
+frontend-v3/src/features/assistant/AssistantProvider.tsx
+  s_d09685699e5b37::t_0703eb690b1316 1,6-12
+  s_d09685699e5b37::t_5863407f8bf1a9 13
+  s_d09685699e5b37::t_22c545c6005c41 2-5,14-59,68-112
+  s_1715cbbf3832ec::t_4b1ad5c57dfd91 60-67
+frontend-v3/src/api/client.ts
+  s_d09685699e5b37::t_4cf80eb7b55531 151-153
+frontend-v3/src/features/assistant/Assistant.tsx
+  s_1715cbbf3832ec::t_00564b83ec41c6 80,108,197,216,282
+  s_1715cbbf3832ec::t_0eee31b702fc7b 168
+  s_d09685699e5b37::t_c659e7abccecbc 1-49,57-79,81-107,109-167,169-196,198-215,217-281,283-296
+  s_1715cbbf3832ec::t_3e86e29fa5c431 50-56
+frontend-v3/scripts/mock-api.mjs
+  s_1715cbbf3832ec::t_2996f89d47a4b8 27,394
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "03788f7b74536ba982fc453a8eaa354249434d21",
+  "prompts": {},
+  "sessions": {
+    "s_1715cbbf3832ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b324c31-3952-4113-96ba-8972b213e210",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_d09685699e5b37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac999ca-e6f7-4dc8-80ef-2b794b6036cf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
