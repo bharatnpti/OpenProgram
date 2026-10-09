@@ -11,6 +11,22 @@ export function toneForRag(rag: Rag | null | undefined): BadgeTone {
   return "neutral";
 }
 
+/**
+ * What each colour is called, in the report's own words: never the enum. Every
+ * place that names a colour without a verdict beside it says it this way.
+ */
+export const RAG_WORDS: Record<Rag, string> = {
+  green: "On track",
+  amber: "At risk",
+  red: "Off track",
+  unknown: "Status unknown",
+};
+
+/** A colour in words; a colour nobody reported (none at all included) is "Status unknown". */
+export function ragWords(rag: Rag | null | undefined): string {
+  return RAG_WORDS[rag ?? "unknown"] ?? RAG_WORDS.unknown;
+}
+
 /** Worst first, with `unknown` above `green`: silence is never a clean bill of health. */
 export function ragSeverity(rag: Rag | null | undefined): number {
   if (rag === "red") return 3;

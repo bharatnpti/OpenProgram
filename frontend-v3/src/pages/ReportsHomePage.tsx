@@ -11,9 +11,9 @@ import {
 } from "../app/directory";
 import { useRole } from "../app/role";
 import { PanelState, SectionHeader } from "../components/PanelState";
-import { RagBadge } from "../components/ui/Bits";
 import { dayReportCountWords } from "../features/daily/reportView";
 import { ProjectCompactStrip } from "../features/delivery/DeliveryStrips";
+import { ProjectStatus } from "../features/reports/ProjectStatus";
 import { ReportSetupDialog } from "../features/reports/ReportSetupDialog";
 import { Pill } from "../components/ui/Pill";
 import { ragSeverity } from "../lib/status";
@@ -80,10 +80,10 @@ export function ReportsHomePage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <span className="text-[17px] font-extrabold">{project.name}</span>
-                  <RagBadge rag={project.rag} />
+                  <ProjectStatus project={project} />
                 </div>
                 {canReadProjectProgress ? (
-                  <ProjectCompactStrip projectId={project.id} className="" />
+                  <ProjectCompactStrip projectId={project.id} className="" verdict={false} />
                 ) : null}
                 <span className="text-[13px] text-grey-secondary">
                   {dayReportCountWords(reports.data ? list.length : undefined, reports.isError)}

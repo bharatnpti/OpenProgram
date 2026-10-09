@@ -4,7 +4,7 @@ import type { Rag } from "../../api/schema";
 import { useShownDay } from "../../app/viewingDate";
 import { formatDay } from "../../lib/format";
 import { cn } from "../../lib/utils";
-import { toneForRag, type BadgeTone } from "../../lib/status";
+import { ragWords, toneForRag, type BadgeTone } from "../../lib/status";
 import { pastDue } from "./dateStripWords";
 import { RagChip } from "./RagChip";
 
@@ -31,9 +31,11 @@ export function RagDot({ rag, className }: { rag: Rag | null | undefined; classN
 }
 
 /**
- * "red", "amber"… as a chip, with "unknown" for anything not reported. `quiet`
- * draws "unknown" as plain grey text: on a task list most rows are unknown, and
- * colour is kept for bad news.
+ * A colour as a chip, in words ("On track", "At risk", "Off track", "Status
+ * unknown"), never the enum: a colour nobody reported is "Status unknown". A
+ * `label` says something else, such as a verdict. `quiet` draws an unreported
+ * colour as plain grey text: on a task list most rows are unknown, and colour is
+ * kept for bad news.
  */
 export function RagBadge({
   rag,
@@ -44,12 +46,13 @@ export function RagBadge({
   label?: string;
   quiet?: boolean;
 }) {
+  const words = label ?? ragWords(rag);
   if (quiet && (!rag || rag === "unknown")) {
-    return <span className="text-[12px] font-bold text-grey-secondary">{label ?? "unknown"}</span>;
+    return <span className="text-[12px] font-bold text-grey-secondary">{words}</span>;
   }
   return (
     <RagChip tone={toneForRag(rag)} className="h-6 px-2.5 text-[12px]">
-      {label ?? rag ?? "unknown"}
+      {words}
     </RagChip>
   );
 }

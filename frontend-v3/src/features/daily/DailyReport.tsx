@@ -2,12 +2,12 @@ import type { ReactNode } from "react";
 import { useId } from "react";
 
 import type { ReportPreviewResponse, ReportSectionResponse } from "../../api/schema";
+import { RAG_WORDS } from "../../lib/status";
 import { DateBar } from "./DateBar";
 import { GateRings } from "./GateRings";
 import { StageStrip } from "./StageStrip";
 import { WhoActs } from "./WhoActs";
 import { type ReportFacts, importantView, questionRows, verdictTone } from "./dailyViz";
-import { RAG_WORDS } from "./reportView";
 import { DayChip } from "./vizBits";
 import "./daily.css";
 

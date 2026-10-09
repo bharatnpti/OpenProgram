@@ -80,16 +80,19 @@ export function ProjectDateStrip({ projectId, title }: { projectId: string; titl
 export function ProjectCompactStrip({
   projectId,
   className = "mt-1",
+  verdict = true,
 }: {
   projectId: string;
   className?: string;
+  /** False where the card says the verdict itself, so the strip does not say it again. */
+  verdict?: boolean;
 }) {
   const delivery = useProjectDelivery(projectId);
   if (delivery.isLoading) {
     return <p className={`${className} text-[13px] text-grey-secondary`}>Loading the dates…</p>;
   }
   const scope = delivery.data?.project;
-  return scope ? <CompactDateStrip scope={scope} className={className} /> : null;
+  return scope ? <CompactDateStrip scope={scope} className={className} verdict={verdict} /> : null;
 }
 
 /**

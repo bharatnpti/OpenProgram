@@ -1,5 +1,5 @@
 // Pure helpers for the Daily view. Type imports only, so `node --test` runs them.
-import type { DayReportResponse, Rag, ReportRunResponse } from "../../api/schema";
+import type { DayReportResponse, ReportRunResponse } from "../../api/schema";
 import type { BadgeTone } from "../../lib/status";
 
 /** The section whose groups are people, each with what is needed from them. */
@@ -19,14 +19,6 @@ export const RUN_TONES: Record<RunStatus, BadgeTone> = {
   partial: "warning",
   failed: "danger",
   sending: "info",
-};
-
-/** The words the report itself opens with for each colour. */
-export const RAG_WORDS: Record<Rag, string> = {
-  green: "On track",
-  amber: "At risk",
-  red: "Off track",
-  unknown: "Status unknown",
 };
 
 const ASK_KINDS = ["Fix", "Decision", "Answer", "Review"];

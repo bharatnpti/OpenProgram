@@ -219,11 +219,15 @@ function OnFill({ tone, children }: { tone: BadgeTone; children: ReactNode }) {
 export function CompactDateStrip({
   scope,
   className,
+  verdict = true,
 }: {
   scope: ScopeDeliveryResponse;
   className?: string;
+  /** False where the verdict is shown elsewhere on the same card, so it is not said twice. */
+  verdict?: boolean;
 }) {
-  const { date, forecast, chip } = compactParts(scope);
+  const { date, forecast, chip: verdictChipOf } = compactParts(scope);
+  const chip = verdict ? verdictChipOf : null;
   return (
     <p
       className={cn(

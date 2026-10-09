@@ -4,11 +4,11 @@ import { apiClient } from "../../api/client";
 import type { ReportPreviewResponse, ReportSectionResponse } from "../../api/schema";
 import { PanelState, TableBox, td, th } from "../../components/PanelState";
 import { RagChip } from "../../components/ui/RagChip";
-import { toneForRag } from "../../lib/status";
+import { RAG_WORDS, toneForRag } from "../../lib/status";
 import { cn } from "../../lib/utils";
 import { DailyReport } from "./DailyReport";
 import { SentText } from "./SentText";
-import { ASKS_SECTION, RAG_WORDS, askParts } from "./reportView";
+import { ASKS_SECTION, askParts } from "./reportView";
 
 /**
  * Today's report built live from the project's state, exactly as it would be
