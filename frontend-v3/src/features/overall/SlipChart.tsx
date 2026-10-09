@@ -257,12 +257,14 @@ function SlipCard({
               <LineKey />
               Committed date
             </span>
-            <span>
-              <Swatch
-                style={{ background: band.fill, boxShadow: `inset 0 0 0 1.5px ${band.stroke}` }}
-              />
-              Forecast, 50% to 85% likely
-            </span>
+            {g.bands.length > 0 ? (
+              <span>
+                <Swatch
+                  style={{ background: band.fill, boxShadow: `inset 0 0 0 1.5px ${band.stroke}` }}
+                />
+                Forecast, 50% to 85% likely
+              </span>
+            ) : null}
             {g.noDate.length > 0 ? (
               <span>
                 <Swatch style={HATCH} />
