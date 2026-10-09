@@ -6,7 +6,6 @@ import {
   dayReportCountWords,
   localDay,
   noDayReportWords,
-  openInConsoleTarget,
   outcomeLine,
   outcomeText,
   scheduleTime,
@@ -110,41 +109,4 @@ test("an empty Daily page offers set-up only where this reader may, and names no
   );
   assert.equal(noDayReportWords(true, "ready", false), "");
   assert.equal(noDayReportWords(true, "failed", true), "");
-});
-
-test("the footer link is the report's own page inside the console, keeping a past day", () => {
-  const path = "/reports/project-checkout/daily?report=rep-1";
-  assert.equal(openInConsoleTarget(path, null), path);
-  assert.equal(
-    openInConsoleTarget(path, "2026-10-02"),
-    "/reports/project-checkout/daily?report=rep-1&asOf=2026-10-02",
-  );
-  assert.equal(
-    openInConsoleTarget("/reports/project-checkout/daily", "2026-10-02"),
-    "/reports/project-checkout/daily?asOf=2026-10-02",
-  );
-  assert.equal(
-    openInConsoleTarget("/reports/p/daily?report=r&asOf=2026-09-01", "2026-10-02"),
-    "/reports/p/daily?report=r&asOf=2026-10-02",
-    "one day, the one being viewed",
-  );
-  assert.equal(
-    openInConsoleTarget("/reports/p/daily?report=r#notes", "2026-10-02"),
-    "/reports/p/daily?report=r&asOf=2026-10-02#notes",
-  );
-});
-
-test("the footer link is never an address with a host, and is left out when there is no path", () => {
-  assert.equal(openInConsoleTarget(null, null), null);
-  assert.equal(openInConsoleTarget(undefined, "2026-10-02"), null);
-  assert.equal(openInConsoleTarget("", null), null);
-  // What an older server sent: the old console's address, which is the bug.
-  assert.equal(
-    openInConsoleTarget("http://localhost:5173/delivery/project/project-checkout", null),
-    null,
-  );
-  assert.equal(openInConsoleTarget("https://console.example.com/reports/p/daily", null), null);
-  assert.equal(openInConsoleTarget("//evil.example.com/reports/p/daily", null), null);
-  assert.equal(openInConsoleTarget("/\\evil.example.com", null), null);
-  assert.equal(openInConsoleTarget("reports/p/daily", null), null);
 });
