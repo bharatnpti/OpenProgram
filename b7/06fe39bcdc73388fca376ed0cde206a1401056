@@ -1,0 +1,33 @@
+frontend-v3/src/app/scope.test.ts
+  s_1715cbbf3832ec::t_af8091599ca777 7,15,227-292
+  s_1715cbbf3832ec::t_c03fcc07d0c8d4 293
+frontend-v3/src/pages/ReportsHomePage.tsx
+  s_1715cbbf3832ec::t_65f03ca7caf728 53-55
+  s_1715cbbf3832ec::t_42119652a71c20 42
+  s_1715cbbf3832ec::t_34c0beac54d446 5
+  s_1715cbbf3832ec::t_8b11b10302a66f 23-25,31
+frontend-v3/src/app/directory.ts
+  s_1715cbbf3832ec::t_b466c9333465df 33,35
+  s_1715cbbf3832ec::t_8198ab18ff38a4 18
+  s_1715cbbf3832ec::t_fe2ff1581698e1 101-130
+frontend-v3/src/app/scope.ts
+  s_1715cbbf3832ec::t_d248bbdc49de47 78-113
+frontend-v3/src/features/reports/ReportsHeader.tsx
+  s_1715cbbf3832ec::t_44f3828caef6cc 3,11-13,15,49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b706fe39bcdc73388fca376ed0cde206a1401056",
+  "prompts": {},
+  "sessions": {
+    "s_1715cbbf3832ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b324c31-3952-4113-96ba-8972b213e210",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
