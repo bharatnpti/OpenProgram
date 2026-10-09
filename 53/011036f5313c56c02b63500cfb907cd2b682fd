@@ -1,0 +1,27 @@
+frontend-v3/src/features/overall/podDates.ts
+  s_1715cbbf3832ec::t_767e54e79ea37c 79
+  s_1715cbbf3832ec::t_528e3a46a5591d 114,136,156
+  s_1715cbbf3832ec::t_5b64f70eb35bfe 106-113,115-135,137-142,147-155,157-168
+  s_1715cbbf3832ec::t_5f30be6876de57 143-146
+frontend-v3/src/features/overall/PodDatesSection.tsx
+  s_1715cbbf3832ec::t_528e3a46a5591d 24,166,181,199-200,363
+  s_1715cbbf3832ec::t_502579abce78af 19-23,25,128,358-362,364-365,368,374-389
+frontend-v3/src/features/overall/podDates.test.ts
+  s_1715cbbf3832ec::t_5f30be6876de57 5,158-196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "53011036f5313c56c02b63500cfb907cd2b682fd",
+  "prompts": {},
+  "sessions": {
+    "s_1715cbbf3832ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b324c31-3952-4113-96ba-8972b213e210",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
