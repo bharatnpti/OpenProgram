@@ -1,0 +1,47 @@
+frontend-v3/src/features/delivery/DeliveryStrips.tsx
+  s_1715cbbf3832ec::t_1d5f90c6161c13 83,87-88,95
+frontend-v3/src/components/ui/DateStrip.tsx
+  s_1715cbbf3832ec::t_d8309d20abf538 222,226-227
+  s_1715cbbf3832ec::t_f4ca67e13d9d49 229-230
+frontend-v3/src/components/ui/Bits.tsx
+  s_1715cbbf3832ec::t_97138eace66809 34-38,49,51,55
+  s_1715cbbf3832ec::t_4ff01bcdaaf75f 7
+frontend-v3/src/lib/status.test.ts
+  s_1715cbbf3832ec::t_40da1fdce27b07 1-24
+frontend-v3/src/features/reports/ProjectStatus.tsx
+  s_1715cbbf3832ec::t_57c1fc5abf46c4 1-4,6-38
+  s_1715cbbf3832ec::t_0bb6a63af77d97 5
+frontend-v3/src/pages/ReportsHomePage.tsx
+  s_1715cbbf3832ec::t_f0d74719b032bc 83,86
+  s_1715cbbf3832ec::t_99262dd4f0b754 16
+frontend-v3/src/features/daily/ReportPreview.tsx
+  s_1715cbbf3832ec::t_7dada9b19f10a0 7
+  s_1715cbbf3832ec::t_4a470bcd44278b 11
+frontend-v3/src/features/reports/projectStatusWords.test.ts
+  s_1715cbbf3832ec::t_f1287d5b8607f2 1-4,6-77
+  s_1715cbbf3832ec::t_05520627b2098e 5
+frontend-v3/src/features/daily/reportView.ts
+  s_1715cbbf3832ec::t_06a1ad1a97fa8a 2
+frontend-v3/src/features/daily/DailyReport.tsx
+  s_1715cbbf3832ec::t_18d29aa8824f02 5
+frontend-v3/src/lib/status.ts
+  s_1715cbbf3832ec::t_20c5eeb66add8b 14-29
+frontend-v3/src/features/reports/projectStatusWords.ts
+  s_1715cbbf3832ec::t_c5573ffe10f205 1-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f1c2e2f76d78bfb68ea44c88b4c3f3ae9e71981c",
+  "prompts": {},
+  "sessions": {
+    "s_1715cbbf3832ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b324c31-3952-4113-96ba-8972b213e210",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
