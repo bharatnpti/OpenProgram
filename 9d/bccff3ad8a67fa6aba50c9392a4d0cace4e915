@@ -1,0 +1,77 @@
+frontend-v3/src/api/generated.ts
+  s_d09685699e5b37::t_bc00378e5e4be6 4852-4853
+backend/core/domain/reports.py
+  s_d09685699e5b37::t_22ce97fb8e9b53 21
+  s_d09685699e5b37::t_a96c43a8527111 268-279
+  s_d09685699e5b37::t_55adb10911ad58 290-295
+backend/api/dtos.py
+  s_d09685699e5b37::t_f2cc66ab5b284c 3769-3772
+  s_d09685699e5b37::t_ea3fc05c1c7b87 3785
+frontend-v3/src/features/daily/ReportPreview.tsx
+  s_d09685699e5b37::t_cb7d5564438f86 2,6,11
+  s_d09685699e5b37::t_785e5837988412 24-27
+  s_d09685699e5b37::t_139a0e6f86b5e0 69,71
+frontend-v3/src/features/daily/reportView.test.ts
+  s_d09685699e5b37::t_d3a0099354bdf5 9,114-150
+frontend-v3/src/api/openapi.json
+  s_d09685699e5b37::t_bc00378e5e4be6 16715,16724,16740
+backend/core/application/day_report_service.py
+  s_d09685699e5b37::t_8cfda45b564864 155
+README.md
+  s_d09685699e5b37::t_3e90e8ab2b9c5f 254
+frontend-v3.md
+  s_d09685699e5b37::t_0234ac4c54b81d 237-242
+frontend/src/api/generated.ts
+  s_d09685699e5b37::t_bc00378e5e4be6 4865-4866
+backend/infra/adapters/reports/render.py
+  s_d09685699e5b37::t_a3f1a2110e94de 40
+backend/tests/unit/test_day_reports.py
+  s_d09685699e5b37::t_eebb5422ced172 526
+  s_d09685699e5b37::t_63a51cf2527ecc 481-486,490
+  s_d09685699e5b37::t_9ae64ac3acb70e 517,520
+  s_d09685699e5b37::t_3e53e77f878912 521
+  s_d09685699e5b37::t_975c01f003c0eb 518-519,522
+  s_d09685699e5b37::t_97427ed9e104a5 469-470
+  s_d09685699e5b37::t_9c29ff1019b2ae 72
+  s_d09685699e5b37::t_6f8b00d67ede99 359-360
+  s_d09685699e5b37::t_e435bde77cefaa 909-910
+  s_d09685699e5b37::t_78fd9b1b83ec79 1052-1054
+  s_d09685699e5b37::t_2cbe43e7d2eb78 509,512-513,515-516,523-525,527-547
+  s_d09685699e5b37::t_d11d2741620959 1218-1221
+  s_d09685699e5b37::t_8fc16f0c615e28 1359-1360
+frontend-v3/scripts/mock-api.mjs
+  s_d09685699e5b37::t_5ccc59db89ce65 137
+  s_d09685699e5b37::t_8b67da3e0c7b3f 382
+frontend/src/api/openapi.json
+  s_d09685699e5b37::t_bc00378e5e4be6 16715,16724,16740
+backend/core/application/day_report_builder.py
+  s_d09685699e5b37::t_d0a36a87d2ddf0 189,191
+  s_d09685699e5b37::t_c8d47d1e00a518 69
+  s_d09685699e5b37::t_cd381f9530f054 155
+  s_d09685699e5b37::t_cad92c5e349a43 140
+frontend-v3/src/features/daily/reportView.ts
+  s_d09685699e5b37::t_92cc2b1c183aff 5
+  s_d09685699e5b37::t_cea47b8cfb0d35 61-83
+frontend-v2/src/api/generated.ts
+  s_d09685699e5b37::t_bc00378e5e4be6 4852-4853
+frontend-v2/src/api/openapi.json
+  s_d09685699e5b37::t_bc00378e5e4be6 16715,16724,16740
+.env.example
+  s_d09685699e5b37::t_4ec124148b20ca 85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9dbccff3ad8a67fa6aba50c9392a4d0cace4e915",
+  "prompts": {},
+  "sessions": {
+    "s_d09685699e5b37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac999ca-e6f7-4dc8-80ef-2b794b6036cf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
