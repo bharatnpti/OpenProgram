@@ -22,6 +22,7 @@ import { Pill } from "../../components/ui/Pill";
 import { formatDay } from "../../lib/format";
 import { ragSeverity } from "../../lib/status";
 import { greetingTitle, PERSON_KEY_WORDS, plural, sourceLine, todayEyebrow } from "../../lib/words";
+import { useAssistantSubject } from "../assistant/assistantContext";
 import { ProjectDateStrip } from "../delivery/DeliveryStrips";
 import { FactorsPanel } from "../delivery/NodeBits";
 import { ProgressSummary, TaskTable } from "../delivery/ProgressBlock";
@@ -63,6 +64,7 @@ export function ProductOwnerToday() {
   const options = linked ? [linked, ...mine] : mine;
   const projectId = options.some((p) => p.id === asked) ? (asked ?? "") : (options[0]?.id ?? "");
   const project = options.find((p) => p.id === projectId);
+  useAssistantSubject(project ? { kind: "project", name: project.name } : null);
   const choose = (next: string) => {
     setAllTasks(false);
     setSearch(

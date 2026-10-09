@@ -35,7 +35,7 @@ const VIEW_LABELS: Record<SignalsView, string> = { risks: "Risks", flow: "Flow" 
  * through review, and, for the portfolio roles, one list of risks across
  * projects. A scrum master's risks are the pod reasons on their Today and a
  * product owner's are Overall's, so Signals is Flow for them. What changed is
- * the briefs' job and Ask the graph's, so there is no activity feed here.
+ * the briefs' job and the assistant's, so there is no activity feed here.
  */
 export function SignalsPage() {
   const { signals } = useRole().access;

@@ -7,8 +7,11 @@ import { paletteTargets } from "../../app/access";
 import { usePods, usePrograms, useProjects, useWorkstreams } from "../../app/directory";
 import { shownNav } from "../../app/nav";
 import { useRole } from "../../app/role";
+import { useAssistantControl } from "../../features/assistant/assistantContext";
+import { ASK_LABEL } from "../../features/assistant/persona";
 import { cn } from "../../lib/utils";
 import {
+  askRow,
   directoryRows,
   matchRows,
   noPodNote,
@@ -20,6 +23,7 @@ import {
 
 const KIND_DOT: Record<PaletteRow["kind"], string> = {
   screen: "rounded-sm bg-magenta",
+  ask: "rounded-full border-2 border-ink",
   program: "rounded-full bg-magenta",
   project: "rounded-full bg-rag-info",
   workstream: "rounded-full bg-rag-amber",
@@ -31,8 +35,10 @@ const KIND_DOT: Record<PaletteRow["kind"], string> = {
  * ⌘K / Ctrl+K: jump to a screen this role is offered, or to a program,
  * project, workstream (one that holds work), pod or named person, each where
  * this role has it (app/access.ts `paletteTargets`): a kind the role does not
- * read is not listed. Typing filters; the arrow keys move, Enter opens, Escape
- * closes, so it works by keyboard alone. A jump keeps the day being viewed.
+ * read is not listed. For a role with the assistant, its row (ASK_LABEL) opens
+ * it, and a query becomes a question in it, last in the list. Typing filters;
+ * the arrow keys move, Enter opens, Escape closes, so it works by keyboard
+ * alone. A jump keeps the day being viewed.
  */
 export function CommandPalette({
   open,
@@ -99,23 +105,29 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
     return [...roleState.people, ...fromDirectory];
   }, [directory, roleState.people]);
 
+  const assistant = useAssistantControl();
+  const asks = roleState.access.assistant && assistant !== null;
   const targets = useMemo(() => paletteTargets(roleState.access, roleState), [roleState]);
-  const rows = useMemo(
-    () =>
-      matchRows(
-        [
-          ...screenRows(shownNav(roleState.access)),
-          ...directoryRows(directory, targets),
-          ...peopleRows(named, directory.pods, targets.person),
-        ],
-        query,
-      ),
-    [directory, named, query, roleState.access, targets],
-  );
+  const rows = useMemo(() => {
+    const ask = askRow(query, ASK_LABEL);
+    // With no query, the assistant's row sits after the screens; a query's question comes last.
+    const found = matchRows(
+      [
+        ...screenRows(shownNav(roleState.access)),
+        ...(asks && ask.key === "ask" ? [ask] : []),
+        ...directoryRows(directory, targets),
+        ...peopleRows(named, directory.pods, targets.person),
+      ],
+      query,
+    );
+    return asks && ask.key !== "ask" ? [...found, ask] : found;
+  }, [asks, directory, named, query, roleState.access, targets]);
+  // Only the assistant's row is left: nothing on a page matched the query.
+  const matched = rows.filter((row) => row.kind !== "ask").length;
   // A name that finds nobody may be a person in no pod: there is nowhere to take them.
   const noPod = useMemo(
-    () => (rows.length === 0 && targets.person ? noPodNote(named, directory.pods, query) : null),
-    [directory.pods, named, query, rows.length, targets.person],
+    () => (matched === 0 && targets.person ? noPodNote(named, directory.pods, query) : null),
+    [directory.pods, named, query, matched, targets.person],
   );
   const current = Math.min(active, Math.max(rows.length - 1, 0));
   const loading =
@@ -131,6 +143,12 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
   const go = (row: PaletteRow | undefined) => {
     if (!row) return;
     onClose();
+    if (row.ask) {
+      const draft = row.ask.draft;
+      // After the palette has given focus back, so the assistant's field keeps it.
+      window.setTimeout(() => assistant?.openWith(draft), 0);
+      return;
+    }
     navigate(row.to);
   };
 
@@ -201,30 +219,38 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
             )}
           </li>
         ) : (
-          rows.map((row, index) => (
-            <li
-              key={row.key}
-              id={`palette-option-${index}`}
-              data-index={index}
-              role="option"
-              aria-selected={index === current}
-              onMouseMove={() => setActive(index)}
-              onClick={() => go(row)}
-              className={cn(
-                "flex cursor-pointer items-center gap-3 rounded-xl px-4 py-2.5",
-                index === current ? "bg-grey-fill" : "hover:bg-grey-fill",
-              )}
-            >
-              <span aria-hidden className={cn("h-2.5 w-2.5 flex-none", KIND_DOT[row.kind])} />
-              <span className="min-w-0 flex-1 truncate text-[15px] font-bold">{row.label}</span>
-              <span className="min-w-0 max-w-[45%] truncate text-right text-[12px] text-grey-secondary">
-                {row.hint}
-              </span>
-              {index === current ? (
-                <CornerDownLeft size={14} aria-hidden className="flex-none text-grey-secondary" />
-              ) : null}
-            </li>
-          ))
+          <>
+            {matched === 0 && query.trim() && !loading ? (
+              <li className="px-4 pb-1 pt-4 text-center text-[13px] text-grey-secondary">
+                Nothing on a page matches “{query.trim()}”.
+                {noPod ? <span className="mt-1 block">{noPod}</span> : null}
+              </li>
+            ) : null}
+            {rows.map((row, index) => (
+              <li
+                key={row.key}
+                id={`palette-option-${index}`}
+                data-index={index}
+                role="option"
+                aria-selected={index === current}
+                onMouseMove={() => setActive(index)}
+                onClick={() => go(row)}
+                className={cn(
+                  "flex cursor-pointer items-center gap-3 rounded-xl px-4 py-2.5",
+                  index === current ? "bg-grey-fill" : "hover:bg-grey-fill",
+                )}
+              >
+                <span aria-hidden className={cn("h-2.5 w-2.5 flex-none", KIND_DOT[row.kind])} />
+                <span className="min-w-0 flex-1 truncate text-[15px] font-bold">{row.label}</span>
+                <span className="min-w-0 max-w-[45%] truncate text-right text-[12px] text-grey-secondary">
+                  {row.hint}
+                </span>
+                {index === current ? (
+                  <CornerDownLeft size={14} aria-hidden className="flex-none text-grey-secondary" />
+                ) : null}
+              </li>
+            ))}
+          </>
         )}
       </ul>
       <p className="flex flex-wrap gap-x-4 border-t border-grey-border px-5 py-2.5 text-[12px] text-grey-secondary">

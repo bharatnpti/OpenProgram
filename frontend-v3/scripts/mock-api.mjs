@@ -24,6 +24,7 @@ import * as shellMock from "./mock/shell.mjs";
 import * as adminConfig from "./mock/admin-config.mjs";
 import * as flowMock from "./mock/flow.mjs";
 import * as redesignMock from "./mock/redesign.mjs";
+import * as assistantMock from "./mock/assistant.mjs";
 import * as datesMock from "./mock/dates.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
@@ -390,6 +391,7 @@ function api(req, res, url) {
   // only past-day ones (as_of), which the today mock would answer as today.
   if (shellMock.api(req, url, roles, userId, send, deny)) return;
   if (datesMock.api(req, url, roles, userId, send, deny)) return;
+  if (assistantMock.api(req, url, roles, userId, send, deny)) return;
   if (todayMock.api(req, url, roles, userId, send, deny)) return;
   if (adminStructure.api(req, url, roles, userId, send, deny)) return;
   if (reportsLane.api(req, url, roles, userId, send, deny)) return;

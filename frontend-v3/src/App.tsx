@@ -6,6 +6,7 @@ import { RoleProvider } from "./app/RoleProvider";
 import { ViewingDateProvider } from "./app/ViewingDateProvider";
 import { useRole } from "./app/role";
 import { Pill } from "./components/ui/Pill";
+import { AssistantProvider } from "./features/assistant/AssistantProvider";
 
 const page = <K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) =>
   lazy(() => load().then((module) => ({ default: module[name] })));
@@ -25,7 +26,7 @@ const AdminPage = page(() => import("./pages/AdminPage"), "AdminPage");
  *                                   product owner, or the portfolio view)
  *   /delivery[/:kind/:id]           walk the graph: program, project, workstream, pod
  *   /signals                        flow through review; risks across projects (portfolio roles)
- *   /coordination                   requests, briefs, ask the graph
+ *   /coordination                   requests between people, briefs
  *   /reports                        every project's reports
  *   /reports/:projectId/daily       the end-of-day report (?report= picks one)
  *   /reports/:projectId/overall     the project's state since it started
@@ -55,7 +56,10 @@ function AppRoutes() {
       <Route
         element={
           <RequireAuthenticated>
-            <Layout />
+            {/* The assistant's conversation lives above the tabs, so it stays between them. */}
+            <AssistantProvider>
+              <Layout />
+            </AssistantProvider>
           </RequireAuthenticated>
         }
       >

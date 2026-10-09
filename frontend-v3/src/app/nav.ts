@@ -25,7 +25,7 @@ export const NAV: NavItem[] = [
     to: "/coordination",
     page: "coordination",
     label: "Coordination",
-    hint: "Requests, briefs and Ask the graph",
+    hint: "Requests and briefs",
   },
   { to: "/reports", page: "reports", label: "Reports", hint: "Daily and Overall" },
   { to: "/chat", page: "chat", label: "Chat", hint: "The check-in conversation" },

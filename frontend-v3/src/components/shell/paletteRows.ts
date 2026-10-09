@@ -3,7 +3,8 @@
 import type { DirectoryItemResponse } from "../../api/schema";
 import type { PaletteTargets } from "../../app/access";
 
-export type PaletteKind = "screen" | "program" | "project" | "workstream" | "pod" | "person";
+export type PaletteKind =
+  "screen" | "ask" | "program" | "project" | "workstream" | "pod" | "person";
 
 export type PaletteRow = {
   key: string;
@@ -18,6 +19,8 @@ export type PaletteRow = {
    * finds them and opens that one.
    */
   person?: { lead: string; pods: { id: string; name: string }[]; toPod: (podId: string) => string };
+  /** An assistant row opens the assistant instead of a page, with this in its question field. */
+  ask?: { draft: string };
 };
 
 export type Directory = {
@@ -39,6 +42,36 @@ export function screenRows(screens: { to: string; label: string; hint: string }[
     hint: screen.hint,
     to: screen.to,
   }));
+}
+
+/**
+ * The assistant's row: `label` (ASK_LABEL in features/assistant/persona.ts)
+ * with no query, or for a query whose words are all in it; for any other
+ * query, "<label>: “…”", which opens the assistant with the query in its
+ * question field, to send or change.
+ */
+export function askRow(query: string, label: string): PaletteRow {
+  const typed = query.trim();
+  const words = typed.toLowerCase().split(/\s+/).filter(Boolean);
+  const named = words.every((word) => label.toLowerCase().includes(word));
+  if (!typed || named) {
+    return {
+      key: "ask",
+      kind: "ask",
+      label,
+      hint: "A question about the delivery data",
+      to: "",
+      ask: { draft: "" },
+    };
+  }
+  return {
+    key: "ask:query",
+    kind: "ask",
+    label: `${label}: “${typed}”`,
+    hint: "Opens with your question, to send",
+    to: "",
+    ask: { draft: typed },
+  };
 }
 
 function namesOf(ids: string[], items: DirectoryItemResponse[]): string {

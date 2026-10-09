@@ -4,7 +4,14 @@ import { test } from "node:test";
 import type { DirectoryItemResponse } from "../../api/schema";
 import { accessOf, capabilitiesFor, paletteTargets } from "../../app/access.ts";
 import type { AppRole } from "../../app/roleWords.ts";
-import { directoryRows, matchRows, noPodNote, peopleRows, screenRows } from "./paletteRows.ts";
+import {
+  askRow,
+  directoryRows,
+  matchRows,
+  noPodNote,
+  peopleRows,
+  screenRows,
+} from "./paletteRows.ts";
 
 const targetsOf = (role: AppRole) =>
   paletteTargets(accessOf({ lens: [role], chatEnabled: false }), capabilitiesFor([role]));
@@ -201,4 +208,22 @@ test("a product owner's projects open on Today; a developer's in Reports; neithe
   assert.deepEqual(rowsFor("dev"), [
     ["project", "Checkout Revamp", "/reports/project-checkout/daily"],
   ]);
+});
+
+test("the assistant's row: its name with no query, and a query becomes the question to send", () => {
+  const label = "Ask Ora";
+  assert.deepEqual(askRow("", label), {
+    key: "ask",
+    kind: "ask",
+    label,
+    hint: "A question about the delivery data",
+    to: "",
+    ask: { draft: "" },
+  });
+  assert.equal(askRow("ask", label).key, "ask", "a query naming the row finds it");
+  assert.equal(askRow(" ORA ", label).key, "ask");
+  const question = askRow("  who is blocked?  ", label);
+  assert.equal(question.key, "ask:query");
+  assert.equal(question.label, "Ask Ora: “who is blocked?”");
+  assert.deepEqual(question.ask, { draft: "who is blocked?" });
 });

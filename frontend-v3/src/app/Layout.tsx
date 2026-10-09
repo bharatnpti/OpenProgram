@@ -8,6 +8,7 @@ import { CommandPalette } from "../components/shell/CommandPalette";
 import { HeaderLogo } from "../components/shell/HeaderLogo";
 import { TabTitle } from "../components/shell/TabTitle";
 import { ViewingDateBanner, ViewingDateControl } from "../components/shell/ViewingDate";
+import { Assistant } from "../features/assistant/Assistant";
 import { cn } from "../lib/utils";
 import { shownNav } from "./nav";
 import { RouteGuard } from "./RouteGuard";
@@ -107,7 +108,13 @@ export function Layout() {
         </div>
         <ViewingDateBanner />
       </header>
-      <main className="mx-auto max-w-[1240px] px-4 py-8 sm:px-8">
+      {/* Room at the bottom for the assistant's button, so it never covers the last row. */}
+      <main
+        className={cn(
+          "mx-auto max-w-[1240px] px-4 py-8 sm:px-8",
+          roleState.access.assistant && "pb-28",
+        )}
+      >
         {/* A link to a page this role is not offered opens the closest one it has. */}
         <RouteGuard>
           {/* A different day remounts the screen, so every query on it asks for that day. */}
@@ -115,6 +122,7 @@ export function Layout() {
         </RouteGuard>
       </main>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      <Assistant />
     </div>
   );
 }

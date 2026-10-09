@@ -12,6 +12,7 @@ import { PodPanel } from "../features/delivery/PodPanel";
 import { ProgramPanel } from "../features/delivery/ProgramPanel";
 import { ProjectPanel } from "../features/delivery/ProjectPanel";
 import { WorkstreamPanel } from "../features/delivery/WorkstreamPanel";
+import { useAssistantSubject } from "../features/assistant/assistantContext";
 import type { Kind } from "../features/delivery/factors";
 import { ragSeverity } from "../lib/status";
 import { cn } from "../lib/utils";
@@ -51,13 +52,14 @@ export function DeliveryPage() {
     ] as const
   ).filter((group) => access.delivery[group.kind]);
   const all = groups.flatMap((g) => g.items.map((item) => ({ kind: g.kind, item })));
+  const selected = all.find((x) => x.kind === kind && x.item.id === id);
+  useAssistantSubject(selected ? { kind: selected.kind, name: selected.item.name } : null);
 
   if (!loading && !kind && all.length > 0) {
     const first = all.find((x) => x.kind === "program") ?? all[0];
     return <Navigate to={`/delivery/${first.kind}/${first.item.id}`} replace />;
   }
 
-  const selected = all.find((x) => x.kind === kind && x.item.id === id);
   const find = (k: Kind, itemId: string) =>
     groups.find((g) => g.kind === k)?.items.find((item) => item.id === itemId);
 

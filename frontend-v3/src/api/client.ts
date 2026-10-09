@@ -148,8 +148,9 @@ function actingAsHeaders(): Record<string, string> {
  *
  * Set while the console views a past day. A confirm or correction sent then is
  * filed against that day, and any other change lands today while the screen
- * shows another one. The buttons are disabled too; this is the backstop. Asking
- * the graph is a question, not a change, and signing out always works.
+ * shows another one. The buttons are disabled too; this is the backstop. A
+ * question to the assistant (/ask) is a read, not a change, and signing out
+ * always works.
  */
 let readOnlyReason: string | null = null;
 

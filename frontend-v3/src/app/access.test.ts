@@ -80,7 +80,6 @@ test("Coordination: no board for an executive, and each role's own scope and bri
   const c = (role: AppRole) => access(role).coordination;
   assert.equal(c("exec").board, false);
   assert.equal(c("exec").briefs, true);
-  assert.equal(c("exec").ask, true);
   assert.deepEqual(
     (["sm", "po", "mgr", "admin"] as const).map((role) => [
       c(role).boardScope,
@@ -313,4 +312,13 @@ test("palette rows go where the role has the thing: Delivery, Today or Reports",
     pod: null,
     person: null,
   });
+});
+
+test("the assistant floats on every tab for the aggregate readers, never for a developer", () => {
+  assert.deepEqual(
+    (["dev", "sm", "po", "mgr", "exec", "admin"] as const).map((role) => access(role).assistant),
+    [false, true, true, true, true, true],
+  );
+  // Roles combine: a developer who is also a scrum master has it.
+  assert.equal(accessOf({ lens: ["dev", "sm"], chatEnabled: false }).assistant, true);
 });

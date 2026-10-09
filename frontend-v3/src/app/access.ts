@@ -47,6 +47,12 @@ export type Scope = "pods" | "projects" | "all";
 export type Access = {
   /** The tabs the role is offered. */
   pages: Record<Page, boolean>;
+  /**
+   * The assistant (POST /ask), floating on every tab: the aggregate readers
+   * the endpoint answers (scrum master, product owner, manager, executive,
+   * admin). Not a developer.
+   */
+  assistant: boolean;
   /** What Delivery's navigator lists, and so where Delivery links may point. */
   delivery: Record<NodeKind, boolean>;
   signals: { views: SignalsView[]; defaultView: SignalsView; flowScope: Scope };
@@ -55,7 +61,6 @@ export type Access = {
     board: boolean;
     boardScope: Scope;
     briefs: boolean;
-    ask: boolean;
     defaultBrief: BriefKind;
   };
   overall: {
@@ -100,6 +105,7 @@ export function accessOf({ lens, chatEnabled }: Lens): Access {
       chat: chatEnabled,
       admin: can.canManageConfig,
     },
+    assistant: can.canReadAggregate,
     delivery: {
       program: portfolio,
       project: portfolio,
@@ -116,7 +122,6 @@ export function accessOf({ lens, chatEnabled }: Lens): Access {
       board: has("admin", "mgr", "po", "sm"),
       boardScope: scope,
       briefs: can.canReadAggregate,
-      ask: can.canReadAggregate,
       defaultBrief: has("admin", "exec", "mgr")
         ? "exec"
         : has("po")

@@ -1,10 +1,9 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
 
 import { apiClient } from "../api/client";
-import type { AskResponse, BriefKind, CrossPersonRequestStatus } from "../api/schema";
+import type { BriefKind, CrossPersonRequestStatus } from "../api/schema";
 import type { Scope } from "../app/access";
 import {
   podsOfPerson,
@@ -17,19 +16,17 @@ import { useRole } from "../app/role";
 import { PanelState, SectionHeader } from "../components/PanelState";
 import { ChipPicker, Panel } from "../components/ui/Bits";
 import { Pill } from "../components/ui/Pill";
-import { RagChip } from "../components/ui/RagChip";
-import { actionError } from "../lib/errors";
 import { formatDate } from "../lib/format";
 import { plural, spaced } from "../lib/words";
 import { RequestCard } from "../features/coordination/RequestCard";
 import { requestsAmong, scopePeople } from "../features/coordination/raised";
 
 /**
- * Who is waiting on whom across the teams, the narrative briefs, and a
- * plain-language question answered from the graph. What waits on the viewer,
- * and what they raised, is on their Today (Your asks). The board is for those
- * who may act on some of its cards: not an executive, whom the waits reach
- * through the exec brief and the Daily report.
+ * Who is waiting on whom across the teams, and the narrative briefs. What
+ * waits on the viewer, and what they raised, is on their Today (Your asks); a
+ * question in plain words goes to the assistant, on every tab. The board is
+ * for those who may act on some of its cards: not an executive, whom the waits
+ * reach through the exec brief and the Daily report.
  */
 export function CoordinationPage() {
   const { coordination } = useRole().access;
@@ -39,16 +36,13 @@ export function CoordinationPage() {
         title="Coordination"
         meta={
           coordination.board
-            ? "Requests between people, briefs, and Ask the graph. Your own asks are on Today."
-            : "Briefs, and Ask the graph. Your own asks are on Today."
+            ? "Requests between people, and briefs. Your own asks are on Today."
+            : "Briefs. Your own asks are on Today."
         }
       />
       <div className="grid grid-cols-[minmax(0,1fr)] gap-8">
         {coordination.board ? <Requests defaultScope={coordination.boardScope} /> : null}
-        <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          {coordination.briefs ? <Briefs fallback={coordination.defaultBrief} /> : null}
-          {coordination.ask ? <AskTheGraph /> : null}
-        </div>
+        {coordination.briefs ? <Briefs fallback={coordination.defaultBrief} /> : null}
       </div>
     </>
   );
@@ -224,7 +218,7 @@ function Briefs({ fallback }: { fallback: BriefKind }) {
           </p>
         ) : (
           <>
-            <ul className="grid gap-3">
+            <ul className="grid gap-3 lg:grid-cols-2">
               {shown.map((b) => (
                 <li
                   key={`${b.kind}-${b.scope_id}-${b.generated_at}`}
@@ -259,77 +253,6 @@ function Briefs({ fallback }: { fallback: BriefKind }) {
           </>
         )}
       </PanelState>
-    </Panel>
-  );
-}
-
-const EXAMPLES = [
-  "Which projects are at risk because of the payments API?",
-  "Who has not checked in this week?",
-  "What changed in Checkout Revamp in the last 7 days?",
-];
-
-function AskTheGraph() {
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState<AskResponse | null>(null);
-  const ask = useMutation({
-    mutationFn: (q: string) => apiClient.ask({ question: q }),
-    onSuccess: setAnswer,
-    onError: (e: unknown) => toast.error(actionError(e, "answer that")),
-  });
-
-  return (
-    <Panel title="Ask the graph" note="answered from the delivery graph, not a guess">
-      <div className="grid gap-3">
-        <form
-          className="grid gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (question.trim()) ask.mutate(question.trim());
-          }}
-        >
-          <label htmlFor="ask-q" className="sr-only">
-            Question
-          </label>
-          <textarea
-            id="ask-q"
-            className="min-h-20 w-full rounded-2xl border border-grey-border p-3 text-[14px]"
-            placeholder={EXAMPLES[0]}
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <Pill type="submit" size="sm" disabled={!question.trim() || ask.isPending}>
-              {ask.isPending ? "Asking…" : "Ask"}
-            </Pill>
-            {EXAMPLES.slice(1).map((ex) => (
-              <button
-                key={ex}
-                type="button"
-                className="text-[12px] font-bold text-magenta"
-                onClick={() => setQuestion(ex)}
-              >
-                {ex}
-              </button>
-            ))}
-          </div>
-        </form>
-        {answer ? (
-          <div className="rounded-2xl bg-grey-fill p-4 text-[14px]">
-            <p className="whitespace-pre-line">{answer.answer}</p>
-            {(answer.sources ?? []).length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {(answer.sources ?? []).map((s) => (
-                  <RagChip key={s.id} tone="info" className="h-6 px-2.5 text-[11px]">
-                    {s.label ?? s.id}
-                    {s.kind ? ` · ${spaced(s.kind)}` : ""}
-                  </RagChip>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
     </Panel>
   );
 }

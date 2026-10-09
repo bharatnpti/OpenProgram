@@ -2,6 +2,7 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
 import { useProjects } from "../../app/directory";
 import { cn } from "../../lib/utils";
+import { useAssistantSubject } from "../assistant/assistantContext";
 
 /** Inside a project's reports: back to all reports, the project picker, and Daily | Overall. */
 export function ReportsHeader({ projectId }: { projectId: string }) {
@@ -9,6 +10,8 @@ export function ReportsHeader({ projectId }: { projectId: string }) {
   const location = useLocation();
   const projects = useProjects();
   const view = location.pathname.endsWith("/overall") ? "overall" : "daily";
+  const project = projects.data?.find((item) => item.id === projectId);
+  useAssistantSubject(project ? { kind: "project", name: project.name } : null);
 
   const tab = (to: string, label: string) => (
     <NavLink
