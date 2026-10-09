@@ -13,6 +13,7 @@ Three principles run through the whole system:
 - Product concept and roadmap → [OpenProgramConcept.md](OpenProgramConcept.md)
 - Business requirements / implemented feature set → [features.md](features.md)
 - Engineering architecture and standards → [Architecture.md](Architecture.md)
+- Guardrails: what the agent may say, do and spend → [docs/guardrails.md](docs/guardrails.md)
 - Low-level designs → [docs/lld/](docs/lld/)
 - Slack setup → [docs/ops/slack-setup.md](docs/ops/slack-setup.md)
 - Local demo with a populated tenant → [docs/ops/local-demo.md](docs/ops/local-demo.md)

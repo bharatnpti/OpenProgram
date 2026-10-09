@@ -23,6 +23,7 @@ from core.domain.llm import (
     LlmTurn,
     TokenUsage,
 )
+from infra.adapters.llm.guard import LlmCallGuard
 
 _logger = structlog.get_logger(__name__)
 _tracer = trace.get_tracer("openprogram.adapters.llm.litellm")
@@ -168,11 +169,15 @@ class LiteLlmProvider:
     base_url: str
     trace_sink: LlmTraceSink
     api_key: str | None = None
+    # Budget and size guardrails, checked before anything is sent (guard.py).
+    guard: LlmCallGuard | None = None
 
     async def complete(self, request: LlmRequest) -> LlmResponse:
         with _tracer.start_as_current_span("litellm.complete") as span:
             span.set_attribute("llm.model", request.model)
             span.set_attribute("openprogram.tenant_id", request.tenant_id)
+            if self.guard is not None:
+                await self.guard.admit(request)
             started = perf_counter()
             headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
             # Tenant and correlation travel on the OTel span and the
@@ -198,6 +203,8 @@ class LiteLlmProvider:
             cost_usd = _response_cost(http_response.headers, payload)
             response = _response_from_payload(request, payload, latency_ms, cost_usd)
             trace_id = await self.trace_sink.record(request, response)
+            if self.guard is not None:
+                await self.guard.record(request, response)
             return LlmResponse(
                 tenant_id=response.tenant_id,
                 text=response.text,

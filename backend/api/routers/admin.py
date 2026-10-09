@@ -31,7 +31,7 @@ async def dispatch_checkin(
     registry: Annotated[ServiceRegistry, Depends(get_registry)],
     config_service: Annotated[ConfigService, Depends(get_config_service)],
 ) -> WorkflowDispatchResponse:
-    _ensure_admin_dispatch(principal)
+    _ensure_admin_dispatch(principal, request.tenant_id)
     await _ensure_configured_developer(config_service, request.tenant_id, request.developer_id)
     workflow_id = await registry.workflow_scheduler().dispatch_developer_checkin(
         DeveloperCheckinDispatch(
@@ -53,7 +53,7 @@ async def dispatch_jira_sync(
     principal: Annotated[Principal, Depends(get_current_principal)],
     registry: Annotated[ServiceRegistry, Depends(get_registry)],
 ) -> WorkflowDispatchResponse:
-    _ensure_admin_dispatch(principal)
+    _ensure_admin_dispatch(principal, request.tenant_id)
     payload: dict[str, str | int | float | bool | None] = {
         "project_key": request.project_key,
         "container_id": request.container_id,
@@ -76,7 +76,7 @@ async def dispatch_github_sync(
     principal: Annotated[Principal, Depends(get_current_principal)],
     registry: Annotated[ServiceRegistry, Depends(get_registry)],
 ) -> WorkflowDispatchResponse:
-    _ensure_admin_dispatch(principal)
+    _ensure_admin_dispatch(principal, request.tenant_id)
     payload: dict[str, str | int | float | bool | None] = {
         "repo_name": request.repo_name,
         "observed_at": request.observed_at.isoformat() if request.observed_at else None,
@@ -98,7 +98,7 @@ async def dispatch_calendar_sync(
     principal: Annotated[Principal, Depends(get_current_principal)],
     registry: Annotated[ServiceRegistry, Depends(get_registry)],
 ) -> WorkflowDispatchResponse:
-    _ensure_admin_dispatch(principal)
+    _ensure_admin_dispatch(principal, request.tenant_id)
     payload: dict[str, str | int | float | bool | None] = {
         "user_id": request.user_id,
         "start": request.start.isoformat(),
@@ -125,7 +125,7 @@ async def dispatch_forecast_reconstruction(
 ) -> WorkflowDispatchResponse:
     """Rebuild the forecast of the days before today from the stored snapshots, for the
     principal's tenant: the snapshot run, with reconstruct_days. Days the hourly run kept stay."""
-    _ensure_admin_dispatch(principal)
+    _ensure_admin_dispatch(principal, principal.tenant_id)
     workflow_id = await registry.workflow_scheduler().dispatch_sync(
         SyncDispatchInput(
             tenant_id=principal.tenant_id,
@@ -137,11 +137,18 @@ async def dispatch_forecast_reconstruction(
     return WorkflowDispatchResponse(workflow_id=workflow_id)
 
 
-def _ensure_admin_dispatch(principal: Principal) -> None:
+def _ensure_admin_dispatch(principal: Principal, tenant_id: str) -> None:
     try:
         AuthorizationPolicy().ensure(principal, Capability.DISPATCH_WORKFLOWS)
     except AuthorizationDenied as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    # The body names a tenant; an admin dispatches work for their own only,
+    # since tenants can share one database (guardrails.md).
+    if tenant_id != principal.tenant_id:
+        raise HTTPException(
+            status_code=403,
+            detail=f"{principal.subject} cannot dispatch work for another tenant",
+        )
 
 
 async def _ensure_configured_developer(

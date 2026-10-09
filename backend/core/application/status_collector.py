@@ -49,6 +49,7 @@ from core.application.merge_request_links import (
     merge_requests_by_issue_key,
 )
 from core.application.observed_day_service import ObservedDayReader
+from core.application.outbound_text import carries_link_or_markup
 from core.application.person_names import (
     UNKNOWN_PERSON,
     member_names,
@@ -4864,7 +4865,14 @@ def _safe_outbound_checkin_text(
     max_chars: int = OUTBOUND_DM_MAX_CHARS,
 ) -> str:
     text = _normalize_outbound_dm_text(generated_text)
-    if not text or len(text) > max_chars or _looks_like_prompt_echo(text):
+    if (
+        not text
+        or len(text) > max_chars
+        or _looks_like_prompt_echo(text)
+        # A composed DM never needs a link or mention; one would be the
+        # model's, copied from what it read (guardrails.md).
+        or carries_link_or_markup(text)
+    ):
         return _fallback_outbound_checkin_text(
             developer_id=developer_id,
             developer_name=developer_name,

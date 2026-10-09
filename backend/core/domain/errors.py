@@ -40,3 +40,19 @@ class SecretNotFound(OpenProgramError):
 
 class GraphNotFound(OpenProgramError):
     """Raised when a graph entity cannot be found."""
+
+
+class OutboundLimitReached(ProviderUnavailable):
+    """Raised when a recipient has had today's limit of messages: nothing more is sent."""
+
+
+class LlmCallRefused(ProviderUnavailable):
+    """Raised when a guardrail refuses a language-model call before it is made."""
+
+
+class LlmBudgetExhausted(LlmCallRefused):
+    """Raised when the tenant's daily token budget is used up."""
+
+
+class LlmRequestTooLarge(LlmCallRefused):
+    """Raised when a request carries more text than any call should."""

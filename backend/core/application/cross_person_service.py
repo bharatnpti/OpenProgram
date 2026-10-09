@@ -19,6 +19,7 @@ from core.application.merge_request_links import (
     MergeRequestIndex,
     merge_request_label,
 )
+from core.application.outbound_text import scrubbed
 from core.application.person_names import PersonNames, person_name
 from core.application.status_collector import OUTBOUND_DM_MAX_CHARS
 from core.domain.cross_person import (
@@ -1094,10 +1095,8 @@ def _join_labels(labels: tuple[str, ...]) -> str:
 
 
 def _fit_note(note: str, limit: int) -> str:
-    flat = " ".join(note.split())
-    if len(flat) <= limit:
-        return flat
-    return f"{flat[: limit - 1].rstrip()}…"
+    # The note is model-drafted and goes to another person: no links or markup.
+    return scrubbed(note, max_chars=limit)
 
 
 def _fact_kind(request: CrossPersonRequest) -> str:

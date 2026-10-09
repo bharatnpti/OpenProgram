@@ -25,6 +25,7 @@ from infra.adapters.chat.mock_slack import (
     RedisMockSlackStore,
 )
 from infra.adapters.chat.rate_limit import InMemoryRateLimiter, RedisRateLimiter
+from infra.adapters.chat.send_cap import DailySendCap, InMemoryDailySendCap, RedisDailySendCap
 from infra.adapters.chat.send_once import (
     InMemorySendOnceStore,
     RedisSendOnceStore,
@@ -67,6 +68,12 @@ from infra.adapters.integrations.fake import (
 )
 from infra.adapters.jira.jira_adapter import JiraIssueTrackerAdapter
 from infra.adapters.llm.fake import FakeLlmProvider
+from infra.adapters.llm.guard import (
+    InMemoryTokenLedger,
+    LlmCallGuard,
+    RedisTokenLedger,
+    TokenLedger,
+)
 from infra.adapters.llm.litellm_provider import LangfuseTraceSink, LiteLlmProvider, NoopTraceSink
 from infra.adapters.llm.readiness import LlmEndpointReadinessProbe, LlmReadinessHistory
 from infra.adapters.readiness import (
@@ -104,6 +111,7 @@ def build_chat_provider(
     redis_client: Redis | None = None,
     mock_slack_store: MockSlackStore | None = None,
     connections: ConnectionResolver | None = None,
+    send_cap: DailySendCap | None = None,
 ) -> ChatProvider:
     if settings.chat_provider == "fake":
         return FakeChatProvider(tenant_id=settings.tenant_id)
@@ -112,6 +120,7 @@ def build_chat_provider(
             tenant_id=settings.tenant_id,
             store=mock_slack_store or build_mock_slack_store(settings, redis_client),
             rate_limiter=_chat_rate_limiter(settings, redis_client),
+            send_cap=send_cap or build_chat_send_cap(settings, redis_client),
         )
     http_client = _slack_http_client(settings, connections)
     conversation_cache = (
@@ -136,6 +145,16 @@ def build_chat_provider(
         rate_limiter=_chat_rate_limiter(settings, redis_client),
         conversation_cache=conversation_cache,
         send_once_store=send_once_store,
+        send_cap=send_cap or build_chat_send_cap(settings, redis_client),
+    )
+
+
+def build_chat_send_cap(settings: Settings, redis_client: Redis | None = None) -> DailySendCap:
+    """The per-recipient daily DM limit: shared through Redis in container mode."""
+    if settings.runtime_mode == "memory":
+        return InMemoryDailySendCap(limit=settings.chat_daily_dm_limit)
+    return RedisDailySendCap(
+        client=_required_redis(redis_client), limit=settings.chat_daily_dm_limit
     )
 
 
@@ -319,14 +338,26 @@ def build_calendar_provider(
     )
 
 
-def build_llm_provider(settings: Settings) -> LlmProvider:
+def build_llm_provider(settings: Settings, token_ledger: TokenLedger | None = None) -> LlmProvider:
     if settings.llm_provider == "fake":
         return FakeLlmProvider()
     return LiteLlmProvider(
         base_url=settings.litellm_base_url,
         trace_sink=_langfuse_trace_sink(settings) or NoopTraceSink(),
         api_key=settings.litellm_api_key,
+        guard=LlmCallGuard(
+            ledger=token_ledger or InMemoryTokenLedger(),
+            daily_token_budget=settings.llm_daily_token_budget,
+            max_request_chars=settings.llm_max_request_chars,
+        ),
     )
+
+
+def build_llm_token_ledger(settings: Settings, redis_client: Redis | None = None) -> TokenLedger:
+    """Tokens spent per tenant and day: shared through Redis in container mode."""
+    if settings.runtime_mode == "memory":
+        return InMemoryTokenLedger()
+    return RedisTokenLedger(client=_required_redis(redis_client))
 
 
 def _langfuse_trace_sink(settings: Settings) -> LangfuseTraceSink | None:

@@ -10,6 +10,7 @@ from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.checkin_drift import eta_duration_days
 from core.application.conversation_history import llm_messages_from_turns
 from core.application.json_parsing import extract_json_object
+from core.application.outbound_text import carries_link_or_markup
 from core.application.reply_without_status import reads_without_status
 from core.domain.blockers import BlockerReport, DeveloperBlocker, normalize_blocker_key
 from core.domain.conversation import ConversationTurn
@@ -31,6 +32,9 @@ GENERIC_CLARIFICATION_QUESTION = (
     "Thanks. Could you share your progress, any blockers, and your ETA so I can "
     "record today's status?"
 )
+# A drafted follow-up longer than one direct message, or one carrying a link or
+# chat markup, is not sent: the generic question goes instead (guardrails.md).
+MAX_CLARIFICATION_QUESTION_CHARS = 320
 
 # A request's note is sent to the named person as the ask, so it must be the ask
 # and not the reply: the person it names has not seen the reply and is not meant to.
@@ -403,13 +407,23 @@ def _clarification_decision_from_json(
         else None
     )
     question = value.get("question")
-    clean_question = question.strip() if isinstance(question, str) and question.strip() else None
+    clean_question = _sendable_question(question)
     if sufficient:
         return ClarificationDecision(
             sufficient=True,
             signals=signals or CheckInSignals(progress_note=fallback_progress_note),
         )
     return ClarificationDecision(sufficient=False, question=clean_question, signals=signals)
+
+
+def _sendable_question(question: object) -> str | None:
+    """The model's follow-up as it may be sent, the generic one, or None when none was drafted."""
+    if not isinstance(question, str) or not question.strip():
+        return None
+    flat = " ".join(question.split())
+    if len(flat) > MAX_CLARIFICATION_QUESTION_CHARS or carries_link_or_markup(flat):
+        return GENERIC_CLARIFICATION_QUESTION
+    return flat
 
 
 def _prior_blocker_prompt(

@@ -226,6 +226,10 @@ class Settings(BaseSettings):
     outbound_dm_max_chars: int = 320
     recent_fact_lookback_days: int = 30
     chat_send_once_ttl_seconds: int = 86400
+    # Circuit breaker: direct messages one person may get per UTC day. A loop
+    # that keeps messaging someone stops here; normal days stay far below it.
+    # 0 turns it off (the check-in rounds demo runs many rounds a day).
+    chat_daily_dm_limit: int = 100
     litellm_base_url: str = "http://localhost:4000"
     litellm_api_key: str | None = None
     litellm_model: str = "gpt-4o-mini"
@@ -243,6 +247,13 @@ class Settings(BaseSettings):
     ask_investigate_max_tool_iterations: int = 6
     ask_investigate_timeout_seconds: int = 120
     ask_investigate_model: str | None = None
+    # Guardrails on every real model call (docs/guardrails.md). Tokens the
+    # tenant may spend per UTC day; once spent, calls are refused until the
+    # next day. Sized to stop a runaway loop, not normal use. 0 turns it off.
+    llm_daily_token_budget: int = 10_000_000
+    # A request carrying more text than this is refused before it is sent:
+    # about 100k tokens, just under a 128k context. 0 turns it off.
+    llm_max_request_chars: int = 400_000
     embedding_dimension: int = 1536
     langfuse_host: str = "http://localhost:3001"
     langfuse_public_key: str | None = None
@@ -695,6 +706,9 @@ class Settings(BaseSettings):
         "ask_max_tool_iterations",
         "ask_investigate_max_tool_iterations",
         "jira_changes_per_tick",
+        "llm_daily_token_budget",
+        "llm_max_request_chars",
+        "chat_daily_dm_limit",
     )
     @classmethod
     def validate_non_negative_count(cls, value: int) -> int:

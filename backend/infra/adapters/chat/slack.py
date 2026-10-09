@@ -14,8 +14,9 @@ from redis.asyncio import Redis
 from core.domain.errors import ProviderConfigurationError, ProviderUnavailable
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from infra.adapters.chat.rate_limit import RateLimiter
+from infra.adapters.chat.send_cap import DailySendCap, InMemoryDailySendCap
 from infra.adapters.chat.send_once import InMemorySendOnceStore, SendOnceStore
-from infra.adapters.chat.slack_text import plain_text
+from infra.adapters.chat.slack_text import plain_text, without_broadcast_mentions
 
 _tracer = trace.get_tracer("openprogram.adapters.chat.slack")
 
@@ -83,6 +84,8 @@ class SlackChatAdapter:
     rate_limiter: RateLimiter
     conversation_cache: ConversationCache = field(default_factory=InMemoryConversationCache)
     send_once_store: SendOnceStore = field(default_factory=InMemorySendOnceStore)
+    # Daily DMs per recipient (send_cap.py); the default has no limit.
+    send_cap: DailySendCap = field(default_factory=InMemoryDailySendCap)
     # A sender that finds its key claimed by a send in flight waits for that
     # send's ts, up to a little past the claim's lifetime, polling this often.
     send_once_wait_seconds: float = 35.0
@@ -102,10 +105,13 @@ class SlackChatAdapter:
                     return existing
             try:
                 await self.rate_limiter.acquire(f"chat:{self.tenant_id}:{user.external_id}")
+                await self.send_cap.take(self.tenant_id, user.external_id)
                 channel_id = await self.conversation_cache.get(user.external_id)
                 if channel_id is None:
                     channel_id = await self.open_thread(user)
-                message_id = await self.http_client.post_message(channel_id, message.text)
+                message_id = await self.http_client.post_message(
+                    channel_id, without_broadcast_mentions(message.text)
+                )
             except BaseException:
                 if idempotency_key is not None:
                     # Nothing was posted that we know of: a retry may send.

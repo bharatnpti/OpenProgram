@@ -14,6 +14,7 @@ from core.application.ask_conversation import AskConversation
 from core.application.ask_investigation import InvestigationEvent, InvestigationService
 from core.application.ask_service import AskService, may_ask
 from core.domain.auth import Principal
+from core.domain.errors import LlmBudgetExhausted, LlmRequestTooLarge
 
 router = APIRouter(tags=["ask"])
 
@@ -31,13 +32,20 @@ async def ask(
     service: Annotated[AskService, Depends(get_ask_service)],
 ) -> AskResponse:
     _ensure_may_ask(principal)
-    view = await service.ask(
-        principal=principal,
-        question=request.question,
-        correlation_id=f"ask:{principal.subject}:{uuid4().hex}",
-        as_of=request.as_of,
-        conversation=_conversation(request),
-    )
+    try:
+        view = await service.ask(
+            principal=principal,
+            question=request.question,
+            correlation_id=f"ask:{principal.subject}:{uuid4().hex}",
+            as_of=request.as_of,
+            conversation=_conversation(request),
+        )
+    except LlmRequestTooLarge as exc:
+        raise HTTPException(status_code=413, detail="The question is too long.") from exc
+    except LlmBudgetExhausted as exc:
+        raise HTTPException(
+            status_code=503, detail="Ask is paused until tomorrow: today's model budget is used up."
+        ) from exc
     return AskResponse.from_view(view)
 
 

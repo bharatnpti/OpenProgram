@@ -129,6 +129,7 @@ from infra.adapters.auth.session import (
     RedisAuthSessionStore,
 )
 from infra.adapters.chat.mock_slack import MockSlackStore, slack_event_payload
+from infra.adapters.chat.send_cap import DailySendCap
 from infra.adapters.chat.slack_connection import SIGNING_SECRET
 from infra.adapters.chat.slack_signing import verify_slack_signature
 from infra.adapters.chat.slack_socket import SlackSocketModeListener
@@ -136,6 +137,7 @@ from infra.adapters.connections.resolver import CachedConnectionResolver
 from infra.adapters.connections.routing import enabled_connector
 from infra.adapters.connections.specs import SettingsConnectorCatalog
 from infra.adapters.connections.testers import HttpConnectionTester
+from infra.adapters.llm.guard import TokenLedger
 from infra.adapters.llm.readiness import LlmReadinessHistory
 from infra.adapters.redis_client import RedisClientProvider
 from infra.adapters.reports.sender import ConnectionReportSender
@@ -339,6 +341,10 @@ class ServiceRegistry:
     _llm_readiness_history: LlmReadinessHistory = field(
         default_factory=LlmReadinessHistory, init=False
     )
+    # Guardrail state shared by every provider this registry builds, so a
+    # memory-mode count is not reset each time a provider is built.
+    _llm_token_ledger: TokenLedger | None = field(default=None, init=False)
+    _chat_send_cap: DailySendCap | None = field(default=None, init=False)
 
     def graph_repository(self) -> GraphRepository:
         if self.settings.runtime_mode == "memory":
@@ -1042,8 +1048,14 @@ class ServiceRegistry:
             if self.settings.chat_provider == _CHAT_SIMULATOR_PROVIDER
             else None
         )
+        if self._chat_send_cap is None and self.settings.chat_provider != "fake":
+            self._chat_send_cap = catalog.build_chat_send_cap(self.settings, redis_client)
         return catalog.build_chat_provider(
-            self.settings, redis_client, mock_store, self._adapter_connections()
+            self.settings,
+            redis_client,
+            mock_store,
+            self._adapter_connections(),
+            send_cap=self._chat_send_cap,
         )
 
     def chat_webhook_mapper(self, provider: str) -> ChatWebhookMapper | None:
@@ -1529,7 +1541,10 @@ class ServiceRegistry:
         }
 
     def llm_provider(self) -> LlmProvider:
-        return catalog.build_llm_provider(self.settings)
+        if self._llm_token_ledger is None and self.settings.llm_provider != "fake":
+            redis_client = None if self.settings.runtime_mode == "memory" else self._redis_client()
+            self._llm_token_ledger = catalog.build_llm_token_ledger(self.settings, redis_client)
+        return catalog.build_llm_provider(self.settings, self._llm_token_ledger)
 
     def investigation_engine(self) -> InvestigationEngine:
         # Imported here: deepagents loads LangChain and its integrations, which
