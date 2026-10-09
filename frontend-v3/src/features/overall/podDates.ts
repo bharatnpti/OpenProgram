@@ -76,7 +76,7 @@ export function podDates(scopes: Scope[], projectTarget: string | null, today: s
       name: scope.name,
       chip,
       at: scope.target ? at(scope.target) : null,
-      tone: inScope ? toneForVerdict(scope.verdict) : "neutral",
+      tone: lineTone(scope),
       fact: podFact(scope, projectTarget, today),
       spoken: scope.target
         ? `${scope.name} ${formatDay(scope.target)}, ${chip.label.toLowerCase()}`
@@ -101,6 +101,69 @@ export function podDates(scopes: Scope[], projectTarget: string | null, today: s
         : "; the project has no committed date"
     }: ${rows.map((row) => row.spoken).join("; ")}`,
   };
+}
+
+/** The colour a scope's date is drawn in: its verdict's, grey when nothing is counted to judge. */
+function lineTone(scope: Scope): BadgeTone {
+  return counted(scope) ? toneForVerdict(scope.verdict) : "neutral";
+}
+
+/** Worst first, so a legend lists the colours the way the page ranks them. */
+const TONE_ORDER: BadgeTone[] = ["danger", "warning", "success", "info", "neutral"];
+
+export type LegendMarks = {
+  /** The project's date is drawn, as a mark on every track. */
+  project: boolean;
+  /** Whose dates are drawn: only a pod or release that has a date draws one. */
+  whose: ("pod" | "release")[];
+  /** The colours those dates are in, worst first. */
+  tones: BadgeTone[];
+  /** Some row has no date, so its track is a dashed line. */
+  noDate: boolean;
+};
+
+/**
+ * What the "Dates by pod" legend may name: only the marks the tracks draw. The
+ * project's mark needs a project date; a pod's or release's date needs a row
+ * with one, and is shown in the colours those rows actually have; the dashed
+ * line needs a row without one. A legend never lists a mark nothing draws, nor
+ * a colour no date is in.
+ */
+export function datesLegend(
+  pods: Scope[],
+  releases: Scope[],
+  projectTarget: string | null,
+): LegendMarks {
+  const dated = (scopes: Scope[]) => scopes.filter((scope) => Boolean(scope.target));
+  const datedPods = dated(pods);
+  const datedReleases = dated(releases);
+  const tones = new Set([...datedPods, ...datedReleases].map(lineTone));
+  return {
+    project: Boolean(projectTarget),
+    whose: [
+      datedPods.length > 0 ? "pod" : null,
+      datedReleases.length > 0 ? "release" : null,
+    ].filter((kind): kind is "pod" | "release" => kind !== null),
+    tones: TONE_ORDER.filter((tone) => tones.has(tone)),
+    noDate: [...pods, ...releases].some((scope) => !scope.target),
+  };
+}
+
+/**
+ * The legend's words for the dates drawn, or null when none is: "A pod's date, in
+ * its verdict's colour". Grey is named when a date has no verdict to go by.
+ */
+export function datesLegendWords(legend: Pick<LegendMarks, "whose" | "tones">): string | null {
+  if (legend.whose.length === 0) return null;
+  const whose = legend.whose.map((kind) => `${kind}'s`).join(" or ");
+  const grey = legend.tones.includes("neutral");
+  const coloured = legend.tones.some((tone) => tone !== "neutral");
+  const colour = !grey
+    ? "in its verdict's colour"
+    : coloured
+      ? "in its verdict's colour, grey with none"
+      : "grey, with no verdict to colour it";
+  return `A ${whose} date, ${colour}`;
 }
 
 /**

@@ -16,7 +16,13 @@ import { DeliveryDateDialog } from "../reports/DeliveryDateDialog";
 import { Locked } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
 import { releaseName } from "./overallWords";
-import { podChangeKeys, podDates } from "./podDates";
+import {
+  datesLegend,
+  datesLegendWords,
+  podChangeKeys,
+  podDates,
+  type LegendMarks,
+} from "./podDates";
 import { useDelivery, usePodDeliveries } from "./queries";
 import { PhraseText } from "./SlipChart";
 import { Legend, LineKey, Swatch, VizCard } from "./viz";
@@ -119,7 +125,7 @@ export function PodDatesSection({
                 {datesOffNow ? <Locked>{datesOffNow}</Locked> : null}
               </div>
             ) : null}
-            <DatesLegend project={Boolean(project.target)} />
+            <DatesLegend marks={datesLegend(data.pods, data.releases, project.target)} />
             <PodChanges scopes={data.pods} />
           </VizCard>
         ) : null}
@@ -157,6 +163,7 @@ export function ScrumMasterPodDates({ projectId }: { projectId: string }) {
       .map((item) => ({ ...item, mine: Boolean(read.data?.can_set_dates) })),
   );
   const projectTarget = parts.find((item) => item.project_target)?.project_target ?? null;
+  const podScopes = parts.map((item) => item.pod);
   const mine = new Set(parts.filter((item) => item.mine).map((item) => item.pod.scope_id));
   const name = project?.name ?? "this project";
 
@@ -171,7 +178,7 @@ export function ScrumMasterPodDates({ projectId }: { projectId: string }) {
         <VizCard>
           <DatesList
             label="Pod"
-            scopes={parts.map((item) => item.pod)}
+            scopes={podScopes}
             projectTarget={projectTarget}
             lead={(scope) => (mine.has(scope.scope_id) ? "yours" : null)}
             action={(scope) =>
@@ -189,8 +196,8 @@ export function ScrumMasterPodDates({ projectId }: { projectId: string }) {
             }
           />
           {readOnly && reason && mine.size > 0 ? <Locked>{reason}</Locked> : null}
-          <DatesLegend project={Boolean(projectTarget)} />
-          <PodChanges scopes={parts.map((item) => item.pod)} />
+          <DatesLegend marks={datesLegend(podScopes, [], projectTarget)} />
+          <PodChanges scopes={podScopes} />
         </VizCard>
       </PanelState>
       {editing ? (
@@ -348,23 +355,38 @@ function Scale({
   );
 }
 
-function DatesLegend({ project }: { project: boolean }) {
+/**
+ * Names only the marks the tracks draw: the project's line, a date in each
+ * colour it is drawn in (the swatch is that colour, never a fixed one), and the
+ * dashed line for a row with no date.
+ */
+function DatesLegend({ marks }: { marks: LegendMarks }) {
+  const dates = datesLegendWords(marks);
+  if (!marks.project && !dates && !marks.noDate) return null;
   return (
     <Legend>
-      {project ? (
+      {marks.project ? (
         <span>
           <LineKey />
           Project date
         </span>
       ) : null}
-      <span>
-        <Swatch style={{ background: "var(--op-amber)" }} />A pod&apos;s date, in its verdict&apos;s
-        colour
-      </span>
-      <span>
-        <LineKey dashed />
-        No date yet
-      </span>
+      {dates ? (
+        <span>
+          <span className="inline-flex gap-0.5">
+            {marks.tones.map((tone) => (
+              <Swatch key={tone} style={{ background: TONE_LINE[tone] }} />
+            ))}
+          </span>
+          {dates}
+        </span>
+      ) : null}
+      {marks.noDate ? (
+        <span>
+          <LineKey dashed />
+          No date yet
+        </span>
+      ) : null}
     </Legend>
   );
 }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { formatDay } from "../../lib/format.ts";
-import { podChangeKeys, podDates, podFact } from "./podDates.ts";
+import { datesLegend, datesLegendWords, podChangeKeys, podDates, podFact } from "./podDates.ts";
 
 type Verdict = "on_track" | "at_risk" | "off_track" | "done" | "no_date" | "not_enough_data";
 
@@ -154,4 +154,43 @@ test("the pods' changes read newest first, each led by its pod", () => {
     ],
     ["", "Storefront Pod", `, set to Fri 27 Nov by Ben Sorensen on ${formatDay("2026-09-30")}.`],
   ]);
+});
+
+test("the legend names only the marks the tracks draw, in the colours they are drawn in", () => {
+  // Pods with no date: only the dashed line, no project mark, and no swatch of any colour.
+  const none = datesLegend([platform, storefront], [], null);
+  assert.deepEqual(none, { project: false, whose: [], tones: [], noDate: true });
+  assert.equal(datesLegendWords(none), null);
+
+  // One dated pod, at risk: its swatch is amber because the pod is, and nothing is undated.
+  const one = datesLegend([payments], [], "2026-12-15");
+  assert.deepEqual(one, { project: true, whose: ["pod"], tones: ["warning"], noDate: false });
+  assert.equal(datesLegendWords(one), "A pod's date, in its verdict's colour");
+
+  // Mixed: the colours present, worst first, and the dashed line for the pod without a date.
+  const onTrack = pod("pod-x", "X Pod", { target: "2026-11-27", verdict: "on_track" });
+  const offTrack = pod("pod-y", "Y Pod", { target: "2026-12-30", verdict: "off_track" });
+  const mixed = datesLegend([payments, onTrack, offTrack, platform], [], "2026-12-15");
+  assert.deepEqual(mixed.tones, ["danger", "warning", "success"]);
+  assert.equal(mixed.noDate, true);
+});
+
+test("a date drawn grey is said to be grey, and a release's date is named as one", () => {
+  const empty = pod("z", "Z", { target: "2026-11-30", verdict: "done", total: 0 });
+  const grey = datesLegend([empty], [], "2026-12-15");
+  assert.deepEqual(grey.tones, ["neutral"]);
+  assert.equal(datesLegendWords(grey), "A pod's date, grey, with no verdict to colour it");
+
+  const release = pod("rel-1", "Release 1", { target: "2026-12-01", verdict: "on_track" });
+  const both = datesLegend([empty], [release], "2026-12-15");
+  assert.deepEqual(both.whose, ["pod", "release"]);
+  assert.deepEqual(both.tones, ["success", "neutral"]);
+  assert.equal(
+    datesLegendWords(both),
+    "A pod's or release's date, in its verdict's colour, grey with none",
+  );
+  // Only the release has a date: the legend does not speak of pods.
+  const onlyRelease = datesLegend([platform], [release], null);
+  assert.deepEqual(onlyRelease.whose, ["release"]);
+  assert.equal(datesLegendWords(onlyRelease), "A release's date, in its verdict's colour");
 });
