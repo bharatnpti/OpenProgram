@@ -189,6 +189,41 @@ test("the redirect table of PROPOSAL §7.2, row by row", () => {
   }
 });
 
+test("the day report's link opens its own page for every role, so none is redirected", () => {
+  const roles: AppRole[] = ["dev", "sm", "po", "mgr", "exec", "admin"];
+  for (const link of [
+    "/reports/project-checkout/daily?report=rep-1",
+    "/reports/project-checkout/daily?report=rep-1&asOf=2026-10-02",
+    "/reports/project-checkout/daily",
+  ]) {
+    for (const role of roles) assert.equal(to(role, link), "(shown)", `${role} ${link}`);
+  }
+});
+
+test("a day report sent with the old link (the project's Delivery page) reaches a page the role has", () => {
+  // Those reports linked `<console>/delivery/project/<id>`: closed to a developer, a scrum
+  // master and a product owner, who are sent to the report or the project they may read.
+  const old = "/delivery/project/project-checkout";
+  assert.deepEqual(
+    (["dev", "sm", "po", "mgr", "exec", "admin"] as AppRole[]).map((role) => to(role, old)),
+    [
+      "/reports/project-checkout/daily",
+      "/reports/project-checkout/overall",
+      "/today?project=project-checkout",
+      "(shown)",
+      "(shown)",
+      "(shown)",
+    ],
+  );
+  assert.equal(go("dev", old)?.missing, null, "the report stands in for it: no toast");
+  assert.equal(go("sm", old)?.missing, null);
+  assert.equal(
+    to("dev", "/delivery/project/project%2Fcheckout?asOf=2026-10-02"),
+    "/reports/project%2Fcheckout/daily?asOf=2026-10-02",
+    "an id that was encoded in the link stays encoded, and the viewing day goes along",
+  );
+});
+
 test("a manager is shown every page but Admin; an admin every page", () => {
   for (const link of [
     "/delivery/pod/pod-payments",
