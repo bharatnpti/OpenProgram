@@ -1,0 +1,19 @@
+frontend-v3/src/features/overall/SlipChart.tsx
+  s_1715cbbf3832ec::t_1bb6dd62ba0c39 260-267
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "45bfa94b56e6aff7b18b4f7cbda695158f78272b",
+  "prompts": {},
+  "sessions": {
+    "s_1715cbbf3832ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b324c31-3952-4113-96ba-8972b213e210",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
