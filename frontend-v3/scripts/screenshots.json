@@ -162,5 +162,27 @@
     "name": "29-admin-escalation-contacts.png",
     "path": "/admin?tab=contacts",
     "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "30-today-scrum-master-checkins.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1006" },
+    "steps": [{ "click": { "role": "button", "name": "Check-ins today" } }]
+  },
+  {
+    "name": "31-assistant.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1006" },
+    "full_page": false,
+    "steps": [
+      { "click": { "role": "button", "name": "Ask Ora" } },
+      { "click": { "css": "[role=dialog] ul button", "text": "blocking" } },
+      { "wait": 1200 }
+    ]
+  },
+  {
+    "name": "32-delivery-project-no-date.png",
+    "path": "/delivery/project/project-insights",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
   }
 ]
