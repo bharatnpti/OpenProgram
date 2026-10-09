@@ -1,0 +1,52 @@
+frontend-v3/src/lib/checkinWords.test.ts
+  s_1715cbbf3832ec::t_4b1ad5c57dfd91 213-216,224-227
+  s_d09685699e5b37::t_7b54df0b82491c 11-12,190-212,217-223,228-232
+  s_1715cbbf3832ec::t_268e594d2a9fa1 233
+frontend-v3/src/features/today/CheckinsPanel.tsx
+  s_1715cbbf3832ec::t_eb9e3e6e85cf5c 49
+  s_d09685699e5b37::t_93f4e55632538b 1-8,16-48,50-123
+  s_1715cbbf3832ec::t_4b1ad5c57dfd91 9-15
+frontend-v3/src/features/delivery/factors.ts
+  s_d09685699e5b37::t_418b56c7ca0d3b 170-174,179,185,188,197-200
+frontend-v3/src/app/rememberedOpen.test.ts
+  s_1715cbbf3832ec::t_15d280dc65ddd6 1-3,10-25,31,41,47-61,66-68
+  s_1715cbbf3832ec::t_4b1ad5c57dfd91 4-9,26-30,32-40,42-46,62-65
+frontend-v3/src/features/delivery/factors.test.ts
+  s_d09685699e5b37::t_72460d823826b4 203
+  s_d09685699e5b37::t_418b56c7ca0d3b 204,216,218-226
+frontend-v3/src/app/rememberedOpen.ts
+  s_d09685699e5b37::t_31713d2f26d3b8 3-4,7,9-12,15,17-23,35,39-45,51-52,54-56
+  s_1715cbbf3832ec::t_4b1ad5c57dfd91 14
+  s_1715cbbf3832ec::t_d99e30e219caa9 1-2,5-6,8,13,16,24-34,36-38,46-50,53
+frontend-v3/src/features/today/ScrumMasterToday.tsx
+  s_d09685699e5b37::t_6ddb1624c63454 18
+  s_d09685699e5b37::t_b0924b788b4151 24,28-34,84,106-148,182-186,188
+  s_d09685699e5b37::t_7515f0af8be9c7 98
+frontend-v3/src/lib/checkinWords.ts
+  s_d09685699e5b37::t_7b54df0b82491c 151-178
+  s_d09685699e5b37::t_b5173eb0817074 150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8821022e80ec41e166f911ea3904b5ee8b058ddc",
+  "prompts": {},
+  "sessions": {
+    "s_1715cbbf3832ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b324c31-3952-4113-96ba-8972b213e210",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_d09685699e5b37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac999ca-e6f7-4dc8-80ef-2b794b6036cf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
