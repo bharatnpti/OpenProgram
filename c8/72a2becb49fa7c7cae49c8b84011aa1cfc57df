@@ -1,0 +1,56 @@
+frontend-v3/src/api/schema.ts
+  s_1715cbbf3832ec::t_e2b52da2e8f9e3 145-146
+backend/core/application/forecast_service.py
+  s_1715cbbf3832ec::t_6f87695f6c2e10 53-54
+  s_1715cbbf3832ec::t_436a2a4eaf5a43 89-105
+  s_1715cbbf3832ec::t_1f19fd095074d1 349-374,376-412
+  s_1715cbbf3832ec::t_c17aca94a8bfc5 375
+  s_1715cbbf3832ec::t_0aecbf6415a855 496-497
+  s_1715cbbf3832ec::t_8c4691391eae1b 650-683
+backend/tests/unit/test_forecast.py
+  s_1715cbbf3832ec::t_003e719cc8872c 443-506,510-518,632-648,653-655
+  s_1715cbbf3832ec::t_f8cffd3f3b877a 507-509,649-652
+  s_1715cbbf3832ec::t_2a9031fdfcf8a7 656-657
+frontend-v3/src/api/generated.ts
+  s_1715cbbf3832ec::t_7484e40d230f10 1198-1218,3698-3728,9298-9324,9327-9330,9332-9335
+  s_1715cbbf3832ec::t_9939780c7fc874 9325-9326,9331
+backend/api/routers/forecast.py
+  s_1715cbbf3832ec::t_d4e882c587998d 21,31,35,60-78
+  s_1715cbbf3832ec::t_ee32a939430e63 79-80
+frontend-v2/src/api/generated.ts
+  s_1715cbbf3832ec::t_7484e40d230f10 1198-1218,3698-3728,9298-9324,9327-9330,9332-9335
+  s_1715cbbf3832ec::t_ef13e252d13bc0 9325-9326,9331
+frontend-v3/src/api/asOf.ts
+  s_1715cbbf3832ec::t_9a58cc083540d1 47
+frontend/src/api/generated.ts
+  s_1715cbbf3832ec::t_7484e40d230f10 1198-1218,3711-3741,9311-9337,9340-9343,9345-9348
+  s_1715cbbf3832ec::t_0f0773d3513c80 9338-9339,9344
+backend/api/dtos.py
+  s_1715cbbf3832ec::t_f1c6c320dd2340 35-39,4239-4274
+  s_1715cbbf3832ec::t_e41db412242b9a 4275
+frontend/src/api/openapi.json
+  s_1715cbbf3832ec::t_7484e40d230f10 5537-5633,13853-13926
+frontend-v2/src/api/openapi.json
+  s_1715cbbf3832ec::t_7484e40d230f10 5537-5633,13853-13926
+frontend-v3/src/api/openapi.json
+  s_1715cbbf3832ec::t_7484e40d230f10 5537-5633,13853-13926
+frontend-v3/src/api/client.ts
+  s_1715cbbf3832ec::t_e2b52da2e8f9e3 17,541-548
+  s_1715cbbf3832ec::t_cef11051e1dd1c 549
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c872a2becb49fa7c7cae49c8b84011aa1cfc57df",
+  "prompts": {},
+  "sessions": {
+    "s_1715cbbf3832ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b324c31-3952-4113-96ba-8972b213e210",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
