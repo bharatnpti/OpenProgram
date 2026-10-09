@@ -24,6 +24,7 @@ import * as shellMock from "./mock/shell.mjs";
 import * as adminConfig from "./mock/admin-config.mjs";
 import * as flowMock from "./mock/flow.mjs";
 import * as redesignMock from "./mock/redesign.mjs";
+import * as datesMock from "./mock/dates.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
@@ -388,6 +389,7 @@ function api(req, res, url) {
   // The shell mock goes first: of the reads the lane mocks share, it answers
   // only past-day ones (as_of), which the today mock would answer as today.
   if (shellMock.api(req, url, roles, userId, send, deny)) return;
+  if (datesMock.api(req, url, roles, userId, send, deny)) return;
   if (todayMock.api(req, url, roles, userId, send, deny)) return;
   if (adminStructure.api(req, url, roles, userId, send, deny)) return;
   if (reportsLane.api(req, url, roles, userId, send, deny)) return;

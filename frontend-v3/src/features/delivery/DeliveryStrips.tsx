@@ -161,7 +161,11 @@ export function PodDateStrips({
                   <>
                     <span>
                       {item.project_name}:{" "}
-                      {item.project_target ? formatDate(item.project_target) : "no date"}
+                      {item.project_target ? (
+                        formatDate(item.project_target)
+                      ) : (
+                        <span className="font-bold text-rag-red">no committed date</span>
+                      )}
                       {item.pod.total > 0
                         ? ` · ${item.pod.open} of ${item.pod.total} requirements open`
                         : ""}

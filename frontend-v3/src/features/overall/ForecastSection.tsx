@@ -8,7 +8,10 @@ import { Card } from "../../components/ui/Card";
 import { DateStrip } from "../../components/ui/DateStrip";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
+import { compactForecastParts, missingDate } from "../../components/ui/dateStripWords";
+import { TONE_TEXT } from "../../components/ui/tone";
 import { formatDate, progressWidth } from "../../lib/format";
+import { cn } from "../../lib/utils";
 import { VERDICT_LABELS, toneForVerdict } from "../../lib/status";
 import { PodDateStrips } from "../delivery/DeliveryStrips";
 import { DeliveryDateDialog } from "../reports/DeliveryDateDialog";
@@ -326,11 +329,12 @@ function ScopeTable({
     <div>
       <h3 className="mb-2 text-[15px] font-extrabold">{title}</h3>
       <TableBox>
-        <table className="w-full min-w-[620px] border-collapse">
+        <table className="w-full min-w-[760px] border-collapse">
           <thead>
             <tr>
               <th className={th}>Name</th>
               <th className={th}>Date</th>
+              <th className={th}>Forecast</th>
               <th className={th}>Verdict</th>
               <th className={th}>Why</th>
               {onEdit ? (
@@ -348,10 +352,31 @@ function ScopeTable({
               >
                 <td className={`${td} font-bold`}>{scope.name}</td>
                 <td className={`${td} whitespace-nowrap`}>
-                  {formatDate(scope.target)}
+                  {missingDate(scope) ? (
+                    <RagChip tone="danger" className="h-6 px-2.5 text-[12px]">
+                      No committed date
+                    </RagChip>
+                  ) : (
+                    formatDate(scope.target)
+                  )}
                   {scope.target_source === "jira_release" ? (
                     <span className="ml-1 text-[11px] text-grey-secondary">from Jira</span>
                   ) : null}
+                </td>
+                <td className={`${td} text-[13px] text-grey-body`}>
+                  {compactForecastParts(scope, { headed: true }).map((part, index) => (
+                    <span
+                      key={part.text}
+                      className={cn(
+                        "whitespace-nowrap",
+                        part.tone !== "neutral" && "font-bold",
+                        TONE_TEXT[part.tone],
+                      )}
+                    >
+                      {index > 0 ? " · " : ""}
+                      {part.text}
+                    </span>
+                  ))}
                 </td>
                 <td className={`${td} whitespace-nowrap`}>
                   {inScope(scope) ? (
@@ -402,7 +427,7 @@ function WhyCell({ scope }: { scope: ScopeDeliveryResponse }) {
   const reasons = reasonsAfterCause(scope.reasons, cause).join(" ");
   return (
     <>
-      {cause ? <span className="block font-bold text-ink">{cause.because}</span> : null}
+      {cause ? <span className="block font-bold text-rag-red">{cause.because}</span> : null}
       {reasons || (cause ? null : "—")}
     </>
   );

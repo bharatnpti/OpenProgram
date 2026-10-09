@@ -53,6 +53,25 @@ export function verdictWeight(scope: Scope): number {
 export type Gap = { tone: BadgeTone; text: string };
 
 /**
+ * The forecast's colour against the committed date, by the server's own verdict
+ * rule (core/domain/forecast.py `verdict`): green when even the 85% date is on
+ * or before it (on track), amber when the 50% date meets it and the 85% date
+ * does not (at risk), red when the 50% date is after it (off track). Grey with
+ * no committed date to meet, or no forecast yet: too little history is never
+ * coloured.
+ */
+export function forecastTone(
+  target: string | null,
+  p50: string | null,
+  p85: string | null,
+): BadgeTone {
+  if (!target || !p50) return "neutral";
+  if (daysBetween(target, p50) > 0) return "danger";
+  if (p85 && daysBetween(target, p85) > 0) return "warning";
+  return "success";
+}
+
+/**
  * The forecast against the committed date: "+12 days" in danger when the 50%
  * date is later, a warning when only the 85% date is, "on time" otherwise.
  * Nothing without a committed date or a forecast.
@@ -63,11 +82,40 @@ export function forecastGap(
   p85: string | null,
 ): Gap | null {
   if (!target || !p50) return null;
-  const late = daysBetween(target, p50);
-  if (late > 0) return { tone: "danger", text: `+${late} ${late === 1 ? "day" : "days"}` };
-  const tail = p85 ? daysBetween(target, p85) : 0;
-  if (tail > 0) return { tone: "warning", text: `85%: +${tail} ${tail === 1 ? "day" : "days"}` };
+  const tone = forecastTone(target, p50, p85);
+  if (tone === "danger") {
+    const late = daysBetween(target, p50);
+    return { tone, text: `+${late} ${late === 1 ? "day" : "days"}` };
+  }
+  if (tone === "warning" && p85) {
+    const tail = daysBetween(target, p85);
+    return { tone, text: `85%: +${tail} ${tail === 1 ? "day" : "days"}` };
+  }
   return { tone: "success", text: "on time" };
+}
+
+/**
+ * The team's own latest date against the committed date, by the rule the
+ * server falls back on when history cannot forecast: red when it is later (off
+ * track), amber when it is in time but open requirements carry no date (at
+ * risk), green when every open one is dated in time. Grey with no committed
+ * date, or no date from the team.
+ */
+export function teamTone(
+  target: string | null,
+  team: Pick<Scope["team"], "latest" | "undated">,
+): BadgeTone {
+  if (!target || !team.latest) return "neutral";
+  if (daysBetween(target, team.latest) > 0) return "danger";
+  return team.undated > 0 ? "warning" : "success";
+}
+
+/**
+ * "No committed date" is bad news to act on, so it is red, for a scope with
+ * requirements to deliver; with nothing counted there is nothing to commit yet.
+ */
+export function missingDate(scope: Pick<ScopeDeliveryResponse, "target" | "total">): boolean {
+  return !scope.target && counted(scope);
 }
 
 /**
@@ -126,39 +174,74 @@ export function pastDue(
   return deadline.slice(0, 10) < shownDay.slice(0, 10);
 }
 
+/** A few words and their colour: one part of the compact strip's forecast. */
+export type Phrase = { text: string; tone: BadgeTone };
+
 /**
  * The compact strip's three parts, each said once: the date (null when none is
- * committed), the forecast in a few words, and the verdict chip. A verdict that
- * says what the line already says (no committed date, not enough history) does
- * not say it twice: the chip goes, or the forecast words do.
+ * committed), the forecast in a few words with its colour, and the verdict
+ * chip. A verdict that says what the line already says (no committed date, not
+ * enough history) does not say it twice: the chip goes, or the forecast words do.
  */
 export function compactParts(scope: Scope): {
   date: string | null;
-  forecast: string | null;
+  forecast: Phrase[] | null;
   chip: { label: string; tone: BadgeTone } | null;
 } {
   const chip = verdictChip(scope);
   const inScope = counted(scope);
   if (inScope && scope.verdict === "no_date") {
-    return { date: null, forecast: compactForecast(scope), chip: null };
+    return { date: null, forecast: compactForecastParts(scope), chip: null };
   }
   if (inScope && scope.verdict === "not_enough_data") {
-    const team = scope.team.latest ? `team says ${formatDay(scope.team.latest)}` : null;
+    const team = scope.team.latest
+      ? [
+          {
+            text: `team says ${formatDay(scope.team.latest)}`,
+            tone: teamTone(scope.target, scope.team),
+          },
+        ]
+      : null;
     return { date: scope.target, forecast: team, chip };
   }
-  return { date: scope.target, forecast: compactForecast(scope), chip };
+  return { date: scope.target, forecast: compactForecastParts(scope), chip };
 }
 
-/** The forecast in a few words for the compact strip. */
-export function compactForecast(scope: Scope): string {
-  if (!counted(scope)) return "nothing to forecast";
+/**
+ * The forecast in a few words for the compact strip, each part with its
+ * colour: the history's date against the committed one (`forecastTone`), or,
+ * with no forecast yet, the team's own latest date (`teamTone`) after a grey
+ * "not enough history". Under a "Forecast" heading (`headed`), the words
+ * leave out the "forecast:" the heading already says.
+ */
+export function compactForecastParts(scope: Scope, { headed = false } = {}): Phrase[] {
+  const lead = headed ? "" : "forecast: ";
+  if (!counted(scope)) return [{ text: "nothing to forecast", tone: "neutral" }];
   const { p50, p85 } = scope.history;
   if (!p50) {
     // With no forecast yet, the team's own latest date is the date there is.
     return scope.team.latest
-      ? `not enough history · team says ${formatDay(scope.team.latest)}`
-      : "forecast: not enough history";
+      ? [
+          { text: "not enough history", tone: "neutral" },
+          {
+            text: `team says ${formatDay(scope.team.latest)}`,
+            tone: teamTone(scope.target, scope.team),
+          },
+        ]
+      : [{ text: `${lead}not enough history`, tone: "neutral" }];
   }
   const gap = forecastGap(scope.target, p50, p85);
-  return `forecast: ${formatDay(p50)}${gap ? `, ${gap.text}` : ""}`;
+  return [
+    {
+      text: `${lead}${formatDay(p50)}${gap ? `, ${gap.text}` : ""}`,
+      tone: forecastTone(scope.target, p50, p85),
+    },
+  ];
+}
+
+/** The forecast in a few words for the compact strip, as one line. */
+export function compactForecast(scope: Scope): string {
+  return compactForecastParts(scope)
+    .map((part) => part.text)
+    .join(" · ");
 }
