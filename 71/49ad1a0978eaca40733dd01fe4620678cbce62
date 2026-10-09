@@ -1,0 +1,21 @@
+frontend-v3/src/pages/DailyPage.tsx
+  s_1715cbbf3832ec::t_68466c29831c6e 96-108
+frontend-v3/src/features/daily/ReportHeader.tsx
+  s_1715cbbf3832ec::t_5b376d328e0758 131-133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7149ad1a0978eaca40733dd01fe4620678cbce62",
+  "prompts": {},
+  "sessions": {
+    "s_1715cbbf3832ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b324c31-3952-4113-96ba-8972b213e210",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
