@@ -69,3 +69,34 @@ export function reportZone(
   if (deviceZone) return { zone: deviceZone, from: "device" };
   return { zone: "UTC", from: "none" };
 }
+
+/**
+ * An instant as the wall clock reads in `zone`, with the zone named after it the
+ * way a schedule names its own: "Mon 5 Oct 17:30 Europe/Berlin". A report's last
+ * send sits beside its schedule ("18:00 Europe/Berlin"), so it is read in that
+ * zone and says so, not in the viewer's with nothing said. A zone this browser
+ * does not know is read as UTC, and says UTC. "—" when there is no time.
+ */
+export function formatInZone(iso: string | null | undefined, zone: string): string {
+  if (!iso) return "—";
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "—";
+  const clock = (timeZone: string) => {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(at);
+    const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+    return `${part("weekday")} ${part("day")} ${part("month")} ${part("hour")}:${part("minute")}`;
+  };
+  try {
+    return `${clock(zone)} ${zone}`;
+  } catch {
+    return `${clock("UTC")} UTC`;
+  }
+}

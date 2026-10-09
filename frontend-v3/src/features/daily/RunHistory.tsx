@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../../api/client";
 import { PanelState } from "../../components/PanelState";
 import { Fold } from "../../components/viz/Fold";
-import { formatDay, formatTime } from "../../lib/format";
+import { formatInZone } from "../../lib/zones";
 import { RUN_LABELS, outcomeLine, outcomeText } from "./reportView";
 import { DayChip } from "./vizBits";
 
@@ -12,9 +12,10 @@ const RUN_CHIP = { sent: "green", partial: "amber", failed: "red", sending: "inf
 /**
  * Past sends, folded below the report: the last one is in the header already. Newest
  * first, each with how every destination fared, by name, a failure in red, and who
- * sent it. The list is drawn only once it is opened.
+ * sent it. Each time is read in the report's own zone (`timezone`, the schedule's), as
+ * the header's last send is, and names it. The list is drawn only once it is opened.
  */
-export function RunHistory({ reportId }: { reportId: string }) {
+export function RunHistory({ reportId, timezone }: { reportId: string; timezone: string }) {
   const runs = useQuery({
     queryKey: ["day-reports", "runs", reportId],
     queryFn: () => apiClient.dayReportRuns(reportId),
@@ -37,8 +38,8 @@ export function RunHistory({ reportId }: { reportId: string }) {
               key={run.run_id}
               className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[14px] border border-(--op-day-grid) px-3.5 py-2.5 text-[13px] text-(--op-day-body)"
             >
-              <span className="min-w-[120px] font-extrabold tabular-nums text-(--op-day-ink)">
-                {formatDay(run.report_date)} {formatTime(run.started_at)}
+              <span className="font-extrabold tabular-nums text-(--op-day-ink)">
+                {formatInZone(run.started_at, timezone)}
               </span>
               <span>
                 {run.trigger === "manual"

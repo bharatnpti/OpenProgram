@@ -7,7 +7,8 @@ import type { DayReportResponse } from "../../api/schema";
 import { ConfirmDialog, TextDialog } from "../../components/Dialogs";
 import { RagChip } from "../../components/ui/RagChip";
 import { Pill } from "../../components/ui/Pill";
-import { formatDay, formatTime, weekdaysLabel } from "../../lib/format";
+import { weekdaysLabel } from "../../lib/format";
+import { formatInZone } from "../../lib/zones";
 import { actionError } from "../reports/access";
 import { releaseName } from "../overall/overallWords";
 import { ReportSetupDialog } from "../reports/ReportSetupDialog";
@@ -76,8 +77,7 @@ export function ReportHeader({
             <RagChip tone={RUN_TONES[lastRun.status]} className="h-6 px-2.5 text-[12px]">
               {RUN_LABELS[lastRun.status]}
             </RagChip>
-            Last send {formatDay(lastRun.report_date)} {formatTime(lastRun.started_at)} ·{" "}
-            {outcomeLine(lastRun)}
+            Last send {formatInZone(lastRun.started_at, schedule.timezone)} · {outcomeLine(lastRun)}
           </p>
         ) : (
           <p className="mt-2 text-[13px] text-grey-secondary">Not sent yet.</p>

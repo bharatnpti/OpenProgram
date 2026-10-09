@@ -104,7 +104,11 @@ export function DailyPage() {
                 }}
               />
               <ReportPreview reportId={selected.report_id} showText={showText} textId={textId} />
-              <RunHistory key={selected.report_id} reportId={selected.report_id} />
+              <RunHistory
+                key={selected.report_id}
+                reportId={selected.report_id}
+                timezone={selected.schedule.timezone}
+              />
             </div>
           </div>
         ) : null}
