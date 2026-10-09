@@ -77,7 +77,7 @@ export function DeliveryPage() {
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
         <nav
           aria-label="Delivery graph"
-          className="max-h-[50vh] overflow-y-auto rounded-3xl border border-grey-border p-3 lg:sticky lg:self-start lg:top-32 lg:max-h-[calc(100vh-10rem)]"
+          className="max-h-[50vh] overflow-y-auto rounded-3xl border border-grey-border p-3 lg:sticky lg:self-start lg:top-32 lg:max-h-[calc(100vh-10rem-var(--op-float-room))]"
         >
           {groups
             .filter((g) => g.items.length > 0)

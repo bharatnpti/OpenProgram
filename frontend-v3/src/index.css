@@ -69,6 +69,18 @@
   --op-shadow-menu: 0 16px 48px rgba(0, 0, 0, 0.14);
   --op-shadow-palette: 0 32px 80px rgba(0, 0, 0, 0.3);
   --op-shadow-hover: 0 10px 24px rgba(0, 0, 0, 0.08);
+
+  /* The room the assistant's floating button takes from the bottom of the viewport:
+     nothing, unless the shell draws the button (below). */
+  --op-float-room: 0px;
+}
+
+/* While the assistant's button is drawn (56 px, 20 to 24 px from the bottom right),
+   the shell sets .op-float-room on the page: main's bottom padding and every sticky
+   side panel that reaches the viewport's bottom leave this much free, so the button
+   never covers the end of a page or of a panel. */
+.op-float-room {
+  --op-float-room: 5rem;
 }
 
 /* The flow view's dark steps: the same hues stepped for a dark surface

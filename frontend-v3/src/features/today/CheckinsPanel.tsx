@@ -49,7 +49,7 @@ export function CheckinsPanel({
         open ? "lg:w-[21rem]" : "lg:w-[16.5rem]",
       )}
     >
-      <section className="rounded-3xl border border-grey-border bg-white p-4 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
+      <section className="rounded-3xl border border-grey-border bg-white p-4 lg:max-h-[calc(100vh-10rem-var(--op-float-room))] lg:overflow-y-auto">
         <h2 className="text-[17px] font-extrabold">
           <button
             type="button"

@@ -45,7 +45,9 @@ export function Layout() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white">
+    // The assistant's button floats at the bottom right: the room it takes is set here,
+    // once, and read by main's padding and the pages' sticky side panels (index.css).
+    <div className={cn("min-h-screen bg-white", roleState.access.assistant && "op-float-room")}>
       <TabTitle />
       <header className="sticky top-0 z-30 border-b border-grey-border bg-white">
         <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-x-6 gap-y-2 px-4 pt-3 sm:px-8">
@@ -109,12 +111,7 @@ export function Layout() {
         <ViewingDateBanner />
       </header>
       {/* Room at the bottom for the assistant's button, so it never covers the last row. */}
-      <main
-        className={cn(
-          "mx-auto max-w-[1240px] px-4 py-8 sm:px-8",
-          roleState.access.assistant && "pb-28",
-        )}
-      >
+      <main className="mx-auto max-w-[1240px] px-4 py-8 pb-[calc(2rem+var(--op-float-room))] sm:px-8">
         {/* A link to a page this role is not offered opens the closest one it has. */}
         <RouteGuard>
           {/* A different day remounts the screen, so every query on it asks for that day. */}
