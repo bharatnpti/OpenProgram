@@ -200,8 +200,8 @@ test("more than three blockers are named three, then counted", () => {
   );
 });
 
-test("a scrum master's Why leaves out the blockers and check-ins listed above it, and counts them", () => {
-  const { rest, tally } = reasonsBeyondBoard([
+test("a scrum master's Why leaves out the blockers and check-ins its own panels list, counts them and names the panels", () => {
+  const { rest, tally, where } = reasonsBeyondBoard([
     blocker("Blocker: waiting on sandbox credentials", "b1", "U1007"),
     blocker("Blocker: waiting on sandbox credentials", "b1", "U1008"),
     factor("Kai Thompson's status is inferred", "amber", "U1007", "inferred"),
@@ -213,6 +213,15 @@ test("a scrum master's Why leaves out the blockers and check-ins listed above it
     ["drift"],
   );
   assert.equal(tally, "1 open blocker, 1 inferred check-in and 1 missing check-in");
+  assert.equal(where, "Open blockers and Check-ins");
   const target = factor("Target date passed", "red", "P", "target_date");
-  assert.deepEqual(reasonsBeyondBoard([target]), { rest: [target], tally: null });
+  assert.deepEqual(reasonsBeyondBoard([target]), { rest: [target], tally: null, where: null });
+  assert.equal(
+    reasonsBeyondBoard([factor("Noah Weber has not replied", "amber", "U1008", "missing")]).where,
+    "Check-ins",
+  );
+  assert.equal(
+    reasonsBeyondBoard([blocker("Blocker: waiting on review", "b2", "U1007")]).where,
+    "Open blockers",
+  );
 });

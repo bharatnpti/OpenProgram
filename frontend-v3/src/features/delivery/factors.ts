@@ -167,21 +167,25 @@ const CHECKIN_KINDS: Record<string, [string, string]> = {
 };
 
 /**
- * A pod's reasons less the ones a scrum master's Today already lists above
- * them: its open blockers and its people's check-ins. What is left is shown
- * under "Why <pod> is <colour>", and `tally` counts what was taken out ("1 open
- * blocker and 1 inferred check-in"), so the colour still adds up.
+ * A pod's reasons less the ones a scrum master's Today lists in panels of
+ * their own: its open blockers and its people's check-ins. What is left is
+ * shown under "Why <pod> is <colour>", `tally` counts what was taken out ("1
+ * open blocker and 1 inferred check-in"), so the colour still adds up, and
+ * `where` names the panels that list them ("Open blockers and Check-ins").
  */
 export function reasonsBeyondBoard(factors: RollupFactorDto[]): {
   rest: RollupFactorDto[];
   tally: string | null;
+  where: string | null;
 } {
   const rest = factors.filter((f) => f.kind !== "blocker" && !(f.kind in CHECKIN_KINDS));
   const parts: string[] = [];
   const blockers = distinctBlockers(factors).length;
   if (blockers > 0) parts.push(`${blockers} open ${blockers === 1 ? "blocker" : "blockers"}`);
+  let checkins = 0;
   for (const [kind, [one, many]] of Object.entries(CHECKIN_KINDS)) {
     const count = factors.filter((f) => f.kind === kind).length;
+    checkins += count;
     if (count > 0) parts.push(`${count} ${count === 1 ? one : many}`);
   }
   const tally =
@@ -190,7 +194,10 @@ export function reasonsBeyondBoard(factors: RollupFactorDto[]): {
       : parts.length === 1
         ? parts[0]
         : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
-  return { rest, tally };
+  const panels = [blockers > 0 ? "Open blockers" : null, checkins > 0 ? "Check-ins" : null].filter(
+    (panel): panel is string => panel !== null,
+  );
+  return { rest, tally, where: panels.length > 0 ? panels.join(" and ") : null };
 }
 
 /**

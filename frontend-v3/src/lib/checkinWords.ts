@@ -148,6 +148,35 @@ export function repliedCount(counts: { confirmed: number; partial: number; total
 }
 
 /**
+ * What a folded board of check-ins says: "4 of 6 replied today · 1 partly"
+ * (`day` is "today", or "on Mon 5 Oct" for a past day), and how many people
+ * are not green on it, for the red flag that asks for a look: anyone with no
+ * reply, a partial one, one without a status, an inferred or a carried-forward
+ * status. A board says "replied", never "confirmed" (see REPLY_WORDS).
+ */
+export function checkinsSummary(
+  board: Pick<PodCheckinsResponse, "confirmed" | "partial" | "stale" | "missing"> & {
+    developers: BoardPerson[];
+  },
+  day: string,
+): { text: string; attention: number } {
+  const total = board.confirmed + board.partial + board.stale + board.missing;
+  if (board.developers.length === 0 && total === 0) {
+    return { text: "Nobody in this pod is asked to check in.", attention: 0 };
+  }
+  const partly = board.partial > 0 ? ` · ${board.partial} partly` : "";
+  return {
+    text: `${board.confirmed} of ${total} replied ${day}${partly}`,
+    attention: board.developers.filter((person) => boardRag(person) !== "green").length,
+  };
+}
+
+/** "2 to follow up": the flag's words, for a screen reader and a tooltip. */
+export function followUpWords(count: number): string {
+  return `${count} to follow up`;
+}
+
+/**
  * A person's status source, as their check-in: where Signals says what an owner
  * has said. Not for a task or a blocker, whose source says where its own status
  * came from.

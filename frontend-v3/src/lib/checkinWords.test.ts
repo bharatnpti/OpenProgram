@@ -8,6 +8,8 @@ import {
   boardWord,
   ownerSourceWords,
   repliedCount,
+  checkinsSummary,
+  followUpWords,
   repliedWithoutStatus,
   statedSourceWords,
   type BoardRead,
@@ -184,4 +186,48 @@ describe("what Signals says an owner has said", () => {
     assert.equal(statedSourceWords("inferred"), "inferred, not stated");
     assert.equal(statedSourceWords("unknown"), "no status stated");
   });
+});
+
+test("a folded board says how many replied that day, and flags anyone not green", () => {
+  const person = (state: "confirmed" | "partial" | "stale" | "missing", source = "confirmed") => ({
+    state,
+    source: source as "confirmed",
+    status_as_of: state === "missing" ? null : "2026-10-06",
+    summary: "",
+  });
+  const board = {
+    confirmed: 4,
+    partial: 1,
+    stale: 0,
+    missing: 1,
+    developers: [
+      ...[1, 2, 3, 4].map(() => person("confirmed")),
+      person("partial", "partial"),
+      person("missing", "unknown"),
+    ],
+  };
+  assert.deepEqual(checkinsSummary(board, "today"), {
+    text: "4 of 6 replied today · 1 partly",
+    attention: 2,
+  });
+  assert.equal(
+    checkinsSummary(board, "on Mon 5 Oct").text,
+    "4 of 6 replied on Mon 5 Oct · 1 partly",
+  );
+  const allGreen = {
+    confirmed: 2,
+    partial: 0,
+    stale: 0,
+    missing: 0,
+    developers: [person("confirmed"), person("confirmed")],
+  };
+  assert.deepEqual(checkinsSummary(allGreen, "today"), {
+    text: "2 of 2 replied today",
+    attention: 0,
+  });
+  assert.deepEqual(
+    checkinsSummary({ confirmed: 0, partial: 0, stale: 0, missing: 0, developers: [] }, "today"),
+    { text: "Nobody in this pod is asked to check in.", attention: 0 },
+  );
+  assert.equal(followUpWords(2), "2 to follow up");
 });

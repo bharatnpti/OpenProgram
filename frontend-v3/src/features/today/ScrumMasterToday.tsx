@@ -14,23 +14,24 @@ import { useRole } from "../../app/role";
 import { useDayWords, useShownDay } from "../../app/viewingDate";
 import { PanelState } from "../../components/PanelState";
 import { ChipPicker, Greeting, Panel, Row } from "../../components/ui/Bits";
-import { RagChip } from "../../components/ui/RagChip";
-import { formatDay } from "../../lib/format";
-import { boardMeta, boardRag, boardWord, repliedCount } from "../../lib/checkinWords";
 import { greetingTitle, plural, sourceLine, todayEyebrow } from "../../lib/words";
+import { useAssistantSubject } from "../assistant/assistantContext";
 import { FactorsPanel } from "../delivery/NodeBits";
 import { PodDateStrips } from "../delivery/DeliveryStrips";
 import { PodTasksPanel } from "../delivery/PodTasks";
 import { reasonsBeyondBoard } from "../delivery/factors";
 import { CheckinCard } from "./CheckinCard";
+import { CheckinsPanel } from "./CheckinsPanel";
 import { YourAsks } from "./YourAsks";
 
 /**
- * A scrum master's morning, one pod at a time (`?pod=`): the pod's dates, its
- * open blockers (oldest first), who has checked in, whatever else sets its
- * colour, and the tasks its people hold. Opens on the pods the person runs: a
- * member of, or named as the scrum master contact of (the backend's own rule);
- * a pod named in the link is offered too.
+ * A scrum master's morning, one pod at a time (`?pod=`). The main column leads
+ * with what decides the pod's day: its dates, why it has its colour, the tasks
+ * its people hold, then its open blockers (oldest first). Who has checked in
+ * sits in a folding panel on the right, one line until opened, flagged red
+ * while anyone is not green. Opens on the pods the person runs: a member of,
+ * or named as the scrum master contact of (the backend's own rule); a pod
+ * named in the link is offered too.
  */
 export function ScrumMasterToday() {
   const shownDay = useShownDay();
@@ -80,8 +81,7 @@ export function ScrumMasterToday() {
     enabled: Boolean(podId),
   });
 
-  const c = checkins.data;
-  const total = c ? c.confirmed + c.partial + c.stale + c.missing : 0;
+  useAssistantSubject(pod ? { kind: "pod", name: pod.name } : null);
   const sortedBlockers = [...(blockers.data?.blockers ?? [])].sort(
     (a, b) => b.age_days - a.age_days,
   );
@@ -95,7 +95,7 @@ export function ScrumMasterToday() {
           shownDay,
         )}
         title={greetingTitle(greetingName, roleLabel)}
-        sub="How long each blocker has been open, and who has checked in across your pods."
+        sub="Your pod's dates, why it has its colour, its work and how long each blocker has been open."
       />
       <PanelState
         isLoading={pods.isLoading}
@@ -103,20 +103,49 @@ export function ScrumMasterToday() {
         isEmpty={options.length === 0}
         emptyText="No pods are configured yet."
       >
-        <ChipPicker
-          label="Pod"
-          value={podId}
-          onChange={choose}
-          options={options.map((p) => ({ value: p.id, label: p.name, rag: p.rag }))}
-          note={
-            own
-              ? `${plural(mine.length, "pod", "pods")} · the pods you run or belong to`
-              : `${plural(mine.length, "pod", "pods")} · you run no pod yet, so every pod is shown`
-          }
-        />
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
-          {pod ? <PodDateStrips pod={pod} /> : null}
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-4">
+            <ChipPicker
+              label="Pod"
+              value={podId}
+              onChange={choose}
+              options={options.map((p) => ({ value: p.id, label: p.name, rag: p.rag }))}
+              note={
+                own
+                  ? `${plural(mine.length, "pod", "pods")} · the pods you run or belong to`
+                  : `${plural(mine.length, "pod", "pods")} · you run no pod yet, so every pod is shown`
+              }
+            />
+            {pod ? <PodDateStrips pod={pod} /> : null}
+            {/* Whatever else sets the pod's colour: the blockers and check-ins have panels of their own. */}
+            <PanelState isLoading={rollup.isLoading} error={rollup.error}>
+              {rollup.data ? (
+                why.rest.length > 0 ? (
+                  <FactorsPanel
+                    always
+                    title={`Why ${pod?.name ?? "this pod"} is ${rollup.data.rag}`}
+                    factors={why.rest}
+                    names={rollup.data.source_names}
+                    footer={
+                      why.tally ? (
+                        <p className="mt-2 text-[12px] text-grey-secondary">
+                          And {why.tally}, listed under {why.where}.
+                        </p>
+                      ) : null
+                    }
+                  />
+                ) : (
+                  <Panel title={`Why ${pod?.name ?? "this pod"} is ${rollup.data.rag}`}>
+                    <p className="text-[14px] text-grey-body">
+                      {why.tally
+                        ? `Only ${why.tally}, listed under ${why.where}.`
+                        : `Nothing recorded for this pod ${day}.`}
+                    </p>
+                  </Panel>
+                )
+              ) : null}
+            </PanelState>
+            {podId ? <PodTasksPanel podId={podId} /> : null}
             <Panel
               title="Open blockers"
               // A count is only true once the blockers are read: "0" is not "not read yet".
@@ -150,71 +179,13 @@ export function ScrumMasterToday() {
                 </ul>
               </PanelState>
             </Panel>
-            <Panel
-              title={`Check-ins ${day}`}
-              note={
-                c ? repliedCount({ confirmed: c.confirmed, partial: c.partial, total }) : undefined
-              }
-            >
-              <PanelState
-                isLoading={checkins.isLoading}
-                error={checkins.error}
-                isEmpty={(c?.developers ?? []).length === 0}
-                emptyText="Nobody in this pod is asked to check in."
-              >
-                <ul>
-                  {(c?.developers ?? []).map((dev) => {
-                    const word = boardWord(dev, c?.as_of ?? "");
-                    return (
-                      <Row
-                        key={dev.developer_id}
-                        rag={boardRag(dev)}
-                        title={dev.developer_name}
-                        meta={boardMeta(dev, c?.as_of ?? "", { day: formatDay, today: day })}
-                        right={
-                          <RagChip tone={word.tone} className="h-6 px-2.5 text-[12px]">
-                            {word.word}
-                          </RagChip>
-                        }
-                      />
-                    );
-                  })}
-                </ul>
-              </PanelState>
-            </Panel>
+            {/* Their own check-in, asked in chat like everyone else's, and their asks. */}
+            <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 xl:grid-cols-2">
+              <CheckinCard compact />
+              <YourAsks />
+            </div>
           </div>
-          {/* Whatever else sets the pod's colour: the blockers and check-ins are listed above. */}
-          <PanelState isLoading={rollup.isLoading} error={rollup.error}>
-            {rollup.data ? (
-              why.rest.length > 0 ? (
-                <FactorsPanel
-                  always
-                  title={`Why ${pod?.name ?? "this pod"} is ${rollup.data.rag}`}
-                  factors={why.rest}
-                  names={rollup.data.source_names}
-                  footer={
-                    why.tally ? (
-                      <p className="mt-2 text-[12px] text-grey-secondary">And {why.tally} above.</p>
-                    ) : null
-                  }
-                />
-              ) : (
-                <Panel title={`Why ${pod?.name ?? "this pod"} is ${rollup.data.rag}`}>
-                  <p className="text-[14px] text-grey-body">
-                    {why.tally
-                      ? `Only what is listed above: ${why.tally}.`
-                      : `Nothing recorded for this pod ${day}.`}
-                  </p>
-                </Panel>
-              )
-            ) : null}
-          </PanelState>
-          {podId ? <PodTasksPanel podId={podId} /> : null}
-          {/* Their own check-in, asked in chat like everyone else's, and their asks. */}
-          <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-2">
-            <CheckinCard compact />
-            <YourAsks />
-          </div>
+          {podId ? <CheckinsPanel read={checkins} day={day} who={memberId} /> : null}
         </div>
       </PanelState>
     </>
