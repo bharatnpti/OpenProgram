@@ -1,0 +1,29 @@
+frontend-v3/src/features/admin/GatesTab.tsx
+  s_1715cbbf3832ec::t_9f066d059c1d8f 12
+frontend-v3/src/features/daily/dailyViz.ts
+  s_1715cbbf3832ec::t_9f066d059c1d8f 11
+frontend-v3/src/features/admin/DeliveryStagesTab.tsx
+  s_1715cbbf3832ec::t_9f066d059c1d8f 15
+frontend-v3/src/features/daily/StageStrip.tsx
+  s_1715cbbf3832ec::t_9f066d059c1d8f 4
+frontend-v3/src/features/overall/IssueGatesDialog.tsx
+  s_1715cbbf3832ec::t_9f066d059c1d8f 18
+frontend-v3/src/features/daily/daily.css
+  s_1715cbbf3832ec::t_9bfdbbac3c6dd1 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e09bf95eb5c989d88ea8142c5f1374049cf0fe65",
+  "prompts": {},
+  "sessions": {
+    "s_1715cbbf3832ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b324c31-3952-4113-96ba-8972b213e210",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
