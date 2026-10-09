@@ -1,6 +1,6 @@
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 
-import { useProjects } from "../../app/directory";
+import { pickerProjects, useReportProjects } from "../../app/directory";
 import { cn } from "../../lib/utils";
 import { useAssistantSubject } from "../assistant/assistantContext";
 
@@ -8,9 +8,11 @@ import { useAssistantSubject } from "../assistant/assistantContext";
 export function ReportsHeader({ projectId }: { projectId: string }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const projects = useProjects();
+  // The projects the Reports home lists for this person; a link to one outside it still opens,
+  // and the picker then shows it as the current one.
+  const shown = useReportProjects();
   const view = location.pathname.endsWith("/overall") ? "overall" : "daily";
-  const project = projects.data?.find((item) => item.id === projectId);
+  const project = shown.directory.find((item) => item.id === projectId);
   useAssistantSubject(project ? { kind: "project", name: project.name } : null);
 
   const tab = (to: string, label: string) => (
@@ -44,7 +46,7 @@ export function ReportsHeader({ projectId }: { projectId: string }) {
         value={projectId}
         onChange={(event) => navigate(`/reports/${event.target.value}/${view}`)}
       >
-        {(projects.data ?? [{ id: projectId, name: projectId }]).map((project) => (
+        {pickerProjects(shown.directory, shown.listed, projectId).map((project) => (
           <option key={project.id} value={project.id}>
             {project.name}
           </option>

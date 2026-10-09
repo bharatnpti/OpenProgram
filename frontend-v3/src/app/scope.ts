@@ -75,6 +75,42 @@ export function projectsOfPerson(
     : { projects, own: false, fallback: "no-project" };
 }
 
+/**
+ * The projects Reports lists for someone: every project, except that a
+ * developer (`narrowed`, the roles that read no aggregate) sees the projects of
+ * their own pods. `own` is true only for that narrowed list. The list on the
+ * Reports home and the project picker inside a project's reports both come
+ * from this one rule.
+ */
+export function reportProjects(
+  projects: DirectoryItemResponse[],
+  pods: DirectoryItemResponse[],
+  memberId: string | null | undefined,
+  narrowed: boolean,
+): { projects: DirectoryItemResponse[]; own: boolean } {
+  if (!narrowed) return { projects, own: false };
+  const mine = podsOfPerson(pods, memberId);
+  return { projects: projectsOfPerson(projects, mine.pods, mine.own).projects, own: mine.own };
+}
+
+/**
+ * The picker's options: the projects of `listed`, in the directory's order, and
+ * the project on the page when a link opened one outside the list, so the
+ * picker always shows what is open. Named by the directory, else by its id (the
+ * directory has not answered, or does not know it).
+ */
+export function pickerProjects(
+  directory: { id: string; name: string }[],
+  listed: { id: string }[],
+  currentId: string,
+): { id: string; name: string }[] {
+  const shown = new Set(listed.map((project) => project.id));
+  const options = directory.filter((project) => shown.has(project.id) || project.id === currentId);
+  return options.some((project) => project.id === currentId)
+    ? options
+    : [...options, { id: currentId, name: currentId }];
+}
+
 /** The programs the given projects belong to, in the directory's order. */
 export function programsOfProjects(
   programs: DirectoryItemResponse[],

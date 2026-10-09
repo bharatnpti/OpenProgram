@@ -2,13 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { apiClient } from "../api/client";
-import {
-  podsOfPerson,
-  projectsOfPerson,
-  useMemberId,
-  usePods,
-  useProjects,
-} from "../app/directory";
+import { useReportProjects } from "../app/directory";
 import { useRole } from "../app/role";
 import { PanelState, SectionHeader } from "../components/PanelState";
 import { dayReportCountWords } from "../features/daily/reportView";
@@ -26,22 +20,15 @@ import { ragSeverity } from "../lib/status";
  * set reports up can start one here.
  */
 export function ReportsHomePage() {
-  const { canSetUpDayReports, canReadProjectProgress, canReadAggregate } = useRole();
-  const memberId = useMemberId();
-  const projects = useProjects();
-  const pods = usePods();
+  const { canSetUpDayReports, canReadProjectProgress } = useRole();
+  // The same list the project picker inside a project's reports offers.
+  const shown = useReportProjects();
   const reports = useQuery({
     queryKey: ["day-reports", "all"],
     queryFn: () => apiClient.dayReports(),
   });
 
-  // Only a developer's list is narrowed: every other role reads across projects.
-  const own = podsOfPerson(pods.data ?? [], memberId);
-  const narrowed = !canReadAggregate;
-  const shownProjects = narrowed
-    ? projectsOfPerson(projects.data ?? [], own.pods, own.own).projects
-    : (projects.data ?? []);
-  const sorted = [...shownProjects].sort(
+  const sorted = [...shown.listed].sort(
     (a, b) => ragSeverity(b.rag) - ragSeverity(a.rag) || a.name.localeCompare(b.name),
   );
   const reportsOf = (projectId: string) =>
@@ -52,7 +39,7 @@ export function ReportsHomePage() {
       <SectionHeader
         title="Reports"
         meta={
-          narrowed && own.own
+          shown.own
             ? "The end-of-day report and overall state of your pods' projects, worst first."
             : "Each project's end-of-day report and its overall state, worst first."
         }
@@ -63,9 +50,9 @@ export function ReportsHomePage() {
         }
       />
       <PanelState
-        isLoading={projects.isLoading || (narrowed && pods.isLoading)}
-        error={projects.error ?? (narrowed ? pods.error : null)}
-        onRetry={() => void projects.refetch()}
+        isLoading={shown.isLoading}
+        error={shown.error}
+        onRetry={shown.retry}
         isEmpty={sorted.length === 0}
         emptyText="No projects are configured yet. An admin adds them under Admin → Entities."
       >
