@@ -3,13 +3,20 @@
 // Two datasets, made up and shaped like the demo's Checkout Revamp on Fri 9 Oct:
 // "short" (3 working days of history, no forecast yet) and "month" (a forecast, a
 // date moved once). The whole-project report answers with the short one, or with
-// the month when VIZ_DAILY_HISTORY=month; the Release 1.0 report always with the
-// month. `text` is rendered here the way the server's render_text renders the
+// the month when VIZ_DAILY_HISTORY=month or a `viz-history=month` cookie (the
+// viz-overall mock's switch, so one server shows either dataset on both pages);
+// the Release 1.0 report always with the month. `text` is rendered here the way the server's render_text renders the
 // sections, so the preview drawer shows what a send would carry.
 
 const DAY = "2026-10-09";
 const SINCE = "2026-10-08";
 const HISTORY = process.env.VIZ_DAILY_HISTORY === "month" ? "month" : "short";
+
+/** The dataset a request asks for: its `viz-history` cookie, else the server's. */
+function historyOf(req) {
+  const cookie = /(?:^|;\s*)viz-history=(short|month)(?:;|$)/.exec(req.headers.cookie ?? "");
+  return cookie ? cookie[1] : HISTORY;
+}
 
 const RAG_WORDS = {
   green: "On track",
@@ -373,6 +380,6 @@ export function api(req, url, _roles, _userId, send) {
   const match = /^\/day-reports\/([^/]+)\/preview$/.exec(url.pathname);
   if (!match || req.method !== "GET") return false;
   const release = match[1].endsWith("-r1");
-  send(200, preview(release ? "month" : HISTORY, release));
+  send(200, preview(release ? "month" : historyOf(req), release));
   return true;
 }
