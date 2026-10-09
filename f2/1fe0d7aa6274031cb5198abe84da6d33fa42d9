@@ -1,0 +1,19 @@
+frontend-v3/scripts/mock/viz-daily.mjs
+  s_1715cbbf3832ec::t_6e43c2d73643f0 6-8,15-20,383
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f21fe0d7aa6274031cb5198abe84da6d33fa42d9",
+  "prompts": {},
+  "sessions": {
+    "s_1715cbbf3832ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b324c31-3952-4113-96ba-8972b213e210",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
