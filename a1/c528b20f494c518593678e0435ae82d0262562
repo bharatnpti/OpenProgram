@@ -1,0 +1,77 @@
+backend/tests/unit/golden/day_report_full_day.slack.txt
+  s_1715cbbf3832ec::t_488c900f3a2180 1-41
+backend/tests/unit/golden/day_report_full_day_at_risk.slack.txt
+  s_1715cbbf3832ec::t_865fd2687e5e90 1-44
+frontend-v3/src/api/generated.ts
+  s_1715cbbf3832ec::t_fa9b856658af82 4790-4809,4824-4862,4883-4920,4928-4954,4980-4999,5083-5099
+backend/api/dtos.py
+  s_1715cbbf3832ec::t_9bc75c828a4b39 114-122
+  s_1715cbbf3832ec::t_85b5e482e1b10c 3766-4016,4033,4035-4037,4051-4053
+backend/core/domain/reports.py
+  s_1715cbbf3832ec::t_ef4a828fa86a56 25,301-303
+backend/tests/fixtures/day_report_full_day.py
+  s_1715cbbf3832ec::t_82fa415810de36 119-140
+  s_1715cbbf3832ec::t_612741102c3003 1-22,24-118,141-154,162-164
+  s_1715cbbf3832ec::t_1958e6f601a599 23
+  s_1715cbbf3832ec::t_4858fd7176bf02 155-161,165-167
+backend/core/application/day_report_asks.py
+  s_1715cbbf3832ec::t_de8a2bd5bf58bd 128-129,475
+backend/tests/unit/golden/day_report_full_day.email.html
+  s_1715cbbf3832ec::t_488c900f3a2180 1
+backend/tests/unit/test_day_report_facts.py
+  s_1715cbbf3832ec::t_88076fa6706001 1-12,14-15,17-21,25-26,30-38,45,50-52,55,57-75,79-85,87-93,95,101-106,108,111,128-130,132-135,138-150,157-160,162-167,169,171-178,186,188,190-199,201-212,215,218-221,224-234,243-244
+  s_1715cbbf3832ec::t_5320722684a34a 16
+  s_1715cbbf3832ec::t_b6df1514853710 110,114,116-119,123-126
+  s_1715cbbf3832ec::t_0b06372c44a80b 28,43-44,46-49,53-54,56,86,112-113,115,120,122
+  s_1715cbbf3832ec::t_38d9a596d2e53b 29
+  s_1715cbbf3832ec::t_744bcf4e7cf8f1 13,22-24,27,39-42,76-78,94,96-100,107,109,121,127,131,136-137,151-156,161,168,170,179-185,187,189,200,213-214,216-217,222-223,235-242,245-249
+backend/tests/unit/golden/day_report_full_day.teams.json
+  s_1715cbbf3832ec::t_488c900f3a2180 1-126
+backend/tests/unit/golden/day_report_full_day.text.txt
+  s_1715cbbf3832ec::t_488c900f3a2180 1-44
+backend/tests/unit/golden/day_report_full_day_at_risk.email.html
+  s_1715cbbf3832ec::t_865fd2687e5e90 1
+frontend/src/api/openapi.json
+  s_1715cbbf3832ec::t_fa9b856658af82 16595-16674,16698-16872,16912-17007,17026-17094,17149-17158,17176-17250,17456-17515
+frontend-v2/src/api/generated.ts
+  s_1715cbbf3832ec::t_fa9b856658af82 4790-4809,4824-4862,4883-4920,4928-4954,4980-4999,5083-5099
+frontend-v2/src/api/openapi.json
+  s_1715cbbf3832ec::t_fa9b856658af82 16595-16674,16698-16872,16912-17007,17026-17094,17149-17158,17176-17250,17456-17515
+frontend/src/api/generated.ts
+  s_1715cbbf3832ec::t_fa9b856658af82 4803-4822,4837-4875,4896-4933,4941-4967,4993-5012,5096-5112
+backend/core/application/day_report_builder.py
+  s_1715cbbf3832ec::t_38b9e6eefa0a6d 176-177
+  s_1715cbbf3832ec::t_d05f235ad0218b 560-730
+  s_1715cbbf3832ec::t_807b4eed094361 422-437,439-445,447-451,455-475
+  s_1715cbbf3832ec::t_d39a0539dadf3b 787,789-790,792,794-804,806
+  s_1715cbbf3832ec::t_4de18f56920592 201
+  s_1715cbbf3832ec::t_7952b77382684c 216-223
+  s_1715cbbf3832ec::t_320d661d5644df 48,51-57,61,70-82
+  s_1715cbbf3832ec::t_49ec77c222ee0c 188
+  s_1715cbbf3832ec::t_6721c3d2b08440 817-820
+  s_1715cbbf3832ec::t_7f30fc87198e9d 489-490,493-505,510-516
+backend/tests/unit/golden/day_report_full_day_at_risk.text.txt
+  s_1715cbbf3832ec::t_865fd2687e5e90 1-47
+backend/core/domain/report_facts.py
+  s_1715cbbf3832ec::t_c077a6017e8b70 1-176
+backend/tests/unit/golden/day_report_full_day_at_risk.teams.json
+  s_1715cbbf3832ec::t_865fd2687e5e90 1-126
+frontend-v3/src/api/openapi.json
+  s_1715cbbf3832ec::t_fa9b856658af82 16595-16674,16698-16872,16912-17007,17026-17094,17149-17158,17176-17250,17456-17515
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a1c528b20f494c518593678e0435ae82d0262562",
+  "prompts": {},
+  "sessions": {
+    "s_1715cbbf3832ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b324c31-3952-4113-96ba-8972b213e210",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
