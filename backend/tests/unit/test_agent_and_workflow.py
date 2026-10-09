@@ -141,8 +141,10 @@ def test_conversation_history_maps_turn_roles_to_llm_messages() -> None:
 
     messages = llm_messages_from_turns(turns)
 
+    # A stored turn is never a system message: only the request's own system
+    # prompt instructs the model.
     assert [(message.role, message.content) for message in messages] == [
-        ("system", "System context."),
+        ("user", "System context."),
         ("assistant", "Any blockers?"),
         ("user", "No blockers."),
     ]

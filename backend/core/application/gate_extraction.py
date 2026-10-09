@@ -166,19 +166,21 @@ class ModelItemFinder:
         if not wanted or len(text) < _MIN_TEXT_FOR_MODEL:
             return []
         kinds = {kind.key: (template, kind) for template, kind in wanted}
-        prompt = (
-            "The text below is a work item's description. Quote, exactly as written, each "
+        # The instructions are the system message; the description is the input
+        # alone, fenced as data by the adapter (core/domain/prompt_safety.py).
+        system = (
+            "The input is a work item's description. Quote, exactly as written, each "
             "statement in it that is one of these kinds: "
             + "; ".join(f"{key} ({kind.label})" for key, (_template, kind) in kinds.items())
             + '. Answer with JSON only: {"items": [{"kind": "<kind>", "quote": "<exact words>"}]}. '
             "Quote nothing that is not in the text, and return an empty list when there is none."
-            f"\n\n---\n{text[:_MAX_TEXT_FOR_MODEL]}\n---"
         )
         try:
             response = await self._llm.complete(
                 LlmRequest(
                     tenant_id=tenant_id,
-                    prompt=prompt,
+                    prompt=text[:_MAX_TEXT_FOR_MODEL],
+                    system=system,
                     model=self._model,
                     correlation_id=f"gate-items:{issue.key}",
                     json_mode=True,

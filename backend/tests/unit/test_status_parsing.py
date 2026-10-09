@@ -152,8 +152,9 @@ async def test_status_parser_converts_valid_json_to_signals() -> None:
     }
     assert provider.requests[0].system is not None
     assert "Do not invent blockers" in provider.requests[0].system
+    # A stored turn is never sent as a system message, whatever role it was stored with.
     assert [(message.role, message.content) for message in provider.requests[0].messages] == [
-        ("system", "Status check-in conversation context."),
+        ("user", "Status check-in conversation context."),
         ("assistant", "Can you share progress and blockers?"),
         ("user", "I am finishing the API handoff."),
     ]
@@ -195,10 +196,10 @@ async def test_status_parser_extracts_cross_person_requests() -> None:
         ),
         blocker_reports=(BlockerReport(description="schema review"),),
     )
-    assert "requests array" in provider.requests[0].prompt
-    assert "specific named person" in provider.requests[0].prompt
+    assert "requests array" in (provider.requests[0].system or "")
+    assert "specific named person" in (provider.requests[0].system or "")
     # The note is forwarded to the named person, so it must not be the reply.
-    assert "never copy or quote the reply" in provider.requests[0].prompt
+    assert "never copy or quote the reply" in (provider.requests[0].system or "")
 
 
 async def test_clarification_evaluator_asks_for_a_request_note_that_is_not_the_reply() -> None:
@@ -214,7 +215,7 @@ async def test_clarification_evaluator_asks_for_a_request_note_that_is_not_the_r
         correlation_id="corr-1",
     )
 
-    assert "never copy or quote the reply" in provider.requests[0].prompt
+    assert "never copy or quote the reply" in (provider.requests[0].system or "")
 
 
 async def test_status_parser_extracts_issue_updates() -> None:
@@ -244,7 +245,7 @@ async def test_status_parser_extracts_issue_updates() -> None:
             note="PR is ready",
         ),
     )
-    assert "issue_updates array" in provider.requests[0].prompt
+    assert "issue_updates array" in (provider.requests[0].system or "")
 
 
 async def test_status_parser_falls_back_to_low_confidence_when_output_is_malformed() -> None:
@@ -356,7 +357,7 @@ async def test_status_parser_includes_prior_blockers_without_resolving_them() ->
 
     assert "Previously open blockers" in provider.requests[0].prompt
     assert "- [B1] release gate (PO-9)" in provider.requests[0].prompt
-    assert "never mark a blocker resolved otherwise" in provider.requests[0].prompt
+    assert "never mark a blocker resolved otherwise" in (provider.requests[0].system or "")
 
 
 def _prior_blocker(
@@ -605,7 +606,7 @@ async def test_clarification_evaluator_parses_non_status_intent() -> None:
     )
 
     assert decision == ClarificationDecision(sufficient=False, is_status_update=False)
-    assert "is_status_update boolean" in provider.requests[0].prompt
+    assert "is_status_update boolean" in (provider.requests[0].system or "")
 
 
 async def test_clarification_evaluator_treats_ok_as_non_status_without_llm() -> None:
@@ -750,7 +751,9 @@ async def test_a_duration_from_now_is_an_eta_window_not_an_eta_change() -> None:
     assert issue_eta(claim, date(2026, 10, 4)) == IssueEta(
         label="2-3 days", start=date(2026, 10, 6), day=date(2026, 10, 7)
     )
-    assert "eta_change_days is only for an ETA the reply says moved" in provider.requests[0].prompt
+    assert "eta_change_days is only for an ETA the reply says moved" in (
+        provider.requests[0].system or ""
+    )
 
 
 @pytest.mark.parametrize(
@@ -782,7 +785,9 @@ async def test_a_duration_alone_answers_the_eta_without_a_change(reply: str) -> 
 
     assert signals.eta_change_days is None
     assert signals.eta_answered is True
-    assert "eta_change_days is only for an ETA the reply says moved" in provider.requests[0].prompt
+    assert "eta_change_days is only for an ETA the reply says moved" in (
+        provider.requests[0].system or ""
+    )
 
 
 @pytest.mark.parametrize(

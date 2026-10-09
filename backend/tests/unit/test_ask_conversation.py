@@ -185,7 +185,9 @@ async def test_the_route_sends_the_conversation_and_returns_follow_ups_and_the_s
         "Earlier in this conversation, in short: Summary.",
         f"Question {COMPACT_AT_TURNS // 2 + 1 - KEEP_TURNS // 2}?",
     ]
-    assert question.messages[-1].content == "And now?"
+    # The kept turns come first; the question itself is the call's input.
+    assert question.messages[-1].content != "And now?"
+    assert question.prompt == "Question: And now?"
 
 
 def test_a_conversation_too_long_to_send_is_refused(settings: Settings) -> None:

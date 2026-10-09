@@ -23,8 +23,8 @@ from core.application.ask_service import (
     PodCheckinsTool,
     RecentFactsTool,
     SearchGraphNodesTool,
+    _instructions,
     _parse_answer,
-    _prompt,
     fact_window,
     period_windows,
 )
@@ -228,7 +228,7 @@ def test_ask_prompt_states_today_so_a_relative_period_resolves() -> None:
     as_of 2024-06-10, got an empty period back, and reported that status data
     was unavailable -- while the exec dashboard showed four amber workstreams.
     """
-    prompt = _prompt("Which workstreams are at risk this week?", date(2026, 9, 25))
+    prompt = _instructions(date(2026, 9, 25))
 
     assert "2026-09-25" in prompt
     assert "never guess a date" in prompt
@@ -460,7 +460,7 @@ async def test_at_risk_this_week_question_reads_status_and_names_the_red_workstr
     assert "Login is amber" in view.answer
     assert "Cart" not in view.answer
     assert set(view.references) == {"ws-payments", "ws-login"}
-    assert "Today is Friday 2026-09-25." in llm.requests[0].prompt
+    assert "Today is Friday 2026-09-25." in (llm.requests[0].system or "")
     heatmap = json.loads(llm.requests[1].tool_results[1].content)
     assert heatmap["as_of"] == "2026-09-25"
 
@@ -677,7 +677,7 @@ def test_this_week_asked_on_a_monday_is_that_monday_alone() -> None:
 
 
 def test_ask_prompt_spells_out_the_days_a_relative_period_means() -> None:
-    prompt = _prompt("What changed since Monday?", date(2026, 10, 2))
+    prompt = _instructions(date(2026, 10, 2))
 
     assert "Today is Friday 2026-10-02." in prompt
     assert "Yesterday was 2026-10-01." in prompt
@@ -1068,11 +1068,12 @@ def test_ask_system_prompt_carries_every_answer_format_rule() -> None:
 
 
 def test_ask_prompt_asks_for_the_answer_shape() -> None:
-    prompt = _prompt("Why does the program need attention?", AS_OF)
+    prompt = _instructions(AS_OF)
 
     assert "a verdict line, at most 4 '• ' bullets, 80 words at most" in prompt
     assert "rather than ids" in prompt
-    assert prompt.endswith("Question: Why does the program need attention?")
+    # The question is the input alone: never in the instructions.
+    assert "Question:" not in prompt
 
 
 def test_ask_calls_merge_requests_mrs_never_prs() -> None:
@@ -1083,7 +1084,7 @@ def test_ask_calls_merge_requests_mrs_never_prs() -> None:
     assert rule in ASK_SYSTEM_PROMPT
     assert "a merge request or MR, e.g. '2 merged MRs'" in rule
     assert "PR, pr or pull_request" in rule
-    assert "merge requests (MRs, never PRs)" in _prompt("What merged this week?", AS_OF)
+    assert "merge requests (MRs, never PRs)" in _instructions(AS_OF)
 
     tools = _ask_service(InMemoryGraphStore(), FakeLlmProvider()).tools_for(
         _principal(Role.ADMIN), AS_OF

@@ -13,8 +13,8 @@ def llm_messages_from_turns(turns: Iterable[ConversationTurn]) -> tuple[LlmMessa
 
 
 def _llm_role_for_turn(role: ConversationRole) -> LlmMessageRole:
+    # A stored turn is never sent as a system message, whatever its role: only
+    # the request's own system prompt instructs the model.
     if role is ConversationRole.AGENT:
         return "assistant"
-    if role is ConversationRole.USER:
-        return "user"
-    return "system"
+    return "user"

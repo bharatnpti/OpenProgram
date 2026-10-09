@@ -27,6 +27,11 @@ from core.application.impact_service import (
     ImpactView,
     PeriodKind,
 )
+from core.application.outbound_text import (
+    INTERNALS_ANSWER,
+    asks_about_internals,
+    reveals_internals,
+)
 from core.application.people_words import hides_names
 from core.application.persona_views import (
     PersonaViewService,
@@ -63,7 +68,7 @@ from core.domain.graph import (
     workstreams_in_use,
 )
 from core.domain.impact import Measure
-from core.domain.llm import LlmMessage, LlmRequest, LlmToolCall
+from core.domain.llm import LlmRequest, LlmToolCall
 from core.domain.profiles import ProfileDefinition
 from core.domain.release_readiness import (
     Severity,
@@ -2185,6 +2190,11 @@ class AskService:
         conversation: AskConversation | None = None,
     ) -> AskResponseView:
         asked_for = as_of or self._today()
+        if asks_about_internals(question):
+            # A question about the assistant itself gets the same fixed answer
+            # every time, and the model never sees it (docs/guardrails.md).
+            _log_info("ask_internals_question_declined", tenant_id=principal.tenant_id)
+            return _internals_answer()
         context = await context_for(
             conversation,
             llm=self._llm_provider,
@@ -2192,13 +2202,16 @@ class AskService:
             tenant_id=principal.tenant_id,
             correlation_id=correlation_id,
         )
+        system = f"{ASK_SYSTEM_PROMPT}\n\n{_instructions(asked_for)}"
         request = LlmRequest(
             tenant_id=principal.tenant_id,
-            prompt=_prompt(question, asked_for),
+            # The input is the question alone; every instruction is in system.
+            prompt=f"Question: {question}",
             model=self._model,
             correlation_id=correlation_id,
-            system=ASK_SYSTEM_PROMPT,
-            messages=(*context.messages(), LlmMessage(role="user", content=question)),
+            system=system,
+            # Earlier turns are context; the question itself is the prompt.
+            messages=context.messages(),
             metadata={
                 "agent": "ask_service",
                 "purpose": "graph_question",
@@ -2210,6 +2223,10 @@ class AskService:
             RecordedTool(inner=tool, calls=calls) for tool in self.tools_for(principal, asked_for)
         )
         result = await self._tool_agent.run_loop(request, tools)
+        # Which tools ran is internal: it goes to the log, never to the asker.
+        _log_info(
+            "ask_answered", tenant_id=principal.tenant_id, tools_used=list(dict.fromkeys(calls))
+        )
         reader = await self.reader(
             principal.tenant_id, asked_for, people=not hides_names(principal)
         )
@@ -2217,6 +2234,11 @@ class AskService:
         view = reader.view(response.text, trace_id=response.trace_id, tools_used=calls)
         if result.cap_reached:
             view = reader.cut_short(view, read=calls, unrun=result.unrun)
+        # Checked as the asker would read it: references are graph ids by now,
+        # so a tool the model cited there is already gone.
+        if reveals_internals(view.answer, prompts=(system,)):
+            _log_info("ask_answer_withheld", tenant_id=principal.tenant_id)
+            return _internals_answer()
         return remembered(view, context)
 
     async def reader(self, tenant_id: str, as_of: date, *, people: bool = True) -> AnswerReader:
@@ -2441,14 +2463,14 @@ def fact_window(arguments: Mapping[str, JsonScalar], as_of: date) -> DateWindow:
     return DateWindow(start=start, end=end)
 
 
-def _prompt(question: str, as_of: date) -> str:
+def _instructions(as_of: date) -> str:
+    """The question's dated instructions; they go in the system message, never with it."""
     return (
         date_context(as_of) + "Answer in the required shape -- a verdict line, at most 4 '• ' "
         "bullets, 80 words at most -- naming people, issues and merge requests (MRs, never PRs) "
         "rather than ids, and "
         "list the id of every node the answer names in references. "
-        "Questions to ask next go in follow_ups, never inside answer. "
-        f"Question: {question}"
+        "Questions to ask next go in follow_ups, never inside answer."
     )
 
 
@@ -2473,6 +2495,16 @@ def date_context(as_of: date) -> str:
         "A tool asked about the wrong period comes back empty, and empty is not "
         "the same as nothing being wrong. "
     )
+
+
+def _internals_answer() -> AskResponseView:
+    return AskResponseView(answer=INTERNALS_ANSWER, references=(), tools_used=(), trace_id="")
+
+
+def _log_info(event: str, **fields: object) -> None:
+    import structlog
+
+    structlog.get_logger(__name__).info(event, **fields)
 
 
 def _parse_answer(text: str) -> ParsedAnswer:

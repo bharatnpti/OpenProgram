@@ -6,7 +6,10 @@ from typing import Literal
 
 from core.domain.graph import JsonScalar
 
-type LlmMessageRole = Literal["system", "user", "assistant"]
+# No message is ever a system message: the only instructions a model gets are
+# LlmRequest.system, written by OpenProgram's code. Everything else is input
+# (docs/guardrails.md, prompt injection).
+type LlmMessageRole = Literal["user", "assistant"]
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -407,11 +407,6 @@ export function PortfolioPage() {
                           </div>
                         </div>
                       )}
-                      {ask.data.tools_used.length > 0 && (
-                        <div className="text-xs text-muted-foreground">
-                          Tools: {ask.data.tools_used.join(", ")}
-                        </div>
-                      )}
                     </div>
                   )}
                 </DataPanel>

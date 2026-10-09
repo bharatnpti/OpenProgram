@@ -17,6 +17,7 @@ from core.domain.llm import (
     LlmTurn,
     TokenUsage,
 )
+from core.domain.prompt_safety import MODEL_RULES, fenced, system_message
 from infra.adapters.llm import litellm_provider
 from infra.adapters.llm.fake import FakeLlmProvider
 from infra.adapters.llm.litellm_provider import (
@@ -67,7 +68,8 @@ async def test_litellm_response_survives_langfuse_outage() -> None:
     assert response.text == "ok"
     assert response.trace_id == "trace-llm"
     assert json.loads(litellm_route.calls[0].request.content)["messages"] == [
-        {"role": "user", "content": "hello"}
+        {"role": "system", "content": MODEL_RULES},
+        {"role": "user", "content": fenced("hello", "input")},
     ]
 
 
@@ -114,11 +116,13 @@ async def test_litellm_sends_system_history_then_prompt() -> None:
         )
     )
 
+    # Only the system message instructs; user turns and the prompt are fenced
+    # input, and OpenProgram's own earlier turns go as they were sent.
     assert json.loads(route.calls[0].request.content)["messages"] == [
-        {"role": "system", "content": "You are concise."},
-        {"role": "user", "content": "Yesterday I was blocked."},
+        {"role": "system", "content": f"You are concise.\n\n{MODEL_RULES}"},
+        {"role": "user", "content": fenced("Yesterday I was blocked.", "conversation")},
         {"role": "assistant", "content": "Noted."},
-        {"role": "user", "content": "What changed?"},
+        {"role": "user", "content": fenced("What changed?", "input")},
     ]
 
 
@@ -335,7 +339,7 @@ async def test_litellm_sends_tools_and_parses_tool_calls() -> None:
     assert body["messages"][-1] == {
         "role": "tool",
         "tool_call_id": "prior-call",
-        "content": "prior result",
+        "content": fenced("prior result", "tool_result"),
     }
     assert response.finish_reason == "tool_calls"
     assert response.tool_calls == (
@@ -422,7 +426,7 @@ async def test_litellm_sends_a_kept_conversation_in_its_own_order() -> None:
     )
 
     assert json.loads(route.calls[0].request.content)["messages"] == [
-        {"role": "system", "content": "Rules."},
+        {"role": "system", "content": system_message("Rules.")},
         {"role": "user", "content": "Why?"},
         {
             "role": "assistant",

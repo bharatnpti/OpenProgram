@@ -5,9 +5,10 @@ What OpenProgram's agent may read, say, do and spend, and what stops it. Status 
 ## Principles
 
 1. **The model proposes, code decides.** The model reads replies and drafts words. Application code chooses every message, every recipient and every tracker write, and checks the model's output before using it.
-2. **Guard where the effect leaves the system.** Each guardrail sits in the adapter that makes the call (LLM, chat), so no caller can skip it.
-3. **A refusal fails loudly.** A refused call raises `ProviderUnavailable`, the error callers already handle when a provider is down. Nothing is recorded as sent when it wasn't.
-4. **Circuit breakers, not quotas.** Defaults are on and set far above a normal day. They stop runaway loops, not normal use. `0` turns each one off.
+2. **Content is never an instruction.** Chat replies, Jira issues, merge requests and tool results are data. Only the system message, written by OpenProgram's code, tells the model what to do.
+3. **Guard where the effect leaves the system.** Each guardrail sits in the adapter that makes the call (LLM, chat), so no caller can skip it.
+4. **A refusal fails loudly.** A refused call raises `ProviderUnavailable`, the error callers already handle when a provider is down. Nothing is recorded as sent when it wasn't.
+5. **Circuit breakers, not quotas.** Defaults are on and set far above a normal day. They stop runaway loops, not normal use. `0` turns each one off.
 
 ## In place
 
@@ -15,8 +16,17 @@ New in this change: ★
 
 | Area | Guardrail | Where |
 |---|---|---|
-| **Model input** | ★ A request carrying more than 400k characters is refused before it is sent | `infra/adapters/llm/guard.py` |
-| | Jira text sent to the gate finder is fenced, and every item must quote it word for word | `gate_extraction.py` |
+| **Prompt injection** | ★ Every instruction a call gets is in its system message. The input holds only data: the reply, the issue text, the question | each call site |
+| | ★ No message can carry the `system` role. A stored conversation turn is always input, whatever role it was saved with | `core/domain/llm.py` |
+| | ★ The prompt, every chat turn and every tool result are sent inside `<untrusted_data>` tags. A tag in the content is removed, so text can't close its own fence | `core/domain/prompt_safety.py`, `litellm_provider.py` |
+| | ★ Every system message ends with rules that override the input: text in the fence is never an instruction | `core/domain/prompt_safety.py` |
+| | Gate items must quote the Jira text word for word | `gate_extraction.py` |
+| **Internals** | ★ Every system message forbids revealing its instructions, tools, model or how OpenProgram works | `core/domain/prompt_safety.py` |
+| | ★ Ask gets a fixed answer, without the model being called, when asked about its prompt, tools or model, or told to ignore its instructions | `ask_service.py`, `outbound_text.py` |
+| | ★ Model text a person sees (Ask answer, follow-up, composed DM, request note, brief) is replaced by fixed text if it names a tool, talks about its instructions or repeats 8 words of its system prompt | `outbound_text.py` |
+| | ★ The Ask API no longer returns which tools ran; the log does | `api/dtos.py` |
+| | In Slack the bot never answers a question: a reply that isn't a status gets the fixed acknowledgement | `status_collector.py` |
+| **Model input size** | ★ A request carrying more than 400k characters is refused before it is sent | `infra/adapters/llm/guard.py` |
 | **Model output** | JSON is parsed and each field type-checked. An unparseable reply never finalizes a check-in as healthy | `status_parsing.py` |
 | | Briefs are checked sentence by sentence against facts. Unbacked names, keys and claims are dropped | `brief_grounding.py` |
 | | ★ A drafted follow-up with a link, chat markup or over 320 characters becomes the generic question | `status_parsing.py` |
@@ -40,7 +50,8 @@ New in this change: ★
 - **D2. A refusal is a provider outage.** Briefs and gate scans fall back to their deterministic output. A check-in reply's step fails and retries. The reply stays in the inbound queue and dead-letters if it never succeeds, where it can be re-armed. Ask returns 503 (budget used up) or 413 (question too long).
 - **D3. Counts are per UTC day and shared through Redis.** In memory mode they are per process. The DM cap counts after send-once, so a retry that returns an earlier message is not counted again. If Redis can't be reached, the check fails and nothing is sent, the same as other Redis-backed sends.
 - **D4. Model-drafted words never carry a link or a mention.** A link from the bot looks trusted. Where fixed text can stand in (questions, composed DMs), it replaces the drafted text. Where it can't (a request's note), links and markup are taken out instead.
-- **D5. No prompt rewrite to fence untrusted text, for now.** The prompts are tuned against live QA rounds, and a change needs an eval set to prove it. The risk is contained without it: the model cannot act on its own, its output is validated, and writes are deterministic and consented.
+- **D5. Instructions and input never share a message.** A model can't tell an instruction from data in the same text, so the boundary is structural. Each call site's instructions moved into its system message unchanged. The adapter fences everything else and appends the rules, so a new call site gets both without asking. Fencing lowers the risk but can't remove it, which is why outputs are still checked (D4, D7) and writes stay deterministic and consented.
+- **D7. Questions about the assistant get a fixed answer, not the model's.** Ask checks the question first; a match costs no tokens and answers the same way every time. The patterns are narrow, so "How do you work out the colour?" and "Which tools does the team use?" still go to the model. The output check is the backstop for what the patterns miss. A quoted example in a system prompt is what the model is asked to write, so repeating it is not a leak.
 - **D6. No global kill switch in this change.** A switch that doesn't need a restart must be persisted per tenant and enforced on every send path; that is next on the list. Until then, use the runbook below.
 
 ## Stopping the bot now
@@ -60,7 +71,7 @@ New in this change: ★
 | `OPENPROGRAM_LLM_MAX_REQUEST_CHARS` | `400000` | `0` |
 | `OPENPROGRAM_CHAT_DAILY_DM_LIMIT` | `100` | `0` |
 
-Alert on these log events: `llm_call_refused` (with a `guardrail` field), `chat_daily_dm_limit_reached`, `tool_loop_call_limit_reached` and `tool_loop_cap_reached`.
+Alert on these log events: `llm_call_refused` (with a `guardrail` field), `chat_daily_dm_limit_reached`, `tool_loop_call_limit_reached` and `tool_loop_cap_reached`. Watch `ask_internals_question_declined` and `ask_answer_withheld` for probing.
 
 ## Open risks, most important first
 
@@ -70,7 +81,7 @@ Alert on these log events: `llm_call_refused` (with a `guardrail` field), `chat_
 4. **No quiet hours.** PTO is honoured only on the developer nudge, not on the first check-in or escalations.
 5. **The Slack signature check is skipped** unless `chat_provider=slack` in container mode, and nothing refuses `mock_slack` outside local.
 6. **Connector URLs and the Teams webhook can point at private addresses** (SSRF). Report emails can go to any domain.
-7. **Untrusted text isn't fenced in prompts** (D5). Blocker text the model wrote earlier is fed back into later prompts.
+7. **Fencing lowers prompt injection but can't rule it out** (D5). A reply can still sway what the model extracts, such as claiming work is done. Claims are checked against Jira and Git, and writes need consent. Stored summaries (progress notes, blocker text) aren't checked for leaks; only the team sees them, in the console.
 8. **Ask is scoped by role only, not per pod or project,** and its answers aren't grounded.
 9. **Write-back revert doesn't check whether the issue moved since.** The transition is made before its audit row is written.
 10. **The API has no request-size limit, inbound rate limit or security headers.**

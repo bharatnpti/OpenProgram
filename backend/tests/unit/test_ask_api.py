@@ -347,7 +347,8 @@ def test_ask_route_answers_with_the_tools_the_asker_may_use(
         response = client.post("/ask", json={"question": "What are the top risks?", "as_of": AS_OF})
 
     assert response.status_code == 200
-    assert response.json()["tools_used"] == ["open_risks"]
+    # Which tools ran is never returned to the asker.
+    assert "tools_used" not in response.json()
     assert response.json()["answer"] == "No open risks."
     offered = {tool.name for tool in llm.requests[0].tools}
     assert "portfolio_heatmap" in offered
@@ -445,7 +446,6 @@ def test_investigate_streams_the_plan_each_step_and_the_answer_as_json_lines(
     assert done.step.findings == ["No open risks"]
     assert isinstance(answer, InvestigateAnswerEvent)
     assert answer.answer.answer == "Nothing is at risk."
-    assert answer.answer.tools_used == ["open_risks"]
     # The step was offered the exec's tools, and no more.
     assert "pod_checkins" not in {tool.name for tool in llm.requests[1].tools}
     risks = json.loads(next(t.content for t in llm.requests[2].turns if t.role == "tool"))

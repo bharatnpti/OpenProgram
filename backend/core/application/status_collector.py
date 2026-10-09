@@ -49,7 +49,7 @@ from core.application.merge_request_links import (
     merge_requests_by_issue_key,
 )
 from core.application.observed_day_service import ObservedDayReader
-from core.application.outbound_text import carries_link_or_markup
+from core.application.outbound_text import carries_link_or_markup, reveals_internals
 from core.application.person_names import (
     UNKNOWN_PERSON,
     member_names,
@@ -165,15 +165,28 @@ RECENT_CONVERSATION_TURN_LIMIT = 20
 # the write-back's open merge request gate reads them).
 _MERGE_REQUEST_FACT_SCAN_LIMIT = 5000
 _logger = structlog.get_logger(__name__)
+# Every instruction a composer gets is here; the input holds only the developer's
+# name and the context (core/domain/prompt_safety.py).
 COMPOSE_CHECKIN_SYSTEM_PROMPT = (
     "Compose a concise daily check-in DM. Use prior conversation turns as context, but do not "
     "quote private history unless it directly helps the ask. Return one plain chat DM with no "
-    "labels, preamble, quoted prompt text, or markdown table."
+    "labels, preamble, quoted prompt text, or markdown table. "
+    "Write one concise, conversational chat direct message asking for today's work "
+    "status. Ask for progress, blockers, and ETA changes. Reference the specific "
+    "pending, blocked, or stale issue(s) and any open blocker from the context in the input "
+    "when useful, while staying within the character cap. The context lists only "
+    "blockers still open and each merge request as it is now: never call an issue "
+    "waiting on review when its merge request is merged; say it is merged. "
+    "Return only the message text."
 )
 COMPOSE_NUDGE_SYSTEM_PROMPT = (
     "Compose a concise follow-up DM for a pending status check-in. Use prior conversation turns "
     "as context and avoid assuming status is healthy without a reply. Return one plain chat DM "
-    "with no labels, preamble, quoted prompt text, or markdown table."
+    "with no labels, preamble, quoted prompt text, or markdown table. "
+    "Write one short, friendly follow-up asking for the pending status update. "
+    "Do not imply the work is healthy just because there was no reply. "
+    "Reference a specific pending, blocked, or stale issue and any carried-forward "
+    "blocker from the context in the input when useful, while staying concise."
 )
 # Default outbound DM safety cap (prompt-echo + length guard); overridable via
 # Settings (outbound_dm_max_chars) through the StatusCollector constructor.
@@ -2010,13 +2023,7 @@ class StatusCollector:
             developer_id=checkin.developer_id,
             developer_name=developer_name,
         )
-        prompt = (
-            "Write one short, friendly follow-up asking for the pending status update. "
-            "Do not imply the work is healthy just because there was no reply. "
-            "Reference a specific pending, blocked, or stale issue and any carried-forward "
-            "blocker from context when useful, while staying concise. "
-            f"Developer: {developer_name or UNKNOWN_PERSON}. Context: {context}"
-        )
+        prompt = f"Developer: {developer_name or UNKNOWN_PERSON}\nContext:\n{context}"
         conversation_turns = await self._recent_conversation_turns(
             tenant_id=tenant_id,
             developer_id=checkin.developer_id,
@@ -2572,13 +2579,6 @@ class StatusCollector:
 
     async def _compose_dm_node(self, state: StatusCollectorState) -> StatusCollectorState:
         prompt = (
-            "Write one concise, conversational chat direct message asking for today's work "
-            "status. Ask for progress, blockers, and ETA changes. Reference the specific "
-            "pending, blocked, or stale issue(s) and any open blocker from context "
-            "when useful, while staying within the character cap. The context lists only "
-            "blockers still open and each merge request as it is now: never call an issue "
-            "waiting on review when its merge request is merged; say it is merged. "
-            "Return only the message text.\n\n"
             f"Developer: {state.get('developer_name') or UNKNOWN_PERSON}\n"
             f"Context:\n{state['context']}"
         )
@@ -4870,8 +4870,12 @@ def _safe_outbound_checkin_text(
         or len(text) > max_chars
         or _looks_like_prompt_echo(text)
         # A composed DM never needs a link or mention; one would be the
-        # model's, copied from what it read (guardrails.md).
+        # model's, copied from what it read. Nor does it ever talk about
+        # OpenProgram's own tools or instructions (guardrails.md).
         or carries_link_or_markup(text)
+        or reveals_internals(
+            text, prompts=(COMPOSE_CHECKIN_SYSTEM_PROMPT, COMPOSE_NUDGE_SYSTEM_PROMPT)
+        )
     ):
         return _fallback_outbound_checkin_text(
             developer_id=developer_id,

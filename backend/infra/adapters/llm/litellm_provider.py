@@ -23,6 +23,7 @@ from core.domain.llm import (
     LlmTurn,
     TokenUsage,
 )
+from core.domain.prompt_safety import fenced, system_message
 from infra.adapters.llm.guard import LlmCallGuard
 
 _logger = structlog.get_logger(__name__)
@@ -338,17 +339,27 @@ def _parse_float(value: object) -> float | None:
 
 
 def _chat_messages(request: LlmRequest) -> list[dict[str, object]]:
-    messages: list[dict[str, object]] = []
-    if request.system is not None:
-        messages.append({"role": "system", "content": request.system})
+    # The system message is the only instruction a call carries; everything
+    # else is input, fenced so it is read as data (core/domain/prompt_safety.py).
+    messages: list[dict[str, object]] = [
+        {"role": "system", "content": system_message(request.system)}
+    ]
     if request.turns:
         messages.extend(_turn_payload(turn) for turn in request.turns)
         return messages
     messages.extend(
-        {"role": message.role, "content": message.content} for message in request.messages
+        {
+            "role": message.role,
+            "content": (
+                fenced(message.content, "conversation")
+                if message.role == "user"
+                else message.content
+            ),
+        }
+        for message in request.messages
     )
     if request.prompt:
-        messages.append({"role": "user", "content": request.prompt})
+        messages.append({"role": "user", "content": fenced(request.prompt, "input")})
     if request.tool_calls:
         messages.append(
             {
@@ -361,7 +372,7 @@ def _chat_messages(request: LlmRequest) -> list[dict[str, object]]:
         {
             "role": "tool",
             "tool_call_id": result.tool_call_id,
-            "content": result.content,
+            "content": fenced(result.content, "tool_result"),
         }
         for result in request.tool_results
     )

@@ -53,16 +53,15 @@ class StatusAgentNode:
         tools: Iterable[AgentTool] = (),
     ) -> LlmResponse:
         with _tracer.start_as_current_span("status_agent.summarize_status"):
-            prompt = (
-                "Summarize the developer status from the supplied message context. "
-                "Return only the summary."
-            )
             request = LlmRequest(
                 tenant_id=tenant_id,
-                prompt=prompt,
+                prompt="",
                 model=self._model,
                 correlation_id=correlation_id,
-                system=STATUS_AGENT_SYSTEM_PROMPT,
+                system=(
+                    f"{STATUS_AGENT_SYSTEM_PROMPT} Summarize the developer status from the "
+                    "message context in the input. Return only the summary."
+                ),
                 messages=(
                     LlmMessage(
                         role="user",
