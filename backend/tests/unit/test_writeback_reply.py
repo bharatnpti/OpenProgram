@@ -186,7 +186,7 @@ async def test_auto_apply_owner_is_not_told_to_update_jira_and_hears_it_was_done
     assert "I updated IDP-5 to Done in the issue tracker." in acks[0]
     assert not asks_person_to_update_tracker(acks[0])
     # The evaluator was told that tracker updates are OpenProgram's job here.
-    assert "never ask them to update the tracker" in (llm.requests[0].system or "")
+    assert "never ask them to update the tracker" in (llm.requests[0].instructions or "")
 
 
 async def test_always_ask_person_is_asked_the_consent_question_instead_and_nothing_is_written() -> (

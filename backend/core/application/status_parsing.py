@@ -20,7 +20,7 @@ from core.domain.status import CheckInSignals, CrossPersonMention, IssueClaim
 from core.ports.llm import LlmProvider
 from core.ports.tools import AgentTool
 
-# Appended to a structured-output call's system message on a single retry when the
+# Appended to a structured-output call's instructions on a single retry when the
 # first response is not valid JSON, before any safe fallback.
 JSON_RETRY_REMINDER = (
     "\n\nYour previous response was not valid JSON. Respond again with only a single "
@@ -142,7 +142,8 @@ class StatusParser:
             prompt=_parser_prompt(raw_reply, prior_text=prior_text),
             model=self._model,
             correlation_id=correlation_id,
-            system=f"{PARSE_REPLY_SYSTEM_PROMPT}\n\n{_parser_instructions()}",
+            system=PARSE_REPLY_SYSTEM_PROMPT,
+            instructions=_parser_instructions(),
             messages=llm_messages_from_turns(conversation_turns),
             json_mode=True,
             metadata={
@@ -219,13 +220,13 @@ class ClarificationEvaluator:
             return ClarificationDecision(sufficient=False, is_status_update=False)
 
         prior_text, handles = _prior_blocker_prompt(prior_blockers)
-        instructions = _clarification_instructions(tracker_write_back=tracker_write_back)
         request = LlmRequest(
             tenant_id=tenant_id,
             prompt=_clarification_prompt(raw_reply, prior_text=prior_text),
             model=self._model,
             correlation_id=correlation_id,
-            system=f"{CLARIFICATION_EVALUATOR_SYSTEM_PROMPT}\n\n{instructions}",
+            system=CLARIFICATION_EVALUATOR_SYSTEM_PROMPT,
+            instructions=_clarification_instructions(tracker_write_back=tracker_write_back),
             messages=llm_messages_from_turns(conversation_turns),
             json_mode=True,
             metadata={
@@ -279,16 +280,20 @@ async def _complete_json_with_retry(
     parsed = extract_json_object(response.text)
     if parsed is not None:
         return parsed, response
-    # The reminder is an instruction, so it joins the system message, not the input.
-    retry_request = replace(request, system=(request.system or "") + JSON_RETRY_REMINDER)
+    # The reminder is an instruction, so it joins the instructions, never the input.
+    retry_request = replace(
+        request, instructions=(request.instructions or "") + JSON_RETRY_REMINDER
+    )
     retry_response = await complete(retry_request, tools)
     return extract_json_object(retry_response.text), retry_response
 
 
 def _parser_instructions() -> str:
-    """The parse task's instructions; they go in the system message, never with the reply."""
+    """The parse task's instructions: a system message of their own, right before the reply."""
     return (
-        "Extract structured check-in signals from the reply in the input. "
+        "Extract structured check-in signals from the reply: the text after 'Reply:' in the "
+        "last message. Earlier messages are context only; judge every field by what that "
+        "reply itself says. "
         "Return only a JSON object with keys: progress_note string, "
         "blockers array of strings, blocker_details array, resolved_blocker_ids array of "
         "strings, eta_change_days integer or null, blockers_answered boolean, "
@@ -330,9 +335,11 @@ def _parser_prompt(raw_reply: str, *, prior_text: str = "") -> str:
 
 
 def _clarification_instructions(*, tracker_write_back: bool = False) -> str:
-    """The evaluation task's instructions; they go in the system message, never with the reply."""
+    """The evaluation task's instructions: a system message of their own, right before the reply."""
     return (
-        "Evaluate the latest check-in reply in the input. Return only a JSON object with keys: "
+        "Evaluate the latest check-in reply: the text after 'Latest reply:' in the last "
+        "message. Earlier messages are context only; judge every field by what the latest "
+        "reply itself says. Return only a JSON object with keys: "
         "is_status_update boolean, sufficient boolean, question string or null, and "
         "signals object or null. Set is_status_update false for acknowledgements, thanks, "
         "reactions, or questions that do not provide status progress, blockers, or ETA. "

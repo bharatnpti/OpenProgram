@@ -165,12 +165,15 @@ RECENT_CONVERSATION_TURN_LIMIT = 20
 # the write-back's open merge request gate reads them).
 _MERGE_REQUEST_FACT_SCAN_LIMIT = 5000
 _logger = structlog.get_logger(__name__)
-# Every instruction a composer gets is here; the input holds only the developer's
-# name and the context (core/domain/prompt_safety.py).
+# Every instruction a composer gets is here, never in its input: the system prompt
+# says what the call is for, the instructions go right before the developer's name
+# and context (core/domain/prompt_safety.py).
 COMPOSE_CHECKIN_SYSTEM_PROMPT = (
     "Compose a concise daily check-in DM. Use prior conversation turns as context, but do not "
     "quote private history unless it directly helps the ask. Return one plain chat DM with no "
-    "labels, preamble, quoted prompt text, or markdown table. "
+    "labels, preamble, quoted prompt text, or markdown table."
+)
+COMPOSE_CHECKIN_INSTRUCTIONS = (
     "Write one concise, conversational chat direct message asking for today's work "
     "status. Ask for progress, blockers, and ETA changes. Reference the specific "
     "pending, blocked, or stale issue(s) and any open blocker from the context in the input "
@@ -182,7 +185,9 @@ COMPOSE_CHECKIN_SYSTEM_PROMPT = (
 COMPOSE_NUDGE_SYSTEM_PROMPT = (
     "Compose a concise follow-up DM for a pending status check-in. Use prior conversation turns "
     "as context and avoid assuming status is healthy without a reply. Return one plain chat DM "
-    "with no labels, preamble, quoted prompt text, or markdown table. "
+    "with no labels, preamble, quoted prompt text, or markdown table."
+)
+COMPOSE_NUDGE_INSTRUCTIONS = (
     "Write one short, friendly follow-up asking for the pending status update. "
     "Do not imply the work is healthy just because there was no reply. "
     "Reference a specific pending, blocked, or stale issue and any carried-forward "
@@ -2041,6 +2046,7 @@ class StatusCollector:
                 model=self._model,
                 correlation_id=correlation_id,
                 system=COMPOSE_NUDGE_SYSTEM_PROMPT,
+                instructions=COMPOSE_NUDGE_INSTRUCTIONS,
                 messages=llm_messages_from_turns(conversation_turns),
                 metadata={
                     "service": "status_collector",
@@ -2594,6 +2600,7 @@ class StatusCollector:
                 model=self._model,
                 correlation_id=state["correlation_id"],
                 system=COMPOSE_CHECKIN_SYSTEM_PROMPT,
+                instructions=COMPOSE_CHECKIN_INSTRUCTIONS,
                 messages=llm_messages_from_turns(
                     await self._recent_conversation_turns(
                         tenant_id=state["tenant_id"],
@@ -4874,7 +4881,13 @@ def _safe_outbound_checkin_text(
         # OpenProgram's own tools or instructions (guardrails.md).
         or carries_link_or_markup(text)
         or reveals_internals(
-            text, prompts=(COMPOSE_CHECKIN_SYSTEM_PROMPT, COMPOSE_NUDGE_SYSTEM_PROMPT)
+            text,
+            prompts=(
+                COMPOSE_CHECKIN_SYSTEM_PROMPT,
+                COMPOSE_CHECKIN_INSTRUCTIONS,
+                COMPOSE_NUDGE_SYSTEM_PROMPT,
+                COMPOSE_NUDGE_INSTRUCTIONS,
+            ),
         )
     ):
         return _fallback_outbound_checkin_text(

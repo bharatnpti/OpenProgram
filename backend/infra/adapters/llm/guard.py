@@ -135,6 +135,7 @@ def request_chars(request: LlmRequest) -> int:
     """The characters of text the model is asked to read."""
     return (
         len(request.system or "")
+        + len(request.instructions or "")
         + len(request.prompt)
         + sum(len(message.content) for message in request.messages)
         + sum(len(result.content) for result in request.tool_results)

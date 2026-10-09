@@ -358,6 +358,8 @@ def _chat_messages(request: LlmRequest) -> list[dict[str, object]]:
         }
         for message in request.messages
     )
+    if request.instructions:
+        messages.append({"role": "system", "content": request.instructions})
     if request.prompt:
         messages.append({"role": "user", "content": fenced(request.prompt, "input")})
     if request.tool_calls:

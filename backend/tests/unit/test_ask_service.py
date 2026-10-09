@@ -460,7 +460,7 @@ async def test_at_risk_this_week_question_reads_status_and_names_the_red_workstr
     assert "Login is amber" in view.answer
     assert "Cart" not in view.answer
     assert set(view.references) == {"ws-payments", "ws-login"}
-    assert "Today is Friday 2026-09-25." in (llm.requests[0].system or "")
+    assert "Today is Friday 2026-09-25." in (llm.requests[0].instructions or "")
     heatmap = json.loads(llm.requests[1].tool_results[1].content)
     assert heatmap["as_of"] == "2026-09-25"
 

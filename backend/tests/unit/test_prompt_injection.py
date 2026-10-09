@@ -121,6 +121,48 @@ async def test_the_adapter_sends_input_fenced_and_instructions_only_as_system() 
         assert message["content"].count("</untrusted_data>") == 1
 
 
+@respx.mock
+async def test_a_calls_instructions_go_as_their_own_system_message_right_before_the_input() -> None:
+    # The QA replay (docs/guardrails.md D8): rules read at the top of a long
+    # conversation were followed far less well than rules next to the reply.
+    route = respx.post(f"{LITELLM}/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "t",
+                "model": "m",
+                "choices": [{"message": {"content": "{}"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            },
+        )
+    )
+    provider = LiteLlmProvider(base_url=LITELLM, trace_sink=NoopTraceSink())
+
+    await provider.complete(
+        LlmRequest(
+            tenant_id="demo",
+            prompt="Latest reply:\nCHK-4 done",
+            model="m",
+            correlation_id="c",
+            system="Evaluate check-ins.",
+            instructions="Return only JSON.",
+            messages=(
+                LlmMessage(role="assistant", content="How is CHK-4?"),
+                LlmMessage(role="user", content="Working on it."),
+            ),
+        )
+    )
+
+    messages = json.loads(route.calls[0].request.content)["messages"]
+    assert [(m["role"], m["content"]) for m in messages] == [
+        ("system", system_message("Evaluate check-ins.")),
+        ("assistant", "How is CHK-4?"),
+        ("user", fenced("Working on it.", "conversation")),
+        ("system", "Return only JSON."),
+        ("user", fenced("Latest reply:\nCHK-4 done", "input")),
+    ]
+
+
 # --- Each call keeps its instructions out of its input ------------------------
 
 
@@ -133,8 +175,8 @@ async def test_the_check_in_parser_sends_the_reply_alone_as_input() -> None:
 
     request = provider.requests[0]
     assert request.prompt == f"Reply:\n{INJECTION}"
-    assert "Return only a JSON object" in (request.system or "")
-    assert INJECTION not in (request.system or "")
+    assert "Return only a JSON object" in (request.instructions or "")
+    assert INJECTION not in f"{request.system}{request.instructions}"
 
 
 async def test_the_clarification_evaluator_sends_the_reply_alone_as_input() -> None:
@@ -150,8 +192,8 @@ async def test_the_clarification_evaluator_sends_the_reply_alone_as_input() -> N
 
     request = provider.requests[0]
     assert request.prompt == f"Latest reply:\n{INJECTION}"
-    assert "never ask them to update the tracker" in (request.system or "")
-    assert INJECTION not in (request.system or "")
+    assert "never ask them to update the tracker" in (request.instructions or "")
+    assert INJECTION not in f"{request.system}{request.instructions}"
 
 
 async def test_the_json_retry_reminder_is_an_instruction_not_input() -> None:
@@ -163,7 +205,7 @@ async def test_the_json_retry_reminder_is_an_instruction_not_input() -> None:
 
     retry = provider.requests[1]
     assert retry.prompt == "Reply:\nCHK-4 done"
-    assert "previous response was not valid JSON" in (retry.system or "")
+    assert "previous response was not valid JSON" in (retry.instructions or "")
 
 
 async def test_the_gate_finder_sends_the_description_alone_as_input() -> None:
@@ -201,7 +243,8 @@ async def test_ask_sends_the_question_alone_as_input() -> None:
     request = provider.requests[0]
     assert request.prompt == "Question: Which pods are red?"
     assert request.messages == ()
-    assert (request.system or "").startswith(ASK_SYSTEM_PROMPT)
+    assert request.system == ASK_SYSTEM_PROMPT
+    assert "Today is" in (request.instructions or "")
 
 
 # --- Nothing about OpenProgram's insides --------------------------------------

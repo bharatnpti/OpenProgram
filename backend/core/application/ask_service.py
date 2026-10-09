@@ -2202,14 +2202,16 @@ class AskService:
             tenant_id=principal.tenant_id,
             correlation_id=correlation_id,
         )
-        system = f"{ASK_SYSTEM_PROMPT}\n\n{_instructions(asked_for)}"
+        instructions = _instructions(asked_for)
         request = LlmRequest(
             tenant_id=principal.tenant_id,
-            # The input is the question alone; every instruction is in system.
+            # The input is the question alone; every instruction is in system
+            # messages, the dated ones right before the question.
             prompt=f"Question: {question}",
             model=self._model,
             correlation_id=correlation_id,
-            system=system,
+            system=ASK_SYSTEM_PROMPT,
+            instructions=instructions,
             # Earlier turns are context; the question itself is the prompt.
             messages=context.messages(),
             metadata={
@@ -2236,7 +2238,7 @@ class AskService:
             view = reader.cut_short(view, read=calls, unrun=result.unrun)
         # Checked as the asker would read it: references are graph ids by now,
         # so a tool the model cited there is already gone.
-        if reveals_internals(view.answer, prompts=(system,)):
+        if reveals_internals(view.answer, prompts=(ASK_SYSTEM_PROMPT, instructions)):
             _log_info("ask_answer_withheld", tenant_id=principal.tenant_id)
             return _internals_answer()
         return remembered(view, context)
@@ -2464,7 +2466,7 @@ def fact_window(arguments: Mapping[str, JsonScalar], as_of: date) -> DateWindow:
 
 
 def _instructions(as_of: date) -> str:
-    """The question's dated instructions; they go in the system message, never with it."""
+    """The question's dated instructions: a system message of their own, right before it."""
     return (
         date_context(as_of) + "Answer in the required shape -- a verdict line, at most 4 '• ' "
         "bullets, 80 words at most -- naming people, issues and merge requests (MRs, never PRs) "
