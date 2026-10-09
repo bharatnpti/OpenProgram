@@ -7,6 +7,7 @@ import { useShownDay } from "../../app/viewingDate";
 import { PanelState, SectionHeader } from "../../components/PanelState";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
+import { Fold } from "../../components/viz/Fold";
 import { formatDay } from "../../lib/format";
 import { readState } from "../../lib/readState";
 import type { BadgeTone } from "../../lib/status";
@@ -18,7 +19,7 @@ import { releaseName } from "./overallWords";
 import { podChangeKeys, podDates } from "./podDates";
 import { useDelivery, usePodDeliveries } from "./queries";
 import { PhraseText } from "./SlipChart";
-import { Fold, Legend, LineKey, Swatch, VizCard } from "./viz";
+import { Legend, LineKey, Swatch, VizCard } from "./viz";
 
 type Editing = { scope: ScopeDeliveryResponse; title: string } | null;
 

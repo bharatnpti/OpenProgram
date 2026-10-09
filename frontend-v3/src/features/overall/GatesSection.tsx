@@ -6,6 +6,7 @@ import { apiClient } from "../../api/client";
 import type { GateBoardResponse, GateTemplateDto } from "../../api/schema";
 import { roleLabels, type AppRole } from "../../app/role";
 import { PanelState, SectionHeader } from "../../components/PanelState";
+import { Fold } from "../../components/viz/Fold";
 import { STAGE_LABELS, stageColor } from "../../components/viz/stages";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
@@ -17,7 +18,7 @@ import { gateCounts, plural, scanSummary } from "./gateWords";
 import { failedCells, heatRows, type HeatRow, type HeatState } from "./heat";
 import { IssueGatesDialog } from "./IssueGatesDialog";
 import { useGateBoard } from "./queries";
-import { Fold, Legend, Swatch, VizCard } from "./viz";
+import { Legend, Swatch, VizCard } from "./viz";
 import { HATCH } from "./vizStyles";
 
 /** Each gate state's cell: a word and a colour, green, amber and red for the gate state only. */

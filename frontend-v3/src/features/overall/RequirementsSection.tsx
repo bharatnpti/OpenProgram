@@ -1,6 +1,7 @@
 import type { DeliveryStage, RequirementsResponse } from "../../api/schema";
 import { useViewingDate } from "../../app/viewingDate";
 import { PanelState, SectionHeader, TableBox, td, th } from "../../components/PanelState";
+import { Fold } from "../../components/viz/Fold";
 import { STAGE_LABELS, STAGE_ORDER, stageColor } from "../../components/viz/stages";
 import { formatDay } from "../../lib/format";
 import {
@@ -13,7 +14,7 @@ import {
 } from "./flow";
 import { historyStart, inStageSinceWords, noRequirementsWords, releaseName } from "./overallWords";
 import { REQUIREMENT_DAYS, useRequirements } from "./queries";
-import { Fold, Legend, Swatch, VizCard } from "./viz";
+import { Legend, Swatch, VizCard } from "./viz";
 import { SVG_TEXT } from "./vizStyles";
 
 /**
