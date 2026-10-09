@@ -1,0 +1,46 @@
+frontend-v3/src/components/ui/dateStripWords.test.ts
+  s_d09685699e5b37::t_749df47c21aa2b 8,11,13,15,172-211,215,222,225,247,249-256,263-274,294-297
+  s_1715cbbf3832ec::t_4b1ad5c57dfd91 235-239
+  s_1715cbbf3832ec::t_3e86e29fa5c431 275,283-293
+frontend-v3/scripts/mock/dates.mjs
+  s_1715cbbf3832ec::t_f60eb56ba51324 1-104
+frontend-v3/src/features/delivery/DeliveryStrips.tsx
+  s_d09685699e5b37::t_871deaf9d73811 164-168
+frontend-v3/src/components/ui/dateStripWords.ts
+  s_1715cbbf3832ec::t_3e86e29fa5c431 214-215,217-218,231,236
+  s_d09685699e5b37::t_0fafa9e0194bd4 55-73,85-93,97-120,177-179,182-184,188,194,197-204,207,210-213,216,219,224-230,234-235,237-246
+frontend-v3/scripts/mock-api.mjs
+  s_1715cbbf3832ec::t_d189c184cedebb 27,392
+frontend-v3/src/components/ui/tone.ts
+  s_d09685699e5b37::t_a41f6c2c2c8a36 1-21
+frontend-v3/src/components/ui/DateStrip.tsx
+  s_1715cbbf3832ec::t_4b1ad5c57dfd91 177
+  s_d09685699e5b37::t_37914aa8ec59c0 1,8,17,19-20,25,41-44,71,75-76,92,98-102,108,116,119,131,134,137,150,152-155,166,172-173,186-198,214-225,227-231
+frontend-v3/src/features/overall/ForecastSection.tsx
+  s_d09685699e5b37::t_394490f2b67a4d 11-12,14,332,337,355-361,366,368-380,430
+  s_1715cbbf3832ec::t_3e86e29fa5c431 367
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "180743fbcc49b8ee0695a9f9bc6c491203bfbf2d",
+  "prompts": {},
+  "sessions": {
+    "s_1715cbbf3832ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b324c31-3952-4113-96ba-8972b213e210",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_d09685699e5b37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ac999ca-e6f7-4dc8-80ef-2b794b6036cf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
