@@ -99,8 +99,9 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 /**
  * Most important without what is drawn elsewhere: every requirement that went around
- * a gate (the message stops at eight lines), the lines no picture draws, and a note
- * on where the rest is: the date in the bar, the risks among the fixes.
+ * a gate (the message stops at eight lines), the lines no picture draws, and one
+ * short pointer to the rest: "See In short for the delivery date, and What we need
+ * for the 4 risks." It always shows: with only risks, it is all the section says.
  */
 function MostImportant({ facts, emptyText }: { facts: ReportFacts; emptyText: string }) {
   const view = importantView(facts.important);

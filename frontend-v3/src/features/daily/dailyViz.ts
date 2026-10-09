@@ -671,7 +671,7 @@ export type BypassGroup = { words: string; keys: string[] };
 export type ImportantView = {
   groups: BypassGroup[];
   lines: string[];
-  /** Where the lines the message has here are drawn instead. */
+  /** One pointer to where the rest of the message's Most important is drawn. */
   note: string | null;
   empty: boolean;
 };
@@ -690,40 +690,31 @@ export function importantView(important: ImportantFacts): ImportantView {
   const ordered = [...groups.values()].sort(
     (a, b) => stageIndex(b.stage) - stageIndex(a.stage) || b.keys.length - a.keys.length,
   );
-  const notes: string[] = [];
-  const drawn = drawnWords(important.drawn);
-  if (drawn) notes.push(drawn);
-  if (important.risks) {
-    notes.push(
-      important.risks === 1
-        ? "The 1 risk the message lists here is a fix under What we need."
-        : `The ${important.risks} risks the message lists here are fixes under What we need.`,
-    );
-  }
+  const note = pointerWords(important.drawn, important.risks);
   return {
     groups: ordered.map((group) => ({
       words: `Reached ${STAGE_LABELS[group.stage].toLowerCase()} without ${joined(group.gates)}`,
       keys: [...group.keys].sort((a, b) => naturalKey(a).localeCompare(naturalKey(b))),
     })),
     lines: important.lines,
-    note: notes.length ? notes.join(" ") : null,
-    empty: !ordered.length && !important.lines.length && !notes.length,
+    note,
+    empty: !ordered.length && !important.lines.length && !note,
   };
 }
 
-function drawnWords(kinds: string[]): string | null {
+/** The date facts the date bar under In short draws (`drawn`'s kinds). */
+const DATE_KINDS = new Set(["committed", "jira", "no_date", "forecast", "history", "team"]);
+
+/**
+ * Where the rest of the message's Most important is on this page, in one short line:
+ * "See In short for the delivery date, and What we need for the 4 risks." The message
+ * repeats them here because it cannot point back up; the page draws them once.
+ */
+function pointerWords(drawn: string[], risks: number): string | null {
   const parts: string[] = [];
-  const add = (part: string) => {
-    if (!parts.includes(part)) parts.push(part);
-  };
-  for (const kind of kinds) {
-    if (kind === "committed" || kind === "jira" || kind === "no_date") add("the committed date");
-    else if (kind === "forecast" || kind === "history") add("the history");
-    else if (kind === "team") add("the team's date");
-  }
-  if (!parts.length) return null;
-  const verb = parts.length === 1 ? "is" : "are";
-  return `${capitalised(joined(parts))} ${verb} drawn once, in the bar under In short.`;
+  if (drawn.some((kind) => DATE_KINDS.has(kind))) parts.push("In short for the delivery date");
+  if (risks) parts.push(`What we need for the ${risks === 1 ? "risk" : `${risks} risks`}`);
+  return parts.length ? `See ${parts.join(", and ")}.` : null;
 }
 
 // ---- D3: who acts -------------------------------------------------------------------

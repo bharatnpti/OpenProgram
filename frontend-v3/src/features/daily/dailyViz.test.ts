@@ -332,13 +332,21 @@ test("Most important names every requirement that went around a gate, by stage",
     },
     { words: "Reached business testing without Engineering delivery", keys: ["CHK-12"] },
   ]);
-  assert.equal(
-    view.note,
-    "The committed date, the history and the team's date are drawn once, in the bar under In short. " +
-      "The 4 risks the message lists here are fixes under What we need.",
-  );
+  // One short pointer to where the rest is drawn, not a note on the design.
+  assert.equal(view.note, "See In short for the delivery date, and What we need for the 4 risks.");
   assert.equal(view.empty, false);
   assert.equal(importantView({ drawn: [], bypassed: [], risks: 0, lines: [] }).empty, true);
+});
+
+test("Most important's pointer names only what the message has there", () => {
+  const only = (drawn: string[], risks: number) =>
+    importantView({ drawn, bypassed: [], risks, lines: [] });
+  assert.equal(only(["committed"], 0).note, "See In short for the delivery date.");
+  assert.equal(only([], 1).note, "See What we need for the risk.");
+  assert.equal(only([], 3).note, "See What we need for the 3 risks.");
+  // Only risks, as on a tenant whose red risks are all fixes: the pointer is the section.
+  assert.equal(only([], 3).empty, false);
+  assert.equal(only([], 0).note, null);
 });
 
 const asks: OwnerAsks[] = [
