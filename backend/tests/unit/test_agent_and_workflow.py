@@ -793,9 +793,18 @@ async def test_dbos_dispatch_keeps_runtime_alive_for_started_workflows(
         calls.append(("start", (workflow, payload)))
         return WorkflowHandle()
 
+    class SyncQueue:
+        async def enqueue_async(self, workflow: object, payload: object) -> WorkflowHandle:
+            calls.append(("enqueue", (workflow, payload)))
+            return WorkflowHandle()
+
+    async def sync_queue() -> SyncQueue:
+        return SyncQueue()
+
     monkeypatch.setattr(dbos_workflows, "_ensure_dbos_runtime", ensure)
     monkeypatch.setattr(dbos_workflows, "destroy_dbos_runtime", destroy)
     monkeypatch.setattr(dbos_workflows, "SetWorkflowID", WorkflowIdContext)
+    monkeypatch.setattr(dbos_workflows, "_registered_sync_queue", sync_queue)
     monkeypatch.setattr(dbos_workflows.DBOS, "start_workflow_async", staticmethod(start_workflow))
 
     scheduler = dbos_workflows.DbosWorkflowScheduler(
@@ -826,7 +835,9 @@ async def test_dbos_dispatch_keeps_runtime_alive_for_started_workflows(
     assert sync_workflow_id.startswith("sync-git-demo-repo-oneai-openprogram-")
     assert ("destroy", None) not in calls
     assert [call[0] for call in calls].count("ensure") == 2
-    assert [call[0] for call in calls].count("start") == 2
+    # The check-in starts at once; the git sync waits its turn on the sync queue.
+    assert [call[0] for call in calls].count("start") == 1
+    assert [call[0] for call in calls].count("enqueue") == 1
     assert [call[0] for call in calls].count("result") == 1
 
 

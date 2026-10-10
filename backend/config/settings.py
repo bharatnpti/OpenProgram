@@ -150,7 +150,13 @@ class Settings(BaseSettings):
     temporal_heartbeat_interval_seconds: int = 60
     dbos_app_name: str = "openprogram"
     dbos_system_database_url: str | None = None
+    # DBOS's own pool on its system database, per process (DBOS defaults to 20);
+    # its notification listener holds one connection more, outside the pool.
+    dbos_system_pool_size: int = 10
     dbos_heartbeat_cron: str = "0 * * * * *"
+    # How many Jira and Git sync workflows run at once, across every process.
+    # The rest wait their turn in the openprogram_sync queue.
+    sync_queue_concurrency: int = 4
     tenant_default_timezone: str = "UTC"
     checkin_reply_wait_seconds: int = 14400
     checkin_final_reply_wait_seconds: int = 28800
@@ -543,6 +549,8 @@ class Settings(BaseSettings):
         "redis_rate_limit_max_events",
         "postgres_pool_min_size",
         "postgres_pool_max_size",
+        "dbos_system_pool_size",
+        "sync_queue_concurrency",
         "redis_max_connections",
         "calendar_sync_window_days",
         "conversation_retention_days",

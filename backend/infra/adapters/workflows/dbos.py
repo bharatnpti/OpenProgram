@@ -10,7 +10,11 @@ from uuid import uuid4
 
 import psycopg
 import structlog
-from dbos import DBOS, DBOSConfig, Debouncer, ScheduleInput, SetWorkflowID
+from dbos import DBOS, DBOSConfig, Debouncer, Queue, ScheduleInput, SetWorkflowID
+
+# The scheduler's own cron parser, so a tick's successor is computed exactly as
+# DBOS fires it (six-field crons put the seconds first).
+from dbos._croniter import croniter  # type: ignore[attr-defined]
 
 from core.application.reply_ingestion import run_reply_debounce
 from core.domain.workflows import (
@@ -95,6 +99,7 @@ from infra.workflows.runtime_sync import (
     RuntimeSyncInput,
     RuntimeSyncPlan,
     RuntimeSyncWorkflowResult,
+    superseded_runtime_sync_result,
 )
 
 _logger = structlog.get_logger(__name__)
@@ -122,6 +127,12 @@ class DbosRuntimeConfig:
 
 
 _configured_runtime: DbosRuntimeConfig | None = None
+
+# Jira and Git sync workflows wait here for a slot instead of all starting at
+# once: a fan-out per repository or project after a long sleep started
+# hundreds together and ran Postgres out of connections.
+SYNC_QUEUE_NAME = "openprogram_sync"
+_sync_queue: tuple[DbosRuntimeConfig, Queue] | None = None
 
 
 @DBOS.step(name="openprogram_record_heartbeat", retries_allowed=True)
@@ -403,14 +414,49 @@ async def dbos_gate_scan_workflow(payload: GateScanInput) -> GateScanResult:
     return await dbos_run_gate_scan_step(payload)
 
 
+# A step, so a recovered run keeps the answer its first attempt recorded.
+@DBOS.step(name="openprogram_check_sync_tick_superseded")
+async def dbos_check_sync_tick_superseded_step(scheduled_at: str, cron: str) -> bool:
+    now = datetime.now(tz=UTC)
+    return sync_tick_superseded(datetime.fromisoformat(scheduled_at), cron, now=now)
+
+
 @DBOS.workflow(name="openprogram_scheduled_sync")
 async def dbos_scheduled_sync_workflow(
     scheduled_time: datetime,
     context: dict[str, Any],
 ) -> SyncWorkflowResult:
-    return await _run_sync_dispatch(
-        sync_dispatch_for_schedule(_sync_schedule_config_from_context(context), scheduled_time)
-    )
+    return await _run_scheduled_sync(scheduled_time, context)
+
+
+async def _run_scheduled_sync(
+    scheduled_time: datetime, context: dict[str, Any]
+) -> SyncWorkflowResult:
+    config = _sync_schedule_config_from_context(context)
+    dispatch = sync_dispatch_for_schedule(config, scheduled_time)
+    workflow_input = sync_workflow_input(dispatch)
+    # A Jira or Git sync reads from its cursor, so only the latest due tick does
+    # anything. After a sleep DBOS fires every missed tick back to back; each
+    # one a newer tick has superseded returns at once, without dispatching.
+    if isinstance(workflow_input, RuntimeSyncInput):
+        scheduled_at = scheduled_time.isoformat()
+        if await dbos_check_sync_tick_superseded_step(scheduled_at, config.cron):
+            _logger.info(
+                "scheduled_sync_tick_superseded",
+                schedule_id=config.schedule_id,
+                scheduled_at=scheduled_at,
+            )
+            return superseded_runtime_sync_result(workflow_input)
+    return await _run_sync_dispatch(dispatch)
+
+
+def sync_tick_superseded(scheduled_at: datetime, cron: str, *, now: datetime) -> bool:
+    """Whether the schedule's next tick after ``scheduled_at`` is already due.
+
+    The latest due tick is never superseded, so one run always happens.
+    """
+    following = croniter(cron, scheduled_at, second_at_beginning=True).get_next(datetime)
+    return bool(following <= now)
 
 
 @DBOS.step(name="openprogram_prepare_daily_checkin")
@@ -697,13 +743,19 @@ async def _run_derived_step(workflow_input: object, connector: str) -> SyncWorkf
 
 
 async def _start_sync_child_workflow(input: SyncDispatchInput, *, workflow_id: str) -> str:
-    """Start the workflow that serves one sync dispatch, under a chosen id."""
+    """Start the workflow that serves one sync dispatch, under a chosen id.
+
+    Jira and Git syncs are enqueued on the sync queue and start when it has a
+    slot; every other kind starts at once.
+    """
     workflow_input = sync_workflow_input(input)
+    if isinstance(workflow_input, JiraSyncInput | GitSyncInput):
+        queue = await _registered_sync_queue()
     with SetWorkflowID(workflow_id):
         if isinstance(workflow_input, JiraSyncInput):
-            await DBOS.start_workflow_async(dbos_jira_sync_workflow, workflow_input)
+            await queue.enqueue_async(dbos_jira_sync_workflow, workflow_input)
         elif isinstance(workflow_input, GitSyncInput):
-            await DBOS.start_workflow_async(dbos_git_sync_workflow, workflow_input)
+            await queue.enqueue_async(dbos_git_sync_workflow, workflow_input)
         elif isinstance(workflow_input, CalendarSyncInput):
             await DBOS.start_workflow_async(dbos_calendar_sync_workflow, workflow_input)
         elif isinstance(workflow_input, DirectorySyncInput):
@@ -732,6 +784,39 @@ async def _start_derived_workflow(workflow_input: object, connector: str) -> Non
         await DBOS.start_workflow_async(dbos_gate_scan_workflow, workflow_input)
     else:
         raise ValueError(f"unsupported sync connector: {connector}")
+
+
+async def _registered_sync_queue() -> Queue:
+    """The sync queue, registered once per launched runtime with the configured limit.
+
+    The limit is global: every executor sharing the system database (the API
+    and the worker both launch DBOS) counts against it. Configuration wins
+    over whatever an earlier run stored.
+    """
+    global _sync_queue
+    runtime = _configured_runtime
+    if runtime is None:
+        raise RuntimeError("DBOS runtime is not configured")
+    if _sync_queue is None or _sync_queue[0] != runtime:
+        queue = await DBOS.register_queue_async(
+            SYNC_QUEUE_NAME,
+            global_concurrency=_sync_queue_concurrency(),
+            on_conflict="always_update",
+        )
+        _sync_queue = (runtime, queue)
+    return _sync_queue[1]
+
+
+def _sync_queue_concurrency() -> int:
+    from config.settings import get_settings
+
+    return get_settings().sync_queue_concurrency
+
+
+def _dbos_system_pool_size() -> int:
+    from config.settings import get_settings
+
+    return get_settings().dbos_system_pool_size
 
 
 def _apply_active_schedules(schedules: Sequence[ScheduleInput]) -> None:
@@ -1005,6 +1090,9 @@ class DbosWorkflowWorker:
         )
         DBOS.launch()
         try:
+            # Stores the configured sync concurrency as the worker starts, so a
+            # changed setting holds before the first sync is enqueued.
+            await _registered_sync_queue()
             await asyncio.Event().wait()
         finally:
             destroy_dbos_runtime()
@@ -1047,6 +1135,9 @@ def configure_dbos_runtime(config: DbosRuntimeConfig) -> None:
     dbos_config: DBOSConfig = {
         "name": config.app_name,
         "system_database_url": config.system_database_url,
+        # Bounded explicitly: with max_overflow 0 (DBOS's default) this is the
+        # most the pool opens, plus one connection for the LISTEN/NOTIFY thread.
+        "sys_db_pool_size": _dbos_system_pool_size(),
     }
     DBOS(config=dbos_config)
     _configured_runtime = config
@@ -1061,9 +1152,10 @@ def _ensure_dbos_runtime(config: DbosRuntimeConfig) -> bool:
 
 
 def destroy_dbos_runtime() -> None:
-    global _configured_runtime
+    global _configured_runtime, _sync_queue
     DBOS.destroy(destroy_registry=False)
     _configured_runtime = None
+    _sync_queue = None
 
 
 def _heartbeat_schedule_input(
