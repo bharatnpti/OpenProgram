@@ -298,7 +298,7 @@ def _ask_service(store: InMemoryGraphStore, llm: LlmProvider) -> AskService:
 
 
 def _tool(service: AskService, principal: Principal, name: str) -> AgentTool:
-    return next(tool for tool in service._tools(principal, AS_OF) if tool.name == name)
+    return next(tool for tool in service.tools_for(principal, AS_OF) if tool.name == name)
 
 
 async def _delivery_store() -> InMemoryGraphStore:
@@ -585,7 +585,7 @@ async def test_an_unknown_id_comes_back_as_an_error_the_model_can_correct() -> N
 def test_ask_offers_only_the_tools_a_role_may_read(role: Role, expected: set[str]) -> None:
     service = _ask_service(InMemoryGraphStore(), FakeLlmProvider())
 
-    offered = {tool.name for tool in service._tools(_principal(role), AS_OF)}
+    offered = {tool.name for tool in service.tools_for(_principal(role), AS_OF)}
 
     assert offered == expected
 
@@ -614,7 +614,7 @@ async def test_a_role_that_cannot_read_risks_cannot_call_the_risk_tool_by_name()
 def test_ask_tools_all_carry_the_asked_for_date() -> None:
     service = _ask_service(InMemoryGraphStore(), FakeLlmProvider())
 
-    tools = service._tools(_principal(Role.ADMIN), AS_OF)
+    tools = service.tools_for(_principal(Role.ADMIN), AS_OF)
     dated = [tool for tool in tools if hasattr(tool, "as_of")]
 
     # Every tool reads a day -- the name search too, for the workstreams in
@@ -1053,7 +1053,7 @@ def test_ask_calls_merge_requests_mrs_never_prs() -> None:
     assert "PR, pr or pull_request" in rule
     assert "merge requests (MRs, never PRs)" in _prompt("What merged this week?", AS_OF)
 
-    tools = _ask_service(InMemoryGraphStore(), FakeLlmProvider())._tools(
+    tools = _ask_service(InMemoryGraphStore(), FakeLlmProvider()).tools_for(
         _principal(Role.ADMIN), AS_OF
     )
     descriptions = {tool.name: tool.description for tool in tools}
@@ -1598,6 +1598,15 @@ async def test_an_empty_reply_says_no_answer_came_back() -> None:
             "[Draft\nProgram is red.",
             "[Draft\nProgram is red.",
             (),
+            (),
+        ),
+        # Bullets as keyless strings after the answer's, so not JSON: seen live
+        # from an investigation's answer.
+        (
+            '{\n  "answer": "Pod is red because:",\n  "• Blocker: CHK-8",\n'
+            '  "• No reply: Kai",\n  "references": ["pod-x", "CHK-8"]\n}',
+            "Pod is red because:\n• Blocker: CHK-8\n• No reply: Kai",
+            ("pod-x", "CHK-8"),
             (),
         ),
     ],

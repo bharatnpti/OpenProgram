@@ -6,8 +6,16 @@ from datetime import date, datetime, time
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator
 
+from core.application.ask_investigation import (
+    AnswerEvent,
+    FailedEvent,
+    InvestigationEvent,
+    InvestigationStep,
+    PlanEvent,
+    StepEvent,
+)
 from core.application.ask_service import AskResponseView
 from core.application.attention import AttentionSignal, AttentionView, CheckinCount
 from core.application.config_service import (
@@ -2248,6 +2256,113 @@ class AskRequest(BaseModel):
 
     question: str = Field(min_length=1)
     as_of: date | None = None
+
+
+class InvestigateStepResponse(BaseModel):
+    """One step of an investigation: its question, how it went, and what it found."""
+
+    model_config = ConfigDict(frozen=True)
+
+    index: int
+    question: str
+    status: Literal["running", "done", "failed"]
+    tools_used: list[str]
+    # The step's own lines, with no raw ids; empty until it is done.
+    findings: list[str]
+    # Why a failed step found nothing; None otherwise.
+    error: str | None = None
+
+    @classmethod
+    def from_step(cls, step: InvestigationStep) -> InvestigateStepResponse:
+        return cls(
+            index=step.index,
+            question=step.question,
+            status=step.status,
+            tools_used=list(step.tools_used),
+            findings=list(step.findings),
+            error=step.error,
+        )
+
+
+class InvestigatePlanEvent(BaseModel):
+    """The first line: the steps the question was split into, all still running."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal["plan"]
+    steps: list[InvestigateStepResponse]
+
+
+class InvestigateStepEvent(BaseModel):
+    """A step that finished, done or failed, in the order steps finish."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal["step"]
+    step: InvestigateStepResponse
+
+
+class InvestigateAnswerEvent(BaseModel):
+    """The last line of an answered investigation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal["answer"]
+    answer: AskResponse
+    steps: list[InvestigateStepResponse]
+
+
+class InvestigateFailedEvent(BaseModel):
+    """The last line of an investigation that could not answer, and why."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal["failed"]
+    message: str
+    steps: list[InvestigateStepResponse]
+
+
+class InvestigateEvent(
+    RootModel[
+        InvestigatePlanEvent
+        | InvestigateStepEvent
+        | InvestigateAnswerEvent
+        | InvestigateFailedEvent
+    ]
+):
+    """One line of POST /ask/investigate's newline-delimited JSON, told apart by type."""
+
+    root: (
+        InvestigatePlanEvent
+        | InvestigateStepEvent
+        | InvestigateAnswerEvent
+        | InvestigateFailedEvent
+    ) = Field(discriminator="type")
+
+    @classmethod
+    def from_event(cls, event: InvestigationEvent) -> InvestigateEvent:
+        steps = InvestigateStepResponse.from_step
+        match event:
+            case PlanEvent():
+                return cls(InvestigatePlanEvent(type="plan", steps=[steps(s) for s in event.steps]))
+            case StepEvent():
+                return cls(InvestigateStepEvent(type="step", step=steps(event.step)))
+            case AnswerEvent():
+                return cls(
+                    InvestigateAnswerEvent(
+                        type="answer",
+                        answer=AskResponse.from_view(event.view),
+                        steps=[steps(s) for s in event.steps],
+                    )
+                )
+            case FailedEvent():
+                return cls(
+                    InvestigateFailedEvent(
+                        type="failed",
+                        message=event.message,
+                        steps=[steps(s) for s in event.steps],
+                    )
+                )
 
 
 class WorkflowDispatchResponse(BaseModel):

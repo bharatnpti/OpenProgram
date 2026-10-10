@@ -75,8 +75,9 @@ ANSWER_FORMAT_RULES: tuple[str, ...] = (
     "of guessing.",
 )
 
-ASK_SYSTEM_PROMPT = (
-    "You answer program-management questions over a delivery graph. "
+# How to look facts up with the Ask tools: shared by a quick answer and by
+# each step of an investigation (ask_investigation.py).
+ASK_TOOL_GUIDANCE = (
     "You know nothing about this tenant's programs, people or status except what "
     "the provided tools return, so look the facts up before answering. "
     "Questions about health -- what is red, amber, at risk, blocked, stuck or "
@@ -90,7 +91,14 @@ ASK_SYSTEM_PROMPT = (
     "something has none, and never tell the user their data is missing or needs "
     "updating when you have not traversed its edges. "
     "Never mention raw DM/reply content. "
-    "Write the answer to these rules: " + " ".join(ANSWER_FORMAT_RULES) + " "
+)
+
+ASK_SYSTEM_PROMPT = (
+    "You answer program-management questions over a delivery graph. "
+    + ASK_TOOL_GUIDANCE
+    + "Write the answer to these rules: "
+    + " ".join(ANSWER_FORMAT_RULES)
+    + " "
     "Once you have the facts, reply with a single JSON object and nothing else: "
     "answer holds the text, with a newline between lines, and references an array "
     "of the node ids it rests on. Do not restate references inside answer."
@@ -171,6 +179,9 @@ _ANSWER_LABEL = re.compile(r"^\s*[*_]*answer[*_]*\s*[:：]\s*", re.IGNORECASE)
 _FENCE_LINE = re.compile(r"^\s*```[\w-]*\s*$")
 # A JSON reply that does not decode: cut off, or with a trailing comma.
 _ANSWER_FIELD = re.compile(r'"answer"\s*:\s*"(?P<text>(?:[^"\\]|\\.)*)', re.IGNORECASE)
+# A keyless string after another: '", "• Blocker: CHK-8"' followed by ',' or '}',
+# so never a key (a key is followed by ':').
+_LOOSE_LINE = re.compile(r'"\s*,\s*"(?P<text>(?:[^"\\]|\\.)*)"(?=\s*[,}])')
 _REFERENCES_FIELD = re.compile(
     r'"(?:references|sources)"\s*:\s*(?P<items>\[[^\]]*\]?)', re.IGNORECASE
 )
@@ -1055,7 +1066,7 @@ class PodBlockersTool:
 
 
 @dataclass(frozen=True, kw_only=True)
-class _RecordedTool:
+class RecordedTool:
     """Runs a tool and notes that it ran.
 
     ``tools_used`` used to be whatever the model wrote into its JSON, so an
@@ -1086,6 +1097,36 @@ class _RecordedTool:
             return await self.inner.run(arguments)
         except (GraphNotFound, ValueError) as exc:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)
+
+
+@dataclass(frozen=True, kw_only=True)
+class AnswerReader:
+    """A reply made readable against one day's nodes.
+
+    ``view`` takes a whole reply apart into the answer, its references and
+    their sources; ``readable`` gives any other model-written text the same
+    clean-up -- one bullet marker, no raw ids -- before a reader sees it.
+    """
+
+    nodes: Mapping[str, GraphNode]
+    labelled: Mapping[str, GraphNode]
+
+    def view(self, text: str, *, trace_id: str, tools_used: Iterable[str]) -> AskResponseView:
+        parsed = _parse_answer(text)
+        answer = self.readable(parsed.answer) or _NO_ANSWER
+        references = _references(parsed, self.nodes, self.labelled) or _named_in(
+            answer, self.labelled
+        )
+        return AskResponseView(
+            answer=answer,
+            references=references,
+            tools_used=tuple(dict.fromkeys(tools_used)),
+            trace_id=trace_id,
+            sources=tuple(_source(reference, self.nodes) for reference in references),
+        )
+
+    def readable(self, text: str) -> str:
+        return _without_raw_ids(_tidy_lines(text), self.nodes)
 
 
 def _reads_aggregate(principal: Principal) -> bool:
@@ -1160,23 +1201,18 @@ class AskService:
         )
         calls: list[str] = []
         tools = tuple(
-            _RecordedTool(inner=tool, calls=calls) for tool in self._tools(principal, asked_for)
+            RecordedTool(inner=tool, calls=calls) for tool in self.tools_for(principal, asked_for)
         )
         response = await self._tool_agent.run(request, tools)
-        parsed = _parse_answer(response.text)
-        nodes = await _nodes_by_any_id(self._graph_repository, principal.tenant_id, asked_for)
-        labelled = _nodes_by_label(nodes)
-        answer = _without_raw_ids(_tidy_lines(parsed.answer), nodes) or _NO_ANSWER
-        references = _references(parsed, nodes, labelled) or _named_in(answer, labelled)
-        return AskResponseView(
-            answer=answer,
-            references=references,
-            tools_used=tuple(dict.fromkeys(calls)),
-            trace_id=response.trace_id,
-            sources=tuple(_source(reference, nodes) for reference in references),
-        )
+        reader = await self.reader(principal.tenant_id, asked_for)
+        return reader.view(response.text, trace_id=response.trace_id, tools_used=calls)
 
-    def _tools(self, principal: Principal, as_of: date) -> tuple[AgentTool, ...]:
+    async def reader(self, tenant_id: str, as_of: date) -> AnswerReader:
+        """What turns a model's reply into an answer for the nodes of ``as_of``."""
+        nodes = await _nodes_by_any_id(self._graph_repository, tenant_id, as_of)
+        return AnswerReader(nodes=nodes, labelled=_nodes_by_label(nodes))
+
+    def tools_for(self, principal: Principal, as_of: date) -> tuple[AgentTool, ...]:
         """The tools this principal may use, each gated as its REST twin is.
 
         Ask must never read more than the asker could fetch directly, so a tool
@@ -1285,6 +1321,17 @@ def fact_window(arguments: Mapping[str, JsonScalar], as_of: date) -> DateWindow:
 
 
 def _prompt(question: str, as_of: date) -> str:
+    return (
+        date_context(as_of) + "Answer in the required shape -- a verdict line, at most 4 '• ' "
+        "bullets, 80 words at most -- naming people, issues and merge requests (MRs, never PRs) "
+        "rather than ids, and "
+        "list the id of every node the answer names in references. "
+        f"Question: {question}"
+    )
+
+
+def date_context(as_of: date) -> str:
+    """The day asked for and the periods around it, and how the tools read them."""
     windows = period_windows(as_of)
     yesterday = windows["yesterday"].start
     this_week = windows["this_week"]
@@ -1303,11 +1350,6 @@ def _prompt(question: str, as_of: date) -> str:
         "happened over a period, give recent_facts a period, or since and until. "
         "A tool asked about the wrong period comes back empty, and empty is not "
         "the same as nothing being wrong. "
-        "Answer in the required shape -- a verdict line, at most 4 '• ' bullets, 80 "
-        "words at most -- naming people, issues and merge requests (MRs, never PRs) rather "
-        "than ids, and "
-        "list the id of every node the answer names in references. "
-        f"Question: {question}"
     )
 
 
@@ -1347,11 +1389,32 @@ def _reply_parts(text: str) -> tuple[str, list[str], str]:
     if salvaged is not None:
         listed = _REFERENCES_FIELD.search(text)
         return (
-            _json_string(salvaged.group("text")),
+            "\n".join(
+                (
+                    _json_string(salvaged.group("text")),
+                    *_loose_lines(text, salvaged.end()),
+                )
+            ),
             _reference_items(listed.group("items")) if listed is not None else [],
             "",
         )
     return text, [], ""
+
+
+def _loose_lines(text: str, end: int) -> list[str]:
+    """Bare strings right after the answer field's, each one more line of the answer.
+
+    A long answer has come back as '{"answer": "Pod is red:", "• Blocker",
+    "references": [...]}': its bullets keyless, so the object is not JSON and
+    only the verdict was kept. ``end`` is where the answer's text stops.
+    """
+    lines: list[str] = []
+    position = end
+    while (found := _LOOSE_LINE.match(text, position)) is not None:
+        lines.append(_json_string(found.group("text")))
+        # The next line starts at this one's closing quote.
+        position = found.end() - 1
+    return lines
 
 
 def _answer_object(text: str) -> tuple[Mapping[str, object], str] | None:
@@ -1662,7 +1725,7 @@ def _without_raw_ids(answer: str, nodes: Mapping[str, GraphNode]) -> str:
     The prompt forbids ids in the text; this is the backstop, so a chat id
     or a node id like pod-data never reaches the reader even when the model
     slips. An id that is its own label -- an issue key -- is left alone, and
-    "Ana (U123)" becomes "Ana", not the name twice.
+    "Ana (U123)" becomes "Ana", not the name twice; nor does "U123 (Ana)".
     """
     replacements = sorted(
         (
@@ -1680,6 +1743,9 @@ def _without_raw_ids(answer: str, nodes: Mapping[str, GraphNode]) -> str:
         # A literal, so a backslash in a name is never read as a group reference.
         literal = label.replace("\\", "\\\\")
         answer = re.sub(rf"{re.escape(label)}\s*[(\[]\s*`?{escaped}`?\s*[)\]]", literal, answer)
+        answer = re.sub(
+            rf"(?<![\w/-])`?{escaped}`?\s*[(\[]\s*{re.escape(label)}\s*[)\]]", literal, answer
+        )
         answer = re.sub(rf"(?<![\w/-])(`?){escaped}\1(?![\w/-])", literal, answer)
     return answer
 

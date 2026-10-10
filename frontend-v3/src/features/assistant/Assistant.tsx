@@ -1,5 +1,14 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { Maximize2, MessageCircleMore, Minimize2, SendHorizontal, X } from "lucide-react";
+import {
+  Check,
+  LoaderCircle,
+  Maximize2,
+  MessageCircleMore,
+  Minimize2,
+  SendHorizontal,
+  Telescope,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
@@ -7,13 +16,21 @@ import { paletteTargets } from "../../app/access";
 import { useRole } from "../../app/role";
 import { useDayWords, useViewingDate } from "../../app/viewingDate";
 import { cn } from "../../lib/utils";
+import type { InvestigateStepResponse } from "../../api/schema";
 import { useAssistant, type AskMessage } from "./assistantContext";
+import { toolWords } from "./investigate";
 import {
   ANSWER_NOTE,
   ASK_LABEL,
   ASSISTANT_NAME,
+  INVESTIGATE_LABEL,
+  INVESTIGATE_NOTE,
+  INVESTIGATE_THIS,
+  QUICK_LABEL,
   askedAboutWords,
   assistantGreeting,
+  checkedWords,
+  pendingWords,
   placeOf,
   sourceLink,
   sourceWords,
@@ -28,7 +45,9 @@ const PHONE = "(max-width: 639px)";
  * the bottom right that opens a chat panel. It greets the person by name,
  * suggests questions that fit the page and what it shows, and answers from
  * POST /ask, each answer with its sources as links where the role has their
- * page. The panel is not modal: the page stays usable beside it. Esc closes it
+ * page. Investigate (POST /ask/investigate) checks a question in steps,
+ * showing each step as it finishes and, under the answer, what each found; a
+ * quick answer offers to investigate the same question. The panel is not modal: the page stays usable beside it. Esc closes it
  * and focus goes back to the button; on a phone it fills the screen. Motion
  * stops for prefers-reduced-motion (index.css).
  */
@@ -40,6 +59,7 @@ export function Assistant() {
   const { label } = useViewingDate();
   const day = useDayWords();
   const [tall, setTall] = useState(false);
+  const [investigating, setInvestigating] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const targets = useMemo(() => paletteTargets(access), [access]);
@@ -66,7 +86,7 @@ export function Assistant() {
   if (!assistant.available) return null;
 
   const send = (question: string) => {
-    assistant.ask(question);
+    assistant.ask(question, investigating ? "investigate" : "quick");
     input.current?.focus();
   };
 
@@ -161,6 +181,8 @@ export function Assistant() {
                     // On a phone the panel covers the page the link opens.
                     if (window.matchMedia?.(PHONE).matches) assistant.setOpen(false);
                   }}
+                  busy={assistant.pending}
+                  onInvestigate={(question) => assistant.ask(question, "investigate")}
                 />
               ))}
             </ol>
@@ -194,6 +216,29 @@ export function Assistant() {
               send(assistant.draft);
             }}
           >
+            <div
+              role="group"
+              aria-label="How to answer"
+              className="mb-2 flex w-fit gap-1 rounded-full bg-grey-fill p-1 text-[12px] font-bold"
+            >
+              {[false, true].map((on) => (
+                <button
+                  key={String(on)}
+                  type="button"
+                  aria-pressed={investigating === on}
+                  onClick={() => setInvestigating(on)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-3 py-1.5",
+                    investigating === on
+                      ? "bg-white text-ink shadow-op-menu"
+                      : "text-grey-body hover:text-ink",
+                  )}
+                >
+                  {on ? <Telescope size={13} aria-hidden /> : null}
+                  {on ? INVESTIGATE_LABEL : QUICK_LABEL}
+                </button>
+              ))}
+            </div>
             <div className="flex items-center gap-2 rounded-full border border-grey-border py-1 pl-4 pr-1 focus-within:border-ink focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink">
               <label htmlFor={INPUT_ID} className="sr-only">
                 Your question for {ASSISTANT_NAME}
@@ -205,7 +250,11 @@ export function Assistant() {
                 onChange={(event) => assistant.setDraft(event.target.value)}
                 maxLength={500}
                 autoComplete="off"
-                placeholder="Ask about dates, blockers, risks…"
+                placeholder={
+                  investigating
+                    ? "Ask why, or what is really holding something up…"
+                    : "Ask about dates, blockers, risks…"
+                }
                 className="min-w-0 flex-1 bg-transparent py-2 text-[14px] outline-none placeholder:text-grey-secondary"
               />
               <button
@@ -218,7 +267,9 @@ export function Assistant() {
                 <SendHorizontal size={16} aria-hidden />
               </button>
             </div>
-            <p className="mt-2 text-center text-[11px] text-grey-secondary">{ANSWER_NOTE}</p>
+            <p className="mt-2 text-center text-[11px] text-grey-secondary">
+              {investigating ? INVESTIGATE_NOTE : ANSWER_NOTE}
+            </p>
           </form>
         </Dialog.Content>
       </Dialog.Portal>
@@ -230,10 +281,15 @@ function Bubble({
   message,
   linkFor,
   onLink,
+  busy,
+  onInvestigate,
 }: {
   message: AskMessage;
   linkFor: (source: Extract<AskMessage, { from: "assistant" }>["sources"][number]) => string | null;
   onLink: () => void;
+  /** A question is out: nothing new is asked until it is answered. */
+  busy: boolean;
+  onInvestigate: (question: string) => void;
 }) {
   if (message.from === "you") {
     return (
@@ -245,12 +301,14 @@ function Bubble({
       </li>
     );
   }
+  const investigated = message.mode === "investigate";
   if (message.status === "pending") {
     return (
-      <li>
-        <p className="inline-block rounded-2xl rounded-bl-md bg-grey-fill px-3.5 py-2 text-[14px] text-grey-secondary">
-          {ASSISTANT_NAME} is looking it up…
-        </p>
+      <li className="max-w-[92%]">
+        <div className="inline-block rounded-2xl rounded-bl-md bg-grey-fill px-3.5 py-2 text-[14px] text-grey-secondary">
+          <p>{pendingWords(investigated, message.steps.length)}</p>
+          {message.steps.length > 0 ? <Steps steps={message.steps} brief /> : null}
+        </div>
       </li>
     );
   }
@@ -291,6 +349,70 @@ function Bubble({
           })}
         </p>
       ) : null}
+      {message.steps.length > 0 ? (
+        <details className="mt-1.5 px-1 text-[12px]">
+          <summary className="cursor-pointer font-bold text-grey-body hover:text-ink">
+            {checkedWords(message.steps.length)}
+          </summary>
+          <Steps steps={message.steps} />
+        </details>
+      ) : null}
+      {!investigated && !failed ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onInvestigate(message.question)}
+          className="mt-1.5 flex items-center gap-1.5 rounded-full px-1 text-[12px] font-bold text-ink hover:text-grey-body disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Telescope size={13} aria-hidden />
+          {INVESTIGATE_THIS}
+        </button>
+      ) : null}
     </li>
+  );
+}
+
+/**
+ * An investigation's steps: each question with how it went. `brief` while it
+ * runs, with the questions only; once answered, each with what it found, why
+ * it found nothing, and the tools it read with.
+ */
+function Steps({ steps, brief = false }: { steps: InvestigateStepResponse[]; brief?: boolean }) {
+  return (
+    <ol aria-label="Steps" className="mt-2 grid gap-2">
+      {steps.map((step) => (
+        <li key={step.index} className="flex gap-2 text-[12.5px] leading-snug">
+          <span className="mt-px flex-none">
+            {step.status === "running" ? (
+              <LoaderCircle
+                size={14}
+                className="animate-spin text-grey-secondary"
+                aria-label="Checking"
+              />
+            ) : step.status === "done" ? (
+              <Check size={14} className="text-ink" aria-label="Checked" />
+            ) : (
+              <X size={14} className="text-rag-red" aria-label="Not checked" />
+            )}
+          </span>
+          <div className="min-w-0">
+            <p className={cn("font-bold", brief ? "text-grey-body" : "text-ink")}>
+              {step.question}
+            </p>
+            {!brief && step.findings.length > 0 ? (
+              <ul className="mt-0.5 grid gap-0.5 text-grey-body">
+                {step.findings.map((finding) => (
+                  <li key={finding}>• {finding}</li>
+                ))}
+              </ul>
+            ) : null}
+            {!brief && step.error ? <p className="mt-0.5 text-rag-red">{step.error}</p> : null}
+            {!brief && step.tools_used.length > 0 ? (
+              <p className="mt-0.5 text-grey-secondary">Read: {toolWords(step.tools_used)}</p>
+            ) : null}
+          </div>
+        </li>
+      ))}
+    </ol>
   );
 }

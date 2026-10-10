@@ -463,6 +463,16 @@ Functional requirements:
 - The answer shall be concise prose plus the IDs of the nodes it rests on, shown as references, and shall never contain raw DM or reply content.
 - A question asked while a past day is viewed shall be answered as of that day, and the answer shall keep that date after the viewing date changes.
 
+Investigate (`POST /ask/investigate`), for questions one look-up cannot answer:
+
+- The asker shall choose between a quick answer and Investigate, and shall be able to investigate a quick answer's question with one action.
+- The system shall split the question into at most three steps by default (`OPENPROGRAM_ASK_INVESTIGATE_MAX_STEPS`, one to five), research each step in its own tool loop of up to six rounds (`OPENPROGRAM_ASK_INVESTIGATE_MAX_TOOL_ITERATIONS`), and write one answer from the steps' notes.
+- Each step shall use exactly the tools a quick answer offers the same asker, so an investigation never reads more than the asker could. It shall write and send nothing.
+- The response shall stream newline-delimited JSON: the plan, each step as it finishes, then the answer or the reason there is none. The console shall show each step as it finishes and, under the answer, what each step found and the tools it read with.
+- The answer shall give a verdict, two to six drivers with their evidence, and a "Not known:" line for what the notes could not establish. It shall never predict whether a date will be made unless a note says so.
+- A step that fails shall leave the others to answer from. The whole investigation shall stop after a time limit (`OPENPROGRAM_ASK_INVESTIGATE_TIMEOUT_SECONDS`, 120 by default) and say so. A reader who stops listening shall stop the steps still running.
+- Each investigation shall log its outcome, step count, LLM calls, tokens, cost and duration, without the question text. It may run on a model of its own (`OPENPROGRAM_ASK_INVESTIGATE_MODEL`).
+
 ### 4.24 Issue-Tracker Write-Back
 
 **Business requirement:** A developer's own check-in may move their issues forward in the tracker, but only when the tenant, the role, and the developer all allow it, and every write shall be reversible.

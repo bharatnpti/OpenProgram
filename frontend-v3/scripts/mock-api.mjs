@@ -259,7 +259,7 @@ function api(req, res, url) {
   if (vizOverall.api(req, url, roles, userId, send, deny)) return;
   if (shellMock.api(req, url, roles, userId, send, deny)) return;
   if (datesMock.api(req, url, roles, userId, send, deny)) return;
-  if (assistantMock.api(req, url, roles, userId, send, deny)) return;
+  if (assistantMock.api(req, url, roles, userId, send, deny, res)) return;
   if (todayMock.api(req, url, roles, userId, send, deny)) return;
   if (adminStructure.api(req, url, roles, userId, send, deny)) return;
   if (reportsLane.api(req, url, roles, userId, send, deny)) return;

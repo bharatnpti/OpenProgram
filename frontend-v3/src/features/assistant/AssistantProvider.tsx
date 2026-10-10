@@ -10,14 +10,17 @@ import {
   type Control,
   type State,
 } from "./assistantContext";
+import { answering, applyEvent, streamEnded, type AskMode, type Answering } from "./investigate";
 import { askError, type AskSubject } from "./persona";
 
 /**
  * The assistant's conversation, held here for the whole console, so it stays
  * while the person moves between tabs (it goes with a reload). POST /ask is
  * single-turn: each question is sent on its own, with the past day shown as
- * its as_of. Another person, or another lens, starts with an empty
- * conversation: what one asked is never shown to the next.
+ * its as_of. An investigation (POST /ask/investigate) is too, and its answer
+ * fills in as the stream reports each step. Another person, or another lens,
+ * starts with an empty conversation: what one asked is never shown to the
+ * next, and an investigation still running for them is stopped.
  */
 export function AssistantProvider({ children }: { children: ReactNode }) {
   const { access, actingAs, user, lens } = useRole();
@@ -31,6 +34,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     messages: [],
   });
   const nextId = useRef(1);
+  const running = useRef(new Set<AbortController>());
   const messages = talk.owner === owner ? talk.messages : [];
   const pending = messages.some((m) => m.from === "assistant" && m.status === "pending");
 
@@ -45,7 +49,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const ask = (question: string) => {
+  const ask = (question: string, mode: AskMode = "quick") => {
     const text = question.trim();
     if (!text || pending) return;
     const asked = owner;
@@ -64,6 +68,9 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           text: "",
           sources: [],
           dayLabel: label,
+          question: text,
+          mode,
+          steps: [],
         },
       ],
     }));
@@ -79,13 +86,43 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
             },
       );
     // Asking is a read: it is sent on a past day too, about that day.
+    const body = chosen ? { question: text, as_of: chosen } : { question: text };
+    if (mode === "investigate") {
+      const stop = new AbortController();
+      running.current.add(stop);
+      let now: Answering = answering();
+      apiClient
+        .investigate(
+          body,
+          (event) => {
+            now = applyEvent(now, event);
+            settle(now);
+          },
+          stop.signal,
+        )
+        .then(() => settle(streamEnded(now)))
+        .catch((error: unknown) => {
+          if (!stop.signal.aborted) settle({ ...now, status: "failed", text: askError(error) });
+        })
+        .finally(() => running.current.delete(stop));
+      return;
+    }
     apiClient
-      .ask(chosen ? { question: text, as_of: chosen } : { question: text })
+      .ask(body)
       .then((reply) =>
         settle({ status: "answered", text: reply.answer, sources: reply.sources ?? [] }),
       )
       .catch((error: unknown) => settle({ status: "failed", text: askError(error) }));
   };
+
+  // Another person or lens: the investigations asked for the last one stop.
+  useEffect(() => {
+    const investigations = running.current;
+    return () => {
+      investigations.forEach((stop) => stop.abort());
+      investigations.clear();
+    };
+  }, [owner]);
 
   // Shut when the role loses it (a lens switched to a developer's).
   useEffect(() => {

@@ -7,6 +7,7 @@ import type {
   GateScanResponse,
   GateTemplateDto,
   GateTemplatesResponse,
+  InvestigateEvent,
   ItemStatus,
   QuestionStatus,
   TrackedQuestionResponse,
@@ -120,6 +121,7 @@ import type {
   TenantLogoUploadRequest,
 } from "./schema";
 import { learnServerToday, withViewingAsOf } from "./asOf";
+import { readNdjson } from "./ndjson";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 const CSRF_COOKIE_NAME = import.meta.env.VITE_AUTH_CSRF_COOKIE_NAME ?? "openprogram_csrf";
@@ -187,10 +189,10 @@ export class ApiError extends Error {
   }
 }
 
-async function requestJson<T>(
-  path: string,
-  options: { method?: string; body?: unknown } = {},
-): Promise<T> {
+type RequestOptions = { method?: string; body?: unknown; signal?: AbortSignal };
+
+/** The request sent for `path`: refused while read-only unless it is a read, else fetched. */
+async function send(path: string, options: RequestOptions): Promise<[string, Response]> {
   if (
     readOnlyReason &&
     isWriteMethod(options.method) &&
@@ -209,17 +211,37 @@ async function requestJson<T>(
       "x-correlation-id": crypto.randomUUID(),
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    signal: options.signal,
   });
   if (!response.ok) {
     const detail = await parseErrorBody(response);
     throw new ApiError(response.status, errorMessage(response.status, detail), detail);
   }
+  return [sent, response];
+}
+
+async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const [sent, response] = await send(path, options);
   if (response.status === 204) {
     return undefined as T;
   }
   const body = (await response.json()) as T;
   learnServerToday(sent, options.method, body);
   return body;
+}
+
+/**
+ * A newline-delimited JSON stream, each line handed to `onLine` as it comes.
+ * Errors before the stream starts are thrown as `requestJson` throws them.
+ */
+async function requestLines<T>(
+  path: string,
+  options: RequestOptions,
+  onLine: (line: T) => void,
+): Promise<void> {
+  const [, response] = await send(path, options);
+  if (!response.body) throw new ApiError(response.status, "The server sent nothing back.");
+  await readNdjson(response.body, (line) => onLine(line as T));
 }
 
 export const apiClient = {
@@ -352,6 +374,20 @@ export const apiClient = {
       method: "POST",
       body: input,
     }),
+  /**
+   * Ask, investigated: the plan, each step as it finishes, then the answer or
+   * why there is none, each handed to `onEvent` as the server sends it.
+   */
+  investigate: (
+    input: AskRequest,
+    onEvent: (event: InvestigateEvent) => void,
+    signal?: AbortSignal,
+  ) =>
+    requestLines<InvestigateEvent>(
+      "/ask/investigate",
+      { method: "POST", body: input, signal },
+      onEvent,
+    ),
   checkinPreference: () => requestJson<CheckinPreferenceResponse>("/me/checkin-preference"),
   updateCheckinPreference: (input: SelfCheckinPreferenceUpdateRequest) =>
     requestJson<CheckinPreferenceResponse>("/me/checkin-preference", {

@@ -7,6 +7,7 @@ from typing import Annotated, cast
 from fastapi import Header, HTTPException, Request, status
 
 from config.settings import Settings
+from core.application.ask_investigation import InvestigationLimits, InvestigationService
 from core.application.ask_service import AskService
 from core.application.blocker_resolution import BlockerResolutionService
 from core.application.branding_service import BrandingService
@@ -245,6 +246,22 @@ def get_ask_service(request: Request) -> AskService:
         persona_view_service=get_persona_view_service(request),
         risk_service=get_risk_service(request),
         model=settings.default_llm_model,
+    )
+
+
+def get_investigation_service(request: Request) -> InvestigationService:
+    registry = get_registry(request)
+    settings = get_settings_from_request(request)
+    return InvestigationService(
+        ask_service=get_ask_service(request),
+        llm_provider=registry.llm_provider(),
+        engine=registry.investigation_engine(),
+        model=settings.ask_investigate_llm_model,
+        limits=InvestigationLimits(
+            max_steps=settings.ask_investigate_max_steps,
+            max_tool_iterations=settings.ask_investigate_max_tool_iterations,
+            timeout_seconds=float(settings.ask_investigate_timeout_seconds),
+        ),
     )
 
 

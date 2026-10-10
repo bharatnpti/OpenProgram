@@ -277,6 +277,11 @@ export interface AskResponse {
   sources?: AskSourceResponse[];
 }
 
+/** One step of an investigation (POST /ask/investigate): its question, state and findings. */
+export type InvestigateStepResponse = components["schemas"]["InvestigateStepResponse"];
+/** One line of POST /ask/investigate's stream: the plan, a finished step, the answer or why not. */
+export type InvestigateEvent = components["schemas"]["InvestigateEvent"];
+
 // Used by frontend-v3 only.
 export type PersonaTreeNodeDto = components["schemas"]["PersonaTreeNodeDto"];
 

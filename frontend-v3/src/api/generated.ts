@@ -2055,6 +2055,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/ask/investigate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Investigate
+     * @description Ask, investigated: the question split into steps, each looked up with Ask's tools.
+     *
+     *     The same read as /ask, with the same tools, so it never reads more than the
+     *     asker could. Refused before anything is streamed when the asker may not ask.
+     */
+    post: operations["investigate_ask_investigate_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/me/status": {
     parameters: {
       query?: never;
@@ -4514,6 +4537,90 @@ export interface components {
       jira_email?: string | null;
       /** Vcs Username */
       vcs_username?: string | null;
+    };
+    /**
+     * InvestigateAnswerEvent
+     * @description The last line of an answered investigation.
+     */
+    InvestigateAnswerEvent: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "answer";
+      answer: components["schemas"]["AskResponse"];
+      /** Steps */
+      steps: components["schemas"]["InvestigateStepResponse"][];
+    };
+    /**
+     * InvestigateEvent
+     * @description One line of POST /ask/investigate's newline-delimited JSON, told apart by type.
+     */
+    InvestigateEvent:
+      | components["schemas"]["InvestigatePlanEvent"]
+      | components["schemas"]["InvestigateStepEvent"]
+      | components["schemas"]["InvestigateAnswerEvent"]
+      | components["schemas"]["InvestigateFailedEvent"];
+    /**
+     * InvestigateFailedEvent
+     * @description The last line of an investigation that could not answer, and why.
+     */
+    InvestigateFailedEvent: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "failed";
+      /** Message */
+      message: string;
+      /** Steps */
+      steps: components["schemas"]["InvestigateStepResponse"][];
+    };
+    /**
+     * InvestigatePlanEvent
+     * @description The first line: the steps the question was split into, all still running.
+     */
+    InvestigatePlanEvent: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "plan";
+      /** Steps */
+      steps: components["schemas"]["InvestigateStepResponse"][];
+    };
+    /**
+     * InvestigateStepEvent
+     * @description A step that finished, done or failed, in the order steps finish.
+     */
+    InvestigateStepEvent: {
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      type: "step";
+      step: components["schemas"]["InvestigateStepResponse"];
+    };
+    /**
+     * InvestigateStepResponse
+     * @description One step of an investigation: its question, how it went, and what it found.
+     */
+    InvestigateStepResponse: {
+      /** Index */
+      index: number;
+      /** Question */
+      question: string;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "running" | "done" | "failed";
+      /** Tools Used */
+      tools_used: string[];
+      /** Findings */
+      findings: string[];
+      /** Error */
+      error?: string | null;
     };
     /** IssueGatesResponse */
     IssueGatesResponse: {
@@ -12298,6 +12405,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["AskResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  investigate_ask_investigate_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AskRequest"];
+      };
+    };
+    responses: {
+      /** @description One InvestigateEvent per line: the plan first, then each step as it finishes, then the answer or the reason there is none. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/x-ndjson": components["schemas"]["InvestigateEvent"];
         };
       };
       /** @description Validation Error */

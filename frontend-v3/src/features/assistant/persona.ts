@@ -15,6 +15,27 @@ export const ASK_LABEL = `Ask ${ASSISTANT_NAME}`;
 /** The one-line note under the input. */
 export const ANSWER_NOTE = "Answers come from the delivery data and can be wrong.";
 
+/** The two ways to ask: a quick answer, or an investigation in steps. */
+export const QUICK_LABEL = "Quick answer";
+export const INVESTIGATE_LABEL = "Investigate";
+/** Under a quick answer: the same question, investigated. */
+export const INVESTIGATE_THIS = "Investigate this";
+
+/** The note under the input while Investigate is on. */
+export const INVESTIGATE_NOTE = `${ASSISTANT_NAME} checks the question step by step, which can take a minute. Answers can be wrong.`;
+
+/** What the waiting bubble says: looking it up, planning, or checking the steps planned. */
+export function pendingWords(investigating: boolean, steps: number): string {
+  if (!investigating) return `${ASSISTANT_NAME} is looking it up…`;
+  if (steps === 0) return `${ASSISTANT_NAME} is planning the steps…`;
+  return `${ASSISTANT_NAME} is checking ${steps === 1 ? "1 step" : `${steps} steps`}…`;
+}
+
+/** The fold under an investigated answer: "How Ora checked: 3 steps". */
+export function checkedWords(steps: number): string {
+  return `How ${ASSISTANT_NAME} checked: ${steps === 1 ? "1 step" : `${steps} steps`}`;
+}
+
 /** "Good morning, Ira — what would you like to know?"; no name when nobody names the person. */
 export function assistantGreeting(first: string | null | undefined, now: Date = new Date()) {
   return `${greetingWord(now)}${first ? `, ${first}` : ""} — what would you like to know?`;

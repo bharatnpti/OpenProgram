@@ -7,6 +7,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from api.dtos import (
+    InvestigateAnswerEvent,
+    InvestigateEvent,
+    InvestigatePlanEvent,
+    InvestigateStepEvent,
+)
 from api.main import create_app
 from config.settings import Settings
 from core.application.ask_service import AskService
@@ -107,7 +113,7 @@ def test_ask_offers_a_tool_exactly_when_its_rest_twin_serves_the_role(
 
     principal = Principal(tenant_id="demo", subject="U1001", roles=frozenset({Role(role)}))
     offered = {
-        tool.name for tool in _ask_service(store)._tools(principal, date.fromisoformat(AS_OF))
+        tool.name for tool in _ask_service(store).tools_for(principal, date.fromisoformat(AS_OF))
     }
 
     assert offered == served
@@ -177,6 +183,73 @@ async def test_ask_route_labels_each_reference_and_keeps_the_ids(
         {"id": "CHK-8", "kind": "task", "label": "CHK-8"},
         {"id": "U-missing", "kind": None, "label": None},
     ]
+
+
+def test_investigate_streams_the_plan_each_step_and_the_answer_as_json_lines(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = InMemoryGraphStore()
+    app = _app_for_role(settings, "exec", store)
+    step = "Which risks are open?"
+    task = {"description": step, "subagent_type": "researcher"}
+    # One step, so the calls come in a fixed order: the main agent delegates, the
+    # researcher looks up and writes its notes, the main agent answers.
+    llm = FakeLlmProvider(
+        responses=[
+            _response(
+                tool_calls=(
+                    LlmToolCall(
+                        id="task-1", name="task", arguments=task, arguments_json=json.dumps(task)
+                    ),
+                )
+            ),
+            _response(tool_calls=(LlmToolCall(id="call-1", name="open_risks", arguments={}),)),
+            _response(text=json.dumps({"findings": ["No open risks"], "references": []})),
+            _response(text=json.dumps({"answer": "Nothing is at risk.", "references": []})),
+        ]
+    )
+    monkeypatch.setattr(app.state.registry, "llm_provider", lambda: llm)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/ask/investigate", json={"question": "What is at risk?", "as_of": AS_OF}
+        )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/x-ndjson")
+    assert response.headers["cache-control"] == "no-store"
+    lines = [InvestigateEvent.model_validate_json(line).root for line in response.iter_lines()]
+    assert [line.type for line in lines] == ["plan", "step", "answer"]
+    plan, done, answer = lines
+    assert isinstance(plan, InvestigatePlanEvent)
+    assert [(s.question, s.status) for s in plan.steps] == [(step, "running")]
+    assert isinstance(done, InvestigateStepEvent)
+    assert (done.step.status, done.step.tools_used) == ("done", ["open_risks"])
+    assert done.step.findings == ["No open risks"]
+    assert isinstance(answer, InvestigateAnswerEvent)
+    assert answer.answer.answer == "Nothing is at risk."
+    assert answer.answer.tools_used == ["open_risks"]
+    # The step was offered the exec's tools, and no more.
+    assert "pod_checkins" not in {tool.name for tool in llm.requests[1].tools}
+    risks = json.loads(next(t.content for t in llm.requests[2].turns if t.role == "tool"))
+    assert risks["as_of"] == AS_OF
+
+
+def test_investigate_is_refused_before_streaming_to_a_role_that_may_not_ask(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = _app_for_role(settings, "dev", InMemoryGraphStore())
+    llm = FakeLlmProvider()
+    monkeypatch.setattr(app.state.registry, "llm_provider", lambda: llm)
+
+    with TestClient(app) as client:
+        refused = client.post("/ask/investigate", json={"question": "What is at risk?"})
+        empty = client.post("/ask/investigate", json={"question": ""})
+
+    assert refused.status_code == 403
+    assert refused.headers["content-type"].startswith("application/json")
+    assert empty.status_code == 422
+    assert llm.requests == []
 
 
 def _response(text: str = "", tool_calls: tuple[LlmToolCall, ...] = ()) -> LlmResponse:

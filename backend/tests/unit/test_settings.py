@@ -125,6 +125,10 @@ def test_settings_defaults_workflow_provider_to_dbos() -> None:
     assert settings.checkin_final_reply_wait_seconds == 28800
     assert settings.checkin_max_clarifications == 2
     assert settings.llm_max_tool_iterations == 3
+    assert settings.ask_investigate_max_steps == 3
+    assert settings.ask_investigate_max_tool_iterations == 6
+    assert settings.ask_investigate_timeout_seconds == 120
+    assert settings.ask_investigate_llm_model == settings.default_llm_model
     assert settings.conversation_retention_days == 30
     assert settings.conversation_purge_enabled is True
     assert settings.conversation_purge_cron == "0 3 * * *"
@@ -469,3 +473,16 @@ def test_settings_rejects_invalid_sync_targets() -> None:
         _settings(secret_key=SECRET_KEY, checkin_max_clarifications=-1)
     with pytest.raises(ValidationError):
         _settings(secret_key=SECRET_KEY, llm_max_tool_iterations=-1)
+    for steps in (0, 6):
+        with pytest.raises(ValidationError):
+            _settings(secret_key=SECRET_KEY, ask_investigate_max_steps=steps)
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, ask_investigate_max_tool_iterations=-1)
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, ask_investigate_timeout_seconds=0)
+
+
+def test_investigate_runs_on_its_own_model_only_when_one_is_set() -> None:
+    assert _settings(secret_key=SECRET_KEY, litellm_model="m-1").ask_investigate_llm_model == "m-1"
+    deep = _settings(secret_key=SECRET_KEY, litellm_model="m-1", ask_investigate_model="m-2")
+    assert deep.ask_investigate_llm_model == "m-2"
