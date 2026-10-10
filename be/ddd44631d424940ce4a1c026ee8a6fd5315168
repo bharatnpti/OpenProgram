@@ -1,0 +1,32 @@
+backend/infra/persistence/in_memory_readiness.py
+  s_3101dec2ee3c53::t_fb7e5fe1d52bc8 1-146
+backend/tests/integration/test_readiness_repository.py
+  s_3101dec2ee3c53::t_ffecaf96197d5e 1-182
+backend/infra/persistence/postgres_readiness.py
+  s_3101dec2ee3c53::t_558d6adf84c947 1-718
+backend/tests/unit/test_readiness_rules.py
+  s_3101dec2ee3c53::t_927e98ff91a398 1-398
+backend/core/ports/release_readiness.py
+  s_3101dec2ee3c53::t_39388fab3623c9 1-77
+backend/core/domain/release_readiness.py
+  s_3101dec2ee3c53::t_a0c1d67374f74d 628-630,1070-1073,1101-1104,1126-1129
+  s_3101dec2ee3c53::t_65fd68cd8e9d8b 1-627,631-1069,1074-1100,1105-1125,1130-1186
+backend/infra/persistence/migrations/versions/0040_release_readiness.py
+  s_3101dec2ee3c53::t_44b42aca33cbd1 1-226
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "beddd44631d424940ce4a1c026ee8a6fd5315168",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
