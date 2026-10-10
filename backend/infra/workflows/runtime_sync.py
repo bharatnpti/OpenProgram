@@ -63,6 +63,16 @@ async def resolve_runtime_sync_plan(payload: RuntimeSyncInput) -> RuntimeSyncPla
         await registry.close()
 
 
+def superseded_runtime_sync_result(payload: RuntimeSyncInput) -> RuntimeSyncWorkflowResult:
+    """A scheduled run a newer one has made redundant: nothing is dispatched."""
+    return RuntimeSyncWorkflowResult(
+        tenant_id=payload.tenant_id,
+        connector=_connector_filter(payload.connector),
+        dispatched=0,
+        workflow_ids=[],
+    )
+
+
 async def _resolve_plan(registry: ServiceRegistry, payload: RuntimeSyncInput) -> RuntimeSyncPlan:
     connector = _connector_filter(payload.connector)
     resolver = RuntimeSyncTargetResolver(registry.graph_repository())

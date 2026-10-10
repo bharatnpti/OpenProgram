@@ -237,6 +237,53 @@ def test_settings_rejects_invalid_pool_bounds() -> None:
         )
 
 
+def test_settings_bound_every_connection_pool_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "POSTGRES_POOL_MIN_SIZE",
+        "POSTGRES_POOL_MAX_SIZE",
+        "POSTGRES_POOL_TIMEOUT_SECONDS",
+        "DBOS_SYSTEM_POOL_SIZE",
+        "SYNC_QUEUE_CONCURRENCY",
+    ):
+        monkeypatch.delenv(f"OPENPROGRAM_{name}", raising=False)
+
+    settings = _settings(secret_key=SECRET_KEY)
+
+    # docs/ops/database-connections.md budgets these against max_connections.
+    assert settings.postgres_pool_min_size == 1
+    assert settings.postgres_pool_max_size == 10
+    assert settings.postgres_pool_timeout_seconds == 30.0
+    assert settings.dbos_system_pool_size == 10
+    assert settings.sync_queue_concurrency == 4
+
+
+def test_settings_read_pool_limits_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENPROGRAM_POSTGRES_POOL_MAX_SIZE", "7")
+    monkeypatch.setenv("OPENPROGRAM_POSTGRES_POOL_TIMEOUT_SECONDS", "2.5")
+    monkeypatch.setenv("OPENPROGRAM_DBOS_SYSTEM_POOL_SIZE", "6")
+    monkeypatch.setenv("OPENPROGRAM_SYNC_QUEUE_CONCURRENCY", "2")
+
+    settings = _settings(secret_key=SECRET_KEY)
+
+    assert settings.postgres_pool_max_size == 7
+    assert settings.postgres_pool_timeout_seconds == 2.5
+    assert settings.dbos_system_pool_size == 6
+    assert settings.sync_queue_concurrency == 2
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "postgres_pool_timeout_seconds",
+        "dbos_system_pool_size",
+        "sync_queue_concurrency",
+    ],
+)
+def test_settings_reject_a_pool_limit_that_is_not_positive(field: str) -> None:
+    with pytest.raises(ValidationError):
+        _settings(secret_key=SECRET_KEY, **{field: 0})
+
+
 def test_settings_fail_fast_on_invalid_secret_key() -> None:
     with pytest.raises(ValidationError):
         _settings(secret_key="too-short")
