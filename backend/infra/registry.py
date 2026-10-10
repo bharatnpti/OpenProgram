@@ -170,7 +170,12 @@ from infra.persistence.postgres_status import (
     PostgresStatusRepository,
     PostgresSyncCursorRepository,
 )
-from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
+from infra.persistence.psycopg_executor import (
+    PoolConfig,
+    PsycopgAsyncExecutor,
+    close_shared_executors,
+    shared_executor,
+)
 from infra.workflows.runtime_sync import legacy_issue_dispatches, legacy_vcs_dispatches
 
 _CHAT_SIMULATOR_PROVIDER = "mock_slack"
@@ -1470,17 +1475,33 @@ class ServiceRegistry:
         return dict(zip(probes.keys(), results, strict=True))
 
     async def close(self) -> None:
-        if self._postgres_executor is not None:
-            await self._postgres_executor.close()
+        """Release what this registry owns.
+
+        The Postgres pool is not among it: it is the process's, shared with
+        every other registry here, and ``shutdown`` closes it.
+        """
         if self._redis_provider is not None:
             await self._redis_provider.close()
 
+    async def shutdown(self) -> None:
+        """Close this registry and the process's Postgres pool.
+
+        Called once, by whatever owns the process (the API's lifespan, the
+        worker's main), as it stops. A workflow step closes its registry with
+        ``close`` and leaves the pool to the others.
+        """
+        await self.close()
+        await close_shared_executors()
+
     def _executor(self) -> PsycopgAsyncExecutor:
         if self._postgres_executor is None:
-            self._postgres_executor = PsycopgAsyncExecutor(
+            self._postgres_executor = shared_executor(
                 self.settings.database_url,
-                min_size=self.settings.postgres_pool_min_size,
-                max_size=self.settings.postgres_pool_max_size,
+                PoolConfig(
+                    min_size=self.settings.postgres_pool_min_size,
+                    max_size=self.settings.postgres_pool_max_size,
+                    timeout_seconds=self.settings.postgres_pool_timeout_seconds,
+                ),
             )
         return self._postgres_executor
 

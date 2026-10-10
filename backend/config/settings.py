@@ -39,8 +39,13 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5174",
     )
     database_url: str = "postgresql://openprogram:openprogram@localhost:5432/openprogram"
+    # The one application pool each process (API, worker) shares between its
+    # requests and every workflow step it runs. A caller waits up to the
+    # timeout for a free connection; the pool never opens one past the max.
+    # docs/ops/database-connections.md budgets these against max_connections.
     postgres_pool_min_size: int = 1
-    postgres_pool_max_size: int = 5
+    postgres_pool_max_size: int = 10
+    postgres_pool_timeout_seconds: float = 30.0
     redis_url: str = "redis://localhost:6379/0"
     redis_max_connections: int = 10
     heartbeat_schedule_id: str | None = None
@@ -574,7 +579,7 @@ class Settings(BaseSettings):
             raise ValueError("seconds value must be positive")
         return value
 
-    @field_validator("reply_processing_retry_backoff_seconds")
+    @field_validator("reply_processing_retry_backoff_seconds", "postgres_pool_timeout_seconds")
     @classmethod
     def validate_positive_backoff(cls, value: float) -> float:
         if value <= 0:

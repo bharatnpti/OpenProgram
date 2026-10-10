@@ -55,7 +55,7 @@ async def main() -> None:
         await _prove_sync_facts(registry)
         await _prove_rollup_and_persona(settings, registry, checkin_date)
     finally:
-        await registry.close()
+        await registry.shutdown()
     print("phase1 smoke ok")
 
 

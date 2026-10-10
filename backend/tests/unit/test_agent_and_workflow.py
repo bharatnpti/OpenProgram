@@ -708,7 +708,7 @@ async def test_worker_bootstraps_schedules_before_running_worker(
 
     await worker.main()
 
-    assert events == ["ensure", "worker", "run", "close"]
+    assert events == ["ensure", "worker", "run", "shutdown"]
 
 
 async def test_worker_runs_slack_socket_listener_alongside_workflow_worker(
@@ -732,7 +732,7 @@ async def test_worker_runs_slack_socket_listener_alongside_workflow_worker(
 
     await worker.main()
 
-    assert events == ["ensure", "worker", "run", "listen", "close"]
+    assert events == ["ensure", "worker", "run", "listen", "shutdown"]
 
 
 async def test_worker_keeps_running_workflows_when_slack_socket_is_misconfigured(
@@ -760,7 +760,7 @@ async def test_worker_keeps_running_workflows_when_slack_socket_is_misconfigured
 
     await worker.main()
 
-    assert events == ["ensure", "worker", "run", "close"]
+    assert events == ["ensure", "worker", "run", "shutdown"]
 
 
 async def test_dbos_dispatch_keeps_runtime_alive_for_started_workflows(
@@ -1686,8 +1686,8 @@ class _WorkerStartupRegistry:
             raise self.listener_error
         return self.listener
 
-    async def close(self) -> None:
-        self.events.append("close")
+    async def shutdown(self) -> None:
+        self.events.append("shutdown")
 
 
 class _OneShotWorkflowWorker:

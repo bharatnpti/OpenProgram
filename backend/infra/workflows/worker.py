@@ -25,7 +25,7 @@ async def main() -> None:
             if listener is not None:
                 tasks.create_task(listener.run())
     finally:
-        await registry.close()
+        await registry.shutdown()
 
 
 def _slack_socket_listener(registry: ServiceRegistry) -> SlackSocketModeListener | None:
