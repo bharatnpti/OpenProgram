@@ -120,6 +120,7 @@ const scope = (over: {
     sample_days: 1,
     completed_in_sample: 0,
     reason: "Only 1 working day of history; a forecast needs 10.",
+    needed_days: 10,
     ...over.history,
   },
   team: { latest: "2026-10-09", latest_key: "CHK-4", dated: 7, undated: 6, ...over.team },

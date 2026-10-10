@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from core.domain.forecast import CommitmentScope, DateChange, Release
+from core.domain.forecast import CommitmentScope, DateChange, ForecastSettings, Release
 
 
 class CommitmentRepository(Protocol):
@@ -29,3 +29,11 @@ class ReleaseRepository(Protocol):
     async def save(self, release: Release) -> None: ...
 
     async def delete(self, tenant_id: str, release_id: str) -> bool: ...
+
+
+class ForecastSettingsRepository(Protocol):
+    """The tenant's forecast settings. None until an admin saves one."""
+
+    async def get(self, tenant_id: str) -> ForecastSettings | None: ...
+
+    async def save(self, settings: ForecastSettings) -> None: ...

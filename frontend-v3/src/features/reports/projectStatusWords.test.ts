@@ -27,6 +27,7 @@ const scope = (over: Partial<ScopeDeliveryResponse> = {}): ScopeDeliveryResponse
     sample_days: 21,
     completed_in_sample: 6,
     reason: null,
+    needed_days: 10,
   },
   team: { latest: "2026-11-03", latest_key: "CHK-103", dated: 14, undated: 3 },
   verdict: "at_risk",

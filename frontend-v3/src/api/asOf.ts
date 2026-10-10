@@ -26,6 +26,7 @@ export function currentViewingAsOf(): string | null {
  */
 export const DATED_READS = [
   "/graph/programs/{program_id}/tree",
+  "/me/delivery-tree",
   "/me/focus",
   "/me/status",
   "/persona/{level}/{entity_id}/trend",

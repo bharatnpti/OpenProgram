@@ -14,8 +14,12 @@ from core.domain.delivery import (
     RequirementsSnapshot,
     StageMapping,
 )
+from core.domain.forecast import ForecastSettings
 
 _tracer = trace.get_tracer("openprogram.persistence.delivery")
+#: The key of delivery_settings.mapping that holds the forecast settings
+#: (PostgresForecastSettingsRepository); every other key is the stage mapping.
+_FORECAST_KEY = "forecast"
 
 
 class AsyncSqlExecutor(Protocol):
@@ -27,6 +31,13 @@ class AsyncSqlExecutor(Protocol):
 
 
 class PostgresDeliverySettingsRepository:
+    """The stage mapping, in delivery_settings.mapping.
+
+    The same row may also hold the forecast settings under ``"forecast"``
+    (PostgresForecastSettingsRepository): a row with no ``"statuses"`` holds only
+    those, and no saved mapping; saving the mapping keeps them.
+    """
+
     def __init__(self, executor: AsyncSqlExecutor) -> None:
         self._executor = executor
 
@@ -43,10 +54,14 @@ class PostgresDeliverySettingsRepository:
         if not rows:
             return None
         row = rows[0]
+        mapping = _json(row.get("mapping"))
+        if "statuses" not in mapping:
+            # Only the forecast settings were saved; the default mapping applies.
+            return None
         updated_at = row.get("updated_at")
         return DeliverySettings(
             tenant_id=str(row["tenant_id"]),
-            mapping=mapping_from_json(_json(row.get("mapping"))),
+            mapping=mapping_from_json(mapping),
             updated_at=updated_at if isinstance(updated_at, datetime) else None,
             updated_by=str(row.get("updated_by") or "") or None,
         )
@@ -58,7 +73,13 @@ class PostgresDeliverySettingsRepository:
                 INSERT INTO delivery_settings (tenant_id, mapping, updated_at, updated_by)
                 VALUES (%s, %s::jsonb, %s, %s)
                 ON CONFLICT (tenant_id) DO UPDATE SET
-                    mapping = EXCLUDED.mapping,
+                    mapping = CASE
+                        WHEN delivery_settings.mapping -> 'forecast' IS NOT NULL
+                        THEN EXCLUDED.mapping || jsonb_build_object(
+                            'forecast', delivery_settings.mapping -> 'forecast'
+                        )
+                        ELSE EXCLUDED.mapping
+                    END,
                     updated_at = EXCLUDED.updated_at,
                     updated_by = EXCLUDED.updated_by
                 """,
@@ -68,6 +89,47 @@ class PostgresDeliverySettingsRepository:
                     settings.updated_at,
                     settings.updated_by or "",
                 ),
+            )
+
+
+class PostgresForecastSettingsRepository:
+    """The tenant's forecast settings, under ``"forecast"`` in delivery_settings.mapping.
+
+    They are delivery settings, kept in the delivery settings row so no new table
+    is needed. Saving them leaves the stage mapping, and the row's updated_at and
+    updated_by (the mapping's), as they are; a tenant with no row yet gets one
+    with no mapping, which PostgresDeliverySettingsRepository reads as none saved.
+    """
+
+    def __init__(self, executor: AsyncSqlExecutor) -> None:
+        self._executor = executor
+
+    async def get(self, tenant_id: str) -> ForecastSettings | None:
+        with _tracer.start_as_current_span("postgres.delivery.get_forecast_settings"):
+            rows = await self._executor.fetch(
+                """
+                SELECT mapping -> 'forecast' AS forecast
+                FROM delivery_settings
+                WHERE tenant_id = %s
+                """,
+                (tenant_id,),
+            )
+        if not rows:
+            return None
+        return forecast_settings_from_json(tenant_id, _json(rows[0].get(_FORECAST_KEY)))
+
+    async def save(self, settings: ForecastSettings) -> None:
+        value = json.dumps(forecast_settings_to_json(settings))
+        with _tracer.start_as_current_span("postgres.delivery.save_forecast_settings"):
+            await self._executor.execute(
+                """
+                INSERT INTO delivery_settings (tenant_id, mapping, updated_at, updated_by)
+                VALUES (%s, jsonb_build_object('forecast', %s::jsonb), %s, %s)
+                ON CONFLICT (tenant_id) DO UPDATE SET
+                    mapping = delivery_settings.mapping
+                        || jsonb_build_object('forecast', %s::jsonb)
+                """,
+                (settings.tenant_id, value, settings.updated_at, settings.updated_by, value),
             )
 
 
@@ -153,6 +215,34 @@ def mapping_from_json(value: Mapping[str, object]) -> StageMapping:
         statuses={stage: _strings(raw.get(stage.value)) for stage in STAGE_ORDER},
         excluded_statuses=_strings(value.get("excluded_statuses")),
         requirement_types=_strings(value.get("requirement_types")),
+    )
+
+
+def forecast_settings_to_json(settings: ForecastSettings) -> dict[str, object]:
+    return {
+        "min_history_days": settings.min_sample_days,
+        "updated_at": settings.updated_at.isoformat(),
+        "updated_by": settings.updated_by,
+    }
+
+
+def forecast_settings_from_json(
+    tenant_id: str, value: Mapping[str, object]
+) -> ForecastSettings | None:
+    """The settings as saved; None when nothing (or nothing readable) is."""
+    raw_at = value.get("updated_at")
+    try:
+        updated_at = datetime.fromisoformat(raw_at) if isinstance(raw_at, str) else None
+    except ValueError:
+        updated_at = None
+    if updated_at is None:
+        return None
+    days = value.get("min_history_days")
+    return ForecastSettings(
+        tenant_id=tenant_id,
+        min_sample_days=days if isinstance(days, int) and not isinstance(days, bool) else None,
+        updated_at=updated_at,
+        updated_by=str(value.get("updated_by") or ""),
     )
 
 

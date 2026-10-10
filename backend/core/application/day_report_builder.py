@@ -58,7 +58,6 @@ from core.domain.delivery import (
 from core.domain.errors import GraphNotFound
 from core.domain.escalation_matrix import NEED_LABELS, NEED_ORDER, EscalationMatrix, NeedType
 from core.domain.forecast import (
-    MIN_SAMPLE_DAYS,
     CommitmentScope,
     CommitmentScopeKind,
     DateChange,
@@ -599,7 +598,7 @@ def _date_facts(facts: _Facts) -> DateFacts | None:
     committed = "committed" in said and actor is not None
     moved = committed and bool(commitment.times_moved and commitment.moved_days)
     history = view.history
-    short = "history" in said and history.sample_days < MIN_SAMPLE_DAYS
+    short = "history" in said and history.sample_days < history.needed_days
     team = view.team
     team_said = (beside and team.latest is not None and bool(team.latest_key)) or "team" in said
     return DateFacts(
@@ -612,7 +611,7 @@ def _date_facts(facts: _Facts) -> DateFacts | None:
         p50=history.p50 if "forecast" in said else None,
         p85=history.p85 if beside or "forecast" in said else None,
         history_days=history.sample_days if short else None,
-        history_needed=MIN_SAMPLE_DAYS if short else None,
+        history_needed=history.needed_days if short else None,
         no_forecast_reason=history.reason if "history" in said else None,
         team_latest=team.latest if team_said else None,
         team_latest_key=team.latest_key if team_said else None,

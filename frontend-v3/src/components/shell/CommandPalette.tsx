@@ -4,11 +4,12 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { useNavigate } from "react-router-dom";
 
 import { paletteTargets } from "../../app/access";
-import { usePods, usePrograms, useProjects, useWorkstreams } from "../../app/directory";
+import { useOwnTree, usePods, usePrograms, useProjects, useWorkstreams } from "../../app/directory";
 import { shownNav } from "../../app/nav";
 import { useRole } from "../../app/role";
 import { useAssistantControl } from "../../features/assistant/assistantContext";
 import { ASK_LABEL } from "../../features/assistant/persona";
+import { fullPodIds } from "../../features/delivery/ownTree";
 import { cn } from "../../lib/utils";
 import { RagDot } from "../ui/Bits";
 import {
@@ -16,6 +17,7 @@ import {
   directoryRows,
   matchRows,
   noPodNote,
+  ownRows,
   paletteMark,
   peopleRows,
   screenRows,
@@ -39,6 +41,10 @@ function RowMark({ row }: { row: PaletteRow }) {
   }
   if (mark.kind === "person") {
     return <UserRound size={12} strokeWidth={2.5} aria-hidden className="flex-none text-ink" />;
+  }
+  if (mark.kind === "plain") {
+    // A node whose colour the role does not read: no dot, as in Delivery's navigator.
+    return <span aria-hidden className="h-2.5 w-2.5 flex-none" />;
   }
   return (
     <span
@@ -135,32 +141,54 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
 
   const assistant = useAssistantControl();
   const asks = roleState.access.assistant && assistant !== null;
-  const targets = useMemo(() => paletteTargets(roleState.access, roleState), [roleState]);
+  const targets = useMemo(() => paletteTargets(roleState.access), [roleState.access]);
+  // Under the `own` scope the palette lists what that person's Delivery lists, and
+  // people only in the pods whose whole panel (their check-ins) is theirs to open.
+  const own = roleState.access.deliveryScope === "own";
+  const tree = useOwnTree(own);
   const rows = useMemo(() => {
     const ask = askRow(query, ASK_LABEL);
+    const nodes = own
+      ? tree.data
+        ? ownRows(tree.data, targets)
+        : []
+      : directoryRows(directory, targets);
+    const full = own && tree.data ? fullPodIds(tree.data) : null;
+    const peoplePods = full ? directory.pods.filter((pod) => full.has(pod.id)) : directory.pods;
     // With no query, the assistant's row sits after the screens; a query's question comes last.
     const found = matchRows(
       [
         ...screenRows(shownNav(roleState.access)),
         ...(asks && ask.key === "ask" ? [ask] : []),
-        ...directoryRows(directory, targets),
-        ...peopleRows(named, directory.pods, targets.person),
+        ...nodes,
+        ...(own && !tree.data ? [] : peopleRows(named, peoplePods, targets.person)),
       ],
       query,
     );
     return asks && ask.key !== "ask" ? [...found, ask] : found;
-  }, [asks, directory, named, query, roleState.access, targets]);
+  }, [asks, directory, named, own, query, roleState.access, targets, tree.data]);
   // Only the assistant's row is left: nothing on a page matched the query.
   const matched = rows.filter((row) => row.kind !== "ask").length;
   // A name that finds nobody may be a person in no pod: there is nowhere to take them.
+  // Under the `own` scope most people are simply not in the person's pods, so it is not said.
   const noPod = useMemo(
-    () => (matched === 0 && targets.person ? noPodNote(named, directory.pods, query) : null),
-    [directory.pods, named, query, matched, targets.person],
+    () =>
+      matched === 0 && targets.person && !own ? noPodNote(named, directory.pods, query) : null,
+    [directory.pods, named, own, query, matched, targets.person],
   );
   const current = Math.min(active, Math.max(rows.length - 1, 0));
   const loading =
-    programs.isLoading || projects.isLoading || workstreams.isLoading || pods.isLoading;
-  const failed = programs.error ?? projects.error ?? pods.error ?? workstreams.error;
+    programs.isLoading ||
+    projects.isLoading ||
+    workstreams.isLoading ||
+    pods.isLoading ||
+    (own && tree.isLoading);
+  const failed =
+    programs.error ??
+    projects.error ??
+    pods.error ??
+    workstreams.error ??
+    (own ? tree.error : null);
 
   useEffect(() => {
     list.current

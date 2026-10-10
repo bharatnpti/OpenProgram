@@ -64,7 +64,11 @@ from core.ports.connections import ConnectionRepository, ConnectorCatalog
 from core.ports.delivery import DeliverySettingsRepository, RequirementsSnapshotRepository
 from core.ports.directory import DirectoryProvider, DirectoryUserRepository
 from core.ports.escalation_matrix import EscalationMatrixRepository
-from core.ports.forecast import CommitmentRepository, ReleaseRepository
+from core.ports.forecast import (
+    CommitmentRepository,
+    ForecastSettingsRepository,
+    ReleaseRepository,
+)
 from core.ports.gates import (
     GateItemRepository,
     GateTemplateRepository,
@@ -128,6 +132,7 @@ from infra.persistence.in_memory_delivery import (
 from infra.persistence.in_memory_escalation import InMemoryEscalationMatrixRepository
 from infra.persistence.in_memory_forecast import (
     InMemoryCommitmentRepository,
+    InMemoryForecastSettingsRepository,
     InMemoryReleaseRepository,
 )
 from infra.persistence.in_memory_gates import (
@@ -143,6 +148,7 @@ from infra.persistence.postgres_connections import PostgresConnectionRepository
 from infra.persistence.postgres_cross_person import PostgresCrossPersonRequestRepository
 from infra.persistence.postgres_delivery import (
     PostgresDeliverySettingsRepository,
+    PostgresForecastSettingsRepository,
     PostgresRequirementsSnapshotRepository,
 )
 from infra.persistence.postgres_directory import PostgresDirectoryUserRepository
@@ -252,6 +258,9 @@ class ServiceRegistry:
     )
     _commitment_repository: CommitmentRepository | None = field(default=None, init=False)
     _release_repository: ReleaseRepository | None = field(default=None, init=False)
+    _forecast_settings_repository: ForecastSettingsRepository | None = field(
+        default=None, init=False
+    )
     _gate_repositories: (
         tuple[GateTemplateRepository, GateItemRepository, QuestionRepository, IssueScanRepository]
         | None
@@ -456,6 +465,15 @@ class ServiceRegistry:
             )
         return self._release_repository
 
+    def forecast_settings_repository(self) -> ForecastSettingsRepository:
+        if self._forecast_settings_repository is None:
+            self._forecast_settings_repository = (
+                InMemoryForecastSettingsRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresForecastSettingsRepository(self._executor())
+            )
+        return self._forecast_settings_repository
+
     def forecast_service(self) -> ForecastService:
         return ForecastService(
             graph_repository=self.graph_repository(),
@@ -463,6 +481,8 @@ class ServiceRegistry:
             commitment_repository=self.commitment_repository(),
             release_repository=self.release_repository(),
             time_series_repository=self.time_series_repository(),
+            settings_repository=self.forecast_settings_repository(),
+            default_min_sample_days=self.settings.forecast_min_history_days,
             today=self._tenant_today,
         )
 

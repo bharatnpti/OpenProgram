@@ -912,13 +912,16 @@ def test_dev_focus_is_own_scope(settings: Settings) -> None:
     with TestClient(app) as client:
         _populate_graph_fixture(app, settings)
         focus_response = client.get("/me/focus?as_of=2026-06-15")
-        blocked_response = client.get("/pods/pod-runtime/blockers?as_of=2026-06-15")
+        # Her own pod's blockers are hers to read (delivery_scope.py); another pod's are not.
+        own_pod = client.get("/pods/pod-runtime/blockers?as_of=2026-06-15")
+        blocked_response = client.get("/pods/pod-experience/blockers?as_of=2026-06-15")
 
     assert focus_response.status_code == 200
     body = focus_response.json()
     assert body["developer_id"] == "dev-asha"
     assert {task["id"] for task in body["tasks"]} == {"task-api"}
     assert body["developer_confirmed"] is False
+    assert own_pod.status_code == 200
     assert blocked_response.status_code == 403
 
 

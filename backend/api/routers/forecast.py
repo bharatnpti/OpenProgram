@@ -1,6 +1,8 @@
 """Committed delivery dates, releases, and their forecasts.
 
-Reading a project's delivery needs read_project_progress. A project's or a
+Reading a project's delivery needs read_project_progress, or for a scrum master
+a project one of their pods works on; a pod's needs a date capability, or for a
+developer their own pod (core/application/delivery_scope.py). A project's or a
 release's date, and the releases themselves, need set_project_dates (the
 product owner and manager). A pod's date needs set_pod_dates; a scrum master
 sets it only for a pod they run (its scrum master contact, or a member). The
@@ -14,7 +16,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
-from api.dependencies import get_current_principal, get_forecast_service
+from api.dependencies import (
+    get_current_principal,
+    get_delivery_scope_service,
+    get_forecast_service,
+)
 from api.dtos import (
     CommitmentResponse,
     DeliveryDateRequest,
@@ -28,6 +34,7 @@ from api.dtos import (
     ScopeDeliveryResponse,
 )
 from core.application.authorization import AuthorizationPolicy, Capability
+from core.application.delivery_scope import DeliveryScopeService
 from core.application.forecast_service import MAX_FORECAST_HISTORY_DAYS, ForecastService
 from core.domain.auth import Principal, Role
 from core.domain.errors import AuthorizationDenied, GraphNotFound, OpenProgramError
@@ -47,9 +54,14 @@ async def project_delivery(
     project_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ForecastService, Depends(get_forecast_service)],
+    scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
     as_of: Annotated[date, Query(default_factory=date.today)],
 ) -> ProjectDeliveryResponse:
-    _ensure(principal, Capability.READ_PROJECT_PROGRESS)
+    # Every project for its readers; for a scrum master, the projects their pods work on.
+    try:
+        await scope.ensure_project_read(principal, project_id)
+    except AuthorizationDenied as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     try:
         view = await service.project_delivery(principal.tenant_id, project_id, as_of)
     except GraphNotFound as exc:
@@ -129,14 +141,15 @@ async def pod_delivery(
     pod_id: str,
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[ForecastService, Depends(get_forecast_service)],
+    scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
     as_of: Annotated[date, Query(default_factory=date.today)],
 ) -> PodDeliveryResponse:
+    # Who sets pod dates or reads project progress, and a developer for their own pod.
     policy = AuthorizationPolicy()
-    if not (
-        policy.can(principal, Capability.SET_POD_DATES)
-        or policy.can(principal, Capability.READ_PROJECT_PROGRESS)
-    ):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed.")
+    try:
+        await scope.ensure_pod_dates(principal, pod_id)
+    except AuthorizationDenied as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     try:
         projects = await service.pod_projects(principal.tenant_id, pod_id, as_of)
         items: list[PodProjectDeliveryResponse] = []

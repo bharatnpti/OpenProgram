@@ -16,6 +16,7 @@ import { STAGE_LABELS, stageColor } from "../../components/viz/stages";
 import { cn } from "../../lib/utils";
 import { TabIntro, hintClass, inputClass, labelClass } from "./AdminBits";
 import { errorText } from "./adminWords";
+import { ForecastPanel } from "./ForecastPanel";
 import { savedLine, useMemberNames } from "./members";
 import {
   NOT_COUNTED_MEANING,
@@ -67,21 +68,25 @@ export function DeliveryStagesTab() {
   });
 
   return (
-    <PanelState
-      isLoading={stages.isLoading}
-      error={stages.error}
-      onRetry={() => void stages.refetch()}
-    >
-      {stages.data ? (
-        <StagesEditor
-          key={stages.data.updated_at ?? "default"}
-          saved={stages.data}
-          observed={observed.data ?? []}
-          observedError={observed.error}
-          observedLoading={observed.isLoading}
-        />
-      ) : null}
-    </PanelState>
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
+      <PanelState
+        isLoading={stages.isLoading}
+        error={stages.error}
+        onRetry={() => void stages.refetch()}
+      >
+        {stages.data ? (
+          <StagesEditor
+            key={stages.data.updated_at ?? "default"}
+            saved={stages.data}
+            observed={observed.data ?? []}
+            observedError={observed.error}
+            observedLoading={observed.isLoading}
+          />
+        ) : null}
+      </PanelState>
+      {/* Saved on its own: how much counted history the forecast waits for. */}
+      <ForecastPanel />
+    </div>
   );
 }
 

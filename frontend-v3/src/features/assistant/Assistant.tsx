@@ -42,7 +42,7 @@ export function Assistant() {
   const [tall, setTall] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const end = useRef<HTMLDivElement>(null);
-  const targets = useMemo(() => paletteTargets(access, roleState), [access, roleState]);
+  const targets = useMemo(() => paletteTargets(access), [access]);
   const place = {
     ...placeOf(pathname, search, access.signals.defaultView),
     subject: assistant.subject,

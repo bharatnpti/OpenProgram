@@ -119,14 +119,17 @@ export function missingDate(scope: Pick<ScopeDeliveryResponse, "target" | "total
 }
 
 /**
- * How much history a forecast has against what it needs, from the server's own
- * reason ("Only 2 working days of history; a forecast needs 10.") when it says,
- * else the days it has.
+ * How much history a forecast has against what it needs: "2 of 10 working days"
+ * while the server says it is too short to forecast (the tenant's minimum is
+ * `needed_days`), else the days it has.
  */
-export function historyWords(history: Scope["history"]): string {
-  const said = /(\d+) working days? of history; a forecast needs (\d+)/.exec(history.reason ?? "");
-  if (said) return `${said[1]} of ${said[2]} working days`;
+export function historyWords(
+  history: Pick<Scope["history"], "reason" | "sample_days" | "needed_days">,
+): string {
   const days = history.sample_days;
+  if (history.reason && days > 0 && days < history.needed_days) {
+    return `${days} of ${history.needed_days} working days`;
+  }
   return `${days} working ${days === 1 ? "day" : "days"} of history`;
 }
 

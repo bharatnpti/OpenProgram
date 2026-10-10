@@ -1138,6 +1138,33 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/config/delivery/forecast": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Get Forecast Settings
+     * @description How many working days of history a forecast needs: the tenant's, else the default.
+     */
+    get: operations["get_forecast_settings_config_delivery_forecast_get"];
+    /**
+     * Save Forecast Settings
+     * @description Set the working days of history a forecast needs; null goes back to the default.
+     *
+     *     Every scope's forecast, the history read and the day report follow at once.
+     *     A number outside the bounds is refused with 422 and says why.
+     */
+    put: operations["save_forecast_settings_config_delivery_forecast_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/config/delivery/statuses": {
     parameters: {
       query?: never;
@@ -1950,6 +1977,32 @@ export interface paths {
     };
     /** Program Tree */
     get: operations["program_tree_programs__program_id__tree_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/me/delivery-tree": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * My Delivery Tree
+     * @description The caller's own part of the delivery tree: their programs, projects, and those pods.
+     *
+     *     The projects of the pods the caller belongs to or runs, and the projects
+     *     that name them as owner; under each, every pod by name. Each node says what
+     *     its Delivery panel shows the caller, and carries its colour only where they
+     *     read it. A manager's, executive's or admin's Delivery lists the whole
+     *     directory instead.
+     */
+    get: operations["my_delivery_tree_me_delivery_tree_get"];
     put?: never;
     post?: never;
     delete?: never;
@@ -3416,6 +3469,48 @@ export interface components {
       requirement_types?: string[];
     };
     /**
+     * DeliveryTreeNodeResponse
+     * @description One program, project or pod of the caller's own part of the delivery tree.
+     */
+    DeliveryTreeNodeResponse: {
+      /** Id */
+      id: string;
+      kind: components["schemas"]["NodeKind"];
+      /** Name */
+      name: string;
+      /** @description The node's colour, only where the caller reads it; null for a name only. */
+      rag: components["schemas"]["Rag"] | null;
+      /** @description What its Delivery panel shows the caller: 'panel' all of it, 'dates' a pod's dates and colour, 'name' its name and nothing to open. */
+      access: components["schemas"]["NodeAccess"];
+      /**
+       * Own
+       * @description A pod the caller belongs to or runs.
+       */
+      own: boolean;
+      /**
+       * Parent Ids
+       * @description A project's programs; a pod's projects among those listed.
+       */
+      parent_ids: string[];
+    };
+    /**
+     * DeliveryTreeResponse
+     * @description The caller's own part of the delivery tree, for their Delivery and palette.
+     */
+    DeliveryTreeResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Programs */
+      programs: components["schemas"]["DeliveryTreeNodeResponse"][];
+      /** Projects */
+      projects: components["schemas"]["DeliveryTreeNodeResponse"][];
+      /** Pods */
+      pods: components["schemas"]["DeliveryTreeNodeResponse"][];
+    };
+    /**
      * DestinationKind
      * @enum {string}
      */
@@ -3791,6 +3886,56 @@ export interface components {
       scope_kind: components["schemas"]["CommitmentScopeKind"];
       /** Days */
       days: components["schemas"]["ForecastDayResponse"][];
+      /**
+       * Needed Days
+       * @description Working days of history each day's forecast needed before it gave dates.
+       */
+      needed_days: number;
+    };
+    /**
+     * ForecastSettingsResponse
+     * @description How many working days of history the tenant's delivery forecasts need.
+     */
+    ForecastSettingsResponse: {
+      /**
+       * Min History Days
+       * @description Working days of history before a forecast gives its 50% and 85% dates.
+       */
+      min_history_days: number;
+      /**
+       * Default Min History Days
+       * @description The deployment's default, used while the tenant has set none.
+       */
+      default_min_history_days: number;
+      /** Is Default */
+      is_default: boolean;
+      /**
+       * Lowest
+       * @description The fewest working days that may be set.
+       */
+      lowest: number;
+      /**
+       * Highest
+       * @description The most working days that may be set.
+       */
+      highest: number;
+      /**
+       * Window Days
+       * @description The calendar days of snapshots a forecast reads, which follow the minimum.
+       */
+      window_days: number;
+      /** Updated At */
+      updated_at: string | null;
+      /** Updated By */
+      updated_by: string | null;
+    };
+    /** ForecastSettingsUpdateRequest */
+    ForecastSettingsUpdateRequest: {
+      /**
+       * Min History Days
+       * @description Working days of history before a forecast gives dates; null uses the default.
+       */
+      min_history_days: number | null;
     };
     /**
      * GateBoardResponse
@@ -4016,6 +4161,11 @@ export interface components {
       completed_in_sample: number;
       /** Reason */
       reason: string | null;
+      /**
+       * Needed Days
+       * @description Working days of history the forecast needs before it gives dates.
+       */
+      needed_days: number;
     };
     /** IdentityAutoMatchMemberDto */
     IdentityAutoMatchMemberDto: {
@@ -4211,6 +4361,12 @@ export interface components {
      * @enum {string}
      */
     NeedType: "fix" | "decision" | "answer" | "review";
+    /**
+     * NodeAccess
+     * @description What a node's Delivery panel shows the caller.
+     * @enum {string}
+     */
+    NodeAccess: "panel" | "dates" | "name";
     /**
      * NodeKind
      * @enum {string}
@@ -5352,6 +5508,16 @@ export interface components {
       excluded: number;
       /** Requirements */
       requirements: components["schemas"]["RequirementResponse"][];
+      /**
+       * Timeline Days
+       * @description The calendar days the timeline covers, up to as_of.
+       */
+      timeline_days: number;
+      /**
+       * Forecast Needed Days
+       * @description Working days of history the tenant's forecast needs; the flow of stages draws once the timeline holds as many.
+       */
+      forecast_needed_days: number;
     };
     /**
      * ReviewStage
@@ -9160,7 +9326,8 @@ export interface operations {
     parameters: {
       query?: {
         as_of?: string;
-        days?: number;
+        /** @description Days of timeline up to as_of. Left out: 30, or the forecast's window when the tenant's minimum needs more. */
+        days?: number | null;
         /** @description One release of the project. */
         release_id?: string | null;
       };
@@ -9247,6 +9414,72 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["DeliveryStagesResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  get_forecast_settings_config_delivery_forecast_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ForecastSettingsResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_forecast_settings_config_delivery_forecast_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ForecastSettingsUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ForecastSettingsResponse"];
         };
       };
       /** @description Validation Error */
@@ -11122,6 +11355,39 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ProgramTreeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  my_delivery_tree_me_delivery_tree_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeliveryTreeResponse"];
         };
       };
       /** @description Validation Error */

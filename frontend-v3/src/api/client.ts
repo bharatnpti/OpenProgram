@@ -27,6 +27,8 @@ import type {
   DayReportSetupResponse,
   DeliveryStagesResponse,
   DeliveryStagesUpdateRequest,
+  ForecastSettingsResponse,
+  ForecastSettingsUpdateRequest,
   ObservedStatusResponse,
   ReportPreviewResponse,
   ReportRunResponse,
@@ -66,6 +68,7 @@ import type {
   WritebackConsentResponse,
   WritebackConsentUpdateRequest,
   TenantWritebackResponse,
+  DeliveryTreeResponse,
   DirectoryItemResponse,
   DirectorySearchResponse,
   DirectorySyncResponse,
@@ -225,6 +228,9 @@ export const apiClient = {
     requestJson<DirectoryItemResponse>(withAsOf(`/workstreams/${workstreamId}`, asOf)),
   projectWorkstreams: (projectId: string, asOf?: string) =>
     requestJson<DirectoryItemResponse[]>(withAsOf(`/projects/${projectId}/workstreams`, asOf)),
+  /** The caller's own part of the delivery tree, and what each node opens on for them. */
+  myDeliveryTree: (asOf?: string) =>
+    requestJson<DeliveryTreeResponse>(withAsOf("/me/delivery-tree", asOf)),
   focus: (asOf?: string) => requestJson<FocusResponse>(withAsOf("/me/focus", asOf)),
   myStatus: (asOf?: string) => requestJson<MyStatusResponse>(withAsOf("/me/status", asOf)),
   confirmMyStatus: (asOf?: string) =>
@@ -520,6 +526,10 @@ export const apiClient = {
   deliveryStages: () => requestJson<DeliveryStagesResponse>("/config/delivery/stages"),
   saveDeliveryStages: (body: DeliveryStagesUpdateRequest) =>
     requestJson<DeliveryStagesResponse>("/config/delivery/stages", { method: "PUT", body }),
+  /** How many working days of history a delivery forecast needs (admin). */
+  forecastSettings: () => requestJson<ForecastSettingsResponse>("/config/delivery/forecast"),
+  saveForecastSettings: (body: ForecastSettingsUpdateRequest) =>
+    requestJson<ForecastSettingsResponse>("/config/delivery/forecast", { method: "PUT", body }),
   observedStatuses: () => requestJson<ObservedStatusResponse[]>("/config/delivery/statuses"),
   previewObservedStatuses: (body: DeliveryStagesUpdateRequest) =>
     requestJson<ObservedStatusResponse[]>("/config/delivery/statuses/preview", {

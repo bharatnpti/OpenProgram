@@ -94,7 +94,7 @@ export type VerdictCause = {
  *
  * The server lists the facts (an undated count, a short history, the team's
  * latest date) but never joins them to the verdict, so "At risk" stood alone:
- * with under ten days of history, one open requirement with no ETA or due date
+ * with too short a history, one open requirement with no ETA or due date
  * is enough, however far off the date is. The wording follows the rule's
  * branches; a verdict this rule does not explain has no cause rather than a
  * guessed one.

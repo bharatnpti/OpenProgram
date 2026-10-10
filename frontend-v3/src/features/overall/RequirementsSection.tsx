@@ -13,15 +13,15 @@ import {
   splitFinding,
 } from "./flow";
 import { historyStart, inStageSinceWords, noRequirementsWords, releaseName } from "./overallWords";
-import { REQUIREMENT_DAYS, useRequirements } from "./queries";
+import { useRequirements } from "./queries";
 import { Legend, Swatch, VizCard } from "./viz";
 import { SVG_TEXT } from "./vizStyles";
 
 /**
  * O3, "Requirements by stage": where work piles up. A cumulative flow of each
  * stage over the daily snapshots, with today's counts at its right edge; under
- * ten working days of history, one bar of today's split with the six counts
- * beside it. It replaces the six stage cards, the 30-day stacked bars and the
+ * the working days of history the forecast needs (the tenant's minimum, ten by
+ * default), one bar of today's split with the six counts beside it. It replaces the six stage cards, the 30-day stacked bars and the
  * "Moved since" list (since yesterday is Daily's). Every requirement, with its
  * stage and how long it has been there, folds behind "Show all".
  */
@@ -64,7 +64,11 @@ export function RequirementsSection({
       >
         {data ? (
           <VizCard>
-            {flowDrawable(data.timeline) ? <Flow data={data} /> : <Split data={data} />}
+            {flowDrawable(data.timeline, data.forecast_needed_days) ? (
+              <Flow data={data} />
+            ) : (
+              <Split data={data} />
+            )}
             <Fold summary={`Show all ${data.total} requirements`}>
               <RequirementTable data={data} />
             </Fold>
@@ -89,7 +93,7 @@ function countOf(data: RequirementsResponse, stage: DeliveryStage): number {
   return data.stages.find((s) => s.stage === stage)?.count ?? 0;
 }
 
-/** Under ten working days: one bar of today's split, nothing coloured that history can't back. */
+/** Under the forecast's minimum: one bar of today's split, nothing coloured that history can't back. */
 function Split({ data }: { data: RequirementsResponse }) {
   const label = (stage: DeliveryStage) => labelFor(data, stage);
   const counts = Object.fromEntries(STAGE_ORDER.map((stage) => [stage, countOf(data, stage)]));
@@ -113,7 +117,7 @@ function Split({ data }: { data: RequirementsResponse }) {
             ))}
           </div>
           <p className="mt-2 text-[12.5px] text-grey-secondary">
-            {shortHistoryNote(data.timeline)}
+            {shortHistoryNote(data.timeline, data.forecast_needed_days)}
           </p>
         </div>
         <StageCounts data={data} />
@@ -287,7 +291,7 @@ function Flow({ data }: { data: RequirementsResponse }) {
 }
 
 function RequirementTable({ data }: { data: RequirementsResponse }) {
-  const start = historyStart(data.timeline, REQUIREMENT_DAYS);
+  const start = historyStart(data.timeline, data.timeline_days);
   const rows = [...data.requirements].sort(
     (a, b) =>
       STAGE_ORDER.indexOf(b.stage) - STAGE_ORDER.indexOf(a.stage) ||

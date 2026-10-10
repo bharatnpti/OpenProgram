@@ -57,6 +57,7 @@ const scope = (over: Partial<ScopeDeliveryResponse> = {}): ScopeDeliveryResponse
     sample_days: 21,
     completed_in_sample: 6,
     reason: null,
+    needed_days: 10,
   },
   team: { latest: "2026-11-03", latest_key: "CHK-103", dated: 14, undated: 3 },
   verdict: "off_track",
@@ -99,6 +100,46 @@ test("too little history says how much there is against what a forecast needs", 
   assert.equal(
     historyWords({ ...short, reason: null, sample_days: 1 }),
     "1 working day of history",
+  );
+});
+
+test("the working days a forecast needs are the tenant's, as the server says", () => {
+  const short = { ...scope().history, p50: null, p85: null, sample_days: 3 };
+  assert.equal(
+    historyWords({
+      ...short,
+      needed_days: 5,
+      reason: "Only 3 working days of history; a forecast needs 5.",
+    }),
+    "3 of 5 working days",
+  );
+  assert.equal(
+    historyWords({
+      ...short,
+      needed_days: 20,
+      reason: "Only 3 working days of history; a forecast needs 20.",
+    }),
+    "3 of 20 working days",
+  );
+  // Enough history, nothing finished in it: the days it has, not a count against the minimum.
+  assert.equal(
+    historyWords({
+      ...short,
+      sample_days: 12,
+      needed_days: 5,
+      reason: "Nothing reached production in the last 12 working days.",
+    }),
+    "12 working days of history",
+  );
+  // No history at all says so in the reason; the cell gives the plain count.
+  assert.equal(
+    historyWords({
+      ...short,
+      sample_days: 0,
+      needed_days: 20,
+      reason: "No history yet: a forecast needs 20 working days of daily snapshots.",
+    }),
+    "0 working days of history",
   );
 });
 

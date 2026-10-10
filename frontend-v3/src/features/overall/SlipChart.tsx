@@ -74,7 +74,12 @@ function SlipCard({
   const today = days[days.length - 1]?.day ?? "";
   const changes = scope.commitment.changes;
   if (!slipDrawable(changes, days)) {
-    const record = slipRecord(changes, scope.jira_release_date, scope.history.sample_days);
+    const record = slipRecord(
+      changes,
+      scope.jira_release_date,
+      scope.history.sample_days,
+      scope.history.needed_days,
+    );
     return (
       <VizCard>
         <div className="grid gap-1.5 rounded-2xl bg-grey-fill px-3.5 py-3 text-[13.5px] text-grey-body">

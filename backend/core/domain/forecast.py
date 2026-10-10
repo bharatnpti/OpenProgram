@@ -10,7 +10,8 @@ Two forecasts sit side by side, and their disagreement is a signal in itself:
 - **History**: how many requirements reached production on each recent working
   day, replayed many times over the work still open (a Monte Carlo run with a
   fixed seed, so the same day gives the same answer). It says by when the
-  work is 50% and 85% likely to be done.
+  work is 50% and 85% likely to be done, once it has the tenant's minimum of
+  working days to replay (ten unless an admin or the deployment sets another).
 - **The team**: the latest date the open requirements carry, each one's check-in
   ETA where someone gave one, else its Jira due date. Open requirements with
   neither are counted as unknown.
@@ -28,7 +29,16 @@ from enum import StrEnum
 from core.domain.delivery import DeliveryStage, RequirementsSnapshot
 from core.domain.errors import OpenProgramError
 
+#: Working days of history a forecast needs before it gives dates, unless the
+#: deployment (OPENPROGRAM_FORECAST_MIN_HISTORY_DAYS) or an admin sets another.
 MIN_SAMPLE_DAYS = 10
+#: The fewest an admin may ask for: with one or two days the 50% and 85% dates
+#: replay the same one or two days, so the range they draw says nothing.
+LOWEST_MIN_SAMPLE_DAYS = 3
+#: The most: about three months, whose window still fits the 90 days a read replays.
+HIGHEST_MIN_SAMPLE_DAYS = 60
+#: The shortest window the samples are read from, in calendar days. It grows
+#: with the minimum (history_window_days), so the window can always hold it.
 HISTORY_DAYS = 30
 SIMULATION_RUNS = 2000
 HORIZON_WORKING_DAYS = 520
@@ -57,6 +67,10 @@ class Verdict(StrEnum):
 
 class CommitmentError(OpenProgramError):
     """A delivery date or release that cannot be saved."""
+
+
+class ForecastSettingsError(OpenProgramError):
+    """A forecast setting that cannot be saved."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -171,6 +185,18 @@ def fix_version_dates(value: object) -> dict[str, date]:
 
 
 @dataclass(frozen=True, kw_only=True)
+class ForecastSettings:
+    """What a tenant's admin set for its forecasts."""
+
+    tenant_id: str
+    #: Working days of history before a forecast gives dates; None follows the
+    #: deployment's default (OPENPROGRAM_FORECAST_MIN_HISTORY_DAYS).
+    min_sample_days: int | None
+    updated_at: datetime
+    updated_by: str
+
+
+@dataclass(frozen=True, kw_only=True)
 class HistoryForecast:
     p50: date | None
     p85: date | None
@@ -181,6 +207,8 @@ class HistoryForecast:
     completed_in_sample: float
     #: Why there is no forecast, when there is none.
     reason: str | None = None
+    #: The working days of history the forecast needs before it gives dates.
+    needed_days: int = MIN_SAMPLE_DAYS
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -261,8 +289,12 @@ def history_forecast(
     seed: str,
     unit: str = "requirements",
     runs: int = SIMULATION_RUNS,
+    min_sample_days: int = MIN_SAMPLE_DAYS,
 ) -> HistoryForecast:
-    """When the open work is 50% and 85% likely to be done, replaying past days."""
+    """When the open work is 50% and 85% likely to be done, replaying past days.
+
+    Under ``min_sample_days`` samples there is no forecast, only the reason.
+    """
     completed = float(sum(samples))
     if remaining <= 0:
         return HistoryForecast(
@@ -272,8 +304,9 @@ def history_forecast(
             unit=unit,
             sample_days=len(samples),
             completed_in_sample=completed,
+            needed_days=min_sample_days,
         )
-    if len(samples) < MIN_SAMPLE_DAYS:
+    if len(samples) < min_sample_days:
         return HistoryForecast(
             p50=None,
             p85=None,
@@ -281,7 +314,8 @@ def history_forecast(
             unit=unit,
             sample_days=len(samples),
             completed_in_sample=completed,
-            reason=_short_history_reason(len(samples)),
+            reason=_short_history_reason(len(samples), min_sample_days),
+            needed_days=min_sample_days,
         )
     if completed <= 0:
         return HistoryForecast(
@@ -292,6 +326,7 @@ def history_forecast(
             sample_days=len(samples),
             completed_in_sample=0,
             reason=f"Nothing reached production in the last {len(samples)} working days.",
+            needed_days=min_sample_days,
         )
     rng = random.Random(seed)
     finishes: list[date] = []
@@ -312,6 +347,7 @@ def history_forecast(
         unit=unit,
         sample_days=len(samples),
         completed_in_sample=completed,
+        needed_days=min_sample_days,
     )
 
 
@@ -360,14 +396,48 @@ def validated_note(note: str) -> str:
     return clean
 
 
-def _short_history_reason(days: int) -> str:
+def validated_min_sample_days(days: int) -> int:
+    """The working days of history a forecast waits for, within what a forecast can use."""
+    if days < LOWEST_MIN_SAMPLE_DAYS:
+        raise ForecastSettingsError(
+            f"A forecast needs at least {LOWEST_MIN_SAMPLE_DAYS} working days of history: "
+            "with fewer, its 50% and 85% dates replay the same one or two days."
+        )
+    if days > HIGHEST_MIN_SAMPLE_DAYS:
+        raise ForecastSettingsError(
+            f"A forecast can wait for at most {HIGHEST_MIN_SAMPLE_DAYS} working days of "
+            "history, about three months."
+        )
+    return days
+
+
+def history_window_days(min_sample_days: int) -> int:
+    """The calendar days a forecast reads its samples from: 30, or more when the minimum needs it.
+
+    A working day is a sample only when the working day before it has a snapshot
+    too, so the window must hold one working day more than the minimum, wherever
+    the weekends fall. Any ``window`` days in a row do, so a forecast (which reads
+    the window before its day, and the day) and a timeline of ``window`` days up
+    to its day can both reach the minimum. Ten keeps the window at 30 days.
+    """
+    window = HISTORY_DAYS
+    while _fewest_working_days(window) < min_sample_days + 1:
+        window += 1
+    return window
+
+
+def _fewest_working_days(days: int) -> int:
+    """The fewest working days any ``days`` calendar days in a row hold: a run from a Saturday."""
+    weeks, rest = divmod(days, 7)
+    return weeks * 5 + max(0, rest - 2)
+
+
+def _short_history_reason(days: int, needed: int) -> str:
     """Why history cannot forecast yet, worded for no days and for one."""
     if days == 0:
-        return (
-            f"No history yet: a forecast needs {MIN_SAMPLE_DAYS} working days of daily snapshots."
-        )
+        return f"No history yet: a forecast needs {needed} working days of daily snapshots."
     unit = "working day" if days == 1 else "working days"
-    return f"Only {days} {unit} of history; a forecast needs {MIN_SAMPLE_DAYS}."
+    return f"Only {days} {unit} of history; a forecast needs {needed}."
 
 
 def _previous_working_day(day: date) -> date:

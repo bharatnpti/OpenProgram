@@ -6,9 +6,15 @@
 // still decides; a 403 that comes back anyway shows the server's reason.
 //
 // Type imports only, so `node --test` runs it as written.
+import type { OwnLinks } from "../features/delivery/ownTree";
 import type { AppRole } from "./roleWords";
 
-/** The backend's read capabilities for the roles the API is told (core/application/authorization.py). */
+/**
+ * The backend's read capabilities for the roles the API is told
+ * (core/application/authorization.py), on every node. A scrum master's own
+ * projects and a developer's own pod are read beyond these, node by node
+ * (core/application/delivery_scope.py): `GET /me/delivery-tree` says which.
+ */
 export type Capabilities = {
   /** `READ_PROJECT_PROGRESS`: product owner, manager, executive, admin. */
   canReadProjectProgress: boolean;
@@ -43,6 +49,13 @@ export type SignalsView = "risks" | "flow";
 export type BriefKind = "exec" | "weekly_project" | "daily_pod";
 /** Whose work a list opens on: the viewer's pods, the projects of their pods, or everything. */
 export type Scope = "pods" | "projects" | "all";
+/**
+ * What Delivery lists: every program, project, workstream and pod (`all`), or
+ * the person's own part of the tree (`own`, from `GET /me/delivery-tree`): the
+ * projects of their pods and the projects they own, each with all its pods,
+ * the program only as their heading.
+ */
+export type DeliveryScope = "all" | "own";
 
 export type Access = {
   /** The tabs the role is offered. */
@@ -53,8 +66,12 @@ export type Access = {
    * admin). Not a developer.
    */
   assistant: boolean;
-  /** What Delivery's navigator lists, and so where Delivery links may point. */
+  /**
+   * The kinds Delivery's navigator lists, and so where Delivery links may point.
+   * Under the `own` scope a listed pod may still be a name only: the tree says.
+   */
   delivery: Record<NodeKind, boolean>;
+  deliveryScope: DeliveryScope;
   signals: { views: SignalsView[]; defaultView: SignalsView; flowScope: Scope };
   coordination: {
     /** The requests board: everyone who may act on some card (not an executive). */
@@ -96,9 +113,8 @@ export function accessOf({ lens, chatEnabled }: Lens): Access {
   return {
     pages: {
       today: true,
-      // Every Delivery panel but the pod's is closed to a scrum master or product owner,
-      // and what is left repeats their Today; a developer has none of it.
-      delivery: portfolio,
+      // Everyone: the portfolio's readers walk all of it, everyone else their own part.
+      delivery: true,
       signals: can.canReadAggregate,
       coordination: can.canReadAggregate,
       reports: true,
@@ -106,13 +122,18 @@ export function accessOf({ lens, chatEnabled }: Lens): Access {
       admin: can.canManageConfig,
     },
     assistant: can.canReadAggregate,
-    delivery: {
-      program: portfolio,
-      project: portfolio,
-      workstream: portfolio,
-      // An executive's pod panel would be closed apart from its date, which Overall shows.
-      pod: portfolio && can.canReadPodDetail,
-    },
+    delivery: portfolio
+      ? {
+          program: true,
+          project: true,
+          workstream: true,
+          // An executive's pod panel would be closed apart from its date, which Overall shows.
+          pod: can.canReadPodDetail,
+        }
+      : // Their projects and those projects' pods; the program is only a heading, and
+        // workstreams are optional, so the pods carry the work.
+        { program: false, project: true, workstream: false, pod: true },
+    deliveryScope: portfolio ? "all" : "own",
     signals: {
       views: portfolio ? ["risks", "flow"] : can.canReadAggregate ? ["flow"] : [],
       defaultView: portfolio ? "risks" : "flow",
@@ -163,6 +184,8 @@ export const PAGE_LABELS: Record<Page, string> = {
 export type DirectoryLinks = {
   podProjects: (podId: string) => string[];
   workstreamProjects: (workstreamId: string) => string[];
+  /** The person's own part of the tree, for a Delivery that lists only it (`own`). */
+  own?: OwnLinks | null;
 };
 
 export type Redirect = {
@@ -234,28 +257,59 @@ function deliveryRedirect(
   const [, , kind, rawId] = pathname.split("/");
   const id = rawId ? decodeURIComponent(rawId) : "";
   const known = kind === "program" || kind === "project" || kind === "workstream" || kind === "pod";
-  if (access.pages.delivery) {
-    if (!known || !id || access.delivery[kind]) return null;
-    // Delivery is offered, but not this kind (an executive and a pod): its project instead.
-    const project =
-      kind === "pod" ? directory.podProjects(id)[0] : directory.workstreamProjects(id)[0];
-    return go(project ? `/delivery/project/${encodeURIComponent(project)}` : "/delivery");
+  if (!access.pages.delivery) return go("/today", "delivery");
+  if (access.deliveryScope === "own") {
+    // The guard reads the person's tree before it asks; without it, the page decides.
+    if (!known || !id || !directory.own) return null;
+    return ownRedirect(kind, id, can, directory, directory.own, go);
   }
+  if (!known || !id || access.delivery[kind]) return null;
+  // Delivery is offered, but not this kind (an executive and a pod): its project instead.
+  const project =
+    kind === "pod" ? directory.podProjects(id)[0] : directory.workstreamProjects(id)[0];
+  return go(project ? `/delivery/project/${encodeURIComponent(project)}` : "/delivery");
+}
+
+/**
+ * A Delivery link for a person whose Delivery lists their own part of the tree.
+ * Inside it, the page; a pod listed by name only, its project; a program, their
+ * Delivery; a workstream, its project when that is theirs. Outside it, the
+ * closest page the role has elsewhere: a scrum master's Today on the pod, a
+ * product owner's Today on the project, a project's reports, else their
+ * Delivery. Never plain Today with a note: the role has Delivery.
+ */
+function ownRedirect(
+  kind: NodeKind,
+  id: string,
+  can: Capabilities,
+  directory: DirectoryLinks,
+  own: OwnLinks,
+  go: (to: string, missing?: Page | null) => Redirect,
+): Redirect | null {
   const enc = encodeURIComponent;
-  if (kind === "pod" && id) {
-    if (can.canReadPodDetail) return go(`/today?pod=${enc(id)}`);
-    const project = directory.podProjects(id)[0];
-    if (can.canReadProjectProgress && project) return go(`/today?project=${enc(project)}`);
-  }
-  if (kind === "project" && id) {
+  const ownProject = (ids: string[]) => ids.find((projectId) => own.projects.includes(projectId));
+  if (kind === "project") {
+    if (own.projects.includes(id)) return null;
     if (can.canReadProjectProgress) return go(`/today?project=${enc(id)}`);
     return go(`/reports/${enc(id)}/${can.canReadAggregate ? "overall" : "daily"}`);
   }
-  if (kind === "workstream" && id && can.canReadProjectProgress) {
-    const project = directory.workstreamProjects(id)[0];
-    if (project) return go(`/today?project=${enc(project)}`);
+  if (kind === "pod") {
+    const pod = own.pod(id);
+    if (pod?.opens) return null;
+    const project = pod ? ownProject(pod.projectIds) : undefined;
+    if (project) return go(`/delivery/project/${enc(project)}`);
+    if (can.canReadPodDetail) return go(`/today?pod=${enc(id)}`);
+    const theirs = directory.podProjects(id)[0];
+    if (can.canReadProjectProgress && theirs) return go(`/today?project=${enc(theirs)}`);
+    return go("/delivery");
   }
-  return go("/today", "delivery");
+  if (kind === "workstream") {
+    const projects = directory.workstreamProjects(id);
+    const project = ownProject(projects);
+    if (project) return go(`/delivery/project/${enc(project)}`);
+    if (can.canReadProjectProgress && projects[0]) return go(`/today?project=${enc(projects[0])}`);
+  }
+  return go("/delivery");
 }
 
 /** `to` with the viewing day kept, before any `#`. */
@@ -297,9 +351,9 @@ export function roleOfferingPage(
 
 /**
  * Where a palette row of each kind goes for this role, or null when the role
- * gets no such rows. Roles with Delivery open its panels; the others open the
- * same thing where they have it: a scrum master's pods (and the people in them)
- * on Today, a product owner's projects on Today, a developer's projects in Reports.
+ * gets no such rows: the Delivery panel of each kind its Delivery lists. Under
+ * the `own` scope the palette lists only the person's part of the tree, and of
+ * it only what opens (features/delivery/ownTree.ts).
  */
 export type PaletteTargets = {
   program: ((id: string) => string) | null;
@@ -310,29 +364,16 @@ export type PaletteTargets = {
   person: ((podId: string) => string) | null;
 };
 
-export function paletteTargets(access: Access, can: Capabilities): PaletteTargets {
-  const enc = encodeURIComponent;
+export function paletteTargets(access: Access): PaletteTargets {
   const delivery = (kind: NodeKind) =>
-    access.delivery[kind] ? (id: string) => `/delivery/${kind}/${enc(id)}` : null;
-  if (access.pages.delivery) {
-    const pod = delivery("pod");
-    return {
-      program: delivery("program"),
-      project: delivery("project"),
-      workstream: delivery("workstream"),
-      pod,
-      person: pod,
-    };
-  }
-  const pod = can.canReadPodDetail ? (id: string) => `/today?pod=${enc(id)}` : null;
+    access.pages.delivery && access.delivery[kind]
+      ? (id: string) => `/delivery/${kind}/${encodeURIComponent(id)}`
+      : null;
+  const pod = delivery("pod");
   return {
-    program: null,
-    project: can.canReadProjectProgress
-      ? (id) => `/today?project=${enc(id)}`
-      : can.canReadAggregate
-        ? null
-        : (id) => `/reports/${enc(id)}/daily`,
-    workstream: null,
+    program: delivery("program"),
+    project: delivery("project"),
+    workstream: delivery("workstream"),
     pod,
     person: pod,
   };

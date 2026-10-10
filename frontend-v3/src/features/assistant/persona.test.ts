@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { accessOf, capabilitiesFor, paletteTargets } from "../../app/access.ts";
+import { accessOf, paletteTargets } from "../../app/access.ts";
 import type { AppRole } from "../../app/roleWords.ts";
 import {
   ANSWER_NOTE,
@@ -17,8 +17,7 @@ import {
   type AskPlace,
 } from "./persona.ts";
 
-const targetsOf = (role: AppRole) =>
-  paletteTargets(accessOf({ lens: [role], chatEnabled: false }), capabilitiesFor([role]));
+const targetsOf = (role: AppRole) => paletteTargets(accessOf({ lens: [role], chatEnabled: false }));
 const at = (place: Partial<AskPlace>): AskPlace => ({
   page: "today",
   view: null,
@@ -133,8 +132,10 @@ test("a source links where the role has its page, and is plain words elsewhere",
   const pod = { id: "pod payments", kind: "pod" as const, label: "Payments Pod" };
   const task = { id: "CHK-101", kind: "task" as const, label: "Card form" };
   assert.equal(sourceLink(project, targetsOf("mgr")), "/delivery/project/project-checkout");
-  assert.equal(sourceLink(pod, targetsOf("sm")), "/today?pod=pod%20payments");
-  assert.equal(sourceLink(project, targetsOf("po")), "/today?project=project-checkout");
+  // A scrum master's or product owner's Delivery opens it; one outside their part of the
+  // tree is sent on from there (access.ts ownRedirect).
+  assert.equal(sourceLink(pod, targetsOf("sm")), "/delivery/pod/pod%20payments");
+  assert.equal(sourceLink(project, targetsOf("po")), "/delivery/project/project-checkout");
   assert.equal(sourceLink(pod, targetsOf("exec")), null, "an executive's Delivery lists no pods");
   assert.equal(sourceLink(task, targetsOf("mgr")), null, "a task has no page of its own");
   assert.deepEqual(sourceWords(task), { label: "Card form", kind: "task" });

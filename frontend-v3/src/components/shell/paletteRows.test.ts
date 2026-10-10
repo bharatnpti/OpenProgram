@@ -2,20 +2,26 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { DirectoryItemResponse } from "../../api/schema";
-import { accessOf, capabilitiesFor, paletteTargets } from "../../app/access.ts";
+import { accessOf, paletteTargets } from "../../app/access.ts";
 import type { AppRole } from "../../app/roleWords.ts";
+import {
+  developerTree,
+  productOwnerTree,
+  scrumMasterTree,
+} from "../../features/delivery/ownTree.fixture.ts";
+import { fullPodIds } from "../../features/delivery/ownTree.ts";
 import {
   askRow,
   directoryRows,
   matchRows,
   noPodNote,
+  ownRows,
   paletteMark,
   peopleRows,
   screenRows,
 } from "./paletteRows.ts";
 
-const targetsOf = (role: AppRole) =>
-  paletteTargets(accessOf({ lens: [role], chatEnabled: false }), capabilitiesFor([role]));
+const targetsOf = (role: AppRole) => paletteTargets(accessOf({ lens: [role], chatEnabled: false }));
 const manager = targetsOf("mgr");
 
 const item = (
@@ -219,28 +225,62 @@ test("an executive gets programs, projects and workstreams in Delivery, and no p
   ]);
 });
 
-test("a scrum master's pods and people open the pod on Today", () => {
-  assert.deepEqual(rowsFor("sm"), [
-    ["pod", "Storefront Pod", "/today?pod=pod-storefront"],
-    ["pod", "Payments Pod", "/today?pod=pod-payments"],
-    ["person", "Asha Rao", "/today?pod=pod-payments"],
-    ["person", "Kai Thompson", "/today?pod=pod-payments"],
+/** A person's own part (the `own` scope): what their Delivery lists and opens, as the palette does. */
+const ownFor = (role: AppRole, tree: typeof developerTree) => {
+  const full = fullPodIds(tree);
+  return [
+    ...ownRows(tree, targetsOf(role)),
+    ...peopleRows(
+      crew,
+      directory.pods.filter((pod) => full.has(pod.id)),
+      targetsOf(role).person,
+    ),
+  ].map((row) => [row.kind, row.label, row.to, paletteMark(row)]);
+};
+const status = (tone: string, words: string) => ({ kind: "status", tone, words });
+
+test("a developer's palette lists their project and own pod; a neighbour's pod opens nothing", () => {
+  assert.deepEqual(ownFor("dev", developerTree), [
+    // No colour for the project, as the navigator draws none: not a grey "unknown".
+    ["project", "Checkout Revamp", "/delivery/project/project-checkout", { kind: "plain" }],
+    ["pod", "Payments Pod", "/delivery/pod/pod-payments", status("danger", "Off track")],
+    // Their pod's people, whose check-ins are on that pod's panel.
+    ["person", "Asha Rao", "/delivery/pod/pod-payments", { kind: "person" }],
+    ["person", "Kai Thompson", "/delivery/pod/pod-payments", { kind: "person" }],
   ]);
-  // Found by another of their pods, a person opens that pod there too.
-  const found = matchRows(peopleRows(crew, directory.pods, targetsOf("sm").person), "storefront");
-  assert.deepEqual(
-    found.map((row) => [row.label, row.to]),
-    [["Asha Rao", "/today?pod=pod-storefront"]],
-  );
 });
 
-test("a product owner's projects open on Today; a developer's in Reports; neither gets people", () => {
-  assert.deepEqual(rowsFor("po"), [
-    ["project", "Checkout Revamp", "/today?project=project-checkout"],
+test("a scrum master's palette lists their projects and every pod; people only in pods they run", () => {
+  assert.deepEqual(ownFor("sm", scrumMasterTree), [
+    [
+      "project",
+      "Checkout Revamp",
+      "/delivery/project/project-checkout",
+      status("danger", "Off track"),
+    ],
+    [
+      "project",
+      "Identity Platform",
+      "/delivery/project/project-identity",
+      status("warning", "At risk"),
+    ],
+    ["pod", "Payments Pod", "/delivery/pod/pod-payments", status("danger", "Off track")],
+    ["pod", "Storefront Pod", "/delivery/pod/pod-storefront", status("success", "On track")],
+    ["pod", "Identity Pod", "/delivery/pod/pod-identity", status("warning", "At risk")],
+    ["person", "Asha Rao", "/delivery/pod/pod-payments", { kind: "person" }],
+    ["person", "Kai Thompson", "/delivery/pod/pod-payments", { kind: "person" }],
   ]);
-  assert.deepEqual(rowsFor("dev"), [
-    ["project", "Checkout Revamp", "/reports/project-checkout/daily"],
-  ]);
+});
+
+test("a product owner's palette lists their project and its pods, and no people", () => {
+  assert.deepEqual(
+    ownFor("po", productOwnerTree).map(([kind, label]) => [kind, label]),
+    [
+      ["project", "Checkout Revamp"],
+      ["pod", "Payments Pod"],
+      ["pod", "Storefront Pod"],
+    ],
+  );
 });
 
 test("the assistant's row: its name with no query, and a query becomes the question to send", () => {

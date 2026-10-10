@@ -13,6 +13,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from core.domain.auth import Role
 from core.domain.escalation import EscalationPolicy, default_escalation_policy
+from core.domain.forecast import (
+    MIN_SAMPLE_DAYS,
+    ForecastSettingsError,
+    validated_min_sample_days,
+)
 from core.domain.status import CheckInDefaults, CheckInSendSchedule, checkin_send_schedule
 
 # The Fernet key committed to `.env.example`/`docker-compose.yml` for local bring-up.
@@ -107,6 +112,9 @@ class Settings(BaseSettings):
     # System gate fallback default for issue-tracker write-back (OFF by default).
     # A persisted per-tenant override (admin-controlled) wins when present.
     jira_writeback_enabled: bool = False
+    # Working days of history the delivery forecast needs before it gives its
+    # 50% and 85% dates (3 to 60). An admin's per-tenant setting wins when saved.
+    forecast_min_history_days: int = MIN_SAMPLE_DAYS
     directory_provider: str = "slack"
     chat_simulator_enabled: bool = False
     # Master switch for the local demo affordances -- today just persona
@@ -543,6 +551,14 @@ class Settings(BaseSettings):
         if len(value) != 44:
             raise ValueError("secret_key must be a 44-character Fernet key")
         return value
+
+    @field_validator("forecast_min_history_days")
+    @classmethod
+    def validate_forecast_min_history_days(cls, value: int) -> int:
+        try:
+            return validated_min_sample_days(value)
+        except ForecastSettingsError as exc:
+            raise ValueError(f"forecast_min_history_days: {exc}") from exc
 
     @field_validator("embedding_dimension")
     @classmethod

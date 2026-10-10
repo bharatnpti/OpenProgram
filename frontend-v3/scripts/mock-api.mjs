@@ -28,6 +28,8 @@ import * as assistantMock from "./mock/assistant.mjs";
 import * as datesMock from "./mock/dates.mjs";
 import * as vizDaily from "./mock/viz-daily.mjs";
 import * as vizOverall from "./mock/viz-overall.mjs";
+import * as forecastSettings from "./mock/forecast-settings.mjs";
+import * as scopedDelivery from "./mock/scoped-delivery.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
@@ -219,6 +221,8 @@ function api(req, res, url) {
   const p = url.pathname;
   // The admin-config mock answers first. It owns /config/branding, every /config/escalation
   // read and write (Overall's included), the sync status and the directory sync.
+  if (forecastSettings.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny))
+    return;
   if (adminConfig.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
   if (vizDaily.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
   if (p === "/api/v1/auth/status")
@@ -245,6 +249,8 @@ function api(req, res, url) {
   if (p === "/projects/project-checkout/risks")
     return can.aggregate(roles) ? send(200, risks) : deny();
   const userId = req.headers["x-openprogram-dev-user"] ?? "U1001";
+  // Before the lane mocks: it answers scoped reads they refuse (a person's own part of the tree).
+  if (scopedDelivery.api(req, url, roles, userId, send, deny)) return;
   // The shell mock goes first: of the reads the lane mocks share, it answers
   // only past-day ones (as_of), which the today mock would answer as today.
   if (vizOverall.api(req, url, roles, userId, send, deny)) return;

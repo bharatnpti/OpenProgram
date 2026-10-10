@@ -20,6 +20,7 @@ from core.application.config_service import (
     UnmappedMember,
 )
 from core.application.connection_service import ConnectionTestView, ConnectionView
+from core.application.delivery_scope import DeliveryTreeNodeView, DeliveryTreeView, NodeAccess
 from core.application.delivery_service import (
     DeliverySettingsView,
     ObservedStatus,
@@ -34,6 +35,7 @@ from core.application.flow_metrics_service import (
 )
 from core.application.forecast_service import (
     ForecastHistoryView,
+    ForecastSettingsView,
     ProjectDeliveryView,
     ScopeDeliveryView,
 )
@@ -98,6 +100,8 @@ from core.domain.escalation_matrix import (
     NeedType,
 )
 from core.domain.forecast import (
+    HIGHEST_MIN_SAMPLE_DAYS,
+    LOWEST_MIN_SAMPLE_DAYS,
     Commitment,
     CommitmentScopeKind,
     Release,
@@ -542,6 +546,61 @@ class DirectoryPersonResponse(BaseModel):
     @classmethod
     def from_view(cls, view: DirectoryPersonView) -> DirectoryPersonResponse:
         return cls(key=view.key, id=view.id, member_id=view.member_id, name=view.name)
+
+
+class DeliveryTreeNodeResponse(BaseModel):
+    """One program, project or pod of the caller's own part of the delivery tree."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    kind: NodeKind
+    name: str
+    rag: Rag | None = Field(
+        description="The node's colour, only where the caller reads it; null for a name only."
+    )
+    access: NodeAccess = Field(
+        description=(
+            "What its Delivery panel shows the caller: 'panel' all of it, 'dates' a pod's "
+            "dates and colour, 'name' its name and nothing to open."
+        )
+    )
+    own: bool = Field(description="A pod the caller belongs to or runs.")
+    parent_ids: list[str] = Field(
+        description="A project's programs; a pod's projects among those listed."
+    )
+
+    @classmethod
+    def from_view(cls, view: DeliveryTreeNodeView) -> DeliveryTreeNodeResponse:
+        return cls(
+            id=view.id,
+            kind=view.kind,
+            name=view.name,
+            rag=view.rag,
+            access=view.access,
+            own=view.own,
+            parent_ids=list(view.parent_ids),
+        )
+
+
+class DeliveryTreeResponse(BaseModel):
+    """The caller's own part of the delivery tree, for their Delivery and palette."""
+
+    model_config = ConfigDict(frozen=True)
+
+    as_of: date
+    programs: list[DeliveryTreeNodeResponse]
+    projects: list[DeliveryTreeNodeResponse]
+    pods: list[DeliveryTreeNodeResponse]
+
+    @classmethod
+    def from_view(cls, view: DeliveryTreeView) -> DeliveryTreeResponse:
+        return cls(
+            as_of=view.as_of,
+            programs=[DeliveryTreeNodeResponse.from_view(item) for item in view.programs],
+            projects=[DeliveryTreeNodeResponse.from_view(item) for item in view.projects],
+            pods=[DeliveryTreeNodeResponse.from_view(item) for item in view.pods],
+        )
 
 
 class DirectoryItemResponse(BaseModel):
@@ -3347,6 +3406,48 @@ class DeliveryStagesUpdateRequest(BaseModel):
     requirement_types: list[str] = Field(default_factory=list)
 
 
+class ForecastSettingsResponse(BaseModel):
+    """How many working days of history the tenant's delivery forecasts need."""
+
+    model_config = ConfigDict(frozen=True)
+
+    min_history_days: int = Field(
+        description="Working days of history before a forecast gives its 50% and 85% dates."
+    )
+    default_min_history_days: int = Field(
+        description="The deployment's default, used while the tenant has set none."
+    )
+    is_default: bool
+    lowest: int = Field(description="The fewest working days that may be set.")
+    highest: int = Field(description="The most working days that may be set.")
+    window_days: int = Field(
+        description="The calendar days of snapshots a forecast reads, which follow the minimum."
+    )
+    updated_at: datetime | None
+    updated_by: str | None
+
+    @classmethod
+    def from_view(cls, view: ForecastSettingsView) -> ForecastSettingsResponse:
+        return cls(
+            min_history_days=view.min_sample_days,
+            default_min_history_days=view.default_min_sample_days,
+            is_default=view.is_default,
+            lowest=LOWEST_MIN_SAMPLE_DAYS,
+            highest=HIGHEST_MIN_SAMPLE_DAYS,
+            window_days=view.window_days,
+            updated_at=view.updated_at,
+            updated_by=view.updated_by,
+        )
+
+
+class ForecastSettingsUpdateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    min_history_days: int | None = Field(
+        description="Working days of history before a forecast gives dates; null uses the default."
+    )
+
+
 class ObservedStatusResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -3443,9 +3544,18 @@ class RequirementsResponse(BaseModel):
     unmapped_statuses: list[str]
     excluded: int
     requirements: list[RequirementResponse]
+    timeline_days: int = Field(description="The calendar days the timeline covers, up to as_of.")
+    forecast_needed_days: int = Field(
+        description=(
+            "Working days of history the tenant's forecast needs; the flow of stages draws "
+            "once the timeline holds as many."
+        )
+    )
 
     @classmethod
-    def from_view(cls, view: RequirementsView) -> RequirementsResponse:
+    def from_view(
+        cls, view: RequirementsView, *, timeline_days: int, forecast_needed_days: int
+    ) -> RequirementsResponse:
         return cls(
             project_id=view.project_id,
             project_name=view.project_name,
@@ -3505,6 +3615,8 @@ class RequirementsResponse(BaseModel):
                 )
                 for item in view.requirements
             ],
+            timeline_days=timeline_days,
+            forecast_needed_days=forecast_needed_days,
         )
 
 
@@ -4234,6 +4346,9 @@ class HistoryForecastResponse(BaseModel):
     sample_days: int
     completed_in_sample: float
     reason: str | None
+    needed_days: int = Field(
+        description="Working days of history the forecast needs before it gives dates."
+    )
 
 
 class TeamForecastResponse(BaseModel):
@@ -4286,6 +4401,7 @@ class ScopeDeliveryResponse(BaseModel):
                 sample_days=history.sample_days,
                 completed_in_sample=history.completed_in_sample,
                 reason=history.reason,
+                needed_days=history.needed_days,
             ),
             team=TeamForecastResponse(
                 latest=team.latest,
@@ -4337,6 +4453,9 @@ class ForecastHistoryResponse(BaseModel):
     release_id: str | None
     scope_kind: CommitmentScopeKind
     days: list[ForecastDayResponse]
+    needed_days: int = Field(
+        description="Working days of history each day's forecast needed before it gave dates."
+    )
 
     @classmethod
     def from_view(cls, view: ForecastHistoryView) -> ForecastHistoryResponse:
@@ -4344,6 +4463,7 @@ class ForecastHistoryResponse(BaseModel):
             project_id=view.scope.project_id,
             release_id=view.scope.id if view.scope.kind is CommitmentScopeKind.RELEASE else None,
             scope_kind=view.scope.kind,
+            needed_days=view.needed_days,
             days=[
                 ForecastDayResponse(
                     day=item.day, p50=item.p50, p85=item.p85, sample_days=item.sample_days

@@ -15,6 +15,7 @@ from core.application.connection_service import ConnectionService
 from core.application.cross_person_service import CrossPersonRequestService
 from core.application.day_report_service import DayReportService
 from core.application.dead_letter_service import DeadLetterService
+from core.application.delivery_scope import DeliveryScopeService
 from core.application.delivery_service import DeliveryService
 from core.application.directory_sync_service import DirectorySyncService
 from core.application.escalation_matrix_service import EscalationMatrixService
@@ -253,6 +254,15 @@ def get_directory_service(request: Request) -> DirectoryService:
         graph_repository=registry.graph_repository(),
         rollup_repository=registry.rollup_repository(),
         identity_link_repository=registry.identity_link_repository(),
+    )
+
+
+def get_delivery_scope_service(request: Request) -> DeliveryScopeService:
+    """A person's own part of the delivery tree, and the reads scoped to it."""
+    registry = get_registry(request)
+    return DeliveryScopeService(
+        graph_repository=registry.graph_repository(),
+        rollup_repository=registry.rollup_repository(),
     )
 
 

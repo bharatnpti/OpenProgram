@@ -16,25 +16,38 @@ import { DateHistory } from "./DateHistory";
 
 /*
  * The DateStrip wherever a project or pod is shown, each reading its own
- * delivery: `/projects/{id}/delivery` (product owner, manager, executive, admin)
- * under the key Overall uses, and `/pods/{id}/delivery` (also a scrum master for
- * their own pods). A role that reads neither is never offered a strip.
+ * delivery: `/projects/{id}/delivery` (product owner, manager, executive, admin,
+ * and a scrum master for the projects of their pods) under the key Overall
+ * uses, and `/pods/{id}/delivery` (also a scrum master, and a developer for
+ * their own pod). A role that reads neither is never offered a strip. Where a
+ * read is the person's by their part of the delivery tree rather than by role,
+ * the caller says so with `readable`.
  */
 
 type Editing = { scope: ScopeDeliveryResponse; title: string } | null;
 
 /** A project's own read, shared with Overall's forecast (the same query). */
-const useProjectDelivery = (projectId: string) => useDelivery(projectId).query;
+const useProjectDelivery = (projectId: string, readable?: boolean) =>
+  useDelivery(projectId, readable).query;
 
 /**
  * The project's strip, with Change date (or Set date) for whoever commits it:
  * a product owner, manager or admin. On a past day the button is off, with why.
  */
-export function ProjectDateStrip({ projectId, title }: { projectId: string; title?: string }) {
+export function ProjectDateStrip({
+  projectId,
+  title,
+  readable,
+}: {
+  projectId: string;
+  title?: string;
+  /** This project's dates are the reader's to read, whatever the role reads elsewhere. */
+  readable?: boolean;
+}) {
   const access = useReportAccess();
-  const delivery = useProjectDelivery(projectId);
+  const delivery = useProjectDelivery(projectId, readable);
   const [editing, setEditing] = useState<Editing>(null);
-  if (!access.readProjectProgress) return null;
+  if (!(readable ?? access.readProjectProgress)) return null;
   const scope = delivery.data?.project;
   const offNow = access.pastDay("setProjectDates");
 
@@ -104,19 +117,23 @@ export function ProjectCompactStrip({
 export function PodDateStrips({
   pod,
   projectId,
+  readable,
 }: {
   pod: DirectoryItemResponse;
   /** Only the pod's part of this project (Overall), titled by the pod alone. */
   projectId?: string;
+  /** This pod's dates are the reader's to read (a developer's own pod), whatever the role. */
+  readable?: boolean;
 }) {
   const { readPodDelivery, readOnly, reason } = useReportAccess();
+  const reads = readable ?? readPodDelivery;
   const delivery = useQuery({
     queryKey: ["pod-delivery", pod.id],
     queryFn: () => apiClient.podDelivery(pod.id),
-    enabled: readPodDelivery,
+    enabled: reads,
   });
   const [editing, setEditing] = useState<Editing>(null);
-  if (!readPodDelivery) return null;
+  if (!reads) return null;
   const data = delivery.data;
   const serverSays = data?.can_set_dates ?? false;
   const canSet = serverSays && !readOnly;

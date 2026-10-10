@@ -7,8 +7,6 @@ import type { ForecastDayResponse, ScopeDeliveryResponse } from "../../api/schem
 import { daysBetween, formatDay } from "../../lib/format.ts";
 import { thinAxisLabels, type AxisLabel } from "./charts.ts";
 
-/** Mirrors core/domain/forecast.py MIN_SAMPLE_DAYS: the working days a forecast needs. */
-export const FORECAST_NEEDS_DAYS = 10;
 /** The furthest back the chart reaches, whatever the date's own history holds. */
 const MAX_SPAN_DAYS = 90;
 
@@ -86,12 +84,15 @@ export function changeKeys(changes: Change[]): Phrase[] {
 
 /**
  * The one line O1 is before it can draw: the date in force and why, or that
- * none is committed, and when the chart will draw.
+ * none is committed, and when the chart will draw. `neededDays` is the working
+ * days of history the tenant's forecast needs, as the server says
+ * (`history.needed_days`).
  */
 export function slipRecord(
   changes: Change[],
   jiraDate: string | null,
   sampleDays: number,
+  neededDays: number,
 ): { line: Phrase; note: string } {
   const last = changes[changes.length - 1];
   const line: Phrase =
@@ -107,8 +108,8 @@ export function slipRecord(
   const has = `It has ${sampleDays}.`;
   const note =
     last && last.target_date
-      ? `The chart draws once the date moves or the forecast has ${FORECAST_NEEDS_DAYS} working days of history. ${has}`
-      : `The chart draws once a date is committed and moves, or the forecast has ${FORECAST_NEEDS_DAYS} working days of history. ${has}`;
+      ? `The chart draws once the date moves or the forecast has ${neededDays} working days of history. ${has}`
+      : `The chart draws once a date is committed and moves, or the forecast has ${neededDays} working days of history. ${has}`;
   return { line, note };
 }
 

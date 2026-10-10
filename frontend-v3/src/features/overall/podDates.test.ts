@@ -46,6 +46,7 @@ function pod(
       sample_days: 3,
       completed_in_sample: 0,
       reason: null,
+      needed_days: 10,
     },
     commitment: {
       target_date: over.target ?? null,
