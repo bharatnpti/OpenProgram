@@ -1,0 +1,100 @@
+backend/api/routers/ops.py
+  s_3101dec2ee3c53::t_72289afe934ce2 25,97-103
+frontend-v3/src/api/openapi.json
+  s_3101dec2ee3c53::t_af1270f0321105 4293,4727-4828,7958,7983,16402-16463,16502-16719,19616,19660-19703,21699-21704
+backend/infra/persistence/postgres_readiness.py
+  s_3101dec2ee3c53::t_41fb25d1f7bee2 81-86,93-95,98,105-111
+backend/api/routers/jira_writes.py
+  s_3101dec2ee3c53::t_e9ce53c139b6e5 1-15,17-70
+  s_3101dec2ee3c53::t_4bf3d2e73728e0 16
+backend/tests/unit/test_readiness_service.py
+  s_3101dec2ee3c53::t_3dfe455506e376 487-488,491,495
+frontend/src/api/openapi.json
+  s_3101dec2ee3c53::t_af1270f0321105 4293,4727-4828,7958,7983,16402-16463,16502-16719,19616,19660-19703,21699-21704
+backend/tests/unit/test_jira_writes_service.py
+  s_3101dec2ee3c53::t_8cbee5efcf37aa 1-70,73-76,78-79,85-98,100-108,110-117,119-141,143-147,149-157,159-162,164-180,182-221,223-230,233-234,237-245
+  s_3101dec2ee3c53::t_84a04ff1cd6aa0 99,118,142,158,181
+  s_3101dec2ee3c53::t_14ba728cfff264 109,148
+  s_3101dec2ee3c53::t_65af77072269d4 71-72,77,80-84,163,222,231-232,235-236
+frontend-v2/src/api/openapi.json
+  s_3101dec2ee3c53::t_af1270f0321105 4293,4727-4828,7958,7983,16402-16463,16502-16719,19616,19660-19703,21699-21704
+backend/tests/integration/test_jira_writes_repository.py
+  s_3101dec2ee3c53::t_c3212f1ec2cf6a 1-102
+docs/lld/release-readiness.md
+  s_3101dec2ee3c53::t_450a262558d77a 61-65,73-79
+  s_3101dec2ee3c53::t_0f65e3c1c42d78 80
+backend/core/application/writeback_service.py
+  s_3101dec2ee3c53::t_5b58cace88530c 4,69-71,145-148,190,202,206,210-215,227,242,283-285,310-313,315-316,323,335,361-364,492,690
+  s_3101dec2ee3c53::t_00badb1d924399 25,28,84-87,859-861,867-868
+  s_3101dec2ee3c53::t_f1cc0e6fb0835b 72
+backend/api/dependencies.py
+  s_3101dec2ee3c53::t_4bf3d2e73728e0 26,211-213
+  s_3101dec2ee3c53::t_14bf1bb06e34b5 214-215
+backend/infra/persistence/postgres_jira_writes.py
+  s_3101dec2ee3c53::t_249e3386ec6f3e 1-107,109-147
+  s_3101dec2ee3c53::t_57a09898477bbc 108
+backend/core/application/jira_writes_service.py
+  s_3101dec2ee3c53::t_e7099f0c88d4e4 1-107
+backend/infra/registry.py
+  s_3101dec2ee3c53::t_ee90e98121c837 29,93,149,178,279,549-573,585,1548
+backend/tests/unit/test_jira_writes_rules.py
+  s_3101dec2ee3c53::t_57eadccae1549c 1-13,15-40,42-213
+  s_3101dec2ee3c53::t_495675f31d6de0 14,41
+frontend-v3/src/api/generated.ts
+  s_3101dec2ee3c53::t_af1270f0321105 907-910,1021-1038,1800-1803,4592-4616,4628-4701,5873,5885-5909,6610-6615,10053-10118,11869
+features.md
+  s_3101dec2ee3c53::t_450a262558d77a 472,477-479,567
+backend/core/application/release_readiness_service.py
+  s_3101dec2ee3c53::t_bfafbb3a2ad466 12-15,46,154-163,342,356,377,379,385-402,406-410,412-428,940,946,949,986,999-1004,1222-1232,1433,1445,1755-1778,1820,1822-1826,1835,1849-1874,1876
+  s_3101dec2ee3c53::t_57a09898477bbc 27,1875
+  s_3101dec2ee3c53::t_def283096a20c0 1877-1878
+backend/core/domain/jira_writes.py
+  s_3101dec2ee3c53::t_dce720701eacdf 1-247,249-381
+  s_3101dec2ee3c53::t_57a09898477bbc 248
+frontend-v2/src/api/generated.ts
+  s_3101dec2ee3c53::t_af1270f0321105 907-910,1021-1038,1800-1803,4592-4616,4628-4701,5873,5885-5909,6610-6615,10053-10118,11869
+backend/tests/unit/test_jira_writes_api.py
+  s_3101dec2ee3c53::t_ae0e3454e76c1b 1-249
+backend/api/routers/config.py
+  s_3101dec2ee3c53::t_7b8f39f82a37bd 1134,1137-1139
+  s_3101dec2ee3c53::t_4bf3d2e73728e0 14,57,68,1132
+  s_3101dec2ee3c53::t_57a09898477bbc 1136
+backend/api/readiness_dtos.py
+  s_3101dec2ee3c53::t_6be1db9ec701a5 175-178,208-236,246
+backend/tests/unit/test_readiness_api.py
+  s_3101dec2ee3c53::t_35f8f72f92e831 151
+  s_3101dec2ee3c53::t_f9ce47a9a26460 278
+backend/api/jira_writes_dtos.py
+  s_3101dec2ee3c53::t_47355dfa40bb1b 1-86,88-186
+  s_3101dec2ee3c53::t_57a09898477bbc 87
+backend/api/main.py
+  s_3101dec2ee3c53::t_327990e793fa71 29,144
+backend/tests/unit/test_api.py
+  s_3101dec2ee3c53::t_901b17055306d3 2192-2194,2199-2202
+backend/core/ports/repositories.py
+  s_3101dec2ee3c53::t_59bbd0ec5a4021 26,559-577
+  s_3101dec2ee3c53::t_dec0f1f26fe923 578-579
+backend/api/routers/readiness.py
+  s_3101dec2ee3c53::t_6be1db9ec701a5 40,54,315,317,319-320,323-324
+frontend/src/api/generated.ts
+  s_3101dec2ee3c53::t_af1270f0321105 907-910,1021-1038,1800-1803,4605-4629,4641-4714,5886,5898-5922,6623-6628,10066-10131,11882
+backend/infra/persistence/in_memory_jira_writes.py
+  s_3101dec2ee3c53::t_57a09898477bbc 27
+  s_3101dec2ee3c53::t_2394399e2183d8 1-26,28-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c22202d277d1f92808558993fd3270bf9a5f2400",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
