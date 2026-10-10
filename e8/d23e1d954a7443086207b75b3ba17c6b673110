@@ -1,0 +1,19 @@
+backend/tests/unit/test_api.py
+  s_18967c72dd0f8e::t_2d7f27e4c4e1c4 816-826
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e8d23e1d954a7443086207b75b3ba17c6b673110",
+  "prompts": {},
+  "sessions": {
+    "s_18967c72dd0f8e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "34cec982-5079-4ec9-b88e-d98ca8ab5ff0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
