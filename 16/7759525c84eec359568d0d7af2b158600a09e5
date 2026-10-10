@@ -1,0 +1,47 @@
+frontend-v3/src/features/overall/readinessWords.ts
+  s_3101dec2ee3c53::t_f925dc504adfbe 246-250
+  s_3101dec2ee3c53::t_51465c922801fa 232
+backend/core/application/release_readiness_service.py
+  s_3101dec2ee3c53::t_70990a0e9c78b8 1158-1159
+  s_3101dec2ee3c53::t_f211320ed8d75c 1250
+  s_3101dec2ee3c53::t_fc63da575f0aff 1294-1297,1309-1317
+  s_3101dec2ee3c53::t_a1ea5bd416b1f3 1940-1943
+  s_a17a18ca8c509e::t_7bc1c89ba350cc 1318
+frontend-v3/src/features/admin/ReleaseReadinessTab.tsx
+  s_3101dec2ee3c53::t_ecd25ca2cf3aff 477-480
+  s_3101dec2ee3c53::t_1a043b48b13b63 472-473
+backend/tests/unit/test_readiness_service.py
+  s_3101dec2ee3c53::t_4a6bde76113e39 551-553
+frontend-v3/src/features/overall/ReadinessSection.tsx
+  s_3101dec2ee3c53::t_51465c922801fa 621
+  s_3101dec2ee3c53::t_1a043b48b13b63 20,208
+  s_3101dec2ee3c53::t_4e9c7616d032e0 217-224
+  s_3101dec2ee3c53::t_05eea2fd41a900 33
+  s_3101dec2ee3c53::t_53c1ba406984ef 414-416
+backend/core/domain/release_readiness.py
+  s_3101dec2ee3c53::t_081d5555d99b8c 823-824
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "167759525c84eec359568d0d7af2b158600a09e5",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_a17a18ca8c509e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5c08089-2933-44f3-a3c3-066d71fe7232",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
