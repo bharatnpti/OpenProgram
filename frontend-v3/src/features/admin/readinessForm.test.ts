@@ -93,13 +93,13 @@ test("the agent's settings are saved without the Jira writes create switch", () 
     issue_type: "Task",
     labels: [],
   };
-  const body = settingsBody(loaded, "release-readiness, psa, psa");
+  const body = settingsBody(loaded, "release-readiness, security-review, security-review");
 
   assert.deepEqual(body, {
     enabled: true,
     auto_suggest: false,
     issue_type: "Task",
-    labels: ["release-readiness", "psa"],
+    labels: ["release-readiness", "security-review"],
   });
   assert.equal("create_in_jira" in body, false);
 });
