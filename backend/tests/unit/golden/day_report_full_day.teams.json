@@ -86,19 +86,19 @@
           },
           {
             "spacing": "Small",
-            "text": "_Priya_\n- Answer: CHK-1: \"Is 3-D Secure in scope?\" (6 days; asked by Asha (partly answered)). Escalated to Mark (Manager).\n- Fix: CHK-3: Test environment is down (1 day; reported by Asha).",
+            "text": "_Priya_\n- Answer: CHK-1: \"Is 3-D Secure in scope?\" (waiting 6 days; asked by Asha (partly answered)). Escalated to Mark (Manager).\n- Fix: CHK-3: Test environment is down (waiting 1 day; reported by Asha).",
             "type": "TextBlock",
             "wrap": true
           },
           {
             "spacing": "Small",
-            "text": "_Asha_\n- Fix: Zoe waits on CHK-3 (2 days). Escalated to Priya (Scrum master).\n- Fix: CHK-1: no test case yet for engineering delivery (before business testing).",
+            "text": "_Asha_\n- Fix: Zoe waits on CHK-3 (waiting 2 days). Escalated to Priya (Scrum master).\n- Fix: CHK-1: no test case yet for engineering delivery (before business testing).",
             "type": "TextBlock",
             "wrap": true
           },
           {
             "spacing": "Small",
-            "text": "_Omar_\n- Fix: CHK-1: CHK-1 waits on Omar's API change in PLT-9 (5 days; reported by Asha, waits on Platform Pod (PLT-9)). Escalated to Lena (Scrum master).\n- Review: CHK-1: Asha asked for a review (2 days). Escalated to Lena (Scrum master).",
+            "text": "_Omar_\n- Fix: CHK-1: CHK-1 waits on Omar's API change in PLT-9 (waiting 5 days; reported by Asha, waits on Platform Pod (PLT-9)). Escalated to Lena (Scrum master).\n- Review: CHK-1: Asha asked for a review (waiting 2 days). Escalated to Lena (Scrum master).",
             "type": "TextBlock",
             "wrap": true
           },

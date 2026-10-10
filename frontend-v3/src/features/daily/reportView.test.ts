@@ -22,6 +22,20 @@ test("an ask line splits into its kind and its text", () => {
     kind: null,
     text: "Waited 9 days: escalated",
   });
+  // The wait says what it is, so it never reads as a second figure beside the text's own.
+  assert.deepEqual(
+    askParts(
+      "Fix: Pull request 'CHK-11 Cart price breakdown' in acme/storefront-web has been open for 7 days (waiting 4 days).",
+    ),
+    {
+      kind: "Fix",
+      text: "Pull request 'CHK-11 Cart price breakdown' in acme/storefront-web has been open for 7 days (waiting 4 days).",
+    },
+  );
+  assert.deepEqual(
+    askParts("Answer: CHK-1: “Is 3-D Secure in scope?” (waiting 6 days; asked by Asha)."),
+    { kind: "Answer", text: "CHK-1: “Is 3-D Secure in scope?” (waiting 6 days; asked by Asha)." },
+  );
 });
 
 test("the send confirmation names how many destinations receive it and where", () => {

@@ -140,10 +140,16 @@ class Ask:
     open_question: bool = False
 
     def line(self) -> str:
+        """'Fix: CHK-3: Test environment is down (waiting 1 day; reported by Asha).'
+
+        The wait says what it is: an ask's own text can carry another length of
+        time ("has been open for 7 days"), and a bare "(4 days)" beside it read
+        as a second, unexplained number. Every kind says it the same way.
+        """
         context = [
             part
             for part in (
-                age_words(self.waited_days) if self.waited_days is not None else "",
+                waited_words(self.waited_days) if self.waited_days is not None else "",
                 self.detail,
             )
             if part
@@ -596,6 +602,11 @@ def age_words(days: int | None) -> str:
     if not days:
         return "since today"
     return "1 day" if days == 1 else f"{days} days"
+
+
+def waited_words(days: int | None) -> str:
+    """How long an ask has waited on its owner: 'waiting 4 days', 'waiting since today'."""
+    return f"waiting {age_words(days)}"
 
 
 def plural(count: int, noun: str) -> str:

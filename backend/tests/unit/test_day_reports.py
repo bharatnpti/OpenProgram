@@ -409,15 +409,16 @@ async def test_what_we_need_names_each_owner_with_the_kind_and_escalation() -> N
     assert [group.heading for group in needs.groups] == ["Asha", "Omar", "Priya"]
     assert _groups(needs) == {
         "Asha": (
-            "Fix: Zoe waits on CHK-3 (2 days). Escalated to Priya (Scrum master).",
+            "Fix: Zoe waits on CHK-3 (waiting 2 days). Escalated to Priya (Scrum master).",
             "Fix: CHK-1: no test case yet for engineering delivery (before business testing).",
         ),
         "Omar": (
-            "Fix: CHK-1: CHK-1 waits on Omar's API change in PLT-9 (5 days; reported by Asha, "
-            "waits on Platform Pod (PLT-9)). Escalated to Lena (Scrum master).",
-            "Review: CHK-1: Asha asked for a review (2 days). Escalated to Lena (Scrum master).",
+            "Fix: CHK-1: CHK-1 waits on Omar's API change in PLT-9 (waiting 5 days; reported by "
+            "Asha, waits on Platform Pod (PLT-9)). Escalated to Lena (Scrum master).",
+            "Review: CHK-1: Asha asked for a review (waiting 2 days). "
+            "Escalated to Lena (Scrum master).",
         ),
-        "Priya": ("Fix: CHK-3: Test environment is down (1 day; reported by Asha).",),
+        "Priya": ("Fix: CHK-3: Test environment is down (waiting 1 day; reported by Asha).",),
     }
     # The request's own words never leave OpenProgram.
     assert "private words" not in render_text(report)
@@ -446,12 +447,13 @@ async def test_a_projects_own_matrix_decides_when_and_to_whom() -> None:
 
     lines = _groups(needs)
     assert (
-        lines["Asha"][0] == "Fix: Zoe waits on CHK-3 (2 days). Escalated to Omar (Delivery lead)."
+        lines["Asha"][0]
+        == "Fix: Zoe waits on CHK-3 (waiting 2 days). Escalated to Omar (Delivery lead)."
     )
     # Never escalated to the person it is already with, nor for a kind the level leaves out.
     assert not any("Escalated" in line for line in lines["Omar"])
     assert lines["Priya"] == (
-        "Fix: CHK-3: Test environment is down (1 day; reported by Asha). "
+        "Fix: CHK-3: Test environment is down (waiting 1 day; reported by Asha). "
         "Escalated to Omar (Delivery lead).",
     )
 
@@ -658,9 +660,12 @@ async def test_gate_sign_offs_and_questions_go_to_who_decides_and_who_was_asked(
     report = await _build(registry)
 
     priya = _groups(_section(report, "What we need, and from whom"))["Priya"]
-    assert "Decision: CHK-1: sign off 1 acceptance criterion (before production) (3 days)." in priya
     assert (
-        'Answer: CHK-1: "Is 3-D Secure in scope?" (6 days; asked by Asha). '
+        "Decision: CHK-1: sign off 1 acceptance criterion (before production) (waiting 3 days)."
+        in priya
+    )
+    assert (
+        'Answer: CHK-1: "Is 3-D Secure in scope?" (waiting 6 days; asked by Asha). '
         "Escalated to Mark (Manager)."
     ) in priya
     table = _section(report, "Open questions").table
