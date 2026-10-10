@@ -17,7 +17,7 @@ import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { Fold } from "../../components/viz/Fold";
 import { STAGE_LABELS } from "../../components/viz/stages";
-import { formatTime } from "../../lib/format";
+import { formatDay, formatTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { actionError } from "../reports/access";
 import { FormProblem, Locked, ReportDialog, field, fieldLabel } from "../reports/ReportDialog";
@@ -30,6 +30,7 @@ import {
   draftFacts,
   footerWords,
   linkTarget,
+  lowerFirst,
   reasonProblem,
   releaseLineWords,
   rowGroups,
@@ -204,13 +205,21 @@ function Board({
         </div>
       ) : null}
       <p className="text-[12px] text-grey-secondary">
-        {footerWords(data.agent, formatTime)}
+        {footerWords(data.agent, moment)}
         {held && !data.agent.stale
           ? " A gap read while the Jira sync was behind waits for fresh data before the day report says it."
           : ""}
       </p>
     </VizCard>
   );
+}
+
+/** "07:45" today, "Fri 2 Oct 16:30" on another day: when Jira was last read matters. */
+function moment(iso: string): string {
+  const day = new Date(iso);
+  return day.toDateString() === new Date().toDateString()
+    ? formatTime(iso)
+    : `${formatDay(iso)} ${formatTime(iso)}`;
 }
 
 const headCell =
@@ -402,7 +411,9 @@ function Details({
       <p className="text-grey-body">
         <b className="text-ink">What counts:</b> {finding.criterion.evidence}
       </p>
-      {finding.reason ? <p className="text-grey-body">{finding.reason}</p> : null}
+      {finding.reason && finding.state !== "not_applicable" ? (
+        <p className="text-grey-body">{finding.reason}</p>
+      ) : null}
       {finding.candidates.length > 0 ? (
         <ul className="grid gap-1">
           {finding.candidates.map((item) => (
@@ -607,7 +618,7 @@ function History({ findingId }: { findingId: string }) {
                 {shortDay(entry.at)} {formatTime(entry.at)}
               </span>{" "}
               · {actorWords(entry.actor, entry.actor_name)}:{" "}
-              {(ACTION_WORDS[entry.action] ?? entry.action).toLowerCase()}
+              {lowerFirst(ACTION_WORDS[entry.action] ?? entry.action)}
               {entry.reason ? ` (${entry.reason})` : ""}
             </li>
           ))}

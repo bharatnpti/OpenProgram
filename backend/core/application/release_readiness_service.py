@@ -1155,7 +1155,8 @@ class ReleaseReadinessService:
         finding = await self._finding(tenant_id, suggestion.finding_id)
         self._ensure_acts(viewer, finding)
         if suggestion.status is SuggestionStatus.CREATED and suggestion.created_issue_key:
-            view = await self._view(tenant_id, finding.finding_id, viewer)
+            await self._remember_key(tenant_id, suggestion.created_issue_key)
+            view = await self._rejudge(tenant_id, finding, viewer)
             return CreateResult(issue_key=suggestion.created_issue_key, created=False, finding=view)
         self._ensure_open(suggestion, version)
         settings = await self.settings(tenant_id)
@@ -1246,6 +1247,7 @@ class ReleaseReadinessService:
         except ProviderUnavailable as exc:
             raise IssueCreateFailed("unreachable") from exc
         if found:
+            await self._remember(tenant_id, found[0])
             return found[0].key, False
         names = await self._names(tenant_id, {viewer.subject})
         creator = names.get(viewer.subject, viewer.subject)
@@ -1289,6 +1291,10 @@ class ReleaseReadinessService:
                     "status": "To Do",
                 },
             )
+        await self._remember(tenant_id, issue)
+
+    async def _remember(self, tenant_id: str, issue: Issue) -> None:
+        """Record an issue OpenProgram created or adopted, as the next issue sync will."""
         try:
             await record_issue_as_synced(
                 issue,
@@ -1299,6 +1305,16 @@ class ReleaseReadinessService:
             )
         except Exception as exc:  # noqa: BLE001 - the issue exists; the next sync records it
             _log_failure(tenant_id, exc)
+
+    async def _remember_key(self, tenant_id: str, key: str) -> None:
+        """A created issue the graph does not hold yet (an earlier record failed): read it once."""
+        if await self._graph.get_node(tenant_id, key) is not None:
+            return
+        try:
+            issue = await self._tracker.get_issue(tenant_id, key)
+        except ProviderUnavailable:
+            return
+        await self._remember(tenant_id, issue)
 
     async def _decide(
         self,
@@ -1920,8 +1936,11 @@ def _stages(
 
 
 def _scope_issue(task: GraphNode, mapping: StageMapping, titles: Mapping[str, str]) -> ScopeIssue:
-    status = _text(task.metadata.get("status"))
     state = _text(task.metadata.get("state"))
+    # Only a task the tracker synced carries ``state``; without it ``status`` is a
+    # colour a seed or a person set, not the tracker's status (persona_views'
+    # _tracker_status_name reads it the same way).
+    status = _text(task.metadata.get("status")) if state else None
     placement = place(mapping, status=status, state=state)
     parent = _text(task.metadata.get("parent_key"))
     updated = task.metadata.get("updated_at")

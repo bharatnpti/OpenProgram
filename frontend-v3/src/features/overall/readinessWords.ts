@@ -229,7 +229,7 @@ export function draftFacts(draft: {
 
 /** One audit row in words, for a finding's "What happened". */
 export const ACTION_WORDS: Record<string, string> = {
-  state_changed: "The check updated it",
+  state_changed: "Its state changed",
   drafted: "Drafted a Jira issue",
   draft_rerendered: "Redrafted it after the criterion changed",
   draft_edited: "Edited the draft",
@@ -242,6 +242,11 @@ export const ACTION_WORDS: Record<string, string> = {
   create_adopted: "Found the issue an earlier try made",
   create_failed: "Jira did not create it",
 };
+
+/** "drafted a Jira issue" from "Drafted a Jira issue": only the first letter goes down. */
+export function lowerFirst(text: string): string {
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
 
 /** "Asha Rao", or "The readiness check" for the agent's own changes. */
 export function actorWords(actor: string, name: string | null | undefined): string {

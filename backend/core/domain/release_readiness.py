@@ -820,7 +820,8 @@ def created_footer(creator: str, console_link: str) -> str:
         "Drafted by OpenProgram's release readiness check. "
         f"Approved and created in OpenProgram by {creator}."
     )
-    return f"{line}\n{console_link}" if console_link else line
+    # The link is a paragraph of its own: every tracker shows a paragraph break.
+    return f"{line}\n\n{console_link}" if console_link else line
 
 
 def _values(criterion: ReleaseCriterion, context: DraftContext) -> dict[str, str]:

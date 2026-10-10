@@ -548,6 +548,9 @@ async def test_an_issue_an_earlier_try_made_is_adopted_by_its_marker_and_nothing
     result = await world.service.create(TENANT, suggestion.suggestion_id, OWNER, version=1)
 
     assert (result.issue_key, result.created) == ("CHK-77", False)
+    # Recorded as the sync would, so the adopted issue covers it at once.
+    assert result.finding.shown_state == "covered"
+    assert result.finding.finding.evidence[0].issue_key == "CHK-77"
     assert world.tracker.created == []
     assert any(a.action == "create_adopted" for a in world.repository.actions)
 

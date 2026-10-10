@@ -469,11 +469,15 @@ function CriterionDialog({
               value={draft.blocking ? "blocking" : "advisory"}
               onChange={(event) => set("blocking", event.target.value === "blocking")}
             >
-              <option value="blocking">Blocking: the day report asks for it</option>
-              <option value="advisory">Advisory: shown on Overall only</option>
+              <option value="blocking">Blocking</option>
+              <option value="advisory">Advisory</option>
             </select>
           </Field>
         </div>
+        <p className={`${hintClass} -mt-2`}>
+          A blocking gap close to its date goes into the day report with an ask; an advisory one
+          shows on Overall only.
+        </p>
         <div className="flex flex-wrap gap-x-5 gap-y-2">
           <label className="flex items-center gap-1.5 text-[14px]">
             <input
