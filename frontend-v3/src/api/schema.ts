@@ -266,9 +266,23 @@ export interface PortfolioFeedResponse {
   items: PortfolioFeedItemResponse[];
 }
 
+/** One earlier turn of the conversation: the person's question or Ora's answer. */
+export interface AskTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/** What was said before the question: the summary so far and the turns since it. */
+export interface AskConversation {
+  summary?: string | null;
+  turns: AskTurn[];
+}
+
 export interface AskRequest {
   question: string;
   as_of?: string | null;
+  /** Absent for a first question. */
+  conversation?: AskConversation | null;
 }
 
 /** A reference with the words a reader knows it by; no label when no node matches. */
@@ -285,6 +299,12 @@ export interface AskResponse {
   trace_id: string;
   /** The references again, in order, each labelled. Absent from older servers. */
   sources?: AskSourceResponse[];
+  /** Questions to offer next, from what this answer names. */
+  follow_ups?: string[];
+  /** Set when the server compacted the conversation: keep it in place of the turns it covers. */
+  summary?: string | null;
+  /** How many of the oldest turns sent the summary now covers. */
+  summarized_turns?: number;
 }
 
 /** One step of an investigation (POST /ask/investigate): its question, state and findings. */

@@ -7,6 +7,12 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from config.settings import Settings
+from core.application.ask_conversation import (
+    COMPACT_AT_TURNS,
+    KEEP_TURNS,
+    AskConversation,
+    AskTurn,
+)
 from core.application.ask_investigation import (
     ANSWER_FAILED,
     ANSWER_REMINDER,
@@ -227,6 +233,36 @@ async def test_the_engine_gets_the_askers_own_tools_model_and_limits() -> None:
     assert "pod_checkins" not in {tool.name for tool in run.tools}
     assert (run.model, run.as_of, run.question) == ("deep-model", AS_OF, QUESTION)
     assert (run.max_steps, run.max_tool_iterations) == (2, 4)
+
+
+async def test_the_engine_gets_the_conversation_and_the_answer_keeps_a_new_summary() -> None:
+    engine = _Engine([EngineAnswer(text=ANSWER, trace_id="t")])
+    turns = tuple(
+        AskTurn(role="user" if n % 2 == 0 else "assistant", content=f"Turn {n}")
+        for n in range(COMPACT_AT_TURNS + 2)
+    )
+    service = InvestigationService(
+        ask_service=await _ask_service(), llm_provider=_Llm(), engine=engine, model="m"
+    )
+
+    events = [
+        event
+        async for event in service.investigate(
+            principal=_principal(Role.MGR),
+            question=QUESTION,
+            correlation_id="c",
+            as_of=AS_OF,
+            conversation=AskConversation(turns=turns),
+        )
+    ]
+
+    (run,) = engine.runs
+    assert [m.content for m in run.history][-2:] == [t.content for t in turns[-2:]]
+    answer = events[-1]
+    assert isinstance(answer, AnswerEvent)
+    assert answer.view.summarized_turns == len(turns) - KEEP_TURNS
+    # The fake model's empty reply is no summary; the request still went out.
+    assert answer.view.summary is None
 
 
 async def test_steps_added_later_join_the_plan_and_a_failed_one_says_so() -> None:

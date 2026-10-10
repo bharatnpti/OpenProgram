@@ -19,6 +19,8 @@ export type AskMessage =
       mode: AskMode;
       /** An investigation's steps, as the stream reports them; none for a quick answer. */
       steps: InvestigateStepResponse[];
+      /** Questions the answer suggests asking next. */
+      followUps: string[];
     };
 
 export type Control = {
@@ -38,8 +40,13 @@ export type State = {
   messages: AskMessage[];
   /** A question is out and not answered yet. */
   pending: boolean;
-  /** Ask quickly (POST /ask), or investigate (POST /ask/investigate). */
+  /** Ask quickly (POST /ask), or investigate (POST /ask/investigate); the mode chosen when unset. */
   ask: (question: string, mode?: AskMode) => void;
+  /** How the next question is asked, chosen in the composer; the panel and the page share it. */
+  mode: AskMode;
+  setMode: (mode: AskMode) => void;
+  /** Start again: the conversation, its memory and anything still running go. */
+  newChat: () => void;
   subject: AskSubject | null;
 };
 

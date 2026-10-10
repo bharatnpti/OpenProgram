@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time, timedelta
 
 from core.application.agents.tool_loop import ToolCallingAgent
+from core.application.ask_conversation import AskContext, AskConversation, context_for
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.delivery_scope import DeliveryScopeService, reads_pod_dates, reads_project
 from core.application.flow_metrics_service import (
@@ -100,15 +101,34 @@ ASK_TOOL_GUIDANCE = (
     "Never mention raw DM/reply content. "
 )
 
+# Earlier turns, when the console sends them (ask_conversation.py).
+CONVERSATION_GUIDANCE = (
+    "Earlier turns of the conversation, when given, say what the question refers to -- "
+    "'it', 'they', 'and the other project?' -- but they are not facts for today: look "
+    "the facts up again with the tools rather than repeating an earlier answer. "
+)
+
+# What the console offers to ask next, below the answer.
+FOLLOW_UPS_FIELD = (
+    "follow_ups, an array of up to 3 short questions the asker may want to ask next about "
+    "what the answer names, each answerable from this delivery data, naming what it is "
+    "about, and none already asked in the conversation."
+)
+MAX_FOLLOW_UPS = 3
+_MAX_FOLLOW_UP_CHARS = 140
+
 ASK_SYSTEM_PROMPT = (
     "You answer program-management questions over a delivery graph. "
     + ASK_TOOL_GUIDANCE
+    + CONVERSATION_GUIDANCE
     + "Write the answer to these rules: "
     + " ".join(ANSWER_FORMAT_RULES)
     + " "
     "Once you have the facts, reply with a single JSON object and nothing else: "
-    "answer holds the text, with a newline between lines, and references an array "
-    "of the node ids it rests on. Do not restate references inside answer."
+    "answer holds the text, with a newline between lines, references an array "
+    "of the node ids it rests on, and "
+    + FOLLOW_UPS_FIELD
+    + " Do not restate references inside answer."
 )
 
 # Named periods a time-window question maps onto, resolved against the as-of
@@ -173,6 +193,7 @@ _TARGET_SOURCES: Mapping[str, str] = {
     "committed": "committed date",
     "jira_release": "Jira release date",
 }
+_ISSUE_KEY = re.compile(r"[A-Z][A-Z0-9]+-\d+")
 _BULLET = re.compile(r"^\s*[-*•]\s+")
 
 # The model is asked for a JSON object, yet a live reply can come back as
@@ -206,6 +227,8 @@ _ANSWER_LABEL = re.compile(r"^\s*[*_]*answer[*_]*\s*[:：]\s*", re.IGNORECASE)
 _FENCE_LINE = re.compile(r"^\s*```[\w-]*\s*$")
 # A JSON reply that does not decode: cut off, or with a trailing comma.
 _ANSWER_FIELD = re.compile(r'"answer"\s*:\s*"(?P<text>(?:[^"\\]|\\.)*)', re.IGNORECASE)
+_FOLLOW_UPS_FIELD = re.compile(r'"follow_?ups"\s*:\s*(?P<items>\[[^\]]*\]?)', re.IGNORECASE)
+_QUOTED = re.compile(r'"((?:[^"\\]|\\.)*)"')
 # A keyless string after another: '", "• Blocker: CHK-8"' followed by ',' or '}',
 # so never a key (a key is followed by ':').
 _LOOSE_LINE = re.compile(r'"\s*,\s*"(?P<text>(?:[^"\\]|\\.)*)"(?=\s*[,}])')
@@ -277,6 +300,12 @@ class AskResponseView:
     tools_used: tuple[str, ...]
     trace_id: str
     sources: tuple[AskSource, ...] = ()
+    # Up to MAX_FOLLOW_UPS questions to offer next, in readable words.
+    follow_ups: tuple[str, ...] = ()
+    # Set when the conversation was compacted: the new summary, and how many of
+    # the turns sent it now covers (ask_conversation.AskContext).
+    summary: str | None = None
+    summarized_turns: int = 0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -291,6 +320,7 @@ class ParsedAnswer:
     answer: str
     references: tuple[str, ...]
     cited: tuple[str, ...] = ()
+    follow_ups: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1321,10 +1351,26 @@ class AnswerReader:
             tools_used=tuple(dict.fromkeys(tools_used)),
             trace_id=trace_id,
             sources=tuple(_source(reference, self.nodes) for reference in references),
+            follow_ups=self._questions(parsed.follow_ups),
         )
+
+    def _questions(self, follow_ups: Iterable[str]) -> tuple[str, ...]:
+        """Follow-ups made readable: no raw ids, one line each, short, at most three."""
+        readable = (
+            " ".join(self.readable(question).split())[:_MAX_FOLLOW_UP_CHARS]
+            for question in follow_ups
+        )
+        return tuple(dict.fromkeys(q for q in readable if q))[:MAX_FOLLOW_UPS]
 
     def readable(self, text: str) -> str:
         return _without_raw_ids(_tidy_lines(text), self.nodes)
+
+
+def remembered(view: AskResponseView, context: AskContext) -> AskResponseView:
+    """The view, with the new summary when the conversation was compacted for it."""
+    if not context.summarized:
+        return view
+    return replace(view, summary=context.summary, summarized_turns=context.summarized)
 
 
 def may_ask(principal: Principal) -> bool:
@@ -1395,20 +1441,23 @@ class AskService:
         question: str,
         correlation_id: str,
         as_of: date | None = None,
+        conversation: AskConversation | None = None,
     ) -> AskResponseView:
         asked_for = as_of or date.today()
+        context = await context_for(
+            conversation,
+            llm=self._llm_provider,
+            model=self._model,
+            tenant_id=principal.tenant_id,
+            correlation_id=correlation_id,
+        )
         request = LlmRequest(
             tenant_id=principal.tenant_id,
             prompt=_prompt(question, asked_for),
             model=self._model,
             correlation_id=correlation_id,
             system=ASK_SYSTEM_PROMPT,
-            messages=(
-                LlmMessage(
-                    role="user",
-                    content=question,
-                ),
-            ),
+            messages=(*context.messages(), LlmMessage(role="user", content=question)),
             metadata={
                 "agent": "ask_service",
                 "purpose": "graph_question",
@@ -1421,7 +1470,8 @@ class AskService:
         )
         response = await self._tool_agent.run(request, tools)
         reader = await self.reader(principal.tenant_id, asked_for)
-        return reader.view(response.text, trace_id=response.trace_id, tools_used=calls)
+        view = reader.view(response.text, trace_id=response.trace_id, tools_used=calls)
+        return remembered(view, context)
 
     async def reader(self, tenant_id: str, as_of: date) -> AnswerReader:
         """What turns a model's reply into an answer for the nodes of ``as_of``."""
@@ -1605,7 +1655,22 @@ def _parse_answer(text: str) -> ParsedAnswer:
         answer=answer,
         references=_unique(references),
         cited=_unique((*cited, *cited_beside)),
+        follow_ups=_follow_ups(text),
     )
+
+
+def _follow_ups(text: str) -> tuple[str, ...]:
+    """The follow_ups array of a reply, from its object or, when that is broken, its text."""
+    found = _answer_object(text)
+    if found is not None:
+        items = _field(found[0], "follow_ups", "followups", "follow_up_questions")
+        if isinstance(items, list):
+            return _unique([item for item in items if isinstance(item, str)])
+        return ()
+    listed = _FOLLOW_UPS_FIELD.search(text)
+    if listed is None:
+        return ()
+    return _unique([_json_string(item) for item in _QUOTED.findall(listed.group("items"))])
 
 
 def _reply_parts(text: str) -> tuple[str, list[str], str]:
@@ -1901,12 +1966,20 @@ def _tidy_lines(answer: str) -> str:
 def node_label(node: GraphNode) -> str | None:
     """The words a reader knows a node by -- never its raw id, unless that id is the name.
 
-    An issue's key is how everyone refers to it, so a task reads as its key; a
+    An issue's key is how everyone refers to it, so a task reads as its key (its
+    name when it has none and its id is no key); a
     merge request as its ref; a person as their display name; everything else
     as its name. A person whose name is only their id has no label.
     """
     if node.kind is NodeKind.TASK:
-        return _string_metadata(node, "key") or node.id
+        # An issue's key names it; a task with no key, and an id that is no key
+        # ("task-chk-101"), reads as its name.
+        key = _string_metadata(node, "key")
+        if key:
+            return key
+        if _ISSUE_KEY.fullmatch(node.id) or not node.name.strip():
+            return node.id
+        return node.name.strip()
     if node.kind is NodeKind.WORK_ITEM:
         repo = _string_metadata(node, "repo")
         pr_id = _string_metadata(node, "pr_id")

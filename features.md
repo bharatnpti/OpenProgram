@@ -465,6 +465,15 @@ Functional requirements:
 - The answer shall be concise prose plus the IDs of the nodes it rests on, shown as references, and shall never contain raw DM or reply content.
 - A question asked while a past day is viewed shall be answered as of that day, and the answer shall keep that date after the viewing date changes.
 
+Conversation, for questions that follow on from earlier ones:
+
+- Each question shall be sent with the conversation before it: the turns since the last summary, and that summary. A follow-up such as "and Identity Platform?" shall be answered for what it refers to, with the facts looked up again rather than repeated from an earlier answer.
+- Past 12 turns or 8,000 characters, the server shall fold every turn but the last 6 into a summary of at most 150 words, and say in its reply how many turns the summary covers, so the console sends only the newer ones next time. A request shall carry at most 40 turns of 4,000 characters each.
+- An answer shall suggest up to 3 questions to ask next about what it names. The console shall show them below the input once the answer is in, none while an answer is on its way, and the page's own suggestions before any question.
+- New chat shall start again: the conversation and its summary go, and an investigation still running stops. The conversation stays in the console's memory only, per person and lens; it goes with a reload.
+- An answer shall read as its verdict in bold, its drivers as a list, and its "Not known:" line set apart, with its sources and, for an investigation, its steps each folded away under the answer.
+- Ora shall open in the whole tab (`/ora`) from the panel's header, with the same conversation, and Back shall return to the page it was opened from.
+
 Investigate (`POST /ask/investigate`), for questions one look-up cannot answer:
 
 - The asker shall choose between a quick answer and Investigate, and shall be able to investigate a quick answer's question with one action.

@@ -18,6 +18,7 @@ export type Answering = {
   text: string;
   sources: AskSourceResponse[];
   steps: InvestigateStepResponse[];
+  followUps: string[];
 };
 
 /** Said when the stream ends with neither an answer nor a reason. */
@@ -28,6 +29,7 @@ export const answering = (): Answering => ({
   text: "",
   sources: [],
   steps: [],
+  followUps: [],
 });
 
 /** What one line of the stream changes. A step replaces the planned step with its index. */
@@ -46,6 +48,7 @@ export function applyEvent(current: Answering, event: InvestigateEvent): Answeri
         text: event.answer.answer,
         sources: event.answer.sources ?? [],
         steps: event.steps,
+        followUps: event.answer.follow_ups ?? [],
       };
     case "failed":
       return {
@@ -53,6 +56,7 @@ export function applyEvent(current: Answering, event: InvestigateEvent): Answeri
         text: event.message,
         sources: [],
         steps: event.steps.length > 0 ? event.steps : current.steps,
+        followUps: [],
       };
   }
 }

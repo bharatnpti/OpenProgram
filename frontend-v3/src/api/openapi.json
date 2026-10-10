@@ -11466,6 +11466,33 @@
         "enum": ["release", "project", "pod"],
         "title": "AppliesTo"
       },
+      "AskConversationRequest": {
+        "properties": {
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/AskTurnRequest"
+            },
+            "type": "array",
+            "maxItems": 40,
+            "title": "Turns"
+          }
+        },
+        "type": "object",
+        "title": "AskConversationRequest",
+        "description": "What was said before the question: the summary so far and the turns since it."
+      },
       "AskRequest": {
         "properties": {
           "question": {
@@ -11484,6 +11511,16 @@
               }
             ],
             "title": "As Of"
+          },
+          "conversation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AskConversationRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -11521,6 +11558,30 @@
             "type": "array",
             "title": "Sources",
             "default": []
+          },
+          "follow_ups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Follow Ups",
+            "default": []
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "summarized_turns": {
+            "type": "integer",
+            "title": "Summarized Turns",
+            "default": 0
           }
         },
         "type": "object",
@@ -11559,6 +11620,25 @@
         "required": ["id"],
         "title": "AskSourceResponse",
         "description": "A reference with the words a reader knows it by; label is None when no node matches."
+      },
+      "AskTurnRequest": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": ["user", "assistant"],
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": ["role", "content"],
+        "title": "AskTurnRequest",
+        "description": "One earlier turn of the conversation: the person's question or Ora's answer."
       },
       "AttentionCheckinsDto": {
         "properties": {

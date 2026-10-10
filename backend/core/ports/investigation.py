@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Protocol
 
+from core.domain.llm import LlmMessage
 from core.ports.llm import LlmProvider
 from core.ports.tools import AgentTool
 
@@ -27,6 +28,8 @@ class InvestigationRun:
     tools: tuple[AgentTool, ...]
     max_steps: int
     max_tool_iterations: int
+    # The conversation before the question, oldest first: what it refers to.
+    history: tuple[LlmMessage, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)

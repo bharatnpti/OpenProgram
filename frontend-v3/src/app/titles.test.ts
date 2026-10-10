@@ -16,6 +16,7 @@ test("each screen has its own tab title, not the app's one name", () => {
   assert.equal(screenTitle("/coordination"), "Coordination · OpenProgram");
   assert.equal(screenTitle("/reports"), "Reports · OpenProgram");
   assert.equal(screenTitle("/chat"), "Chat · OpenProgram");
+  assert.equal(screenTitle("/ora"), "Ora · OpenProgram");
   assert.equal(screenTitle("/admin"), "Admin · OpenProgram");
 });
 

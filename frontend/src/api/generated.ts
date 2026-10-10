@@ -2750,12 +2750,23 @@ export interface components {
      * @enum {string}
      */
     AppliesTo: "release" | "project" | "pod";
+    /**
+     * AskConversationRequest
+     * @description What was said before the question: the summary so far and the turns since it.
+     */
+    AskConversationRequest: {
+      /** Summary */
+      summary?: string | null;
+      /** Turns */
+      turns?: components["schemas"]["AskTurnRequest"][];
+    };
     /** AskRequest */
     AskRequest: {
       /** Question */
       question: string;
       /** As Of */
       as_of?: string | null;
+      conversation?: components["schemas"]["AskConversationRequest"] | null;
     };
     /** AskResponse */
     AskResponse: {
@@ -2772,6 +2783,18 @@ export interface components {
        * @default []
        */
       sources: components["schemas"]["AskSourceResponse"][];
+      /**
+       * Follow Ups
+       * @default []
+       */
+      follow_ups: string[];
+      /** Summary */
+      summary?: string | null;
+      /**
+       * Summarized Turns
+       * @default 0
+       */
+      summarized_turns: number;
     };
     /**
      * AskSourceResponse
@@ -2783,6 +2806,19 @@ export interface components {
       kind?: components["schemas"]["NodeKind"] | null;
       /** Label */
       label?: string | null;
+    };
+    /**
+     * AskTurnRequest
+     * @description One earlier turn of the conversation: the person's question or Ora's answer.
+     */
+    AskTurnRequest: {
+      /**
+       * Role
+       * @enum {string}
+       */
+      role: "user" | "assistant";
+      /** Content */
+      content: string;
     };
     /**
      * AttentionCheckinsDto

@@ -29,12 +29,15 @@ from typing import Literal
 
 import structlog
 
+from core.application.ask_conversation import AskConversation, context_for
 from core.application.ask_service import (
     ANSWER_FORMAT_RULES,
     ASK_TOOL_GUIDANCE,
+    FOLLOW_UPS_FIELD,
     AnswerReader,
     AskResponseView,
     AskService,
+    remembered,
 )
 from core.domain.auth import Principal
 from core.domain.llm import LlmRequest, LlmResponse
@@ -103,9 +106,10 @@ ANSWER_RULES = (
     + " ".join(INVESTIGATE_FORMAT_RULES)
     + " Reply with a single JSON object and nothing else: answer, an array of strings with "
     "one line of the answer each -- the verdict first, then each bullet, then any 'Not "
-    "known:' line -- and references, an array of the ids of the nodes the answer names, "
-    "and only those, copied from the notes' references. Do not restate references inside "
-    "answer."
+    "known:' line -- references, an array of the ids of the nodes the answer names, "
+    "and only those, copied from the notes' references, and "
+    + FOLLOW_UPS_FIELD
+    + " Do not restate references inside answer."
 )
 
 # Said again right before the answer is written: a rule read just before the
@@ -234,6 +238,7 @@ class InvestigationService:
         question: str,
         correlation_id: str,
         as_of: date | None = None,
+        conversation: AskConversation | None = None,
     ) -> AsyncGenerator[InvestigationEvent]:
         """The engine's plan, each step as it finishes, then the answer.
 
@@ -243,6 +248,13 @@ class InvestigationService:
         asked_for = as_of or date.today()
         llm = _MeteredProvider(inner=self._llm_provider)
         reader = await self._ask_service.reader(principal.tenant_id, asked_for)
+        context = await context_for(
+            conversation,
+            llm=llm,
+            model=self._model,
+            tenant_id=principal.tenant_id,
+            correlation_id=correlation_id,
+        )
         run = InvestigationRun(
             tenant_id=principal.tenant_id,
             question=question,
@@ -253,6 +265,7 @@ class InvestigationService:
             tools=self._ask_service.tools_for(principal, asked_for),
             max_steps=self._limits.max_steps,
             max_tool_iterations=self._limits.max_tool_iterations,
+            history=context.messages(),
         )
         deadline = asyncio.get_running_loop().time() + self._limits.timeout_seconds
         started = perf_counter()
@@ -284,6 +297,8 @@ class InvestigationService:
                     shown = _shown(event, steps, reader)
                     if shown is None:
                         continue
+                    if isinstance(shown, AnswerEvent):
+                        shown = replace(shown, view=remembered(shown.view, context))
                     if isinstance(shown, AnswerEvent):
                         outcome = "answered"
                     yield shown

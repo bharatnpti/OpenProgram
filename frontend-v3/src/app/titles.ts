@@ -1,4 +1,5 @@
-// No runtime imports, so `node --test` can run it as written.
+// Only pure modules imported, by their .ts path, so `node --test` can run it as written.
+import { ASSISTANT_NAME } from "../features/assistant/persona.ts";
 
 /** What the browser tab says when no screen has named itself yet, and after every title. */
 export const APP_TITLE = "OpenProgram";
@@ -11,6 +12,7 @@ const SECTIONS: Record<string, string> = {
   reports: "Reports",
   chat: "Chat",
   admin: "Admin",
+  ora: ASSISTANT_NAME,
   "logged-out": "Signed out",
 };
 

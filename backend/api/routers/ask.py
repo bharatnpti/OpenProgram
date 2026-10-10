@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from api.dependencies import get_ask_service, get_current_principal, get_investigation_service
 from api.dtos import AskRequest, AskResponse, InvestigateEvent
+from core.application.ask_conversation import AskConversation
 from core.application.ask_investigation import InvestigationEvent, InvestigationService
 from core.application.ask_service import AskService, may_ask
 from core.domain.auth import Principal
@@ -35,6 +36,7 @@ async def ask(
         question=request.question,
         correlation_id=f"ask:{principal.subject}:{uuid4().hex}",
         as_of=request.as_of,
+        conversation=_conversation(request),
     )
     return AskResponse.from_view(view)
 
@@ -68,11 +70,16 @@ async def investigate(
         question=request.question,
         correlation_id=f"ask-investigate:{principal.subject}:{uuid4().hex}",
         as_of=request.as_of,
+        conversation=_conversation(request),
     )
     # No proxy may hold the lines back until the end: each says what is happening.
     return NdjsonResponse(
         _lines(events), headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"}
     )
+
+
+def _conversation(request: AskRequest) -> AskConversation | None:
+    return request.conversation.to_domain() if request.conversation is not None else None
 
 
 async def _lines(events: AsyncGenerator[InvestigationEvent]) -> AsyncIterator[str]:

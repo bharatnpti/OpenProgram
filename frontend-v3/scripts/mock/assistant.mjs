@@ -80,6 +80,24 @@ export function answerFor(question, asOf) {
     tools_used: ["graph_search", "open_risks"],
     trace_id: "mock",
     sources,
+    follow_ups: [
+      "What is blocking the 3-D Secure step-up?",
+      "Who do we need an answer from?",
+      "What changed in Payments Pod this week?",
+    ],
+    summary: null,
+    summarized_turns: 0,
+  };
+}
+
+/** As the server does past 12 turns: fold all but the last 6 into a summary. */
+function remembered(reply, conversation) {
+  const turns = conversation?.turns ?? [];
+  if (turns.length <= 12) return reply;
+  return {
+    ...reply,
+    summary: "Earlier: Checkout Revamp is red, three blockers in Payments Pod.",
+    summarized_turns: turns.length - 6,
   };
 }
 
@@ -156,7 +174,10 @@ export function api(req, url, roles, userId, send, _deny, res) {
         return;
       }
       // A moment's wait, so the "looking it up" bubble shows as it does live.
-      setTimeout(() => send(200, answerFor(question, body?.as_of ?? null)), 400);
+      setTimeout(
+        () => send(200, remembered(answerFor(question, body?.as_of ?? null), body?.conversation)),
+        400,
+      );
     });
     return true;
   }
@@ -177,7 +198,7 @@ export function api(req, url, roles, userId, send, _deny, res) {
       const lines = [
         { type: "plan", steps: running },
         ...[2, 0, 1].map((i) => ({ type: "step", step: steps[i] })),
-        { type: "answer", answer, steps },
+        { type: "answer", answer: remembered(answer, body?.conversation), steps },
       ];
       res.writeHead(200, { "content-type": "application/x-ndjson", "cache-control": "no-store" });
       let next = 0;

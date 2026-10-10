@@ -45,6 +45,8 @@ test("the answer settles the message with its text, sources and every step", () 
       tools_used: ["open_risks"],
       trace_id: "t",
       sources: [{ id: "pod-payments", kind: "pod", label: "Payments Pod" }],
+      follow_ups: ["What blocks it?"],
+      summarized_turns: 0,
     },
     steps: [step(0, "done")],
   });
@@ -52,6 +54,7 @@ test("the answer settles the message with its text, sources and every step", () 
   assert.equal(done.text, "Payments Pod is late because:\n• CHK-103 blocked");
   assert.deepEqual(done.sources, [{ id: "pod-payments", kind: "pod", label: "Payments Pod" }]);
   assert.equal(done.steps.length, 1);
+  assert.deepEqual(done.followUps, ["What blocks it?"]);
 });
 
 test("a failure says why, keeping the steps it got to", () => {

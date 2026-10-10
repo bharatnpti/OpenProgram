@@ -34,6 +34,15 @@ export function pendingWords(investigating: boolean, steps: number): string {
   return `${ASSISTANT_NAME} is checking ${steps === 1 ? "1 step" : `${steps} steps`}…`;
 }
 
+/** The header's actions. */
+export const NEW_CHAT_LABEL = "New chat";
+export const OPEN_PAGE_LABEL = `Open ${ASSISTANT_NAME} full page`;
+
+/** The fold under an answer that lists its sources: "Sources (4)". */
+export function sourcesWords(count: number): string {
+  return `Sources (${count})`;
+}
+
 /** The fold under an investigated answer: "How Ora checked: 3 steps". */
 export function checkedWords(steps: number): string {
   return `How ${ASSISTANT_NAME} checked: ${steps === 1 ? "1 step" : `${steps} steps`}`;

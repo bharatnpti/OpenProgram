@@ -90,6 +90,8 @@ MAIN_SYSTEM_PROMPT = (
     + " Send your first steps, at most {max_steps}, together in one turn. When their notes "
     "raise a question the answer needs, you may send up to {follow_ups} more. Each result "
     "is that researcher's notes: its findings, the node ids they rest on, and its gaps. "
+    "Earlier turns of the conversation, when given, say what the question refers to; "
+    "write every step so that a researcher who never saw them can answer it. "
     "Then write the answer. " + ANSWER_RULES
 )
 
@@ -123,7 +125,13 @@ class DeepAgentInvestigationEngine:
         tracker = _Tracker(data_tools=frozenset(tool.name for tool in run.tools))
         inputs = {
             "messages": [
-                HumanMessage(content=date_context(run.as_of) + f"Question: {run.question}")
+                *(
+                    HumanMessage(content=m.content)
+                    if m.role == "user"
+                    else AIMessage(content=m.content)
+                    for m in run.history
+                ),
+                HumanMessage(content=date_context(run.as_of) + f"Question: {run.question}"),
             ]
         }
         queue: asyncio.Queue[EngineEvent | Exception | None] = asyncio.Queue()

@@ -13,7 +13,7 @@ from langchain_core.tracers.context import _tracing_v2_is_enabled
 
 from core.application.ask_investigation import ANSWER_REMINDER
 from core.domain.graph import JsonScalar
-from core.domain.llm import LlmRequest, LlmResponse, LlmToolCall, TokenUsage
+from core.domain.llm import LlmMessage, LlmRequest, LlmResponse, LlmToolCall, TokenUsage
 from core.ports.investigation import (
     EngineAnswer,
     EngineEvent,
@@ -84,6 +84,9 @@ class _ScriptedLlm:
     requests: list[LlmRequest] = field(default_factory=list)
     traced: list[bool] = field(default_factory=list)
     cancelled: list[str] = field(default_factory=list)
+    # Researchers that have reached their slow reply, and a signal once two have.
+    waiting: list[str] = field(default_factory=list)
+    two_waiting: asyncio.Event = field(default_factory=asyncio.Event)
     _asked: Counter[str] = field(default_factory=Counter)
 
     async def complete(self, request: LlmRequest) -> LlmResponse:
@@ -95,6 +98,9 @@ class _ScriptedLlm:
             key = _first_user(request)
             replies = self.steps.get(key) or (_look(), _notes(f"Notes for {key}"))
             if self.slow:
+                self.waiting.append(key)
+                if len(self.waiting) >= 2:
+                    self.two_waiting.set()
                 try:
                     await asyncio.sleep(self.slow)
                 except asyncio.CancelledError:
@@ -258,11 +264,38 @@ async def test_closing_the_stream_stops_the_researchers_still_running() -> None:
     events = DeepAgentInvestigationEngine().run(_run(llm))
 
     first = await anext(events)
-    await asyncio.sleep(0.1)
+    # Not a fixed sleep: under load the researchers start later.
+    async with asyncio.timeout(10):
+        await llm.two_waiting.wait()
     await events.aclose()
 
     assert first == EnginePlan(steps=(BLOCKERS, CHANGES))
     assert sorted(llm.cancelled) == sorted([BLOCKERS, CHANGES])
+
+
+async def test_the_main_agent_reads_the_conversation_before_the_question() -> None:
+    llm = _ScriptedLlm()
+    run = _run(llm)
+    run = InvestigationRun(
+        **{
+            **run.__dict__,
+            "history": (
+                LlmMessage(role="user", content="Is Checkout Revamp red?"),
+                LlmMessage(role="assistant", content="Yes: three blockers in Payments Pod."),
+            ),
+        }
+    )
+
+    await _events(run)
+
+    first = llm.of("investigation_main")[0]
+    assert [(t.role, t.content) for t in first.turns[:2]] == [
+        ("user", "Is Checkout Revamp red?"),
+        ("assistant", "Yes: three blockers in Payments Pod."),
+    ]
+    assert first.turns[2].content.endswith("Question: Why is Payments Pod late?")
+    # Researchers get the step alone, never the conversation.
+    assert all(len(r.turns) <= 3 for r in llm.of("investigation_step"))
 
 
 async def test_a_researchers_list_arguments_reach_the_tool_whole() -> None:

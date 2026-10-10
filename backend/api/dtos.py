@@ -8,6 +8,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator
 
+from core.application.ask_conversation import (
+    MAX_SUMMARY_CHARS,
+    MAX_TURN_CHARS,
+    MAX_TURNS,
+    AskConversation,
+    AskTurn,
+)
 from core.application.ask_investigation import (
     AnswerEvent,
     FailedEvent,
@@ -2265,6 +2272,12 @@ class AskResponse(BaseModel):
     trace_id: str
     # The references again, in order, each labelled for a reader.
     sources: list[AskSourceResponse] = []
+    # Questions to offer next, from what this answer names.
+    follow_ups: list[str] = []
+    # Set when the conversation was compacted: the summary to keep, and how many
+    # of the oldest turns sent it now covers (drop those, keep the summary).
+    summary: str | None = None
+    summarized_turns: int = 0
 
     @classmethod
     def from_view(cls, view: AskResponseView) -> AskResponse:
@@ -2277,6 +2290,33 @@ class AskResponse(BaseModel):
                 AskSourceResponse(id=source.id, kind=source.kind, label=source.label)
                 for source in view.sources
             ],
+            follow_ups=list(view.follow_ups),
+            summary=view.summary,
+            summarized_turns=view.summarized_turns,
+        )
+
+
+class AskTurnRequest(BaseModel):
+    """One earlier turn of the conversation: the person's question or Ora's answer."""
+
+    model_config = ConfigDict(frozen=True)
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=MAX_TURN_CHARS)
+
+
+class AskConversationRequest(BaseModel):
+    """What was said before the question: the summary so far and the turns since it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    summary: str | None = Field(default=None, max_length=MAX_SUMMARY_CHARS)
+    turns: list[AskTurnRequest] = Field(default_factory=list, max_length=MAX_TURNS)
+
+    def to_domain(self) -> AskConversation:
+        return AskConversation(
+            summary=self.summary,
+            turns=tuple(AskTurn(role=t.role, content=t.content) for t in self.turns),
         )
 
 
@@ -2285,6 +2325,8 @@ class AskRequest(BaseModel):
 
     question: str = Field(min_length=1)
     as_of: date | None = None
+    # Absent for a first question; the console keeps the conversation itself.
+    conversation: AskConversationRequest | None = None
 
 
 class InvestigateStepResponse(BaseModel):
