@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { ReadinessCriterionDto } from "../../api/schema";
+import type { ReadinessCriterionDto, ReadinessSettingsDto } from "../../api/schema";
 import {
   appliesLine,
   criterionFromDraft,
@@ -10,6 +10,7 @@ import {
   foundByLine,
   newCriterionDraft,
   newMatcher,
+  settingsBody,
   settingsProblems,
 } from "./readinessForm.ts";
 
@@ -82,6 +83,25 @@ test("a card says where it applies and how it is found, in words", () => {
     foundByLine(SECURITY),
     'Found by label security-review, title phrase "security review"; title words "pen test" only a hint.',
   );
+});
+
+test("the agent's settings are saved without the Jira writes create switch", () => {
+  const loaded: ReadinessSettingsDto = {
+    enabled: true,
+    auto_suggest: false,
+    create_in_jira: true,
+    issue_type: "Task",
+    labels: [],
+  };
+  const body = settingsBody(loaded, "release-readiness, psa, psa");
+
+  assert.deepEqual(body, {
+    enabled: true,
+    auto_suggest: false,
+    issue_type: "Task",
+    labels: ["release-readiness", "psa"],
+  });
+  assert.equal("create_in_jira" in body, false);
 });
 
 test("settings are checked as the server checks them", () => {

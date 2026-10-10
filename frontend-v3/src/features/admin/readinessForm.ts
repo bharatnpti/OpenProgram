@@ -6,6 +6,7 @@ import type {
   ReadinessCriterionDto,
   ReadinessMatcherKind,
   ReadinessSettingsDto,
+  ReadinessSettingsUpdateRequest,
   ReadinessStrength,
 } from "../../api/schema";
 
@@ -258,6 +259,23 @@ export function settingsProblems(
     problems.push(`New issues get at most ${MAX_LABELS} labels, each without spaces.`);
   }
   return problems;
+}
+
+/**
+ * The agent's settings as saved here. Creating issues in Jira is Admin › Jira
+ * writes' switch, so it is left out and the server keeps it as it is: a tab
+ * opened before someone changed it there never puts it back.
+ */
+export function settingsBody(
+  settings: Pick<ReadinessSettingsDto, "enabled" | "auto_suggest" | "issue_type">,
+  labelsText: string,
+): ReadinessSettingsUpdateRequest {
+  return {
+    enabled: settings.enabled,
+    auto_suggest: settings.auto_suggest,
+    issue_type: settings.issue_type,
+    labels: list(labelsText),
+  };
 }
 
 export function list(text: string): string[] {

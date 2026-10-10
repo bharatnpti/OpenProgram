@@ -1,5 +1,6 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
@@ -33,6 +34,7 @@ import {
   toDefault,
   toEveryDefault,
 } from "./checkinForm";
+import { JIRA_WRITES_KEY, checkinWritebackLine } from "./jiraWritesWords";
 import { useMembers } from "./members";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -93,9 +95,9 @@ export function CheckinsTab() {
     queryKey: PREFS_KEY,
     queryFn: () => apiClient.configCheckinPreferences(),
   });
-  const tenant = useQuery({
-    queryKey: ["config", "tenant-writeback"],
-    queryFn: () => apiClient.configTenantWriteback(),
+  const writes = useQuery({
+    queryKey: JIRA_WRITES_KEY,
+    queryFn: () => apiClient.jiraWrites(),
   });
   const list = members.data ?? [];
   // The API reads consent one member at a time (no list endpoint), so these
@@ -215,23 +217,16 @@ export function CheckinsTab() {
           </table>
         </TableBox>
         <p className="text-[13px] text-grey-body">
-          Write-back is{" "}
-          <b>
-            {tenant.data
-              ? tenant.data.enabled
-                ? "on"
-                : "off"
-              : tenant.isError
-                ? "not known"
-                : "…"}
-          </b>{" "}
-          for this tenant
-          {tenant.data?.source === "default" ? " (the default)" : ""}.{" "}
-          {tenant.data
-            ? tenant.data.enabled
-              ? "A member's consent decides whether their check-in moves their Jira issues."
-              : "Consent is recorded, but nothing is written to Jira until the switch is on."
-            : null}
+          {/* Never "on" while loading or unknown: only the server's answer says so. */}
+          {writes.data
+            ? checkinWritebackLine(writes.data)
+            : writes.isError
+              ? "Whether check-ins update Jira tickets is not known right now."
+              : "Reading whether check-ins update Jira tickets…"}{" "}
+          <Link to="/admin?tab=jira-writes" className="font-bold text-magenta">
+            Jira writes
+          </Link>{" "}
+          has the switches.
         </p>
       </div>
     </PanelState>
