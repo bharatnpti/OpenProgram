@@ -18,19 +18,22 @@ export const ASK_LABEL = `Ask ${ASSISTANT_NAME}`;
  */
 export const ANSWER_NOTE = `${ASSISTANT_NAME} writes answers with AI from your delivery data. Check the sources before you act.`;
 
-/** The two ways to ask: a quick answer, or an investigation in steps. */
-export const QUICK_LABEL = "Quick answer";
+/** The switch in the composer: on, a question is investigated in steps. */
 export const INVESTIGATE_LABEL = "Investigate";
 /** Under a quick answer: the same question, investigated. */
 export const INVESTIGATE_THIS = "Investigate this";
 
-/** The note under the input while Investigate is on. */
-export const INVESTIGATE_NOTE = `${ASSISTANT_NAME} checks the question step by step with AI, which can take a minute. Check the sources before you act.`;
+/** The switch's tooltip, both ways. */
+export function investigateTitle(on: boolean): string {
+  return on
+    ? "Investigating: checks the question step by step. Click for a quick answer."
+    : "Quick answer. Click to investigate step by step instead.";
+}
 
 /** What the waiting bubble says: looking it up, planning, or checking the steps planned. */
 export function pendingWords(investigating: boolean, steps: number): string {
   if (!investigating) return `${ASSISTANT_NAME} is looking it up…`;
-  if (steps === 0) return `${ASSISTANT_NAME} is planning the steps…`;
+  if (steps === 0) return `${ASSISTANT_NAME} is planning the steps… This can take a minute.`;
   return `${ASSISTANT_NAME} is checking ${steps === 1 ? "1 step" : `${steps} steps`}…`;
 }
 

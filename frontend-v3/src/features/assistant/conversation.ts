@@ -51,27 +51,39 @@ export function remember(
   return { summary: reply.summary ?? memory.summary, covered: memory.covered + folded };
 }
 
-/** An answer as a reader takes it in: the verdict, the bullets, other lines, and what is not known. */
-export type AnswerParts = {
-  verdict: string | null;
-  bullets: string[];
-  rest: string[];
-  notKnown: string | null;
-};
+/**
+ * An answer as a reader takes it in, in its own order: lines of text, runs of
+ * bullets as lists, and the "Not known:" line. The first line and any line
+ * that ends in a colon (a section: "Identity Platform is red because:") are
+ * headings.
+ */
+export type AnswerBlock =
+  | { kind: "text"; text: string; heading: boolean }
+  | { kind: "list"; items: string[] }
+  | { kind: "notKnown"; text: string };
 
-export function answerParts(text: string): AnswerParts {
-  const lines = text
+const BULLET = /^[•*-]\s+/;
+const NOT_KNOWN = /^not known:\s*/i;
+
+export function answerBlocks(text: string): AnswerBlock[] {
+  const blocks: AnswerBlock[] = [];
+  text
     .split("\n")
     .map((line) => line.trim())
-    .filter(Boolean);
-  const parts: AnswerParts = { verdict: null, bullets: [], rest: [], notKnown: null };
-  lines.forEach((line, index) => {
-    if (/^[•*-]\s+/.test(line)) parts.bullets.push(line.replace(/^[•*-]\s+/, ""));
-    else if (/^not known:/i.test(line)) parts.notKnown = line.replace(/^not known:\s*/i, "");
-    else if (index === 0) parts.verdict = line;
-    else parts.rest.push(line);
-  });
-  return parts;
+    .filter(Boolean)
+    .forEach((line, index) => {
+      const last = blocks[blocks.length - 1];
+      if (BULLET.test(line)) {
+        const item = line.replace(BULLET, "");
+        if (last?.kind === "list") last.items.push(item);
+        else blocks.push({ kind: "list", items: [item] });
+      } else if (NOT_KNOWN.test(line)) {
+        blocks.push({ kind: "notKnown", text: line.replace(NOT_KNOWN, "") });
+      } else {
+        blocks.push({ kind: "text", text: line, heading: index === 0 || line.endsWith(":") });
+      }
+    });
+  return blocks;
 }
 
 /**

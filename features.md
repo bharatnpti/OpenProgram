@@ -477,6 +477,7 @@ Conversation, for questions that follow on from earlier ones:
 Investigate (`POST /ask/investigate`), for questions one look-up cannot answer:
 
 - The asker shall choose between a quick answer and Investigate, and shall be able to investigate a quick answer's question with one action.
+- A question about a date shall get a step for the delivery forecast of each project or pod it names, and a question about blockers or risk a step of its own for the open blockers of the pods involved, with each blocker's owner, what it waits on and its days open.
 - The system shall split the question into at most three steps by default (`OPENPROGRAM_ASK_INVESTIGATE_MAX_STEPS`, one to five), research each step in its own tool loop of up to six rounds (`OPENPROGRAM_ASK_INVESTIGATE_MAX_TOOL_ITERATIONS`), and write one answer from the steps' notes.
 - Each step shall use exactly the tools a quick answer offers the same asker, so an investigation never reads more than the asker could. It shall write and send nothing.
 - The response shall stream newline-delimited JSON: the plan, each step as it finishes, then the answer or the reason there is none. The console shall show each step as it finishes and, under the answer, what each step found and the tools it read with.

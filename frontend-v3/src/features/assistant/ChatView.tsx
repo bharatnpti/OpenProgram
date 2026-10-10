@@ -8,18 +8,17 @@ import { useRole } from "../../app/role";
 import { useDayWords, useViewingDate } from "../../app/viewingDate";
 import { cn } from "../../lib/utils";
 import { useAssistant, type AskMessage } from "./assistantContext";
-import { answerParts, nextQuestions, uniqueSources } from "./conversation";
+import { answerBlocks, nextQuestions, uniqueSources } from "./conversation";
 import { toolWords } from "./investigate";
 import {
   ANSWER_NOTE,
   ASSISTANT_NAME,
   INVESTIGATE_LABEL,
-  INVESTIGATE_NOTE,
   INVESTIGATE_THIS,
-  QUICK_LABEL,
   askedAboutWords,
   assistantGreeting,
   checkedWords,
+  investigateTitle,
   pendingWords,
   placeOf,
   sourceLink,
@@ -84,20 +83,30 @@ export function ChatView({
       <div
         className={cn("min-h-0 flex-1 overflow-y-auto py-4", variant === "page" ? "px-6" : "px-4")}
       >
-        <p className="text-[21px] font-extrabold leading-tight text-balance">
-          {assistantGreeting(greetingName)}
-        </p>
-        <p className="mt-1 text-[13px] text-grey-body">
-          I&apos;m {ASSISTANT_NAME}. I answer from OpenProgram&apos;s check-ins, blockers, risks,
-          review flow and status, and only what your role may read.
-        </p>
+        {/* The greeting until the first question; then the conversation has the room. */}
+        {assistant.messages.length === 0 ? (
+          <>
+            <p className="text-[21px] font-extrabold leading-tight text-balance">
+              {assistantGreeting(greetingName)}
+            </p>
+            <p className="mt-1 text-[13px] text-grey-body">
+              I&apos;m {ASSISTANT_NAME}. I answer from OpenProgram&apos;s check-ins, blockers,
+              risks, review flow and status, and only what your role may read.
+            </p>
+          </>
+        ) : null}
         {askedAbout ? (
           <p className="mt-2 rounded-xl bg-rag-amber-bg px-3 py-1.5 text-[12px] font-bold text-rag-amber">
             {askedAbout}
           </p>
         ) : null}
 
-        <ol aria-label="Conversation" role="log" aria-live="polite" className="mt-4 grid gap-4">
+        <ol
+          aria-label="Conversation"
+          role="log"
+          aria-live="polite"
+          className={cn("grid gap-4", assistant.messages.length === 0 ? "mt-4" : "mt-1")}
+        >
           {assistant.messages.map((message) => (
             <Bubble
               key={message.id}
@@ -123,30 +132,20 @@ export function ChatView({
           send(assistant.draft);
         }}
       >
-        <div
-          role="group"
-          aria-label="How to answer"
-          className="mb-2 flex w-fit gap-1 rounded-full bg-grey-fill p-1 text-[12px] font-bold"
-        >
-          {(["quick", "investigate"] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              aria-pressed={assistant.mode === mode}
-              onClick={() => assistant.setMode(mode)}
-              className={cn(
-                "flex items-center gap-1.5 rounded-full px-3 py-1.5",
-                assistant.mode === mode
-                  ? "bg-white text-ink shadow-op-menu"
-                  : "text-grey-body hover:text-ink",
-              )}
-            >
-              {mode === "investigate" ? <Telescope size={13} aria-hidden /> : null}
-              {mode === "investigate" ? INVESTIGATE_LABEL : QUICK_LABEL}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2 rounded-full border border-grey-border py-1 pl-4 pr-1 focus-within:border-ink focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink">
+        <div className="flex items-center gap-1.5 rounded-full border border-grey-border py-1 pl-1 pr-1 focus-within:border-ink focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ink">
+          <button
+            type="button"
+            aria-pressed={investigating}
+            title={investigateTitle(investigating)}
+            onClick={() => assistant.setMode(investigating ? "quick" : "investigate")}
+            className={cn(
+              "flex h-8 flex-none items-center gap-1.5 rounded-full px-2.5 text-[12px] font-bold",
+              investigating ? "bg-ink text-white" : "bg-grey-fill text-grey-body hover:text-ink",
+            )}
+          >
+            <Telescope size={13} aria-hidden />
+            {INVESTIGATE_LABEL}
+          </button>
           <label htmlFor={INPUT_ID} className="sr-only">
             Your question for {ASSISTANT_NAME}
           </label>
@@ -158,11 +157,9 @@ export function ChatView({
             maxLength={500}
             autoComplete="off"
             placeholder={
-              investigating
-                ? "Ask why, or what is really holding something up…"
-                : "Ask about dates, blockers, risks…"
+              investigating ? "Ask why, or what holds it up…" : "Ask about dates, blockers, risks…"
             }
-            className="min-w-0 flex-1 bg-transparent py-2 text-[14px] outline-none placeholder:text-grey-secondary"
+            className="min-w-0 flex-1 bg-transparent py-2 pl-1 text-[14px] outline-none placeholder:text-grey-secondary"
           />
           <button
             type="submit"
@@ -177,13 +174,15 @@ export function ChatView({
         {next.length > 0 ? (
           <div className="mt-2">
             <p className="sr-only">Questions to ask next</p>
-            <ul className="flex flex-wrap gap-1.5">
+            {/* One row; it scrolls sideways rather than pushing the conversation up. */}
+            <ul className="-mx-1 flex gap-1.5 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {next.map((question) => (
-                <li key={question} className="max-w-full">
+                <li key={question} className="flex-none">
                   <button
                     type="button"
+                    title={question}
                     onClick={() => send(question)}
-                    className="max-w-full rounded-full border border-grey-border bg-white px-3 py-1 text-left text-[12px] font-bold text-ink hover:border-ink"
+                    className="block max-w-[17rem] truncate rounded-full border border-grey-border bg-white px-3 py-1 text-[12px] font-bold text-ink hover:border-ink"
                   >
                     {question}
                   </button>
@@ -192,8 +191,8 @@ export function ChatView({
             </ul>
           </div>
         ) : null}
-        <p className="mt-2 text-center text-[11px] text-grey-secondary">
-          {investigating ? INVESTIGATE_NOTE : ANSWER_NOTE}
+        <p className="mt-1.5 text-center text-[11px] leading-snug text-grey-secondary">
+          {ANSWER_NOTE}
         </p>
       </form>
     </>
@@ -304,35 +303,42 @@ function Bubble({
   );
 }
 
-/** An answer as a reader takes it in: the verdict in bold, the drivers as a list. */
+/** An answer as a reader takes it in, in its own order: headings in bold, bullets as lists. */
 function AnswerText({ text }: { text: string }) {
-  const { verdict, bullets, rest, notKnown } = answerParts(text);
   return (
-    <>
-      {verdict ? <p className="font-bold">{verdict}</p> : null}
-      {bullets.length > 0 ? (
-        <ul className={cn("grid gap-1.5", verdict && "mt-1.5")}>
-          {bullets.map((bullet) => (
-            <li key={bullet} className="flex gap-2">
-              <span aria-hidden className="text-grey-secondary">
-                •
-              </span>
-              <span>{bullet}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {rest.map((line) => (
-        <p key={line} className="mt-1.5">
-          {line}
-        </p>
-      ))}
-      {notKnown ? (
-        <p className="mt-2 text-[13px] text-grey-body">
-          <span className="font-bold">Not known:</span> {notKnown}
-        </p>
-      ) : null}
-    </>
+    <div className="grid gap-1">
+      {answerBlocks(text).map((block, index) => {
+        if (block.kind === "list") {
+          return (
+            <ul key={index} className="grid gap-1">
+              {block.items.map((item, at) => (
+                <li key={at} className="flex gap-2">
+                  <span aria-hidden className="text-grey-secondary">
+                    •
+                  </span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        if (block.kind === "notKnown") {
+          return (
+            <p key={index} className="mt-1 text-[13px] text-grey-body">
+              <span className="font-bold">Not known:</span> {block.text}
+            </p>
+          );
+        }
+        return (
+          <p
+            key={index}
+            className={cn(block.heading && "font-bold", index > 0 && block.heading && "mt-1")}
+          >
+            {block.text}
+          </p>
+        );
+      })}
+    </div>
   );
 }
 

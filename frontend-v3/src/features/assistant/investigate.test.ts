@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { InvestigateStepResponse } from "../../api/schema";
 import { STOPPED_EARLY, answering, applyEvent, streamEnded, toolWords } from "./investigate.ts";
-import { checkedWords, INVESTIGATE_NOTE, ASSISTANT_NAME, pendingWords } from "./persona.ts";
+import { ASSISTANT_NAME, checkedWords, investigateTitle, pendingWords } from "./persona.ts";
 
 const step = (
   index: number,
@@ -74,11 +74,14 @@ test("a stream that ends with no answer or reason has stopped early", () => {
 
 test("the waiting words follow the investigation, and name the assistant", () => {
   assert.equal(pendingWords(false, 0), `${ASSISTANT_NAME} is looking it up…`);
-  assert.equal(pendingWords(true, 0), `${ASSISTANT_NAME} is planning the steps…`);
+  assert.equal(
+    pendingWords(true, 0),
+    `${ASSISTANT_NAME} is planning the steps… This can take a minute.`,
+  );
   assert.equal(pendingWords(true, 1), `${ASSISTANT_NAME} is checking 1 step…`);
   assert.equal(pendingWords(true, 3), `${ASSISTANT_NAME} is checking 3 steps…`);
   assert.equal(checkedWords(3), `How ${ASSISTANT_NAME} checked: 3 steps`);
-  assert.match(INVESTIGATE_NOTE, /with AI/);
-  assert.match(INVESTIGATE_NOTE, /Check the sources before you act\.$/);
+  assert.match(investigateTitle(true), /step by step/);
+  assert.match(investigateTitle(false), /^Quick answer/);
   assert.equal(toolWords(["open_risks", "status_reasons"]), "open risks · status reasons");
 });

@@ -110,9 +110,10 @@ CONVERSATION_GUIDANCE = (
 
 # What the console offers to ask next, below the answer.
 FOLLOW_UPS_FIELD = (
-    "follow_ups, an array of up to 3 short questions the asker may want to ask next about "
-    "what the answer names, each answerable from this delivery data, naming what it is "
-    "about, and none already asked in the conversation."
+    "follow_ups, an array of up to 3 short questions -- 10 words at most, each about one "
+    "project, pod, person or issue the answer names -- that the asker may want to ask "
+    "next, each answerable from this delivery data and none already asked in the "
+    "conversation."
 )
 MAX_FOLLOW_UPS = 3
 _MAX_FOLLOW_UP_CHARS = 140

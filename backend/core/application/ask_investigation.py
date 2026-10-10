@@ -80,13 +80,23 @@ STEP_GUIDANCE = (
     "Between them the steps cover what the question needs of: the current status and the "
     "reasons for it; what lies behind each blocker or risk -- who or what it waits on, "
     "since when, and what it holds up; and how things changed over the period asked about. "
+    "A question about a date -- will it ship, is it on track, is it late -- gets a step "
+    "for the delivery forecast of each project or pod it names: the committed date, the "
+    "50% and 85% finish dates and the verdict. A question about what blocks or holds "
+    "something up, or about risk, gets a step of its own for the open blockers of each pod "
+    "involved, or of every pod -- what is blocked, whose blocker it is, for how many days, "
+    "and what it waits on. A "
+    "question about every project covers each of them, its status, forecast and blockers. "
     "No two steps cover the same ground, and a question one look-up answers gets one step."
 )
 
 RESEARCH_SYSTEM_PROMPT = (
     "You research one step of a larger investigation over a delivery graph. "
     + ASK_TOOL_GUIDANCE
-    + "Follow the trail within the step: when a status, blocker or risk points at another "
+    + "Before you report any blocker, read pod_blockers where it is offered -- for the pod "
+    "it is in, or every pod when none is named -- and give each blocker's owner, what it "
+    "waits on and its days open, not how long its issue has gone without a change. "
+    "Follow the trail within the step: when a status, blocker or risk points at another "
     "pod, person, issue or merge request, look that up too. "
     "Name people by display name, issues by key and merge requests by the ref the data "
     "gives, and call a merge request an MR, never a PR. "

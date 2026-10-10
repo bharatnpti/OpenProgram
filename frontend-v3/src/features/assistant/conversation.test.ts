@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import type { AskMessage } from "./assistantContext";
 import {
-  answerParts,
+  answerBlocks,
   conversationFor,
   freshMemory,
   nextQuestions,
@@ -68,24 +68,23 @@ test("when the server folds turns away, the memory keeps its summary in their pl
   assert.deepEqual(remember(folded, { summary: null, summarized_turns: 0 }), folded);
 });
 
-test("an answer reads as its verdict, bullets, other lines and what is not known", () => {
+test("an answer keeps its order: sections, their bullets, then what is not known", () => {
   assert.deepEqual(
-    answerParts(
-      "Checkout is red because:\n• 3 blockers\n- No reply: Kai\nIdentity is fine.\nNot known: the date",
+    answerBlocks(
+      "Two projects are red:\nCheckout Revamp is red because:\n• 3 blockers\n- No reply: Kai\n" +
+        "Identity Platform is red because:\n• 2 blockers\nThe rest is fine.\nNot known: the date",
     ),
-    {
-      verdict: "Checkout is red because:",
-      bullets: ["3 blockers", "No reply: Kai"],
-      rest: ["Identity is fine."],
-      notKnown: "the date",
-    },
+    [
+      { kind: "text", text: "Two projects are red:", heading: true },
+      { kind: "text", text: "Checkout Revamp is red because:", heading: true },
+      { kind: "list", items: ["3 blockers", "No reply: Kai"] },
+      { kind: "text", text: "Identity Platform is red because:", heading: true },
+      { kind: "list", items: ["2 blockers"] },
+      { kind: "text", text: "The rest is fine.", heading: false },
+      { kind: "notKnown", text: "the date" },
+    ],
   );
-  assert.deepEqual(answerParts("Not known: anything"), {
-    verdict: null,
-    bullets: [],
-    rest: [],
-    notKnown: "anything",
-  });
+  assert.deepEqual(answerBlocks("Not known: anything"), [{ kind: "notKnown", text: "anything" }]);
 });
 
 test("next questions: none while answering, the answer's own after it, the page's before any", () => {
