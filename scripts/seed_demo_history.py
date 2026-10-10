@@ -149,7 +149,7 @@ async def _run(*, reset: bool, skip_risk: bool) -> int:
         await _seed_briefs(context)
         print("briefs: daily/weekly/exec narratives written")
     finally:
-        await registry.close()
+        await registry.shutdown()
     print("\nseed complete.")
     return 0
 

@@ -24,7 +24,7 @@ async def main() -> None:
         for result in results:
             print(f"workflow schedule {result.status}: {result.schedule_id}")
     finally:
-        await registry.close()
+        await registry.shutdown()
 
 
 async def ensure_workflow_schedules(

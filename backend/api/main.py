@@ -54,7 +54,7 @@ def create_app(
         try:
             yield
         finally:
-            await resolved_registry.close()
+            await resolved_registry.shutdown()
 
     app = FastAPI(title="OpenProgram", version="0.1.0", lifespan=lifespan)
     app.state.settings = resolved_settings
