@@ -1,0 +1,46 @@
+backend/tests/unit/test_settings.py
+  s_3101dec2ee3c53::t_5a300d634286d2 240-249
+  s_3101dec2ee3c53::t_65b996100a0f22 250-286
+backend/config/settings.py
+  s_3101dec2ee3c53::t_92320a6644f132 552-553
+  s_3101dec2ee3c53::t_295a4d2b14cade 153-155,157-159
+backend/tests/unit/test_dbos_sync_catch_up.py
+  s_3101dec2ee3c53::t_ba856c1d42edf5 1-273
+backend/infra/adapters/workflows/dbos.py
+  s_3101dec2ee3c53::t_d74e2fbf3b258d 746-750,752-753,756,758
+  s_3101dec2ee3c53::t_4127c362c559bc 417,420-421,441-449
+  s_3101dec2ee3c53::t_e102419ca8e6b2 1155,1158
+  s_3101dec2ee3c53::t_6f0c41c8b18f7a 418-419,423,435-440,450-459
+  s_3101dec2ee3c53::t_26227d413f7c67 102
+  s_3101dec2ee3c53::t_c306f753faaa83 789-821
+  s_3101dec2ee3c53::t_0d249e36fad9e8 1138-1140
+  s_3101dec2ee3c53::t_a9dbe023db8974 1093-1094
+  s_3101dec2ee3c53::t_ac21ccefd5e69c 13-16
+  s_3101dec2ee3c53::t_e06bb9fea403c5 429-434
+  s_3101dec2ee3c53::t_4ff3d77b034d67 17
+  s_3101dec2ee3c53::t_8620b5c5d38eb6 131-135
+  s_3101dec2ee3c53::t_c56b9fcdb1b923 1095
+  s_3101dec2ee3c53::t_8b6bac7a1a34e8 136
+  s_3101dec2ee3c53::t_9e5445df81628d 422
+backend/tests/unit/test_agent_and_workflow.py
+  s_3101dec2ee3c53::t_12603ff8ac06c5 838-840
+  s_3101dec2ee3c53::t_ff8759e9adae1f 796-803,807
+backend/infra/workflows/runtime_sync.py
+  s_3101dec2ee3c53::t_cc8515db89a89b 66-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "91191e10c11e737cb24e0a2cc675e280cdf5f7e2",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
