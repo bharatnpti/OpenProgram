@@ -9,8 +9,13 @@
 // the project's and release's rows without drafts or buttons; Ira (scrum master)
 // reads and acts on the project's rows and her Payments Pod's; a product owner
 // acts on everything but waiving a blocking criterion, which a manager or an admin does.
+// A scrum master's read of a project none of their pods works on is refused, as the
+// backend refuses it; the console never asks.
+import * as consoleData from "../mock-console.mjs";
 
 const PROJECT = "project-checkout";
+const READ_OUTSIDE = "You read the projects your own pods work on, and this is not one of them.";
+const NOT_YOURS = "You can act on readiness only for pods you run and the projects they work on.";
 const RELEASE = { release_id: "rel-1-0", name: "Release 1.0" };
 const NAMES = {
   U1001: "Asha Rao",
@@ -315,6 +320,13 @@ const has = (roles, ...wanted) => roles.some((role) => wanted.includes(role));
 const isBroad = (roles) => has(roles, "admin", "mgr", "po");
 const mayAct = (roles) => has(roles, "admin", "mgr", "po", "sm");
 
+/** Whether one of the person's pods (the roster's) works on the project. */
+function runsPodOf(userId, projectId) {
+  const pods = consoleData.roster.find((person) => person.id === userId)?.pods ?? [];
+  const project = consoleData.projects.find((item) => item.id === projectId);
+  return Boolean(project?.pod_ids.some((id) => pods.includes(id)));
+}
+
 /** Whose rows: every pod's for a broad reader, Ira's pod for a scrum master, none for an executive. */
 function sees(roles, finding) {
   if (finding.scope.kind !== "pod") return true;
@@ -525,6 +537,9 @@ export function api(req, url, roles, actingAs, send, deny) {
       deny();
       return true;
     }
+    if (!isBroad(roles) && !has(roles, "exec") && !runsPodOf(userId, projectId)) {
+      return done(403, { detail: run ? NOT_YOURS : READ_OUTSIDE });
+    }
     const releaseId = url.searchParams.get("release_id") ?? "";
     if (projectId !== PROJECT) {
       const empty = {
@@ -577,7 +592,7 @@ export function api(req, url, roles, actingAs, send, deny) {
     const can = canOf(roles, finding);
     if (!mayAct(roles) || !sees(roles, finding)) {
       return done(403, {
-        detail: "You can act on readiness only for pods you run and the projects they work on.",
+        detail: NOT_YOURS,
       });
     }
     if (action === "reopen") {
@@ -676,7 +691,7 @@ export function api(req, url, roles, actingAs, send, deny) {
     if (!finding) return done(404, { detail: `No draft '${id}'.` });
     if (!mayAct(roles) || !sees(roles, finding)) {
       return done(403, {
-        detail: "You can act on readiness only for pods you run and the projects they work on.",
+        detail: NOT_YOURS,
       });
     }
     const suggestion = finding.suggestion;

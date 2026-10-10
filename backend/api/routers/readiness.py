@@ -39,6 +39,7 @@ from api.readiness_dtos import (
     ReadinessSettingsDto,
 )
 from core.application.authorization import AuthorizationPolicy, Capability
+from core.application.delivery_scope import PROJECT_OUTSIDE_SCOPE
 from core.application.forecast_service import ForecastService
 from core.application.release_readiness_service import (
     FindingView,
@@ -406,6 +407,9 @@ async def _project_viewer(
             project_reach=False,
             sees_drafts=False,
         )
+    if reading and principal.has_role(Role.SM):
+        # A read, in the words of every scoped project read (delivery_scope).
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=PROJECT_OUTSIDE_SCOPE)
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail=_NOT_YOURS if may_act else _NOT_A_READER,

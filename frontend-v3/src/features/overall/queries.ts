@@ -1,6 +1,8 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../../api/client";
+import { readsReadiness } from "../../app/access";
+import { useOwnTree } from "../../app/directory";
 import { sameOnEveryDay } from "../../app/queryCache";
 import { useRole } from "../../app/role";
 import { useReportAccess } from "../reports/useReportAccess";
@@ -122,12 +124,24 @@ export function useGateBoard(projectId: string, releaseId?: string) {
 }
 
 /**
+ * Whether this person reads the project's release readiness (app/access.ts
+ * `readsReadiness`): a scrum master only a project one of their own pods works on,
+ * known from their part of the tree, the one query Delivery and the palette read.
+ * The roles that read every project's never ask for the tree here.
+ */
+export function useReadsReadiness(projectId: string): boolean {
+  const { access } = useRole();
+  const tree = useOwnTree(access.readiness.board && !access.readiness.everyProject);
+  return readsReadiness(access, projectId, tree.data);
+}
+
+/**
  * Release readiness: read as it stands now whatever day is viewed (it is not kept
- * per day), by the roles that decide on a release. A release scope is its own entry.
+ * per day), by the roles that decide on a release, and only where the server
+ * answers this person (`useReadsReadiness`). A release scope is its own entry.
  */
 export function useReadiness(projectId: string, releaseId?: string) {
-  const { access } = useRole();
-  const readable = access.readiness.board;
+  const readable = useReadsReadiness(projectId);
   return {
     readable,
     query: useQuery({
