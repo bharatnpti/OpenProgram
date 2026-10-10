@@ -73,6 +73,7 @@ function effective(id) {
     ...Object.fromEntries(FIELDS.map((f) => [f, own[f] ?? DEFAULTS[f]])),
     inherited: FIELDS.filter((f) => own[f] === null || own[f] === undefined),
     defaults: DEFAULTS,
+    send: consoleData.checkinSend,
   };
 }
 

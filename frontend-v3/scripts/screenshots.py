@@ -12,10 +12,16 @@ point it at a real tenant.
 It needs Playwright's Chromium once: `uv run playwright install chromium`.
 
 Each shot in screenshots.json names a path, who is acting (the localStorage keys the
-console reads, set before it loads), a width (1440 px, or 390 for a phone) and, when a
-picture needs it, steps that open the palette or a dialog first. The browser's clock is
-fixed to the mock's day and its zone to UTC, and the one answer that carries the machine's own
-clock (when the data sources were read) is restamped, so every run shows the same day and times.
+console reads, set before it loads), a width (1440 px, or 390 for a phone), optionally the
+dark theme (`"theme": "dark"`, the data-theme hook) or a mock dataset (`"history": "month"`,
+the `viz-history` cookie the report mocks read) and, when a picture needs it, steps that open
+the palette or a dialog first. The browser's clock is fixed to the mock's day and its zone to
+UTC, and the one answer that carries the machine's own clock (when the data sources were read)
+is restamped, so every run shows the same day and times.
+
+A full-page picture is the page as a reader scrolls it: sections that render as they near the
+viewport (`content-visibility: auto`) are drawn, and the assistant's floating button sits at
+the page's end, in the room the shell keeps for it, rather than where the first screen ends.
 """
 
 import argparse
@@ -59,7 +65,29 @@ class Shot(TypedDict):
     width: NotRequired[int]
     wait: NotRequired[int]
     full_page: NotRequired[bool]
+    theme: NotRequired[str]
+    history: NotRequired[str]
     steps: NotRequired[list[Step]]
+
+
+# Sections that draw as they near the viewport are drawn for the whole picture.
+DRAW_EVERY_SECTION = "section { content-visibility: visible !important; }"
+# A fixed element at the bottom (the assistant's button) goes to the page's end, where a
+# reader who scrolls down finds it: a full-page picture would paint it where the first
+# screen ends, over whatever is there.
+FIXED_TO_PAGE_END = """() => {
+  const height = document.scrollingElement.scrollHeight;
+  for (const element of document.querySelectorAll("body *")) {
+    if (getComputedStyle(element).position !== "fixed") continue;
+    const box = element.getBoundingClientRect();
+    const fromBottom = innerHeight - box.bottom;
+    // Small and near the bottom: a floating button, not a dialog or a full-screen layer.
+    if (!box.height || box.height > innerHeight / 2 || fromBottom > innerHeight / 4) continue;
+    element.style.position = "absolute";
+    element.style.top = `${height - fromBottom - box.height}px`;
+    element.style.bottom = "auto";
+  }
+}"""
 
 
 def load_shots(only: list[str]) -> list[Shot]:
@@ -109,7 +137,7 @@ def pin_server_clock(context: BrowserContext) -> None:
     context.route("**/admin/ops/sync-status", restamp)
 
 
-def new_context(browser: Browser, shot: Shot) -> BrowserContext:
+def new_context(browser: Browser, base: str, shot: Shot) -> BrowserContext:
     context = browser.new_context(
         viewport={"width": shot.get("width", DESKTOP_WIDTH), "height": HEIGHT},
         locale="en-US",
@@ -124,6 +152,21 @@ def new_context(browser: Browser, shot: Shot) -> BrowserContext:
             for key, value in shot["storage"].items()
         )
     )
+    if shot.get("theme"):
+        # The data-theme hook the flow view and the report pages follow, set on <html> as
+        # soon as it exists (an init script runs before the document has an element).
+        context.add_init_script(
+            "(() => {"
+            f"const theme = {json.dumps(shot['theme'])};"
+            "const set = () => document.documentElement.setAttribute('data-theme', theme);"
+            "if (document.documentElement) return set();"
+            "new MutationObserver((_, watch) => {"
+            "if (document.documentElement) { set(); watch.disconnect(); }"
+            "}).observe(document, { childList: true });"
+            "})();"
+        )
+    if shot.get("history"):
+        context.add_cookies([{"name": "viz-history", "value": shot["history"], "url": base}])
     return context
 
 
@@ -166,7 +209,7 @@ def png_size(path: Path) -> tuple[int, int]:
 
 def take(browser: Browser, base: str, out: Path, shot: Shot) -> list[str]:
     """One picture. Returns what the browser complained about, which should be nothing."""
-    context = new_context(browser, shot)
+    context = new_context(browser, base, shot)
     page = context.new_page()
     problems: list[str] = []
     page.on("pageerror", lambda error: problems.append(f"page error: {error}"))
@@ -181,6 +224,10 @@ def take(browser: Browser, base: str, out: Path, shot: Shot) -> list[str]:
         settle(page, shot.get("wait", 1200))
         for step in shot.get("steps", []):
             run_step(page, step)
+        if shot.get("full_page", True):
+            page.add_style_tag(content=DRAW_EVERY_SECTION)
+            page.wait_for_timeout(300)
+            page.evaluate(FIXED_TO_PAGE_END)
         page.screenshot(
             path=out / shot["name"],
             full_page=shot.get("full_page", True),

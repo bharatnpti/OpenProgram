@@ -80,15 +80,20 @@ export function SectionHeader({
   title,
   meta,
   actions,
+  id,
 }: {
   title: string;
   meta?: ReactNode;
   actions?: ReactNode;
+  /** The heading's id, for a section labelled by it. */
+  id?: string;
 }) {
   return (
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
-        <h2 className="text-[22px] font-extrabold tracking-tight text-balance">{title}</h2>
+        <h2 id={id} className="text-[22px] font-extrabold tracking-tight text-balance">
+          {title}
+        </h2>
         {meta ? <p className="mt-1 text-[13px] text-grey-secondary">{meta}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}

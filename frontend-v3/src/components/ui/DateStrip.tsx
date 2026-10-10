@@ -61,19 +61,10 @@ export function DateStrip({
   children?: ReactNode;
   className?: string;
 }) {
-  const shownDay = useShownDay();
   const inScope = counted(scope);
   const rag = verdictRag(scope.verdict, inScope);
   const chip = verdictChip(scope);
   const cause = inScope ? verdictCause(scope) : null;
-  const { p50, p85 } = scope.history;
-  const gap = forecastGap(scope.target, p50, p85);
-  const forecast = inScope ? forecastTone(scope.target, p50, p85) : "neutral";
-  const by = committedBy(scope);
-  const team = scope.team;
-  const teamPast = Boolean(team.latest && shownDay && team.latest < shownDay);
-  const teamSays = inScope ? teamTone(scope.target, team) : "neutral";
-  const noDate = missingDate(scope);
 
   return (
     <Card padding="p-5" className={cn("border-l-[6px]", EDGE[rag], className)}>
@@ -88,65 +79,7 @@ export function DateStrip({
           </RagChip>
         )}
       </div>
-      <dl className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-3">
-        <Cell label="Committed" tone={noDate ? "danger" : "neutral"}>
-          {scope.target ? (
-            <>
-              <p className={BIG}>{formatDate(scope.target)}</p>
-              {by ? <p className={SUB}>{by}</p> : null}
-            </>
-          ) : noDate ? (
-            <p className="flex items-center gap-1.5 text-[18px] font-extrabold leading-tight text-rag-red">
-              <CircleAlert size={18} aria-hidden className="flex-none" />
-              No committed date
-            </p>
-          ) : (
-            <p className={NONE}>No committed date</p>
-          )}
-          {action ? <div className="mt-2">{action}</div> : null}
-        </Cell>
-        <Cell label="Forecast" quiet={inScope && !p50} tone={forecast}>
-          {!inScope ? (
-            <>
-              <p className={NONE}>Nothing to forecast</p>
-              <p className={SUB}>No requirements are counted yet.</p>
-            </>
-          ) : p50 ? (
-            <>
-              <p className={cn(BIG, TONE_TEXT[forecast])}>{formatDate(p50)}</p>
-              <p className={cn(SUB, "flex flex-wrap items-center gap-2")}>
-                <span>{p85 ? `85% by ${formatDay(p85)}` : "no 85% date"}</span>
-                {gap ? <OnFill tone={gap.tone}>{gap.text}</OnFill> : null}
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-[18px] font-bold leading-tight text-grey-body">
-                Not enough history
-              </p>
-              <p className={SUB}>{historyWords(scope.history)}</p>
-            </>
-          )}
-        </Cell>
-        <Cell label="Team says" tone={teamSays}>
-          {team.latest ? (
-            <>
-              <p className={cn(BIG, TONE_TEXT[teamSays])}>{formatDate(team.latest)}</p>
-              <p className={cn(SUB, "flex flex-wrap items-center gap-2")}>
-                <span>{teamWords(team)}</span>
-                {teamPast ? <OnFill tone="danger">past</OnFill> : null}
-              </p>
-            </>
-          ) : (
-            <>
-              <p className={NONE}>No ETA or due date</p>
-              {inScope && team.undated > 0 ? (
-                <p className={SUB}>{team.undated} open without a date</p>
-              ) : null}
-            </>
-          )}
-        </Cell>
-      </dl>
+      <DateCells scope={scope} action={action} className="mt-3" />
       {/* Only a verdict that needs action has a cause: it is red, and boxed so it is seen. */}
       {cause ? (
         <p className="mt-3 flex items-start gap-2 rounded-2xl bg-rag-red-bg px-3 py-2 text-[14px] font-bold text-rag-red">
@@ -157,6 +90,93 @@ export function DateStrip({
       {caption ? <div className="mt-2 text-[12px] text-grey-secondary">{caption}</div> : null}
       {children}
     </Card>
+  );
+}
+
+/**
+ * The strip's three cells, on their own: the committed date (with Set or Change
+ * date for someone who may), the forecast against it, and the team's own latest
+ * date. Overall's answer card puts its sentence above them instead of the
+ * strip's title and cause.
+ */
+export function DateCells({
+  scope,
+  action,
+  className,
+}: {
+  scope: ScopeDeliveryResponse;
+  action?: ReactNode;
+  className?: string;
+}) {
+  const shownDay = useShownDay();
+  const inScope = counted(scope);
+  const { p50, p85 } = scope.history;
+  const gap = forecastGap(scope.target, p50, p85);
+  const forecast = inScope ? forecastTone(scope.target, p50, p85) : "neutral";
+  const by = committedBy(scope);
+  const team = scope.team;
+  const teamPast = Boolean(team.latest && shownDay && team.latest < shownDay);
+  const teamSays = inScope ? teamTone(scope.target, team) : "neutral";
+  const noDate = missingDate(scope);
+
+  return (
+    <dl className={cn("grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-3", className)}>
+      <Cell label="Committed" tone={noDate ? "danger" : "neutral"}>
+        {scope.target ? (
+          <>
+            <p className={BIG}>{formatDate(scope.target)}</p>
+            {by ? <p className={SUB}>{by}</p> : null}
+          </>
+        ) : noDate ? (
+          <p className="flex items-center gap-1.5 text-[18px] font-extrabold leading-tight text-rag-red">
+            <CircleAlert size={18} aria-hidden className="flex-none" />
+            No committed date
+          </p>
+        ) : (
+          <p className={NONE}>No committed date</p>
+        )}
+        {action ? <div className="mt-2">{action}</div> : null}
+      </Cell>
+      <Cell label="Forecast" quiet={inScope && !p50} tone={forecast}>
+        {!inScope ? (
+          <>
+            <p className={NONE}>Nothing to forecast</p>
+            <p className={SUB}>No requirements are counted yet.</p>
+          </>
+        ) : p50 ? (
+          <>
+            <p className={cn(BIG, TONE_TEXT[forecast])}>{formatDate(p50)}</p>
+            <p className={cn(SUB, "flex flex-wrap items-center gap-2")}>
+              <span>{p85 ? `85% by ${formatDay(p85)}` : "no 85% date"}</span>
+              {gap ? <OnFill tone={gap.tone}>{gap.text}</OnFill> : null}
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-[18px] font-bold leading-tight text-grey-body">Not enough history</p>
+            <p className={SUB}>{historyWords(scope.history)}</p>
+          </>
+        )}
+      </Cell>
+      <Cell label="Team says" tone={teamSays}>
+        {team.latest ? (
+          <>
+            <p className={cn(BIG, TONE_TEXT[teamSays])}>{formatDate(team.latest)}</p>
+            <p className={cn(SUB, "flex flex-wrap items-center gap-2")}>
+              <span>{teamWords(team)}</span>
+              {teamPast ? <OnFill tone="danger">past</OnFill> : null}
+            </p>
+          </>
+        ) : (
+          <>
+            <p className={NONE}>No ETA or due date</p>
+            {inScope && team.undated > 0 ? (
+              <p className={SUB}>{team.undated} open without a date</p>
+            ) : null}
+          </>
+        )}
+      </Cell>
+    </dl>
   );
 }
 
@@ -186,7 +206,7 @@ function Cell({
 /** A chip that reads on a tinted cell: white, in its tone's text colour. */
 function OnFill({ tone, children }: { tone: BadgeTone; children: ReactNode }) {
   return (
-    <RagChip tone={tone} className="h-5 bg-white px-2 text-[11px]">
+    <RagChip tone={tone} className="h-5 bg-(--op-viz-surface) px-2 text-[11px]">
       {children}
     </RagChip>
   );
@@ -199,11 +219,15 @@ function OnFill({ tone, children }: { tone: BadgeTone; children: ReactNode }) {
 export function CompactDateStrip({
   scope,
   className,
+  verdict = true,
 }: {
   scope: ScopeDeliveryResponse;
   className?: string;
+  /** False where the verdict is shown elsewhere on the same card, so it is not said twice. */
+  verdict?: boolean;
 }) {
-  const { date, forecast, chip } = compactParts(scope);
+  const { date, forecast, chip: verdictChipOf } = compactParts(scope);
+  const chip = verdict ? verdictChipOf : null;
   return (
     <p
       className={cn(

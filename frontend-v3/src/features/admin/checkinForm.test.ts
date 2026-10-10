@@ -3,13 +3,16 @@ import { test } from "node:test";
 
 import type { CheckinPreferenceResponse } from "../../api/schema";
 import {
+  askedDays,
   changesFrom,
+  daysNote,
   draftFrom,
   draftProblems,
   editField,
   inheritedSummary,
   isTimeZone,
   secondsFromMinutes,
+  sendDays,
   toDefault,
   toEveryDefault,
 } from "./checkinForm.ts";
@@ -22,6 +25,34 @@ const DEFAULTS = {
   final_reply_wait_seconds: 28800,
 };
 
+// The backend's default send: 09:30 UTC, Monday to Friday.
+const SEND: CheckinPreferenceResponse["send"] = {
+  kind: "weekly",
+  cron: "30 9 * * 1-5",
+  timezone: "UTC",
+  local_time: "09:30:00",
+  weekdays: [0, 1, 2, 3, 4],
+  month_days: null,
+  months: null,
+};
+// qa2's paused schedule, 1 January only, and one with no one time.
+const NEW_YEAR: CheckinPreferenceResponse["send"] = {
+  ...SEND,
+  kind: "dates",
+  cron: "0 0 1 1 *",
+  local_time: "00:00:00",
+  weekdays: null,
+  month_days: [1],
+  months: [1],
+};
+const HOURLY: CheckinPreferenceResponse["send"] = {
+  ...SEND,
+  kind: "other",
+  cron: "0 9-17 * * 1-5",
+  local_time: null,
+  weekdays: null,
+};
+
 // As the seeded demo tenant has every member: each field set, even where it equals the default.
 const SET: CheckinPreferenceResponse = {
   developer_id: "U1007",
@@ -32,7 +63,41 @@ const SET: CheckinPreferenceResponse = {
   final_reply_wait_seconds: 28800,
   inherited: [],
   defaults: DEFAULTS,
+  send: SEND,
 };
+
+test("only the days the bot sends on are offered, and a stored weekend is not shown as asked", () => {
+  assert.deepEqual(sendDays(SET), [0, 1, 2, 3, 4]);
+  assert.deepEqual(askedDays([6, 0, 5, 2], SET), [0, 2]);
+  assert.equal(daysNote(SET), null);
+  const everyDay: CheckinPreferenceResponse = { ...SET, weekdays: [0, 1, 2, 3, 4, 5, 6] };
+  const draft = draftFrom(everyDay);
+  assert.deepEqual(draft.weekdays, [0, 1, 2, 3, 4]);
+  // Untouched, nothing is sent; an edit sends only days the bot sends on.
+  assert.deepEqual(changesFrom(everyDay, draft), {});
+  assert.deepEqual(changesFrom(everyDay, editField(draft, everyDay, "weekdays", [0, 1, 2, 3])), {
+    weekdays: [0, 1, 2, 3],
+  });
+});
+
+test("off a weekly schedule every day is offered, and the note says a day only skips a send", () => {
+  for (const send of [NEW_YEAR, HOURLY]) {
+    const everyDay: CheckinPreferenceResponse = { ...SET, weekdays: [0, 1, 2, 3, 4, 5, 6], send };
+    assert.deepEqual(sendDays(everyDay), [0, 1, 2, 3, 4, 5, 6]);
+    assert.deepEqual(askedDays([6, 0, 5], everyDay), [0, 5, 6]);
+    assert.equal(
+      daysNote(everyDay),
+      "Check-ins aren't on a weekly schedule, so these days only skip a send that falls on a day left off.",
+    );
+    const draft = draftFrom(everyDay);
+    assert.deepEqual(draft.weekdays, [0, 1, 2, 3, 4, 5, 6]);
+    assert.deepEqual(changesFrom(everyDay, draft), {});
+    assert.deepEqual(
+      changesFrom(everyDay, editField(draft, everyDay, "weekdays", [0, 1, 2, 3, 4, 5])),
+      { weekdays: [0, 1, 2, 3, 4, 5] },
+    );
+  }
+});
 
 const FOLLOWING: CheckinPreferenceResponse = {
   ...SET,

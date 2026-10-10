@@ -9,7 +9,7 @@ import { ConfirmDialog } from "../../components/Dialogs";
 import { PanelState } from "../../components/PanelState";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
-import { STAGE_LABELS, stageColor } from "../../lib/status";
+import { STAGE_LABELS, stageColor } from "../../components/viz/stages";
 import { AdminDialog, Problems, TabIntro, hintClass, inputClass, labelClass } from "./AdminBits";
 import { errorText } from "./adminWords";
 import {

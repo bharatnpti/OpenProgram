@@ -145,15 +145,6 @@ export function scanSummary(scan: GateScanResponse): string {
   return parts.join(" ");
 }
 
-/** Whether an issue needs someone: past a gate it has not passed, failed, or with suggestions. */
-export function needsSomeone(issue: IssueGatesResponse): boolean {
-  return (
-    issue.passed_without.length > 0 ||
-    issue.items.some((item) => item.status === "suggested") ||
-    issue.evaluations.some((evaluation) => evaluation.state === "failed")
-  );
-}
-
 export type GateCounts = {
   issues: number;
   passedAll: number;

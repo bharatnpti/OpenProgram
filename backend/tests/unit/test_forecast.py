@@ -440,6 +440,82 @@ async def test_history_forecasts_once_enough_days_are_kept() -> None:
     assert project.verdict is Verdict.ON_TRACK
 
 
+async def _keep_history(registry: ServiceRegistry, *, release_id: str | None = None) -> None:
+    """Four weeks of working-day snapshots: one requirement reaches production every third day."""
+    snapshots = registry.requirements_snapshot_repository()
+    day = TODAY - timedelta(days=28)
+    done: dict[str, DeliveryStage] = {}
+    index = 0
+    while day < TODAY:
+        if day.weekday() < 5:
+            index += 1
+            if index % 3 == 0:
+                done[f"OLD-{index}"] = S.PRODUCTION
+            items = {**done, "CHK-2": S.IN_DEVELOPMENT, "CHK-3": S.IN_TESTING}
+            await snapshots.save(_snapshot(day, items))
+            if release_id is not None:
+                release_items = {key: items[key] for key in ("CHK-2", "CHK-3")}
+                await snapshots.save(_snapshot(day, release_items, f"release:{release_id}"))
+        day += timedelta(days=1)
+
+
+async def test_the_forecast_history_replays_each_day_as_the_delivery_view_read_it() -> None:
+    registry, _store = await _registry()
+    service = _service(registry)
+    await _keep_history(registry)
+
+    view = await service.forecast_history(TENANT, "checkout", TODAY, days=21)
+
+    assert view.scope == _project_scope()
+    days = [item.day for item in view.days]
+    # Oldest first, only days that kept a snapshot (no weekends), today last.
+    assert days == sorted(days) and days[-1] == TODAY
+    assert all(day.weekday() < 5 for day in days)
+    assert days[0] >= TODAY - timedelta(days=20)
+    # Too little history early on: no forecast, never a guessed one.
+    assert view.days[0].p50 is None and view.days[0].sample_days < 10
+    forecasting = [item for item in view.days if item.p50 is not None]
+    assert forecasting, "the later days have enough history to forecast"
+    for item in [view.days[0], *forecasting[:2], view.days[-1]]:
+        history = (await service.project_delivery(TENANT, "checkout", item.day)).project.history
+        assert (item.p50, item.p85, item.sample_days) == (
+            history.p50,
+            history.p85,
+            history.sample_days,
+        ), item.day
+
+
+async def test_a_releases_forecast_history_counts_only_its_own_requirements() -> None:
+    registry, _store = await _registry()
+    service = _service(registry)
+    release = await service.save_release(
+        TENANT,
+        "checkout",
+        release_id=None,
+        name="Release 1",
+        match=ReleaseMatch(kind=ReleaseMatchKind.FIX_VERSION, value="R1"),
+        actor="po",
+    )
+    await _keep_history(registry, release_id=release.release_id)
+
+    view = await service.forecast_history(
+        TENANT, "checkout", TODAY, release_id=release.release_id, days=10
+    )
+
+    assert view.scope.kind is CommitmentScopeKind.RELEASE
+    assert view.scope.id == release.release_id
+    # Before today the release's own requirements never reached production, so history
+    # could not forecast them; today CHK-1 is Done in the graph, as the delivery view reads it.
+    assert view.days and all(item.p50 is None for item in view.days[:-1])
+    (r1,) = (await service.project_delivery(TENANT, "checkout", TODAY)).releases
+    assert (view.days[-1].p50, view.days[-1].sample_days) == (
+        r1.history.p50,
+        r1.history.sample_days,
+    )
+    with pytest.raises(GraphNotFound):
+        await service.forecast_history(TENANT, "checkout", TODAY, release_id="missing")
+
+
 async def test_dates_are_only_set_on_scopes_that_exist() -> None:
     registry, _store = await _registry()
     service = _service(registry)
@@ -551,6 +627,32 @@ def test_api_a_scrum_master_sets_only_their_own_pods_date(settings: Settings) ->
     assert pod_view.json()["can_set_dates"] is True
     assert pod_view.json()["projects"][0]["pod"]["target"] == "2026-11-10"
     assert manager.status_code == 200
+
+
+def test_api_the_forecast_history_is_read_with_the_projects_progress(settings: Settings) -> None:
+    client, _registry = _client(settings)
+    with client:
+        _seed(client)
+        read = client.get("/projects/checkout/delivery/history?days=5", headers=_as("po"))
+        scrum_master = client.get("/projects/checkout/delivery/history", headers=_as("sm"))
+        developer = client.get("/projects/checkout/delivery/history", headers=_as("dev"))
+        no_release = client.get(
+            "/projects/checkout/delivery/history?release_id=nope", headers=_as("mgr")
+        )
+        no_project = client.get("/projects/nope/delivery/history", headers=_as("mgr"))
+        too_long = client.get("/projects/checkout/delivery/history?days=91", headers=_as("mgr"))
+
+    assert read.status_code == 200, read.text
+    body = read.json()
+    assert body["project_id"] == "checkout" and body["release_id"] is None
+    assert body["scope_kind"] == "project"
+    # A new project kept no snapshot before today, and has nothing to deliver: one day,
+    # today, forecast to finish that day.
+    (today,) = body["days"]
+    assert today["p50"] == today["day"] and today["sample_days"] == 0
+    assert scrum_master.status_code == 403 and developer.status_code == 403
+    assert no_release.status_code == 404 and no_project.status_code == 404
+    assert too_long.status_code == 422
 
 
 def test_api_releases_are_defined_listed_and_scope_the_requirements(settings: Settings) -> None:

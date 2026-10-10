@@ -6,7 +6,7 @@ import { apiClient } from "../../api/client";
 import type { GateBoardResponse, QuestionStatus, TrackedQuestionResponse } from "../../api/schema";
 import { useNames } from "../../app/directory";
 import { useRole } from "../../app/role";
-import { PanelState, SectionHeader, TableBox, td, th } from "../../components/PanelState";
+import { PanelState, SectionHeader } from "../../components/PanelState";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
@@ -25,6 +25,7 @@ import {
   questionStatusSource,
 } from "./gateWords";
 import { useGateBoard } from "./queries";
+import { VizCard } from "./viz";
 
 type QuestionChange = { confirmed?: boolean; dismissed?: boolean; status?: QuestionStatus };
 
@@ -69,8 +70,9 @@ export function QuestionsSection({
     q.asked_by_name || board?.actor_names?.[q.asked_by] || names(q.asked_by);
 
   return (
-    <section>
+    <section aria-labelledby="q-h">
       <SectionHeader
+        id="q-h"
         title="What we asked, and what we heard back"
         meta={board ? questionsSummary(questions, editGates) : undefined}
         actions={
@@ -91,86 +93,74 @@ export function QuestionsSection({
         isEmpty={questions.length === 0}
         emptyText="No questions kept yet. A Jira comment that mentions someone and asks, or starts with “Question:”, is suggested here; one asked elsewhere can be added by hand."
       >
-        <TableBox>
-          <table className="w-full min-w-[600px] sm:min-w-[820px] border-collapse">
-            <thead>
-              <tr>
-                <th className={th}>Ticket</th>
-                <th className={th}>What we asked</th>
-                <th className={th}>Asked of</th>
-                <th className={th}>Asked by</th>
-                <th className={th}>When</th>
-                <th className={th}>Heard back?</th>
-              </tr>
-            </thead>
-            <tbody>
-              {questionRows(questions).map((q) => (
-                <tr key={q.question_id} className={q.confirmed ? undefined : "bg-grey-header"}>
-                  <td className={`${td} whitespace-nowrap font-bold`}>{q.issue_key}</td>
-                  <td className={td}>
-                    {q.summary}
-                    {!q.confirmed ? (
-                      <span className="block text-[11px] text-grey-secondary">
-                        {editGates
-                          ? "Read from Jira: keep it to track it"
-                          : "Read from Jira, not kept, so not tracked"}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className={`${td} whitespace-nowrap`}>
-                    {q.asked_to_name || names(q.asked_to)}
-                  </td>
-                  <td className={`${td} whitespace-nowrap`}>{askedBy(q)}</td>
-                  <td className={`${td} whitespace-nowrap`}>{formatDay(q.asked_at)}</td>
-                  <td className={td}>
-                    {editGates && !q.confirmed ? (
-                      <span className="flex flex-wrap gap-1.5">
-                        <Pill
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 px-3"
-                          aria-label={`Keep the question on ${q.issue_key}`}
-                          disabled={update.isPending}
-                          onClick={() => update.mutate({ question: q, body: { confirmed: true } })}
-                        >
-                          Keep
-                        </Pill>
-                        <Pill
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 px-3"
-                          aria-label={`Dismiss the question on ${q.issue_key}`}
-                          disabled={update.isPending}
-                          onClick={() => update.mutate({ question: q, body: { dismissed: true } })}
-                        >
-                          Dismiss
-                        </Pill>
-                      </span>
-                    ) : editGates ? (
-                      <HeardBack
-                        question={q}
-                        askedTo={q.asked_to_name || names(q.asked_to)}
-                        saving={update.isPending}
-                        onSave={(status, done) =>
-                          update.mutate({ question: q, body: { status } }, { onSuccess: done })
-                        }
-                      />
-                    ) : q.confirmed ? (
-                      <RagChip tone={QUESTION_TONES[q.status]} className="h-6 px-2.5 text-[12px]">
-                        {QUESTION_LABELS[q.status]}
-                      </RagChip>
-                    ) : (
-                      // Not kept, so nobody tracks whether it was heard back: "Not yet" would be a claim.
-                      <RagChip tone="neutral" className="h-6 px-2.5 text-[12px]">
-                        Not kept
-                      </RagChip>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </TableBox>
+        <VizCard className="@container">
+          <ul className="m-0 grid list-none p-0" aria-label="Questions asked">
+            {questionRows(questions).map((q) => (
+              <li
+                key={q.question_id}
+                className="grid grid-cols-[minmax(0,1fr)] gap-x-3.5 gap-y-1.5 border-t border-(--op-viz-grid) py-3 first:border-t-0 first:pt-0 last:pb-0 @min-[720px]:grid-cols-[70px_minmax(0,1fr)_minmax(0,230px)] @min-[720px]:items-start"
+              >
+                <span className="text-[13px] font-extrabold">{q.issue_key}</span>
+                <span className="min-w-0">
+                  <span className="block text-[13.5px] font-bold text-ink">{q.summary}</span>
+                  <span className="mt-0.5 block text-[12px] text-grey-secondary">
+                    Asked of {q.asked_to_name || names(q.asked_to)} by {askedBy(q)} ·{" "}
+                    {formatDay(q.asked_at)}
+                    {!q.confirmed
+                      ? editGates
+                        ? " · read from Jira: keep it to track it"
+                        : " · read from Jira, not kept, so not tracked"
+                      : ""}
+                  </span>
+                </span>
+                <span className="flex flex-wrap items-center gap-1.5">
+                  {editGates && !q.confirmed ? (
+                    <>
+                      <Pill
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 px-3"
+                        aria-label={`Keep the question on ${q.issue_key}`}
+                        disabled={update.isPending}
+                        onClick={() => update.mutate({ question: q, body: { confirmed: true } })}
+                      >
+                        Keep
+                      </Pill>
+                      <Pill
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 px-3"
+                        aria-label={`Dismiss the question on ${q.issue_key}`}
+                        disabled={update.isPending}
+                        onClick={() => update.mutate({ question: q, body: { dismissed: true } })}
+                      >
+                        Dismiss
+                      </Pill>
+                    </>
+                  ) : editGates ? (
+                    <HeardBack
+                      question={q}
+                      askedTo={q.asked_to_name || names(q.asked_to)}
+                      saving={update.isPending}
+                      onSave={(status, done) =>
+                        update.mutate({ question: q, body: { status } }, { onSuccess: done })
+                      }
+                    />
+                  ) : q.confirmed ? (
+                    <RagChip tone={QUESTION_TONES[q.status]} className="h-6 px-2.5 text-[12px]">
+                      {QUESTION_LABELS[q.status]}
+                    </RagChip>
+                  ) : (
+                    // Not kept, so nobody tracks whether it was heard back: "Not yet" would be a claim.
+                    <RagChip tone="neutral" className="h-6 px-2.5 text-[12px]">
+                      Not kept
+                    </RagChip>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </VizCard>
       </PanelState>
       {adding && board ? (
         <AddQuestionDialog board={board} projectId={projectId} onClose={() => setAdding(false)} />
@@ -326,7 +316,7 @@ function HeardBack({
         <select
           aria-label={`Heard back on ${question.issue_key}?`}
           className={cn(
-            "h-8 rounded-full border bg-white px-3 text-[13px] font-bold",
+            "h-8 rounded-full border bg-(--op-viz-surface) px-3 text-[13px] font-bold",
             changed ? "border-rag-amber ring-2 ring-rag-amber" : "border-grey-border",
           )}
           value={value}

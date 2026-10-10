@@ -5534,6 +5534,103 @@
         }
       }
     },
+    "/projects/{project_id}/delivery/history": {
+      "get": {
+        "tags": ["delivery"],
+        "summary": "Project Forecast History",
+        "description": "The history forecast (p50, p85) as it stood on each day with a snapshot, oldest\nfirst, for the project or one release: what the delivery read said on that day.",
+        "operationId": "project_forecast_history_projects__project_id__delivery_history_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One release of the project.",
+              "title": "Release Id"
+            },
+            "description": "One release of the project."
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForecastHistoryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/projects/{project_id}/delivery-date": {
       "put": {
         "tags": ["delivery"],
@@ -10867,12 +10964,19 @@
         "title": "CheckInPreferenceField",
         "description": "The preference fields a member can leave to the team default, in display order."
       },
+      "CheckInSendKind": {
+        "type": "string",
+        "enum": ["weekly", "dates", "other"],
+        "title": "CheckInSendKind",
+        "description": "What the check-in schedule is, so a screen says only what is true of it.\n\n``WEEKLY``: one time of day on days of the week, in every month (all seven\ndays is every day). ``DATES``: one time of day on listed days of the month\nand/or in listed months, such as 1 January only. ``OTHER``: anything else,\nsuch as a step or a range in the time; only the cron says when."
+      },
       "CheckinDefaultsResponse": {
         "properties": {
           "local_time": {
             "type": "string",
             "format": "time",
-            "title": "Local Time"
+            "title": "Local Time",
+            "description": "Never used to send: check-ins go out for everyone on the response's `send`."
           },
           "timezone": {
             "type": "string",
@@ -11009,7 +11113,8 @@
           "local_time": {
             "type": "string",
             "format": "time",
-            "title": "Local Time"
+            "title": "Local Time",
+            "description": "Stored for the member, and never used to send: check-ins go out for everyone on `send`."
           },
           "timezone": {
             "anyOf": [
@@ -11047,6 +11152,10 @@
           },
           "defaults": {
             "$ref": "#/components/schemas/CheckinDefaultsResponse"
+          },
+          "send": {
+            "$ref": "#/components/schemas/CheckinSendResponse",
+            "description": "When the bot asks: one tenant-wide send. The member's `weekdays` decide whether they are asked on a send day; their `timezone` decides which day a reply counts for, not when they are asked."
           }
         },
         "type": "object",
@@ -11058,7 +11167,8 @@
           "reply_wait_seconds",
           "final_reply_wait_seconds",
           "inherited",
-          "defaults"
+          "defaults",
+          "send"
         ],
         "title": "CheckinPreferenceResponse",
         "description": "A member's check-in preference as it applies: their own values, else the team's."
@@ -11132,6 +11242,86 @@
         "type": "object",
         "title": "CheckinPreferenceUpdateRequest",
         "description": "An admin's change to a member's check-in preference.\n\nA field left out keeps what is stored. A field sent as ``null`` is cleared,\nso the member follows the team default for it again."
+      },
+      "CheckinSendResponse": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/CheckInSendKind",
+            "description": "What the schedule is. `weekly`: one time on days of the week (`local_time`, `weekdays`). `dates`: one time on listed days of the month and/or in listed months (`local_time`, `month_days`, `months`), such as 1 January only. `other`: anything else, such as a step or a range in the time; only `cron` says when."
+          },
+          "cron": {
+            "type": "string",
+            "title": "Cron",
+            "description": "The tenant's check-in schedule as configured (OPENPROGRAM_CHECKIN_FANOUT_CRON). Every member is asked on it; nobody has a time of their own."
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone",
+            "description": "The zone the schedule is read in: always UTC."
+          },
+          "local_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Time",
+            "description": "The clock time of the send in `timezone`; null when `kind` is `other`."
+          },
+          "weekdays": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekdays",
+            "description": "`weekly` only: the days the bot sends, Monday 0, judged by the send's date in `timezone`; all seven is every day. Null for any other kind. A member is asked only on those of these days that are in their own `weekdays`."
+          },
+          "month_days": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month Days",
+            "description": "`dates` only: the days of the month the bot sends on, 1 to 31; null for any day of the month (then `months` is set)."
+          },
+          "months": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Months",
+            "description": "`dates` only: the months the bot sends in, January 1; null for every month (then `month_days` is set)."
+          }
+        },
+        "type": "object",
+        "required": ["kind", "cron", "timezone", "local_time", "weekdays", "month_days", "months"],
+        "title": "CheckinSendResponse",
+        "description": "When the bot asks: one send of the check-ins for the whole tenant."
       },
       "CommitmentResponse": {
         "properties": {
@@ -13752,6 +13942,80 @@
           "can_move_in_tracker"
         ],
         "title": "FocusTaskDto"
+      },
+      "ForecastDayResponse": {
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date",
+            "title": "Day"
+          },
+          "p50": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50"
+          },
+          "p85": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P85"
+          },
+          "sample_days": {
+            "type": "integer",
+            "title": "Sample Days"
+          }
+        },
+        "type": "object",
+        "required": ["day", "p50", "p85", "sample_days"],
+        "title": "ForecastDayResponse",
+        "description": "What history forecast on one day that kept a snapshot; p50 and p85 are null when\nthere was too little history, or nothing finished in it, to forecast."
+      },
+      "ForecastHistoryResponse": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "scope_kind": {
+            "$ref": "#/components/schemas/CommitmentScopeKind"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/ForecastDayResponse"
+            },
+            "type": "array",
+            "title": "Days"
+          }
+        },
+        "type": "object",
+        "required": ["project_id", "release_id", "scope_kind", "days"],
+        "title": "ForecastHistoryResponse",
+        "description": "The project's, or one release's, history forecast as it stood on each day."
       },
       "GateBoardResponse": {
         "properties": {
@@ -16592,6 +16856,86 @@
         ],
         "title": "ReleaseResponse"
       },
+      "ReportAskFactsResponse": {
+        "properties": {
+          "need": {
+            "$ref": "#/components/schemas/NeedType"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "waited_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waited Days"
+          },
+          "issue_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue Key"
+          },
+          "escalated_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalated To"
+          },
+          "escalation_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalation Label"
+          },
+          "needed_most": {
+            "type": "boolean",
+            "title": "Needed Most"
+          },
+          "open_question": {
+            "type": "boolean",
+            "title": "Open Question"
+          }
+        },
+        "type": "object",
+        "required": [
+          "need",
+          "text",
+          "detail",
+          "waited_days",
+          "issue_key",
+          "escalated_to",
+          "escalation_label",
+          "needed_most",
+          "open_question"
+        ],
+        "title": "ReportAskFactsResponse"
+      },
       "ReportAudienceResponse": {
         "properties": {
           "kind": {
@@ -16614,6 +16958,181 @@
         "required": ["kind", "count", "names"],
         "title": "ReportAudienceResponse",
         "description": "How many places of one kind a report goes to, and the people among them by name."
+      },
+      "ReportBypassResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/DeliveryStage"
+          },
+          "gates": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Gates"
+          }
+        },
+        "type": "object",
+        "required": ["key", "stage", "gates"],
+        "title": "ReportBypassResponse"
+      },
+      "ReportDateFactsResponse": {
+        "properties": {
+          "verdict": {
+            "$ref": "#/components/schemas/Verdict"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "target_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Source"
+          },
+          "committed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed By"
+          },
+          "times_moved": {
+            "type": "integer",
+            "title": "Times Moved"
+          },
+          "moved_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Moved Days"
+          },
+          "p50": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50"
+          },
+          "p85": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P85"
+          },
+          "history_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Days"
+          },
+          "history_needed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Needed"
+          },
+          "no_forecast_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Forecast Reason"
+          },
+          "team_latest": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Latest"
+          },
+          "team_latest_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Latest Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "verdict",
+          "target",
+          "target_source",
+          "committed_by",
+          "times_moved",
+          "moved_days",
+          "p50",
+          "p85",
+          "history_days",
+          "history_needed",
+          "no_forecast_reason",
+          "team_latest",
+          "team_latest_key"
+        ],
+        "title": "ReportDateFactsResponse",
+        "description": "The delivery date as the report states it; what it leaves unsaid is null."
       },
       "ReportDestinationDto": {
         "properties": {
@@ -16654,6 +17173,102 @@
         "required": ["kind", "label", "available", "note"],
         "title": "ReportDestinationOptionResponse"
       },
+      "ReportFactsResponse": {
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportNoteFactsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportDateFactsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "progress": {
+            "$ref": "#/components/schemas/ReportProgressFactsResponse"
+          },
+          "gates": {
+            "items": {
+              "$ref": "#/components/schemas/ReportGateFactsResponse"
+            },
+            "type": "array",
+            "title": "Gates"
+          },
+          "important": {
+            "$ref": "#/components/schemas/ReportImportantFactsResponse"
+          },
+          "asks": {
+            "items": {
+              "$ref": "#/components/schemas/ReportOwnerAsksResponse"
+            },
+            "type": "array",
+            "title": "Asks"
+          }
+        },
+        "type": "object",
+        "required": ["note", "delivery", "progress", "gates", "important", "asks"],
+        "title": "ReportFactsResponse",
+        "description": "The report as structured facts, for the console to draw.\n\nBuilt from the same computation as the report's lines, and holding nothing\nthe sent text does not say. Never part of what is sent."
+      },
+      "ReportGateFactsResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "guards_stage": {
+            "$ref": "#/components/schemas/DeliveryStage"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "passed": {
+            "type": "integer",
+            "title": "Passed"
+          },
+          "bypassed": {
+            "type": "integer",
+            "title": "Bypassed"
+          },
+          "failed": {
+            "type": "integer",
+            "title": "Failed"
+          },
+          "open": {
+            "type": "integer",
+            "title": "Open"
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "guards_stage",
+          "total",
+          "passed",
+          "bypassed",
+          "failed",
+          "open",
+          "missing"
+        ],
+        "title": "ReportGateFactsResponse",
+        "description": "One gate's requirements, each counted once: moved on without it, else by state."
+      },
       "ReportGroupResponse": {
         "properties": {
           "heading": {
@@ -16671,6 +17286,75 @@
         "type": "object",
         "required": ["heading", "lines"],
         "title": "ReportGroupResponse"
+      },
+      "ReportImportantFactsResponse": {
+        "properties": {
+          "drawn": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Drawn"
+          },
+          "bypassed": {
+            "items": {
+              "$ref": "#/components/schemas/ReportBypassResponse"
+            },
+            "type": "array",
+            "title": "Bypassed"
+          },
+          "risks": {
+            "type": "integer",
+            "title": "Risks"
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": ["drawn", "bypassed", "risks", "lines"],
+        "title": "ReportImportantFactsResponse"
+      },
+      "ReportNoteFactsResponse": {
+        "properties": {
+          "author": {
+            "type": "string",
+            "title": "Author"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": ["author", "text"],
+        "title": "ReportNoteFactsResponse"
+      },
+      "ReportOwnerAsksResponse": {
+        "properties": {
+          "heading": {
+            "type": "string",
+            "title": "Heading"
+          },
+          "named": {
+            "type": "boolean",
+            "title": "Named"
+          },
+          "asks": {
+            "items": {
+              "$ref": "#/components/schemas/ReportAskFactsResponse"
+            },
+            "type": "array",
+            "title": "Asks"
+          }
+        },
+        "type": "object",
+        "required": ["heading", "named", "asks"],
+        "title": "ReportOwnerAsksResponse"
       },
       "ReportPreviewResponse": {
         "properties": {
@@ -16726,6 +17410,16 @@
           "text": {
             "type": "string",
             "title": "Text"
+          },
+          "facts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportFactsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -16742,6 +17436,81 @@
         ],
         "title": "ReportPreviewResponse",
         "description": "What the report would say if it were sent now. Nothing is sent or stored."
+      },
+      "ReportProgressFactsResponse": {
+        "properties": {
+          "percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/ReportStageCountResponse"
+            },
+            "type": "array",
+            "title": "Stages"
+          },
+          "moves": {
+            "items": {
+              "$ref": "#/components/schemas/ReportStageMoveResponse"
+            },
+            "type": "array",
+            "title": "Moves"
+          },
+          "more_moves": {
+            "type": "integer",
+            "title": "More Moves"
+          },
+          "other_changes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Other Changes"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "percent",
+          "since",
+          "total",
+          "stages",
+          "moves",
+          "more_moves",
+          "other_changes",
+          "notes"
+        ],
+        "title": "ReportProgressFactsResponse"
       },
       "ReportRunResponse": {
         "properties": {
@@ -16947,6 +17716,66 @@
         "type": "object",
         "required": ["release_id", "name"],
         "title": "ReportSetupReleaseResponse"
+      },
+      "ReportStageCountResponse": {
+        "properties": {
+          "stage": {
+            "$ref": "#/components/schemas/DeliveryStage"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          }
+        },
+        "type": "object",
+        "required": ["stage", "count", "previous"],
+        "title": "ReportStageCountResponse"
+      },
+      "ReportStageMoveResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "from_stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to_stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["key", "title", "from_stage", "to_stage"],
+        "title": "ReportStageMoveResponse"
       },
       "ReportTableResponse": {
         "properties": {

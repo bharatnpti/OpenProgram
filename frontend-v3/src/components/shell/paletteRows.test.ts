@@ -9,6 +9,7 @@ import {
   directoryRows,
   matchRows,
   noPodNote,
+  paletteMark,
   peopleRows,
   screenRows,
 } from "./paletteRows.ts";
@@ -79,6 +80,38 @@ test("for a manager every node opens its Delivery panel, and an empty workstream
       ["Payments Pod", "Pod · Checkout Revamp", "/delivery/pod/pod-payments"],
     ],
   );
+});
+
+test("a node's mark is its own status from the directory, in words, never its kind's colour", () => {
+  // The QA finding: Payments Pod was amber on Delivery, Today and Overall, and
+  // the palette drew it green, because every pod's dot was green.
+  const coloured = {
+    programs: [item("program", "program-platform", "Digital Platform Program", { rag: "red" })],
+    projects: [item("project", "project-checkout", "Checkout Revamp", { rag: "green" })],
+    workstreams: [item("workstream", "ws-payments", "Payments API", { rag: "amber" })],
+    pods: [
+      item("pod", "pod-payments", "Payments Pod", { rag: "amber" }),
+      item("pod", "pod-storefront", "Storefront Pod", { rag: "unknown" }),
+      item("pod", "pod-data", "Data Pod"),
+    ],
+  };
+  const marks = directoryRows(coloured, manager).map((row) => [row.label, paletteMark(row)]);
+  assert.deepEqual(marks, [
+    ["Digital Platform Program", { kind: "status", tone: "danger", words: "Off track" }],
+    ["Checkout Revamp", { kind: "status", tone: "success", words: "On track" }],
+    ["Payments API", { kind: "status", tone: "warning", words: "At risk" }],
+    ["Payments Pod", { kind: "status", tone: "warning", words: "At risk" }],
+    // Nobody reported one, or none was ever rolled up: grey, never green.
+    ["Storefront Pod", { kind: "status", tone: "neutral", words: "Status unknown" }],
+    ["Data Pod", { kind: "status", tone: "neutral", words: "Status unknown" }],
+  ]);
+});
+
+test("a screen, the assistant and a person have no status, so no status colour", () => {
+  assert.deepEqual(paletteMark({ kind: "screen" }), { kind: "screen" });
+  assert.deepEqual(paletteMark({ kind: "ask" }), { kind: "ask" });
+  // Even a status on a person's row would not be drawn: the navigator gives people none.
+  assert.deepEqual(paletteMark({ kind: "person", rag: "green" }), { kind: "person" });
 });
 
 test("a person opens their pod; someone in no pod or with no name is not offered", () => {

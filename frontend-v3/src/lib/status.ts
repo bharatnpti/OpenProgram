@@ -1,6 +1,6 @@
-// Only type imports here: node --test strips types but cannot resolve
-// extensionless runtime imports.
-import type { DeliveryStage, Rag, Verdict } from "../api/schema";
+// Only type imports, and runtime imports by their .ts path: node --test strips
+// types but cannot resolve extensionless runtime imports.
+import type { Rag, Verdict } from "../api/schema";
 
 export type BadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
 
@@ -9,6 +9,22 @@ export function toneForRag(rag: Rag | null | undefined): BadgeTone {
   if (rag === "amber") return "warning";
   if (rag === "red") return "danger";
   return "neutral";
+}
+
+/**
+ * What each colour is called, in the report's own words: never the enum. Every
+ * place that names a colour without a verdict beside it says it this way.
+ */
+export const RAG_WORDS: Record<Rag, string> = {
+  green: "On track",
+  amber: "At risk",
+  red: "Off track",
+  unknown: "Status unknown",
+};
+
+/** A colour in words; a colour nobody reported (none at all included) is "Status unknown". */
+export function ragWords(rag: Rag | null | undefined): string {
+  return RAG_WORDS[rag ?? "unknown"] ?? RAG_WORDS.unknown;
 }
 
 /** Worst first, with `unknown` above `green`: silence is never a clean bill of health. */
@@ -33,29 +49,4 @@ export function toneForVerdict(verdict: Verdict): BadgeTone {
   if (verdict === "at_risk") return "warning";
   if (verdict === "off_track") return "danger";
   return "neutral";
-}
-
-/** The six delivery stages in the order a requirement moves through them. */
-export const STAGE_ORDER: DeliveryStage[] = [
-  "raised",
-  "groomed",
-  "in_development",
-  "in_testing",
-  "business_testing",
-  "production",
-];
-
-/** Fallback wording; the requirements response carries the tenant's own labels. */
-export const STAGE_LABELS: Record<DeliveryStage, string> = {
-  raised: "Raised",
-  groomed: "Groomed",
-  in_development: "In development",
-  in_testing: "In testing",
-  business_testing: "Business testing",
-  production: "Production",
-};
-
-/** CSS custom property for a stage's colour, defined in index.css. */
-export function stageColor(stage: DeliveryStage): string {
-  return `var(--op-stage-${stage.replace(/_/g, "-")})`;
 }

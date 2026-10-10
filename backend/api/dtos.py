@@ -32,7 +32,11 @@ from core.application.flow_metrics_service import (
     WorkstreamFlowSummaryView,
     WorkstreamFlowView,
 )
-from core.application.forecast_service import ProjectDeliveryView, ScopeDeliveryView
+from core.application.forecast_service import (
+    ForecastHistoryView,
+    ProjectDeliveryView,
+    ScopeDeliveryView,
+)
 from core.application.gate_service import GateBoardView
 from core.application.persona_views import (
     BlockerDetailView,
@@ -111,6 +115,15 @@ from core.domain.gates import (
 )
 from core.domain.graph import EdgeKind, EntityRef, GraphEdge, GraphNode, GraphTree, NodeKind
 from core.domain.identity import IdentityLink
+from core.domain.report_facts import (
+    AskFacts,
+    DateFacts,
+    DayReportFacts,
+    GateFacts,
+    ImportantFacts,
+    OwnerAsks,
+    ProgressFacts,
+)
 from core.domain.reports import (
     DayReport,
     DayReportDefinition,
@@ -129,6 +142,8 @@ from core.domain.status import (
     CheckInDefaults,
     CheckInPreference,
     CheckInPreferenceField,
+    CheckInSendKind,
+    CheckInSendSchedule,
     DeveloperStatus,
     EffectiveCheckInPreference,
     StatusSource,
@@ -2412,7 +2427,9 @@ class CheckinDefaultsResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    local_time: time
+    local_time: time = Field(
+        description="Never used to send: check-ins go out for everyone on the response's `send`.",
+    )
     timezone: str
     weekdays: list[int]
     reply_wait_seconds: int
@@ -2429,13 +2446,77 @@ class CheckinDefaultsResponse(BaseModel):
         )
 
 
+class CheckinSendResponse(BaseModel):
+    """When the bot asks: one send of the check-ins for the whole tenant."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: CheckInSendKind = Field(
+        description=(
+            "What the schedule is. `weekly`: one time on days of the week (`local_time`, "
+            "`weekdays`). `dates`: one time on listed days of the month and/or in listed "
+            "months (`local_time`, `month_days`, `months`), such as 1 January only. `other`: "
+            "anything else, such as a step or a range in the time; only `cron` says when."
+        ),
+    )
+    cron: str = Field(
+        description=(
+            "The tenant's check-in schedule as configured (OPENPROGRAM_CHECKIN_FANOUT_CRON). "
+            "Every member is asked on it; nobody has a time of their own."
+        ),
+    )
+    timezone: str = Field(description="The zone the schedule is read in: always UTC.")
+    local_time: time | None = Field(
+        description="The clock time of the send in `timezone`; null when `kind` is `other`.",
+    )
+    weekdays: list[int] | None = Field(
+        description=(
+            "`weekly` only: the days the bot sends, Monday 0, judged by the send's date in "
+            "`timezone`; all seven is every day. Null for any other kind. A member is asked "
+            "only on those of these days that are in their own `weekdays`."
+        ),
+    )
+    month_days: list[int] | None = Field(
+        description=(
+            "`dates` only: the days of the month the bot sends on, 1 to 31; null for any day "
+            "of the month (then `months` is set)."
+        ),
+    )
+    months: list[int] | None = Field(
+        description=(
+            "`dates` only: the months the bot sends in, January 1; null for every month "
+            "(then `month_days` is set)."
+        ),
+    )
+
+    @classmethod
+    def from_domain(cls, schedule: CheckInSendSchedule) -> CheckinSendResponse:
+        def listed(values: tuple[int, ...] | None) -> list[int] | None:
+            return list(values) if values is not None else None
+
+        return cls(
+            kind=schedule.kind,
+            cron=schedule.cron,
+            timezone=schedule.timezone,
+            local_time=schedule.local_time,
+            weekdays=listed(schedule.weekdays),
+            month_days=listed(schedule.month_days),
+            months=listed(schedule.months),
+        )
+
+
 class CheckinPreferenceResponse(BaseModel):
     """A member's check-in preference as it applies: their own values, else the team's."""
 
     model_config = ConfigDict(frozen=True)
 
     developer_id: str
-    local_time: time
+    local_time: time = Field(
+        description=(
+            "Stored for the member, and never used to send: check-ins go out for everyone "
+            "on `send`."
+        ),
+    )
     timezone: str | None
     weekdays: list[int]
     reply_wait_seconds: int
@@ -2447,9 +2528,18 @@ class CheckinPreferenceResponse(BaseModel):
         ),
     )
     defaults: CheckinDefaultsResponse
+    send: CheckinSendResponse = Field(
+        description=(
+            "When the bot asks: one tenant-wide send. The member's `weekdays` decide whether "
+            "they are asked on a send day; their `timezone` decides which day a reply counts "
+            "for, not when they are asked."
+        ),
+    )
 
     @classmethod
-    def from_domain(cls, preference: EffectiveCheckInPreference) -> CheckinPreferenceResponse:
+    def from_domain(
+        cls, preference: EffectiveCheckInPreference, send: CheckInSendSchedule
+    ) -> CheckinPreferenceResponse:
         return cls(
             developer_id=preference.developer_id,
             local_time=preference.local_time,
@@ -2459,6 +2549,7 @@ class CheckinPreferenceResponse(BaseModel):
             final_reply_wait_seconds=preference.final_reply_wait_seconds,
             inherited=list(preference.inherited),
             defaults=CheckinDefaultsResponse.from_domain(preference.defaults),
+            send=CheckinSendResponse.from_domain(send),
         )
 
 
@@ -3754,6 +3845,257 @@ class ReportSectionResponse(BaseModel):
         )
 
 
+class ReportNoteFactsResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    #: The writer's display name; empty when no member is named.
+    author: str
+    text: str
+
+
+class ReportDateFactsResponse(BaseModel):
+    """The delivery date as the report states it; what it leaves unsaid is null."""
+
+    model_config = ConfigDict(frozen=True)
+
+    verdict: Verdict
+    target: date | None
+    target_source: str | None
+    committed_by: str | None
+    times_moved: int
+    moved_days: int | None
+    p50: date | None
+    p85: date | None
+    history_days: int | None
+    history_needed: int | None
+    no_forecast_reason: str | None
+    team_latest: date | None
+    team_latest_key: str | None
+
+    @classmethod
+    def from_domain(cls, facts: DateFacts) -> ReportDateFactsResponse:
+        return cls(
+            verdict=facts.verdict,
+            target=facts.target,
+            target_source=facts.target_source,
+            committed_by=facts.committed_by,
+            times_moved=facts.times_moved,
+            moved_days=facts.moved_days,
+            p50=facts.p50,
+            p85=facts.p85,
+            history_days=facts.history_days,
+            history_needed=facts.history_needed,
+            no_forecast_reason=facts.no_forecast_reason,
+            team_latest=facts.team_latest,
+            team_latest_key=facts.team_latest_key,
+        )
+
+
+class ReportStageCountResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    stage: DeliveryStage
+    count: int
+    #: The previous snapshot day's count; null without one.
+    previous: int | None
+
+
+class ReportStageMoveResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    title: str
+    #: Null for a requirement new today.
+    from_stage: DeliveryStage | None
+    #: Null for one that left the scope.
+    to_stage: DeliveryStage | None
+
+
+class ReportProgressFactsResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    percent: float | None
+    since: date | None
+    total: int
+    stages: list[ReportStageCountResponse]
+    #: The moves the report lists, in its order; ``more_moves`` it only counts.
+    moves: list[ReportStageMoveResponse]
+    more_moves: int
+    #: The other "What changed" lines, in the report's words.
+    other_changes: list[str]
+    #: Lines under Progress the stage strip does not draw.
+    notes: list[str]
+
+    @classmethod
+    def from_domain(cls, facts: ProgressFacts) -> ReportProgressFactsResponse:
+        return cls(
+            percent=facts.percent,
+            since=facts.since,
+            total=facts.total,
+            stages=[
+                ReportStageCountResponse(stage=item.stage, count=item.count, previous=item.previous)
+                for item in facts.stages
+            ],
+            moves=[
+                ReportStageMoveResponse(
+                    key=move.key,
+                    title=move.title,
+                    from_stage=move.from_stage,
+                    to_stage=move.to_stage,
+                )
+                for move in facts.moves
+            ],
+            more_moves=facts.more_moves,
+            other_changes=list(facts.other_changes),
+            notes=list(facts.notes),
+        )
+
+
+class ReportGateFactsResponse(BaseModel):
+    """One gate's requirements, each counted once: moved on without it, else by state."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    guards_stage: DeliveryStage
+    total: int
+    passed: int
+    bypassed: int
+    failed: int
+    open: int
+    missing: int
+
+    @classmethod
+    def from_domain(cls, facts: GateFacts) -> ReportGateFactsResponse:
+        return cls(
+            name=facts.name,
+            guards_stage=facts.guards_stage,
+            total=facts.total,
+            passed=facts.passed,
+            bypassed=facts.bypassed,
+            failed=facts.failed,
+            open=facts.open,
+            missing=facts.missing,
+        )
+
+
+class ReportBypassResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    stage: DeliveryStage
+    gates: list[str]
+
+
+class ReportImportantFactsResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    #: What the delivery lines say that the date bar draws: committed, no_date,
+    #: jira, forecast, history or team.
+    drawn: list[str]
+    #: Every requirement that went around a gate.
+    bypassed: list[ReportBypassResponse]
+    #: Red risks the message lists, each also a fix under What we need.
+    risks: int
+    #: The lines no picture draws, in the report's words.
+    lines: list[str]
+
+    @classmethod
+    def from_domain(cls, facts: ImportantFacts) -> ReportImportantFactsResponse:
+        return cls(
+            drawn=list(facts.drawn),
+            bypassed=[
+                ReportBypassResponse(key=item.key, stage=item.stage, gates=list(item.gates))
+                for item in facts.bypassed
+            ],
+            risks=facts.risks,
+            lines=list(facts.lines),
+        )
+
+
+class ReportAskFactsResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    need: NeedType
+    text: str
+    detail: str
+    #: Null when OpenProgram cannot tell how long it waited.
+    waited_days: int | None
+    issue_key: str | None
+    escalated_to: str | None
+    escalation_label: str | None
+    needed_most: bool
+    #: A question the report also lists under Open questions.
+    open_question: bool
+
+    @classmethod
+    def from_domain(cls, facts: AskFacts) -> ReportAskFactsResponse:
+        return cls(
+            need=facts.need,
+            text=facts.text,
+            detail=facts.detail,
+            waited_days=facts.waited_days,
+            issue_key=facts.issue_key,
+            escalated_to=facts.escalated_to,
+            escalation_label=facts.escalation_label,
+            needed_most=facts.needed_most,
+            open_question=facts.open_question,
+        )
+
+
+class ReportOwnerAsksResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    heading: str
+    #: False for the asks nobody is named for yet.
+    named: bool
+    asks: list[ReportAskFactsResponse]
+
+    @classmethod
+    def from_domain(cls, facts: OwnerAsks) -> ReportOwnerAsksResponse:
+        return cls(
+            heading=facts.heading,
+            named=facts.named,
+            asks=[ReportAskFactsResponse.from_domain(ask) for ask in facts.asks],
+        )
+
+
+class ReportFactsResponse(BaseModel):
+    """The report as structured facts, for the console to draw.
+
+    Built from the same computation as the report's lines, and holding nothing
+    the sent text does not say. Never part of what is sent.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    note: ReportNoteFactsResponse | None
+    delivery: ReportDateFactsResponse | None
+    progress: ReportProgressFactsResponse
+    gates: list[ReportGateFactsResponse]
+    important: ReportImportantFactsResponse
+    asks: list[ReportOwnerAsksResponse]
+
+    @classmethod
+    def from_domain(cls, facts: DayReportFacts) -> ReportFactsResponse:
+        return cls(
+            note=(
+                ReportNoteFactsResponse(author=facts.note.author, text=facts.note.text)
+                if facts.note is not None
+                else None
+            ),
+            delivery=(
+                ReportDateFactsResponse.from_domain(facts.delivery)
+                if facts.delivery is not None
+                else None
+            ),
+            progress=ReportProgressFactsResponse.from_domain(facts.progress),
+            gates=[ReportGateFactsResponse.from_domain(gate) for gate in facts.gates],
+            important=ReportImportantFactsResponse.from_domain(facts.important),
+            asks=[ReportOwnerAsksResponse.from_domain(owner) for owner in facts.asks],
+        )
+
+
 class ReportPreviewResponse(BaseModel):
     """What the report would say if it were sent now. Nothing is sent or stored."""
 
@@ -3770,7 +4112,11 @@ class ReportPreviewResponse(BaseModel):
     #: (``/reports/<project>/daily?report=<id>``), for the console to link in place.
     #: The absolute address a sent message carries is in ``text``, never read from here.
     console_path: str | None
+    #: Exactly what Send now and the schedule send as plain text.
     text: str
+    #: The same report as structured facts, for the console's pictures. Optional:
+    #: added after ``text``, which it never changes.
+    facts: ReportFactsResponse | None = None
 
     @classmethod
     def from_preview(cls, report: DayReport, text: str) -> ReportPreviewResponse:
@@ -3784,6 +4130,9 @@ class ReportPreviewResponse(BaseModel):
             sections=[ReportSectionResponse.from_domain(section) for section in report.sections],
             console_path=report.console_path,
             text=text,
+            facts=(
+                ReportFactsResponse.from_domain(report.facts) if report.facts is not None else None
+            ),
         )
 
 
@@ -3964,6 +4313,43 @@ class ProjectDeliveryResponse(BaseModel):
             project=ScopeDeliveryResponse.from_view(view.project),
             pods=[ScopeDeliveryResponse.from_view(item) for item in view.pods],
             releases=[ScopeDeliveryResponse.from_view(item) for item in view.releases],
+        )
+
+
+class ForecastDayResponse(BaseModel):
+    """What history forecast on one day that kept a snapshot; p50 and p85 are null when
+    there was too little history, or nothing finished in it, to forecast."""
+
+    model_config = ConfigDict(frozen=True)
+
+    day: date
+    p50: date | None
+    p85: date | None
+    sample_days: int
+
+
+class ForecastHistoryResponse(BaseModel):
+    """The project's, or one release's, history forecast as it stood on each day."""
+
+    model_config = ConfigDict(frozen=True)
+
+    project_id: str
+    release_id: str | None
+    scope_kind: CommitmentScopeKind
+    days: list[ForecastDayResponse]
+
+    @classmethod
+    def from_view(cls, view: ForecastHistoryView) -> ForecastHistoryResponse:
+        return cls(
+            project_id=view.scope.project_id,
+            release_id=view.scope.id if view.scope.kind is CommitmentScopeKind.RELEASE else None,
+            scope_kind=view.scope.kind,
+            days=[
+                ForecastDayResponse(
+                    day=item.day, p50=item.p50, p85=item.p85, sample_days=item.sample_days
+                )
+                for item in view.days
+            ],
         )
 
 

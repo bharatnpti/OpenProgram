@@ -1400,7 +1400,8 @@ def _preference_response(
     settings: Settings,
 ) -> CheckinPreferenceResponse:
     return CheckinPreferenceResponse.from_domain(
-        effective_checkin_preference(tenant_id, member_id, preference, settings.checkin_defaults())
+        effective_checkin_preference(tenant_id, member_id, preference, settings.checkin_defaults()),
+        settings.checkin_send_schedule(),
     )
 
 

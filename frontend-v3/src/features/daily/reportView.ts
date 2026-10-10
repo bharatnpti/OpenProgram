@@ -1,8 +1,6 @@
-// Pure helpers for the Daily view. Types, and one pure module imported by its .ts path,
-// so `node --test` runs them.
-import type { DayReportResponse, Rag, ReportRunResponse } from "../../api/schema";
+// Pure helpers for the Daily view. Type imports only, so `node --test` runs them.
+import type { DayReportResponse, ReportRunResponse } from "../../api/schema";
 import type { BadgeTone } from "../../lib/status";
-import { withViewingDateParam } from "../../lib/viewingDate.ts";
 
 /** The section whose groups are people, each with what is needed from them. */
 export const ASKS_SECTION = "What we need, and from whom";
@@ -21,14 +19,6 @@ export const RUN_TONES: Record<RunStatus, BadgeTone> = {
   partial: "warning",
   failed: "danger",
   sending: "info",
-};
-
-/** The words the report itself opens with for each colour. */
-export const RAG_WORDS: Record<Rag, string> = {
-  green: "On track",
-  amber: "At risk",
-  red: "Off track",
-  unknown: "Status unknown",
 };
 
 const ASK_KINDS = ["Fix", "Decision", "Answer", "Review"];
@@ -56,29 +46,6 @@ export function sendConfirmation(
       `${receive} it right away: ${report.audience_summary}. ` +
       "Today's scheduled send still goes out at its time.",
   };
-}
-
-/**
- * Where the footer's "Open in OpenProgram" goes inside the console: the path the
- * server gave (`console_path`, the report's own page), as a link within this
- * app, keeping the past day being viewed. The address a sent message carries
- * is absolute because it is opened elsewhere; here an address with a host would
- * leave the console, which is how this link broke, so only a path is taken.
- * Null when there is none to follow.
- */
-export function openInConsoleTarget(
-  consolePath: string | null | undefined,
-  asOf: string | null,
-): string | null {
-  if (!consolePath || !consolePath.startsWith("/")) return null;
-  if (consolePath.startsWith("//") || consolePath.startsWith("/\\")) return null;
-  const hashAt = consolePath.indexOf("#");
-  const hash = hashAt < 0 ? "" : consolePath.slice(hashAt);
-  const beforeHash = hashAt < 0 ? consolePath : consolePath.slice(0, hashAt);
-  const queryAt = beforeHash.indexOf("?");
-  const pathname = queryAt < 0 ? beforeHash : beforeHash.slice(0, queryAt);
-  const search = queryAt < 0 ? "" : beforeHash.slice(queryAt);
-  return `${pathname}${withViewingDateParam(search, asOf)}${hash}`;
 }
 
 /** "3 of 4 delivered" for a run's outcomes. */

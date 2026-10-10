@@ -1,0 +1,417 @@
+/* Daily: the report as pictures (D1 date bar, D2 stage strip, D4 gate rings, D3 who
+   acts) and the text Send now sends. The values are v3's own tokens (index.css) for
+   light; the dark steps follow a theme set on the document (data-theme="dark"), the
+   hook the flow view uses until the console has a dark theme. Only the report, the
+   sent text and past sends take them; the stage colours are components/viz/stages.ts's. */
+:root {
+  --op-day-surface: #ffffff;
+  --op-day-surface-2: #f1f1f1;
+  --op-day-surface-3: #fafafa;
+  --op-day-border: #dddddd;
+  --op-day-grid: #e7e7e7;
+  --op-day-axis: #b6b6b6;
+  --op-day-ink: #000000;
+  --op-day-body: #414141;
+  --op-day-secondary: #616161;
+  --op-day-muted: #6f6e69;
+  --op-day-magenta: #e20074;
+  --op-day-green: #007845;
+  --op-day-green-bg: #ccf0e1;
+  --op-day-amber: #993300;
+  --op-day-amber-bg: #ffddcc;
+  --op-day-red: #c20d00;
+  --op-day-red-bg: #ffdddb;
+  --op-day-red-solid: #c20d00;
+  --op-day-info: #2238df;
+  --op-day-info-bg: #d3d7f9;
+  --op-day-neutral-bg: #dddddd;
+  --op-day-note-bg: #fff4fa;
+  /* Fix, decision, answer and review: slots 1, 7, 3 and 2 of the validated
+     categorical palette the flow view uses (index.css, --op-flow-type-*). */
+  --op-day-ask-fix: #2a78d6;
+  --op-day-ask-decision: #4a3aa7;
+  --op-day-ask-answer: #1baf7a;
+  --op-day-ask-review: #eb6834;
+}
+
+:root[data-theme="dark"] {
+  --op-day-surface: #1a1a19;
+  --op-day-surface-2: #262625;
+  --op-day-surface-3: #141413;
+  --op-day-border: #383835;
+  --op-day-grid: #2c2c2a;
+  --op-day-axis: #5c5b56;
+  --op-day-ink: #ffffff;
+  --op-day-body: #e3e2dc;
+  --op-day-secondary: #c3c2b7;
+  --op-day-muted: #a3a29b;
+  --op-day-magenta: #e20074;
+  --op-day-green: #4cc38a;
+  --op-day-green-bg: #0e2f21;
+  --op-day-amber: #f0a060;
+  --op-day-amber-bg: #3d2312;
+  --op-day-red: #ff7b72;
+  --op-day-red-bg: #3f1512;
+  --op-day-red-solid: #c62f25;
+  --op-day-info: #8f9cff;
+  --op-day-info-bg: #1c2353;
+  --op-day-neutral-bg: #3a3a37;
+  --op-day-note-bg: #2a1320;
+  --op-day-ask-fix: #3987e5;
+  --op-day-ask-decision: #9085e9;
+  --op-day-ask-answer: #199e70;
+  --op-day-ask-review: #d95926;
+}
+
+/* ---- the report card and its sections --------------------------------------------- */
+.dv-card {
+  container: dv-report / inline-size;
+  min-width: 0;
+  border: 1px solid var(--op-day-border);
+  border-radius: 24px;
+  background: var(--op-day-surface);
+  color: var(--op-day-ink);
+}
+.dv-head {
+  padding: 20px;
+  border-bottom: 1px solid var(--op-day-border);
+}
+.dv-rsec {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 20px;
+  border-top: 1px solid var(--op-day-border);
+}
+.dv-head + .dv-rsec {
+  border-top: 0;
+}
+.dv-rsec-t {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--op-day-secondary);
+}
+.dv-rsec-b {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  min-width: 0;
+}
+@container dv-report (min-width: 760px) {
+  .dv-rsec {
+    grid-template-columns: 168px minmax(0, 1fr);
+    gap: 24px;
+  }
+  .dv-rsec-t {
+    padding-top: 3px;
+  }
+}
+@container dv-report (max-width: 480px) {
+  .dv-rsec,
+  .dv-head {
+    padding: 16px;
+  }
+}
+
+/* ---- each picture ------------------------------------------------------------------ */
+.dv-viz {
+  container-type: inline-size;
+  min-width: 0;
+  margin: 0;
+}
+.dv-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.dv-chart text {
+  font-family: inherit;
+}
+.dv-tx {
+  fill: var(--op-day-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.dv-tx-ink {
+  fill: var(--op-day-ink);
+}
+.dv-tx-m {
+  fill: var(--op-day-muted);
+  font-size: 11.5px;
+}
+.dv-b {
+  font-weight: 700;
+}
+.dv-xb {
+  font-weight: 800;
+}
+.dv-s {
+  font-size: 11.5px;
+}
+.dv-m {
+  font-size: 12px;
+}
+.dv-xl {
+  font-size: 26px;
+}
+.dv-num {
+  font-variant-numeric: tabular-nums;
+}
+.dv-halo {
+  paint-order: stroke;
+  stroke: var(--op-day-surface);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+.dv-scroll {
+  overflow-x: auto;
+  border-radius: 8px;
+}
+.dv-scroll > svg {
+  min-width: 480px;
+}
+.dv-narrow,
+.dv2-narrow {
+  display: none;
+}
+@container (max-width: 470px) {
+  .dv-wide {
+    display: none;
+  }
+  .dv-narrow {
+    display: block;
+  }
+}
+@container (max-width: 560px) {
+  .dv2-wide {
+    display: none;
+  }
+  .dv2-narrow {
+    display: block;
+  }
+}
+.dv-d1 {
+  max-width: 620px;
+}
+.dv-d2 {
+  max-width: 660px;
+}
+.dv-sub {
+  font-size: 13px;
+  color: var(--op-day-secondary);
+}
+.dv-note {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--op-day-secondary);
+}
+.dv-grp {
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--op-day-ink);
+}
+.dv-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--op-day-body);
+}
+.dv-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.dv-sw {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.dv-sw-dia {
+  width: 9px;
+  height: 9px;
+  border-radius: 1px;
+  transform: rotate(45deg);
+  background: var(--op-day-info);
+}
+.dv-line {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 18px;
+  border-top: 2px solid var(--op-day-ink);
+}
+.dv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.dv-chip-sm {
+  height: 22px;
+  padding: 0 8px;
+  gap: 5px;
+  font-size: 11.5px;
+}
+.dv-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.dv-key {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 6px;
+  background: var(--op-day-surface);
+  color: var(--op-day-ink);
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* D2 on a phone: six tiles and the moves as a list. */
+.dv-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.dv-tile {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 14px;
+  background: var(--op-day-surface-2);
+}
+.dv-tile-name {
+  margin-top: 8px;
+  min-height: 2.5em;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--op-day-secondary);
+  overflow-wrap: anywhere;
+}
+.dv-moves {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--op-day-body);
+}
+.dv-moves li {
+  display: grid;
+  padding: 8px 10px;
+  border-left: 2px solid var(--op-day-ink);
+  border-radius: 0 8px 8px 0;
+  background: var(--op-day-surface-3);
+}
+
+/* D3: name above the asks on a phone, beside them from 600 px. */
+.dv-lane {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding-block: 10px;
+  border-top: 1px solid var(--op-day-grid);
+}
+/* The scale row: on a phone only the bars' scale, at the track's width, above the
+   lanes; from 600 px the Who and Asked headings beside it too. */
+.dv-lane-scale {
+  padding-block: 0 4px;
+  border-top: 0;
+}
+.dv-scale-head {
+  display: none;
+}
+.dv-ask {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+}
+.dv-wait {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px 16px;
+  align-items: center;
+  gap: 8px;
+}
+.dv-track {
+  position: relative;
+  height: 12px;
+  border-left: 1px solid var(--op-day-axis);
+}
+.dv-scale {
+  position: relative;
+  height: 16px;
+  font-size: 11px;
+  color: var(--op-day-muted);
+  font-variant-numeric: tabular-nums;
+}
+.dv-scale span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.dv-scale span:first-child {
+  transform: none;
+}
+.dv-scale span:last-child {
+  transform: translateX(-100%);
+}
+.dv-scale-unit {
+  font-size: 11px;
+  line-height: 16px;
+  text-align: right;
+  color: var(--op-day-muted);
+}
+@container dv-report (min-width: 600px) {
+  .dv-lane {
+    grid-template-columns: 136px minmax(0, 1fr);
+    gap: 4px 14px;
+    align-items: start;
+  }
+  .dv-lane-scale {
+    padding-block: 0 6px;
+  }
+  .dv-scale-head {
+    display: inline;
+  }
+  .dv-ask,
+  .dv-scale-row {
+    grid-template-columns: minmax(0, 1fr) 210px;
+    align-items: center;
+    gap: 4px 14px;
+  }
+  .dv-scale-row {
+    display: grid;
+  }
+}
+
+/* The text Send now sends. */
+.dv-sent {
+  margin: 0;
+  padding: 16px 18px 18px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--op-day-body);
+}

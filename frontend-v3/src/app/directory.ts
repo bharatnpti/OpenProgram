@@ -15,7 +15,7 @@ import {
   type NameOf,
 } from "./names";
 import { useRole } from "./role";
-import { chooseProgram, rankPrograms } from "./scope";
+import { chooseProgram, rankPrograms, reportProjects } from "./scope";
 
 /*
  * The directory (programs, projects, workstreams, pods) is readable by every
@@ -30,7 +30,9 @@ export {
   projectsOf,
   projectsOfPerson,
   programsOfProjects,
+  pickerProjects,
   rankProjects,
+  reportProjects,
 } from "./scope";
 
 export function usePrograms() {
@@ -94,6 +96,36 @@ export function useProgramChoice() {
 export function useMemberId(): string | null {
   const { actingAs, user } = useRole();
   return actingAs?.id ?? user?.subject ?? null;
+}
+
+/**
+ * The projects Reports lists for this person, one rule for the Reports home and
+ * for the project picker inside a project's reports: a developer's are those of
+ * their own pods, everyone else's are all of them (`reportProjects`). `listed`
+ * is empty until what the rule needs has been read, so a developer never sees
+ * every project flash by before their own; `directory` is every project, for
+ * naming one the list leaves out.
+ */
+export function useReportProjects() {
+  const { canReadAggregate } = useRole();
+  const memberId = useMemberId();
+  const projects = useProjects();
+  const pods = usePods();
+  const narrowed = !canReadAggregate;
+  const ready = !projects.isLoading && !(narrowed && pods.isLoading);
+  const shown = ready
+    ? reportProjects(projects.data ?? [], pods.data ?? [], memberId, narrowed)
+    : { projects: [], own: false };
+  return {
+    listed: shown.projects,
+    /** The list is the person's own pods' projects, not everything. */
+    own: shown.own,
+    narrowed,
+    directory: projects.data ?? [],
+    isLoading: !ready,
+    error: projects.error ?? (narrowed ? pods.error : null),
+    retry: () => void projects.refetch(),
+  };
 }
 
 const heatmapOf = (results: UseQueryResult<PortfolioHeatmapResponse>[]) =>

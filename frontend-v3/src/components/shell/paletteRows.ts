@@ -1,7 +1,8 @@
-// What the ⌘K palette offers and how a query picks from it. Type imports only,
-// so `node --test` can run it.
-import type { DirectoryItemResponse } from "../../api/schema";
+// What the ⌘K palette offers and how a query picks from it. Type imports, and
+// runtime imports by their .ts path, so `node --test` can run it.
+import type { DirectoryItemResponse, Rag } from "../../api/schema";
 import type { PaletteTargets } from "../../app/access";
+import { ragWords, toneForRag, type BadgeTone } from "../../lib/status.ts";
 
 export type PaletteKind =
   "screen" | "ask" | "program" | "project" | "workstream" | "pod" | "person";
@@ -13,6 +14,11 @@ export type PaletteRow = {
   /** What it is and where it sits, e.g. "Pod · Checkout Revamp". */
   hint: string;
   to: string;
+  /**
+   * A program's, project's, workstream's or pod's status: the directory's own
+   * `rag`, as the Delivery navigator draws it. Null when nobody reported one.
+   */
+  rag?: Rag | null;
   /**
    * A person's pods, the one the row opens first, and what the hint says
    * before them ("Backend Engineer · "). A query naming another of their pods
@@ -123,10 +129,30 @@ export function directoryRows(directory: Directory, targets: PaletteTargets): Pa
             label: item.name,
             hint: hint(kind.charAt(0).toUpperCase() + kind.slice(1), where),
             to: to(item.id),
+            rag: item.rag ?? null,
           },
         ]
       : [];
   });
+}
+
+/** What a row's mark says: a node's status in a colour and words, or what kind of row it is. */
+export type PaletteMark =
+  { kind: "status"; tone: BadgeTone; words: string } | { kind: "screen" | "ask" | "person" };
+
+/**
+ * The mark before a row. A program, project, workstream or pod shows its
+ * status: the directory's `rag`, the field the Delivery navigator's dot reads,
+ * from the same reads (`["directory", kind]`), so the palette and Delivery can
+ * never disagree. Green, amber and red say a verdict, grey says nothing is
+ * known, and the words go with the colour ("At risk"). A screen, the
+ * assistant and a person have no status, so their marks use no status colour.
+ */
+export function paletteMark(row: Pick<PaletteRow, "kind" | "rag">): PaletteMark {
+  if (row.kind === "screen" || row.kind === "ask" || row.kind === "person") {
+    return { kind: row.kind };
+  }
+  return { kind: "status", tone: toneForRag(row.rag), words: ragWords(row.rag) };
 }
 
 /**

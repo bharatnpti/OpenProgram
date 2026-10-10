@@ -69,3 +69,60 @@ export function reportZone(
   if (deviceZone) return { zone: deviceZone, from: "device" };
   return { zone: "UTC", from: "none" };
 }
+
+/**
+ * An instant as the wall clock reads in `zone`, with the zone named after it the
+ * way a schedule names its own: "Mon 5 Oct 17:30 Europe/Berlin". A report's last
+ * send sits beside its schedule ("18:00 Europe/Berlin"), so it is read in that
+ * zone and says so, not in the viewer's with nothing said. A zone this browser
+ * does not know is read as UTC, and says UTC. "—" when there is no time.
+ */
+export function formatInZone(iso: string | null | undefined, zone: string): string {
+  if (!iso) return "—";
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "—";
+  const clock = (timeZone: string) => {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(at);
+    const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+    return `${part("weekday")} ${part("day")} ${part("month")} ${part("hour")}:${part("minute")}`;
+  };
+  try {
+    return `${clock(zone)} ${zone}`;
+  } catch {
+    return `${clock("UTC")} UTC`;
+  }
+}
+
+/**
+ * An instant on the wall clock of `zone` ("11:30"), and whether that is the
+ * day before (-1) or after (1) its UTC day: 09:30 UTC is 23:30 the day before
+ * in Honolulu. Null for a zone this browser does not know.
+ */
+export function clockIn(at: Date, zone: string): { clock: string; dayShift: -1 | 0 | 1 } | null {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(at);
+    const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+    const local = Date.UTC(Number(part("year")), Number(part("month")) - 1, Number(part("day")));
+    const utc = Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate());
+    const shift = Math.sign(local - utc) as -1 | 0 | 1;
+    return { clock: `${part("hour")}:${part("minute")}`, dayShift: shift };
+  } catch {
+    return null;
+  }
+}

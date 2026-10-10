@@ -1195,6 +1195,27 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/projects/{project_id}/delivery/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Project Forecast History
+     * @description The history forecast (p50, p85) as it stood on each day with a snapshot, oldest
+     *     first, for the project or one release: what the delivery read said on that day.
+     */
+    get: operations["project_forecast_history_projects__project_id__delivery_history_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/projects/{project_id}/delivery-date": {
     parameters: {
       query?: never;
@@ -2657,6 +2678,17 @@ export interface components {
       | "reply_wait_seconds"
       | "final_reply_wait_seconds";
     /**
+     * CheckInSendKind
+     * @description What the check-in schedule is, so a screen says only what is true of it.
+     *
+     *     ``WEEKLY``: one time of day on days of the week, in every month (all seven
+     *     days is every day). ``DATES``: one time of day on listed days of the month
+     *     and/or in listed months, such as 1 January only. ``OTHER``: anything else,
+     *     such as a step or a range in the time; only the cron says when.
+     * @enum {string}
+     */
+    CheckInSendKind: "weekly" | "dates" | "other";
+    /**
      * CheckinDefaultsResponse
      * @description The team defaults a member follows for any field not set for them.
      */
@@ -2664,6 +2696,7 @@ export interface components {
       /**
        * Local Time
        * Format: time
+       * @description Never used to send: check-ins go out for everyone on the response's `send`.
        */
       local_time: string;
       /** Timezone */
@@ -2715,6 +2748,7 @@ export interface components {
       /**
        * Local Time
        * Format: time
+       * @description Stored for the member, and never used to send: check-ins go out for everyone on `send`.
        */
       local_time: string;
       /** Timezone */
@@ -2731,6 +2765,8 @@ export interface components {
        */
       inherited: components["schemas"]["CheckInPreferenceField"][];
       defaults: components["schemas"]["CheckinDefaultsResponse"];
+      /** @description When the bot asks: one tenant-wide send. The member's `weekdays` decide whether they are asked on a send day; their `timezone` decides which day a reply counts for, not when they are asked. */
+      send: components["schemas"]["CheckinSendResponse"];
     };
     /**
      * CheckinPreferenceUpdateRequest
@@ -2750,6 +2786,44 @@ export interface components {
       reply_wait_seconds?: number | null;
       /** Final Reply Wait Seconds */
       final_reply_wait_seconds?: number | null;
+    };
+    /**
+     * CheckinSendResponse
+     * @description When the bot asks: one send of the check-ins for the whole tenant.
+     */
+    CheckinSendResponse: {
+      /** @description What the schedule is. `weekly`: one time on days of the week (`local_time`, `weekdays`). `dates`: one time on listed days of the month and/or in listed months (`local_time`, `month_days`, `months`), such as 1 January only. `other`: anything else, such as a step or a range in the time; only `cron` says when. */
+      kind: components["schemas"]["CheckInSendKind"];
+      /**
+       * Cron
+       * @description The tenant's check-in schedule as configured (OPENPROGRAM_CHECKIN_FANOUT_CRON). Every member is asked on it; nobody has a time of their own.
+       */
+      cron: string;
+      /**
+       * Timezone
+       * @description The zone the schedule is read in: always UTC.
+       */
+      timezone: string;
+      /**
+       * Local Time
+       * @description The clock time of the send in `timezone`; null when `kind` is `other`.
+       */
+      local_time: string | null;
+      /**
+       * Weekdays
+       * @description `weekly` only: the days the bot sends, Monday 0, judged by the send's date in `timezone`; all seven is every day. Null for any other kind. A member is asked only on those of these days that are in their own `weekdays`.
+       */
+      weekdays: number[] | null;
+      /**
+       * Month Days
+       * @description `dates` only: the days of the month the bot sends on, 1 to 31; null for any day of the month (then `months` is set).
+       */
+      month_days: number[] | null;
+      /**
+       * Months
+       * @description `dates` only: the months the bot sends in, January 1; null for every month (then `month_days` is set).
+       */
+      months: number[] | null;
     };
     /** CommitmentResponse */
     CommitmentResponse: {
@@ -3686,6 +3760,37 @@ export interface components {
        * @description The person is the synced tracker issue's assignee through their identity link. The tick to move the issue also needs write_back other than off.
        */
       can_move_in_tracker: boolean;
+    };
+    /**
+     * ForecastDayResponse
+     * @description What history forecast on one day that kept a snapshot; p50 and p85 are null when
+     *     there was too little history, or nothing finished in it, to forecast.
+     */
+    ForecastDayResponse: {
+      /**
+       * Day
+       * Format: date
+       */
+      day: string;
+      /** P50 */
+      p50: string | null;
+      /** P85 */
+      p85: string | null;
+      /** Sample Days */
+      sample_days: number;
+    };
+    /**
+     * ForecastHistoryResponse
+     * @description The project's, or one release's, history forecast as it stood on each day.
+     */
+    ForecastHistoryResponse: {
+      /** Project Id */
+      project_id: string;
+      /** Release Id */
+      release_id: string | null;
+      scope_kind: components["schemas"]["CommitmentScopeKind"];
+      /** Days */
+      days: components["schemas"]["ForecastDayResponse"][];
     };
     /**
      * GateBoardResponse
@@ -4800,6 +4905,26 @@ export interface components {
       /** Updated By */
       updated_by: string;
     };
+    /** ReportAskFactsResponse */
+    ReportAskFactsResponse: {
+      need: components["schemas"]["NeedType"];
+      /** Text */
+      text: string;
+      /** Detail */
+      detail: string;
+      /** Waited Days */
+      waited_days: number | null;
+      /** Issue Key */
+      issue_key: string | null;
+      /** Escalated To */
+      escalated_to: string | null;
+      /** Escalation Label */
+      escalation_label: string | null;
+      /** Needed Most */
+      needed_most: boolean;
+      /** Open Question */
+      open_question: boolean;
+    };
     /**
      * ReportAudienceResponse
      * @description How many places of one kind a report goes to, and the people among them by name.
@@ -4813,6 +4938,45 @@ export interface components {
        * @description For people, the names of those who are members; anyone else is only counted.
        */
       names: string[];
+    };
+    /** ReportBypassResponse */
+    ReportBypassResponse: {
+      /** Key */
+      key: string;
+      stage: components["schemas"]["DeliveryStage"];
+      /** Gates */
+      gates: string[];
+    };
+    /**
+     * ReportDateFactsResponse
+     * @description The delivery date as the report states it; what it leaves unsaid is null.
+     */
+    ReportDateFactsResponse: {
+      verdict: components["schemas"]["Verdict"];
+      /** Target */
+      target: string | null;
+      /** Target Source */
+      target_source: string | null;
+      /** Committed By */
+      committed_by: string | null;
+      /** Times Moved */
+      times_moved: number;
+      /** Moved Days */
+      moved_days: number | null;
+      /** P50 */
+      p50: string | null;
+      /** P85 */
+      p85: string | null;
+      /** History Days */
+      history_days: number | null;
+      /** History Needed */
+      history_needed: number | null;
+      /** No Forecast Reason */
+      no_forecast_reason: string | null;
+      /** Team Latest */
+      team_latest: string | null;
+      /** Team Latest Key */
+      team_latest_key: string | null;
     };
     /** ReportDestinationDto */
     ReportDestinationDto: {
@@ -4834,12 +4998,77 @@ export interface components {
       /** Note */
       note: string;
     };
+    /**
+     * ReportFactsResponse
+     * @description The report as structured facts, for the console to draw.
+     *
+     *     Built from the same computation as the report's lines, and holding nothing
+     *     the sent text does not say. Never part of what is sent.
+     */
+    ReportFactsResponse: {
+      note: components["schemas"]["ReportNoteFactsResponse"] | null;
+      delivery: components["schemas"]["ReportDateFactsResponse"] | null;
+      progress: components["schemas"]["ReportProgressFactsResponse"];
+      /** Gates */
+      gates: components["schemas"]["ReportGateFactsResponse"][];
+      important: components["schemas"]["ReportImportantFactsResponse"];
+      /** Asks */
+      asks: components["schemas"]["ReportOwnerAsksResponse"][];
+    };
+    /**
+     * ReportGateFactsResponse
+     * @description One gate's requirements, each counted once: moved on without it, else by state.
+     */
+    ReportGateFactsResponse: {
+      /** Name */
+      name: string;
+      guards_stage: components["schemas"]["DeliveryStage"];
+      /** Total */
+      total: number;
+      /** Passed */
+      passed: number;
+      /** Bypassed */
+      bypassed: number;
+      /** Failed */
+      failed: number;
+      /** Open */
+      open: number;
+      /** Missing */
+      missing: number;
+    };
     /** ReportGroupResponse */
     ReportGroupResponse: {
       /** Heading */
       heading: string;
       /** Lines */
       lines: string[];
+    };
+    /** ReportImportantFactsResponse */
+    ReportImportantFactsResponse: {
+      /** Drawn */
+      drawn: string[];
+      /** Bypassed */
+      bypassed: components["schemas"]["ReportBypassResponse"][];
+      /** Risks */
+      risks: number;
+      /** Lines */
+      lines: string[];
+    };
+    /** ReportNoteFactsResponse */
+    ReportNoteFactsResponse: {
+      /** Author */
+      author: string;
+      /** Text */
+      text: string;
+    };
+    /** ReportOwnerAsksResponse */
+    ReportOwnerAsksResponse: {
+      /** Heading */
+      heading: string;
+      /** Named */
+      named: boolean;
+      /** Asks */
+      asks: components["schemas"]["ReportAskFactsResponse"][];
     };
     /**
      * ReportPreviewResponse
@@ -4866,6 +5095,26 @@ export interface components {
       console_path: string | null;
       /** Text */
       text: string;
+      facts?: components["schemas"]["ReportFactsResponse"] | null;
+    };
+    /** ReportProgressFactsResponse */
+    ReportProgressFactsResponse: {
+      /** Percent */
+      percent: number | null;
+      /** Since */
+      since: string | null;
+      /** Total */
+      total: number;
+      /** Stages */
+      stages: components["schemas"]["ReportStageCountResponse"][];
+      /** Moves */
+      moves: components["schemas"]["ReportStageMoveResponse"][];
+      /** More Moves */
+      more_moves: number;
+      /** Other Changes */
+      other_changes: string[];
+      /** Notes */
+      notes: string[];
     };
     /** ReportRunResponse */
     ReportRunResponse: {
@@ -4948,6 +5197,23 @@ export interface components {
       release_id: string;
       /** Name */
       name: string;
+    };
+    /** ReportStageCountResponse */
+    ReportStageCountResponse: {
+      stage: components["schemas"]["DeliveryStage"];
+      /** Count */
+      count: number;
+      /** Previous */
+      previous: number | null;
+    };
+    /** ReportStageMoveResponse */
+    ReportStageMoveResponse: {
+      /** Key */
+      key: string;
+      /** Title */
+      title: string;
+      from_stage: components["schemas"]["DeliveryStage"] | null;
+      to_stage: components["schemas"]["DeliveryStage"] | null;
     };
     /** ReportTableResponse */
     ReportTableResponse: {
@@ -9082,6 +9348,44 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ProjectDeliveryResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_forecast_history_projects__project_id__delivery_history_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        days?: number;
+        /** @description One release of the project. */
+        release_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ForecastHistoryResponse"];
         };
       };
       /** @description Validation Error */

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useId, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 import { apiClient } from "../api/client";
@@ -8,20 +9,23 @@ import { Pill } from "../components/ui/Pill";
 import { ReportHeader } from "../features/daily/ReportHeader";
 import { noDayReportWords } from "../features/daily/reportView";
 import { ReportPreview } from "../features/daily/ReportPreview";
-import { ProjectCompactStrip } from "../features/delivery/DeliveryStrips";
 import { RunHistory } from "../features/daily/RunHistory";
 import { ReportSetupDialog } from "../features/reports/ReportSetupDialog";
 import { ReportsHeader } from "../features/reports/ReportsHeader";
 import { cn } from "../lib/utils";
 
 /**
- * The end-of-day report as its readers get it. A project can have several (the
- * whole project, or one release of it); `?report=` picks one.
+ * The end-of-day report as its readers get it: drawn as pictures from the report
+ * itself, with the text Send now sends one toggle away. A project can have several
+ * (the whole project, or one release of it); `?report=` picks one. Every role reads
+ * the same report: nothing in it is news to anyone the message reaches.
  */
 export function DailyPage() {
   const { projectId = "" } = useParams();
   const [search, setSearch] = useSearchParams();
-  const { canSetUpDayReports, canReadProjectProgress } = useRole();
+  const { canSetUpDayReports } = useRole();
+  const [showText, setShowText] = useState(false);
+  const textId = useId();
 
   const reports = useQuery({
     queryKey: ["day-reports", "project", projectId],
@@ -68,7 +72,7 @@ export function DailyPage() {
         }
       >
         {selected ? (
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-6">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-5">
             {list.length > 1 ? (
               <nav className="flex flex-wrap gap-2" aria-label="Report">
                 {list.map((report) => (
@@ -89,12 +93,23 @@ export function DailyPage() {
                 ))}
               </nav>
             ) : null}
-            <ReportHeader report={selected} />
-            {canReadProjectProgress ? (
-              <ProjectCompactStrip projectId={projectId} className="" />
-            ) : null}
-            <ReportPreview reportId={selected.report_id} />
-            <RunHistory reportId={selected.report_id} />
+            {/* The report's page in the dark theme turns as Overall's does (.op-viz). */}
+            <div className="op-viz grid grid-cols-[minmax(0,1fr)] gap-5">
+              <ReportHeader
+                report={selected}
+                preview={{
+                  open: showText,
+                  onToggle: () => setShowText((open) => !open),
+                  controls: textId,
+                }}
+              />
+              <ReportPreview reportId={selected.report_id} showText={showText} textId={textId} />
+              <RunHistory
+                key={selected.report_id}
+                reportId={selected.report_id}
+                timezone={selected.schedule.timezone}
+              />
+            </div>
           </div>
         ) : null}
       </PanelState>

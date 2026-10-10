@@ -1,30 +1,35 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 
 import { apiClient } from "../../api/client";
-import type { ReportSectionResponse } from "../../api/schema";
-import { useViewingDate } from "../../app/viewingDate";
+import type { ReportPreviewResponse, ReportSectionResponse } from "../../api/schema";
 import { PanelState, TableBox, td, th } from "../../components/PanelState";
 import { RagChip } from "../../components/ui/RagChip";
-import { progressWidth } from "../../lib/format";
-import { toneForRag } from "../../lib/status";
-import { ASKS_SECTION, RAG_WORDS, askParts, openInConsoleTarget } from "./reportView";
+import { RAG_WORDS, toneForRag } from "../../lib/status";
+import { cn } from "../../lib/utils";
+import { DailyReport } from "./DailyReport";
+import { SentText } from "./SentText";
+import { ASKS_SECTION, askParts } from "./reportView";
 
 /**
  * Today's report built live from the project's state, exactly as it would be
- * sent: the headline, progress, then each section in the report's own order and
- * words. The server writes every sentence; this only lays them out.
+ * sent, drawn as the console's pictures from the preview's facts. With `showText`
+ * the text itself is beside it (above it on a phone). One read: the pictures and
+ * the text come from the same response, so they cannot disagree.
  */
-export function ReportPreview({ reportId }: { reportId: string }) {
+export function ReportPreview({
+  reportId,
+  showText,
+  textId,
+}: {
+  reportId: string;
+  showText: boolean;
+  textId: string;
+}) {
   const preview = useQuery({
     queryKey: ["day-reports", "preview", reportId],
     queryFn: () => apiClient.previewDayReport(reportId),
   });
   const data = preview.data;
-  const { asOf } = useViewingDate();
-  // The report's own page, as a link inside the console: the address a sent message
-  // carries is for opening elsewhere, and is never read here.
-  const consoleLink = openInConsoleTarget(data?.console_path, asOf);
 
   return (
     <PanelState
@@ -33,47 +38,47 @@ export function ReportPreview({ reportId }: { reportId: string }) {
       onRetry={() => void preview.refetch()}
     >
       {data ? (
-        <article className="rounded-3xl border border-grey-border">
-          <header className="border-b border-grey-border p-5">
-            <p className="text-[12px] font-bold uppercase tracking-wider text-grey-secondary">
-              {data.title}
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <RagChip tone={toneForRag(data.rag)} dot>
-                {RAG_WORDS[data.rag]}
-              </RagChip>
-              <h2 className="min-w-0 text-[20px] font-extrabold text-balance">{data.headline}</h2>
-            </div>
-            <div className="mt-4">
-              <div
-                className="h-2.5 overflow-hidden rounded-full bg-grey-fill"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={data.percent_complete ?? undefined}
-                aria-label="Completion"
-              >
-                <div
-                  className="h-full rounded-full bg-magenta"
-                  style={{ width: `${progressWidth(data.percent_complete)}%` }}
-                />
-              </div>
-              <p className="mt-2 text-[13px] text-grey-body">{data.progress_line}</p>
-            </div>
-          </header>
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-0">
-            {data.sections.map((section) => (
-              <Section key={section.title} section={section} />
-            ))}
+        <div
+          className={cn(
+            "grid grid-cols-[minmax(0,1fr)] items-start gap-5",
+            showText && "lg:grid-cols-[minmax(0,1fr)_minmax(0,400px)]",
+          )}
+        >
+          {showText ? <SentText id={textId} text={data.text} /> : null}
+          <div className="min-w-0 lg:col-start-1 lg:row-start-1">
+            {data.facts ? (
+              <DailyReport preview={data} facts={data.facts} />
+            ) : (
+              <ReportSections preview={data} />
+            )}
           </div>
-          {consoleLink ? (
-            <footer className="border-t border-grey-border p-5 text-[13px]">
-              <Link to={consoleLink}>Open in OpenProgram</Link>
-            </footer>
-          ) : null}
-        </article>
+        </div>
       ) : null}
     </PanelState>
+  );
+}
+
+/** A server without facts: the report's sections in its own words, as before the pictures. */
+function ReportSections({ preview }: { preview: ReportPreviewResponse }) {
+  return (
+    <article className="rounded-3xl border border-grey-border">
+      <header className="border-b border-grey-border p-5">
+        <p className="text-[12px] font-bold uppercase tracking-wider text-grey-secondary">
+          {preview.title}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <RagChip tone={toneForRag(preview.rag)} dot>
+            {RAG_WORDS[preview.rag]}
+          </RagChip>
+          <h2 className="min-w-0 text-[20px] font-extrabold text-balance">{preview.headline}</h2>
+        </div>
+      </header>
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-0">
+        {preview.sections.map((section) => (
+          <Section key={section.title} section={section} />
+        ))}
+      </div>
+    </article>
   );
 }
 

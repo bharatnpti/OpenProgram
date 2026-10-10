@@ -44,6 +44,7 @@ export const DATED_READS = [
   "/programs/{program_id}/tree",
   "/projects",
   "/projects/{project_id}/delivery",
+  "/projects/{project_id}/delivery/history",
   "/projects/{project_id}/gates",
   "/projects/{project_id}/progress",
   "/projects/{project_id}/requirements",

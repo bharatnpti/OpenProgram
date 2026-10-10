@@ -51,6 +51,8 @@ function preference(userId) {
     ...Object.fromEntries(FIELDS.map((field) => [field, own[field] ?? TEAM[field]])),
     inherited: FIELDS.filter((field) => own[field] === undefined),
     defaults: TEAM,
+    // When the bot asks everyone: one send in UTC, not the team's zone.
+    send: consoleData.checkinSend,
   };
 }
 

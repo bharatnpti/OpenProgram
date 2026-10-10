@@ -940,6 +940,40 @@ const defaults = {
   reply_wait_seconds: 7200,
   final_reply_wait_seconds: 18000,
 };
+// When the bot asks: the tenant's one fan-out, read in UTC (CheckinSendResponse).
+// No member's time is used. MOCK_CHECKIN_SEND picks the kind: weekly (the
+// backend's default OPENPROGRAM_CHECKIN_FANOUT_CRON), daily, dates (a schedule
+// paused to 1 January, as on the QA tenant) or other.
+const SEND_NONE = { weekdays: null, month_days: null, months: null };
+const CHECKIN_SENDS = {
+  weekly: {
+    ...SEND_NONE,
+    kind: "weekly",
+    cron: "30 9 * * 1-5",
+    timezone: "UTC",
+    local_time: "09:30:00",
+    weekdays: [0, 1, 2, 3, 4],
+  },
+  daily: {
+    ...SEND_NONE,
+    kind: "weekly",
+    cron: "30 9 * * *",
+    timezone: "UTC",
+    local_time: "09:30:00",
+    weekdays: [0, 1, 2, 3, 4, 5, 6],
+  },
+  dates: {
+    ...SEND_NONE,
+    kind: "dates",
+    cron: "0 0 1 1 *",
+    timezone: "UTC",
+    local_time: "00:00:00",
+    month_days: [1],
+    months: [1],
+  },
+  other: { ...SEND_NONE, kind: "other", cron: "0 9-17 * * 1-5", timezone: "UTC", local_time: null },
+};
+export const checkinSend = CHECKIN_SENDS[process.env.MOCK_CHECKIN_SEND] ?? CHECKIN_SENDS.weekly;
 export const configMembers = roster
   .filter((r) => !r.roles.includes("exec"))
   .map((r) => ({ id: r.id, kind: "developer", name: r.name, metadata: {} }));
@@ -957,7 +991,7 @@ export const checkinPreferences = configMembers.map((m) => {
     "reply_wait_seconds",
     "final_reply_wait_seconds",
   ].filter((f) => !(f in custom));
-  return { developer_id: m.id, ...defaults, ...custom, inherited, defaults };
+  return { developer_id: m.id, ...defaults, ...custom, inherited, defaults, send: checkinSend };
 });
 export const consent = (id) => ({
   developer_id: id,

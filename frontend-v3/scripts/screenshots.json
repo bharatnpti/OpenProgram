@@ -184,5 +184,52 @@
     "name": "32-delivery-project-no-date.png",
     "path": "/delivery/project/project-insights",
     "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
+  },
+  {
+    "name": "33-daily-sent-text.png",
+    "path": "/reports/project-checkout/daily?report=rep-checkout-r1",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" },
+    "full_page": false,
+    "steps": [{ "click": { "role": "button", "name": "Preview what will be sent" } }]
+  },
+  {
+    "name": "34-daily-mobile.png",
+    "path": "/reports/project-checkout/daily",
+    "width": 390,
+    "storage": { "openprogram.acting-as": "U1003" },
+    "history": "month"
+  },
+  {
+    "name": "35-overall-scrum-master.png",
+    "path": "/reports/project-checkout/overall",
+    "storage": { "openprogram.acting-as": "U1006" },
+    "wait": 2500
+  },
+  {
+    "name": "36-overall-developer.png",
+    "path": "/reports/project-checkout/overall",
+    "storage": { "openprogram.acting-as": "U1007" },
+    "wait": 2500
+  },
+  {
+    "name": "37-overall-dark.png",
+    "path": "/reports/project-checkout/overall",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" },
+    "theme": "dark",
+    "wait": 2500
+  },
+  {
+    "name": "38-overall-mobile.png",
+    "path": "/reports/project-checkout/overall",
+    "width": 390,
+    "storage": { "openprogram.acting-as": "U1003" },
+    "wait": 2500
+  },
+  {
+    "name": "39-overall-short-history.png",
+    "path": "/reports/project-checkout/overall",
+    "storage": { "openprogram.acting-as": "U1003" },
+    "history": "short",
+    "wait": 2500
   }
 ]

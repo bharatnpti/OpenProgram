@@ -45,13 +45,20 @@ from core.application.day_report_asks import (
 from core.application.delivery_service import DeliveryService
 from core.application.escalation_matrix_service import EscalationMatrixService
 from core.application.forecast_service import ForecastService, ScopeDeliveryView
-from core.application.gate_service import GateBoardView, GateService
+from core.application.gate_service import GateBoardView, GateService, IssueGatesView
 from core.application.persona_views import owned_project_tasks
 from core.application.risk_service import RiskService
-from core.domain.delivery import STAGE_LABELS, STAGE_ORDER, RequirementsSnapshot, stage_moves
+from core.domain.delivery import (
+    STAGE_LABELS,
+    STAGE_ORDER,
+    RequirementsSnapshot,
+    StageMove,
+    stage_moves,
+)
 from core.domain.errors import GraphNotFound
 from core.domain.escalation_matrix import NEED_LABELS, NEED_ORDER, EscalationMatrix, NeedType
 from core.domain.forecast import (
+    MIN_SAMPLE_DAYS,
     CommitmentScope,
     CommitmentScopeKind,
     DateChange,
@@ -60,6 +67,19 @@ from core.domain.forecast import (
 )
 from core.domain.gates import GateState, QuestionStatus, TrackedQuestion
 from core.domain.graph import EdgeKind, NodeKind
+from core.domain.report_facts import (
+    AskFacts,
+    BypassFacts,
+    DateFacts,
+    DayReportFacts,
+    GateFacts,
+    ImportantFacts,
+    NoteFacts,
+    OwnerAsks,
+    ProgressFacts,
+    StageCount,
+    StageMoveFacts,
+)
 from core.domain.reports import (
     DayReport,
     DayReportNote,
@@ -153,6 +173,8 @@ class DayReportBuilder:
             else scope.project.name
         )
         console_path = day_report_path(scope.project.id, report_id)
+        owners = grouped(asks)
+        stand = _stand(facts, day)
         return DayReport(
             title=f"{name}: day report, {_day_label(day)}",
             project_name=name,
@@ -163,7 +185,7 @@ class DayReportBuilder:
             progress_line=_progress_line(facts.snapshot, facts.previous),
             sections=(
                 ReportSection(title="In short", lines=_in_short(facts, asks, note)),
-                ReportSection(title="Where we stand", groups=_where_we_stand(facts, day)),
+                ReportSection(title="Where we stand", groups=_where_we_stand(facts, stand)),
                 ReportSection(
                     title="Most important",
                     lines=_most_important(facts),
@@ -176,7 +198,7 @@ class DayReportBuilder:
                             heading=owner or "Nobody named yet",
                             lines=tuple(ask.line() for ask in items),
                         )
-                        for owner, items in grouped(asks)
+                        for owner, items in owners
                     ),
                     empty_text="Nothing is needed from anyone today.",
                 ),
@@ -191,6 +213,14 @@ class DayReportBuilder:
                 f"{self._console_base_url}{console_path}" if self._console_base_url else None
             ),
             attention_count=len(asks),
+            facts=DayReportFacts(
+                note=_note_facts(scope, note),
+                delivery=_date_facts(facts),
+                progress=_progress_facts(facts, stand),
+                gates=_gate_facts(facts.board),
+                important=_important_facts(facts),
+                asks=_owner_asks(owners, most_needed(asks)),
+            ),
         )
 
     async def check_release(self, tenant_id: str, project_id: str, release_id: str) -> None:
@@ -389,25 +419,60 @@ def _delivery_line(view: ScopeDeliveryView) -> str:
     return line
 
 
-def _where_we_stand(facts: _Facts, day: date) -> tuple[ReportGroup, ...]:
+@dataclass(frozen=True, kw_only=True)
+class _Stand:
+    """Where we stand, in parts. The report's lines and the console's facts are both
+    built from these, so the two cannot disagree."""
+
+    since: date | None
+    unmapped: str | None
+    moves: tuple[StageMove, ...]
+    more_moves: int
+    scope_line: str | None
+    date_lines: tuple[str, ...]
+    #: Said in place of the changes when there are none.
+    placeholder: str | None
+
+
+def _stand(facts: _Facts, day: date) -> _Stand:
+    snapshot, previous = facts.snapshot, facts.previous
+    unmapped = None
+    if snapshot is not None and snapshot.total and snapshot.unmapped_statuses:
+        unmapped = (
+            "Statuses no stage names yet: "
+            + ", ".join(snapshot.unmapped_statuses)
+            + " (counted by their broad state; set them under Configuration, Delivery stages)."
+        )
+    since = previous.day if previous is not None else None
+    moves, more, scope_line = _move_parts(previous, snapshot)
+    date_lines = tuple(_date_lines(facts.delivery, since, day))
+    placeholder = None
+    if not (moves or more or scope_line or date_lines):
+        placeholder = (
+            "Nothing changed stage."
+            if previous is not None
+            else "The first snapshot is today; changes show from tomorrow."
+        )
+    return _Stand(
+        since=since,
+        unmapped=unmapped,
+        moves=moves,
+        more_moves=more,
+        scope_line=scope_line,
+        date_lines=date_lines,
+        placeholder=placeholder,
+    )
+
+
+def _where_we_stand(facts: _Facts, stand: _Stand) -> tuple[ReportGroup, ...]:
     snapshot, previous = facts.snapshot, facts.previous
     progress = [_progress_line(snapshot, previous)]
     if snapshot is not None and snapshot.total:
         progress.append(_stage_line(snapshot, previous))
-        if snapshot.unmapped_statuses:
-            progress.append(
-                "Statuses no stage names yet: "
-                + ", ".join(snapshot.unmapped_statuses)
-                + " (counted by their broad state; set them under Configuration, Delivery stages)."
-            )
-    since = previous.day if previous is not None else None
-    changed = [*_move_lines(previous, snapshot), *_date_lines(facts.delivery, since, day)]
-    if not changed:
-        changed = [
-            "Nothing changed stage."
-            if previous is not None
-            else "The first snapshot is today; changes show from tomorrow."
-        ]
+        if stand.unmapped:
+            progress.append(stand.unmapped)
+    since = stand.since
+    changed = [stand.placeholder] if stand.placeholder else [*_move_lines(stand), *stand.date_lines]
     groups = [
         ReportGroup(heading="Progress", lines=tuple(progress)),
         ReportGroup(
@@ -421,23 +486,34 @@ def _where_we_stand(facts: _Facts, day: date) -> tuple[ReportGroup, ...]:
     return tuple(groups)
 
 
-def _most_important(facts: _Facts) -> tuple[str, ...]:
-    lines: list[str] = []
+def _date_reasons(facts: _Facts) -> tuple[str, ...]:
+    """The delivery date's reasons Most important leads with, while the date is in danger."""
     delivery = facts.delivery
     if delivery is not None and delivery.verdict in {Verdict.AT_RISK, Verdict.OFF_TRACK}:
-        lines.extend(delivery.reasons[:3])
-    for issue in facts.board.issues:
-        if issue.passed_without:
-            lines.append(
-                f"{issue.key} reached {STAGE_LABELS[issue.stage].lower()} without "
-                f"{_joined(list(issue.passed_without))} passing."
-            )
-    lines.extend(
+        return delivery.reasons[:3]
+    return ()
+
+
+def _bypass_line(issue: IssueGatesView) -> str:
+    return (
+        f"{issue.key} reached {STAGE_LABELS[issue.stage].lower()} without "
+        f"{_joined(list(issue.passed_without))} passing."
+    )
+
+
+def _risk_lines(facts: _Facts) -> list[str]:
+    return [
         trimmed(finding.reason)
         for finding in facts.findings
         if finding.severity is Rag.RED
         and (not facts.scope.release_only or finding.entity_ref.id in facts.scope.tasks)
-    )
+    ]
+
+
+def _most_important(facts: _Facts) -> tuple[str, ...]:
+    lines: list[str] = list(_date_reasons(facts))
+    lines.extend(_bypass_line(issue) for issue in facts.board.issues if issue.passed_without)
+    lines.extend(_risk_lines(facts))
     kept = list(dict.fromkeys(lines))
     if len(kept) > MAX_IMPORTANT_LINES:
         rest = len(kept) - MAX_IMPORTANT_LINES
@@ -478,6 +554,177 @@ def _question_table(
             )
             for question in rows
         ),
+    )
+
+
+# ---- the console's facts --------------------------------------------------------------
+#
+# The same report, structured for the console's pictures. Each fact comes from the
+# parts its line is written from, and is left out where the line does not say it.
+
+#: How the delivery date's reasons (forecast_service) open, by what the date bar
+#: draws of them. A reason that opens any other way stays a line under Most important.
+_DRAWN_REASONS: tuple[tuple[str, str], ...] = (
+    ("Committed for ", "committed"),
+    ("No delivery date is committed yet", "no_date"),
+    ("No date committed; Jira's release date", "jira"),
+    ("History: ", "forecast"),
+    ("No history yet", "history"),
+    ("Nothing reached production in the last ", "history"),
+    ("Team dates: ", "team"),
+)
+
+
+def _reason_kind(reason: str) -> str | None:
+    if reason.startswith("Only ") and "of history; a forecast needs" in reason:
+        return "history"
+    return next((kind for opening, kind in _DRAWN_REASONS if reason.startswith(opening)), None)
+
+
+def _note_facts(scope: AskScope, note: DayReportNote | None) -> NoteFacts | None:
+    if note is None or not note.text:
+        return None
+    return NoteFacts(author=scope.names.get(note.author, ""), text=note.text)
+
+
+def _date_facts(facts: _Facts) -> DateFacts | None:
+    view = facts.delivery
+    if view is None:
+        return None
+    said = {kind for reason in _date_reasons(facts) if (kind := _reason_kind(reason))}
+    # In short names the 85% date and the team's date only beside a date.
+    beside = view.target is not None
+    commitment = view.commitment
+    actor = commitment.changes[-1].changed_by if commitment.changes else None
+    committed = "committed" in said and actor is not None
+    moved = committed and bool(commitment.times_moved and commitment.moved_days)
+    history = view.history
+    short = "history" in said and history.sample_days < MIN_SAMPLE_DAYS
+    team = view.team
+    team_said = (beside and team.latest is not None and bool(team.latest_key)) or "team" in said
+    return DateFacts(
+        verdict=view.verdict,
+        target=view.target,
+        target_source=view.target_source,
+        committed_by=view.actor_names.get(actor, actor) if committed and actor else None,
+        times_moved=commitment.times_moved if moved else 0,
+        moved_days=commitment.moved_days if moved else None,
+        p50=history.p50 if "forecast" in said else None,
+        p85=history.p85 if beside or "forecast" in said else None,
+        history_days=history.sample_days if short else None,
+        history_needed=MIN_SAMPLE_DAYS if short else None,
+        no_forecast_reason=history.reason if "history" in said else None,
+        team_latest=team.latest if team_said else None,
+        team_latest_key=team.latest_key if team_said else None,
+    )
+
+
+def _progress_facts(facts: _Facts, stand: _Stand) -> ProgressFacts:
+    snapshot, previous = facts.snapshot, facts.previous
+    stages: tuple[StageCount, ...] = ()
+    if snapshot is not None and snapshot.total:
+        stages = tuple(
+            StageCount(
+                stage=stage,
+                count=snapshot.stage_counts.get(stage, 0),
+                previous=previous.stage_counts.get(stage, 0) if previous is not None else None,
+            )
+            for stage in STAGE_ORDER
+        )
+    if stand.placeholder:
+        changes: tuple[str, ...] = (stand.placeholder,)
+    else:
+        changes = (*([stand.scope_line] if stand.scope_line else []), *stand.date_lines)
+    return ProgressFacts(
+        percent=snapshot.percent_complete if snapshot is not None else None,
+        since=stand.since,
+        total=snapshot.total if snapshot is not None else 0,
+        stages=stages,
+        moves=tuple(
+            StageMoveFacts(
+                key=move.key,
+                title=trimmed(move.title, 80),
+                from_stage=move.from_stage,
+                to_stage=move.to_stage,
+            )
+            for move in stand.moves
+        ),
+        more_moves=stand.more_moves,
+        other_changes=changes,
+        notes=(stand.unmapped,) if stand.unmapped else (),
+    )
+
+
+def _gate_facts(board: GateBoardView) -> tuple[GateFacts, ...]:
+    """Each gate's requirements once each: moved on without it, else by state."""
+    gates: list[GateFacts] = []
+    for template in board.templates:
+        states = [
+            (template.name in issue.passed_without, evaluation.state)
+            for issue in board.issues
+            for evaluation in issue.evaluations
+            if evaluation.template.template_id == template.template_id
+        ]
+        if not states:
+            continue
+        rest = [state for behind, state in states if not behind]
+        gates.append(
+            GateFacts(
+                name=template.name,
+                guards_stage=template.guards_stage,
+                total=len(states),
+                passed=rest.count(GateState.PASSED),
+                bypassed=len(states) - len(rest),
+                failed=rest.count(GateState.FAILED),
+                open=rest.count(GateState.OPEN),
+                missing=rest.count(GateState.MISSING),
+            )
+        )
+    return tuple(gates)
+
+
+def _important_facts(facts: _Facts) -> ImportantFacts:
+    reasons = _date_reasons(facts)
+    kinds = [_reason_kind(reason) for reason in reasons]
+    behind = [issue for issue in facts.board.issues if issue.passed_without]
+    said = {*reasons, *(_bypass_line(issue) for issue in behind)}
+    risks = [line for line in dict.fromkeys(_risk_lines(facts)) if line not in said]
+    return ImportantFacts(
+        drawn=tuple(kind for kind in kinds if kind is not None),
+        bypassed=tuple(
+            BypassFacts(key=issue.key, stage=issue.stage, gates=issue.passed_without)
+            for issue in behind
+        ),
+        risks=len(risks),
+        lines=tuple(reason for reason, kind in zip(reasons, kinds, strict=True) if kind is None),
+    )
+
+
+def _owner_asks(
+    owners: Sequence[tuple[str | None, Sequence[Ask]]], needed: Sequence[Ask]
+) -> tuple[OwnerAsks, ...]:
+    # The very asks In short names, not equal ones: two asks may read alike.
+    most = {id(ask) for ask in needed}
+    return tuple(
+        OwnerAsks(
+            heading=owner or "Nobody named yet",
+            named=bool(owner),
+            asks=tuple(
+                AskFacts(
+                    need=ask.need,
+                    text=ask.text,
+                    detail=ask.detail,
+                    waited_days=ask.waited_days,
+                    issue_key=ask.issue_key,
+                    escalated_to=ask.escalated_to,
+                    escalation_label=ask.escalation_label,
+                    needed_most=id(ask) in most,
+                    open_question=ask.open_question,
+                )
+                for ask in items
+            ),
+        )
+        for owner, items in owners
     )
 
 
@@ -537,14 +784,26 @@ def _stage_line(snapshot: RequirementsSnapshot, previous: RequirementsSnapshot |
     return " · ".join(parts)
 
 
-def _move_lines(
+def _move_parts(
     previous: RequirementsSnapshot | None, snapshot: RequirementsSnapshot | None
-) -> list[str]:
+) -> tuple[tuple[StageMove, ...], int, str | None]:
+    """The moves the report lists, how many more it only counts, and its scope line."""
     if previous is None or snapshot is None:
-        return []
+        return (), 0, None
     moves = stage_moves(previous, snapshot)
+    scope_change = snapshot.total - previous.total
+    scope_line = (
+        f"Scope {scope_change:+d} {'requirement' if abs(scope_change) == 1 else 'requirements'}"
+        if scope_change
+        else None
+    )
+    listed = tuple(move for move in moves[:MAX_MOVE_LINES] if move.from_stage or move.to_stage)
+    return listed, max(0, len(moves) - MAX_MOVE_LINES), scope_line
+
+
+def _move_lines(stand: _Stand) -> list[str]:
     lines: list[str] = []
-    for move in moves[:MAX_MOVE_LINES]:
+    for move in stand.moves:
         title = trimmed(move.title, 80)
         if move.from_stage is None and move.to_stage is not None:
             lines.append(f"{move.key} {title}: new, in {STAGE_LABELS[move.to_stage]}")
@@ -555,13 +814,10 @@ def _move_lines(
                 f"{move.key} {title}: "
                 f"{STAGE_LABELS[move.from_stage]} → {STAGE_LABELS[move.to_stage]}"
             )
-    if len(moves) > MAX_MOVE_LINES:
-        lines.append(f"and {len(moves) - MAX_MOVE_LINES} more")
-    scope_change = snapshot.total - previous.total
-    if scope_change:
-        lines.append(
-            f"Scope {scope_change:+d} {'requirement' if abs(scope_change) == 1 else 'requirements'}"
-        )
+    if stand.more_moves:
+        lines.append(f"and {stand.more_moves} more")
+    if stand.scope_line:
+        lines.append(stand.scope_line)
     return lines
 
 

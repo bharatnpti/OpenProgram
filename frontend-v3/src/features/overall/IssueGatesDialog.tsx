@@ -15,7 +15,7 @@ import { useNames } from "../../app/directory";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
 import { formatDay } from "../../lib/format";
-import { STAGE_LABELS } from "../../lib/status";
+import { STAGE_LABELS } from "../../components/viz/stages";
 import { actionError, maySignOff, signOffWho } from "../reports/access";
 import { FormProblem, Locked, ReportDialog, field, fieldLabel } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";

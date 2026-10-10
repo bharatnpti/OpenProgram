@@ -40,6 +40,25 @@ export function useDelivery(projectId: string) {
   };
 }
 
+/**
+ * The history forecast as it stood each day (O1), for the project or one
+ * release: its own query, so the replay of a month of forecasts never holds up
+ * the strip that reads the delivery. A date change does not change it (history
+ * forecasts from the requirements, not the date), so nothing invalidates it.
+ */
+export function useForecastHistory(projectId: string, releaseId?: string) {
+  const { canReadProjectProgress } = useRole();
+  return {
+    readable: canReadProjectProgress,
+    query: useQuery({
+      queryKey: ["delivery-history", projectId, releaseId ?? ""],
+      queryFn: () =>
+        apiClient.projectForecastHistory(projectId, undefined, releaseId, REQUIREMENT_DAYS),
+      enabled: canReadProjectProgress && projectId !== "",
+    }),
+  };
+}
+
 /** Several projects' delivery reads at once (a portfolio's), each the same query as `useDelivery`. */
 export function useProjectDeliveries(projectIds: string[]) {
   const { canReadProjectProgress } = useRole();

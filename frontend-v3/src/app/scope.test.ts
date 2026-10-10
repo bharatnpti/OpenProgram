@@ -4,6 +4,7 @@ import { describe, test } from "node:test";
 import type { DirectoryItemResponse } from "../api/schema";
 import {
   chooseProgram,
+  pickerProjects,
   podsOf,
   podsOfPerson,
   programsOfProjects,
@@ -11,6 +12,7 @@ import {
   projectsOfPerson,
   rankPrograms,
   rankProjects,
+  reportProjects,
   runsPod,
   scopeToProgram,
 } from "./scope.ts";
@@ -219,6 +221,73 @@ describe("which of a person's projects opens first", () => {
     assert.deepEqual(
       given.map((p) => p.id),
       ["project-insights", "project-identity"],
+    );
+  });
+});
+
+describe("the projects Reports lists, in the home and in the picker", () => {
+  const checkout = item({ id: "project-checkout", name: "Checkout Revamp", kind: "project" });
+  const identity = item({ id: "project-identity", name: "Identity Platform", kind: "project" });
+  const insights = item({ id: "project-insights", name: "Customer Insights", kind: "project" });
+  const all = [checkout, identity, insights];
+  const payments = item({
+    id: "pod-payments",
+    member_ids: ["U1007"],
+    project_ids: ["project-checkout"],
+  });
+  const data = item({ id: "pod-data", member_ids: ["U1009"], project_ids: ["project-insights"] });
+
+  test("a developer's list is the projects of their own pods; everyone else's is every project", () => {
+    assert.deepEqual(reportProjects(all, [payments, data], "U1007", true), {
+      projects: [checkout],
+      own: true,
+    });
+    assert.deepEqual(reportProjects(all, [payments, data], "U1007", false), {
+      projects: all,
+      own: false,
+    });
+  });
+
+  test("a developer in no pod, or one nobody knows, is offered every project and told so", () => {
+    assert.deepEqual(reportProjects(all, [payments, data], "U1099", true), {
+      projects: all,
+      own: false,
+    });
+    assert.deepEqual(reportProjects(all, [payments, data], null, true), {
+      projects: all,
+      own: false,
+    });
+  });
+
+  test("the picker lists that narrowed list, in the directory's order", () => {
+    const listed = reportProjects(all, [payments, data], "U1009", true).projects;
+    assert.deepEqual(
+      pickerProjects(all, listed, "project-insights").map((p) => p.id),
+      ["project-insights"],
+    );
+    assert.deepEqual(
+      pickerProjects(all, [identity, checkout], "project-checkout").map((p) => p.id),
+      ["project-checkout", "project-identity"],
+    );
+  });
+
+  test("a link to a project outside the list still shows that project as the current one", () => {
+    const listed = reportProjects(all, [payments, data], "U1007", true).projects;
+    const options = pickerProjects(all, listed, "project-insights");
+    assert.deepEqual(
+      options.map((p) => p.id),
+      ["project-checkout", "project-insights"],
+    );
+    assert.equal(options.find((p) => p.id === "project-insights")?.name, "Customer Insights");
+  });
+
+  test("before the directory answers, or for a project it does not know, the picker shows the one open", () => {
+    assert.deepEqual(pickerProjects([], [], "project-checkout"), [
+      { id: "project-checkout", name: "project-checkout" },
+    ]);
+    assert.deepEqual(
+      pickerProjects(all, [checkout], "project-gone").map((p) => p.id),
+      ["project-checkout", "project-gone"],
     );
   });
 });

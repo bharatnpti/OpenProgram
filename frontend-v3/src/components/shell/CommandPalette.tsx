@@ -1,5 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
-import { CornerDownLeft, Search } from "lucide-react";
+import { CornerDownLeft, Search, UserRound } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -10,33 +10,61 @@ import { useRole } from "../../app/role";
 import { useAssistantControl } from "../../features/assistant/assistantContext";
 import { ASK_LABEL } from "../../features/assistant/persona";
 import { cn } from "../../lib/utils";
+import { RagDot } from "../ui/Bits";
 import {
   askRow,
   directoryRows,
   matchRows,
   noPodNote,
+  paletteMark,
   peopleRows,
   screenRows,
   type NamedPerson,
   type PaletteRow,
 } from "./paletteRows";
 
-const KIND_DOT: Record<PaletteRow["kind"], string> = {
-  screen: "rounded-sm bg-magenta",
-  ask: "rounded-full border-2 border-ink",
-  program: "rounded-full bg-magenta",
-  project: "rounded-full bg-rag-info",
-  workstream: "rounded-full bg-rag-amber",
-  pod: "rounded-full bg-rag-green",
-  person: "rounded-full bg-ink",
-};
+/**
+ * A node's status dot, drawn as Delivery's navigator draws it, its words on
+ * hover (the row says them to a screen reader after the name); a screen, the
+ * assistant and a person get a mark in no status colour, since they have none.
+ */
+function RowMark({ row }: { row: PaletteRow }) {
+  const mark = paletteMark(row);
+  if (mark.kind === "status") {
+    return (
+      <span title={mark.words} className="inline-flex flex-none">
+        <RagDot rag={row.rag} />
+      </span>
+    );
+  }
+  if (mark.kind === "person") {
+    return <UserRound size={12} strokeWidth={2.5} aria-hidden className="flex-none text-ink" />;
+  }
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "h-2.5 w-2.5 flex-none",
+        mark.kind === "screen" ? "rounded-sm bg-magenta" : "rounded-full border-2 border-ink",
+      )}
+    />
+  );
+}
+
+/** A node's status in words, for a screen reader: "Payments Pod, At risk". */
+function StatusWords({ row }: { row: PaletteRow }) {
+  const mark = paletteMark(row);
+  return mark.kind === "status" ? <span className="sr-only">, {mark.words}</span> : null;
+}
 
 /**
  * ⌘K / Ctrl+K: jump to a screen this role is offered, or to a program,
  * project, workstream (one that holds work), pod or named person, each where
  * this role has it (app/access.ts `paletteTargets`): a kind the role does not
- * read is not listed. For a role with the assistant, its row (ASK_LABEL) opens
- * it, and a query becomes a question in it, last in the list. Typing filters;
+ * read is not listed. A program, project, workstream or pod carries its status
+ * as Delivery's navigator does (`paletteMark`). For a role with the assistant,
+ * its row (ASK_LABEL) opens it, and a query becomes a question in it, last in
+ * the list. Typing filters;
  * the arrow keys move, Enter opens, Escape closes, so it works by keyboard
  * alone. A jump keeps the day being viewed.
  */
@@ -240,8 +268,11 @@ function PaletteBody({ onClose }: { onClose: () => void }) {
                   index === current ? "bg-grey-fill" : "hover:bg-grey-fill",
                 )}
               >
-                <span aria-hidden className={cn("h-2.5 w-2.5 flex-none", KIND_DOT[row.kind])} />
-                <span className="min-w-0 flex-1 truncate text-[15px] font-bold">{row.label}</span>
+                <RowMark row={row} />
+                <span className="min-w-0 flex-1 truncate text-[15px] font-bold">
+                  {row.label}
+                  <StatusWords row={row} />
+                </span>
                 <span className="min-w-0 max-w-[45%] truncate text-right text-[12px] text-grey-secondary">
                   {row.hint}
                 </span>

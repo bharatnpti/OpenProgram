@@ -45,6 +45,7 @@ export type BlockerDetailDto = components["schemas"]["BlockerDetailDto"];
 export type BlockerCorrectionItemDto = components["schemas"]["BlockerCorrectionItemDto"];
 export type CheckinPreferenceResponse = components["schemas"]["CheckinPreferenceResponse"];
 export type CheckinDefaultsResponse = components["schemas"]["CheckinDefaultsResponse"];
+export type CheckinSendResponse = components["schemas"]["CheckinSendResponse"];
 export type CheckInPreferenceField = components["schemas"]["CheckInPreferenceField"];
 export type CheckinPreferenceUpdateRequest =
   components["schemas"]["CheckinPreferenceUpdateRequest"];
@@ -142,6 +143,8 @@ export type ReportSetupProjectResponse = components["schemas"]["ReportSetupProje
 export type ReportSetupPersonResponse = components["schemas"]["ReportSetupPersonResponse"];
 export type ProjectDeliveryResponse = components["schemas"]["ProjectDeliveryResponse"];
 export type ScopeDeliveryResponse = components["schemas"]["ScopeDeliveryResponse"];
+export type ForecastHistoryResponse = components["schemas"]["ForecastHistoryResponse"];
+export type ForecastDayResponse = components["schemas"]["ForecastDayResponse"];
 export type CommitmentResponse = components["schemas"]["CommitmentResponse"];
 export type DeliveryDateRequest = components["schemas"]["DeliveryDateRequest"];
 export type PodDeliveryResponse = components["schemas"]["PodDeliveryResponse"];
