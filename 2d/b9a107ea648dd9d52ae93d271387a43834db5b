@@ -1,0 +1,62 @@
+backend/api/dtos.py
+  s_3101dec2ee3c53::t_a9fe0f6a4aa3f0 23,551-603
+  s_3101dec2ee3c53::t_bf65ae6f0c29c2 604-605
+frontend/src/api/generated.ts
+  s_3101dec2ee3c53::t_b11398d8c8b6da 1988-2013,3471-3512,4364-4369,11367-11392,11395-11398
+  s_3101dec2ee3c53::t_c94ffa9c6d10d4 11393-11394,11399
+frontend-v3/src/api/client.ts
+  s_3101dec2ee3c53::t_02d6a9194a864e 71
+  s_3101dec2ee3c53::t_ec541e2177e9a7 231-233
+frontend-v3/src/api/schema.ts
+  s_3101dec2ee3c53::t_ec541e2177e9a7 19-21
+frontend-v3/src/api/openapi.json
+  s_3101dec2ee3c53::t_b11398d8c8b6da 8863-8920,13074-13154,15484-15489
+backend/tests/unit/test_delivery_scope.py
+  s_3101dec2ee3c53::t_7880cad915cc70 1-26,28-56,58-118,120-187,191-218,222-280,283-288
+  s_3101dec2ee3c53::t_f5c2b11bdb41d2 27,57,119,188-190,219-221,281-282
+backend/api/routers/persona.py
+  s_3101dec2ee3c53::t_6a7b55b686a8c8 13,28,102,104,118,120,134,137-139,153,156-158,172,174-175,210-226,565-577
+  s_3101dec2ee3c53::t_5411e29b34ebeb 57,562-564
+  s_3101dec2ee3c53::t_b39a15ff635aa2 227-228,578-579
+backend/api/dependencies.py
+  s_3101dec2ee3c53::t_897971eb9aecd3 260-265
+  s_3101dec2ee3c53::t_5411e29b34ebeb 18
+  s_3101dec2ee3c53::t_6431ba0d1a8833 266-268
+backend/core/application/delivery_scope.py
+  s_3101dec2ee3c53::t_46a146b1330cdd 1-237,240-345
+  s_3101dec2ee3c53::t_c7bb5d7cba69c0 238-239
+backend/tests/unit/test_authorization.py
+  s_3101dec2ee3c53::t_eb37e7555bb596 8-15,53-54,183-249
+frontend-v3/src/api/asOf.ts
+  s_3101dec2ee3c53::t_ec541e2177e9a7 29
+backend/api/routers/forecast.py
+  s_3101dec2ee3c53::t_767525f9520b94 3-5,19-23,37,57,60-64,144,147,149-152
+frontend/src/api/openapi.json
+  s_3101dec2ee3c53::t_b11398d8c8b6da 8863-8920,13074-13154,15484-15489
+frontend-v2/src/api/openapi.json
+  s_3101dec2ee3c53::t_b11398d8c8b6da 8863-8920,13074-13154,15484-15489
+frontend-v3/src/api/generated.ts
+  s_3101dec2ee3c53::t_b11398d8c8b6da 1988-2013,3458-3499,4351-4356,11354-11379,11382-11385
+  s_3101dec2ee3c53::t_e3311f95205954 11380-11381,11386
+backend/tests/unit/test_api.py
+  s_3101dec2ee3c53::t_d9894fff37b55e 906-908,915
+frontend-v2/src/api/generated.ts
+  s_3101dec2ee3c53::t_b11398d8c8b6da 1988-2013,3458-3499,4351-4356,11354-11379,11382-11385
+  s_3101dec2ee3c53::t_087febeadb475b 11380-11381,11386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2db9a107ea648dd9d52ae93d271387a43834db5b",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
