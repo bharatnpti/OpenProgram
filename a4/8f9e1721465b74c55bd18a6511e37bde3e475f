@@ -1,0 +1,71 @@
+frontend-v3/scripts/mock/forecast-settings.mjs
+  s_3101dec2ee3c53::t_1fc48cf228966f 1-106
+frontend-v3/src/features/overall/flow.test.ts
+  s_3101dec2ee3c53::t_bcc69a17a1fbbb 42-43,45-52,57-66
+  s_3101dec2ee3c53::t_5e77567e593a97 67-68
+frontend-v3/src/features/overall/RequirementsSection.tsx
+  s_3101dec2ee3c53::t_17fec285961914 16,23-24,67-71,96,120,294
+frontend-v3/src/features/overall/slip.test.ts
+  s_3101dec2ee3c53::t_bcc69a17a1fbbb 77,87,92,97-105
+  s_3101dec2ee3c53::t_5156c2847588d6 106-107
+frontend-v3/src/features/overall/overallWords.ts
+  s_3101dec2ee3c53::t_17fec285961914 97
+frontend-v3/scripts/mock-api.mjs
+  s_3101dec2ee3c53::t_b4fc896e275ed0 223-224
+  s_3101dec2ee3c53::t_5e4c69b5a91533 31
+frontend-v3/src/features/overall/flow.ts
+  s_3101dec2ee3c53::t_17fec285961914 2-3,10,26-27,43-45,49-50
+frontend-v3/scripts/mock/reports.mjs
+  s_3101dec2ee3c53::t_5e4c69b5a91533 12,167-168,304,344,355,360
+frontend-v3/src/features/admin/DeliveryStagesTab.tsx
+  s_3101dec2ee3c53::t_3eec1c889ba2c5 71-89
+  s_3101dec2ee3c53::t_6bae3c32510f40 19
+frontend-v3/src/features/overall/queries.ts
+  s_3101dec2ee3c53::t_e89310c52f3dd7 59
+  s_3101dec2ee3c53::t_cd5edf3b1ca4f9 16
+  s_3101dec2ee3c53::t_17fec285961914 15,18-22,29
+frontend-v3/src/features/admin/ForecastPanel.tsx
+  s_3101dec2ee3c53::t_224780d33241e4 1-5,7-31,36-59,61-62,66-68,76-95,97-120,122-129,131-140
+  s_3101dec2ee3c53::t_09d8c032ab5d98 6,60,63-65,96,121,130
+  s_3101dec2ee3c53::t_e89310c52f3dd7 32-35,69-75
+frontend-v3/scripts/mock/dates.mjs
+  s_3101dec2ee3c53::t_3e09a9fdeb5397 103-106
+  s_3101dec2ee3c53::t_5e4c69b5a91533 11-12
+frontend-v3/src/features/admin/forecastForm.test.ts
+  s_3101dec2ee3c53::t_e89310c52f3dd7 41-44
+  s_3101dec2ee3c53::t_c737a0fafb4bab 1-40,45-72,74,76-77
+  s_3101dec2ee3c53::t_c0ad91bfebd44d 73,75
+frontend-v3/scripts/mock/viz-overall.mjs
+  s_3101dec2ee3c53::t_5e4c69b5a91533 14,70,110,173,204
+frontend-v3/src/api/schema.ts
+  s_3101dec2ee3c53::t_3d8cf3a87ed03c 123-124
+frontend-v3/src/features/overall/slip.ts
+  s_3101dec2ee3c53::t_17fec285961914 87-89,95,111-112
+frontend-v3/src/features/admin/forecastForm.ts
+  s_3101dec2ee3c53::t_afae695d289ec6 1-71
+frontend-v3/src/api/client.ts
+  s_3101dec2ee3c53::t_3d8cf3a87ed03c 30-31
+  s_3101dec2ee3c53::t_dc1939249e5e13 525-528
+frontend-v3/src/features/overall/SlipChart.tsx
+  s_3101dec2ee3c53::t_17fec285961914 77-82
+frontend-v3/scripts/mock/viz-daily.mjs
+  s_3101dec2ee3c53::t_b4fc896e275ed0 12-13,205,313-316
+frontend-v3/src/components/ui/dateStripWords.ts
+  s_3101dec2ee3c53::t_e87b002bb1c1f2 122-124,126-128,130-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a48f9e1721465b74c55bd18a6511e37bde3e475f",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
