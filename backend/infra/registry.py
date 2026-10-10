@@ -26,6 +26,7 @@ from core.application.escalation_matrix_service import EscalationMatrixService
 from core.application.forecast_service import ForecastService
 from core.application.gate_extraction import ModelItemFinder
 from core.application.gate_service import GateService
+from core.application.jira_writes_service import JiraWritesService
 from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.release_readiness_service import JiraData, ReleaseReadinessService
 from core.application.reply_ingestion import ReplyDrainResult, ReplyIngestionService
@@ -90,6 +91,7 @@ from core.ports.repositories import (
     GraphRepository,
     IdentityLinkRepository,
     InboundChatEventRepository,
+    JiraWritesRepository,
     NarrativeBriefRepository,
     RollupRepository,
     StatusRepository,
@@ -145,6 +147,7 @@ from infra.persistence.in_memory_gates import (
     InMemoryQuestionRepository,
 )
 from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
+from infra.persistence.in_memory_jira_writes import InMemoryJiraWritesRepository
 from infra.persistence.in_memory_readiness import InMemoryReleaseReadinessRepository
 from infra.persistence.in_memory_reports import InMemoryDayReportRepository
 from infra.persistence.postgres_branding import PostgresTenantLogoRepository
@@ -173,6 +176,7 @@ from infra.persistence.postgres_graph import (
     PostgresVectorStore,
 )
 from infra.persistence.postgres_inbound import PostgresInboundChatEventRepository
+from infra.persistence.postgres_jira_writes import PostgresJiraWritesRepository
 from infra.persistence.postgres_readiness import PostgresReleaseReadinessRepository
 from infra.persistence.postgres_reports import PostgresDayReportRepository
 from infra.persistence.postgres_status import (
@@ -273,6 +277,7 @@ class ServiceRegistry:
     _release_readiness_repository: ReleaseReadinessRepository | None = field(
         default=None, init=False
     )
+    _jira_writes_repository: JiraWritesRepository | None = field(default=None, init=False)
     _connection_resolver: CachedConnectionResolver | None = field(default=None, init=False)
     _redis_provider: RedisClientProvider | None = field(default=None, init=False)
     _issue_tracker: IssueTracker | None = field(default=None, init=False)
@@ -542,6 +547,31 @@ class ServiceRegistry:
             )
         return self._release_readiness_repository
 
+    def jira_writes_repository(self) -> JiraWritesRepository:
+        if self._jira_writes_repository is None:
+            self._jira_writes_repository = (
+                InMemoryJiraWritesRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresJiraWritesRepository(self._executor())
+            )
+        return self._jira_writes_repository
+
+    def jira_writes_service(self) -> JiraWritesService:
+        """The tenant's Jira write switches: the master, one per kind, and the projects."""
+        readiness = self.release_readiness_repository()
+
+        async def legacy_readiness_create(tenant_id: str) -> bool | None:
+            stored = await readiness.get_settings(tenant_id)
+            return stored.create_in_jira if stored is not None else None
+
+        return JiraWritesService(
+            config_repository=self.writeback_config_repository(),
+            repository=self.jira_writes_repository(),
+            env_master=self.settings.jira_writeback_enabled,
+            env_master_set="jira_writeback_enabled" in self.settings.model_fields_set,
+            legacy_readiness_create=legacy_readiness_create,
+        )
+
     def release_readiness_service(self) -> ReleaseReadinessService:
         writeback = self.write_back_service()
         return ReleaseReadinessService(
@@ -553,6 +583,7 @@ class ServiceRegistry:
             writeback_gate=writeback.system_gate_open,
             jira_health=self._readiness_jira_health,
             pod_task_ids=self._pod_task_ids,
+            jira_writes=self.jira_writes_service(),
             identity_link_repository=self.identity_link_repository(),
             time_series_repository=self.time_series_repository(),
             console_base_url=self.settings.public_console_url,
@@ -1522,6 +1553,7 @@ class ServiceRegistry:
             time_series_repository=self.time_series_repository(),
             graph_repository=self.graph_repository(),
             writeback_enabled_default=self.settings.jira_writeback_enabled,
+            kind_switch=self.jira_writes_service().kind_on,
         )
 
     def status_collector(self) -> StatusCollector:

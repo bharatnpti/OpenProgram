@@ -17,17 +17,20 @@ from api.main import create_app
 from config.settings import Settings
 from core.application.ask_service import AskService
 from core.application.blocker_resolution import BlockerResolutionService
+from core.application.delivery_scope import DeliveryScopeService
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.persona_views import PersonaViewService
 from core.application.risk_service import RiskService
 from core.domain.auth import Principal, Role
-from core.domain.graph import Developer, Pod, Task
+from core.domain.graph import Developer, EdgeKind, GraphEdge, Pod, Project, Task
 from core.domain.llm import LlmResponse, LlmToolCall, TokenUsage
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.registry import ServiceRegistry
 from tests.contract.fakes import FakeLlmProvider
 
 AS_OF = "2026-09-25"
+# Who asks: the REST calls and the Ask principal are the same person.
+ASKER = "U1001"
 
 # Each Ask tool beside the REST route that serves the same data. Ask may offer
 # a tool only to a role that route would answer.
@@ -52,18 +55,51 @@ _ANY_REST_TWIN: dict[str, tuple[tuple[str, str], ...]] = {
         ("GET", f"/workstreams/ws-x/progress?as_of={AS_OF}"),
         ("GET", f"/pods/pod-x/rollup?as_of={AS_OF}"),
     ),
+    # Scoped reads: a scrum master reads a project their pods work on and a
+    # developer their own pod, so an unknown id is refused before it is looked
+    # up. These ask about the asker's own part of the tree (_own_part).
+    "delivery_forecast": (
+        ("GET", f"/projects/project-own/delivery?as_of={AS_OF}"),
+        ("GET", f"/pods/pod-own/delivery?as_of={AS_OF}"),
+    ),
 }
 
 
 def _app_for_role(settings: Settings, role: str, store: InMemoryGraphStore) -> FastAPI:
     role_settings = settings.model_copy(
-        update={"dev_principal_roles": role, "llm_provider": "fake"}
+        update={
+            "dev_principal_roles": role,
+            "dev_principal_subject": ASKER,
+            "llm_provider": "fake",
+        }
     )
     registry = ServiceRegistry(role_settings, graph_store=store)
     return create_app(settings=role_settings, registry=registry)
 
 
-def _ask_service(store: InMemoryGraphStore) -> AskService:
+async def _own_part(store: InMemoryGraphStore) -> None:
+    """The asker's pod and its project, and a pod and project that are not theirs."""
+    for node in (
+        Developer(tenant_id="demo", id=ASKER, name="Asker"),
+        Pod(tenant_id="demo", id="pod-own", name="Own Pod"),
+        Pod(tenant_id="demo", id="pod-other", name="Other Pod"),
+        Project(tenant_id="demo", id="project-own", name="Own Project"),
+        Project(tenant_id="demo", id="project-other", name="Other Project"),
+    ):
+        await store.upsert_node(node)
+    for parent, child in (
+        ("pod-own", ASKER),
+        ("project-own", "pod-own"),
+        ("project-other", "pod-other"),
+    ):
+        await store.add_edge(
+            GraphEdge(
+                tenant_id="demo", from_node_id=parent, to_node_id=child, kind=EdgeKind.CONTAINS
+            )
+        )
+
+
+def _ask_service(store: InMemoryGraphStore, registry: ServiceRegistry) -> AskService:
     return AskService(
         llm_provider=FakeLlmProvider(),
         graph_repository=store,
@@ -83,15 +119,18 @@ def _ask_service(store: InMemoryGraphStore) -> AskService:
             status_repository=store,
             blocker_resolution=BlockerResolutionService(store, store),
         ),
+        forecast_service=registry.forecast_service(),
+        delivery_scope_service=DeliveryScopeService(store, store),
         model="test-model",
     )
 
 
 @pytest.mark.parametrize("role", [role.value for role in Role])
-def test_ask_offers_a_tool_exactly_when_its_rest_twin_serves_the_role(
+async def test_ask_offers_a_tool_exactly_when_its_rest_twin_serves_the_role(
     settings: Settings, role: str
 ) -> None:
     store = InMemoryGraphStore()
+    await _own_part(store)
     app = _app_for_role(settings, role, store)
     # Unknown ids fail past the capability check; only a 403 means "not yours".
     with TestClient(app, raise_server_exceptions=False) as client:
@@ -111,12 +150,95 @@ def test_ask_offers_a_tool_exactly_when_its_rest_twin_serves_the_role(
             if any(serves(method, path) for method, path in twins)
         }
 
-    principal = Principal(tenant_id="demo", subject="U1001", roles=frozenset({Role(role)}))
-    offered = {
-        tool.name for tool in _ask_service(store).tools_for(principal, date.fromisoformat(AS_OF))
-    }
+    principal = Principal(tenant_id="demo", subject=ASKER, roles=frozenset({Role(role)}))
+    tools = _ask_service(store, app.state.registry).tools_for(principal, date.fromisoformat(AS_OF))
+    offered = {tool.name for tool in tools}
 
     assert offered == served
+
+
+@pytest.mark.parametrize("role", [role.value for role in Role])
+async def test_delivery_forecast_answers_each_project_and_pod_as_its_route_does(
+    settings: Settings, role: str
+) -> None:
+    """Refused where the route refuses, in its words; read where the route reads."""
+    store = InMemoryGraphStore()
+    await _own_part(store)
+    app = _app_for_role(settings, role, store)
+    principal = Principal(tenant_id="demo", subject=ASKER, roles=frozenset({Role(role)}))
+    tools = _ask_service(store, app.state.registry).tools_for(principal, date.fromisoformat(AS_OF))
+    tool = next(tool for tool in tools if tool.name == "delivery_forecast")
+    reads: dict[str, bool] = {}
+
+    with TestClient(app) as client:
+        for kind, node_id in (
+            ("projects", "project-own"),
+            ("projects", "project-other"),
+            ("pods", "pod-own"),
+            ("pods", "pod-other"),
+        ):
+            route = client.get(f"/{kind}/{node_id}/delivery?as_of={AS_OF}")
+            answer = json.loads(await tool.run({"node_id": node_id}))
+            if route.status_code == 403:
+                assert answer == {"error": route.json()["detail"]}, node_id
+            else:
+                assert route.status_code == 200, (node_id, route.text)
+                assert "error" not in answer, node_id
+                assert answer["as_of"] == AS_OF
+            reads[node_id] = route.status_code == 200
+
+    # The scoped roles see their own part and nothing beyond what the route gives.
+    expected = {
+        "dev": {"pod-own"},
+        "sm": {"project-own", "pod-own", "pod-other"},
+    }.get(role, {"project-own", "project-other", "pod-own", "pod-other"})
+    assert {node_id for node_id, read in reads.items() if read} == expected
+
+
+async def test_delivery_forecast_says_what_the_delivery_route_says(settings: Settings) -> None:
+    store = InMemoryGraphStore()
+    await _own_part(store)
+    await store.upsert_node(
+        Task(
+            tenant_id="demo",
+            id="OWN-1",
+            name="Own requirement",
+            metadata={"key": "OWN-1", "status": "In Progress", "state": "in_progress"},
+        )
+    )
+    await store.add_edge(
+        GraphEdge(
+            tenant_id="demo", from_node_id="pod-own", to_node_id="OWN-1", kind=EdgeKind.CONTAINS
+        )
+    )
+    app = _app_for_role(settings, "mgr", store)
+    registry = app.state.registry
+    principal = Principal(tenant_id="demo", subject=ASKER, roles=frozenset({Role.MGR}))
+    tools = _ask_service(store, registry).tools_for(principal, date.fromisoformat(AS_OF))
+    tool = next(tool for tool in tools if tool.name == "delivery_forecast")
+    # A past day is read from its stored snapshot, as the daily job keeps it.
+    await registry.delivery_service().record_snapshots("demo", date.fromisoformat(AS_OF))
+
+    with TestClient(app) as client:
+        committed = client.put(
+            "/projects/project-own/delivery-date", json={"target_date": "2026-11-30"}
+        )
+        assert committed.status_code == 200, committed.text
+        route = client.get(f"/projects/project-own/delivery?as_of={AS_OF}").json()["project"]
+        answer = json.loads(await tool.run({"node_id": "project-own"}))
+
+    (project,) = answer["projects"]
+    assert project["project_id"] == "project-own"
+    assert project["project_name"] == "Own Project"
+    assert project["committed_date"] == route["commitment"]["target_date"] == "2026-11-30"
+    assert project["target_date"] == route["target"]
+    assert project["history_working_days"] == route["history"]["sample_days"]
+    assert project["history_working_days_needed"] == route["history"]["needed_days"]
+    assert project["enough_history"] is False
+    assert project["no_forecast_reason"] == route["history"]["reason"]
+    assert project["requirements"] == route["total"] == 1
+    assert project["reasons"] == route["reasons"]
+    assert [pod["pod_name"] for pod in project["pods"]] == ["Own Pod"]
 
 
 def test_ask_route_answers_with_the_tools_the_asker_may_use(

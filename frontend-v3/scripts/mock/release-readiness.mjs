@@ -9,8 +9,16 @@
 // the project's and release's rows without drafts or buttons; Ira (scrum master)
 // reads and acts on the project's rows and her Payments Pod's; a product owner
 // acts on everything but waiving a blocking criterion, which a manager or an admin does.
+// A scrum master's read of a project none of their pods works on is refused, as the
+// backend refuses it; the console never asks.
+// Creating in Jira follows Admin › Jira writes (./jira-writes.mjs): its master switch,
+// "Create release-readiness issues" and the projects new issues may go to.
+import * as consoleData from "../mock-console.mjs";
+import * as jiraWrites from "./jira-writes.mjs";
 
 const PROJECT = "project-checkout";
+const READ_OUTSIDE = "You read the projects your own pods work on, and this is not one of them.";
+const NOT_YOURS = "You can act on readiness only for pods you run and the projects they work on.";
 const RELEASE = { release_id: "rel-1-0", name: "Release 1.0" };
 const NAMES = {
   U1001: "Asha Rao",
@@ -25,13 +33,13 @@ const AT = "2026-10-06T07:45:00Z";
 const settings = {
   enabled: true,
   auto_suggest: true,
-  create_in_jira: false,
   issue_type: "Task",
   labels: ["release-readiness"],
   updated_at: "2026-10-01T09:00:00Z",
   updated_by: "U1001",
 };
-const WRITEBACK = true;
+/** The settings as the server shows them: create_in_jira is the Jira writes switch. */
+const shownSettings = () => ({ ...settings, create_in_jira: jiraWrites.readinessCreateOn() });
 
 const matcher = (kind, value, strength = "evidence") => ({ kind, value, strength });
 const criterion = (id, name, evidence, applies_to, matchers, extra = {}) => ({
@@ -315,6 +323,13 @@ const has = (roles, ...wanted) => roles.some((role) => wanted.includes(role));
 const isBroad = (roles) => has(roles, "admin", "mgr", "po");
 const mayAct = (roles) => has(roles, "admin", "mgr", "po", "sm");
 
+/** Whether one of the person's pods (the roster's) works on the project. */
+function runsPodOf(userId, projectId) {
+  const pods = consoleData.roster.find((person) => person.id === userId)?.pods ?? [];
+  const project = consoleData.projects.find((item) => item.id === projectId);
+  return Boolean(project?.pod_ids.some((id) => pods.includes(id)));
+}
+
 /** Whose rows: every pod's for a broad reader, Ira's pod for a scrum master, none for an executive. */
 function sees(roles, finding) {
   if (finding.scope.kind !== "pod") return true;
@@ -344,13 +359,8 @@ function canOf(roles, finding) {
   const undecided = !finding.person_decision;
   const missing = undecided && finding.state === "missing";
   const open = finding.suggestion?.status === "open";
-  const off = !(missing && open)
-    ? null
-    : !settings.create_in_jira
-      ? "Creating issues from OpenProgram is off for this tenant."
-      : WRITEBACK
-        ? null
-        : "Creating issues from OpenProgram needs Jira write-back on.";
+  const off =
+    missing && open ? jiraWrites.createRefusal(finding.suggestion?.draft?.project_key) : null;
   return {
     create: missing && open && off === null,
     create_off_reason: off,
@@ -447,8 +457,8 @@ function board(roles, releaseId) {
     scope_name: releaseId ? RELEASE.name : "Checkout Revamp",
     agent: {
       enabled: settings.enabled,
-      create_in_jira: settings.create_in_jira,
-      writeback_enabled: WRITEBACK,
+      create_in_jira: jiraWrites.readinessCreateOn(),
+      writeback_enabled: jiraWrites.masterOn(),
       last_run_at: AT,
       last_run_status: "ok",
       data_as_of: "2026-10-06T07:00:00Z",
@@ -525,6 +535,9 @@ export function api(req, url, roles, actingAs, send, deny) {
       deny();
       return true;
     }
+    if (!isBroad(roles) && !has(roles, "exec") && !runsPodOf(userId, projectId)) {
+      return done(403, { detail: run ? NOT_YOURS : READ_OUTSIDE });
+    }
     const releaseId = url.searchParams.get("release_id") ?? "";
     if (projectId !== PROJECT) {
       const empty = {
@@ -577,7 +590,7 @@ export function api(req, url, roles, actingAs, send, deny) {
     const can = canOf(roles, finding);
     if (!mayAct(roles) || !sees(roles, finding)) {
       return done(403, {
-        detail: "You can act on readiness only for pods you run and the projects they work on.",
+        detail: NOT_YOURS,
       });
     }
     if (action === "reopen") {
@@ -676,7 +689,7 @@ export function api(req, url, roles, actingAs, send, deny) {
     if (!finding) return done(404, { detail: `No draft '${id}'.` });
     if (!mayAct(roles) || !sees(roles, finding)) {
       return done(403, {
-        detail: "You can act on readiness only for pods you run and the projects they work on.",
+        detail: NOT_YOURS,
       });
     }
     const suggestion = finding.suggestion;
@@ -720,8 +733,10 @@ export function api(req, url, roles, actingAs, send, deny) {
         audit(finding.finding_id, userId, "draft_edited");
         return send(200, response(roles, finding));
       }
-      if (!settings.create_in_jira) {
-        return send(409, { detail: "Creating issues from OpenProgram is off for this tenant." });
+      const off = jiraWrites.createRefusal(suggestion.draft?.project_key);
+      if (off) {
+        // A switch is a 409; a project new issues may not go to is a 422, as the server says.
+        return send(off.startsWith("This draft is for") ? 422 : 409, { detail: off });
       }
       const key = `CHK-${nextKey++}`;
       finding.suggestion = {
@@ -775,26 +790,29 @@ export function api(req, url, roles, actingAs, send, deny) {
     if (p === "/config/readiness" && method === "GET") {
       const added = new Set(criteria.map((item) => item.criterion_id));
       return done(200, {
-        settings,
+        settings: shownSettings(),
         is_default: false,
         criteria,
         examples: EXAMPLES.filter((item) => !added.has(item.criterion_id)),
-        writeback_enabled: WRITEBACK,
+        writeback_enabled: jiraWrites.masterOn(),
         waive_roles: ["mgr"],
       });
     }
     if (p === "/config/readiness/settings" && method === "PUT") {
       return write((body) => {
+        // create_in_jira left out keeps Admin › Jira writes' switch; given, it sets it.
+        if (typeof body.create_in_jira === "boolean") {
+          jiraWrites.setKind("readiness_create", body.create_in_jira, userId);
+        }
         Object.assign(settings, {
           enabled: Boolean(body.enabled),
           auto_suggest: Boolean(body.auto_suggest),
-          create_in_jira: Boolean(body.create_in_jira),
           issue_type: String(body.issue_type ?? "Task"),
           labels: body.labels ?? [],
           updated_at: new Date().toISOString(),
           updated_by: userId,
         });
-        send(200, settings);
+        send(200, shownSettings());
       });
     }
     if (p === "/config/readiness/criteria" && method === "PUT") {

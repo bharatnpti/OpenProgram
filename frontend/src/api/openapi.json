@@ -4290,6 +4290,7 @@
       "put": {
         "tags": ["config"],
         "summary": "Update Config Tenant Writeback",
+        "description": "The master Jira writes switch, as Admin \u203a Jira writes sets it (and audits it).",
         "operationId": "update_config_tenant_writeback_config_tenant_writeback_put",
         "parameters": [
           {
@@ -4706,6 +4707,108 @@
                     "$ref": "#/components/schemas/DirectoryItemResponse"
                   },
                   "title": "Response List Pods Pods Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/tenant/jira-writes": {
+      "get": {
+        "tags": ["config"],
+        "summary": "Get Jira Writes",
+        "operationId": "get_jira_writes_config_tenant_jira_writes_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JiraWritesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["config"],
+        "summary": "Update Jira Writes",
+        "operationId": "update_jira_writes_config_tenant_jira_writes_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JiraWritesUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JiraWritesResponse"
                 }
               }
             }
@@ -7852,6 +7955,7 @@
       "put": {
         "tags": ["readiness"],
         "summary": "Save Settings",
+        "description": "The agent's settings; ``create_in_jira`` is Admin \u203a Jira writes' create switch.",
         "operationId": "save_settings_config_readiness_settings_put",
         "parameters": [
           {
@@ -7876,7 +7980,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReadinessSettingsDto"
+                "$ref": "#/components/schemas/ReadinessSettingsUpdateRequest"
               }
             }
           }
@@ -16510,6 +16614,68 @@
         "enum": ["suggested", "dismissed", "pending", "met", "failed", "waived"],
         "title": "ItemStatus"
       },
+      "JiraCreateProjectsDto": {
+        "properties": {
+          "own_project": {
+            "type": "boolean",
+            "title": "Own Project"
+          },
+          "projects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Projects"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SettingSource"
+          }
+        },
+        "type": "object",
+        "required": ["own_project", "projects", "source"],
+        "title": "JiraCreateProjectsDto",
+        "description": "The Jira projects release readiness may create issues in."
+      },
+      "JiraCreateProjectsUpdate": {
+        "properties": {
+          "own_project": {
+            "type": "boolean",
+            "title": "Own Project"
+          },
+          "projects": {
+            "items": {
+              "type": "string",
+              "maxLength": 40,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Projects"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["own_project"],
+        "title": "JiraCreateProjectsUpdate"
+      },
+      "JiraCreateProjectsValueDto": {
+        "properties": {
+          "own_project": {
+            "type": "boolean",
+            "title": "Own Project"
+          },
+          "projects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Projects"
+          }
+        },
+        "type": "object",
+        "required": ["own_project", "projects"],
+        "title": "JiraCreateProjectsValueDto"
+      },
       "JiraSyncDispatchRequest": {
         "properties": {
           "tenant_id": {
@@ -16547,6 +16713,224 @@
         "type": "object",
         "required": ["tenant_id", "project_key"],
         "title": "JiraSyncDispatchRequest"
+      },
+      "JiraWriteKind": {
+        "type": "string",
+        "enum": ["checkin_updates", "console_moves", "readiness_create"],
+        "title": "JiraWriteKind"
+      },
+      "JiraWriteKindDto": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/JiraWriteKind"
+          },
+          "on": {
+            "type": "boolean",
+            "title": "On"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SettingSource"
+          },
+          "effective": {
+            "type": "boolean",
+            "title": "Effective"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "on", "source", "effective"],
+        "title": "JiraWriteKindDto",
+        "description": "One kind of Jira write: its own switch, and whether it writes now."
+      },
+      "JiraWriteSwitchDto": {
+        "properties": {
+          "on": {
+            "type": "boolean",
+            "title": "On"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SettingSource"
+          }
+        },
+        "type": "object",
+        "required": ["on", "source"],
+        "title": "JiraWriteSwitchDto"
+      },
+      "JiraWritesChangeDto": {
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "by": {
+            "type": "string",
+            "title": "By"
+          },
+          "by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By Name"
+          },
+          "setting": {
+            "type": "string",
+            "title": "Setting"
+          },
+          "before_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before On"
+          },
+          "after_on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After On"
+          },
+          "before_projects": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JiraCreateProjectsValueDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "after_projects": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JiraCreateProjectsValueDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "before_source": {
+            "$ref": "#/components/schemas/SettingSource"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at",
+          "by",
+          "by_name",
+          "setting",
+          "before_on",
+          "after_on",
+          "before_projects",
+          "after_projects",
+          "before_source"
+        ],
+        "title": "JiraWritesChangeDto",
+        "description": "One change an admin made: who, when, and the value before and after."
+      },
+      "JiraWritesResponse": {
+        "properties": {
+          "master": {
+            "$ref": "#/components/schemas/JiraWriteSwitchDto"
+          },
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/JiraWriteKindDto"
+            },
+            "type": "array",
+            "title": "Kinds"
+          },
+          "create_projects": {
+            "$ref": "#/components/schemas/JiraCreateProjectsDto"
+          },
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/JiraWritesChangeDto"
+            },
+            "type": "array",
+            "title": "Changes"
+          }
+        },
+        "type": "object",
+        "required": ["master", "kinds", "create_projects", "changes"],
+        "title": "JiraWritesResponse",
+        "description": "The tenant's Jira write switches as they are in force, and the latest changes."
+      },
+      "JiraWritesUpdateRequest": {
+        "properties": {
+          "master": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Master"
+          },
+          "checkin_updates": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkin Updates"
+          },
+          "console_moves": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Console Moves"
+          },
+          "readiness_create": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Readiness Create"
+          },
+          "create_projects": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JiraCreateProjectsUpdate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "JiraWritesUpdateRequest",
+        "description": "Only what is given changes; a field left out or null keeps its value and source."
       },
       "LogoContentType": {
         "type": "string",
@@ -19444,7 +19828,7 @@
           "create_in_jira": {
             "type": "boolean",
             "title": "Create In Jira",
-            "description": "Lets a person press Create in Jira; Jira write-back must be on too."
+            "description": "Admin \u203a Jira writes' \"Create release-readiness issues\": lets a person press Create in Jira; the tenant's Jira writes switch must be on too."
           },
           "issue_type": {
             "type": "string",
@@ -19487,6 +19871,50 @@
         "type": "object",
         "required": ["enabled", "auto_suggest", "create_in_jira", "issue_type"],
         "title": "ReadinessSettingsDto"
+      },
+      "ReadinessSettingsUpdateRequest": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "The agent checks scopes; off, a tick does nothing."
+          },
+          "auto_suggest": {
+            "type": "boolean",
+            "title": "Auto Suggest",
+            "description": "Draft a Jira issue for every missing criterion."
+          },
+          "create_in_jira": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Create In Jira",
+            "description": "Sets Admin \u203a Jira writes' \"Create release-readiness issues\"; left out or null, it stays as it is."
+          },
+          "issue_type": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Issue Type"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Labels"
+          }
+        },
+        "type": "object",
+        "required": ["enabled", "auto_suggest", "issue_type"],
+        "title": "ReadinessSettingsUpdateRequest",
+        "description": "The agent's settings. ``create_in_jira`` left out or null keeps the Jira writes switch."
       },
       "ReadinessShownState": {
         "type": "string",
@@ -21482,6 +21910,12 @@
         "type": "object",
         "title": "SelfCheckinPreferenceUpdateRequest",
         "description": "The part of their own check-in preference a person may change.\n\nOnly the days they are asked and their time zone. The reply windows stay\nwith an admin (``PUT /config/members/{id}/checkin-preference``) because they\ndecide when a missed check-in reaches the scrum master and manager. The\ncheck-in time is left out because check-ins go out at one tenant-wide time,\nso a personal time would change nothing. A request carrying any other field\nis rejected, never silently ignored. A field sent as ``null`` goes back to\nthe team default."
+      },
+      "SettingSource": {
+        "type": "string",
+        "enum": ["default", "env", "admin"],
+        "title": "SettingSource",
+        "description": "Where an effective value comes from."
       },
       "Severity": {
         "type": "string",

@@ -5,8 +5,9 @@
 2. Where we stand: progress against the previous snapshot, why it changed
    (requirements that moved, scope added or removed, the delivery date
    moved), and how requirements stand against their gates.
-3. Most important: what threatens the delivery date, and the release
-   readiness gaps that are blocking and close to their date.
+3. Most important: the release readiness gaps that are blocking and close
+   to their date, first, so the line cap never folds one away; then what
+   threatens the delivery date.
 4. What we need, and from whom: every ask, grouped by the person who can do
    it, with its kind, how long it has waited, and whom it escalated to under
    the project's escalation matrix (see ``day_report_asks``).
@@ -22,11 +23,12 @@ about work, not people; the report never ranks or scores anyone.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
+from core.application.checkin_drift import member_roles
 from core.application.day_report_asks import (
     Ask,
     AskScope,
@@ -38,11 +40,13 @@ from core.application.day_report_asks import (
     incoming_ask,
     most_needed,
     open_question_asks,
+    readiness_decider,
     request_ask,
     signal_ask,
     team_from,
     trimmed,
 )
+from core.application.delivery_scope import PROJECT_OWNER_KEY, member_scope
 from core.application.delivery_service import DeliveryService
 from core.application.escalation_matrix_service import EscalationMatrixService
 from core.application.forecast_service import ForecastService, ScopeDeliveryView
@@ -50,6 +54,7 @@ from core.application.gate_service import GateBoardView, GateService, IssueGates
 from core.application.persona_views import owned_project_tasks
 from core.application.release_readiness_service import ReleaseReadinessService, ReportGaps
 from core.application.risk_service import RiskService
+from core.domain.auth import Role
 from core.domain.delivery import (
     STAGE_LABELS,
     STAGE_ORDER,
@@ -67,7 +72,7 @@ from core.domain.forecast import (
     Verdict,
 )
 from core.domain.gates import GateState, QuestionStatus, TrackedQuestion
-from core.domain.graph import EdgeKind, NodeKind
+from core.domain.graph import EdgeKind, GraphEdge, GraphNode, NodeKind
 from core.domain.release_readiness import ScopeKind
 from core.domain.report_facts import (
     AskFacts,
@@ -303,8 +308,17 @@ class DayReportBuilder:
             if edge.is_active_on(day)
         ]
         names = {node.id: node.name for node in nodes.values() if node.kind is NodeKind.DEVELOPER}
+        product_owners = _role_holders(nodes.values(), contains, Role.PO)
+        scrum_masters = _role_holders(nodes.values(), contains, Role.SM)
         all_teams = {
-            node.id: team_from(node, names) for node in nodes.values() if node.kind is NodeKind.POD
+            node.id: team_from(
+                node,
+                names,
+                product_owners=product_owners.get(node.id, ()),
+                scrum_masters=scrum_masters.get(node.id, ()),
+            )
+            for node in nodes.values()
+            if node.kind is NodeKind.POD
         }
         team_ids = {
             edge.to_node_id
@@ -337,6 +351,7 @@ class DayReportBuilder:
             task_teams=task_teams,
             member_teams=member_teams,
             release_only=release is not None,
+            owner=_member_name(project.metadata.get(PROJECT_OWNER_KEY), nodes.values()),
         )
 
     async def _asks(self, tenant_id: str, facts: _Facts, day: date) -> list[Ask]:
@@ -523,9 +538,12 @@ def _risk_lines(facts: _Facts) -> list[str]:
 
 
 def _most_important(facts: _Facts) -> tuple[str, ...]:
-    lines: list[str] = list(_date_reasons(facts))
+    # A blocking readiness gap first: at most four lines (ReportGaps.lines), so
+    # the cap below never folds one into "and N more". Without one, the order
+    # is what it always was.
+    lines: list[str] = list(facts.readiness.lines)
+    lines.extend(_date_reasons(facts))
     lines.extend(_bypass_line(issue) for issue in facts.board.issues if issue.passed_without)
-    lines.extend(facts.readiness.lines)
     lines.extend(_risk_lines(facts))
     kept = list(dict.fromkeys(lines))
     if len(kept) > MAX_IMPORTANT_LINES:
@@ -711,8 +729,8 @@ def _important_facts(facts: _Facts) -> ImportantFacts:
         ),
         risks=len(risks),
         lines=(
-            *(reason for reason, kind in zip(reasons, kinds, strict=True) if kind is None),
             *readiness,
+            *(reason for reason, kind in zip(reasons, kinds, strict=True) if kind is None),
         ),
         readiness_gaps=len(facts.readiness.gaps),
     )
@@ -752,30 +770,57 @@ def _owner_asks(
 def _readiness_asks(
     readiness: ReportGaps, scope: AskScope, matrix: EscalationMatrix, day: date
 ) -> list[Ask]:
-    """One decision per blocking readiness gap: the decision owner's, or a pod's scrum master's.
+    """One decision per blocking readiness gap, to whoever decides on it.
 
-    A pod's ask climbs from that pod; a project's or a release's from the
-    project's first team, as the matrix's team levels need one.
+    The owner and the team the ask climbs the matrix from both come from
+    ``readiness_decider``: the project's recorded owner, else a product owner,
+    else for a pod's gap its scrum master, else a manager.
     """
-    decider = scope.names.get(matrix.decision_owner_id or "")
-    first = min(scope.teams.values(), key=lambda team: team.node.name.casefold(), default=None)
     asks: list[Ask] = []
     for gap in readiness.gaps:
-        if gap.scope.kind is ScopeKind.POD:
-            team = scope.all_teams.get(gap.scope.id)
-            owner = team.scrum_master if team is not None else None
-        else:
-            team, owner = first, decider
+        pod_id = gap.scope.id if gap.scope.kind is ScopeKind.POD else None
+        decider = readiness_decider(scope, matrix, pod_id)
         asks.append(
             Ask(
                 need=NeedType.DECISION,
-                owner=owner,
+                owner=decider.owner,
                 text=trimmed(gap.ask),
                 waited_days=max(0, (day - gap.entered_on).days) if gap.entered_on else None,
-                team=team,
+                team=decider.team,
             )
         )
     return asks
+
+
+def _role_holders(
+    nodes: Iterable[GraphNode], contains: Sequence[GraphEdge], role: Role
+) -> dict[str, list[str]]:
+    """Each pod's members holding ``role`` (their ``app_roles``, as sign-in reads them).
+
+    A pod is theirs as the console's Today and Delivery decide it: their own
+    part of the tree has it (delivery_scope.member_scope), because it contains
+    them or names them as its scrum master contact.
+    """
+    listed = list(nodes)
+    held: dict[str, list[str]] = {}
+    for node in listed:
+        if node.kind is NodeKind.DEVELOPER and role.value in member_roles(node.metadata):
+            for pod_id in member_scope(listed, contains, node.id).pods:
+                held.setdefault(pod_id, []).append(node.id)
+    return held
+
+
+def _member_name(person: object, nodes: Iterable[GraphNode]) -> str | None:
+    """The member a person field names, by member id or chat id, as admins type them."""
+    if not isinstance(person, str) or not person:
+        return None
+    for node in nodes:
+        if node.kind is NodeKind.DEVELOPER and person in {
+            node.id,
+            node.metadata.get("chat_external_id"),
+        }:
+            return node.name
+    return None
 
 
 def _signal_asks(

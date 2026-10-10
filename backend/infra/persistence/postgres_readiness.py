@@ -78,22 +78,37 @@ class PostgresReleaseReadinessRepository:
     # ---- settings and criteria -------------------------------------------------------
 
     async def get_settings(self, tenant_id: str) -> ReadinessSettings | None:
+        """The agent's settings, None while never saved.
+
+        The row also holds the tenant's Jira writes switches (``jira_writes``,
+        see ``PostgresJiraWritesRepository``); a row holding only those is not
+        a save of these settings.
+        """
         with _tracer.start_as_current_span("postgres.readiness.get_settings"):
             rows = await self._executor.fetch(
                 "SELECT tenant_id, settings, updated_at, updated_by FROM readiness_settings "
                 "WHERE tenant_id = %s",
                 (tenant_id,),
             )
-        return _settings(rows[0]) if rows else None
+        if not rows or "enabled" not in _mapping(rows[0].get("settings")):
+            return None
+        return _settings(rows[0])
 
     async def save_settings(self, settings: ReadinessSettings) -> None:
+        # ``jira_writes`` belongs to the Jira writes panel: a save here keeps it as it is.
         with _tracer.start_as_current_span("postgres.readiness.save_settings"):
             await self._executor.execute(
                 """
                 INSERT INTO readiness_settings (tenant_id, settings, updated_at, updated_by)
                 VALUES (%s, %s::jsonb, %s, %s)
                 ON CONFLICT (tenant_id) DO UPDATE SET
-                    settings = EXCLUDED.settings,
+                    settings = CASE
+                        WHEN readiness_settings.settings -> 'jira_writes' IS NULL
+                            THEN EXCLUDED.settings
+                        ELSE EXCLUDED.settings || jsonb_build_object(
+                            'jira_writes', readiness_settings.settings -> 'jira_writes'
+                        )
+                    END,
                     updated_at = EXCLUDED.updated_at,
                     updated_by = EXCLUDED.updated_by
                 """,

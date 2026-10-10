@@ -13,7 +13,10 @@ decision, answer, review). Its owner is the person who can do it:
 - a gate item to sign off, or one still missing: the project's decision owner
   for a kind the product owner or a manager signs off, else the issue's
   assignee;
-- a question asked on an issue: the person asked.
+- a question asked on an issue: the person asked;
+- a blocking release readiness gap: whoever decides on it
+  (:func:`readiness_decider`), the project's recorded owner, else a product
+  owner, else for a pod a scrum master, else a manager.
 
 How long an ask has waited takes it up the project's escalation matrix; the
 highest level it reached whose contact is someone other than its owner is the
@@ -66,6 +69,11 @@ class Team:
     node: GraphNode
     scrum_master: str | None
     manager: str | None
+    #: The members holding the product owner's role whose own part of the tree
+    #: has this pod (delivery_scope.member_scope, the console's rule), by name.
+    product_owners: tuple[str, ...] = ()
+    #: The members holding the scrum master's role whose part has it, by name.
+    scrum_masters: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -91,6 +99,9 @@ class AskScope:
     member_teams: Mapping[str, str]
     #: A report on one release counts only what is on the release's issues.
     release_only: bool = False
+    #: The owner recorded on the project (its ``owner_id``), by name; None when
+    #: it names nobody OpenProgram knows.
+    owner: str | None = None
 
     def task_by_key(self, key: str) -> str | None:
         return next(
@@ -152,13 +163,84 @@ class Ask:
         return f"{article} {need} from {self.owner or 'someone not yet named'}{on}{waited}"
 
 
-def team_from(node: GraphNode, names: Mapping[str, str]) -> Team:
+def team_from(
+    node: GraphNode,
+    names: Mapping[str, str],
+    *,
+    product_owners: Iterable[str] = (),
+    scrum_masters: Iterable[str] = (),
+) -> Team:
+    """A pod as the asks need it; ``product_owners`` and ``scrum_masters`` are member ids."""
     contacts = escalation_contacts_from_metadata(node.metadata)
     return Team(
         node=node,
         scrum_master=_contact_name(contacts.scrum_master, names),
         manager=_contact_name(contacts.manager, names),
+        product_owners=_by_name(product_owners, names),
+        scrum_masters=_by_name(scrum_masters, names),
     )
+
+
+def _by_name(member_ids: Iterable[str], names: Mapping[str, str]) -> tuple[str, ...]:
+    """The names of the members OpenProgram knows, each once, by name."""
+    known = {names[member_id] for member_id in member_ids if names.get(member_id)}
+    return tuple(sorted(known, key=lambda name: (name.casefold(), name)))
+
+
+# ---- Who decides on a release readiness gap --------------------------------------------
+
+
+@dataclass(frozen=True, kw_only=True)
+class Decider:
+    """Who decides on a readiness gap, and the team its ask climbs the matrix from."""
+
+    owner: str | None
+    team: Team | None
+
+
+def readiness_decider(
+    scope: AskScope, matrix: EscalationMatrix, pod_id: str | None = None
+) -> Decider:
+    """Who decides on a blocking release readiness gap: the first of
+
+    1. the project's recorded owner: the decision owner its escalation matrix
+       names, else the owner recorded on the project;
+    2. a product owner of the gap's scope: of the pod, for a pod's gap; else of
+       the project's pods, from the first pod by name that has one;
+    3. for a pod's gap only, the pod's scrum master: its escalation contact,
+       else a member holding the role;
+    4. a manager from the escalation contacts: the pod's, else the first of the
+       project's pods' that names one.
+
+    Nobody when all four are empty, and the report says "Nobody named yet".
+    Several people at one step: the first by name. ``pod_id`` is a pod's gap;
+    None a project's or a release's.
+
+    The ask climbs the matrix from the pod the decider was found on, else the
+    pod's own (a pod's gap) or the project's first pod by name. A manager's ask
+    climbs only to a level that names a member: a pod's scrum master and
+    manager levels stand at or below them.
+    """
+    if pod_id is not None:
+        pod = scope.all_teams.get(pod_id)
+        teams = [pod] if pod is not None else []
+    else:
+        teams = sorted(scope.teams.values(), key=lambda team: team.node.name.casefold())
+    first = teams[0] if teams else None
+    recorded = scope.names.get(matrix.decision_owner_id or "") or scope.owner
+    if recorded:
+        return Decider(owner=recorded, team=first)
+    for team in teams:
+        if team.product_owners:
+            return Decider(owner=team.product_owners[0], team=team)
+    if pod_id is not None and first is not None:
+        scrum_master = first.scrum_master or next(iter(first.scrum_masters), None)
+        if scrum_master:
+            return Decider(owner=scrum_master, team=first)
+    for team in teams:
+        if team.manager:
+            return Decider(owner=team.manager, team=None)
+    return Decider(owner=None, team=first)
 
 
 # ---- Escalation ------------------------------------------------------------------------

@@ -6,6 +6,7 @@ from collections.abc import AsyncGenerator, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 
+from config.settings import Settings
 from core.application.ask_investigation import (
     ANSWER_FAILED,
     ANSWER_REMINDER,
@@ -25,6 +26,7 @@ from core.application.ask_investigation import (
 )
 from core.application.ask_service import ANSWER_FORMAT_RULES, AskService
 from core.application.blocker_resolution import BlockerResolutionService
+from core.application.delivery_scope import DeliveryScopeService
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.persona_views import PersonaViewService
 from core.application.risk_service import RiskService
@@ -41,7 +43,9 @@ from core.ports.investigation import (
     InvestigationRun,
 )
 from infra.persistence.in_memory_graph import InMemoryGraphStore
+from infra.registry import ServiceRegistry
 
+SECRET_KEY = "q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ="
 AS_OF = date(2026, 10, 9)
 QUESTION = "Why is Payments Pod late?"
 ANSWER = json.dumps(
@@ -133,6 +137,11 @@ async def _ask_service() -> AskService:
             rollup_repository=store,
             provider_config=RiskProviderConfig(default_no_pr_days=3, default_stale_days=30),
         ),
+        forecast_service=ServiceRegistry(
+            Settings(_env_file=None, secret_key=SECRET_KEY, runtime_mode="memory"),
+            graph_store=store,
+        ).forecast_service(),
+        delivery_scope_service=DeliveryScopeService(store, store),
         model="test-model",
     )
 

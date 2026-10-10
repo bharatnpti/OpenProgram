@@ -904,7 +904,10 @@ export interface paths {
     };
     /** Get Config Tenant Writeback */
     get: operations["get_config_tenant_writeback_config_tenant_writeback_get"];
-    /** Update Config Tenant Writeback */
+    /**
+     * Update Config Tenant Writeback
+     * @description The master Jira writes switch, as Admin › Jira writes sets it (and audits it).
+     */
     put: operations["update_config_tenant_writeback_config_tenant_writeback_put"];
     post?: never;
     delete?: never;
@@ -1008,6 +1011,24 @@ export interface paths {
     /** List Pods */
     get: operations["list_pods_pods_get"];
     put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/tenant/jira-writes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Jira Writes */
+    get: operations["get_jira_writes_config_tenant_jira_writes_get"];
+    /** Update Jira Writes */
+    put: operations["update_jira_writes_config_tenant_jira_writes_put"];
     post?: never;
     delete?: never;
     options?: never;
@@ -1776,7 +1797,10 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
-    /** Save Settings */
+    /**
+     * Save Settings
+     * @description The agent's settings; ``create_in_jira`` is Admin › Jira writes' create switch.
+     */
     put: operations["save_settings_config_readiness_settings_put"];
     post?: never;
     delete?: never;
@@ -4672,6 +4696,31 @@ export interface components {
      * @enum {string}
      */
     ItemStatus: "suggested" | "dismissed" | "pending" | "met" | "failed" | "waived";
+    /**
+     * JiraCreateProjectsDto
+     * @description The Jira projects release readiness may create issues in.
+     */
+    JiraCreateProjectsDto: {
+      /** Own Project */
+      own_project: boolean;
+      /** Projects */
+      projects: string[];
+      source: components["schemas"]["SettingSource"];
+    };
+    /** JiraCreateProjectsUpdate */
+    JiraCreateProjectsUpdate: {
+      /** Own Project */
+      own_project: boolean;
+      /** Projects */
+      projects?: string[];
+    };
+    /** JiraCreateProjectsValueDto */
+    JiraCreateProjectsValueDto: {
+      /** Own Project */
+      own_project: boolean;
+      /** Projects */
+      projects: string[];
+    };
     /** JiraSyncDispatchRequest */
     JiraSyncDispatchRequest: {
       /** Tenant Id */
@@ -4682,6 +4731,80 @@ export interface components {
       container_id?: string | null;
       /** Observed At */
       observed_at?: string | null;
+    };
+    /**
+     * JiraWriteKind
+     * @enum {string}
+     */
+    JiraWriteKind: "checkin_updates" | "console_moves" | "readiness_create";
+    /**
+     * JiraWriteKindDto
+     * @description One kind of Jira write: its own switch, and whether it writes now.
+     */
+    JiraWriteKindDto: {
+      kind: components["schemas"]["JiraWriteKind"];
+      /** On */
+      on: boolean;
+      source: components["schemas"]["SettingSource"];
+      /** Effective */
+      effective: boolean;
+    };
+    /** JiraWriteSwitchDto */
+    JiraWriteSwitchDto: {
+      /** On */
+      on: boolean;
+      source: components["schemas"]["SettingSource"];
+    };
+    /**
+     * JiraWritesChangeDto
+     * @description One change an admin made: who, when, and the value before and after.
+     */
+    JiraWritesChangeDto: {
+      /**
+       * At
+       * Format: date-time
+       */
+      at: string;
+      /** By */
+      by: string;
+      /** By Name */
+      by_name: string | null;
+      /** Setting */
+      setting: string;
+      /** Before On */
+      before_on: boolean | null;
+      /** After On */
+      after_on: boolean | null;
+      before_projects: components["schemas"]["JiraCreateProjectsValueDto"] | null;
+      after_projects: components["schemas"]["JiraCreateProjectsValueDto"] | null;
+      before_source: components["schemas"]["SettingSource"];
+    };
+    /**
+     * JiraWritesResponse
+     * @description The tenant's Jira write switches as they are in force, and the latest changes.
+     */
+    JiraWritesResponse: {
+      master: components["schemas"]["JiraWriteSwitchDto"];
+      /** Kinds */
+      kinds: components["schemas"]["JiraWriteKindDto"][];
+      create_projects: components["schemas"]["JiraCreateProjectsDto"];
+      /** Changes */
+      changes: components["schemas"]["JiraWritesChangeDto"][];
+    };
+    /**
+     * JiraWritesUpdateRequest
+     * @description Only what is given changes; a field left out or null keeps its value and source.
+     */
+    JiraWritesUpdateRequest: {
+      /** Master */
+      master?: boolean | null;
+      /** Checkin Updates */
+      checkin_updates?: boolean | null;
+      /** Console Moves */
+      console_moves?: boolean | null;
+      /** Readiness Create */
+      readiness_create?: boolean | null;
+      create_projects?: components["schemas"]["JiraCreateProjectsUpdate"] | null;
     };
     /**
      * LogoContentType
@@ -5854,7 +5977,7 @@ export interface components {
       auto_suggest: boolean;
       /**
        * Create In Jira
-       * @description Lets a person press Create in Jira; Jira write-back must be on too.
+       * @description Admin › Jira writes' "Create release-readiness issues": lets a person press Create in Jira; the tenant's Jira writes switch must be on too.
        */
       create_in_jira: boolean;
       /** Issue Type */
@@ -5865,6 +5988,31 @@ export interface components {
       updated_at?: string | null;
       /** Updated By */
       updated_by?: string | null;
+    };
+    /**
+     * ReadinessSettingsUpdateRequest
+     * @description The agent's settings. ``create_in_jira`` left out or null keeps the Jira writes switch.
+     */
+    ReadinessSettingsUpdateRequest: {
+      /**
+       * Enabled
+       * @description The agent checks scopes; off, a tick does nothing.
+       */
+      enabled: boolean;
+      /**
+       * Auto Suggest
+       * @description Draft a Jira issue for every missing criterion.
+       */
+      auto_suggest: boolean;
+      /**
+       * Create In Jira
+       * @description Sets Admin › Jira writes' "Create release-readiness issues"; left out or null, it stays as it is.
+       */
+      create_in_jira?: boolean | null;
+      /** Issue Type */
+      issue_type: string;
+      /** Labels */
+      labels?: string[];
     };
     /**
      * ReadinessShownState
@@ -6566,6 +6714,12 @@ export interface components {
       /** Weekdays */
       weekdays?: number[] | null;
     };
+    /**
+     * SettingSource
+     * @description Where an effective value comes from.
+     * @enum {string}
+     */
+    SettingSource: "default" | "env" | "admin";
     /**
      * Severity
      * @enum {string}
@@ -10003,6 +10157,72 @@ export interface operations {
       };
     };
   };
+  get_jira_writes_config_tenant_jira_writes_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JiraWritesResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_jira_writes_config_tenant_jira_writes_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["JiraWritesUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JiraWritesResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   get_branding_config_branding_get: {
     parameters: {
       query?: never;
@@ -11753,7 +11973,7 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["ReadinessSettingsDto"];
+        "application/json": components["schemas"]["ReadinessSettingsUpdateRequest"];
       };
     };
     responses: {

@@ -24,6 +24,7 @@ from core.application.flow_metrics_service import FlowMetricsService
 from core.application.forecast_service import ForecastService
 from core.application.gate_service import GateService
 from core.application.graph_queries import GraphQueryService
+from core.application.jira_writes_service import JiraWritesService
 from core.application.person_names import PersonNames
 from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
@@ -208,6 +209,11 @@ def get_write_back_service(request: Request) -> WriteBackService:
     return registry.write_back_service()
 
 
+def get_jira_writes_service(request: Request) -> JiraWritesService:
+    registry = get_registry(request)
+    return registry.jira_writes_service()
+
+
 def get_cross_person_request_service(request: Request) -> CrossPersonRequestService:
     registry = get_registry(request)
     return registry.cross_person_request_service()
@@ -245,6 +251,8 @@ def get_ask_service(request: Request) -> AskService:
         flow_metrics_service=get_flow_metrics_service(request),
         persona_view_service=get_persona_view_service(request),
         risk_service=get_risk_service(request),
+        forecast_service=get_forecast_service(request),
+        delivery_scope_service=get_delivery_scope_service(request),
         model=settings.default_llm_model,
     )
 

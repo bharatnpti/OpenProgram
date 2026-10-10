@@ -37,8 +37,10 @@ from api.readiness_dtos import (
     ReadinessRunResponse,
     ReadinessRunSummaryDto,
     ReadinessSettingsDto,
+    ReadinessSettingsUpdateRequest,
 )
 from core.application.authorization import AuthorizationPolicy, Capability
+from core.application.delivery_scope import PROJECT_OUTSIDE_SCOPE
 from core.application.forecast_service import ForecastService
 from core.application.release_readiness_service import (
     FindingView,
@@ -50,6 +52,7 @@ from core.application.release_readiness_service import (
 from core.domain.auth import Principal, Role
 from core.domain.errors import AuthorizationDenied, GraphNotFound, IssueCreateFailed
 from core.domain.forecast import Release
+from core.domain.jira_writes import JiraWriteKind
 from core.domain.release_readiness import ReadinessError, ScopeKind, ScopeRef
 from infra.registry import ServiceRegistry
 
@@ -310,12 +313,16 @@ async def readiness_config(principal: Caller, service: Service) -> ReadinessConf
 
 @router.put("/config/readiness/settings", response_model=ReadinessSettingsDto)
 async def save_settings(
-    request: ReadinessSettingsDto, principal: Caller, service: Service
+    request: ReadinessSettingsUpdateRequest, principal: Caller, service: Service
 ) -> ReadinessSettingsDto:
+    """The agent's settings; ``create_in_jira`` is Admin › Jira writes' create switch."""
     _ensure(principal, Capability.MANAGE_CONFIG)
+    writes = await service.jira_writes(principal.tenant_id)
+    create_now = writes.kind(JiraWriteKind.READINESS_CREATE).on
     try:
         saved = await service.save_settings(
-            request.to_domain(principal.tenant_id), actor=principal.subject
+            request.to_domain(principal.tenant_id, create_now=create_now),
+            actor=principal.subject,
         )
     except ReadinessError as exc:
         raise _error(exc) from exc
@@ -406,6 +413,9 @@ async def _project_viewer(
             project_reach=False,
             sees_drafts=False,
         )
+    if reading and principal.has_role(Role.SM):
+        # A read, in the words of every scoped project read (delivery_scope).
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=PROJECT_OUTSIDE_SCOPE)
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail=_NOT_YOURS if may_act else _NOT_A_READER,

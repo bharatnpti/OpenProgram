@@ -22,6 +22,7 @@ import type {
   ReadinessPreviewResponse,
   ReadinessRunResponse,
   ReadinessSettingsDto,
+  ReadinessSettingsUpdateRequest,
   CommitmentResponse,
   DeliveryDateRequest,
   PodDeliveryResponse,
@@ -80,6 +81,8 @@ import type {
   WritebackConsentResponse,
   WritebackConsentUpdateRequest,
   TenantWritebackResponse,
+  JiraWritesResponse,
+  JiraWritesUpdateRequest,
   DeliveryTreeResponse,
   DirectoryItemResponse,
   DirectorySearchResponse,
@@ -551,6 +554,9 @@ export const apiClient = {
       body,
     }),
   configTenantWriteback: () => requestJson<TenantWritebackResponse>("/config/tenant/writeback"),
+  jiraWrites: () => requestJson<JiraWritesResponse>("/config/tenant/jira-writes"),
+  saveJiraWrites: (body: JiraWritesUpdateRequest) =>
+    requestJson<JiraWritesResponse>("/config/tenant/jira-writes", { method: "PUT", body }),
   branding: () => requestJson<BrandingResponse>("/config/branding"),
   uploadBrandingLogo: (body: TenantLogoUploadRequest) =>
     requestJson<BrandingResponse>("/config/branding/logo", { method: "PUT", body }),
@@ -742,7 +748,7 @@ export const apiClient = {
       { method: "POST", body: { version } },
     ),
   readinessConfig: () => requestJson<ReadinessConfigResponse>("/config/readiness"),
-  saveReadinessSettings: (body: ReadinessSettingsDto) =>
+  saveReadinessSettings: (body: ReadinessSettingsUpdateRequest) =>
     requestJson<ReadinessSettingsDto>("/config/readiness/settings", { method: "PUT", body }),
   saveReadinessCriterion: (body: ReadinessCriterionDto) =>
     requestJson<ReadinessCriterionDto>("/config/readiness/criteria", { method: "PUT", body }),

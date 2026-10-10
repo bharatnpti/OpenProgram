@@ -8,6 +8,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 
 from api.dtos import RiskFindingResponse
+from config.settings import Settings
 from core.application.ask_service import (
     ANSWER_FORMAT_RULES,
     ASK_SYSTEM_PROMPT,
@@ -28,6 +29,7 @@ from core.application.ask_service import (
     period_windows,
 )
 from core.application.blocker_resolution import BlockerResolutionService
+from core.application.delivery_scope import DeliveryScopeService
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.persona_views import PersonaViewService
 from core.application.risk_service import RiskService
@@ -54,6 +56,7 @@ from core.domain.status import CheckIn, DeveloperStatus, StatusSource
 from core.ports.llm import LlmProvider
 from core.ports.tools import AgentTool
 from infra.persistence.in_memory_graph import InMemoryGraphStore
+from infra.registry import ServiceRegistry
 from tests.contract.fakes import FakeLlmProvider
 
 
@@ -293,6 +296,15 @@ def _ask_service(store: InMemoryGraphStore, llm: LlmProvider) -> AskService:
         ),
         persona_view_service=_persona_service(store),
         risk_service=_risk_service(store),
+        forecast_service=ServiceRegistry(
+            Settings(
+                _env_file=None,
+                secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+                runtime_mode="memory",
+            ),
+            graph_store=store,
+        ).forecast_service(),
+        delivery_scope_service=DeliveryScopeService(store, store),
         model="test-model",
     )
 
@@ -551,9 +563,17 @@ async def test_an_unknown_id_comes_back_as_an_error_the_model_can_correct() -> N
 @pytest.mark.parametrize(
     ("role", "expected"),
     [
-        (Role.DEV, set()),
-        (Role.PO, _AGGREGATE_TOOLS | {"workstream_progress", "status_reasons"}),
-        (Role.SM, _AGGREGATE_TOOLS | {"pod_checkins", "pod_blockers", "status_reasons"}),
+        # A developer reads their own pod's dates; /ask itself still refuses them.
+        (Role.DEV, {"delivery_forecast"}),
+        (
+            Role.PO,
+            _AGGREGATE_TOOLS | {"workstream_progress", "status_reasons", "delivery_forecast"},
+        ),
+        (
+            Role.SM,
+            _AGGREGATE_TOOLS
+            | {"pod_checkins", "pod_blockers", "status_reasons", "delivery_forecast"},
+        ),
         (
             Role.MGR,
             _AGGREGATE_TOOLS
@@ -563,11 +583,13 @@ async def test_an_unknown_id_comes_back_as_an_error_the_model_can_correct() -> N
                 "pod_checkins",
                 "pod_blockers",
                 "status_reasons",
+                "delivery_forecast",
             },
         ),
         (
             Role.EXEC,
-            _AGGREGATE_TOOLS | {"workstream_progress", "portfolio_heatmap", "status_reasons"},
+            _AGGREGATE_TOOLS
+            | {"workstream_progress", "portfolio_heatmap", "status_reasons", "delivery_forecast"},
         ),
         (
             Role.ADMIN,
@@ -578,6 +600,7 @@ async def test_an_unknown_id_comes_back_as_an_error_the_model_can_correct() -> N
                 "pod_checkins",
                 "pod_blockers",
                 "status_reasons",
+                "delivery_forecast",
             },
         ),
     ],
@@ -606,7 +629,7 @@ async def test_a_role_that_cannot_read_risks_cannot_call_the_risk_tool_by_name()
         as_of=AS_OF,
     )
 
-    assert llm.requests[0].tools == ()
+    assert "open_risks" not in {tool.name for tool in llm.requests[0].tools}
     assert llm.requests[1].tool_results[0].content == "Tool open_risks is not available."
     assert view.tools_used == ()
 

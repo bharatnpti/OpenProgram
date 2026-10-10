@@ -31,6 +31,7 @@ import * as vizOverall from "./mock/viz-overall.mjs";
 import * as forecastSettings from "./mock/forecast-settings.mjs";
 import * as scopedDelivery from "./mock/scoped-delivery.mjs";
 import * as releaseReadiness from "./mock/release-readiness.mjs";
+import * as jiraWrites from "./mock/jira-writes.mjs";
 
 const DIST = path.resolve(process.argv[2] ?? new URL("../dist", import.meta.url).pathname);
 const PORT = Number(process.env.PORT ?? 5175);
@@ -224,6 +225,7 @@ function api(req, res, url) {
   // read and write (Overall's included), the sync status and the directory sync.
   if (forecastSettings.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny))
     return;
+  if (jiraWrites.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;
   if (releaseReadiness.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny))
     return;
   if (adminConfig.api(req, url, roles, req.headers["x-openprogram-dev-user"], send, deny)) return;

@@ -11,6 +11,7 @@ from api.dependencies import (
     get_current_principal,
     get_directory_service,
     get_directory_sync_service,
+    get_jira_writes_service,
     get_settings_from_request,
 )
 from api.dtos import (
@@ -53,6 +54,7 @@ from core.application.config_service import (
     DirectoryService,
 )
 from core.application.directory_sync_service import DirectorySyncService
+from core.application.jira_writes_service import JiraWritesService
 from core.domain.auth import Principal
 from core.domain.errors import (
     AuthorizationDenied,
@@ -63,6 +65,7 @@ from core.domain.errors import (
 from core.domain.graph import GraphNode, JsonScalar, NodeKind
 from core.domain.identity import IdentityLink
 from core.domain.status import CheckInPreference, effective_checkin_preference
+from core.domain.writeback import WriteBackGate, WriteBackGateSource
 
 router = APIRouter(tags=["config"])
 
@@ -1126,14 +1129,14 @@ async def get_config_tenant_writeback(
 async def update_config_tenant_writeback(
     request: TenantWritebackUpdateRequest,
     principal: Annotated[Principal, Depends(get_current_principal)],
-    service: Annotated[ConfigService, Depends(get_config_service)],
+    jira_writes: Annotated[JiraWritesService, Depends(get_jira_writes_service)],
 ) -> TenantWritebackResponse:
+    """The master Jira writes switch, as Admin › Jira writes sets it (and audits it)."""
     _ensure(principal, Capability.MANAGE_CONFIG)
-    try:
-        gate = await service.set_tenant_writeback_enabled(principal.tenant_id, request.enabled)
-    except ConfigValidationError as exc:
-        raise _http_error(exc) from exc
-    return TenantWritebackResponse.from_domain(gate)
+    await jira_writes.set_master(principal.tenant_id, request.enabled, actor=principal.subject)
+    return TenantWritebackResponse.from_domain(
+        WriteBackGate(enabled=request.enabled, source=WriteBackGateSource.TENANT)
+    )
 
 
 @router.get("/programs", response_model=list[DirectoryItemResponse])

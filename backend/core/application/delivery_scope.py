@@ -214,6 +214,26 @@ class DeliveryScopeService:
             raise AuthorizationDenied(PROJECT_OUTSIDE_SCOPE)
         self._policy.ensure(principal, Capability.READ_PROJECT_PROGRESS)
 
+    async def readable_projects(
+        self, principal: Principal, project_ids: Iterable[str]
+    ) -> tuple[str, ...]:
+        """Those of ``project_ids`` that :meth:`ensure_project_read` lets the person read.
+
+        One scope read covers them all, and only for a scrum master: a role that
+        reads every project keeps them all, any other role none.
+        """
+        wanted = tuple(dict.fromkeys(project_ids))
+        if reads_project(self._policy, principal, own=False):
+            return wanted
+        if not principal.has_role(Role.SM):
+            return ()
+        scope = await self.scope_of(principal.tenant_id, principal.subject)
+        return tuple(
+            project_id
+            for project_id in wanted
+            if reads_project(self._policy, principal, own=project_id in scope.projects)
+        )
+
     async def ensure_pod_detail(self, principal: Principal, pod_id: str) -> None:
         """A pod's rollup, check-ins, blockers or tasks; raises AuthorizationDenied."""
         if reads_pod_detail(self._policy, principal, own=False):

@@ -148,9 +148,7 @@ def test_the_board_by_role(client: TestClient) -> None:
     assert security["state"] == "missing"
     assert security["suggestion"]["draft"]["project_key"] == "CHK"
     assert security["can"]["create"] is False
-    assert security["can"]["create_off_reason"] == (
-        "Creating issues from OpenProgram is off for this tenant."
-    )
+    assert security["can"]["create_off_reason"] == "Jira writes are off for this tenant."
     assert security["can"]["not_applicable"] is False  # blocking: a manager or admin only
     assert reads["po"].status_code == 200
     assert _security(reads["mgr"].json())["can"]["not_applicable"] is True
@@ -172,10 +170,14 @@ def test_a_scrum_master_outside_the_project_is_refused_in_words(client: TestClie
     run = client.post("/projects/checkout/readiness/run", headers=_as("sm", "U-OTHER"))
 
     assert read.status_code == 403
+    # A read says what is read, as every scoped project read does; an action what is done.
     assert read.json()["detail"] == (
-        "You can act on readiness only for pods you run and the projects they work on."
+        "You read the projects your own pods work on, and this is not one of them."
     )
     assert run.status_code == 403
+    assert run.json()["detail"] == (
+        "You can act on readiness only for pods you run and the projects they work on."
+    )
 
 
 def test_run_now_is_refused_while_the_agent_is_off(client: TestClient) -> None:
@@ -277,9 +279,7 @@ def test_create_in_jira_through_both_switches(client: TestClient) -> None:
     board = client.post("/projects/checkout/readiness/run", headers=_as("mgr")).json()["board"]
     security = _security(board)
     suggestion = security["suggestion"]["suggestion_id"]
-    assert security["can"]["create_off_reason"] == (
-        "Creating issues from OpenProgram needs Jira write-back on."
-    )
+    assert security["can"]["create_off_reason"] == "Jira writes are off for this tenant."
 
     assert client.put("/config/tenant/writeback", json={"enabled": True}).status_code == 200
     created = client.post(

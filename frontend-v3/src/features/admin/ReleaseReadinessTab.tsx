@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Trash2, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 import { apiClient } from "../../api/client";
@@ -35,11 +36,12 @@ import {
   draftFromCriterion,
   draftProblems,
   foundByLine,
-  list,
   newCriterionDraft,
   newMatcher,
+  settingsBody,
   settingsProblems,
 } from "./readinessForm";
+import { JIRA_WRITES_KEY, readinessCreateLine } from "./jiraWritesWords";
 import { STEPS } from "./stageMapping";
 
 const CONFIG_KEY = ["config", "readiness"] as const;
@@ -138,8 +140,9 @@ function AgentCard({ config, onSaved }: { config: ReadinessConfigResponse; onSav
   const [settings, setSettings] = useState<ReadinessSettingsDto>(config.settings);
   const [labelsText, setLabelsText] = useState((config.settings.labels ?? []).join(", "));
   const [attempted, setAttempted] = useState(false);
-  const next = { ...settings, labels: list(labelsText) };
+  const next = settingsBody(settings, labelsText);
   const problems = settingsProblems(next);
+  const writes = useQuery({ queryKey: JIRA_WRITES_KEY, queryFn: () => apiClient.jiraWrites() });
   const save = useMutation({
     mutationFn: () => apiClient.saveReadinessSettings(next),
     onSuccess: (saved) => {
@@ -150,7 +153,7 @@ function AgentCard({ config, onSaved }: { config: ReadinessConfigResponse; onSav
     },
     onError: (error) => toast.error(errorText(error)),
   });
-  const toggle = (key: "enabled" | "auto_suggest" | "create_in_jira") => (on: boolean) =>
+  const toggle = (key: "enabled" | "auto_suggest") => (on: boolean) =>
     setSettings((current) => ({ ...current, [key]: on }));
 
   return (
@@ -170,17 +173,18 @@ function AgentCard({ config, onSaved }: { config: ReadinessConfigResponse; onSav
         onChange={toggle("auto_suggest")}
         hint="A draft Jira issue for each missing criterion. Off, a person drafts one when they want it."
       />
-      <Switch
-        id="rr-create"
-        label="Create in Jira"
-        on={settings.create_in_jira}
-        onChange={toggle("create_in_jira")}
-        hint={
-          config.writeback_enabled
-            ? 'Lets a person press "Create in Jira" on a draft. Jira write-back is on for this tenant.'
-            : 'Lets a person press "Create in Jira" on a draft. Jira write-back is off for this tenant, so creating stays off until it is on.'
-        }
-      />
+      <div className="rounded-2xl bg-grey-fill px-4 py-3 text-[13px] text-grey-body">
+        {/* Never "on" while loading or unknown: only the server's answer says so. */}
+        {writes.data
+          ? readinessCreateLine(writes.data)
+          : writes.isError
+            ? "Whether issues can be created in Jira is not known right now."
+            : "Reading whether issues can be created in Jira…"}{" "}
+        <Link to="/admin?tab=jira-writes" className="font-bold text-magenta">
+          Jira writes
+        </Link>{" "}
+        has the switch and the projects new issues may go to.
+      </div>
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
         <div>
           <label htmlFor="rr-type" className={labelClass}>

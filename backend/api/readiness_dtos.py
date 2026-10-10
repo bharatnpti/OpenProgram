@@ -172,7 +172,10 @@ class ReadinessSettingsDto(BaseModel):
     enabled: bool = Field(description="The agent checks scopes; off, a tick does nothing.")
     auto_suggest: bool = Field(description="Draft a Jira issue for every missing criterion.")
     create_in_jira: bool = Field(
-        description="Lets a person press Create in Jira; Jira write-back must be on too."
+        description=(
+            'Admin › Jira writes\' "Create release-readiness issues": lets a person press '
+            "Create in Jira; the tenant's Jira writes switch must be on too."
+        )
     )
     issue_type: str = Field(min_length=1, max_length=60)
     labels: list[str] = Field(default_factory=list, max_length=MAX_LABELS)
@@ -202,6 +205,35 @@ class ReadinessSettingsDto(BaseModel):
         )
 
 
+class ReadinessSettingsUpdateRequest(BaseModel):
+    """The agent's settings. ``create_in_jira`` left out or null keeps the Jira writes switch."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = Field(description="The agent checks scopes; off, a tick does nothing.")
+    auto_suggest: bool = Field(description="Draft a Jira issue for every missing criterion.")
+    create_in_jira: bool | None = Field(
+        default=None,
+        description=(
+            'Sets Admin › Jira writes\' "Create release-readiness issues"; left out or null, '
+            "it stays as it is."
+        ),
+    )
+    issue_type: str = Field(min_length=1, max_length=60)
+    labels: list[str] = Field(default_factory=list, max_length=MAX_LABELS)
+
+    def to_domain(self, tenant_id: str, *, create_now: bool) -> ReadinessSettings:
+        """``create_now``: the switch as it is, kept when the request leaves it out."""
+        return ReadinessSettings(
+            tenant_id=tenant_id,
+            enabled=self.enabled,
+            auto_suggest=self.auto_suggest,
+            create_in_jira=create_now if self.create_in_jira is None else self.create_in_jira,
+            issue_type=self.issue_type,
+            labels=tuple(self.labels),
+        )
+
+
 class ReadinessConfigResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -211,7 +243,7 @@ class ReadinessConfigResponse(BaseModel):
     criteria: list[ReadinessCriterionDto]
     #: Generic examples not yet added; none is on until an admin adds it.
     examples: list[ReadinessCriterionDto]
-    #: The tenant's Jira write-back switch, which Create in Jira needs too.
+    #: The tenant's master Jira writes switch, which Create in Jira needs too.
     writeback_enabled: bool
     #: Who marks a blocking criterion not applicable, besides an admin.
     waive_roles: list[Role]

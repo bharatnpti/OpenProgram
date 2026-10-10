@@ -120,6 +120,33 @@ async def test_membership_is_read_for_today_and_an_ended_link_no_longer_counts()
         await after.ensure_pod_detail(kai, "pod-a")
 
 
+@pytest.mark.parametrize("role", [role.value for role in Role])
+async def test_readable_projects_keeps_the_projects_ensure_project_read_lets_through(
+    role: str,
+) -> None:
+    store = InMemoryGraphStore()
+    await populate_demo_graph(store, store, "demo")
+    scope = DeliveryScopeService(store, store)
+    zoe = Principal(tenant_id="demo", subject="dev-zoe", roles=frozenset({Role(role)}))
+    projects = ["project-foundations", "project-insights", "project-foundations"]
+    allowed: list[str] = []
+    for project_id in dict.fromkeys(projects):
+        try:
+            await scope.ensure_project_read(zoe, project_id)
+        except AuthorizationDenied:
+            continue
+        allowed.append(project_id)
+
+    readable = await scope.readable_projects(zoe, projects)
+
+    assert readable == tuple(allowed)
+    # Zoe runs the Data Pod, which only Insights holds.
+    assert readable == {
+        "dev": (),
+        "sm": ("project-insights",),
+    }.get(role, ("project-foundations", "project-insights"))
+
+
 # --- the developer's own pod ----------------------------------------------------------------
 
 
