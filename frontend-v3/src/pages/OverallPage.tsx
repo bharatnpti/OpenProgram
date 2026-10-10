@@ -6,8 +6,9 @@ import { useViewingDate } from "../app/viewingDate";
 import { GateAnswer, ProjectAnswer, ScrumMasterAnswer } from "../features/overall/AnswerCard";
 import { GatesSection } from "../features/overall/GatesSection";
 import { PodDatesSection, ScrumMasterPodDates } from "../features/overall/PodDatesSection";
-import { useGateBoard, useReleases } from "../features/overall/queries";
+import { useGateBoard, useReadsReadiness, useReleases } from "../features/overall/queries";
 import { QuestionsSection } from "../features/overall/QuestionsSection";
+import { ReadinessSection } from "../features/overall/ReadinessSection";
 import { ReleaseScope } from "../features/overall/ReleaseScope";
 import { RequirementsSection } from "../features/overall/RequirementsSection";
 import { RisksSection } from "../features/overall/RisksSection";
@@ -18,14 +19,16 @@ import { ReportsHeader } from "../features/reports/ReportsHeader";
  * The project's state since it started, read today, for the whole project or
  * one release (`?release=`), from summary to detail: one answer line, the date
  * strip, how the date moved (O1), dates by pod (O6), requirements by stage
- * (O3), the gates (O5), risks and questions. Date first, then scope, then
- * quality, then people. Each section is its own query, so one refused or slow
- * read never blanks the others. Risks are always the whole project's.
+ * (O3), the gates (O5), release readiness, risks and questions. Date first,
+ * then scope, then quality, then people. Each section is its own query, so one
+ * refused or slow read never blanks the others. Risks are always the whole
+ * project's.
  *
  * Each role gets the sections it reads (app/access.ts):
  * - the project's readers (product owner, manager, executive, admin): all of it;
  * - a scrum master: an answer line for the pod they run, every pod's date with
- *   Set date on their own, the gates, risks and questions;
+ *   Set date on their own, the gates, release readiness where one of their pods
+ *   works on the project (the project's rows and their pods'), risks and questions;
  * - a developer: an answer line on the gates, the gates and the questions.
  */
 export function OverallPage() {
@@ -33,6 +36,8 @@ export function OverallPage() {
   const [search, setSearch] = useSearchParams();
   const { asOf, label } = useViewingDate();
   const { overall } = useRole().access;
+  // A scrum master reads it only for a project one of their pods works on.
+  const readiness = useReadsReadiness(projectId);
   const asked = search.get("release") ?? "";
   const releases = useReleases(projectId);
   // A link to a release that is gone falls back to the whole project rather
@@ -68,6 +73,7 @@ export function OverallPage() {
           <p className="mb-8 rounded-2xl bg-grey-fill px-4 py-3 text-[13px] text-grey-body">
             {pastDayWords(overall, label ?? "")} Gate sign-offs and questions are not kept per day:
             they show how they stand now, for the requirements of that day.
+            {readiness ? " Release readiness shows how it stands now." : ""}
           </p>
         ) : null}
         <div className="grid grid-cols-[minmax(0,1fr)] gap-10 max-sm:gap-8">
@@ -89,6 +95,13 @@ export function OverallPage() {
             <RequirementsSection projectId={projectId} releaseId={releaseId} />
           ) : null}
           <GatesSection projectId={projectId} releaseId={releaseId} summary={!developer} />
+          {readiness ? (
+            <ReadinessSection
+              projectId={projectId}
+              releaseId={releaseId}
+              answered={overall.forecast}
+            />
+          ) : null}
           {overall.risks ? <RisksSection projectId={projectId} /> : null}
           <QuestionsSection projectId={projectId} releaseId={releaseId} />
         </div>

@@ -71,6 +71,28 @@ class Issue:
 
 
 @dataclass(frozen=True, kw_only=True)
+class NewIssue:
+    """An issue to create in the tracker, as a person approved it. Never assigned to anyone."""
+
+    project_key: str
+    issue_type: str
+    summary: str
+    description: str
+    labels: tuple[str, ...] = ()
+    #: The tracker account of the person who approved it; None posts as the integration.
+    reporter_account_id: str | None = None
+
+
+class IssueCreateFailure(StrEnum):
+    #: The tracker refused the integration's credentials or permissions.
+    CREDENTIALS = "credentials"
+    #: The tracker did not answer, or answered with a server error.
+    UNREACHABLE = "unreachable"
+    #: The tracker refused the issue's fields (``fields`` names them).
+    REFUSED = "refused"
+
+
+@dataclass(frozen=True, kw_only=True)
 class IssueComment:
     id: str
     author: UserRef | None

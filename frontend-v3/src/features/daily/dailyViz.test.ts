@@ -324,6 +324,7 @@ test("Most important names every requirement that went around a gate, by stage",
     ],
     risks: 4,
     lines: [],
+    readiness_gaps: 0,
   });
   assert.deepEqual(view.groups, [
     {
@@ -335,12 +336,15 @@ test("Most important names every requirement that went around a gate, by stage",
   // One short pointer to where the rest is drawn, not a note on the design.
   assert.equal(view.note, "See In short for the delivery date, and What we need for the 4 risks.");
   assert.equal(view.empty, false);
-  assert.equal(importantView({ drawn: [], bypassed: [], risks: 0, lines: [] }).empty, true);
+  assert.equal(
+    importantView({ drawn: [], bypassed: [], risks: 0, lines: [], readiness_gaps: 0 }).empty,
+    true,
+  );
 });
 
 test("Most important's pointer names only what the message has there", () => {
   const only = (drawn: string[], risks: number) =>
-    importantView({ drawn, bypassed: [], risks, lines: [] });
+    importantView({ drawn, bypassed: [], risks, lines: [], readiness_gaps: 0 });
   assert.equal(only(["committed"], 0).note, "See In short for the delivery date.");
   assert.equal(only([], 1).note, "See What we need for the risk.");
   assert.equal(only([], 3).note, "See What we need for the 3 risks.");

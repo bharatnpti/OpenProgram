@@ -1,0 +1,58 @@
+Checkout Revamp: day report, Mon 5 Oct 2026
+Status unknown: 4 fixes, 2 decisions, 1 answer and 1 review needed, 4 escalated.
+
+██████████████░░░░░░ 71% complete: 5 of 7 requirements in production (0% on Fri 2 Oct 2026).
+
+IN SHORT
+• Priya: The vendor's sandbox is back. Refunds are next.
+• Delivery Sat 21 Nov 2026: at risk.
+• Needed most: an answer from Priya on CHK-1 (6 days), a fix from Omar on PLT-9 (5 days) and a fix from Asha on CHK-3 (2 days).
+
+WHERE WE STAND
+Progress
+  • 71% complete: 5 of 7 requirements in production (0% on Fri 2 Oct 2026).
+  • Raised 0 · Groomed 0 · In development 1 (-1) · In testing 1 (+1) · Business testing 0 · Production 5 (+5)
+What changed since Fri 2 Oct 2026
+  • CHK-1 CHK-1 work: In development → In testing
+  • CHK-2 CHK-2 work: In development → Production
+  • CHK-3 CHK-3 work: new, in In development
+  • CHK-4 CHK-4 work: new, in Production
+  • CHK-5 CHK-5 work: new, in Production
+  • CHK-6 CHK-6 work: new, in Production
+  • CHK-7 CHK-7 work: new, in Production
+  • Scope +5 requirements
+  • The delivery date moved from Sat 14 Nov 2026 to Sat 21 Nov 2026 (Priya: Vendor moved its test date).
+Acceptance and tests
+  • Business acceptance (before production): 0 of 7 passed, 1 open, 6 with nothing confirmed; 5 moved on without it.
+  • Engineering delivery (before business testing): 0 of 7 passed, 7 with nothing confirmed; 5 moved on without it.
+
+MOST IMPORTANT
+• CHK-4 reached production without an on-call handover for Payments Pod.
+• CHK-2 reached production without a security review for Checkout Revamp.
+• Committed for Sat 21 Nov 2026 by Priya; moved once, 7 days later than first set.
+• Only 1 working day of history; a forecast needs 10.
+• 2 open requirements have no ETA or due date.
+• CHK-2 reached production without Business acceptance and Engineering delivery passing.
+• CHK-4 reached production without Business acceptance and Engineering delivery passing.
+• CHK-5 reached production without Business acceptance and Engineering delivery passing.
+• and 2 more.
+
+WHAT WE NEED, AND FROM WHOM
+Priya
+  • Answer: CHK-1: "Is 3-D Secure in scope?" (6 days; asked by Asha (partly answered)). Escalated to Mark (Manager).
+  • Fix: CHK-3: Test environment is down (1 day; reported by Asha).
+  • Decision: Checkout Revamp: no security review in Jira yet (due 9 Nov); create it or link one (since today).
+  • Decision: Payments Pod: no on-call handover in Jira yet (due 9 Oct); create it or link one (since today).
+Asha
+  • Fix: Zoe waits on CHK-3 (2 days). Escalated to Priya (Scrum master).
+  • Fix: CHK-1: no test case yet for engineering delivery (before business testing).
+Omar
+  • Fix: CHK-1: CHK-1 waits on Omar's API change in PLT-9 (5 days; reported by Asha, waits on Platform Pod (PLT-9)). Escalated to Lena (Scrum master).
+  • Review: CHK-1: Asha asked for a review (2 days). Escalated to Lena (Scrum master).
+
+OPEN QUESTIONS
+• CHK-1 · What we asked: Is 3-D Secure in scope? · Asked to: Priya · Asked on: Tue 29 Sep 2026 · Heard back?: Partly
+
+Open in OpenProgram: https://console.example.com/reports/checkout/daily?report=rep-1
+
+Sent by OpenProgram.

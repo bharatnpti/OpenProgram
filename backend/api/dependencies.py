@@ -23,6 +23,7 @@ from core.application.flow_metrics_service import FlowMetricsService
 from core.application.forecast_service import ForecastService
 from core.application.gate_service import GateService
 from core.application.graph_queries import GraphQueryService
+from core.application.jira_writes_service import JiraWritesService
 from core.application.person_names import PersonNames
 from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
@@ -205,6 +206,11 @@ def get_sync_status_service(request: Request) -> SyncStatusService:
 def get_write_back_service(request: Request) -> WriteBackService:
     registry = get_registry(request)
     return registry.write_back_service()
+
+
+def get_jira_writes_service(request: Request) -> JiraWritesService:
+    registry = get_registry(request)
+    return registry.jira_writes_service()
 
 
 def get_cross_person_request_service(request: Request) -> CrossPersonRequestService:

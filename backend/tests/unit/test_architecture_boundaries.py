@@ -86,3 +86,15 @@ def _python_files() -> list[Path]:
         for path in package.rglob("*.py")
         if path.name != "__init__.py"
     ]
+
+
+def test_only_the_readiness_service_creates_tracker_issues() -> None:
+    # Creating an issue is the one other write: a person's press on one drafted
+    # release readiness issue, behind its own switch and the write-back switch.
+    sanctioned = APPLICATION_PACKAGE / "release_readiness_service.py"
+    callers = sorted(
+        str(path.relative_to(ROOT))
+        for path in APPLICATION_PACKAGE.rglob("*.py")
+        if ".create_issue(" in path.read_text(encoding="utf-8")
+    )
+    assert callers == [str(sanctioned.relative_to(ROOT))]

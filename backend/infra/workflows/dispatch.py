@@ -21,6 +21,7 @@ from infra.workflows.delivery_reports import (
 from infra.workflows.drift_scan import DriftScanInput
 from infra.workflows.git_sync import GitSyncInput
 from infra.workflows.jira_sync import JiraSyncInput
+from infra.workflows.readiness import ReadinessScanInput
 from infra.workflows.risk_assessment import RiskAssessmentInput
 from infra.workflows.rollup import RollupInput
 from infra.workflows.runtime_sync import RuntimeSyncInput
@@ -38,6 +39,7 @@ type SyncWorkflowInput = (
     | DeliverySnapshotInput
     | DayReportDispatchInput
     | GateScanInput
+    | ReadinessScanInput
 )
 
 
@@ -162,6 +164,11 @@ def _derived_workflow_input(
             tenant_id=input.tenant_id,
             observed_at=_optional_str(input.payload, "observed_at"),
         )
+    if connector == "readiness_scan":
+        return ReadinessScanInput(
+            tenant_id=input.tenant_id,
+            observed_at=_optional_str(input.payload, "observed_at"),
+        )
     return None
 
 
@@ -178,6 +185,7 @@ _WORKFLOW_NAMES = {
     "delivery_snapshot": "delivery-snapshot",
     "day_report": "day-report",
     "gate_scan": "gate-scan",
+    "readiness_scan": "readiness-scan",
 }
 
 
@@ -208,6 +216,7 @@ _CONNECTOR_ALIASES = {
         "delivery_snapshot": ("delivery_snapshot", "requirement_snapshot"),
         "day_report": ("day_report", "day_report_dispatch"),
         "gate_scan": ("gate_scan", "issue_text_scan"),
+        "readiness_scan": ("readiness_scan", "release_readiness"),
     }.items()
     for alias in aliases
 }

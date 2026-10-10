@@ -92,6 +92,13 @@ Two things keep that inside the budget:
    schedules: two applications (`OPENPROGRAM_DBOS_APP_NAME`) cannot share a
    system database.
 
+The hourly release readiness check (`openprogram-readiness-scan`, at :45,
+after the :00 Jira sync) goes through both: a superseded tick does nothing,
+and the current one is enqueued on `openprogram_sync`, under the same limit.
+It reads only Postgres, through the application pool of the process that runs
+it, so it adds no pool and no connection to the budget above: one step per
+tick, holding at most one pooled connection at a time.
+
 Neither touches the check-in fan-out: its schedule, its catch-up backfill and
 its one-message-per-person behaviour are unchanged, and the derived schedules
 (risk, drift, rollup, briefs, reports) keep every tick.

@@ -33,6 +33,10 @@ class Capability(StrEnum):
     SEND_DAY_REPORTS = "send_day_reports"
     #: Create, change, switch and remove day reports, with the same per-project limit.
     SET_UP_DAY_REPORTS = "set_up_day_reports"
+    #: Run the release readiness check and act on its findings: link, not applicable,
+    #: dismiss and create a draft. A scrum master only for pods they run and the
+    #: projects those pods work on.
+    ACT_ON_READINESS = "act_on_readiness"
 
 
 class SensitiveField(StrEnum):
@@ -68,6 +72,7 @@ class AuthorizationPolicy:
                     Capability.SET_PROJECT_DATES,
                     Capability.EDIT_GATES,
                     Capability.READ_DAY_REPORTS,
+                    Capability.ACT_ON_READINESS,
                 }
             ),
             Role.SM: frozenset(
@@ -83,6 +88,7 @@ class AuthorizationPolicy:
                     Capability.READ_DAY_REPORTS,
                     Capability.SEND_DAY_REPORTS,
                     Capability.SET_UP_DAY_REPORTS,
+                    Capability.ACT_ON_READINESS,
                 }
             ),
             Role.MGR: frozenset(
@@ -103,6 +109,7 @@ class AuthorizationPolicy:
                     Capability.READ_DAY_REPORTS,
                     Capability.SEND_DAY_REPORTS,
                     Capability.SET_UP_DAY_REPORTS,
+                    Capability.ACT_ON_READINESS,
                 }
             ),
             Role.EXEC: frozenset(

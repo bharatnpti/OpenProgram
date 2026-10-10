@@ -1,0 +1,126 @@
+{
+  "attachments": [
+    {
+      "content": {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "actions": [
+          {
+            "title": "Open in OpenProgram",
+            "type": "Action.OpenUrl",
+            "url": "https://console.example.com/reports/checkout/daily?report=rep-1"
+          }
+        ],
+        "body": [
+          {
+            "size": "Medium",
+            "text": "Checkout Revamp: day report, Mon 5 Oct 2026",
+            "type": "TextBlock",
+            "weight": "Bolder",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "**Status unknown:** 4 fixes, 2 decisions, 1 answer and 1 review needed, 4 escalated.",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "`\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591` 33% complete: 1 of 3 requirements in production (0% on Fri 2 Oct 2026).",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "**In short**",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "- Priya: The vendor's sandbox is back. Refunds are next.\n- Delivery Sat 21 Nov 2026: not enough history to forecast.\n- Needed most: an answer from Priya on CHK-1 (6 days), a fix from Omar on PLT-9 (5 days) and a fix from Asha on CHK-3 (2 days).",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "**Where we stand**",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "_Progress_\n- 33% complete: 1 of 3 requirements in production (0% on Fri 2 Oct 2026).\n- Raised 0 \u00b7 Groomed 0 \u00b7 In development 1 (-1) \u00b7 In testing 1 (+1) \u00b7 Business testing 0 \u00b7 Production 1 (+1)",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "_What changed since Fri 2 Oct 2026_\n- CHK-1 CHK-1 work: In development \u2192 In testing\n- CHK-2 CHK-2 work: In development \u2192 Production\n- CHK-3 CHK-3 work: new, in In development\n- Scope +1 requirement\n- The delivery date moved from Sat 14 Nov 2026 to Sat 21 Nov 2026 (Priya: Vendor moved its test date).",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "_Acceptance and tests_\n- Business acceptance (before production): 0 of 3 passed, 1 open, 2 with nothing confirmed; 1 moved on without it.\n- Engineering delivery (before business testing): 0 of 3 passed, 3 with nothing confirmed; 1 moved on without it.",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "**Most important**",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "- CHK-2 reached production without a security review for Checkout Revamp.\n- Payments Pod needs an on-call handover within 4 working days, and none is in Jira.\n- CHK-2 reached production without Business acceptance and Engineering delivery passing.",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "**What we need, and from whom**",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "_Priya_\n- Answer: CHK-1: \"Is 3-D Secure in scope?\" (6 days; asked by Asha (partly answered)). Escalated to Mark (Manager).\n- Fix: CHK-3: Test environment is down (1 day; reported by Asha).\n- Decision: Checkout Revamp: no security review in Jira yet (due 9 Nov); create it or link one (since today).\n- Decision: Payments Pod: no on-call handover in Jira yet (due 9 Oct); create it or link one (since today).",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "_Asha_\n- Fix: Zoe waits on CHK-3 (2 days). Escalated to Priya (Scrum master).\n- Fix: CHK-1: no test case yet for engineering delivery (before business testing).",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "_Omar_\n- Fix: CHK-1: CHK-1 waits on Omar's API change in PLT-9 (5 days; reported by Asha, waits on Platform Pod (PLT-9)). Escalated to Lena (Scrum master).\n- Review: CHK-1: Asha asked for a review (2 days). Escalated to Lena (Scrum master).",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "**Open questions**",
+            "type": "TextBlock",
+            "wrap": true
+          },
+          {
+            "spacing": "Small",
+            "text": "\u2022 CHK-1 \u00b7 What we asked: Is 3-D Secure in scope? \u00b7 Asked to: Priya \u00b7 Asked on: Tue 29 Sep 2026 \u00b7 Heard back?: Partly",
+            "type": "TextBlock",
+            "wrap": true
+          }
+        ],
+        "type": "AdaptiveCard",
+        "version": "1.4"
+      },
+      "contentType": "application/vnd.microsoft.card.adaptive",
+      "contentUrl": null
+    }
+  ],
+  "type": "message"
+}

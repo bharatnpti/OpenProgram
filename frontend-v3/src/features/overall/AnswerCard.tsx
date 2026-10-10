@@ -14,8 +14,31 @@ import { Locked } from "../reports/ReportDialog";
 import { useReportAccess } from "../reports/useReportAccess";
 import { answerChip, answerEdge, answerMeta, gateAnswer, scopeAnswer } from "./answerWords";
 import { releaseName } from "./overallWords";
-import { useDelivery, useGateBoard, usePodDeliveries, useRequirements } from "./queries";
+import {
+  useDelivery,
+  useGateBoard,
+  usePodDeliveries,
+  useReadiness,
+  useRequirements,
+} from "./queries";
 import { VizCard } from "./viz";
+
+/**
+ * A reason of its own beside the forecast's: a blocking release criterion that is
+ * missing close to its date, in the day report's words. The verdict is the
+ * forecast's and does not change; the rest is in Release readiness below.
+ */
+function ReadinessReason({ lines }: { lines: string[] }) {
+  if (lines.length === 0) return null;
+  return (
+    <p className="text-[13.5px] font-bold text-rag-red">
+      Not ready for production yet: {lines[0]}{" "}
+      <a href="#readiness" className="font-bold text-ink underline underline-offset-2">
+        {lines.length > 1 ? "See every gap in Release readiness" : "See Release readiness"}
+      </a>
+    </p>
+  );
+}
 
 /** The sentence at the top of the card, with the verdict's chip before it when it adds one. */
 function Headline({ scope, text }: { scope: ScopeDeliveryResponse; text: string }) {
@@ -46,6 +69,8 @@ export function ProjectAnswer({ projectId, releaseId }: { projectId: string; rel
   const delivery = useDelivery(projectId);
   // The same read as the requirements section below (one request): the share by story points.
   const requirements = useRequirements(projectId, releaseId || undefined);
+  // The Release readiness section's own read (one request): its gaps close to their date.
+  const readiness = useReadiness(projectId, releaseId || undefined);
   const [editing, setEditing] = useState<{ scope: ScopeDeliveryResponse; title: string } | null>(
     null,
   );
@@ -97,6 +122,7 @@ export function ProjectAnswer({ projectId, releaseId }: { projectId: string; rel
                 The Jira release says {formatDate(scope.jira_release_date)}.
               </p>
             ) : null}
+            <ReadinessReason lines={readiness.query.data?.important ?? []} />
           </VizCard>
         ) : null}
       </PanelState>

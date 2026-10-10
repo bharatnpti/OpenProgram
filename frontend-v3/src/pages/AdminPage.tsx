@@ -11,7 +11,9 @@ import { EntitiesTab } from "../features/admin/EntitiesTab";
 import { EscalationTab } from "../features/admin/EscalationTab";
 import { GatesTab } from "../features/admin/GatesTab";
 import { IntegrationsTab } from "../features/admin/IntegrationsTab";
+import { JiraWritesTab } from "../features/admin/JiraWritesTab";
 import { LinksTab } from "../features/admin/LinksTab";
+import { ReleaseReadinessTab } from "../features/admin/ReleaseReadinessTab";
 import { cn } from "../lib/utils";
 
 // Every setting has its own tab here, so nothing links out to the frontend-v2
@@ -21,8 +23,10 @@ const TABS = [
   { key: "checkins", label: "Check-ins" },
   { key: "sources", label: "Data sources" },
   { key: "integrations", label: "Integrations" },
+  { key: "jira-writes", label: "Jira writes" },
   { key: "stages", label: "Delivery stages" },
   { key: "gates", label: "Gates" },
+  { key: "readiness", label: "Release readiness" },
   { key: "escalation", label: "Escalation" },
   { key: "contacts", label: "Escalation contacts" },
   { key: "branding", label: "Branding" },
@@ -43,7 +47,7 @@ export function AdminPage() {
     <>
       <SectionHeader
         title="Admin"
-        meta="Check-ins, where data comes from and goes to, how delivery is counted and escalated, and the hierarchy."
+        meta="Check-ins, where data comes from and goes to, what may be written to Jira, how delivery is counted and escalated, and the hierarchy."
       />
       <>
         <nav
@@ -70,8 +74,10 @@ export function AdminPage() {
         {tab === "checkins" ? <CheckinsTab /> : null}
         {tab === "sources" ? <DataSourcesTab /> : null}
         {tab === "integrations" ? <IntegrationsTab /> : null}
+        {tab === "jira-writes" ? <JiraWritesTab /> : null}
         {tab === "stages" ? <DeliveryStagesTab /> : null}
         {tab === "gates" ? <GatesTab /> : null}
+        {tab === "readiness" ? <ReleaseReadinessTab /> : null}
         {tab === "escalation" ? <EscalationTab /> : null}
         {tab === "contacts" ? <ContactsTab /> : null}
         {tab === "branding" ? <BrandingTab /> : null}

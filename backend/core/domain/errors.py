@@ -21,6 +21,19 @@ class ProviderConfigurationError(ProviderUnavailable):
     """Raised when external provider credentials or permissions are misconfigured."""
 
 
+class IssueCreateFailed(ProviderUnavailable):
+    """The issue tracker did not create an issue: ``category`` says why, in a fixed word.
+
+    ``fields`` names the fields a refusal was about (the tracker's field ids,
+    never its messages), so the reason can be told without provider text.
+    """
+
+    def __init__(self, category: str, fields: tuple[str, ...] = ()) -> None:
+        super().__init__(f"issue tracker did not create the issue: {category}")
+        self.category = category
+        self.fields = fields
+
+
 class SecretNotFound(OpenProgramError):
     """Raised when a requested connector secret does not exist."""
 

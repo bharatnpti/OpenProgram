@@ -26,7 +26,9 @@ from core.application.escalation_matrix_service import EscalationMatrixService
 from core.application.forecast_service import ForecastService
 from core.application.gate_extraction import ModelItemFinder
 from core.application.gate_service import GateService
-from core.application.persona_views import ProviderNames
+from core.application.jira_writes_service import JiraWritesService
+from core.application.persona_views import PersonaViewService, ProviderNames
+from core.application.release_readiness_service import JiraData, ReleaseReadinessService
 from core.application.reply_ingestion import ReplyDrainResult, ReplyIngestionService
 from core.application.risk_service import RiskService
 from core.application.rollup_service import PersonRollups, RollupService
@@ -41,13 +43,13 @@ from core.application.sync_services import (
 from core.application.sync_status_service import SyncStatusService
 from core.application.task_update_service import TaskUpdateService
 from core.application.writeback_service import WriteBackService
-from core.domain.errors import ProviderUnavailable
+from core.domain.errors import GraphNotFound, ProviderUnavailable
 from core.domain.graph import NodeKind
 from core.domain.inbound import InboundChatEvent, conversation_key
 from core.domain.messaging import InboundMessage
 from core.domain.risk import RiskProviderConfig
 from core.domain.status import resolve_timezone
-from core.domain.sync_status import SyncSource, SyncStatusConfig
+from core.domain.sync_status import SyncHealth, SyncSource, SyncStatusConfig
 from core.domain.workflows import InboundSweeperResult
 from core.ports.auth import (
     AuthCallbackResult,
@@ -78,6 +80,7 @@ from core.ports.gates import (
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
 from core.ports.readiness import ReadinessProbe, ReadinessReport, ReportingReadinessProbe
+from core.ports.release_readiness import ReleaseReadinessRepository
 from core.ports.reply_processing import ReplyProcessingOutcome
 from core.ports.reports import DayReportRepository
 from core.ports.repositories import (
@@ -87,6 +90,7 @@ from core.ports.repositories import (
     GraphRepository,
     IdentityLinkRepository,
     InboundChatEventRepository,
+    JiraWritesRepository,
     NarrativeBriefRepository,
     RollupRepository,
     StatusRepository,
@@ -142,6 +146,8 @@ from infra.persistence.in_memory_gates import (
     InMemoryQuestionRepository,
 )
 from infra.persistence.in_memory_graph import InMemoryDirectoryUserRepository, InMemoryGraphStore
+from infra.persistence.in_memory_jira_writes import InMemoryJiraWritesRepository
+from infra.persistence.in_memory_readiness import InMemoryReleaseReadinessRepository
 from infra.persistence.in_memory_reports import InMemoryDayReportRepository
 from infra.persistence.postgres_branding import PostgresTenantLogoRepository
 from infra.persistence.postgres_connections import PostgresConnectionRepository
@@ -169,6 +175,8 @@ from infra.persistence.postgres_graph import (
     PostgresVectorStore,
 )
 from infra.persistence.postgres_inbound import PostgresInboundChatEventRepository
+from infra.persistence.postgres_jira_writes import PostgresJiraWritesRepository
+from infra.persistence.postgres_readiness import PostgresReleaseReadinessRepository
 from infra.persistence.postgres_reports import PostgresDayReportRepository
 from infra.persistence.postgres_status import (
     PostgresConversationRepository,
@@ -265,6 +273,10 @@ class ServiceRegistry:
         tuple[GateTemplateRepository, GateItemRepository, QuestionRepository, IssueScanRepository]
         | None
     ) = field(default=None, init=False)
+    _release_readiness_repository: ReleaseReadinessRepository | None = field(
+        default=None, init=False
+    )
+    _jira_writes_repository: JiraWritesRepository | None = field(default=None, init=False)
     _connection_resolver: CachedConnectionResolver | None = field(default=None, init=False)
     _redis_provider: RedisClientProvider | None = field(default=None, init=False)
     _issue_tracker: IssueTracker | None = field(default=None, init=False)
@@ -525,6 +537,87 @@ class ServiceRegistry:
             graph_repository=self.graph_repository(),
         )
 
+    def release_readiness_repository(self) -> ReleaseReadinessRepository:
+        if self._release_readiness_repository is None:
+            self._release_readiness_repository = (
+                InMemoryReleaseReadinessRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresReleaseReadinessRepository(self._executor())
+            )
+        return self._release_readiness_repository
+
+    def jira_writes_repository(self) -> JiraWritesRepository:
+        if self._jira_writes_repository is None:
+            self._jira_writes_repository = (
+                InMemoryJiraWritesRepository()
+                if self.settings.runtime_mode == "memory"
+                else PostgresJiraWritesRepository(self._executor())
+            )
+        return self._jira_writes_repository
+
+    def jira_writes_service(self) -> JiraWritesService:
+        """The tenant's Jira write switches: the master, one per kind, and the projects."""
+        readiness = self.release_readiness_repository()
+
+        async def legacy_readiness_create(tenant_id: str) -> bool | None:
+            stored = await readiness.get_settings(tenant_id)
+            return stored.create_in_jira if stored is not None else None
+
+        return JiraWritesService(
+            config_repository=self.writeback_config_repository(),
+            repository=self.jira_writes_repository(),
+            env_master=self.settings.jira_writeback_enabled,
+            env_master_set="jira_writeback_enabled" in self.settings.model_fields_set,
+            legacy_readiness_create=legacy_readiness_create,
+        )
+
+    def release_readiness_service(self) -> ReleaseReadinessService:
+        writeback = self.write_back_service()
+        return ReleaseReadinessService(
+            repository=self.release_readiness_repository(),
+            graph_repository=self.graph_repository(),
+            delivery_service=self.delivery_service(),
+            forecast_service=self.forecast_service(),
+            issue_tracker=self.issue_tracker(),
+            writeback_gate=writeback.system_gate_open,
+            jira_health=self._readiness_jira_health,
+            pod_task_ids=self._pod_task_ids,
+            jira_writes=self.jira_writes_service(),
+            identity_link_repository=self.identity_link_repository(),
+            time_series_repository=self.time_series_repository(),
+            console_base_url=self.settings.public_console_url,
+            today=self._tenant_today,
+        )
+
+    async def _readiness_jira_health(self, tenant_id: str) -> JiraData:
+        """How fresh the synced Jira data is: stale while the issue sync fails or lags."""
+        try:
+            report = await self.sync_status_service().status(tenant_id)
+        except Exception:  # noqa: BLE001 - a status read must never fail a readiness run
+            return JiraData()
+        source = next(
+            (item for item in report.sources if item.source is SyncSource.ISSUE_TRACKER), None
+        )
+        if source is None:
+            return JiraData()
+        return JiraData(
+            stale=source.health in {SyncHealth.FAILING, SyncHealth.STALE},
+            as_of=source.last_synced_at,
+        )
+
+    async def _pod_task_ids(self, tenant_id: str, pod_id: str, day: date) -> list[str]:
+        """The tasks a pod owns within its remit, by the pod panel's own rule."""
+        views = PersonaViewService(
+            graph_repository=self.graph_repository(),
+            status_repository=self.status_repository(),
+            rollup_repository=self.rollup_repository(),
+            time_series_repository=self.time_series_repository(),
+        )
+        try:
+            return [task.id for task in (await views.pod_tasks(tenant_id, pod_id, day)).tasks]
+        except GraphNotFound:
+            return []
+
     def _tenant_today(self) -> date:
         zone = resolve_timezone(None, self.settings.tenant_default_timezone)
         return datetime.now(tz=zone).date()
@@ -587,6 +680,7 @@ class ServiceRegistry:
             gate_service=self.gate_service(),
             escalation_service=self.escalation_matrix_service(),
             console_base_url=self.settings.public_console_url,
+            readiness_service=self.release_readiness_service(),
         )
 
     def day_report_service(self) -> DayReportService:
@@ -1451,6 +1545,7 @@ class ServiceRegistry:
             time_series_repository=self.time_series_repository(),
             graph_repository=self.graph_repository(),
             writeback_enabled_default=self.settings.jira_writeback_enabled,
+            kind_switch=self.jira_writes_service().kind_on,
         )
 
     def status_collector(self) -> StatusCollector:

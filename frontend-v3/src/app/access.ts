@@ -6,6 +6,7 @@
 // still decides; a 403 that comes back anyway shows the server's reason.
 //
 // Type imports only, so `node --test` runs it as written.
+import type { DeliveryTreeResponse } from "../api/schema";
 import type { OwnLinks } from "../features/delivery/ownTree";
 import type { AppRole } from "./roleWords";
 
@@ -90,6 +91,23 @@ export type Access = {
     /** A link to Admin › Escalation, where the matrix is kept. */
     escalationLink: boolean;
   };
+  /**
+   * Release readiness on Overall: the people who decide on a release read it
+   * (a scrum master their pods' rows, an executive without drafts); a developer
+   * has nothing to act on, so it is not drawn. Each row's buttons follow the
+   * server's `can`.
+   */
+  readiness: {
+    board: boolean;
+    /**
+     * Every project's board: an admin, manager or product owner, and an
+     * executive (who reads project progress). A scrum master reads only a project
+     * one of their own pods works on: `readsReadiness` says which.
+     */
+    everyProject: boolean;
+    /** `ACT_ON_READINESS`: Run check now and the row actions. */
+    act: boolean;
+  };
 };
 
 export type Lens = { lens: readonly AppRole[]; chatEnabled: boolean };
@@ -156,7 +174,31 @@ export function accessOf({ lens, chatEnabled }: Lens): Access {
       risks: can.canReadAggregate,
       escalationLink: can.canManageConfig,
     },
+    readiness: {
+      board: has("admin", "mgr", "po", "sm", "exec"),
+      everyProject: has("admin", "mgr", "po") || can.canReadProjectProgress,
+      act: has("admin", "mgr", "po", "sm"),
+    },
   };
+}
+
+/**
+ * Whether the person reads a project's release readiness board, by the backend's
+ * rule (api/routers/readiness.py `_project_viewer`): the roles that read every
+ * project's, and a scrum master for a project one of their own pods (one they
+ * belong to or run) works on, as `ForecastService.runs_project_pod` decides it.
+ * Their pods come from their own part of the tree; until it answers (`tree`
+ * undefined) the board is not theirs, so a request the server refuses is never sent.
+ */
+export function readsReadiness(
+  access: Pick<Access, "readiness">,
+  projectId: string,
+  tree: DeliveryTreeResponse | undefined,
+): boolean {
+  const { board, everyProject } = access.readiness;
+  if (!board || projectId === "") return false;
+  if (everyProject) return true;
+  return (tree?.pods ?? []).some((pod) => pod.own && pod.parent_ids.includes(projectId));
 }
 
 /** The page a path belongs to; null for a page every role has (Today, Reports). */

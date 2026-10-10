@@ -93,6 +93,10 @@ _WRITERS: dict[Capability, frozenset[Role]] = {
     # report is sent or saved). The day's note stays with set_project_dates.
     Capability.SEND_DAY_REPORTS: frozenset({Role.SM, Role.MGR, Role.ADMIN}),
     Capability.SET_UP_DAY_REPORTS: frozenset({Role.SM, Role.MGR, Role.ADMIN}),
+    # Release readiness: the people who decide on a release act on its
+    # findings (a scrum master only in their pods' reach); a developer has
+    # nothing to act on, and an executive only reads.
+    Capability.ACT_ON_READINESS: frozenset({Role.SM, Role.PO, Role.MGR, Role.ADMIN}),
 }
 
 

@@ -16,6 +16,7 @@ from core.domain.integrations import (
     Commit,
     Issue,
     IssueText,
+    NewIssue,
     Project,
     PullRequest,
     Repo,
@@ -83,6 +84,9 @@ class TenantRoutedIssueTracker:
 
     async def add_comment(self, tenant_id: str, key: str, body: str) -> None:
         await (await self._pick(tenant_id)).add_comment(tenant_id, key, body)
+
+    async def create_issue(self, tenant_id: str, issue: NewIssue) -> str:
+        return await (await self._pick(tenant_id)).create_issue(tenant_id, issue)
 
 
 @dataclass(frozen=True)

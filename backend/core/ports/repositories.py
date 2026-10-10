@@ -23,6 +23,7 @@ from core.domain.graph import (
 from core.domain.identity import IdentityLink
 from core.domain.inbound import InboundChatEvent
 from core.domain.integrations import SyncCursor, SyncCursorRecord
+from core.domain.jira_writes import JiraWritesChange, StoredJiraWrites
 from core.domain.rollup import NodeStatus
 from core.domain.status import (
     CheckIn,
@@ -553,6 +554,27 @@ class WriteBackConfigRepository(Protocol):
     async def get_writeback_enabled(self, tenant_id: str) -> bool | None: ...
 
     async def set_writeback_enabled(self, tenant_id: str, enabled: bool) -> None: ...
+
+
+class JiraWritesRepository(Protocol):
+    """The tenant's Jira write switches beyond the master one, and their change log.
+
+    The master switch stays in ``WriteBackConfigRepository``. ``get_jira_writes``
+    returns None while an admin has saved nothing here, so every kind keeps its
+    default. The change log is append-only, newest first when listed.
+    """
+
+    async def get_jira_writes(self, tenant_id: str) -> StoredJiraWrites | None: ...
+
+    async def save_jira_writes(
+        self, tenant_id: str, stored: StoredJiraWrites, *, at: datetime, actor: str
+    ) -> None: ...
+
+    async def append_jira_writes_change(self, change: JiraWritesChange) -> None: ...
+
+    async def list_jira_writes_changes(
+        self, tenant_id: str, limit: int
+    ) -> list[JiraWritesChange]: ...
 
 
 class WriteBackAuditRepository(Protocol):

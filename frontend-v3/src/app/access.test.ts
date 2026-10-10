@@ -6,11 +6,13 @@ import {
   capabilitiesFor,
   pageOf,
   paletteTargets,
+  readsReadiness,
   redirectFor,
   redirectToast,
   roleOfferingPage,
   type Page,
 } from "./access.ts";
+import { developerTree, scrumMasterTree } from "../features/delivery/ownTree.fixture.ts";
 import type { OwnLinks } from "../features/delivery/ownTree.ts";
 import { rolePriority, type AppRole } from "./roleWords.ts";
 
@@ -459,4 +461,38 @@ test("the assistant floats on every tab for the aggregate readers, never for a d
   );
   // Roles combine: a developer who is also a scrum master has it.
   assert.equal(accessOf({ lens: ["dev", "sm"], chatEnabled: false }).assistant, true);
+});
+
+test("release readiness: read by those who decide on a release, acted on by all but an executive", () => {
+  assert.deepEqual(access("dev").readiness, { board: false, everyProject: false, act: false });
+  assert.deepEqual(access("exec").readiness, { board: true, everyProject: true, act: false });
+  // A scrum master reads only the projects their own pods work on.
+  assert.deepEqual(access("sm").readiness, { board: true, everyProject: false, act: true });
+  for (const role of ["po", "mgr", "admin"] as const) {
+    assert.deepEqual(access(role).readiness, { board: true, everyProject: true, act: true }, role);
+  }
+  // Roles combine: a scrum master who is also a product owner reads every project's.
+  assert.equal(accessOf({ lens: ["sm", "po"], chatEnabled: false }).readiness.everyProject, true);
+});
+
+test("release readiness: a scrum master asks only for a project one of their pods works on", () => {
+  const sm = access("sm");
+  // Ira runs Payments (Checkout) and Identity; Storefront, on Checkout too, is not hers.
+  assert.equal(readsReadiness(sm, "project-checkout", scrumMasterTree), true);
+  assert.equal(readsReadiness(sm, "project-identity", scrumMasterTree), true);
+  assert.equal(readsReadiness(sm, "project-insights", scrumMasterTree), false);
+  // A project listed only through a pod that is not hers is not read either.
+  const storefrontOnly = {
+    ...scrumMasterTree,
+    pods: scrumMasterTree.pods.filter((pod) => pod.id === "pod-storefront"),
+  };
+  assert.equal(readsReadiness(sm, "project-checkout", storefrontOnly), false);
+  // Until the tree answers, or when it failed, nothing is asked.
+  assert.equal(readsReadiness(sm, "project-checkout", undefined), false);
+  // The roles that read every project's never need the tree.
+  for (const role of ["po", "mgr", "admin", "exec"] as const) {
+    assert.equal(readsReadiness(access(role), "project-insights", undefined), true, role);
+  }
+  assert.equal(readsReadiness(access("dev"), "project-checkout", developerTree), false);
+  assert.equal(readsReadiness(access("po"), "", undefined), false);
 });

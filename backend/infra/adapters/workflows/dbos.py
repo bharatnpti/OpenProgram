@@ -61,6 +61,7 @@ from infra.workflows import (
     inbound_events,
     jira_sync,
     nudge,
+    readiness,
     risk_assessment,
     rollup,
     runtime_sync,
@@ -87,6 +88,7 @@ from infra.workflows.drift_scan import DriftScanInput, DriftScanWorkflowResult
 from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import EscalationStepInput, NudgeInput, NudgeResult
+from infra.workflows.readiness import ReadinessScanInput, ReadinessScanResult
 from infra.workflows.risk_assessment import RiskAssessmentInput, RiskAssessmentWorkflowResult
 from infra.workflows.rollup import (
     ROLLUP_REFRESH_DEBOUNCE_SECONDS,
@@ -118,6 +120,7 @@ SyncWorkflowResult = (
     | DeliverySnapshotResult
     | DayReportDispatchResult
     | GateScanResult
+    | ReadinessScanResult
 )
 
 
@@ -425,6 +428,17 @@ async def dbos_gate_scan_workflow(payload: GateScanInput) -> GateScanResult:
     return await dbos_run_gate_scan_step(payload)
 
 
+# Retries are safe: the run claims its slot first, so a retried step does nothing new.
+@DBOS.step(name="openprogram_run_readiness_scan", retries_allowed=True)
+async def dbos_run_readiness_scan_step(payload: ReadinessScanInput) -> ReadinessScanResult:
+    return await readiness.run_readiness_scan_activity(payload)
+
+
+@DBOS.workflow(name="openprogram_readiness_scan")
+async def dbos_readiness_scan_workflow(payload: ReadinessScanInput) -> ReadinessScanResult:
+    return await dbos_run_readiness_scan_step(payload)
+
+
 # A step, so a recovered run keeps the answer its first attempt recorded.
 @DBOS.step(name="openprogram_check_sync_tick_superseded")
 async def dbos_check_sync_tick_superseded_step(scheduled_at: str, cron: str) -> bool:
@@ -458,7 +472,35 @@ async def _run_scheduled_sync(
                 scheduled_at=scheduled_at,
             )
             return superseded_runtime_sync_result(workflow_input)
+    if isinstance(workflow_input, ReadinessScanInput):
+        return await _run_scheduled_readiness_scan(workflow_input, scheduled_time, config.cron)
     return await _run_sync_dispatch(dispatch)
+
+
+async def _run_scheduled_readiness_scan(
+    payload: ReadinessScanInput, scheduled_time: datetime, cron: str
+) -> ReadinessScanResult:
+    """The hourly readiness check, on the sync queue so it counts against the sync limit.
+
+    A tick a newer one has superseded (a catch-up after sleep) does nothing:
+    the latest tick reads everything as it stands. The child's id comes from
+    the tick, so a doubled tick enqueues nothing new.
+    """
+    scheduled_at = scheduled_time.isoformat()
+    if await dbos_check_sync_tick_superseded_step(scheduled_at, cron):
+        _logger.info(
+            "scheduled_readiness_tick_superseded",
+            tenant_id=payload.tenant_id,
+            scheduled_at=scheduled_at,
+        )
+        return ReadinessScanResult(
+            tenant_id=payload.tenant_id, status="superseded", scopes=0, changed=0
+        )
+    queue = await _registered_sync_queue()
+    workflow_id = safe_workflow_id(f"readiness-scan-{payload.tenant_id}-{scheduled_at}")
+    with SetWorkflowID(workflow_id):
+        handle = await queue.enqueue_async(dbos_readiness_scan_workflow, payload)
+    return await handle.get_result()
 
 
 def sync_tick_superseded(scheduled_at: datetime, cron: str, *, now: datetime) -> bool:
@@ -750,23 +792,27 @@ async def _run_derived_step(workflow_input: object, connector: str) -> SyncWorkf
         return await dbos_run_day_report_dispatch_step(workflow_input)
     if isinstance(workflow_input, GateScanInput):
         return await dbos_run_gate_scan_step(workflow_input)
+    if isinstance(workflow_input, ReadinessScanInput):
+        return await dbos_run_readiness_scan_step(workflow_input)
     raise ValueError(f"unsupported sync connector: {connector}")
 
 
 async def _start_sync_child_workflow(input: SyncDispatchInput, *, workflow_id: str) -> str:
     """Start the workflow that serves one sync dispatch, under a chosen id.
 
-    Jira and Git syncs are enqueued on the sync queue and start when it has a
-    slot; every other kind starts at once.
+    Jira and Git syncs and the readiness check are enqueued on the sync queue
+    and start when it has a slot; every other kind starts at once.
     """
     workflow_input = sync_workflow_input(input)
-    if isinstance(workflow_input, JiraSyncInput | GitSyncInput):
+    if isinstance(workflow_input, JiraSyncInput | GitSyncInput | ReadinessScanInput):
         queue = await _registered_sync_queue()
     with SetWorkflowID(workflow_id):
         if isinstance(workflow_input, JiraSyncInput):
             await queue.enqueue_async(dbos_jira_sync_workflow, workflow_input)
         elif isinstance(workflow_input, GitSyncInput):
             await queue.enqueue_async(dbos_git_sync_workflow, workflow_input)
+        elif isinstance(workflow_input, ReadinessScanInput):
+            await queue.enqueue_async(dbos_readiness_scan_workflow, workflow_input)
         elif isinstance(workflow_input, CalendarSyncInput):
             await DBOS.start_workflow_async(dbos_calendar_sync_workflow, workflow_input)
         elif isinstance(workflow_input, DirectorySyncInput):
