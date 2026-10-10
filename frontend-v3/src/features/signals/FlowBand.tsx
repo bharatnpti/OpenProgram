@@ -11,6 +11,7 @@ import {
 
 import type { PullRequestFlowResponse, RequestType } from "../../api/schema";
 import { formatDay } from "../../lib/format";
+import { cn } from "../../lib/utils";
 import {
   STAGE_LABELS,
   STAGES,
@@ -21,6 +22,8 @@ import {
   leadHours,
   planDots,
   requestReference,
+  sampleWords,
+  stagesFor,
   standingWords,
   thicknessAt,
   typeColorVar,
@@ -40,7 +43,10 @@ import { useReducedMotion } from "./useReducedMotion";
  * would cost a layout per frame).
  */
 
+// Room for the stage names and times above the band. A narrow band stacks the
+// request count under each time (and a name may wrap), so it keeps more.
 const LABELS_H = 50;
+const LABELS_H_NARROW = 82;
 const MARKER_H = 40;
 const DOT_R = 4;
 const HIT_R = 12;
@@ -84,7 +90,10 @@ export function FlowBand({
   pct: Percentile;
   paused: boolean;
   onTogglePause: () => void;
-  /** A type the legend picked: its dots stay lit, the others fade. */
+  /**
+   * A type the legend picked: its dots stay lit, the others fade, and the stage
+   * times and the band's thickness are its own.
+   */
   highlight: RequestType | null;
 }) {
   const [box, width] = useWidth();
@@ -93,13 +102,17 @@ export function FlowBand({
   const helpId = useId();
   const gradientId = useId().replace(/:/g, "");
   const narrow = width > 0 && width < 560;
-  const height = narrow ? 210 : 240;
-  const bandH = height - LABELS_H - MARKER_H;
-  const centerY = LABELS_H + bandH / 2;
+  const labelsH = narrow ? LABELS_H_NARROW : LABELS_H;
+  const bandH = narrow ? 120 : 150;
+  const height = labelsH + bandH + MARKER_H;
+  const centerY = labelsH + bandH / 2;
 
-  const profile = useMemo(() => bandProfile(flow.stages, pct), [flow.stages, pct]);
+  const profile = useMemo(
+    () => bandProfile(stagesFor(flow, highlight), pct),
+    [flow, highlight, pct],
+  );
   const dots = useMemo(() => planDots(flow, pct), [flow, pct]);
-  const jam = worstJam(flow, pct);
+  const jam = worstJam(flow, pct, highlight);
   const jamIndex = jam ? STAGES.indexOf(jam) : -1;
 
   // The animation clock: seconds of motion so far. It only runs while nothing
@@ -283,7 +296,7 @@ export function FlowBand({
         tabIndex={0}
         role="group"
         aria-roledescription="flow chart"
-        aria-label={bandSummary(flow, pct)}
+        aria-label={bandSummary(flow, pct, highlight)}
         aria-describedby={helpId}
         onKeyDown={onKeyDown}
         onBlur={() => setActive((current) => (current?.by === "keyboard" ? null : current))}
@@ -308,7 +321,7 @@ export function FlowBand({
                 key={stage}
                 x1={stageW * (i + 1)}
                 x2={stageW * (i + 1)}
-                y1={LABELS_H - 6}
+                y1={labelsH - 6}
                 y2={height - MARKER_H + 4}
                 stroke="var(--op-flow-grid)"
                 strokeWidth={1}
@@ -370,6 +383,7 @@ export function FlowBand({
               </p>
               <p className="mt-0.5 text-[16px] font-extrabold text-(--op-flow-ink) sm:text-[18px]">
                 {formatHours(stage.hours)}
+                <Sample hours={stage.hours} count={stage.count} stacked={narrow} />
               </p>
             </div>
           ))}
@@ -399,6 +413,35 @@ export function FlowBand({
         {activeDot && active?.by === "keyboard" ? tooltipWords(activeDot) : ""}
       </p>
     </div>
+  );
+}
+
+/**
+ * How many requests a stage time rests on, small beside it ("24 h · 1 request")
+ * and under it on a narrow band. A stage with no time shows none.
+ */
+function Sample({
+  hours,
+  count,
+  stacked,
+}: {
+  hours: number | null;
+  count: number;
+  /** On its own line under the time, not beside it. */
+  stacked: boolean;
+}) {
+  const words = sampleWords(hours, count);
+  if (words === null) return null;
+  return (
+    <span
+      className={cn(
+        "font-medium leading-tight text-(--op-flow-ink-2)",
+        stacked ? "block text-[11px]" : "text-[12px]",
+      )}
+    >
+      {stacked ? null : <span aria-hidden>{" · "}</span>}
+      {words}
+    </span>
   );
 }
 

@@ -273,6 +273,28 @@ function percentile(values, fraction) {
   return sorted[low] + (sorted[high] - sorted[low]) * (rank - low);
 }
 
+// The four stages over these requests: one rule for every figure, all types
+// and each type alone, as the backend's _stage_views.
+function stageViews(merged, open) {
+  return STAGES.map((stage) => {
+    const values = merged.map((r) => r.hours[stage]).filter((v) => v !== null);
+    return {
+      stage,
+      label: STAGE_LABELS[stage],
+      p50_hours: percentile(values, 0.5),
+      p75_hours: percentile(values, 0.75),
+      measured_count: values.length,
+      open_count: open.filter((r) => r.stage === stage).length,
+    };
+  });
+}
+
+function worstJam(stages, field) {
+  const timed = stages.filter((s) => s[field]);
+  // As the backend: a jam needs two timed stages or more to be the longest of.
+  return timed.length > 1 ? timed.reduce((a, b) => (b[field] > a[field] ? b : a)).stage : null;
+}
+
 function scopeOf(url) {
   const programId = url.searchParams.get("program_id");
   const projectId = url.searchParams.get("project_id");
@@ -335,22 +357,7 @@ function respond(url) {
   const open = inScope
     .filter((r) => r.state === "open" && r.opened_at <= end)
     .sort((a, b) => b.stage_age_hours - a.stage_age_hours);
-  const stages = STAGES.map((stage) => {
-    const values = merged.map((r) => r.hours[stage]).filter((v) => v !== null);
-    return {
-      stage,
-      label: STAGE_LABELS[stage],
-      p50_hours: percentile(values, 0.5),
-      p75_hours: percentile(values, 0.75),
-      measured_count: values.length,
-      open_count: open.filter((r) => r.stage === stage).length,
-    };
-  });
-  const worst = (field) => {
-    const timed = stages.filter((s) => s[field]);
-    // As the backend: a jam needs two timed stages or more to be the longest of.
-    return timed.length > 1 ? timed.reduce((a, b) => (b[field] > a[field] ? b : a)).stage : null;
-  };
+  const stages = stageViews(merged, open);
   const untimed = merged.filter((r) => !r.timed).length;
   const unreviewed = merged.filter((r) => r.timed && r.hours.awaiting_review === null).length;
   const notes = [];
@@ -397,13 +404,30 @@ function respond(url) {
       unreviewed_merged_count: unreviewed,
       untimed_count: untimed,
       stages,
-      worst_jam: { p50: worst("p50_hours"), p75: worst("p75_hours") },
+      worst_jam: { p50: worstJam(stages, "p50_hours"), p75: worstJam(stages, "p75_hours") },
       type_counts: TYPE_ORDER.map((type) => ({
         request_type: type,
         label: TYPE_LABELS[type],
         merged_count: merged.filter((r) => r.request_type === type).length,
         open_count: open.filter((r) => r.request_type === type).length,
       })),
+      // Every type, in the fixed order, timed from its own requests alone; a
+      // type with none has its four stages with no time and a count of 0.
+      stages_by_type: Object.fromEntries(
+        TYPE_ORDER.map((type) => {
+          const own = stageViews(
+            merged.filter((r) => r.request_type === type),
+            open.filter((r) => r.request_type === type),
+          );
+          return [
+            type,
+            {
+              stages: own,
+              worst_jam: { p50: worstJam(own, "p50_hours"), p75: worstJam(own, "p75_hours") },
+            },
+          ];
+        }),
+      ),
       items: [...merged.slice(0, 400), ...open.slice(0, 200)].map(item),
       items_truncated: merged.length > 400 || open.length > 200,
       notes,

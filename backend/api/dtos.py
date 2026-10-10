@@ -87,6 +87,7 @@ from core.application.pull_request_flow_service import (
     PullRequestFlowItemView,
     PullRequestFlowView,
     RequestTypeCountView,
+    RequestTypeFlowView,
     StageFlowView,
 )
 from core.application.task_update_service import TASK_UPDATE_TEXT_MAX, TaskStatement, TaskUpdate
@@ -1897,6 +1898,22 @@ class PullRequestWorstJamDto(BaseModel):
     p75: ReviewStage | None
 
 
+class PullRequestTypeFlowDto(BaseModel):
+    """One request type's own stage times and worst jam, over that type's requests alone."""
+
+    model_config = ConfigDict(frozen=True)
+
+    stages: list[PullRequestFlowStageDto]
+    worst_jam: PullRequestWorstJamDto
+
+    @classmethod
+    def from_view(cls, view: RequestTypeFlowView) -> PullRequestTypeFlowDto:
+        return cls(
+            stages=[PullRequestFlowStageDto.from_view(stage) for stage in view.stages],
+            worst_jam=PullRequestWorstJamDto(p50=view.worst_jam_p50, p75=view.worst_jam_p75),
+        )
+
+
 class PullRequestFlowResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -1919,6 +1936,13 @@ class PullRequestFlowResponse(BaseModel):
     stages: list[PullRequestFlowStageDto]
     worst_jam: PullRequestWorstJamDto
     type_counts: list[PullRequestTypeCountDto]
+    stages_by_type: dict[RequestType, PullRequestTypeFlowDto] = Field(
+        description=(
+            "Every request type's own stage times and worst jam, over its requests alone: "
+            "the same percentile rule as stages. A type with no request has its four stages "
+            "with no time and a count of 0."
+        )
+    )
     items: list[PullRequestFlowItemDto]
     items_truncated: bool = Field(
         description="More requests than the items list holds; counts and stage times cover all."
@@ -1941,6 +1965,10 @@ class PullRequestFlowResponse(BaseModel):
             stages=[PullRequestFlowStageDto.from_view(stage) for stage in view.stages],
             worst_jam=PullRequestWorstJamDto(p50=view.worst_jam_p50, p75=view.worst_jam_p75),
             type_counts=[PullRequestTypeCountDto.from_view(item) for item in view.type_counts],
+            stages_by_type={
+                flow.request_type: PullRequestTypeFlowDto.from_view(flow)
+                for flow in view.type_flows
+            },
             items=[PullRequestFlowItemDto.from_view(item) for item in view.items],
             items_truncated=view.items_truncated,
             notes=list(view.notes),

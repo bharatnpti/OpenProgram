@@ -18508,6 +18508,17 @@
             "type": "array",
             "title": "Type Counts"
           },
+          "stages_by_type": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PullRequestTypeFlowDto"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/RequestType"
+            },
+            "type": "object",
+            "title": "Stages By Type",
+            "description": "Every request type's own stage times and worst jam, over its requests alone: the same percentile rule as stages. A type with no request has its four stages with no time and a count of 0."
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/PullRequestFlowItemDto"
@@ -18544,6 +18555,7 @@
           "stages",
           "worst_jam",
           "type_counts",
+          "stages_by_type",
           "items",
           "items_truncated",
           "notes"
@@ -18730,6 +18742,24 @@
         "type": "object",
         "required": ["request_type", "label", "merged_count", "open_count"],
         "title": "PullRequestTypeCountDto"
+      },
+      "PullRequestTypeFlowDto": {
+        "properties": {
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/PullRequestFlowStageDto"
+            },
+            "type": "array",
+            "title": "Stages"
+          },
+          "worst_jam": {
+            "$ref": "#/components/schemas/PullRequestWorstJamDto"
+          }
+        },
+        "type": "object",
+        "required": ["stages", "worst_jam"],
+        "title": "PullRequestTypeFlowDto",
+        "description": "One request type's own stage times and worst jam, over that type's requests alone."
       },
       "PullRequestWorstJamDto": {
         "properties": {

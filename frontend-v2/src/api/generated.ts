@@ -5475,6 +5475,13 @@ export interface components {
       worst_jam: components["schemas"]["PullRequestWorstJamDto"];
       /** Type Counts */
       type_counts: components["schemas"]["PullRequestTypeCountDto"][];
+      /**
+       * Stages By Type
+       * @description Every request type's own stage times and worst jam, over its requests alone: the same percentile rule as stages. A type with no request has its four stages with no time and a count of 0.
+       */
+      stages_by_type: {
+        [key: string]: components["schemas"]["PullRequestTypeFlowDto"];
+      };
       /** Items */
       items: components["schemas"]["PullRequestFlowItemDto"][];
       /**
@@ -5553,6 +5560,15 @@ export interface components {
       merged_count: number;
       /** Open Count */
       open_count: number;
+    };
+    /**
+     * PullRequestTypeFlowDto
+     * @description One request type's own stage times and worst jam, over that type's requests alone.
+     */
+    PullRequestTypeFlowDto: {
+      /** Stages */
+      stages: components["schemas"]["PullRequestFlowStageDto"][];
+      worst_jam: components["schemas"]["PullRequestWorstJamDto"];
     };
     /**
      * PullRequestWorstJamDto
