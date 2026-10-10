@@ -1,0 +1,100 @@
+frontend-v3/src/features/assistant/persona.ts
+  s_a17a18ca8c509e::t_2b0512fa0f1026 37-45
+frontend-v2/src/api/openapi.json
+  s_a17a18ca8c509e::t_7dd8da3934de73 11469-11495,11514-11523,11561-11584,11624-11642
+backend/core/application/ask_investigation.py
+  s_a17a18ca8c509e::t_5fce039ceae032 32,36,40,109-112,241,251-257,268,300-301
+frontend-v3/src/features/assistant/conversation.test.ts
+  s_a17a18ca8c509e::t_622744c9dea85d 1-11,13-99,112
+  s_a17a18ca8c509e::t_2b0512fa0f1026 12,100-111
+frontend-v3/src/features/assistant/investigate.ts
+  s_a17a18ca8c509e::t_404eb5e585f79c 21,32,51,59
+frontend/src/api/openapi.json
+  s_a17a18ca8c509e::t_7dd8da3934de73 11469-11495,11514-11523,11561-11584,11624-11642
+backend/infra/adapters/agents/deep_investigation.py
+  s_a17a18ca8c509e::t_3c2ba5ad660b3a 93-94,128-134
+frontend-v3/src/pages/OraPage.tsx
+  s_a17a18ca8c509e::t_2b0512fa0f1026 1-6,8-62,64-66
+  s_a17a18ca8c509e::t_9d5225578000a4 7,63
+frontend-v3/src/app/titles.test.ts
+  s_a17a18ca8c509e::t_9b0b9bf8f2f458 19
+frontend-v3/src/App.tsx
+  s_a17a18ca8c509e::t_2b0512fa0f1026 23,82
+backend/tests/unit/test_ask_investigation.py
+  s_a17a18ca8c509e::t_0498dd3f5918ce 10-15,238-265
+  s_a17a18ca8c509e::t_04ac4607011fb2 266-267
+features.md
+  s_a17a18ca8c509e::t_6c726cd408072b 468-476
+frontend/src/api/generated.ts
+  s_a17a18ca8c509e::t_7dd8da3934de73 2753-2762,2769,2786-2797,2810-2822
+frontend-v3/src/features/assistant/assistantContext.ts
+  s_a17a18ca8c509e::t_404eb5e585f79c 22-23,43,45-49
+backend/api/routers/ask.py
+  s_a17a18ca8c509e::t_3c2ba5ad660b3a 13,39,73,81-82
+  s_a17a18ca8c509e::t_1cb52e5ec75621 83-84
+frontend-v3/src/features/assistant/conversation.ts
+  s_a17a18ca8c509e::t_90371b14292b74 1-3,5-24,29-92,104
+  s_a17a18ca8c509e::t_2b0512fa0f1026 4,25-28,93-103
+backend/api/dtos.py
+  s_a17a18ca8c509e::t_3204e5f89f2aad 11-17
+  s_a17a18ca8c509e::t_3c2ba5ad660b3a 2275-2280,2293-2319,2328-2329
+frontend-v2/src/api/generated.ts
+  s_a17a18ca8c509e::t_7dd8da3934de73 2753-2762,2769,2786-2797,2810-2822
+backend/core/application/ask_conversation.py
+  s_a17a18ca8c509e::t_32c012a29fd6cd 109-110
+  s_a17a18ca8c509e::t_3afc6b5f8f9fca 1-108,111-149
+frontend-v3/src/api/schema.ts
+  s_a17a18ca8c509e::t_6df16f8d57459f 269-280,284-285,302-307
+frontend-v3/scripts/mock/assistant.mjs
+  s_a17a18ca8c509e::t_162f8cef0b9459 83-100,177-180,201
+backend/core/application/ask_service.py
+  s_a17a18ca8c509e::t_842912afa06356 10,104-119,123,128-131,230-231,303-308,323,1354-1361,1363,1369-1375,1444,1447-1453,1460,1473-1474,1658,1662-1673
+  s_a17a18ca8c509e::t_3204e5f89f2aad 196,1969-1970,1975-1982
+  s_a17a18ca8c509e::t_ff5c24d87bcd02 6
+  s_a17a18ca8c509e::t_58a082728d0eb8 1674-1675
+backend/core/ports/investigation.py
+  s_a17a18ca8c509e::t_5fce039ceae032 8,31-32
+frontend-v3/src/api/generated.ts
+  s_a17a18ca8c509e::t_7dd8da3934de73 2753-2762,2769,2786-2797,2810-2822
+backend/tests/unit/test_deep_investigation.py
+  s_a17a18ca8c509e::t_0498dd3f5918ce 16,276-298
+  s_a17a18ca8c509e::t_8c09c73d31130e 87-89,101-103,267-269
+  s_a17a18ca8c509e::t_3814f356d03665 299-300
+backend/tests/unit/test_ask_conversation.py
+  s_a17a18ca8c509e::t_0498dd3f5918ce 21
+  s_a17a18ca8c509e::t_770789230d9690 1-20,22-170,172-198,203-212
+  s_a17a18ca8c509e::t_2b5b3fd3ee3d40 171,199-202
+frontend-v3/src/features/assistant/ChatView.tsx
+  s_a17a18ca8c509e::t_9d5225578000a4 1-382
+frontend-v3/src/api/openapi.json
+  s_a17a18ca8c509e::t_7dd8da3934de73 11469-11495,11514-11523,11561-11584,11624-11642
+frontend-v3/src/features/assistant/AssistantProvider.tsx
+  s_a17a18ca8c509e::t_d9221e3f109df0 1,4,14,18-19,22-30,38,40,43-44,58-68,71,74-75,77-79,81,91,93,98-100,102-103,108-109,111-116,125,139-147,152,168-170
+frontend-v3.md
+  s_a17a18ca8c509e::t_6c726cd408072b 67
+frontend-v3/src/app/titles.ts
+  s_a17a18ca8c509e::t_9b0b9bf8f2f458 15
+  s_a17a18ca8c509e::t_3976b3cd4ed694 1-2
+frontend-v3/src/features/assistant/Assistant.tsx
+  s_a17a18ca8c509e::t_9d5225578000a4 8,116
+  s_a17a18ca8c509e::t_2b0512fa0f1026 2-4,7,9,12-13,18-22,27,31,61-62,65,68,78-99,101,104,117-121,123,130-136,138-143,146-159
+  s_a17a18ca8c509e::t_9c55665ce49365 17
+frontend-v3/src/features/assistant/investigate.test.ts
+  s_a17a18ca8c509e::t_404eb5e585f79c 48-49,57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c5e69a0477ac7f1e25ea711629811c2567ec9c61",
+  "prompts": {},
+  "sessions": {
+    "s_a17a18ca8c509e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5c08089-2933-44f3-a3c3-066d71fe7232",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
