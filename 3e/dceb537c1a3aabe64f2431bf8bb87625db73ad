@@ -1,0 +1,71 @@
+frontend-v3/scripts/mock-api.mjs
+  s_3101dec2ee3c53::t_c22231e003ecdf 33
+  s_3101dec2ee3c53::t_04fc0175bb41dd 227
+  s_3101dec2ee3c53::t_e54462f7f77eca 226
+frontend-v3/src/api/schema.ts
+  s_3101dec2ee3c53::t_99600feb4b25cf 291-312
+frontend-v3/src/features/daily/dailyViz.test.ts
+  s_3101dec2ee3c53::t_a5f95fe153d7c1 339-342
+  s_3101dec2ee3c53::t_1c7b7379b1a0c1 347
+  s_3101dec2ee3c53::t_5d238813cb057a 327
+frontend-v3/src/features/overall/readinessWords.ts
+  s_3101dec2ee3c53::t_9a61af914d919c 206,208
+  s_3101dec2ee3c53::t_2566790989fa3f 230-251
+  s_3101dec2ee3c53::t_d519c2376141e5 93-95,167-169,198-201,203-204
+  s_3101dec2ee3c53::t_16545bf340abce 1-92,96-166,170-197,202,205,209-223,225,228-229,252-260
+  s_3101dec2ee3c53::t_17a78e4733b4eb 207
+  s_3101dec2ee3c53::t_5b7de5339b366e 224,226-227
+frontend-v3/src/api/client.ts
+  s_3101dec2ee3c53::t_03fa89d9307499 13-23
+  s_3101dec2ee3c53::t_40f5a14546e1ec 655-721
+frontend-v3/src/features/overall/ReadinessSection.tsx
+  s_3101dec2ee3c53::t_d519c2376141e5 244-249,425-427,809-826,828-833
+  s_3101dec2ee3c53::t_7499f001f562ea 1-243,250-422,424,428-437,443-772,774-808,827,834-884
+  s_3101dec2ee3c53::t_86226d354a03ac 423,773
+  s_3101dec2ee3c53::t_7cb78ca6e705b4 438-442
+frontend-v3/src/features/overall/readinessWords.test.ts
+  s_3101dec2ee3c53::t_4cedfe0ff73bbc 1-66,70-142,144-173,175-206,211-229
+  s_3101dec2ee3c53::t_d519c2376141e5 67-69,143,207-210
+  s_3101dec2ee3c53::t_86226d354a03ac 174
+frontend-v3/src/app/access.ts
+  s_3101dec2ee3c53::t_b4fd0ddb42bef6 93-103
+  s_3101dec2ee3c53::t_414290c032194f 170-173
+frontend-v3/src/app/access.test.ts
+  s_3101dec2ee3c53::t_4606a62a77bcf1 463-470
+frontend-v3/src/features/overall/AnswerCard.tsx
+  s_3101dec2ee3c53::t_c4b3a263369631 17-23,26-41
+  s_3101dec2ee3c53::t_3580e1bf449c55 72-73
+  s_3101dec2ee3c53::t_732e1851d9258e 125
+  s_3101dec2ee3c53::t_19403caceb568d 42
+frontend-v3/src/features/overall/queries.ts
+  s_3101dec2ee3c53::t_0b2209ee6e00c4 4
+  s_3101dec2ee3c53::t_a3c8385152a4b8 124-141
+frontend-v3/scripts/mock/viz-daily.mjs
+  s_3101dec2ee3c53::t_9bf37dc7c148b9 377
+frontend-v3/src/pages/OverallPage.tsx
+  s_3101dec2ee3c53::t_ef716008bba56d 74
+  s_3101dec2ee3c53::t_a60d19cb6c986d 96-102
+  s_3101dec2ee3c53::t_a5dfb52e1d5d51 11
+  s_3101dec2ee3c53::t_06a48043b55522 22-25,30-31
+  s_3101dec2ee3c53::t_f2d7090be33bea 38
+frontend-v3/scripts/mock/release-readiness.mjs
+  s_3101dec2ee3c53::t_679e0054387ed7 1-126,134-163,165-191,195-233,237-357,359-413,416-418,420,422-457,461-497,501-529,537,547-552,555-592,599-628,632-700,707-747,757-759,766-806,811,817-839,851-864
+  s_3101dec2ee3c53::t_d519c2376141e5 127-133,164,192-194,234-236,358,414-415,458-460,498-500,530-536,538-546,553-554,593-598,629-631,701-706,748-756,760-765,807-810,812-816,840-850
+  s_3101dec2ee3c53::t_065591a268d3c3 419,421
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3edceb537c1a3aabe64f2431bf8bb87625db73ad",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
