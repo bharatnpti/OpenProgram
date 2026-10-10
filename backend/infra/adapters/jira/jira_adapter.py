@@ -12,13 +12,15 @@ import httpx
 from opentelemetry import trace
 
 from core.domain.connections import ConnectionValues
-from core.domain.errors import ProviderUnavailable
+from core.domain.errors import IssueCreateFailed, ProviderUnavailable
 from core.domain.graph import JsonScalar
 from core.domain.integrations import (
     Issue,
     IssueComment,
+    IssueCreateFailure,
     IssueState,
     IssueText,
+    NewIssue,
     Project,
     Sprint,
     SyncCursor,
@@ -226,6 +228,82 @@ class JiraIssueTrackerAdapter:
                 f"{credentials.api}/issue/{key}/comment",
                 json={"body": comment},
             )
+
+    async def create_issue(self, tenant_id: str, issue: NewIssue) -> str:
+        """Create one unassigned issue; the reporter is the approver when Jira lets us.
+
+        Cloud takes the description as an Atlassian Document Format doc, Data
+        Center as text. A 400 names the refused fields by id; one about the
+        reporter alone is retried once without it, so the integration's user
+        posts and the text still names who approved it. Nothing of Jira's own
+        wording leaves the adapter.
+        """
+        with _tracer.start_as_current_span("jira.create_issue"):
+            try:
+                credentials = await self._credentials(tenant_id)
+            except ProviderUnavailable as exc:
+                raise IssueCreateFailed(IssueCreateFailure.CREDENTIALS.value) from exc
+            fields: dict[str, object] = {
+                "project": {"key": issue.project_key},
+                "issuetype": {"name": issue.issue_type},
+                "summary": issue.summary,
+                "description": (
+                    issue.description
+                    if credentials.data_center
+                    else _adf_paragraphs(issue.description)
+                ),
+                "labels": list(issue.labels),
+            }
+            if issue.reporter_account_id:
+                reporter_field = "name" if credentials.data_center else "accountId"
+                with_reporter = {
+                    **fields,
+                    "reporter": {reporter_field: issue.reporter_account_id},
+                }
+                try:
+                    return await self._create(tenant_id, credentials, with_reporter)
+                except IssueCreateFailed as exc:
+                    if exc.category != IssueCreateFailure.REFUSED.value or exc.fields != (
+                        "reporter",
+                    ):
+                        raise
+            return await self._create(tenant_id, credentials, fields)
+
+    async def _create(
+        self, tenant_id: str, credentials: JiraCredentials, fields: Mapping[str, object]
+    ) -> str:
+        auth_headers, auth = credentials.request_auth()
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            **auth_headers,
+        }
+        try:
+            async with httpx.AsyncClient(
+                base_url=credentials.base_url, timeout=self.timeout_seconds
+            ) as client:
+                path = f"{credentials.api}/issue"
+                body = {"fields": dict(fields)}
+                if auth is None:
+                    response = await client.post(path, headers=headers, json=body)
+                else:
+                    response = await client.post(path, headers=headers, auth=auth, json=body)
+        except httpx.HTTPError as exc:
+            raise IssueCreateFailed(IssueCreateFailure.UNREACHABLE.value) from exc
+        if response.status_code in (401, 403):
+            raise IssueCreateFailed(IssueCreateFailure.CREDENTIALS.value)
+        if 400 <= response.status_code < 500:
+            raise IssueCreateFailed(IssueCreateFailure.REFUSED.value, _refused_fields(response))
+        if response.status_code >= 300:
+            raise IssueCreateFailed(IssueCreateFailure.UNREACHABLE.value)
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise IssueCreateFailed(IssueCreateFailure.UNREACHABLE.value) from exc
+        key = payload.get("key") if isinstance(payload, Mapping) else None
+        if not isinstance(key, str) or not key:
+            raise IssueCreateFailed(IssueCreateFailure.UNREACHABLE.value)
+        return key
 
     async def find_user_by_email(self, tenant_id: str, email: str) -> UserRef | None:
         with _tracer.start_as_current_span("jira.find_user_by_email"):
@@ -864,6 +942,34 @@ def _adf_inline(node: Mapping[str, object], mentions: list[UserRef], tenant_id: 
 _ADF_BLOCKS = frozenset(
     {"paragraph", "heading", "bulletList", "orderedList", "taskList", "table", "codeBlock"}
 )
+
+
+def _adf_paragraphs(text: str) -> Mapping[str, object]:
+    """Plain text as an ADF doc: a paragraph per blank-line block, a hard break per line."""
+    paragraphs: list[Mapping[str, object]] = []
+    for block in text.split("\n\n"):
+        lines = [line for line in block.split("\n")]
+        content: list[Mapping[str, object]] = []
+        for index, line in enumerate(lines):
+            if index:
+                content.append({"type": "hardBreak"})
+            if line:
+                content.append({"type": "text", "text": line})
+        if any(item.get("type") == "text" for item in content):
+            paragraphs.append({"type": "paragraph", "content": content})
+    return {"type": "doc", "version": 1, "content": paragraphs}
+
+
+def _refused_fields(response: httpx.Response) -> tuple[str, ...]:
+    """The field ids a 400 names; its messages are Jira's own words and are dropped."""
+    try:
+        payload = response.json()
+    except ValueError:
+        return ()
+    errors = payload.get("errors") if isinstance(payload, Mapping) else None
+    if not isinstance(errors, Mapping):
+        return ()
+    return tuple(sorted(str(key) for key in errors if isinstance(key, str) and key))
 
 
 def _adf_document(body: str) -> Mapping[str, object]:

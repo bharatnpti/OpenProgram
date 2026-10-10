@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from core.domain.integrations import Issue, IssueText, Project, Sprint, SyncCursor, UserRef
+from core.domain.integrations import (
+    Issue,
+    IssueText,
+    NewIssue,
+    Project,
+    Sprint,
+    SyncCursor,
+    UserRef,
+)
 
 
 class IssueTracker(Protocol):
@@ -40,3 +48,12 @@ class IssueTracker(Protocol):
 
     # Reserved for later write-back phases. Phase 1 application code must not call this.
     async def add_comment(self, tenant_id: str, key: str, body: str) -> None: ...
+
+    async def create_issue(self, tenant_id: str, issue: NewIssue) -> str:
+        """Create one issue, unassigned, and return its key.
+
+        Only a person's press on one approved draft may lead here (the release
+        readiness service is the one caller). Raises ``IssueCreateFailed`` with
+        a fixed category, never the tracker's own text.
+        """
+        ...

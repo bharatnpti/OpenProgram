@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
@@ -10,6 +11,7 @@ from core.domain.integrations import (
     Issue,
     IssueState,
     IssueText,
+    NewIssue,
     Project,
     PullRequest,
     Repo,
@@ -93,11 +95,13 @@ class FakeIssueTracker:
         self, tenant_id: str, jql: str, cursor: SyncCursor
     ) -> list[Issue]:
         project_key = _project_key_from_jql(jql)
+        label = _label_from_jql(jql)
         return [
             issue
             for issue in self.issues
             if issue.tenant_id == tenant_id
             and (project_key is None or _issue_project_key(issue) == project_key)
+            and (label is None or label in _issue_labels(issue))
             and _after_cursor(issue.updated_at, cursor)
         ]
 
@@ -149,6 +153,27 @@ class FakeIssueTracker:
 
     async def add_comment(self, tenant_id: str, key: str, body: str) -> None:
         raise ProviderUnavailable("fake issue tracker is read-only")
+
+    async def create_issue(self, tenant_id: str, issue: NewIssue) -> str:
+        """The sample tracker keeps the issue in memory, unassigned, as To Do."""
+        number = 1 + sum(1 for item in self.issues if _issue_project_key(item) == issue.project_key)
+        key = f"{issue.project_key}-{900 + number}"
+        self.issues.append(
+            Issue(
+                tenant_id=tenant_id,
+                key=key,
+                title=issue.summary,
+                state=IssueState.TODO,
+                metadata={
+                    "project_key": issue.project_key,
+                    "issue_type": issue.issue_type,
+                    "labels": ", ".join(issue.labels) or None,
+                    "status": "To Do",
+                },
+                updated_at=datetime.now(tz=UTC),
+            )
+        )
+        return key
 
 
 @dataclass
@@ -275,6 +300,16 @@ def _project_key_from_jql(jql: str) -> str | None:
     if value.startswith('"'):
         return value.split('"', maxsplit=2)[1] if value.count('"') >= 2 else None
     return value.split(maxsplit=1)[0].strip("()") or None
+
+
+def _label_from_jql(jql: str) -> str | None:
+    match = re.search(r'labels\s*=\s*"([^"]+)"', jql)
+    return match.group(1) if match else None
+
+
+def _issue_labels(issue: Issue) -> set[str]:
+    value = issue.metadata.get("labels")
+    return {name.strip() for name in value.split(",")} if isinstance(value, str) else set()
 
 
 def _after_cursor(updated_at: datetime | None, cursor: SyncCursor) -> bool:

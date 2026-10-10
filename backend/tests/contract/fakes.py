@@ -19,6 +19,7 @@ from core.domain.integrations import (
     Commit,
     Issue,
     IssueText,
+    NewIssue,
     Project,
     PullRequest,
     Repo,
@@ -72,6 +73,7 @@ class FakeIssueTracker:
     sprints: list[Sprint] = field(default_factory=list)
     transitions: list[tuple[str, str, str]] = field(default_factory=list)
     comments: list[tuple[str, str, str]] = field(default_factory=list)
+    created: list[tuple[str, NewIssue]] = field(default_factory=list)
     # email -> tracker account id, for find_user_by_email
     user_emails: dict[str, str] = field(default_factory=dict)
     texts: dict[str, IssueText] = field(default_factory=dict)
@@ -126,6 +128,10 @@ class FakeIssueTracker:
 
     async def add_comment(self, tenant_id: str, key: str, body: str) -> None:
         self.comments.append((tenant_id, key, body))
+
+    async def create_issue(self, tenant_id: str, issue: NewIssue) -> str:
+        self.created.append((tenant_id, issue))
+        return f"{issue.project_key}-{900 + len(self.created)}"
 
 
 @dataclass
