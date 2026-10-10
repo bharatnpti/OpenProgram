@@ -276,6 +276,61 @@ async def test_checkin_fanout_dispatches_developers_without_checkin(
     assert registry.closed is True
 
 
+async def test_checkin_fanout_asks_nobody_while_the_scheduled_send_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A run the runtime still fires (or replays at start-up) from a schedule
+    # registered before the flag went off.
+    store = InMemoryGraphStore()
+    await _record_known_developer(store, developer_id="dev-1")
+    registry = _FanoutRegistry(store)
+    registry.settings.checkin_fanout_enabled = False
+    monkeypatch.setattr(checkin_fanout, "_service_registry", lambda: registry)
+
+    result = await checkin_fanout.dispatch_checkins_for_tenant_activity(
+        CheckinFanoutInput(tenant_id="demo", checkin_date="2026-01-12")
+    )
+    prepared = await checkin_fanout.developer_checkin_dispatches_for_tenant_activity(
+        CheckinFanoutInput(tenant_id="demo", checkin_date="2026-01-12")
+    )
+
+    assert (result.dispatched, result.workflow_ids) == (0, [])
+    assert prepared == []
+    assert registry.scheduler.inputs == []
+
+
+@pytest.mark.parametrize(
+    ("flag", "reason"),
+    [
+        pytest.param("checkin_fanout_enabled", "check-in fan-out is off", id="fanout-off"),
+        pytest.param("checkin_reconcile_enabled", "check-in reconcile is off", id="reconcile-off"),
+    ],
+)
+async def test_checkin_reconcile_asks_nobody_while_either_switch_is_off(
+    monkeypatch: pytest.MonkeyPatch, flag: str, reason: str
+) -> None:
+    store = InMemoryGraphStore()
+    await _record_known_developer(store, developer_id="dev-1")
+    registry = _FanoutRegistry(store)
+    setattr(registry.settings, flag, False)
+    monkeypatch.setattr(checkin_fanout, "_service_registry", lambda: registry)
+
+    result = await checkin_fanout.reconcile_checkins_for_tenant_activity(
+        CheckinReconcileInput(
+            tenant_id="demo",
+            observed_at="2026-01-12T10:00:00+00:00",
+            after_local_time="09:45",
+            timezone="UTC",
+        )
+    )
+
+    assert result.status == "disabled"
+    assert result.skipped_reason == reason
+    assert (result.dispatched, result.workflow_ids) == (0, [])
+    assert registry.scheduler.inputs == []
+    assert registry.closed is True
+
+
 async def test_checkin_reconcile_skips_before_cutoff(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -602,6 +657,37 @@ async def test_ensure_workflow_schedules_removes_checkin_reconcile_when_disabled
     assert {r.schedule_id: r.status for r in results}[
         settings.checkin_reconcile_schedule_id
     ] == "removed"
+
+
+async def test_ensure_workflow_schedules_removes_checkin_fanout_and_reconcile_when_off() -> None:
+    # A pause by hand lasts only until the next restart, which resumes every
+    # schedule it applies; the switch is what keeps the scheduled send off.
+    # The reconcile pass goes with it whatever its own flag says: it asks
+    # whoever the fan-out missed, so alone it would ask everyone.
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        heartbeat_schedule_id="heartbeat-test",
+        checkin_fanout_enabled=False,
+        checkin_reconcile_enabled=True,
+    )
+    registry = _ScheduleBootstrapRegistry(settings)
+
+    results = await schedule.ensure_workflow_schedules(registry)
+
+    assert registry.scheduler.checkin_configs == []
+    assert registry.scheduler.checkin_reconcile_configs == []
+    assert registry.scheduler.removed == [
+        settings.checkin_fanout_schedule_id,
+        settings.checkin_reconcile_schedule_id,
+    ]
+    statuses = {r.schedule_id: r.status for r in results}
+    assert statuses[settings.checkin_fanout_schedule_id] == "removed"
+    assert statuses[settings.checkin_reconcile_schedule_id] == "removed"
+    # Everything else is scheduled as before.
+    assert registry.scheduler.heartbeat_calls == 1
+    assert registry.scheduler.purge_configs == [schedule.conversation_purge_config(settings)]
 
 
 async def test_ensure_workflow_schedules_removes_narrative_briefs_when_disabled() -> None:
@@ -1798,6 +1884,8 @@ class _FanoutScheduler:
 
 class _FanoutSettings:
     checkin_fanout_concurrency = 10
+    checkin_fanout_enabled = True
+    checkin_reconcile_enabled = True
 
 
 class _FanoutRegistry:

@@ -15,7 +15,7 @@ from api.dtos import (
 )
 from api.main import create_app
 from config.settings import Settings
-from core.application.ask_service import AskService
+from core.application.ask_service import AskService, may_ask
 from core.application.blocker_resolution import BlockerResolutionService
 from core.application.delivery_scope import DeliveryScopeService
 from core.application.flow_metrics_service import FlowMetricsService
@@ -31,12 +31,21 @@ from tests.contract.fakes import FakeLlmProvider
 AS_OF = "2026-09-25"
 # Who asks: the REST calls and the Ask principal are the same person.
 ASKER = "U1001"
+# The roles /ask admits, by the rule it and every Ask tool share.
+_ASKING_ROLES = [
+    role.value
+    for role in Role
+    if may_ask(Principal(tenant_id="demo", subject=ASKER, roles=frozenset({role})))
+]
+
+_ASK_ROUTE = ("POST", "/ask")
 
 # Each Ask tool beside the REST route that serves the same data. Ask may offer
-# a tool only to a role that route would answer.
+# a tool only to a role that route would answer, and only to a role /ask itself
+# admits (see test_ask_offers_a_tool_exactly_when_its_rest_twin_serves_the_role).
 _REST_TWINS: dict[str, tuple[str, str]] = {
-    "search_graph_nodes": ("POST", "/ask"),
-    "graph_neighbors": ("POST", "/ask"),
+    "search_graph_nodes": _ASK_ROUTE,
+    "graph_neighbors": _ASK_ROUTE,
     "recent_facts": ("GET", "/portfolio/feed"),
     "workstream_flow": ("GET", f"/workstreams/ws-x/flow?as_of={AS_OF}"),
     "portfolio_flow": ("GET", f"/portfolio/flow?as_of={AS_OF}"),
@@ -57,7 +66,8 @@ _ANY_REST_TWIN: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     # Scoped reads: a scrum master reads a project their pods work on and a
     # developer their own pod, so an unknown id is refused before it is looked
-    # up. These ask about the asker's own part of the tree (_own_part).
+    # up. These ask about the asker's own part of the tree (_own_part). A
+    # developer's own pod answers here, but Ask is not offered to them at all.
     "delivery_forecast": (
         ("GET", f"/projects/project-own/delivery?as_of={AS_OF}"),
         ("GET", f"/pods/pod-own/delivery?as_of={AS_OF}"),
@@ -149,6 +159,11 @@ async def test_ask_offers_a_tool_exactly_when_its_rest_twin_serves_the_role(
             for tool, twins in _ANY_REST_TWIN.items()
             if any(serves(method, path) for method, path in twins)
         }
+        # The one exception to "offered exactly where the twin serves": /ask's own
+        # check gates every tool. A role it refuses gets none, even where a
+        # twin would answer them for their own pod (a developer's own pod's dates).
+        if not serves(*_ASK_ROUTE):
+            served = set()
 
     principal = Principal(tenant_id="demo", subject=ASKER, roles=frozenset({Role(role)}))
     tools = _ask_service(store, app.state.registry).tools_for(principal, date.fromisoformat(AS_OF))
@@ -157,11 +172,32 @@ async def test_ask_offers_a_tool_exactly_when_its_rest_twin_serves_the_role(
     assert offered == served
 
 
-@pytest.mark.parametrize("role", [role.value for role in Role])
+async def test_a_developer_is_offered_no_ask_tool_though_their_own_pods_delivery_read_answers(
+    settings: Settings,
+) -> None:
+    """Ask is not for developers: /ask refuses them, so no tool is offered at all."""
+    store = InMemoryGraphStore()
+    await _own_part(store)
+    app = _app_for_role(settings, Role.DEV.value, store)
+    principal = Principal(tenant_id="demo", subject=ASKER, roles=frozenset({Role.DEV}))
+
+    with TestClient(app) as client:
+        assert client.post("/ask", json={"question": "x"}).status_code == 403
+        # The exception is real: the twin of delivery_forecast reads for their own pod.
+        assert client.get(f"/pods/pod-own/delivery?as_of={AS_OF}").status_code == 200
+
+    tools = _ask_service(store, app.state.registry).tools_for(principal, date.fromisoformat(AS_OF))
+    assert tools == ()
+
+
+@pytest.mark.parametrize("role", _ASKING_ROLES)
 async def test_delivery_forecast_answers_each_project_and_pod_as_its_route_does(
     settings: Settings, role: str
 ) -> None:
-    """Refused where the route refuses, in its words; read where the route reads."""
+    """Refused where the route refuses, in its words; read where the route reads.
+
+    For every role /ask admits; a role it refuses is offered no tool to compare.
+    """
     store = InMemoryGraphStore()
     await _own_part(store)
     app = _app_for_role(settings, role, store)
@@ -187,9 +223,8 @@ async def test_delivery_forecast_answers_each_project_and_pod_as_its_route_does(
                 assert answer["as_of"] == AS_OF
             reads[node_id] = route.status_code == 200
 
-    # The scoped roles see their own part and nothing beyond what the route gives.
+    # A scrum master sees their own part and nothing beyond what the route gives.
     expected = {
-        "dev": {"pod-own"},
         "sm": {"project-own", "pod-own", "pod-other"},
     }.get(role, {"project-own", "project-other", "pod-own", "pod-other"})
     assert {node_id for node_id, read in reads.items() if read} == expected

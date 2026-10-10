@@ -51,6 +51,7 @@ from core.application.delivery_service import DeliveryService
 from core.application.escalation_matrix_service import EscalationMatrixService
 from core.application.forecast_service import ForecastService, ScopeDeliveryView
 from core.application.gate_service import GateBoardView, GateService, IssueGatesView
+from core.application.person_names import UNKNOWN_PERSON
 from core.application.persona_views import owned_project_tasks
 from core.application.release_readiness_service import ReleaseReadinessService, ReportGaps
 from core.application.risk_service import RiskService
@@ -637,7 +638,10 @@ def _date_facts(facts: _Facts) -> DateFacts | None:
         verdict=view.verdict,
         target=view.target,
         target_source=view.target_source,
-        committed_by=view.actor_names.get(actor, actor) if committed and actor else None,
+        # The same words as the line's (forecast_service._date_reasons): a name, never an id.
+        committed_by=(view.actor_names.get(actor) or UNKNOWN_PERSON)
+        if committed and actor
+        else None,
         times_moved=commitment.times_moved if moved else 0,
         moved_days=commitment.moved_days if moved else None,
         p50=history.p50 if "forecast" in said else None,

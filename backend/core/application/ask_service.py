@@ -1102,8 +1102,10 @@ class DeliveryForecastTool:
     the verdict and its reasons from ForecastService.project_delivery, the read
     behind /projects/{id}/delivery and /pods/{id}/delivery, after the check
     each of those routes makes through DeliveryScopeService: a scrum master
-    reads the projects their pods work on, a developer their own pod. A read
-    the route would refuse comes back in the route's own words, never as data.
+    reads the projects their pods work on. A read the route would refuse comes
+    back in the route's own words, never as data. The route also answers a
+    developer for their own pod, but Ask is not for developers: AskService
+    offers no tool to a role /ask refuses (may_ask), so they never get here.
     """
 
     principal: Principal
@@ -1325,8 +1327,13 @@ class AnswerReader:
         return _without_raw_ids(_tidy_lines(text), self.nodes)
 
 
-def _reads_aggregate(principal: Principal) -> bool:
-    """The team-or-exec read that /ask itself and the portfolio routes require."""
+def may_ask(principal: Principal) -> bool:
+    """Whether /ask admits this role: the team-or-exec aggregate read.
+
+    The route and AskService.tools_for both decide with this one rule. A role it
+    refuses, a developer, is offered no tool at all, even where a tool's REST
+    twin would answer them for their own pod or project.
+    """
     policy = AuthorizationPolicy()
     return policy.can(principal, Capability.READ_TEAM_AGGREGATE) or policy.can(
         principal, Capability.READ_EXEC_AGGREGATE
@@ -1428,7 +1435,12 @@ class AskService:
         is offered only when the endpoint serving the same data would answer
         them. A tool left out is simply absent: the model cannot see it, and a
         call to it by name comes back as not available.
+
+        A role /ask itself refuses is offered nothing, whatever a tool's REST
+        twin would say for them: Ask is not for developers.
         """
+        if not may_ask(principal):
+            return ()
         tenant_id = principal.tenant_id
         graph = self._graph_repository
         personas = self._persona_view_service
@@ -1436,31 +1448,31 @@ class AskService:
             # Graph reads behind /ask's own aggregate check.
             (
                 SearchGraphNodesTool(tenant_id=tenant_id, repository=graph, as_of=as_of),
-                _reads_aggregate,
+                may_ask,
             ),
             (
                 GraphNeighborsTool(tenant_id=tenant_id, repository=graph, as_of=as_of),
-                _reads_aggregate,
+                may_ask,
             ),
             # /portfolio/feed
             (
                 RecentFactsTool(
                     tenant_id=tenant_id, repository=self._time_series_repository, as_of=as_of
                 ),
-                _reads_aggregate,
+                may_ask,
             ),
             # /workstreams/{id}/flow and /portfolio/flow
             (
                 WorkstreamFlowTool(
                     tenant_id=tenant_id, service=self._flow_metrics_service, as_of=as_of
                 ),
-                _reads_aggregate,
+                may_ask,
             ),
             (
                 PortfolioFlowTool(
                     tenant_id=tenant_id, service=self._flow_metrics_service, as_of=as_of
                 ),
-                _reads_aggregate,
+                may_ask,
             ),
             # /portfolio/risks and /projects/{id}/risks
             (
@@ -1470,7 +1482,7 @@ class AskService:
                     repository=graph,
                     as_of=as_of,
                 ),
-                _reads_aggregate,
+                may_ask,
             ),
             # /workstreams/{id}/progress
             (
@@ -1512,7 +1524,8 @@ class AskService:
                 _has(Capability.READ_POD_BLOCKERS),
             ),
             # /projects/{id}/delivery and /pods/{id}/delivery: offered when either
-            # answers somewhere, and per project or pod only where it does.
+            # answers somewhere, and per project or pod only where it does. A
+            # developer's own pod answers, but they never reach here: may_ask.
             (
                 DeliveryForecastTool(
                     principal=principal,

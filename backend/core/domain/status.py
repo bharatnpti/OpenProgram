@@ -216,12 +216,15 @@ class CheckInSendKind(StrEnum):
     ``WEEKLY``: one time of day on days of the week, in every month (all seven
     days is every day). ``DATES``: one time of day on listed days of the month
     and/or in listed months, such as 1 January only. ``OTHER``: anything else,
-    such as a step or a range in the time; only the cron says when.
+    such as a step or a range in the time; only the cron says when. ``OFF``:
+    the scheduled send is switched off (``OPENPROGRAM_CHECKIN_FANOUT_ENABLED``),
+    so nobody is asked on a schedule, whatever the cron says.
     """
 
     WEEKLY = "weekly"
     DATES = "dates"
     OTHER = "other"
+    OFF = "off"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -240,6 +243,8 @@ class CheckInSendSchedule:
       of the month) and ``months`` (1 to 12; ``None`` for every month), at least
       one of the two set. ``0 0 1 1 *`` is 00:00 on 1 January only.
     - ``OTHER``: only ``cron``.
+    - ``OFF``: no send at all; ``cron`` is what would apply once it is on again,
+      and nothing else is set.
     """
 
     cron: str
@@ -251,8 +256,11 @@ class CheckInSendSchedule:
     months: tuple[int, ...] | None = None
 
 
-def checkin_send_schedule(cron: str) -> CheckInSendSchedule:
+def checkin_send_schedule(cron: str, *, enabled: bool = True) -> CheckInSendSchedule:
     """Read the tenant's check-in cron as a weekly time, a time on dates, or neither.
+
+    ``enabled`` false is ``OFF`` whatever the cron: the fan-out schedule is
+    then removed, so no reading of the cron is true of when anyone is asked.
 
     Five fields, six with the seconds first (the workflow layer's scheduler runs
     croniter with ``second_at_beginning``), or one of croniter's ``@`` shorthands. Only a
@@ -261,6 +269,8 @@ def checkin_send_schedule(cron: str) -> CheckInSendSchedule:
     asks on either kind of day (``day_or``), which neither words for weekdays
     nor words for dates would say.
     """
+    if not enabled:
+        return CheckInSendSchedule(cron=cron, kind=CheckInSendKind.OFF)
     fields = _CRON_ALIASES.get(cron.strip().lower(), cron).split()
     seconds = "0"
     if len(fields) == 6:

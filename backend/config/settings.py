@@ -65,8 +65,15 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     redis_max_connections: int = 10
     heartbeat_schedule_id: str | None = None
+    # The scheduled send of everyone's check-ins. Off removes the fan-out
+    # schedule, and the reconcile schedule with it, since the catch-up would
+    # otherwise ask everyone on its own; a pass already under way sends
+    # nothing. An admin's dispatch of one member's check-in still works.
+    checkin_fanout_enabled: bool = True
     checkin_fanout_schedule_id: str = "openprogram-checkin-fanout"
     checkin_fanout_cron: str = "30 9 * * 1-5"
+    # The catch-up for the fan-out: after its local cutoff it asks anyone the
+    # fan-out missed that day. Runs only while checkin_fanout_enabled is on too.
     checkin_reconcile_enabled: bool = True
     checkin_reconcile_schedule_id: str = "openprogram-checkin-reconcile"
     checkin_reconcile_cron: str = "*/15 * * * 1-5"
@@ -834,8 +841,8 @@ class Settings(BaseSettings):
         return self.ask_investigate_model or self.default_llm_model
 
     def checkin_send_schedule(self) -> CheckInSendSchedule:
-        """When the bot asks everyone: the fan-out schedule, read in UTC."""
-        return checkin_send_schedule(self.checkin_fanout_cron)
+        """When the bot asks everyone: the fan-out schedule, read in UTC, or off."""
+        return checkin_send_schedule(self.checkin_fanout_cron, enabled=self.checkin_fanout_enabled)
 
     def checkin_defaults(self) -> CheckInDefaults:
         """The team defaults a member's check-in follows for anything not set for them."""

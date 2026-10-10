@@ -186,7 +186,7 @@ def task_update_fact(
     issue_key: str,
     task_label: str,
     developer_id: str,
-    developer_name: str,
+    developer_name: str | None,
     as_of: date,
     observed_at: datetime,
     correlation_id: str,

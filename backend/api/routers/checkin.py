@@ -26,6 +26,7 @@ from api.dtos import (
 )
 from config.settings import Settings
 from core.application.authorization import AuthorizationPolicy, Capability
+from core.application.person_names import PersonNames
 from core.application.persona_views import PersonaViewService
 from core.application.self_status_service import SelfStatusService
 from core.application.task_update_service import (
@@ -59,7 +60,9 @@ async def get_my_status(
     details = await service.my_blocker_details(
         principal.tenant_id, principal.subject, effective_as_of
     )
-    return MyStatusResponse.from_domain(status, blocker_details=details)
+    return MyStatusResponse.from_domain(
+        status, blocker_details=details, names=await _member_names(registry, principal.tenant_id)
+    )
 
 
 @router.post("/me/status/confirm", response_model=MyStatusResponse)
@@ -77,7 +80,9 @@ async def confirm_my_status(
     details = await service.my_blocker_details(
         principal.tenant_id, principal.subject, effective_as_of
     )
-    return MyStatusResponse.from_domain(status, blocker_details=details)
+    return MyStatusResponse.from_domain(
+        status, blocker_details=details, names=await _member_names(registry, principal.tenant_id)
+    )
 
 
 @router.post("/me/status/correct", response_model=MyStatusResponse)
@@ -118,7 +123,9 @@ async def correct_my_status(
     details = await service.my_blocker_details(
         principal.tenant_id, principal.subject, effective_as_of
     )
-    return MyStatusResponse.from_domain(status, blocker_details=details)
+    return MyStatusResponse.from_domain(
+        status, blocker_details=details, names=await _member_names(registry, principal.tenant_id)
+    )
 
 
 @router.post(
@@ -139,6 +146,7 @@ async def update_my_task(
     service: Annotated[TaskUpdateService, Depends(get_task_update_service)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     self_status: Annotated[SelfStatusService, Depends(get_self_status_service)],
+    registry: Annotated[ServiceRegistry, Depends(get_registry)],
     as_of: date | None = None,
 ) -> TaskUpdateResponse:
     """Update one of the caller's own tasks for today: only the fields sent change.
@@ -173,7 +181,11 @@ async def update_my_task(
     )
     return TaskUpdateResponse(
         task=FocusTaskDto.from_view(task),
-        status=MyStatusResponse.from_domain(result.status, blocker_details=details),
+        status=MyStatusResponse.from_domain(
+            result.status,
+            blocker_details=details,
+            names=await _member_names(registry, principal.tenant_id),
+        ),
         tracker=TaskTrackerResultDto.from_result(result.tracker),
     )
 
@@ -230,6 +242,11 @@ async def _stored_preference(
         principal.tenant_id,
         principal.subject,
     )
+
+
+async def _member_names(registry: ServiceRegistry, tenant_id: str) -> dict[str, str]:
+    """Member names by id, to clean a stored summary of the chat ids it may still hold."""
+    return await PersonNames(graph_repository=registry.graph_repository()).by_member_id(tenant_id)
 
 
 def _preference_response(

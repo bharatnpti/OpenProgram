@@ -19,6 +19,7 @@ from core.application.merge_request_links import (
     MergeRequestIndex,
     merge_request_label,
 )
+from core.application.person_names import PersonNames, person_name
 from core.application.status_collector import OUTBOUND_DM_MAX_CHARS
 from core.domain.cross_person import (
     CrossPersonNotifyRetrySummary,
@@ -849,9 +850,8 @@ class CrossPersonRequestService:
     async def _notify_requester_acknowledged(self, request: CrossPersonRequest, eta: str) -> None:
         if request.requester_chat_ref is None:
             return
-        counterpart = (
-            request.counterpart_display_name or request.counterpart_id or "The counterpart"
-        )
+        counterpart = await self._counterpart_name(request)
+        counterpart = counterpart[:1].upper() + counterpart[1:]
         await self.chat_provider.send_dm(
             ChatUserRef(tenant_id=request.tenant_id, external_id=request.requester_chat_ref),
             OutboundMessage(
@@ -879,16 +879,15 @@ class CrossPersonRequestService:
     ) -> None:
         if request.requester_chat_ref is None:
             return
-        counterpart = (
-            request.counterpart_display_name or request.counterpart_id or "The counterpart"
-        )
+        counterpart = await self._counterpart_name(request)
         note = _fit_note(request.note, _RESOLVED_NOTE_CHARS)
         text = (
             f"{_join_labels(merged_labels)} {'is' if len(merged_labels) == 1 else 'are'} "
             f"merged, so I marked your {request.kind.value} request to {counterpart} "
             f"resolved: {note}"
             if merged_labels
-            else f"{counterpart} marked your {request.kind.value} request resolved: {note}"
+            else f"{counterpart[:1].upper() + counterpart[1:]} marked your "
+            f"{request.kind.value} request resolved: {note}"
         )
         await self.chat_provider.send_dm(
             ChatUserRef(tenant_id=request.tenant_id, external_id=request.requester_chat_ref),
@@ -905,6 +904,15 @@ class CrossPersonRequestService:
                 },
             ),
         )
+
+    async def _counterpart_name(self, request: CrossPersonRequest) -> str:
+        """The person asked, as the requester's DM names them: the name the request
+        recorded, else the directory's, else ``UNKNOWN_PERSON`` -- never their chat id."""
+        person_id = request.counterpart_id
+        names = await PersonNames(directory_repository=self.directory_repository).resolve(
+            request.tenant_id, [person_id] if person_id else []
+        )
+        return person_name(names, person_id, request.counterpart_display_name)
 
     async def _requester_name(self, request: CrossPersonRequest) -> str | None:
         """The requester's display name, found by member id or by chat id."""

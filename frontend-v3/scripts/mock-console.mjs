@@ -943,7 +943,8 @@ const defaults = {
 // When the bot asks: the tenant's one fan-out, read in UTC (CheckinSendResponse).
 // No member's time is used. MOCK_CHECKIN_SEND picks the kind: weekly (the
 // backend's default OPENPROGRAM_CHECKIN_FANOUT_CRON), daily, dates (a schedule
-// paused to 1 January, as on the QA tenant) or other.
+// paused to 1 January), other or off (OPENPROGRAM_CHECKIN_FANOUT_ENABLED=false,
+// as on the QA tenant: the cron is what applies once it is on again).
 const SEND_NONE = { weekdays: null, month_days: null, months: null };
 const CHECKIN_SENDS = {
   weekly: {
@@ -972,6 +973,7 @@ const CHECKIN_SENDS = {
     months: [1],
   },
   other: { ...SEND_NONE, kind: "other", cron: "0 9-17 * * 1-5", timezone: "UTC", local_time: null },
+  off: { ...SEND_NONE, kind: "off", cron: "30 9 * * 1-5", timezone: "UTC", local_time: null },
 };
 export const checkinSend = CHECKIN_SENDS[process.env.MOCK_CHECKIN_SEND] ?? CHECKIN_SENDS.weekly;
 export const configMembers = roster
