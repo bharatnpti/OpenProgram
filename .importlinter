@@ -49,6 +49,11 @@ forbidden_modules =
     redis
     openai
     google
+    anthropic
+    deepagents
+    langchain
+    langchain_core
+    langchain_anthropic
 
 [importlinter:contract:api_has_no_provider_sdks_or_adapters]
 name = API does not import provider SDKs or concrete adapters

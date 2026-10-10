@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect } from "react";
 
-import type { AskSourceResponse } from "../../api/schema";
+import type { AskSourceResponse, InvestigateStepResponse } from "../../api/schema";
+import type { AskMode } from "./investigate";
 import type { AskSubject } from "./persona";
 
 export type AskMessage =
@@ -13,6 +14,13 @@ export type AskMessage =
       sources: AskSourceResponse[];
       /** The past day the question was asked about ("Mon 5 Oct"), or null for today. */
       dayLabel: string | null;
+      /** The question this answers, so a quick answer can be investigated. */
+      question: string;
+      mode: AskMode;
+      /** An investigation's steps, as the stream reports them; none for a quick answer. */
+      steps: InvestigateStepResponse[];
+      /** Questions the answer suggests asking next. */
+      followUps: string[];
     };
 
 export type Control = {
@@ -32,7 +40,13 @@ export type State = {
   messages: AskMessage[];
   /** A question is out and not answered yet. */
   pending: boolean;
-  ask: (question: string) => void;
+  /** Ask quickly (POST /ask), or investigate (POST /ask/investigate); the mode chosen when unset. */
+  ask: (question: string, mode?: AskMode) => void;
+  /** How the next question is asked, chosen in the composer; the panel and the page share it. */
+  mode: AskMode;
+  setMode: (mode: AskMode) => void;
+  /** Start again: the conversation, its memory and anything still running go. */
+  newChat: () => void;
   subject: AskSubject | null;
 };
 

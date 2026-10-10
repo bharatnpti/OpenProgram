@@ -77,6 +77,7 @@ from core.ports.gates import (
     IssueScanRepository,
     QuestionRepository,
 )
+from core.ports.investigation import InvestigationEngine
 from core.ports.issue_tracker import IssueTracker
 from core.ports.llm import LlmProvider
 from core.ports.readiness import ReadinessProbe, ReadinessReport, ReportingReadinessProbe
@@ -1334,6 +1335,13 @@ class ServiceRegistry:
 
     def llm_provider(self) -> LlmProvider:
         return catalog.build_llm_provider(self.settings)
+
+    def investigation_engine(self) -> InvestigationEngine:
+        # Imported here: deepagents loads LangChain and its integrations, which
+        # only an investigation needs.
+        from infra.adapters.agents.deep_investigation import DeepAgentInvestigationEngine
+
+        return DeepAgentInvestigationEngine()
 
     def issue_tracker(self) -> IssueTracker:
         if self._issue_tracker is None:

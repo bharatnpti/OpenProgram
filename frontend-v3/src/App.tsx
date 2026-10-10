@@ -20,6 +20,7 @@ const DailyPage = page(() => import("./pages/DailyPage"), "DailyPage");
 const OverallPage = page(() => import("./pages/OverallPage"), "OverallPage");
 const ChatPage = page(() => import("./pages/ChatPage"), "ChatPage");
 const AdminPage = page(() => import("./pages/AdminPage"), "AdminPage");
+const OraPage = page(() => import("./pages/OraPage"), "OraPage");
 
 /*
  *   /today                          the role's own home (developer, scrum master,
@@ -78,6 +79,7 @@ function AppRoutes() {
         <Route path="/projects/:projectId/:view" element={<ProjectRedirect />} />
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/ora" element={<OraPage />} />
         <Route path="*" element={<Navigate to="/today" replace />} />
       </Route>
     </Routes>

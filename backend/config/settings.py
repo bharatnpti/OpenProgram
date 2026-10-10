@@ -29,6 +29,10 @@ DEFAULT_SECRET_KEY = "q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ="
 DEFAULT_DBOS_SYSTEM_POOL_SIZE = 10
 DEFAULT_SYNC_QUEUE_CONCURRENCY = 4
 
+# An investigation splits a question into at most this many steps: each runs its
+# own tool loop, so the cap bounds what one question can cost.
+MAX_ASK_INVESTIGATE_STEPS = 5
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -203,6 +207,14 @@ class Settings(BaseSettings):
     litellm_model: str = "gpt-4o-mini"
     llm_provider: str = "litellm"
     llm_max_tool_iterations: int = 3
+    # Investigate, Ask's deep mode (core/application/ask_investigation.py): how
+    # many steps a question is split into, how many tool rounds each step may
+    # take, and how long the whole investigation may run before it is stopped.
+    # Its model is the default one unless set.
+    ask_investigate_max_steps: int = 3
+    ask_investigate_max_tool_iterations: int = 6
+    ask_investigate_timeout_seconds: int = 120
+    ask_investigate_model: str | None = None
     embedding_dimension: int = 1536
     langfuse_host: str = "http://localhost:3001"
     langfuse_public_key: str | None = None
@@ -618,6 +630,7 @@ class Settings(BaseSettings):
         "inbound_events_dead_letter_seconds",
         "chat_send_once_ttl_seconds",
         "cross_person_notify_retry_backoff_seconds",
+        "ask_investigate_timeout_seconds",
     )
     @classmethod
     def validate_positive_seconds(cls, value: int) -> int:
@@ -644,11 +657,24 @@ class Settings(BaseSettings):
             raise ValueError("seconds value must be non-negative")
         return value
 
-    @field_validator("checkin_max_clarifications", "llm_max_tool_iterations")
+    @field_validator(
+        "checkin_max_clarifications",
+        "llm_max_tool_iterations",
+        "ask_investigate_max_tool_iterations",
+    )
     @classmethod
     def validate_non_negative_count(cls, value: int) -> int:
         if value < 0:
             raise ValueError("count value must be non-negative")
+        return value
+
+    @field_validator("ask_investigate_max_steps")
+    @classmethod
+    def validate_investigate_steps(cls, value: int) -> int:
+        if not 1 <= value <= MAX_ASK_INVESTIGATE_STEPS:
+            raise ValueError(
+                f"ask_investigate_max_steps must be between 1 and {MAX_ASK_INVESTIGATE_STEPS}"
+            )
         return value
 
     @model_validator(mode="after")
@@ -809,6 +835,10 @@ class Settings(BaseSettings):
     @property
     def default_llm_model(self) -> str:
         return self.litellm_model
+
+    @property
+    def ask_investigate_llm_model(self) -> str:
+        return self.ask_investigate_model or self.default_llm_model
 
     def checkin_send_schedule(self) -> CheckInSendSchedule:
         """When the bot asks everyone: the fan-out schedule, read in UTC, or off."""

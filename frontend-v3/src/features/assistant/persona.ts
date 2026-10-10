@@ -12,8 +12,44 @@ export const ASSISTANT_NAME = "Ora";
 /** The button, the palette row and the panel's own label. */
 export const ASK_LABEL = `Ask ${ASSISTANT_NAME}`;
 
-/** The one-line note under the input. */
-export const ANSWER_NOTE = "Answers come from the delivery data and can be wrong.";
+/**
+ * The one-line note under the input. It says an AI writes the answers, as
+ * people talking to one must be told, and where to check them: the sources.
+ */
+export const ANSWER_NOTE = `${ASSISTANT_NAME} writes answers with AI from your delivery data. Check the sources before you act.`;
+
+/** The switch in the composer: on, a question is investigated in steps. */
+export const INVESTIGATE_LABEL = "Investigate";
+/** Under a quick answer: the same question, investigated. */
+export const INVESTIGATE_THIS = "Investigate this";
+
+/** The switch's tooltip, both ways. */
+export function investigateTitle(on: boolean): string {
+  return on
+    ? "Investigating: checks the question step by step. Click for a quick answer."
+    : "Quick answer. Click to investigate step by step instead.";
+}
+
+/** What the waiting bubble says: looking it up, planning, or checking the steps planned. */
+export function pendingWords(investigating: boolean, steps: number): string {
+  if (!investigating) return `${ASSISTANT_NAME} is looking it up…`;
+  if (steps === 0) return `${ASSISTANT_NAME} is planning the steps… This can take a minute.`;
+  return `${ASSISTANT_NAME} is checking ${steps === 1 ? "1 step" : `${steps} steps`}…`;
+}
+
+/** The header's actions. */
+export const NEW_CHAT_LABEL = "New chat";
+export const OPEN_PAGE_LABEL = `Open ${ASSISTANT_NAME} full page`;
+
+/** The fold under an answer that lists its sources: "Sources (4)". */
+export function sourcesWords(count: number): string {
+  return `Sources (${count})`;
+}
+
+/** The fold under an investigated answer: "How Ora checked: 3 steps". */
+export function checkedWords(steps: number): string {
+  return `How ${ASSISTANT_NAME} checked: ${steps === 1 ? "1 step" : `${steps} steps`}`;
+}
 
 /** "Good morning, Ira — what would you like to know?"; no name when nobody names the person. */
 export function assistantGreeting(first: string | null | undefined, now: Date = new Date()) {

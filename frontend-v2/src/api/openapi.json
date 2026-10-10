@@ -9096,6 +9096,65 @@
         }
       }
     },
+    "/ask/investigate": {
+      "post": {
+        "tags": ["ask"],
+        "summary": "Investigate",
+        "description": "Ask, investigated: the question split into steps, each looked up with Ask's tools.\n\nThe same read as /ask, with the same tools, so it never reads more than the\nasker could. Refused before anything is streamed when the asker may not ask.",
+        "operationId": "investigate_ask_investigate_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One InvestigateEvent per line: the plan first, then each step as it finishes, then the answer or the reason there is none.",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string",
+                  "$ref": "#/components/schemas/InvestigateEvent"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/me/status": {
       "get": {
         "tags": ["checkins"],
@@ -11407,6 +11466,33 @@
         "enum": ["release", "project", "pod"],
         "title": "AppliesTo"
       },
+      "AskConversationRequest": {
+        "properties": {
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/AskTurnRequest"
+            },
+            "type": "array",
+            "maxItems": 40,
+            "title": "Turns"
+          }
+        },
+        "type": "object",
+        "title": "AskConversationRequest",
+        "description": "What was said before the question: the summary so far and the turns since it."
+      },
       "AskRequest": {
         "properties": {
           "question": {
@@ -11425,6 +11511,16 @@
               }
             ],
             "title": "As Of"
+          },
+          "conversation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AskConversationRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -11462,6 +11558,30 @@
             "type": "array",
             "title": "Sources",
             "default": []
+          },
+          "follow_ups": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Follow Ups",
+            "default": []
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "summarized_turns": {
+            "type": "integer",
+            "title": "Summarized Turns",
+            "default": 0
           }
         },
         "type": "object",
@@ -11500,6 +11620,25 @@
         "required": ["id"],
         "title": "AskSourceResponse",
         "description": "A reference with the words a reader knows it by; label is None when no node matches."
+      },
+      "AskTurnRequest": {
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": ["user", "assistant"],
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": ["role", "content"],
+        "title": "AskTurnRequest",
+        "description": "One earlier turn of the conversation: the person's question or Ora's answer."
       },
       "AttentionCheckinsDto": {
         "properties": {
@@ -16293,6 +16432,162 @@
         },
         "type": "object",
         "title": "IdentityLinkUpdateRequest"
+      },
+      "InvestigateAnswerEvent": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "answer",
+            "title": "Type"
+          },
+          "answer": {
+            "$ref": "#/components/schemas/AskResponse"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/InvestigateStepResponse"
+            },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": ["type", "answer", "steps"],
+        "title": "InvestigateAnswerEvent",
+        "description": "The last line of an answered investigation."
+      },
+      "InvestigateEvent": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/InvestigatePlanEvent"
+          },
+          {
+            "$ref": "#/components/schemas/InvestigateStepEvent"
+          },
+          {
+            "$ref": "#/components/schemas/InvestigateAnswerEvent"
+          },
+          {
+            "$ref": "#/components/schemas/InvestigateFailedEvent"
+          }
+        ],
+        "title": "InvestigateEvent",
+        "description": "One line of POST /ask/investigate's newline-delimited JSON, told apart by type.",
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "answer": "#/components/schemas/InvestigateAnswerEvent",
+            "failed": "#/components/schemas/InvestigateFailedEvent",
+            "plan": "#/components/schemas/InvestigatePlanEvent",
+            "step": "#/components/schemas/InvestigateStepEvent"
+          }
+        }
+      },
+      "InvestigateFailedEvent": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "failed",
+            "title": "Type"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/InvestigateStepResponse"
+            },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": ["type", "message", "steps"],
+        "title": "InvestigateFailedEvent",
+        "description": "The last line of an investigation that could not answer, and why."
+      },
+      "InvestigatePlanEvent": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "plan",
+            "title": "Type"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/InvestigateStepResponse"
+            },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": ["type", "steps"],
+        "title": "InvestigatePlanEvent",
+        "description": "The first line: the steps the question was split into, all still running."
+      },
+      "InvestigateStepEvent": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "step",
+            "title": "Type"
+          },
+          "step": {
+            "$ref": "#/components/schemas/InvestigateStepResponse"
+          }
+        },
+        "type": "object",
+        "required": ["type", "step"],
+        "title": "InvestigateStepEvent",
+        "description": "A step that finished, done or failed, in the order steps finish."
+      },
+      "InvestigateStepResponse": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "done", "failed"],
+            "title": "Status"
+          },
+          "tools_used": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tools Used"
+          },
+          "findings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Findings"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": ["index", "question", "status", "tools_used", "findings"],
+        "title": "InvestigateStepResponse",
+        "description": "One step of an investigation: its question, how it went, and what it found."
       },
       "IssueGatesResponse": {
         "properties": {

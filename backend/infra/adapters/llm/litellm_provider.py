@@ -15,7 +15,14 @@ import structlog
 from opentelemetry import trace
 
 from core.domain.graph import JsonScalar
-from core.domain.llm import LlmRequest, LlmResponse, LlmTool, LlmToolCall, TokenUsage
+from core.domain.llm import (
+    LlmRequest,
+    LlmResponse,
+    LlmTool,
+    LlmToolCall,
+    LlmTurn,
+    TokenUsage,
+)
 
 _logger = structlog.get_logger(__name__)
 _tracer = trace.get_tracer("openprogram.adapters.llm.litellm")
@@ -327,6 +334,9 @@ def _chat_messages(request: LlmRequest) -> list[dict[str, object]]:
     messages: list[dict[str, object]] = []
     if request.system is not None:
         messages.append({"role": "system", "content": request.system})
+    if request.turns:
+        messages.extend(_turn_payload(turn) for turn in request.turns)
+        return messages
     messages.extend(
         {"role": message.role, "content": message.content} for message in request.messages
     )
@@ -351,6 +361,17 @@ def _chat_messages(request: LlmRequest) -> list[dict[str, object]]:
     return messages
 
 
+def _turn_payload(turn: LlmTurn) -> dict[str, object]:
+    if turn.role == "tool":
+        return {"role": "tool", "tool_call_id": turn.tool_call_id or "", "content": turn.content}
+    payload: dict[str, object] = {"role": turn.role, "content": turn.content or None}
+    if turn.tool_calls:
+        payload["tool_calls"] = [_tool_call_payload(call) for call in turn.tool_calls]
+    elif payload["content"] is None:
+        payload["content"] = ""
+    return payload
+
+
 def _trace_input(request: LlmRequest) -> list[dict[str, object]]:
     # Langfuse is the intentional exception to app-log redaction: LLM prompts stay inspectable.
     return _chat_messages(request)
@@ -368,13 +389,11 @@ def _tool_payload(tool: LlmTool) -> dict[str, object]:
 
 
 def _tool_call_payload(tool_call: LlmToolCall) -> dict[str, object]:
+    arguments = tool_call.arguments_json or json.dumps(dict(tool_call.arguments), sort_keys=True)
     return {
         "id": tool_call.id,
         "type": "function",
-        "function": {
-            "name": tool_call.name,
-            "arguments": json.dumps(dict(tool_call.arguments), sort_keys=True),
-        },
+        "function": {"name": tool_call.name, "arguments": arguments},
     }
 
 
@@ -393,14 +412,25 @@ def _tool_calls_from_message(message: Mapping[str, object]) -> tuple[LlmToolCall
         if not isinstance(name, str) or not name:
             continue
         raw_id = raw_tool_call.get("id")
+        raw_arguments = function.get("arguments")
         tool_calls.append(
             LlmToolCall(
                 id=raw_id if isinstance(raw_id, str) and raw_id else f"tool-call-{index}",
                 name=name,
-                arguments=_arguments_from_json(function.get("arguments")),
+                arguments=_arguments_from_json(raw_arguments),
+                arguments_json=_arguments_text(raw_arguments),
             )
         )
     return tuple(tool_calls)
+
+
+def _arguments_text(value: object) -> str | None:
+    """The arguments as the model sent them: its JSON string, or the object as JSON."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, Mapping):
+        return json.dumps(dict(value), sort_keys=True)
+    return None
 
 
 def _arguments_from_json(value: object) -> Mapping[str, JsonScalar]:

@@ -6,8 +6,23 @@ from datetime import date, datetime, time
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator
 
+from core.application.ask_conversation import (
+    MAX_SUMMARY_CHARS,
+    MAX_TURN_CHARS,
+    MAX_TURNS,
+    AskConversation,
+    AskTurn,
+)
+from core.application.ask_investigation import (
+    AnswerEvent,
+    FailedEvent,
+    InvestigationEvent,
+    InvestigationStep,
+    PlanEvent,
+    StepEvent,
+)
 from core.application.ask_service import AskResponseView
 from core.application.attention import AttentionSignal, AttentionView, CheckinCount
 from core.application.config_service import (
@@ -2285,6 +2300,12 @@ class AskResponse(BaseModel):
     trace_id: str
     # The references again, in order, each labelled for a reader.
     sources: list[AskSourceResponse] = []
+    # Questions to offer next, from what this answer names.
+    follow_ups: list[str] = []
+    # Set when the conversation was compacted: the summary to keep, and how many
+    # of the oldest turns sent it now covers (drop those, keep the summary).
+    summary: str | None = None
+    summarized_turns: int = 0
 
     @classmethod
     def from_view(cls, view: AskResponseView) -> AskResponse:
@@ -2297,6 +2318,33 @@ class AskResponse(BaseModel):
                 AskSourceResponse(id=source.id, kind=source.kind, label=source.label)
                 for source in view.sources
             ],
+            follow_ups=list(view.follow_ups),
+            summary=view.summary,
+            summarized_turns=view.summarized_turns,
+        )
+
+
+class AskTurnRequest(BaseModel):
+    """One earlier turn of the conversation: the person's question or Ora's answer."""
+
+    model_config = ConfigDict(frozen=True)
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=MAX_TURN_CHARS)
+
+
+class AskConversationRequest(BaseModel):
+    """What was said before the question: the summary so far and the turns since it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    summary: str | None = Field(default=None, max_length=MAX_SUMMARY_CHARS)
+    turns: list[AskTurnRequest] = Field(default_factory=list, max_length=MAX_TURNS)
+
+    def to_domain(self) -> AskConversation:
+        return AskConversation(
+            summary=self.summary,
+            turns=tuple(AskTurn(role=t.role, content=t.content) for t in self.turns),
         )
 
 
@@ -2305,6 +2353,115 @@ class AskRequest(BaseModel):
 
     question: str = Field(min_length=1)
     as_of: date | None = None
+    # Absent for a first question; the console keeps the conversation itself.
+    conversation: AskConversationRequest | None = None
+
+
+class InvestigateStepResponse(BaseModel):
+    """One step of an investigation: its question, how it went, and what it found."""
+
+    model_config = ConfigDict(frozen=True)
+
+    index: int
+    question: str
+    status: Literal["running", "done", "failed"]
+    tools_used: list[str]
+    # The step's own lines, with no raw ids; empty until it is done.
+    findings: list[str]
+    # Why a failed step found nothing; None otherwise.
+    error: str | None = None
+
+    @classmethod
+    def from_step(cls, step: InvestigationStep) -> InvestigateStepResponse:
+        return cls(
+            index=step.index,
+            question=step.question,
+            status=step.status,
+            tools_used=list(step.tools_used),
+            findings=list(step.findings),
+            error=step.error,
+        )
+
+
+class InvestigatePlanEvent(BaseModel):
+    """The first line: the steps the question was split into, all still running."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal["plan"]
+    steps: list[InvestigateStepResponse]
+
+
+class InvestigateStepEvent(BaseModel):
+    """A step that finished, done or failed, in the order steps finish."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal["step"]
+    step: InvestigateStepResponse
+
+
+class InvestigateAnswerEvent(BaseModel):
+    """The last line of an answered investigation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal["answer"]
+    answer: AskResponse
+    steps: list[InvestigateStepResponse]
+
+
+class InvestigateFailedEvent(BaseModel):
+    """The last line of an investigation that could not answer, and why."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: Literal["failed"]
+    message: str
+    steps: list[InvestigateStepResponse]
+
+
+class InvestigateEvent(
+    RootModel[
+        InvestigatePlanEvent
+        | InvestigateStepEvent
+        | InvestigateAnswerEvent
+        | InvestigateFailedEvent
+    ]
+):
+    """One line of POST /ask/investigate's newline-delimited JSON, told apart by type."""
+
+    root: (
+        InvestigatePlanEvent
+        | InvestigateStepEvent
+        | InvestigateAnswerEvent
+        | InvestigateFailedEvent
+    ) = Field(discriminator="type")
+
+    @classmethod
+    def from_event(cls, event: InvestigationEvent) -> InvestigateEvent:
+        steps = InvestigateStepResponse.from_step
+        match event:
+            case PlanEvent():
+                return cls(InvestigatePlanEvent(type="plan", steps=[steps(s) for s in event.steps]))
+            case StepEvent():
+                return cls(InvestigateStepEvent(type="step", step=steps(event.step)))
+            case AnswerEvent():
+                return cls(
+                    InvestigateAnswerEvent(
+                        type="answer",
+                        answer=AskResponse.from_view(event.view),
+                        steps=[steps(s) for s in event.steps],
+                    )
+                )
+            case FailedEvent():
+                return cls(
+                    InvestigateFailedEvent(
+                        type="failed",
+                        message=event.message,
+                        steps=[steps(s) for s in event.steps],
+                    )
+                )
 
 
 class WorkflowDispatchResponse(BaseModel):

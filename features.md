@@ -465,6 +465,26 @@ Functional requirements:
 - The answer shall be concise prose plus the IDs of the nodes it rests on, shown as references, and shall never contain raw DM or reply content.
 - A question asked while a past day is viewed shall be answered as of that day, and the answer shall keep that date after the viewing date changes.
 
+Conversation, for questions that follow on from earlier ones:
+
+- Each question shall be sent with the conversation before it: the turns since the last summary, and that summary. A follow-up such as "and Identity Platform?" shall be answered for what it refers to, with the facts looked up again rather than repeated from an earlier answer.
+- Past 12 turns or 8,000 characters, the server shall fold every turn but the last 6 into a summary of at most 150 words, and say in its reply how many turns the summary covers, so the console sends only the newer ones next time. A request shall carry at most 40 turns of 4,000 characters each.
+- An answer shall suggest up to 3 questions to ask next about what it names. The console shall show them below the input once the answer is in, none while an answer is on its way, and the page's own suggestions before any question.
+- New chat shall start again: the conversation and its summary go, and an investigation still running stops. The conversation stays in the console's memory only, per person and lens; it goes with a reload.
+- An answer shall read as its verdict in bold, its drivers as a list, and its "Not known:" line set apart, with its sources and, for an investigation, its steps each folded away under the answer.
+- Ora shall open in the whole tab (`/ora`) from the panel's header, with the same conversation, and Back shall return to the page it was opened from.
+
+Investigate (`POST /ask/investigate`), for questions one look-up cannot answer:
+
+- The asker shall choose between a quick answer and Investigate, and shall be able to investigate a quick answer's question with one action.
+- A question about a date shall get a step for the delivery forecast of each project or pod it names, and a question about blockers or risk a step of its own for the open blockers of the pods involved, with each blocker's owner, what it waits on and its days open.
+- The system shall split the question into at most three steps by default (`OPENPROGRAM_ASK_INVESTIGATE_MAX_STEPS`, one to five), research each step in its own tool loop of up to six rounds (`OPENPROGRAM_ASK_INVESTIGATE_MAX_TOOL_ITERATIONS`), and write one answer from the steps' notes.
+- Each step shall use exactly the tools a quick answer offers the same asker, so an investigation never reads more than the asker could. It shall write and send nothing.
+- The response shall stream newline-delimited JSON: the plan, each step as it finishes, then the answer or the reason there is none. The console shall show each step as it finishes and, under the answer, what each step found and the tools it read with.
+- The answer shall give a verdict, two to six drivers with their evidence, and a "Not known:" line for what the notes could not establish. It shall never predict whether a date will be made unless a note says so.
+- A step that fails shall leave the others to answer from. The whole investigation shall stop after a time limit (`OPENPROGRAM_ASK_INVESTIGATE_TIMEOUT_SECONDS`, 120 by default) and say so. A reader who stops listening shall stop the steps still running.
+- Each investigation shall log its outcome, step count, LLM calls, tokens, cost and duration, without the question text. It may run on a model of its own (`OPENPROGRAM_ASK_INVESTIGATE_MODEL`).
+
 ### 4.24 Issue-Tracker Write-Back
 
 **Business requirement:** A developer's own check-in may move their issues forward in the tracker, but only when the tenant, the role, and the developer all allow it, and every write shall be reversible.
