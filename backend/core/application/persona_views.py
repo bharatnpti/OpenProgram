@@ -15,6 +15,7 @@ from core.application.attention import (
 )
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
 from core.application.checkin_drift import CHECKIN_DRIFT_FACT_SOURCE
+from core.application.person_names import UNKNOWN_PERSON
 from core.application.rollup_service import (
     NO_WORK_REASON,
     DriftSignals,
@@ -420,7 +421,8 @@ class PersonaViewService:
             blockers = _listed_blockers(status)
             return FocusView(
                 developer_id=developer_id,
-                developer_name=developer_id,
+                # No member record names them; the id is never shown as the name.
+                developer_name=UNKNOWN_PERSON,
                 as_of=as_of,
                 status_source=status_source,
                 developer_confirmed=status.developer_confirmed if status else False,

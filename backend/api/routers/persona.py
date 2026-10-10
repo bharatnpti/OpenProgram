@@ -67,7 +67,7 @@ from core.domain.brief import BriefKind
 from core.domain.cross_person import CrossPersonRequest, CrossPersonRequestStatus
 from core.domain.errors import AuthorizationDenied, GraphNotFound
 from core.domain.graph import NodeKind
-from core.domain.risk import RiskFinding
+from core.domain.risk import DriftFinding, RiskFinding
 from core.ports.repositories import NarrativeBriefRepository
 
 router = APIRouter(tags=["personas"])
@@ -84,12 +84,14 @@ async def my_focus(
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     write_back_service: Annotated[WriteBackService, Depends(get_write_back_service)],
+    person_names: Annotated[PersonNames, Depends(get_person_names)],
 ) -> FocusResponse:
     _ensure(principal, Capability.READ_OWN_WORK)
     view = await persona_service.focus(principal.tenant_id, principal.subject, as_of)
     return FocusResponse.from_view(
         view,
         write_back=await write_back_service.write_back_mode(principal.tenant_id, principal.subject),
+        names=await person_names.by_member_id(principal.tenant_id),
     )
 
 
@@ -116,13 +118,15 @@ async def pod_checkins(
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
     scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
+    person_names: Annotated[PersonNames, Depends(get_person_names)],
 ) -> PodCheckinsResponse:
     await _ensure_pod_detail(scope, principal, pod_id)
     try:
         view = await persona_service.pod_checkins(principal.tenant_id, pod_id, as_of)
     except GraphNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return PodCheckinsResponse.from_view(view)
+    # A summary stored before it named people can still hold their chat ids.
+    return PodCheckinsResponse.from_view(view, await person_names.by_member_id(principal.tenant_id))
 
 
 @router.get("/pods/{pod_id}/rollup", response_model=PodRollupResponse)
@@ -510,7 +514,7 @@ async def project_risks(
         project_id=project_id,
         as_of=as_of,
         risks=await _risk_responses(principal.tenant_id, findings, person_names),
-        drift=[DriftFindingResponse.from_domain(finding) for finding in drift],
+        drift=await _drift_responses(principal.tenant_id, drift, person_names),
     )
 
 
@@ -527,25 +531,39 @@ async def portfolio_risks(
     return PortfolioRisksResponse(
         as_of=as_of,
         risks=await _risk_responses(principal.tenant_id, findings, person_names),
-        drift=[DriftFindingResponse.from_domain(finding) for finding in drift],
+        drift=await _drift_responses(principal.tenant_id, drift, person_names),
     )
 
 
 async def _risk_responses(
     tenant_id: str, findings: list[RiskFinding], person_names: PersonNames
 ) -> list[RiskFindingResponse]:
-    """Risk findings, each person they are about named rather than shown by chat id."""
+    """Risk findings, each person they are about named rather than shown by chat id.
+
+    The owner's status summary is cleaned of member ids too: one stored before
+    the inferred summary named people said "risks flagged on U0...".
+    """
     people = [finding.entity_ref.id for finding in findings if _is_person(finding)]
     names = await person_names.resolve(tenant_id, people)
+    members = await person_names.by_member_id(tenant_id) if findings else {}
     return [
         RiskFindingResponse.from_domain(
             finding,
             person_name=(
                 person_name(names, finding.entity_ref.id, None) if _is_person(finding) else None
             ),
+            names=members,
         )
         for finding in findings
     ]
+
+
+async def _drift_responses(
+    tenant_id: str, findings: list[DriftFinding], person_names: PersonNames
+) -> list[DriftFindingResponse]:
+    """Drift findings, their reasons cleaned of member ids (a fact recorded one as a name)."""
+    members = await person_names.by_member_id(tenant_id) if findings else {}
+    return [DriftFindingResponse.from_domain(finding, members) for finding in findings]
 
 
 def _is_person(finding: RiskFinding) -> bool:

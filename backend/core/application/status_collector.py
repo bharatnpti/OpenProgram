@@ -47,6 +47,12 @@ from core.application.merge_request_links import (
     merge_request_reference,
     merge_requests_by_issue_key,
 )
+from core.application.person_names import (
+    UNKNOWN_PERSON,
+    member_names,
+    person_name,
+    without_member_ids,
+)
 from core.application.risk_service import RISK_FACT_SOURCE
 from core.application.status_parsing import (
     ClarificationDecision,
@@ -345,11 +351,19 @@ class StatusCollector:
         asked_at: datetime | None = None,
         checkin_date: date | None = None,
     ) -> CheckIn:
+        # A scheduled check-in carries no name: the member record names them,
+        # never their id, which would reach the prompt and the "Hi …," DM.
+        name = await self._escalation_subject_name(
+            tenant_id=tenant_id,
+            developer_id=developer_id,
+            developer_name=developer_name,
+            chat_external_id=chat_external_id,
+        )
         state = await self._compiled_graph.ainvoke(
             {
                 "tenant_id": tenant_id,
                 "developer_id": developer_id,
-                "developer_name": developer_name or developer_id,
+                "developer_name": name or "",
                 "chat_external_id": chat_external_id or developer_id,
                 "correlation_id": correlation_id or _new_correlation_id(),
                 "asked_at": asked_at or datetime.now(tz=UTC),
@@ -1601,7 +1615,12 @@ class StatusCollector:
             text = await self._compose_developer_nudge_text(
                 tenant_id=tenant_id,
                 checkin=checkin,
-                developer_name=developer_name,
+                developer_name=await self._escalation_subject_name(
+                    tenant_id=tenant_id,
+                    developer_id=checkin.developer_id,
+                    developer_name=developer_name,
+                    chat_external_id=chat_external_id,
+                ),
                 nudge_number=nudge_number,
                 correlation_id=correlation_id,
             )
@@ -1695,7 +1714,7 @@ class StatusCollector:
             "Do not imply the work is healthy just because there was no reply. "
             "Reference a specific pending, blocked, or stale issue and any carried-forward "
             "blocker from context when useful, while staying concise. "
-            f"Developer: {developer_name or checkin.developer_id}. Context: {context}"
+            f"Developer: {developer_name or UNKNOWN_PERSON}. Context: {context}"
         )
         conversation_turns = await self._recent_conversation_turns(
             tenant_id=tenant_id,
@@ -1908,11 +1927,21 @@ class StatusCollector:
 
         A stale prior already names it unless it was stored in the old nested
         wording; nothing has been said since, so it is reused as is. Otherwise
-        the status is found by following earlier rows back.
+        the status is found by following earlier rows back. Either way an
+        inferred summary stored before it named people carries their chat ids
+        forward, so those become names (``without_member_ids``).
         """
         if prior.source is StatusSource.STALE and names_one_basis(prior.summary):
-            return prior.summary
-        return stale_summary(await basis_status(self._status_repository, prior))
+            text = prior.summary
+        else:
+            text = stale_summary(await basis_status(self._status_repository, prior))
+        return without_member_ids(text, await self._member_names(prior.tenant_id))
+
+    async def _member_names(self, tenant_id: str) -> dict[str, str]:
+        """Every member's name by node id and chat id; empty without a graph."""
+        if self._graph_repository is None:
+            return {}
+        return member_names(await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER))
 
     async def infer_fallback_status(
         self,
@@ -1955,6 +1984,11 @@ class StatusCollector:
             return None, True
         if not active and not facts:
             return None, False
+        people = {
+            person_id: name
+            for person_id in _risk_people(facts)
+            if (name := await self._member_display_name(tenant_id, person_id, raw_ids={person_id}))
+        }
         return (
             DeveloperStatus(
                 tenant_id=tenant_id,
@@ -1962,7 +1996,7 @@ class StatusCollector:
                 as_of=as_of,
                 source=StatusSource.INFERRED,
                 blockers=("no confirmed reply",),
-                summary=_inferred_summary(active, facts, reference_at),
+                summary=_inferred_summary(active, facts, reference_at, people=people),
             ),
             False,
         )
@@ -2051,11 +2085,15 @@ class StatusCollector:
                 merge_requests=merge_requests,
             )
         )
-        lines.extend(_fact_context_lines(_current_merge_request_facts(facts)))
+        lines.extend(
+            _fact_context_lines(
+                _current_merge_request_facts(facts), developer_name or UNKNOWN_PERSON
+            )
+        )
 
         if not lines:
             return _NO_CONTEXT
-        heading = f"Developer: {developer_name or developer_id}"
+        heading = f"Developer: {developer_name or UNKNOWN_PERSON}"
         return "\n".join((heading, *lines))
 
     async def _merge_requests_for(
@@ -2105,7 +2143,7 @@ class StatusCollector:
             "blockers still open and each merge request as it is now: never call an issue "
             "waiting on review when its merge request is merged; say it is merged. "
             "Return only the message text.\n\n"
-            f"Developer: {state.get('developer_name', state['developer_id'])}\n"
+            f"Developer: {state.get('developer_name') or UNKNOWN_PERSON}\n"
             f"Context:\n{state['context']}"
         )
         tools = self._agent_tools(
@@ -2149,7 +2187,7 @@ class StatusCollector:
         user = ChatUserRef(
             tenant_id=state["tenant_id"],
             external_id=state.get("chat_external_id", state["developer_id"]),
-            display_name=state.get("developer_name"),
+            display_name=state.get("developer_name") or None,
         )
         chat_thread_ref = await self._chat_provider.open_thread(user)
         message_id = await self._chat_provider.send_dm(
@@ -3498,7 +3536,7 @@ class StatusCollector:
             # change; an older fact's number may be a duration ("2-3 days").
             "eta_change_checked": True,
             # Readable name for the activity feed, which would otherwise render
-            # the raw developer id. Falls back to the id when unknown.
+            # the raw developer id. None when unknown: readers name the person.
             "developer_name": await self._developer_display_name(
                 checkin.tenant_id, checkin.developer_id
             ),
@@ -3528,22 +3566,23 @@ class StatusCollector:
             )
         )
 
-    async def _developer_display_name(self, tenant_id: str, developer_id: str) -> str:
-        """Best-effort display name for a developer id.
+    async def _developer_display_name(self, tenant_id: str, developer_id: str) -> str | None:
+        """Best-effort display name for a developer id; None when none is known.
 
         Tries the chat directory, where the developer id doubles as the chat
-        external id in single-workspace tenants, then the graph node, and
-        finally returns the id unchanged.
+        external id in single-workspace tenants, then the graph node. A "name"
+        that is only the id is no name: it was stored on facts as one, and
+        drift reasons then said "U0... said CHK-4 is in review".
         """
         if self._directory_repository is not None:
             user = await self._directory_repository.get(tenant_id, developer_id)
-            if user is not None and user.display_name:
+            if user is not None and user.display_name and user.display_name != developer_id:
                 return user.display_name
         if self._graph_repository is not None:
             node = await self._graph_repository.get_node(tenant_id, developer_id)
-            if node is not None and node.name:
+            if node is not None and node.name and node.name != developer_id:
                 return node.name
-        return developer_id
+        return None
 
     async def _append_blocker_resolved_facts(
         self,
@@ -4156,11 +4195,10 @@ def _fallback_outbound_checkin_text(
 
 
 def _display_name_for_dm(developer_name: str | None, developer_id: str) -> str:
+    """The name a DM greets someone by; "there" when none is known, never their id."""
     display_name = (developer_name or "").strip()
-    if display_name:
+    if display_name and display_name != developer_id.strip():
         return display_name
-    if developer_id.strip():
-        return developer_id.strip()
     return "there"
 
 
@@ -4847,7 +4885,10 @@ def _merge_request_key(fact: FactEvent) -> tuple[str, str] | None:
     return (repo, str(pr_id))
 
 
-def _fact_context_lines(facts: Iterable[FactEvent]) -> list[str]:
+def _fact_context_lines(facts: Iterable[FactEvent], developer_name: str) -> list[str]:
+    """Fact lines for the model's context. A fact filed on the developer (their own
+    merge request) names them as ``developer_name``, not by their chat id, which the
+    model could otherwise repeat in the DM."""
     lines: list[str] = []
     for fact in facts:
         prefix = (
@@ -4855,9 +4896,13 @@ def _fact_context_lines(facts: Iterable[FactEvent]) -> list[str]:
             if fact.source in {"vcs_commit", "vcs_pull_request"}
             else "Recent fact"
         )
+        subject = (
+            developer_name
+            if fact.entity_ref.kind is NodeKind.DEVELOPER
+            else f"{fact.entity_ref.kind.value}/{fact.entity_ref.id}"
+        )
         lines.append(
-            f"{prefix} for {fact.entity_ref.kind.value}/{fact.entity_ref.id}: "
-            f"source={fact.source}, {_format_payload(fact.payload)}"
+            f"{prefix} for {subject}: source={fact.source}, {_format_payload(fact.payload)}"
         )
     return lines
 
@@ -4872,6 +4917,8 @@ def _inferred_summary(
     issues: list[Issue],
     facts: Iterable[FactEvent],
     reference_at: datetime,
+    *,
+    people: Mapping[str, str] | None = None,
 ) -> str:
     """A non-response status summary a person can read.
 
@@ -4880,6 +4927,10 @@ def _inferred_summary(
     activity. It reads only keyed payload fields and never repeats free text:
     a fact can carry words taken from a reply, and this summary is returned by
     persona APIs.
+
+    A risk filed on a person (a merge request no work item claims is filed on
+    its author) is named by ``people`` (person id to display name), else as
+    ``UNKNOWN_PERSON``: never by the chat id. An issue is named by its key.
 
     An empty issue list is not reported as "no active issues": the tracker can
     come back empty for an unmapped assignee while the developer has work.
@@ -4904,7 +4955,7 @@ def _inferred_summary(
         basis.append(reply)
     risky = list(
         dict.fromkeys(
-            entity_id
+            _risk_label(fact.payload, entity_id, people or {})
             for fact in facts
             if fact.source == RISK_FACT_SOURCE
             and isinstance(entity_id := fact.payload.get("entity_id"), str)
@@ -4924,6 +4975,29 @@ def _inferred_summary(
         basis.append(f"recent Git activity: {git_activity}")
 
     return inferred_summary("; ".join(basis) or "recent signals")
+
+
+def _risk_people(facts: Iterable[FactEvent]) -> list[str]:
+    """The people the risk facts are filed on, each once, in order."""
+    return list(
+        dict.fromkeys(
+            entity_id
+            for fact in facts
+            if fact.source == RISK_FACT_SOURCE
+            and fact.payload.get("entity_kind") == NodeKind.DEVELOPER.value
+            and isinstance(entity_id := fact.payload.get("entity_id"), str)
+            and entity_id
+        )
+    )
+
+
+def _risk_label(
+    payload: Mapping[str, JsonScalar], entity_id: str, people: Mapping[str, str]
+) -> str:
+    """What a risk is on, as a reader knows it: the issue key, or the person's name."""
+    if payload.get("entity_kind") == NodeKind.DEVELOPER.value:
+        return person_name(people, entity_id, None)
+    return entity_id
 
 
 def _inferred_issue_label(issue: Issue, reference_at: datetime) -> str:
