@@ -177,15 +177,18 @@ CROWDED_DAY = "day_report_readiness_crowded"
 CROWDED_KEYS = ("CHK-4", "CHK-5", "CHK-6", "CHK-7")
 
 
-async def readiness_report(*, crowded: bool = False) -> DayReport:
+async def readiness_report(
+    *, crowded: bool = False, registry: ServiceRegistry | None = None
+) -> DayReport:
     """The full day, with release criteria checked: a blocking security review the
     project lacks while CHK-2 is already in production, the Payments Pod's on-call
     handover due within four working days, and an advisory check the report leaves out.
 
     ``crowded``: the date also at risk (its three reasons) and four more
     requirements in production without their gates, so Most important has more
-    than its eight lines and folds the rest into "and N more"."""
-    registry = await a_full_day()
+    than its eight lines and folds the rest into "and N more". ``registry``: a
+    full day a test changed first."""
+    registry = registry or await a_full_day()
     if crowded:
         graph = registry.graph_repository()
         for key in CROWDED_KEYS:

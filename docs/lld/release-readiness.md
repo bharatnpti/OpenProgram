@@ -82,10 +82,27 @@ finding carries its `can` for the viewer.
 or unsure, undecided, not held and urgent: up to three Most important lines,
 then "and N more in Release readiness". They lead Most important, ahead of the
 date's reasons and the gate bypasses, so its cap of eight lines never folds one
-into "and N more". Each gets a decision ask, to the project's decision owner (a
-pod's scrum master for a pod's), escalated by the project's matrix from the day
-the gap entered its window. With the agent off or no criteria the report is
-unchanged byte for byte.
+into "and N more".
+
+Each gap gets a decision ask. `day_report_asks.readiness_decider` picks who
+decides, the first of:
+
+1. the project's recorded owner: the decision owner its escalation matrix
+   names, else the project's `owner_id` (a member id or chat id);
+2. a product owner of the scope: a member holding the `po` app role whose own
+   part of the tree (`delivery_scope.member_scope`, the rule Today and Delivery
+   use) has the gap's pod, or for a project or release gap one of the project's
+   pods, the first pod by name;
+3. for a pod's gap only, the pod's scrum master: its escalation contact, else a
+   member holding the `sm` role;
+4. a manager from the pods' escalation contacts.
+
+Several people at one step: the first by name. "Nobody named yet" only when all
+four are empty. The ask climbs the project's matrix from the day the gap
+entered its window, from the pod its decider was found on (else the gap's pod,
+or the project's first pod by name); a manager's ask climbs only to a level
+that names a member. With the agent off or no criteria the report is unchanged
+byte for byte.
 
 ## Later
 
