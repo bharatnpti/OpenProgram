@@ -26,7 +26,7 @@
           },
           {
             "spacing": "Small",
-            "text": "`\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591` 33% complete: 1 of 3 requirements in production (0% on Fri 2 Oct 2026).",
+            "text": "`\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591` 71% complete: 5 of 7 requirements in production (0% on Fri 2 Oct 2026).",
             "type": "TextBlock",
             "wrap": true
           },
@@ -38,7 +38,7 @@
           },
           {
             "spacing": "Small",
-            "text": "- Priya: The vendor's sandbox is back. Refunds are next.\n- Delivery Sat 21 Nov 2026: not enough history to forecast.\n- Needed most: an answer from Priya on CHK-1 (6 days), a fix from Omar on PLT-9 (5 days) and a fix from Asha on CHK-3 (2 days).",
+            "text": "- Priya: The vendor's sandbox is back. Refunds are next.\n- Delivery Sat 21 Nov 2026: at risk.\n- Needed most: an answer from Priya on CHK-1 (6 days), a fix from Omar on PLT-9 (5 days) and a fix from Asha on CHK-3 (2 days).",
             "type": "TextBlock",
             "wrap": true
           },
@@ -50,19 +50,19 @@
           },
           {
             "spacing": "Small",
-            "text": "_Progress_\n- 33% complete: 1 of 3 requirements in production (0% on Fri 2 Oct 2026).\n- Raised 0 \u00b7 Groomed 0 \u00b7 In development 1 (-1) \u00b7 In testing 1 (+1) \u00b7 Business testing 0 \u00b7 Production 1 (+1)",
+            "text": "_Progress_\n- 71% complete: 5 of 7 requirements in production (0% on Fri 2 Oct 2026).\n- Raised 0 \u00b7 Groomed 0 \u00b7 In development 1 (-1) \u00b7 In testing 1 (+1) \u00b7 Business testing 0 \u00b7 Production 5 (+5)",
             "type": "TextBlock",
             "wrap": true
           },
           {
             "spacing": "Small",
-            "text": "_What changed since Fri 2 Oct 2026_\n- CHK-1 CHK-1 work: In development \u2192 In testing\n- CHK-2 CHK-2 work: In development \u2192 Production\n- CHK-3 CHK-3 work: new, in In development\n- Scope +1 requirement\n- The delivery date moved from Sat 14 Nov 2026 to Sat 21 Nov 2026 (Priya: Vendor moved its test date).",
+            "text": "_What changed since Fri 2 Oct 2026_\n- CHK-1 CHK-1 work: In development \u2192 In testing\n- CHK-2 CHK-2 work: In development \u2192 Production\n- CHK-3 CHK-3 work: new, in In development\n- CHK-4 CHK-4 work: new, in Production\n- CHK-5 CHK-5 work: new, in Production\n- CHK-6 CHK-6 work: new, in Production\n- CHK-7 CHK-7 work: new, in Production\n- Scope +5 requirements\n- The delivery date moved from Sat 14 Nov 2026 to Sat 21 Nov 2026 (Priya: Vendor moved its test date).",
             "type": "TextBlock",
             "wrap": true
           },
           {
             "spacing": "Small",
-            "text": "_Acceptance and tests_\n- Business acceptance (before production): 0 of 3 passed, 1 open, 2 with nothing confirmed; 1 moved on without it.\n- Engineering delivery (before business testing): 0 of 3 passed, 3 with nothing confirmed; 1 moved on without it.",
+            "text": "_Acceptance and tests_\n- Business acceptance (before production): 0 of 7 passed, 1 open, 6 with nothing confirmed; 5 moved on without it.\n- Engineering delivery (before business testing): 0 of 7 passed, 7 with nothing confirmed; 5 moved on without it.",
             "type": "TextBlock",
             "wrap": true
           },
@@ -74,7 +74,7 @@
           },
           {
             "spacing": "Small",
-            "text": "- CHK-2 reached production without a security review for Checkout Revamp.\n- Payments Pod needs an on-call handover within 4 working days, and none is in Jira.\n- CHK-2 reached production without Business acceptance and Engineering delivery passing.",
+            "text": "- CHK-4 reached production without an on-call handover for Payments Pod.\n- CHK-2 reached production without a security review for Checkout Revamp.\n- Committed for Sat 21 Nov 2026 by Priya; moved once, 7 days later than first set.\n- Only 1 working day of history; a forecast needs 10.\n- 2 open requirements have no ETA or due date.\n- CHK-2 reached production without Business acceptance and Engineering delivery passing.\n- CHK-4 reached production without Business acceptance and Engineering delivery passing.\n- CHK-5 reached production without Business acceptance and Engineering delivery passing.\n- and 2 more.",
             "type": "TextBlock",
             "wrap": true
           },

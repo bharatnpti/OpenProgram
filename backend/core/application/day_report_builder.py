@@ -5,8 +5,9 @@
 2. Where we stand: progress against the previous snapshot, why it changed
    (requirements that moved, scope added or removed, the delivery date
    moved), and how requirements stand against their gates.
-3. Most important: what threatens the delivery date, and the release
-   readiness gaps that are blocking and close to their date.
+3. Most important: the release readiness gaps that are blocking and close
+   to their date, first, so the line cap never folds one away; then what
+   threatens the delivery date.
 4. What we need, and from whom: every ask, grouped by the person who can do
    it, with its kind, how long it has waited, and whom it escalated to under
    the project's escalation matrix (see ``day_report_asks``).
@@ -523,9 +524,12 @@ def _risk_lines(facts: _Facts) -> list[str]:
 
 
 def _most_important(facts: _Facts) -> tuple[str, ...]:
-    lines: list[str] = list(_date_reasons(facts))
+    # A blocking readiness gap first: at most four lines (ReportGaps.lines), so
+    # the cap below never folds one into "and N more". Without one, the order
+    # is what it always was.
+    lines: list[str] = list(facts.readiness.lines)
+    lines.extend(_date_reasons(facts))
     lines.extend(_bypass_line(issue) for issue in facts.board.issues if issue.passed_without)
-    lines.extend(facts.readiness.lines)
     lines.extend(_risk_lines(facts))
     kept = list(dict.fromkeys(lines))
     if len(kept) > MAX_IMPORTANT_LINES:
@@ -711,8 +715,8 @@ def _important_facts(facts: _Facts) -> ImportantFacts:
         ),
         risks=len(risks),
         lines=(
-            *(reason for reason, kind in zip(reasons, kinds, strict=True) if kind is None),
             *readiness,
+            *(reason for reason, kind in zip(reasons, kinds, strict=True) if kind is None),
         ),
         readiness_gaps=len(facts.readiness.gaps),
     )

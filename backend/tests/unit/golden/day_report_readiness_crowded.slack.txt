@@ -1,30 +1,40 @@
 *Checkout Revamp: day report, Mon 5 Oct 2026*
 *Status unknown:* 4 fixes, 2 decisions, 1 answer and 1 review needed, 4 escalated.
-`███████░░░░░░░░░░░░░` 33% complete: 1 of 3 requirements in production (0% on Fri 2 Oct 2026).
+`██████████████░░░░░░` 71% complete: 5 of 7 requirements in production (0% on Fri 2 Oct 2026).
 
 *In short*
 • Priya: The vendor's sandbox is back. Refunds are next.
-• Delivery Sat 21 Nov 2026: not enough history to forecast.
+• Delivery Sat 21 Nov 2026: at risk.
 • Needed most: an answer from Priya on CHK-1 (6 days), a fix from Omar on PLT-9 (5 days) and a fix from Asha on CHK-3 (2 days).
 
 *Where we stand*
 _Progress_
-    • 33% complete: 1 of 3 requirements in production (0% on Fri 2 Oct 2026).
-    • Raised 0 · Groomed 0 · In development 1 (-1) · In testing 1 (+1) · Business testing 0 · Production 1 (+1)
+    • 71% complete: 5 of 7 requirements in production (0% on Fri 2 Oct 2026).
+    • Raised 0 · Groomed 0 · In development 1 (-1) · In testing 1 (+1) · Business testing 0 · Production 5 (+5)
 _What changed since Fri 2 Oct 2026_
     • CHK-1 CHK-1 work: In development → In testing
     • CHK-2 CHK-2 work: In development → Production
     • CHK-3 CHK-3 work: new, in In development
-    • Scope +1 requirement
+    • CHK-4 CHK-4 work: new, in Production
+    • CHK-5 CHK-5 work: new, in Production
+    • CHK-6 CHK-6 work: new, in Production
+    • CHK-7 CHK-7 work: new, in Production
+    • Scope +5 requirements
     • The delivery date moved from Sat 14 Nov 2026 to Sat 21 Nov 2026 (Priya: Vendor moved its test date).
 _Acceptance and tests_
-    • Business acceptance (before production): 0 of 3 passed, 1 open, 2 with nothing confirmed; 1 moved on without it.
-    • Engineering delivery (before business testing): 0 of 3 passed, 3 with nothing confirmed; 1 moved on without it.
+    • Business acceptance (before production): 0 of 7 passed, 1 open, 6 with nothing confirmed; 5 moved on without it.
+    • Engineering delivery (before business testing): 0 of 7 passed, 7 with nothing confirmed; 5 moved on without it.
 
 *Most important*
+• CHK-4 reached production without an on-call handover for Payments Pod.
 • CHK-2 reached production without a security review for Checkout Revamp.
-• Payments Pod needs an on-call handover within 4 working days, and none is in Jira.
+• Committed for Sat 21 Nov 2026 by Priya; moved once, 7 days later than first set.
+• Only 1 working day of history; a forecast needs 10.
+• 2 open requirements have no ETA or due date.
 • CHK-2 reached production without Business acceptance and Engineering delivery passing.
+• CHK-4 reached production without Business acceptance and Engineering delivery passing.
+• CHK-5 reached production without Business acceptance and Engineering delivery passing.
+• and 2 more.
 
 *What we need, and from whom*
 _Priya_

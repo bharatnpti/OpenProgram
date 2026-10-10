@@ -98,10 +98,11 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 /**
- * Most important without what is drawn elsewhere: every requirement that went around
- * a gate (the message stops at eight lines), the lines no picture draws, and one
- * short pointer to the rest: "See In short for the delivery date, and What we need
- * for the 4 risks." It always shows: with only risks, it is all the section says.
+ * Most important without what is drawn elsewhere, in the message's order: the lines
+ * no picture draws (a blocking release readiness gap first), every requirement that
+ * went around a gate (the message stops at eight lines), and one short pointer to the
+ * rest: "See In short for the delivery date, and What we need for the 4 risks." It
+ * always shows: with only risks, it is all the section says.
  */
 function MostImportant({ facts, emptyText }: { facts: ReportFacts; emptyText: string }) {
   const view = importantView(facts.important);
@@ -111,19 +112,6 @@ function MostImportant({ facts, emptyText }: { facts: ReportFacts; emptyText: st
     <>
       {view.groups.length || view.lines.length ? (
         <ul className="grid gap-2" aria-label="What threatens the delivery date">
-          {view.groups.map((group) => (
-            <li
-              key={group.words}
-              className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-r-xl border-l-4 border-(--op-day-red-solid) bg-(--op-day-red-bg) px-3 py-2.5 text-[13.5px]"
-            >
-              <span className="min-w-0 flex-[1_1_260px] font-bold">{group.words}</span>
-              {group.keys.map((key) => (
-                <span key={key} className="dv-key">
-                  {key}
-                </span>
-              ))}
-            </li>
-          ))}
           {view.lines.map((line) => (
             <li
               key={line}
@@ -138,6 +126,19 @@ function MostImportant({ facts, emptyText }: { facts: ReportFacts; emptyText: st
               }}
             >
               {line}
+            </li>
+          ))}
+          {view.groups.map((group) => (
+            <li
+              key={group.words}
+              className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-r-xl border-l-4 border-(--op-day-red-solid) bg-(--op-day-red-bg) px-3 py-2.5 text-[13.5px]"
+            >
+              <span className="min-w-0 flex-[1_1_260px] font-bold">{group.words}</span>
+              {group.keys.map((key) => (
+                <span key={key} className="dv-key">
+                  {key}
+                </span>
+              ))}
             </li>
           ))}
         </ul>

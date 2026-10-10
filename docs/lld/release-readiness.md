@@ -80,10 +80,12 @@ finding carries its `can` for the viewer.
 
 `ReleaseReadinessService.report_gaps` gives the blocking gaps that are missing
 or unsure, undecided, not held and urgent: up to three Most important lines,
-then "and N more in Release readiness", and a decision ask each, to the
-project's decision owner (a pod's scrum master for a pod's), escalated by the
-project's matrix from the day the gap entered its window. With the agent off
-or no criteria the report is unchanged byte for byte.
+then "and N more in Release readiness". They lead Most important, ahead of the
+date's reasons and the gate bypasses, so its cap of eight lines never folds one
+into "and N more". Each gets a decision ask, to the project's decision owner (a
+pod's scrum master for a pod's), escalated by the project's matrix from the day
+the gap entered its window. With the agent off or no criteria the report is
+unchanged byte for byte.
 
 ## Later
 

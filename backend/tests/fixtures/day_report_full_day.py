@@ -23,6 +23,7 @@ from core.domain.delivery import DeliveryStage, RequirementsSnapshot
 from core.domain.escalation_matrix import default_matrix
 from core.domain.forecast import CommitmentScope, CommitmentScopeKind, DateChange, Verdict
 from core.domain.gates import GateItem, ItemSource, ItemStatus, QuestionStatus, TrackedQuestion
+from core.domain.graph import EdgeKind, GraphEdge, Task
 from core.domain.release_readiness import (
     AppliesTo,
     Matcher,
@@ -170,13 +171,41 @@ DAYS: dict[str, Verdict | None] = {
 
 #: The full day with release readiness on and two blocking gaps close to their date.
 READINESS_DAY = "day_report_readiness_gap"
+#: The readiness day with more to say than Most important's eight lines.
+CROWDED_DAY = "day_report_readiness_crowded"
+#: The requirements the crowded day adds, each already in production without its gates.
+CROWDED_KEYS = ("CHK-4", "CHK-5", "CHK-6", "CHK-7")
 
 
-async def readiness_report() -> DayReport:
+async def readiness_report(*, crowded: bool = False) -> DayReport:
     """The full day, with release criteria checked: a blocking security review the
     project lacks while CHK-2 is already in production, the Payments Pod's on-call
-    handover due within four working days, and an advisory check the report leaves out."""
+    handover due within four working days, and an advisory check the report leaves out.
+
+    ``crowded``: the date also at risk (its three reasons) and four more
+    requirements in production without their gates, so Most important has more
+    than its eight lines and folds the rest into "and N more"."""
     registry = await a_full_day()
+    if crowded:
+        graph = registry.graph_repository()
+        for key in CROWDED_KEYS:
+            await graph.upsert_node(
+                Task(
+                    tenant_id=TENANT,
+                    id=key,
+                    name=f"{key} work",
+                    metadata={"key": key, "status": "Done", "state": "done"},
+                )
+            )
+            for parent in ("pod-pay", "dev-asha"):
+                await graph.add_edge(
+                    GraphEdge(
+                        tenant_id=TENANT,
+                        from_node_id=parent,
+                        to_node_id=key,
+                        kind=EdgeKind.CONTAINS if parent == "pod-pay" else EdgeKind.ASSIGNED_TO,
+                    )
+                )
     await registry.commitment_repository().append(
         DateChange(
             tenant_id=TENANT,
@@ -214,6 +243,8 @@ async def readiness_report() -> DayReport:
     await readiness.run_tenant(TENANT, slot="2026-10-05T07:45:00+00:00")
     builder = registry.day_report_builder()
     builder._readiness = readiness
+    if crowded:
+        builder._forecast = WithVerdict(builder._forecast, Verdict.AT_RISK)  # type: ignore[assignment]
     return await builder.build(TENANT, "checkout", TODAY, report_id="rep-1", note=NOTE)
 
 
@@ -231,5 +262,6 @@ if __name__ == "__main__":
     for stem, verdict in DAYS.items():
         for name, rendered in formats(asyncio.run(full_report(verdict))).items():
             (out / f"{stem}.{name}").write_bytes(rendered.encode())
-    for name, rendered in formats(asyncio.run(readiness_report())).items():
-        (out / f"{READINESS_DAY}.{name}").write_bytes(rendered.encode())
+    for stem, crowded in ((READINESS_DAY, False), (CROWDED_DAY, True)):
+        for name, rendered in formats(asyncio.run(readiness_report(crowded=crowded))).items():
+            (out / f"{stem}.{name}").write_bytes(rendered.encode())
