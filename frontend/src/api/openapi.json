@@ -7035,6 +7035,1041 @@
         }
       }
     },
+    "/projects/{project_id}/readiness": {
+      "get": {
+        "tags": ["readiness"],
+        "summary": "Project Readiness",
+        "operationId": "project_readiness_projects__project_id__readiness_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Release Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessBoardResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pods/{pod_id}/readiness": {
+      "get": {
+        "tags": ["readiness"],
+        "summary": "Pod Readiness",
+        "operationId": "pod_readiness_pods__pod_id__readiness_get",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessBoardResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/readiness/run": {
+      "post": {
+        "tags": ["readiness"],
+        "summary": "Run Project",
+        "operationId": "run_project_projects__project_id__readiness_run_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Release Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pods/{pod_id}/readiness/run": {
+      "post": {
+        "tags": ["readiness"],
+        "summary": "Run Pod",
+        "operationId": "run_pod_pods__pod_id__readiness_run_post",
+        "parameters": [
+          {
+            "name": "pod_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readiness-findings/{finding_id}/link": {
+      "post": {
+        "tags": ["readiness"],
+        "summary": "Link",
+        "operationId": "link_readiness_findings__finding_id__link_post",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Finding Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadinessLinkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessFindingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readiness-findings/{finding_id}/not-applicable": {
+      "post": {
+        "tags": ["readiness"],
+        "summary": "Not Applicable",
+        "operationId": "not_applicable_readiness_findings__finding_id__not_applicable_post",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Finding Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadinessReasonRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessFindingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readiness-findings/{finding_id}/reopen": {
+      "post": {
+        "tags": ["readiness"],
+        "summary": "Reopen",
+        "operationId": "reopen_readiness_findings__finding_id__reopen_post",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Finding Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessFindingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readiness-findings/{finding_id}/draft": {
+      "post": {
+        "tags": ["readiness"],
+        "summary": "Draft Now",
+        "description": "Draft an issue on request, for a tenant whose agent drafts none by itself.",
+        "operationId": "draft_now_readiness_findings__finding_id__draft_post",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Finding Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessFindingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readiness-findings/{finding_id}/history": {
+      "get": {
+        "tags": ["readiness"],
+        "summary": "History",
+        "operationId": "history_readiness_findings__finding_id__history_get",
+        "parameters": [
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Finding Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessHistoryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readiness-suggestions/{suggestion_id}": {
+      "put": {
+        "tags": ["readiness"],
+        "summary": "Edit Draft",
+        "operationId": "edit_draft_readiness_suggestions__suggestion_id__put",
+        "parameters": [
+          {
+            "name": "suggestion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Suggestion Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadinessDraftUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessFindingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readiness-suggestions/{suggestion_id}/dismiss": {
+      "post": {
+        "tags": ["readiness"],
+        "summary": "Dismiss",
+        "operationId": "dismiss_readiness_suggestions__suggestion_id__dismiss_post",
+        "parameters": [
+          {
+            "name": "suggestion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Suggestion Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadinessReasonRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessFindingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/readiness-suggestions/{suggestion_id}/create": {
+      "post": {
+        "tags": ["readiness"],
+        "summary": "Create",
+        "description": "Create one approved draft in Jira. 201 when created, 200 when it already was.",
+        "operationId": "create_readiness_suggestions__suggestion_id__create_post",
+        "parameters": [
+          {
+            "name": "suggestion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Suggestion Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadinessCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessCreateResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Already created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessCreateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/readiness": {
+      "get": {
+        "tags": ["readiness"],
+        "summary": "Readiness Config",
+        "operationId": "readiness_config_config_readiness_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/readiness/settings": {
+      "put": {
+        "tags": ["readiness"],
+        "summary": "Save Settings",
+        "operationId": "save_settings_config_readiness_settings_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadinessSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessSettingsDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/readiness/criteria": {
+      "put": {
+        "tags": ["readiness"],
+        "summary": "Save Criterion",
+        "description": "Create a criterion (empty id, or an example's id) or replace the one with that id.",
+        "operationId": "save_criterion_config_readiness_criteria_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadinessCriterionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessCriterionDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/readiness/criteria/{criterion_id}": {
+      "delete": {
+        "tags": ["readiness"],
+        "summary": "Remove Criterion",
+        "operationId": "remove_criterion_config_readiness_criteria__criterion_id__delete",
+        "parameters": [
+          {
+            "name": "criterion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Criterion Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/readiness/criteria/preview": {
+      "post": {
+        "tags": ["readiness"],
+        "summary": "Preview Criterion",
+        "description": "What the agent would find on one project with this criterion. Writes nothing.",
+        "operationId": "preview_criterion_config_readiness_criteria_preview_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadinessPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessPreviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/day-reports": {
       "get": {
         "tags": ["reports"],
@@ -10263,6 +11298,11 @@
   },
   "components": {
     "schemas": {
+      "AppliesTo": {
+        "type": "string",
+        "enum": ["release", "project", "pod"],
+        "title": "AppliesTo"
+      },
       "AskRequest": {
         "properties": {
           "question": {
@@ -12907,6 +13947,16 @@
         "required": ["dead_letters"],
         "title": "DeadLettersResponse"
       },
+      "DecidedBy": {
+        "type": "string",
+        "enum": ["rules", "model", "person"],
+        "title": "DecidedBy"
+      },
+      "DecisionKind": {
+        "type": "string",
+        "enum": ["not_applicable", "linked"],
+        "title": "DecisionKind"
+      },
       "DeliveryDateRequest": {
         "properties": {
           "target_date": {
@@ -13941,6 +14991,11 @@
         "type": "string",
         "enum": ["text", "url", "email", "number", "select", "secret"],
         "title": "FieldKind"
+      },
+      "FindingState": {
+        "type": "string",
+        "enum": ["covered", "missing", "unsure"],
+        "title": "FindingState"
       },
       "FocusItemDto": {
         "properties": {
@@ -15301,6 +16356,11 @@
         "type": "object",
         "required": ["success", "message", "redirect_url"],
         "title": "LogoutResponse"
+      },
+      "MatcherKind": {
+        "type": "string",
+        "enum": ["label", "issue_type", "title_phrase", "title_words", "epic"],
+        "title": "MatcherKind"
       },
       "MatrixSource": {
         "type": "string",
@@ -17087,6 +18147,1303 @@
         "enum": ["green", "amber", "red", "unknown"],
         "title": "Rag"
       },
+      "ReadinessActionsDto": {
+        "properties": {
+          "create": {
+            "type": "boolean",
+            "title": "Create"
+          },
+          "create_off_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Create Off Reason"
+          },
+          "link": {
+            "type": "boolean",
+            "title": "Link"
+          },
+          "not_applicable": {
+            "type": "boolean",
+            "title": "Not Applicable"
+          },
+          "dismiss": {
+            "type": "boolean",
+            "title": "Dismiss"
+          },
+          "edit": {
+            "type": "boolean",
+            "title": "Edit"
+          },
+          "reopen": {
+            "type": "boolean",
+            "title": "Reopen"
+          },
+          "draft": {
+            "type": "boolean",
+            "title": "Draft"
+          }
+        },
+        "type": "object",
+        "required": [
+          "create",
+          "create_off_reason",
+          "link",
+          "not_applicable",
+          "dismiss",
+          "edit",
+          "reopen",
+          "draft"
+        ],
+        "title": "ReadinessActionsDto"
+      },
+      "ReadinessAgentDto": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "create_in_jira": {
+            "type": "boolean",
+            "title": "Create In Jira"
+          },
+          "writeback_enabled": {
+            "type": "boolean",
+            "title": "Writeback Enabled"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "last_run_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/core__domain__release_readiness__RunStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data_as_of": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data As Of"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "create_in_jira",
+          "writeback_enabled",
+          "last_run_at",
+          "last_run_status",
+          "data_as_of",
+          "stale"
+        ],
+        "title": "ReadinessAgentDto"
+      },
+      "ReadinessBoardResponse": {
+        "properties": {
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "pod_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pod Id"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "scope_name": {
+            "type": "string",
+            "title": "Scope Name"
+          },
+          "agent": {
+            "$ref": "#/components/schemas/ReadinessAgentDto"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ReadinessSummaryDto"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessFindingResponse"
+            },
+            "type": "array",
+            "title": "Findings"
+          },
+          "releases": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessReleaseLineDto"
+            },
+            "type": "array",
+            "title": "Releases"
+          },
+          "important": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Important"
+          },
+          "can_run": {
+            "type": "boolean",
+            "title": "Can Run"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "pod_id",
+          "release_id",
+          "scope_name",
+          "agent",
+          "summary",
+          "findings",
+          "releases",
+          "important",
+          "can_run"
+        ],
+        "title": "ReadinessBoardResponse",
+        "description": "A project's (or a release's, or a pod's) criteria and where each stands."
+      },
+      "ReadinessCandidateDto": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "title": "Issue Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "why": {
+            "$ref": "#/components/schemas/MatcherKind"
+          }
+        },
+        "type": "object",
+        "required": ["issue_key", "title", "why"],
+        "title": "ReadinessCandidateDto"
+      },
+      "ReadinessConfigResponse": {
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/ReadinessSettingsDto"
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default"
+          },
+          "criteria": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessCriterionDto"
+            },
+            "type": "array",
+            "title": "Criteria"
+          },
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessCriterionDto"
+            },
+            "type": "array",
+            "title": "Examples"
+          },
+          "writeback_enabled": {
+            "type": "boolean",
+            "title": "Writeback Enabled"
+          },
+          "waive_roles": {
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "type": "array",
+            "title": "Waive Roles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "settings",
+          "is_default",
+          "criteria",
+          "examples",
+          "writeback_enabled",
+          "waive_roles"
+        ],
+        "title": "ReadinessConfigResponse"
+      },
+      "ReadinessCreateRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The draft's version the person approved."
+          }
+        },
+        "type": "object",
+        "required": ["version"],
+        "title": "ReadinessCreateRequest"
+      },
+      "ReadinessCreateResponse": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "title": "Issue Key"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "created": {
+            "type": "boolean",
+            "title": "Created"
+          },
+          "finding": {
+            "$ref": "#/components/schemas/ReadinessFindingResponse"
+          }
+        },
+        "type": "object",
+        "required": ["issue_key", "url", "created", "finding"],
+        "title": "ReadinessCreateResponse"
+      },
+      "ReadinessCriterionDto": {
+        "properties": {
+          "criterion_id": {
+            "type": "string",
+            "maxLength": 80,
+            "title": "Criterion Id",
+            "description": "Empty creates one; an example's id adds it.",
+            "default": ""
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Read only: +1 on every save.",
+            "default": 0
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "evidence": {
+            "type": "string",
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Evidence"
+          },
+          "applies_to": {
+            "$ref": "#/components/schemas/AppliesTo"
+          },
+          "required_before": {
+            "$ref": "#/components/schemas/DeliveryStage",
+            "default": "production"
+          },
+          "lead_working_days": {
+            "type": "integer",
+            "maximum": 60.0,
+            "minimum": 0.0,
+            "title": "Lead Working Days",
+            "default": 10
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity",
+            "default": "blocking"
+          },
+          "needs_done": {
+            "type": "boolean",
+            "title": "Needs Done",
+            "default": true
+          },
+          "when_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "When Labels"
+          },
+          "when_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "When Types"
+          },
+          "matchers": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessMatcherDto"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Matchers"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/ReadinessDraftTemplateDto"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": ["name", "evidence", "applies_to", "matchers"],
+        "title": "ReadinessCriterionDto"
+      },
+      "ReadinessCriterionSummaryDto": {
+        "properties": {
+          "criterion_id": {
+            "type": "string",
+            "title": "Criterion Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "required_before": {
+            "$ref": "#/components/schemas/DeliveryStage"
+          },
+          "evidence": {
+            "type": "string",
+            "title": "Evidence"
+          },
+          "needs_done": {
+            "type": "boolean",
+            "title": "Needs Done"
+          }
+        },
+        "type": "object",
+        "required": [
+          "criterion_id",
+          "name",
+          "severity",
+          "required_before",
+          "evidence",
+          "needs_done"
+        ],
+        "title": "ReadinessCriterionSummaryDto"
+      },
+      "ReadinessDecisionDto": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/DecisionKind"
+          },
+          "by": {
+            "type": "string",
+            "title": "By"
+          },
+          "by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By Name"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "issue_key": {
+            "type": "string",
+            "title": "Issue Key"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          },
+          "created": {
+            "type": "boolean",
+            "title": "Created"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "by",
+          "by_name",
+          "at",
+          "reason",
+          "issue_key",
+          "url",
+          "note",
+          "created"
+        ],
+        "title": "ReadinessDecisionDto"
+      },
+      "ReadinessDismissalDto": {
+        "properties": {
+          "by": {
+            "type": "string",
+            "title": "By"
+          },
+          "by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "By Name"
+          },
+          "at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": ["by", "by_name", "at", "reason"],
+        "title": "ReadinessDismissalDto"
+      },
+      "ReadinessDraftDto": {
+        "properties": {
+          "project_key": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Project Key"
+          },
+          "issue_type": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Issue Type"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Summary"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Description",
+            "default": ""
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Labels"
+          }
+        },
+        "type": "object",
+        "required": ["project_key", "issue_type", "summary"],
+        "title": "ReadinessDraftDto"
+      },
+      "ReadinessDraftTemplateDto": {
+        "properties": {
+          "project_key": {
+            "type": "string",
+            "maxLength": 20,
+            "title": "Project Key",
+            "description": "Empty drafts into the scope's own Jira project.",
+            "default": ""
+          },
+          "issue_type": {
+            "type": "string",
+            "maxLength": 60,
+            "title": "Issue Type",
+            "description": "Empty takes the tenant's.",
+            "default": ""
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Summary",
+            "default": "{criterion} for {scope}"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Description",
+            "description": "Empty writes OpenProgram's own text.",
+            "default": ""
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Labels"
+          }
+        },
+        "type": "object",
+        "title": "ReadinessDraftTemplateDto"
+      },
+      "ReadinessDraftUpdateRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "The draft's version as it was opened."
+          },
+          "draft": {
+            "$ref": "#/components/schemas/ReadinessDraftDto"
+          }
+        },
+        "type": "object",
+        "required": ["version", "draft"],
+        "title": "ReadinessDraftUpdateRequest"
+      },
+      "ReadinessEvidenceDto": {
+        "properties": {
+          "issue_key": {
+            "type": "string",
+            "title": "Issue Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "done": {
+            "type": "boolean",
+            "title": "Done"
+          },
+          "how": {
+            "type": "string",
+            "title": "How",
+            "description": "How it was found: \"label security-review\", \"linked\"."
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "A record outside Jira a person linked; empty for an issue."
+          },
+          "note": {
+            "type": "string",
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": ["issue_key", "title", "status", "done", "how", "url", "note"],
+        "title": "ReadinessEvidenceDto"
+      },
+      "ReadinessFindingResponse": {
+        "properties": {
+          "finding_id": {
+            "type": "string",
+            "title": "Finding Id"
+          },
+          "criterion": {
+            "$ref": "#/components/schemas/ReadinessCriterionSummaryDto"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ReadinessScopeDto"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ReadinessShownState"
+          },
+          "done": {
+            "type": "boolean",
+            "title": "Done"
+          },
+          "decided_by": {
+            "$ref": "#/components/schemas/DecidedBy"
+          },
+          "held": {
+            "type": "boolean",
+            "title": "Held"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessEvidenceDto"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessCandidateDto"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "urgency": {
+            "$ref": "#/components/schemas/ReadinessUrgencyDto"
+          },
+          "person_decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReadinessDecisionDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReadinessSuggestionDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "can": {
+            "$ref": "#/components/schemas/ReadinessActionsDto"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Checked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "finding_id",
+          "criterion",
+          "scope",
+          "state",
+          "done",
+          "decided_by",
+          "held",
+          "evidence",
+          "candidates",
+          "reason",
+          "urgency",
+          "person_decision",
+          "suggestion",
+          "can",
+          "checked_at"
+        ],
+        "title": "ReadinessFindingResponse"
+      },
+      "ReadinessHistoryEntryDto": {
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "actor": {
+            "type": "string",
+            "title": "Actor"
+          },
+          "actor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Name"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": ["at", "actor", "actor_name", "action", "reason"],
+        "title": "ReadinessHistoryEntryDto"
+      },
+      "ReadinessHistoryResponse": {
+        "properties": {
+          "finding_id": {
+            "type": "string",
+            "title": "Finding Id"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessHistoryEntryDto"
+            },
+            "type": "array",
+            "title": "Entries"
+          }
+        },
+        "type": "object",
+        "required": ["finding_id", "entries"],
+        "title": "ReadinessHistoryResponse"
+      },
+      "ReadinessLinkRequest": {
+        "properties": {
+          "issue_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issue Key"
+          },
+          "evidence_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Url"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "ReadinessLinkRequest"
+      },
+      "ReadinessMatcherDto": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/MatcherKind"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Value"
+          },
+          "strength": {
+            "$ref": "#/components/schemas/Strength",
+            "description": "evidence: a match covers the criterion; candidate: it only makes it unsure."
+          }
+        },
+        "type": "object",
+        "required": ["kind", "value", "strength"],
+        "title": "ReadinessMatcherDto"
+      },
+      "ReadinessPreviewRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Project Id"
+          },
+          "criterion": {
+            "$ref": "#/components/schemas/ReadinessCriterionDto"
+          }
+        },
+        "type": "object",
+        "required": ["project_id", "criterion"],
+        "title": "ReadinessPreviewRequest"
+      },
+      "ReadinessPreviewResponse": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessPreviewRowResponse"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": ["rows"],
+        "title": "ReadinessPreviewResponse"
+      },
+      "ReadinessPreviewRowResponse": {
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/ReadinessScopeDto"
+          },
+          "applies": {
+            "type": "boolean",
+            "title": "Applies"
+          },
+          "state": {
+            "$ref": "#/components/schemas/FindingState"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessEvidenceDto"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessCandidateDto"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "urgency": {
+            "$ref": "#/components/schemas/UrgencyKind"
+          },
+          "due_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due On"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scope",
+          "applies",
+          "state",
+          "evidence",
+          "candidates",
+          "reason",
+          "urgency",
+          "due_on"
+        ],
+        "title": "ReadinessPreviewRowResponse"
+      },
+      "ReadinessReasonRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 300,
+            "title": "Reason",
+            "description": "3 to 300 characters."
+          }
+        },
+        "type": "object",
+        "required": ["reason"],
+        "title": "ReadinessReasonRequest"
+      },
+      "ReadinessReleaseLineDto": {
+        "properties": {
+          "release_id": {
+            "type": "string",
+            "title": "Release Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing"
+          },
+          "unsure": {
+            "type": "integer",
+            "title": "Unsure"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": ["release_id", "name", "missing", "unsure", "total"],
+        "title": "ReadinessReleaseLineDto"
+      },
+      "ReadinessRunResponse": {
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/ReadinessRunSummaryDto"
+          },
+          "board": {
+            "$ref": "#/components/schemas/ReadinessBoardResponse"
+          }
+        },
+        "type": "object",
+        "required": ["run", "board"],
+        "title": "ReadinessRunResponse"
+      },
+      "ReadinessRunSummaryDto": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/core__domain__release_readiness__RunStatus"
+          },
+          "scopes": {
+            "type": "integer",
+            "title": "Scopes"
+          },
+          "changed": {
+            "type": "integer",
+            "title": "Changed"
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing"
+          },
+          "unsure": {
+            "type": "integer",
+            "title": "Unsure"
+          },
+          "covered": {
+            "type": "integer",
+            "title": "Covered"
+          }
+        },
+        "type": "object",
+        "required": ["status", "scopes", "changed", "missing", "unsure", "covered"],
+        "title": "ReadinessRunSummaryDto"
+      },
+      "ReadinessScopeDto": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ScopeKind"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "id", "name"],
+        "title": "ReadinessScopeDto"
+      },
+      "ReadinessSettingsDto": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "The agent checks scopes; off, a tick does nothing."
+          },
+          "auto_suggest": {
+            "type": "boolean",
+            "title": "Auto Suggest",
+            "description": "Draft a Jira issue for every missing criterion."
+          },
+          "create_in_jira": {
+            "type": "boolean",
+            "title": "Create In Jira",
+            "description": "Lets a person press Create in Jira; Jira write-back must be on too."
+          },
+          "issue_type": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Issue Type"
+          },
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Labels"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "required": ["enabled", "auto_suggest", "create_in_jira", "issue_type"],
+        "title": "ReadinessSettingsDto"
+      },
+      "ReadinessShownState": {
+        "type": "string",
+        "enum": ["covered", "missing", "unsure", "not_applicable"],
+        "title": "ReadinessShownState"
+      },
+      "ReadinessSuggestionDto": {
+        "properties": {
+          "suggestion_id": {
+            "type": "string",
+            "title": "Suggestion Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SuggestionStatus"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/ReadinessDraftDto"
+          },
+          "marker_label": {
+            "type": "string",
+            "title": "Marker Label"
+          },
+          "created_issue_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Issue Key"
+          },
+          "created_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By Name"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "dismissed": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReadinessDismissalDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "suggestion_id",
+          "status",
+          "version",
+          "draft",
+          "marker_label",
+          "created_issue_key",
+          "created_by_name",
+          "created_at",
+          "dismissed"
+        ],
+        "title": "ReadinessSuggestionDto"
+      },
+      "ReadinessSummaryDto": {
+        "properties": {
+          "blocking_missing": {
+            "type": "integer",
+            "title": "Blocking Missing"
+          },
+          "missing": {
+            "type": "integer",
+            "title": "Missing"
+          },
+          "unsure": {
+            "type": "integer",
+            "title": "Unsure"
+          },
+          "covered": {
+            "type": "integer",
+            "title": "Covered"
+          },
+          "not_applicable": {
+            "type": "integer",
+            "title": "Not Applicable"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": ["blocking_missing", "missing", "unsure", "covered", "not_applicable", "total"],
+        "title": "ReadinessSummaryDto"
+      },
+      "ReadinessUrgencyDto": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/UrgencyKind"
+          },
+          "due_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due On"
+          },
+          "working_days_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Working Days Left"
+          },
+          "delivery_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Date"
+          },
+          "stage_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage Key"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "due_on", "working_days_left", "delivery_date", "stage_key"],
+        "title": "ReadinessUrgencyDto"
+      },
       "ReadyResponse": {
         "properties": {
           "status": {
@@ -17669,6 +20026,11 @@
             },
             "type": "array",
             "title": "Lines"
+          },
+          "readiness_gaps": {
+            "type": "integer",
+            "title": "Readiness Gaps",
+            "default": 0
           }
         },
         "type": "object",
@@ -17887,7 +20249,7 @@
             "$ref": "#/components/schemas/RunTrigger"
           },
           "status": {
-            "$ref": "#/components/schemas/RunStatus"
+            "$ref": "#/components/schemas/core__domain__reports__RunStatus"
           },
           "started_at": {
             "type": "string",
@@ -18762,11 +21124,6 @@
         ],
         "title": "RollupFactorDto"
       },
-      "RunStatus": {
-        "type": "string",
-        "enum": ["sending", "sent", "partial", "failed"],
-        "title": "RunStatus"
-      },
       "RunTrigger": {
         "type": "string",
         "enum": ["schedule", "manual"],
@@ -18873,6 +21230,11 @@
         "title": "ScopeDeliveryResponse",
         "description": "One scope's committed date and forecast: a project, a pod's part, or a release."
       },
+      "ScopeKind": {
+        "type": "string",
+        "enum": ["project", "release", "pod"],
+        "title": "ScopeKind"
+      },
       "SelfCheckinPreferenceUpdateRequest": {
         "properties": {
           "timezone": {
@@ -18905,6 +21267,11 @@
         "type": "object",
         "title": "SelfCheckinPreferenceUpdateRequest",
         "description": "The part of their own check-in preference a person may change.\n\nOnly the days they are asked and their time zone. The reply windows stay\nwith an admin (``PUT /config/members/{id}/checkin-preference``) because they\ndecide when a missed check-in reaches the scrum master and manager. The\ncheck-in time is left out because check-ins go out at one tenant-wide time,\nso a personal time would change nothing. A request carrying any other field\nis rejected, never silently ignored. A field sent as ``null`` goes back to\nthe team default."
+      },
+      "Severity": {
+        "type": "string",
+        "enum": ["blocking", "advisory"],
+        "title": "Severity"
       },
       "StageStatusesDto": {
         "properties": {
@@ -18976,6 +21343,16 @@
         "type": "string",
         "enum": ["confirmed", "partial", "inferred", "stale", "unknown"],
         "title": "StatusSource"
+      },
+      "Strength": {
+        "type": "string",
+        "enum": ["evidence", "candidate"],
+        "title": "Strength"
+      },
+      "SuggestionStatus": {
+        "type": "string",
+        "enum": ["open", "creating", "created", "dismissed", "superseded"],
+        "title": "SuggestionStatus"
       },
       "SyncHealth": {
         "type": "string",
@@ -19699,6 +22076,11 @@
         "type": "object",
         "required": ["id", "name", "missing"],
         "title": "UnmappedMemberResponse"
+      },
+      "UrgencyKind": {
+        "type": "string",
+        "enum": ["later", "due_soon", "overdue", "stage_reached", "no_date"],
+        "title": "UrgencyKind"
       },
       "ValidationError": {
         "properties": {
@@ -20468,6 +22850,16 @@
         "type": "object",
         "required": ["consent"],
         "title": "WritebackConsentUpdateRequest"
+      },
+      "core__domain__release_readiness__RunStatus": {
+        "type": "string",
+        "enum": ["running", "ok", "partial", "failed", "off"],
+        "title": "RunStatus"
+      },
+      "core__domain__reports__RunStatus": {
+        "type": "string",
+        "enum": ["sending", "sent", "partial", "failed"],
+        "title": "RunStatus"
       }
     }
   }

@@ -18,10 +18,20 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+from core.application.release_readiness_service import ReleaseReadinessService
 from core.domain.delivery import DeliveryStage, RequirementsSnapshot
 from core.domain.escalation_matrix import default_matrix
 from core.domain.forecast import CommitmentScope, CommitmentScopeKind, DateChange, Verdict
 from core.domain.gates import GateItem, ItemSource, ItemStatus, QuestionStatus, TrackedQuestion
+from core.domain.release_readiness import (
+    AppliesTo,
+    Matcher,
+    MatcherKind,
+    ReadinessSettings,
+    ReleaseCriterion,
+    Severity,
+    Strength,
+)
 from core.domain.reports import DayReport, DayReportNote, render_text
 from infra.adapters.reports.render import email_html, slack_text, teams_payload
 from infra.registry import ServiceRegistry
@@ -158,6 +168,62 @@ DAYS: dict[str, Verdict | None] = {
     "day_report_full_day_at_risk": Verdict.AT_RISK,
 }
 
+#: The full day with release readiness on and two blocking gaps close to their date.
+READINESS_DAY = "day_report_readiness_gap"
+
+
+async def readiness_report() -> DayReport:
+    """The full day, with release criteria checked: a blocking security review the
+    project lacks while CHK-2 is already in production, the Payments Pod's on-call
+    handover due within four working days, and an advisory check the report leaves out."""
+    registry = await a_full_day()
+    await registry.commitment_repository().append(
+        DateChange(
+            tenant_id=TENANT,
+            scope=CommitmentScope(
+                kind=CommitmentScopeKind.POD, id="pod-pay", project_id="checkout"
+            ),
+            target_date=date(2026, 10, 23),
+            changed_at=datetime(2026, 10, 1, 9, 0, tzinfo=UTC),
+            changed_by="dev-priya",
+        )
+    )
+    readiness = replace_service_clock(registry)
+    await registry.release_readiness_repository().save_settings(
+        ReadinessSettings(tenant_id=TENANT, enabled=True)
+    )
+    for name, applies_to, value, severity in (
+        ("Security review", AppliesTo.RELEASE, "security-review", Severity.BLOCKING),
+        ("On-call handover", AppliesTo.POD, "on-call", Severity.BLOCKING),
+        ("Accessibility check", AppliesTo.RELEASE, "accessibility", Severity.ADVISORY),
+    ):
+        await readiness.save_criterion(
+            ReleaseCriterion(
+                tenant_id=TENANT,
+                criterion_id="",
+                name=name,
+                evidence=f"A {name.lower()} before production.",
+                applies_to=applies_to,
+                severity=severity,
+                matchers=(
+                    Matcher(kind=MatcherKind.LABEL, value=value, strength=Strength.EVIDENCE),
+                ),
+            ),
+            actor="admin",
+        )
+    await readiness.run_tenant(TENANT, slot="2026-10-05T07:45:00+00:00")
+    builder = registry.day_report_builder()
+    builder._readiness = readiness
+    return await builder.build(TENANT, "checkout", TODAY, report_id="rep-1", note=NOTE)
+
+
+def replace_service_clock(registry: ServiceRegistry) -> ReleaseReadinessService:
+    """The registry's readiness service, on the report's day and clock."""
+    service = registry.release_readiness_service()
+    service._clock = lambda: NOW
+    service._today = lambda: TODAY
+    return service
+
 
 if __name__ == "__main__":
     out = Path(sys.argv[1])
@@ -165,3 +231,5 @@ if __name__ == "__main__":
     for stem, verdict in DAYS.items():
         for name, rendered in formats(asyncio.run(full_report(verdict))).items():
             (out / f"{stem}.{name}").write_bytes(rendered.encode())
+    for name, rendered in formats(asyncio.run(readiness_report())).items():
+        (out / f"{READINESS_DAY}.{name}").write_bytes(rendered.encode())

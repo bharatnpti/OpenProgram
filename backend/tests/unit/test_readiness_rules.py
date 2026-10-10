@@ -27,6 +27,7 @@ from core.domain.release_readiness import (
     ScopeRef,
     Severity,
     Strength,
+    Urgency,
     UrgencyKind,
     applies_to_scope,
     created_footer,
@@ -95,7 +96,9 @@ def _judge(criterion: ReleaseCriterion, *issues: ScopeIssue, **kwargs: object) -
             "type Security Review",
         ),
         (
-            Matcher(kind=MatcherKind.TITLE_PHRASE, value="data protection impact", strength=EVIDENCE),
+            Matcher(
+                kind=MatcherKind.TITLE_PHRASE, value="data protection impact", strength=EVIDENCE
+            ),
             _issue("CHK-1", "Data-protection  impact assessment"),
             'says "data protection impact"',
         ),
@@ -222,7 +225,9 @@ def test_an_only_where_condition_needs_a_counted_issue_with_the_label_or_type() 
 MONDAY = date(2026, 10, 5)
 
 
-def _urgency(target: date | None, *stages: tuple[str, DeliveryStage], ready: bool = False):  # type: ignore[no-untyped-def]
+def _urgency(
+    target: date | None, *stages: tuple[str, DeliveryStage], ready: bool = False
+) -> Urgency:
     return urgency_of(_criterion(), ready=ready, target=target, stages=stages, today=MONDAY)
 
 
@@ -253,7 +258,9 @@ def test_every_urgency(
 
 
 def test_a_ready_criterion_is_never_urgent_and_the_stage_names_its_requirement() -> None:
-    reached = _urgency(None, ("CHK-12", DeliveryStage.PRODUCTION), ("CHK-3", DeliveryStage.PRODUCTION))
+    reached = _urgency(
+        None, ("CHK-12", DeliveryStage.PRODUCTION), ("CHK-3", DeliveryStage.PRODUCTION)
+    )
 
     assert reached.stage_key == "CHK-3"
     assert _urgency(date(2026, 10, 9), ("CHK-3", DeliveryStage.PRODUCTION), ready=True).kind is (
@@ -322,9 +329,7 @@ def test_a_template_fills_only_known_words_and_stays_short_enough() -> None:
     with pytest.raises(ReadinessError, match=r"uses \{assignee\}"):
         validated_criterion(_criterion(draft=DraftTemplate(summary="{assignee}: {criterion}")))
     with pytest.raises(ReadinessError, match="past 255 characters"):
-        validated_criterion(
-            _criterion(draft=DraftTemplate(summary=" ".join(["{scope}"] * 4)))
-        )
+        validated_criterion(_criterion(draft=DraftTemplate(summary=" ".join(["{scope}"] * 4))))
 
 
 def test_a_criterion_is_tidied_or_refused_in_one_sentence() -> None:
@@ -348,7 +353,11 @@ def test_a_criterion_is_tidied_or_refused_in_one_sentence() -> None:
 
 def test_a_person_edit_of_a_draft_is_checked() -> None:
     draft = Draft(
-        project_key="chk", issue_type="Task", summary=" Security  review ", description="", labels=()
+        project_key="chk",
+        issue_type="Task",
+        summary=" Security  review ",
+        description="",
+        labels=(),
     )
     assert validated_draft(draft).project_key == "CHK"
     with pytest.raises(ReadinessError, match="no spaces"):

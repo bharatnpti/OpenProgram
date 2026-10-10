@@ -1541,6 +1541,307 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/projects/{project_id}/readiness": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Project Readiness */
+    get: operations["project_readiness_projects__project_id__readiness_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/pods/{pod_id}/readiness": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Pod Readiness */
+    get: operations["pod_readiness_pods__pod_id__readiness_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/projects/{project_id}/readiness/run": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Run Project */
+    post: operations["run_project_projects__project_id__readiness_run_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/pods/{pod_id}/readiness/run": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Run Pod */
+    post: operations["run_pod_pods__pod_id__readiness_run_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/readiness-findings/{finding_id}/link": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Link */
+    post: operations["link_readiness_findings__finding_id__link_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/readiness-findings/{finding_id}/not-applicable": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Not Applicable */
+    post: operations["not_applicable_readiness_findings__finding_id__not_applicable_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/readiness-findings/{finding_id}/reopen": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Reopen */
+    post: operations["reopen_readiness_findings__finding_id__reopen_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/readiness-findings/{finding_id}/draft": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Draft Now
+     * @description Draft an issue on request, for a tenant whose agent drafts none by itself.
+     */
+    post: operations["draft_now_readiness_findings__finding_id__draft_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/readiness-findings/{finding_id}/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** History */
+    get: operations["history_readiness_findings__finding_id__history_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/readiness-suggestions/{suggestion_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Edit Draft */
+    put: operations["edit_draft_readiness_suggestions__suggestion_id__put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/readiness-suggestions/{suggestion_id}/dismiss": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Dismiss */
+    post: operations["dismiss_readiness_suggestions__suggestion_id__dismiss_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/readiness-suggestions/{suggestion_id}/create": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create
+     * @description Create one approved draft in Jira. 201 when created, 200 when it already was.
+     */
+    post: operations["create_readiness_suggestions__suggestion_id__create_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/readiness": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Readiness Config */
+    get: operations["readiness_config_config_readiness_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/readiness/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Save Settings */
+    put: operations["save_settings_config_readiness_settings_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/readiness/criteria": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Save Criterion
+     * @description Create a criterion (empty id, or an example's id) or replace the one with that id.
+     */
+    put: operations["save_criterion_config_readiness_criteria_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/readiness/criteria/{criterion_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Remove Criterion */
+    delete: operations["remove_criterion_config_readiness_criteria__criterion_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/config/readiness/criteria/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Preview Criterion
+     * @description What the agent would find on one project with this criterion. Writes nothing.
+     */
+    post: operations["preview_criterion_config_readiness_criteria_preview_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/day-reports": {
     parameters: {
       query?: never;
@@ -2397,6 +2698,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /**
+     * AppliesTo
+     * @enum {string}
+     */
+    AppliesTo: "release" | "project" | "pod";
     /** AskRequest */
     AskRequest: {
       /** Question */
@@ -3386,6 +3692,16 @@ export interface components {
       /** Dead Letters */
       dead_letters: components["schemas"]["DeadLetterResponse"][];
     };
+    /**
+     * DecidedBy
+     * @enum {string}
+     */
+    DecidedBy: "rules" | "model" | "person";
+    /**
+     * DecisionKind
+     * @enum {string}
+     */
+    DecisionKind: "not_applicable" | "linked";
     /** DeliveryDateRequest */
     DeliveryDateRequest: {
       /**
@@ -3755,6 +4071,11 @@ export interface components {
      * @enum {string}
      */
     FieldKind: "text" | "url" | "email" | "number" | "select" | "secret";
+    /**
+     * FindingState
+     * @enum {string}
+     */
+    FindingState: "covered" | "missing" | "unsure";
     /** FocusItemDto */
     FocusItemDto: {
       /**
@@ -4269,6 +4590,11 @@ export interface components {
       /** Redirect Url */
       redirect_url: string;
     };
+    /**
+     * MatcherKind
+     * @enum {string}
+     */
+    MatcherKind: "label" | "issue_type" | "title_phrase" | "title_words" | "epic";
     /**
      * MatrixSource
      * @enum {string}
@@ -4993,6 +5319,496 @@ export interface components {
      * @enum {string}
      */
     Rag: "green" | "amber" | "red" | "unknown";
+    /** ReadinessActionsDto */
+    ReadinessActionsDto: {
+      /** Create */
+      create: boolean;
+      /** Create Off Reason */
+      create_off_reason: string | null;
+      /** Link */
+      link: boolean;
+      /** Not Applicable */
+      not_applicable: boolean;
+      /** Dismiss */
+      dismiss: boolean;
+      /** Edit */
+      edit: boolean;
+      /** Reopen */
+      reopen: boolean;
+      /** Draft */
+      draft: boolean;
+    };
+    /** ReadinessAgentDto */
+    ReadinessAgentDto: {
+      /** Enabled */
+      enabled: boolean;
+      /** Create In Jira */
+      create_in_jira: boolean;
+      /** Writeback Enabled */
+      writeback_enabled: boolean;
+      /** Last Run At */
+      last_run_at: string | null;
+      last_run_status: components["schemas"]["core__domain__release_readiness__RunStatus"] | null;
+      /** Data As Of */
+      data_as_of: string | null;
+      /** Stale */
+      stale: boolean;
+    };
+    /**
+     * ReadinessBoardResponse
+     * @description A project's (or a release's, or a pod's) criteria and where each stands.
+     */
+    ReadinessBoardResponse: {
+      /** Project Id */
+      project_id: string | null;
+      /** Pod Id */
+      pod_id: string | null;
+      /** Release Id */
+      release_id: string | null;
+      /** Scope Name */
+      scope_name: string;
+      agent: components["schemas"]["ReadinessAgentDto"];
+      summary: components["schemas"]["ReadinessSummaryDto"];
+      /** Findings */
+      findings: components["schemas"]["ReadinessFindingResponse"][];
+      /** Releases */
+      releases: components["schemas"]["ReadinessReleaseLineDto"][];
+      /** Important */
+      important: string[];
+      /** Can Run */
+      can_run: boolean;
+    };
+    /** ReadinessCandidateDto */
+    ReadinessCandidateDto: {
+      /** Issue Key */
+      issue_key: string;
+      /** Title */
+      title: string;
+      why: components["schemas"]["MatcherKind"];
+    };
+    /** ReadinessConfigResponse */
+    ReadinessConfigResponse: {
+      settings: components["schemas"]["ReadinessSettingsDto"];
+      /** Is Default */
+      is_default: boolean;
+      /** Criteria */
+      criteria: components["schemas"]["ReadinessCriterionDto"][];
+      /** Examples */
+      examples: components["schemas"]["ReadinessCriterionDto"][];
+      /** Writeback Enabled */
+      writeback_enabled: boolean;
+      /** Waive Roles */
+      waive_roles: components["schemas"]["Role"][];
+    };
+    /** ReadinessCreateRequest */
+    ReadinessCreateRequest: {
+      /**
+       * Version
+       * @description The draft's version the person approved.
+       */
+      version: number;
+    };
+    /** ReadinessCreateResponse */
+    ReadinessCreateResponse: {
+      /** Issue Key */
+      issue_key: string;
+      /** Url */
+      url: string | null;
+      /** Created */
+      created: boolean;
+      finding: components["schemas"]["ReadinessFindingResponse"];
+    };
+    /** ReadinessCriterionDto */
+    ReadinessCriterionDto: {
+      /**
+       * Criterion Id
+       * @description Empty creates one; an example's id adds it.
+       * @default
+       */
+      criterion_id: string;
+      /**
+       * Version
+       * @description Read only: +1 on every save.
+       * @default 0
+       */
+      version: number;
+      /** Name */
+      name: string;
+      /** Evidence */
+      evidence: string;
+      applies_to: components["schemas"]["AppliesTo"];
+      /** @default production */
+      required_before: components["schemas"]["DeliveryStage"];
+      /**
+       * Lead Working Days
+       * @default 10
+       */
+      lead_working_days: number;
+      /** @default blocking */
+      severity: components["schemas"]["Severity"];
+      /**
+       * Needs Done
+       * @default true
+       */
+      needs_done: boolean;
+      /** When Labels */
+      when_labels?: string[];
+      /** When Types */
+      when_types?: string[];
+      /** Matchers */
+      matchers: components["schemas"]["ReadinessMatcherDto"][];
+      draft?: components["schemas"]["ReadinessDraftTemplateDto"];
+      /**
+       * Enabled
+       * @default true
+       */
+      enabled: boolean;
+    };
+    /** ReadinessCriterionSummaryDto */
+    ReadinessCriterionSummaryDto: {
+      /** Criterion Id */
+      criterion_id: string;
+      /** Name */
+      name: string;
+      severity: components["schemas"]["Severity"];
+      required_before: components["schemas"]["DeliveryStage"];
+      /** Evidence */
+      evidence: string;
+      /** Needs Done */
+      needs_done: boolean;
+    };
+    /** ReadinessDecisionDto */
+    ReadinessDecisionDto: {
+      kind: components["schemas"]["DecisionKind"];
+      /** By */
+      by: string;
+      /** By Name */
+      by_name: string | null;
+      /**
+       * At
+       * Format: date-time
+       */
+      at: string;
+      /** Reason */
+      reason: string;
+      /** Issue Key */
+      issue_key: string;
+      /** Url */
+      url: string;
+      /** Note */
+      note: string;
+      /** Created */
+      created: boolean;
+    };
+    /** ReadinessDismissalDto */
+    ReadinessDismissalDto: {
+      /** By */
+      by: string;
+      /** By Name */
+      by_name: string | null;
+      /** At */
+      at: string | null;
+      /** Reason */
+      reason: string;
+    };
+    /** ReadinessDraftDto */
+    ReadinessDraftDto: {
+      /** Project Key */
+      project_key: string;
+      /** Issue Type */
+      issue_type: string;
+      /** Summary */
+      summary: string;
+      /**
+       * Description
+       * @default
+       */
+      description: string;
+      /** Labels */
+      labels?: string[];
+    };
+    /** ReadinessDraftTemplateDto */
+    ReadinessDraftTemplateDto: {
+      /**
+       * Project Key
+       * @description Empty drafts into the scope's own Jira project.
+       * @default
+       */
+      project_key: string;
+      /**
+       * Issue Type
+       * @description Empty takes the tenant's.
+       * @default
+       */
+      issue_type: string;
+      /**
+       * Summary
+       * @default {criterion} for {scope}
+       */
+      summary: string;
+      /**
+       * Description
+       * @description Empty writes OpenProgram's own text.
+       * @default
+       */
+      description: string;
+      /** Labels */
+      labels?: string[];
+    };
+    /** ReadinessDraftUpdateRequest */
+    ReadinessDraftUpdateRequest: {
+      /**
+       * Version
+       * @description The draft's version as it was opened.
+       */
+      version: number;
+      draft: components["schemas"]["ReadinessDraftDto"];
+    };
+    /** ReadinessEvidenceDto */
+    ReadinessEvidenceDto: {
+      /** Issue Key */
+      issue_key: string;
+      /** Title */
+      title: string;
+      /** Status */
+      status: string;
+      /** Done */
+      done: boolean;
+      /**
+       * How
+       * @description How it was found: "label security-review", "linked".
+       */
+      how: string;
+      /**
+       * Url
+       * @description A record outside Jira a person linked; empty for an issue.
+       */
+      url: string;
+      /** Note */
+      note: string;
+    };
+    /** ReadinessFindingResponse */
+    ReadinessFindingResponse: {
+      /** Finding Id */
+      finding_id: string;
+      criterion: components["schemas"]["ReadinessCriterionSummaryDto"];
+      scope: components["schemas"]["ReadinessScopeDto"];
+      state: components["schemas"]["ReadinessShownState"];
+      /** Done */
+      done: boolean;
+      decided_by: components["schemas"]["DecidedBy"];
+      /** Held */
+      held: boolean;
+      /** Evidence */
+      evidence: components["schemas"]["ReadinessEvidenceDto"][];
+      /** Candidates */
+      candidates: components["schemas"]["ReadinessCandidateDto"][];
+      /** Reason */
+      reason: string;
+      urgency: components["schemas"]["ReadinessUrgencyDto"];
+      person_decision: components["schemas"]["ReadinessDecisionDto"] | null;
+      suggestion: components["schemas"]["ReadinessSuggestionDto"] | null;
+      can: components["schemas"]["ReadinessActionsDto"];
+      /**
+       * Checked At
+       * Format: date-time
+       */
+      checked_at: string;
+    };
+    /** ReadinessHistoryEntryDto */
+    ReadinessHistoryEntryDto: {
+      /**
+       * At
+       * Format: date-time
+       */
+      at: string;
+      /** Actor */
+      actor: string;
+      /** Actor Name */
+      actor_name: string | null;
+      /** Action */
+      action: string;
+      /** Reason */
+      reason: string | null;
+    };
+    /** ReadinessHistoryResponse */
+    ReadinessHistoryResponse: {
+      /** Finding Id */
+      finding_id: string;
+      /** Entries */
+      entries: components["schemas"]["ReadinessHistoryEntryDto"][];
+    };
+    /** ReadinessLinkRequest */
+    ReadinessLinkRequest: {
+      /** Issue Key */
+      issue_key?: string | null;
+      /** Evidence Url */
+      evidence_url?: string | null;
+      /**
+       * Note
+       * @default
+       */
+      note: string;
+    };
+    /** ReadinessMatcherDto */
+    ReadinessMatcherDto: {
+      kind: components["schemas"]["MatcherKind"];
+      /** Value */
+      value: string;
+      /** @description evidence: a match covers the criterion; candidate: it only makes it unsure. */
+      strength: components["schemas"]["Strength"];
+    };
+    /** ReadinessPreviewRequest */
+    ReadinessPreviewRequest: {
+      /** Project Id */
+      project_id: string;
+      criterion: components["schemas"]["ReadinessCriterionDto"];
+    };
+    /** ReadinessPreviewResponse */
+    ReadinessPreviewResponse: {
+      /** Rows */
+      rows: components["schemas"]["ReadinessPreviewRowResponse"][];
+    };
+    /** ReadinessPreviewRowResponse */
+    ReadinessPreviewRowResponse: {
+      scope: components["schemas"]["ReadinessScopeDto"];
+      /** Applies */
+      applies: boolean;
+      state: components["schemas"]["FindingState"];
+      /** Evidence */
+      evidence: components["schemas"]["ReadinessEvidenceDto"][];
+      /** Candidates */
+      candidates: components["schemas"]["ReadinessCandidateDto"][];
+      /** Reason */
+      reason: string;
+      urgency: components["schemas"]["UrgencyKind"];
+      /** Due On */
+      due_on: string | null;
+    };
+    /** ReadinessReasonRequest */
+    ReadinessReasonRequest: {
+      /**
+       * Reason
+       * @description 3 to 300 characters.
+       */
+      reason: string;
+    };
+    /** ReadinessReleaseLineDto */
+    ReadinessReleaseLineDto: {
+      /** Release Id */
+      release_id: string;
+      /** Name */
+      name: string;
+      /** Missing */
+      missing: number;
+      /** Unsure */
+      unsure: number;
+      /** Total */
+      total: number;
+    };
+    /** ReadinessRunResponse */
+    ReadinessRunResponse: {
+      run: components["schemas"]["ReadinessRunSummaryDto"];
+      board: components["schemas"]["ReadinessBoardResponse"];
+    };
+    /** ReadinessRunSummaryDto */
+    ReadinessRunSummaryDto: {
+      status: components["schemas"]["core__domain__release_readiness__RunStatus"];
+      /** Scopes */
+      scopes: number;
+      /** Changed */
+      changed: number;
+      /** Missing */
+      missing: number;
+      /** Unsure */
+      unsure: number;
+      /** Covered */
+      covered: number;
+    };
+    /** ReadinessScopeDto */
+    ReadinessScopeDto: {
+      kind: components["schemas"]["ScopeKind"];
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+    };
+    /** ReadinessSettingsDto */
+    ReadinessSettingsDto: {
+      /**
+       * Enabled
+       * @description The agent checks scopes; off, a tick does nothing.
+       */
+      enabled: boolean;
+      /**
+       * Auto Suggest
+       * @description Draft a Jira issue for every missing criterion.
+       */
+      auto_suggest: boolean;
+      /**
+       * Create In Jira
+       * @description Lets a person press Create in Jira; Jira write-back must be on too.
+       */
+      create_in_jira: boolean;
+      /** Issue Type */
+      issue_type: string;
+      /** Labels */
+      labels?: string[];
+      /** Updated At */
+      updated_at?: string | null;
+      /** Updated By */
+      updated_by?: string | null;
+    };
+    /**
+     * ReadinessShownState
+     * @enum {string}
+     */
+    ReadinessShownState: "covered" | "missing" | "unsure" | "not_applicable";
+    /** ReadinessSuggestionDto */
+    ReadinessSuggestionDto: {
+      /** Suggestion Id */
+      suggestion_id: string;
+      status: components["schemas"]["SuggestionStatus"];
+      /** Version */
+      version: number;
+      draft: components["schemas"]["ReadinessDraftDto"];
+      /** Marker Label */
+      marker_label: string;
+      /** Created Issue Key */
+      created_issue_key: string | null;
+      /** Created By Name */
+      created_by_name: string | null;
+      /** Created At */
+      created_at: string | null;
+      dismissed: components["schemas"]["ReadinessDismissalDto"] | null;
+    };
+    /** ReadinessSummaryDto */
+    ReadinessSummaryDto: {
+      /** Blocking Missing */
+      blocking_missing: number;
+      /** Missing */
+      missing: number;
+      /** Unsure */
+      unsure: number;
+      /** Covered */
+      covered: number;
+      /** Not Applicable */
+      not_applicable: number;
+      /** Total */
+      total: number;
+    };
+    /** ReadinessUrgencyDto */
+    ReadinessUrgencyDto: {
+      kind: components["schemas"]["UrgencyKind"];
+      /** Due On */
+      due_on: string | null;
+      /** Working Days Left */
+      working_days_left: number | null;
+      /** Delivery Date */
+      delivery_date: string | null;
+      /** Stage Key */
+      stage_key: string | null;
+    };
     /** ReadyResponse */
     ReadyResponse: {
       /** Status */
@@ -5196,6 +6012,11 @@ export interface components {
       risks: number;
       /** Lines */
       lines: string[];
+      /**
+       * Readiness Gaps
+       * @default 0
+       */
+      readiness_gaps: number;
     };
     /** ReportNoteFactsResponse */
     ReportNoteFactsResponse: {
@@ -5271,7 +6092,7 @@ export interface components {
        */
       report_date: string;
       trigger: components["schemas"]["RunTrigger"];
-      status: components["schemas"]["RunStatus"];
+      status: components["schemas"]["core__domain__reports__RunStatus"];
       /**
        * Started At
        * Format: date-time
@@ -5582,11 +6403,6 @@ export interface components {
       applies_to_pod_ids: string[];
     };
     /**
-     * RunStatus
-     * @enum {string}
-     */
-    RunStatus: "sending" | "sent" | "partial" | "failed";
-    /**
      * RunTrigger
      * @enum {string}
      */
@@ -5621,6 +6437,11 @@ export interface components {
       open: number;
     };
     /**
+     * ScopeKind
+     * @enum {string}
+     */
+    ScopeKind: "project" | "release" | "pod";
+    /**
      * SelfCheckinPreferenceUpdateRequest
      * @description The part of their own check-in preference a person may change.
      *
@@ -5638,6 +6459,11 @@ export interface components {
       /** Weekdays */
       weekdays?: number[] | null;
     };
+    /**
+     * Severity
+     * @enum {string}
+     */
+    Severity: "blocking" | "advisory";
     /** StageStatusesDto */
     StageStatusesDto: {
       stage: components["schemas"]["DeliveryStage"];
@@ -5665,6 +6491,16 @@ export interface components {
      * @enum {string}
      */
     StatusSource: "confirmed" | "partial" | "inferred" | "stale" | "unknown";
+    /**
+     * Strength
+     * @enum {string}
+     */
+    Strength: "evidence" | "candidate";
+    /**
+     * SuggestionStatus
+     * @enum {string}
+     */
+    SuggestionStatus: "open" | "creating" | "created" | "dismissed" | "superseded";
     /**
      * SyncHealth
      * @description How much a reader can trust the data a source feeds in.
@@ -5956,6 +6792,11 @@ export interface components {
       /** Missing */
       missing: string[];
     };
+    /**
+     * UrgencyKind
+     * @enum {string}
+     */
+    UrgencyKind: "later" | "due_soon" | "overdue" | "stage_reached" | "no_date";
     /** ValidationError */
     ValidationError: {
       /** Location */
@@ -6227,6 +7068,16 @@ export interface components {
     WritebackConsentUpdateRequest: {
       consent: components["schemas"]["WriteBackConsent"];
     };
+    /**
+     * RunStatus
+     * @enum {string}
+     */
+    core__domain__release_readiness__RunStatus: "running" | "ok" | "partial" | "failed" | "off";
+    /**
+     * RunStatus
+     * @enum {string}
+     */
+    core__domain__reports__RunStatus: "sending" | "sent" | "partial" | "failed";
   };
   responses: never;
   parameters: never;
@@ -10311,6 +11162,602 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["TrackedQuestionResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  project_readiness_projects__project_id__readiness_get: {
+    parameters: {
+      query?: {
+        release_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessBoardResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  pod_readiness_pods__pod_id__readiness_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessBoardResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  run_project_projects__project_id__readiness_run_post: {
+    parameters: {
+      query?: {
+        release_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        project_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessRunResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  run_pod_pods__pod_id__readiness_run_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        pod_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessRunResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  link_readiness_findings__finding_id__link_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReadinessLinkRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessFindingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  not_applicable_readiness_findings__finding_id__not_applicable_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReadinessReasonRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessFindingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  reopen_readiness_findings__finding_id__reopen_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessFindingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  draft_now_readiness_findings__finding_id__draft_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessFindingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  history_readiness_findings__finding_id__history_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        finding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessHistoryResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  edit_draft_readiness_suggestions__suggestion_id__put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        suggestion_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReadinessDraftUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessFindingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  dismiss_readiness_suggestions__suggestion_id__dismiss_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        suggestion_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReadinessReasonRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessFindingResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_readiness_suggestions__suggestion_id__create_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        suggestion_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReadinessCreateRequest"];
+      };
+    };
+    responses: {
+      /** @description Already created. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessCreateResponse"];
+        };
+      };
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessCreateResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readiness_config_config_readiness_get: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessConfigResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_settings_config_readiness_settings_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReadinessSettingsDto"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessSettingsDto"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  save_criterion_config_readiness_criteria_put: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReadinessCriterionDto"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessCriterionDto"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  remove_criterion_config_readiness_criteria__criterion_id__delete: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        criterion_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  preview_criterion_config_readiness_criteria_preview_post: {
+    parameters: {
+      query?: never;
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReadinessPreviewRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReadinessPreviewResponse"];
         };
       };
       /** @description Validation Error */

@@ -136,6 +136,8 @@ class ImportantFacts:
     risks: int
     #: The lines no picture draws, in the report's words.
     lines: tuple[str, ...]
+    #: Blocking release readiness gaps the message names (its lines are in ``lines``).
+    readiness_gaps: int = 0
 
 
 @dataclass(frozen=True, kw_only=True)

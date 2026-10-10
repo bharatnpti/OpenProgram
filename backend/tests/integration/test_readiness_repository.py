@@ -85,9 +85,7 @@ async def test_every_readiness_row_round_trips() -> None:
             done=False,
             decided_by=DecidedBy.RULES,
             evidence=(EvidenceRef(issue_key="CHK-1", title="x", how="label load-test"),),
-            candidates=(
-                CandidateRef(issue_key="CHK-13", title="y", why=MatcherKind.TITLE_WORDS),
-            ),
+            candidates=(CandidateRef(issue_key="CHK-13", title="y", why=MatcherKind.TITLE_WORDS),),
             reason="Only the title's words match: CHK-13.",
             urgency=Urgency(
                 kind=UrgencyKind.DUE_SOON,
@@ -96,9 +94,7 @@ async def test_every_readiness_row_round_trips() -> None:
             ),
             held=True,
             applies=True,
-            person=PersonDecision(
-                kind=DecisionKind.LINKED, by="U1003", at=AT, issue_key="CHK-13"
-            ),
+            person=PersonDecision(kind=DecisionKind.LINKED, by="U1003", at=AT, issue_key="CHK-13"),
             fingerprint="f1",
             first_seen_at=AT,
             window_entered_at=AT,

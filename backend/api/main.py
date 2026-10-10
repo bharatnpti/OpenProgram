@@ -28,6 +28,7 @@ from api.routers import (
     integrations,
     ops,
     persona,
+    readiness,
     reports,
     test_support,
     webhooks,
@@ -144,6 +145,7 @@ def create_app(
     app.include_router(delivery.router)
     app.include_router(forecast.router)
     app.include_router(gates.router)
+    app.include_router(readiness.router)
     app.include_router(reports.router)
     app.include_router(escalation.router)
     app.include_router(ask.router)

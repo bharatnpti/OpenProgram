@@ -44,9 +44,7 @@ class _DataCenter:
 
 
 @respx.mock
-async def test_cloud_creates_an_unassigned_issue_with_an_adf_description_and_the_reporter() -> (
-    None
-):
+async def test_cloud_creates_an_unassigned_issue_with_an_adf_description_and_the_reporter() -> None:
     route = respx.post("https://jira.test/rest/api/3/issue").mock(
         return_value=httpx.Response(201, json={"id": "10100", "key": "CHK-34", "self": "x"})
     )

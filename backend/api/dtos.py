@@ -4111,6 +4111,8 @@ class ReportImportantFactsResponse(BaseModel):
     risks: int
     #: The lines no picture draws, in the report's words.
     lines: list[str]
+    #: Blocking release readiness gaps the message names; their lines are in ``lines``.
+    readiness_gaps: int = 0
 
     @classmethod
     def from_domain(cls, facts: ImportantFacts) -> ReportImportantFactsResponse:
@@ -4122,6 +4124,7 @@ class ReportImportantFactsResponse(BaseModel):
             ],
             risks=facts.risks,
             lines=list(facts.lines),
+            readiness_gaps=facts.readiness_gaps,
         )
 
 

@@ -5,7 +5,8 @@
 2. Where we stand: progress against the previous snapshot, why it changed
    (requirements that moved, scope added or removed, the delivery date
    moved), and how requirements stand against their gates.
-3. Most important: what threatens the delivery date.
+3. Most important: what threatens the delivery date, and the release
+   readiness gaps that are blocking and close to their date.
 4. What we need, and from whom: every ask, grouped by the person who can do
    it, with its kind, how long it has waited, and whom it escalated to under
    the project's escalation matrix (see ``day_report_asks``).
@@ -47,6 +48,7 @@ from core.application.escalation_matrix_service import EscalationMatrixService
 from core.application.forecast_service import ForecastService, ScopeDeliveryView
 from core.application.gate_service import GateBoardView, GateService, IssueGatesView
 from core.application.persona_views import owned_project_tasks
+from core.application.release_readiness_service import ReleaseReadinessService, ReportGaps
 from core.application.risk_service import RiskService
 from core.domain.delivery import (
     STAGE_LABELS,
@@ -66,6 +68,7 @@ from core.domain.forecast import (
 )
 from core.domain.gates import GateState, QuestionStatus, TrackedQuestion
 from core.domain.graph import EdgeKind, NodeKind
+from core.domain.release_readiness import ScopeKind
 from core.domain.report_facts import (
     AskFacts,
     BypassFacts,
@@ -121,6 +124,8 @@ class _Facts:
     board: GateBoardView
     matrix: EscalationMatrix
     findings: tuple[RiskFinding | DriftFinding, ...]
+    #: Blocking release readiness gaps close to their date; none while readiness is off.
+    readiness: ReportGaps = ReportGaps()
 
 
 class DayReportBuilder:
@@ -137,6 +142,7 @@ class DayReportBuilder:
         gate_service: GateService,
         escalation_service: EscalationMatrixService,
         console_base_url: str | None = None,
+        readiness_service: ReleaseReadinessService | None = None,
     ) -> None:
         self._graph = graph_repository
         self._delivery = delivery_service
@@ -147,6 +153,7 @@ class DayReportBuilder:
         self._forecast = forecast_service
         self._gates = gate_service
         self._escalation = escalation_service
+        self._readiness = readiness_service
         self._console_base_url = console_base_url.rstrip("/") if console_base_url else None
 
     async def build(
@@ -244,6 +251,11 @@ class DayReportBuilder:
             findings=(
                 *await self._risks.project_risks(tenant_id, project_id, day),
                 *await self._risks.project_drift(tenant_id, project_id, day),
+            ),
+            readiness=(
+                await self._readiness.report_gaps(tenant_id, project_id, release)
+                if self._readiness is not None
+                else ReportGaps()
             ),
         )
 
@@ -355,6 +367,7 @@ class DayReportBuilder:
         )
         asks.extend(gate_asks(facts.board, scope, facts.matrix, day))
         asks.extend(open_question_asks(facts.board, scope, day))
+        asks.extend(_readiness_asks(facts.readiness, scope, facts.matrix, day))
         return asks
 
     async def _incoming(
@@ -512,6 +525,7 @@ def _risk_lines(facts: _Facts) -> list[str]:
 def _most_important(facts: _Facts) -> tuple[str, ...]:
     lines: list[str] = list(_date_reasons(facts))
     lines.extend(_bypass_line(issue) for issue in facts.board.issues if issue.passed_without)
+    lines.extend(facts.readiness.lines)
     lines.extend(_risk_lines(facts))
     kept = list(dict.fromkeys(lines))
     if len(kept) > MAX_IMPORTANT_LINES:
@@ -686,7 +700,8 @@ def _important_facts(facts: _Facts) -> ImportantFacts:
     reasons = _date_reasons(facts)
     kinds = [_reason_kind(reason) for reason in reasons]
     behind = [issue for issue in facts.board.issues if issue.passed_without]
-    said = {*reasons, *(_bypass_line(issue) for issue in behind)}
+    readiness = facts.readiness.lines
+    said = {*reasons, *(_bypass_line(issue) for issue in behind), *readiness}
     risks = [line for line in dict.fromkeys(_risk_lines(facts)) if line not in said]
     return ImportantFacts(
         drawn=tuple(kind for kind in kinds if kind is not None),
@@ -695,7 +710,11 @@ def _important_facts(facts: _Facts) -> ImportantFacts:
             for issue in behind
         ),
         risks=len(risks),
-        lines=tuple(reason for reason, kind in zip(reasons, kinds, strict=True) if kind is None),
+        lines=(
+            *(reason for reason, kind in zip(reasons, kinds, strict=True) if kind is None),
+            *readiness,
+        ),
+        readiness_gaps=len(facts.readiness.gaps),
     )
 
 
@@ -728,6 +747,35 @@ def _owner_asks(
 
 
 # ---- lines ----------------------------------------------------------------------------
+
+
+def _readiness_asks(
+    readiness: ReportGaps, scope: AskScope, matrix: EscalationMatrix, day: date
+) -> list[Ask]:
+    """One decision per blocking readiness gap: the decision owner's, or a pod's scrum master's.
+
+    A pod's ask climbs from that pod; a project's or a release's from the
+    project's first team, as the matrix's team levels need one.
+    """
+    decider = scope.names.get(matrix.decision_owner_id or "")
+    first = min(scope.teams.values(), key=lambda team: team.node.name.casefold(), default=None)
+    asks: list[Ask] = []
+    for gap in readiness.gaps:
+        if gap.scope.kind is ScopeKind.POD:
+            team = scope.all_teams.get(gap.scope.id)
+            owner = team.scrum_master if team is not None else None
+        else:
+            team, owner = first, decider
+        asks.append(
+            Ask(
+                need=NeedType.DECISION,
+                owner=owner,
+                text=trimmed(gap.ask),
+                waited_days=max(0, (day - gap.entered_on).days) if gap.entered_on else None,
+                team=team,
+            )
+        )
+    return asks
 
 
 def _signal_asks(
