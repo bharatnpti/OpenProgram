@@ -1,0 +1,39 @@
+backend/tests/unit/test_agent_and_workflow.py
+  s_3101dec2ee3c53::t_e6db94a06026cd 553,625-648,1122,1133-1138
+backend/infra/workflows/dispatch.py
+  s_3101dec2ee3c53::t_9de81a5d3ba75a 167-171,188,219
+  s_3101dec2ee3c53::t_a7ef66facd57e1 24,42
+backend/config/settings.py
+  s_3101dec2ee3c53::t_9de81a5d3ba75a 160-165,464-465
+backend/tests/unit/test_dbos_sync_catch_up.py
+  s_3101dec2ee3c53::t_e6db94a06026cd 230-292
+backend/infra/adapters/workflows/dbos.py
+  s_3101dec2ee3c53::t_1ad059cf57ae5a 503
+  s_3101dec2ee3c53::t_270be468017e5a 64,91,123,431-441,475-476,480-502,795-796,803-804,807,814-815
+  s_3101dec2ee3c53::t_f488bc2de1bb94 504-505
+backend/infra/adapters/workflows/temporal.py
+  s_3101dec2ee3c53::t_e40d767e375722 54,81,105,419-434,643-644,723-728,1070-1076,1145,1170
+backend/infra/workflows/schedule.py
+  s_3101dec2ee3c53::t_9de81a5d3ba75a 88-91,255-262
+  s_3101dec2ee3c53::t_4b26467baa2337 263-265
+docs/ops/database-connections.md
+  s_3101dec2ee3c53::t_f8f0d0e1fa3eca 95-101
+backend/infra/workflows/readiness.py
+  s_3101dec2ee3c53::t_e9eb54e832e217 1-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0a17ff1a9cbe67826a0c595caf48d731ad4fc377",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
