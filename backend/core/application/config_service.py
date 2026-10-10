@@ -688,11 +688,6 @@ class ConfigService:
             return WriteBackGate(enabled=default, source=WriteBackGateSource.DEFAULT)
         return WriteBackGate(enabled=override, source=WriteBackGateSource.TENANT)
 
-    async def set_tenant_writeback_enabled(self, tenant_id: str, enabled: bool) -> WriteBackGate:
-        repository = self._writeback_config_repository_or_raise()
-        await repository.set_writeback_enabled(tenant_id, enabled)
-        return WriteBackGate(enabled=enabled, source=WriteBackGateSource.TENANT)
-
     async def get_pod_escalation_contacts(
         self, tenant_id: str, pod_id: str
     ) -> PodEscalationContacts:

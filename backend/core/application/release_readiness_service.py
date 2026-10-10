@@ -9,9 +9,10 @@ fingerprint did not change is not written and not audited.
 
 A missing finding gets one drafted Jira issue for its whole life: a dismissed
 draft is never drafted again until someone reopens it. Nothing reaches Jira
-unless a person presses Create on one draft at one version, with the readiness
-switch and the tenant's write-back switch both on; this service is the one
-caller of ``IssueTracker.create_issue``. Every person's action and every change
+unless a person presses Create on one draft at one version, with the tenant's
+Jira writes switch and its "Create release-readiness issues" switch both on, and
+the draft's Jira project among those new issues may go to; this service is the
+one caller of ``IssueTracker.create_issue``. Every person's action and every change
 the agent makes goes into the append-only audit.
 
 Findings name scopes and criteria, never people: a draft describes the work,
@@ -23,6 +24,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
+from typing import Protocol
 from uuid import uuid4
 
 from core.application.delivery_service import DeliveryService
@@ -41,6 +43,7 @@ from core.domain.errors import (
 from core.domain.forecast import Release, split_names
 from core.domain.graph import EdgeKind, GraphNode, NodeKind
 from core.domain.integrations import Issue, IssueState, NewIssue, SyncCursor
+from core.domain.jira_writes import JiraWriteKind, JiraWrites, resolve_jira_writes
 from core.domain.release_readiness import (
     MAX_CRITERIA,
     URGENT,
@@ -146,6 +149,16 @@ class JiraData:
 JiraHealth = Callable[[str], Awaitable[JiraData]]
 PodTaskIds = Callable[[str, str, date], Awaitable[Sequence[str]]]
 WriteBackGate = Callable[[str], Awaitable[bool]]
+
+
+class ReadinessJiraWrites(Protocol):
+    """The tenant's Jira write switches (``JiraWritesService``), the create switch's source."""
+
+    async def effective(self, tenant_id: str) -> JiraWrites: ...
+
+    async def set_kind(
+        self, tenant_id: str, kind: JiraWriteKind, on: bool, *, actor: str
+    ) -> JiraWrites: ...
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -326,6 +339,7 @@ class ReleaseReadinessService:
         writeback_gate: WriteBackGate,
         jira_health: JiraHealth,
         pod_task_ids: PodTaskIds,
+        jira_writes: ReadinessJiraWrites | None = None,
         identity_link_repository: IdentityLinkRepository | None = None,
         time_series_repository: TimeSeriesRepository | None = None,
         console_base_url: str | None = None,
@@ -339,6 +353,7 @@ class ReleaseReadinessService:
         self._forecast = forecast_service
         self._tracker = issue_tracker
         self._writeback_gate = writeback_gate
+        self._jira_writes = jira_writes
         self._jira_health = jira_health
         self._pod_task_ids = pod_task_ids
         self._identity_links = identity_link_repository
@@ -359,19 +374,58 @@ class ReleaseReadinessService:
         stored = await self._repository.get_settings(tenant_id)
         criteria = await self._repository.list_criteria(tenant_id)
         added = {item.criterion_id for item in criteria}
+        writes = await self.jira_writes(tenant_id)
         return ConfigView(
-            settings=stored or ReadinessSettings(tenant_id=tenant_id),
+            settings=_with_create(stored or ReadinessSettings(tenant_id=tenant_id), writes),
             is_default=stored is None,
             criteria=tuple(criteria),
             examples=tuple(
                 item for item in default_examples(tenant_id) if item.criterion_id not in added
             ),
-            writeback_on=await self._writeback_gate(tenant_id),
+            writeback_on=writes.master.on,
+        )
+
+    async def jira_writes(self, tenant_id: str) -> JiraWrites:
+        """The Jira write switches in force.
+
+        Without a ``jira_writes`` source: the master switch and these settings'
+        own ``create_in_jira``, as before that source existed.
+        """
+        if self._jira_writes is not None:
+            return await self._jira_writes.effective(tenant_id)
+        stored = await self._repository.get_settings(tenant_id)
+        return resolve_jira_writes(
+            master_override=await self._writeback_gate(tenant_id),
+            env_master=False,
+            env_master_set=False,
+            stored=None,
+            legacy_readiness_create=stored.create_in_jira if stored else None,
         )
 
     async def save_settings(self, settings: ReadinessSettings, *, actor: str) -> ReadinessSettings:
+        """Save the agent's settings; ``create_in_jira`` is the Jira writes panel's switch.
+
+        A changed ``create_in_jira`` is set (and audited) as "Create release-readiness
+        issues"; the copy stored here always says what that switch says.
+        """
         before = await self._repository.get_settings(settings.tenant_id)
-        saved = replace(validated_settings(settings), updated_at=self._clock(), updated_by=actor)
+        writes = await self.jira_writes(settings.tenant_id)
+        if (
+            self._jira_writes is not None
+            and settings.create_in_jira != writes.kind(JiraWriteKind.READINESS_CREATE).on
+        ):
+            writes = await self._jira_writes.set_kind(
+                settings.tenant_id,
+                JiraWriteKind.READINESS_CREATE,
+                settings.create_in_jira,
+                actor=actor,
+            )
+        checked = validated_settings(settings)
+        saved = replace(
+            _with_create(checked, writes) if self._jira_writes is not None else checked,
+            updated_at=self._clock(),
+            updated_by=actor,
+        )
         await self._repository.save_settings(saved)
         await self._audit(
             settings.tenant_id,
@@ -883,15 +937,16 @@ class ReleaseReadinessService:
             if actor
         }
         gaps = _gaps(gaps_from, self._today())
+        writes = await self.jira_writes(tenant_id)
         return BoardView(
             project_id=project_id,
             pod_id=pod_id,
             release_id=release_id,
             scope_name=scope_name,
-            settings=settings,
+            settings=_with_create(settings, writes),
             last_run=await self._repository.last_run(tenant_id),
             jira=await self._jira_health(tenant_id),
-            writeback_on=await self._writeback_gate(tenant_id),
+            writeback_on=writes.master.on,
             findings=tuple(sorted(views, key=_row_order)),
             releases=releases,
             important=ReportGaps(gaps=gaps).lines,
@@ -928,7 +983,7 @@ class ReleaseReadinessService:
             )
         }
         settings = await self.settings(tenant_id)
-        writeback = await self._writeback_gate(tenant_id)
+        refusals = _CreateRefusals(self, tenant_id, await self.jira_writes(tenant_id))
         today = self._today()
         views: list[FindingView] = []
         for finding in findings:
@@ -941,7 +996,12 @@ class ReleaseReadinessService:
                     scope_name=names.get(finding.scope.key, finding.scope.id),
                     suggestion=suggestion if viewer.sees_drafts else None,
                     actions=finding_actions(
-                        viewer, finding, criterion, suggestion, settings, writeback
+                        viewer,
+                        finding,
+                        criterion,
+                        suggestion,
+                        settings,
+                        await refusals.of(finding, suggestion),
                     ),
                     working_days_left=(
                         working_days_left(today, finding.urgency.due_on)
@@ -1159,15 +1219,17 @@ class ReleaseReadinessService:
             view = await self._rejudge(tenant_id, finding, viewer)
             return CreateResult(issue_key=suggestion.created_issue_key, created=False, finding=view)
         self._ensure_open(suggestion, version)
-        settings = await self.settings(tenant_id)
-        if not settings.create_in_jira:
-            raise ReadinessConflict(
-                "create_disabled", "Creating issues from OpenProgram is off for this tenant."
-            )
-        if not await self._writeback_gate(tenant_id):
-            raise ReadinessConflict(
-                "create_disabled", "Creating issues from OpenProgram needs Jira write-back on."
-            )
+        # The Jira writes switches: the tenant's, then "Create release-readiness issues".
+        writes = await self.jira_writes(tenant_id)
+        off = writes.refusal(JiraWriteKind.READINESS_CREATE)
+        if off is not None:
+            raise ReadinessConflict("create_disabled", off)
+        # The projects new issues may go to: by default only the scope's own.
+        project = writes.create_refusal(
+            suggestion.draft.project_key, await self.own_project_keys(tenant_id, finding.scope)
+        )
+        if project is not None:
+            raise ReadinessError(project)
         # The matching-issue hold: read the scope again before anything is posted.
         fresh = (await self._rejudge(tenant_id, finding, viewer)).finding
         if fresh.state is not FindingState.MISSING or fresh.person is not None:
@@ -1368,6 +1430,7 @@ class ReleaseReadinessService:
             return match
         criterion = await self._criterion(tenant_id, finding.criterion_id)
         suggestion = await self._suggestion_of(tenant_id, finding_id)
+        refusals = _CreateRefusals(self, tenant_id, await self.jira_writes(tenant_id))
         return FindingView(
             finding=finding,
             criterion=criterion,
@@ -1379,7 +1442,7 @@ class ReleaseReadinessService:
                 criterion,
                 suggestion,
                 await self.settings(tenant_id),
-                await self._writeback_gate(tenant_id),
+                await refusals.of(finding, suggestion),
             ),
             working_days_left=(
                 working_days_left(self._today(), finding.urgency.due_on)
@@ -1689,6 +1752,30 @@ class ReleaseReadinessService:
             )
         )
 
+    async def own_project_keys(self, tenant_id: str, scope: ScopeRef) -> frozenset[str]:
+        """The Jira project keys a scope's drafts go to by default.
+
+        A project's or release's: its project's key. A pod's: the keys of the
+        projects it works on.
+        """
+        projects: list[GraphNode] = []
+        if scope.kind is ScopeKind.POD:
+            try:
+                projects = await self._forecast.pod_projects(tenant_id, scope.id, self._today())
+            except GraphNotFound:
+                projects = []
+        else:
+            project_id = scope.id
+            if scope.kind is ScopeKind.RELEASE:
+                try:
+                    project_id = (await self._forecast.release(tenant_id, scope.id)).project_id
+                except GraphNotFound:
+                    return frozenset()
+            node = await self._graph.get_node(tenant_id, project_id)
+            projects = [node] if node is not None else []
+        keys = (_text(project.metadata.get("jira_project_key")) for project in projects)
+        return frozenset(key.upper() for key in keys if key)
+
     async def _audit(
         self,
         tenant_id: str,
@@ -1730,9 +1817,13 @@ def finding_actions(
     criterion: ReleaseCriterion,
     suggestion: Suggestion | None,
     settings: ReadinessSettings,
-    writeback_on: bool,
+    create_refusal: str | None,
 ) -> FindingActions:
-    """What this viewer may do with this finding now, worked out once on the server."""
+    """What this viewer may do with this finding now, worked out once on the server.
+
+    ``create_refusal``: why its draft may not be created in Jira now (a Jira
+    writes switch, or the draft's project), None while it may.
+    """
     act = viewer.acts_on(finding.scope)
     if not act:
         return FindingActions()
@@ -1741,12 +1832,7 @@ def finding_actions(
     draft_open = (
         viewer.sees_drafts and suggestion is not None and suggestion.status is SuggestionStatus.OPEN
     )
-    off: str | None = None
-    if missing and draft_open:
-        if not settings.create_in_jira:
-            off = "Creating issues from OpenProgram is off for this tenant."
-        elif not writeback_on:
-            off = "Creating issues from OpenProgram needs Jira write-back on."
+    off = create_refusal if missing and draft_open else None
     dismissed = suggestion is not None and suggestion.status is SuggestionStatus.DISMISSED
     return FindingActions(
         create=missing and draft_open and off is None,
@@ -1758,6 +1844,36 @@ def finding_actions(
         reopen=not undecided or dismissed,
         draft=missing and suggestion is None and not settings.auto_suggest,
     )
+
+
+def _with_create(settings: ReadinessSettings, writes: JiraWrites) -> ReadinessSettings:
+    """The settings as shown and stored: ``create_in_jira`` is the Jira writes panel's switch."""
+    on = writes.kind(JiraWriteKind.READINESS_CREATE).on
+    return settings if settings.create_in_jira == on else replace(settings, create_in_jira=on)
+
+
+class _CreateRefusals:
+    """Why each open draft may not be created now, reading a scope's own projects once."""
+
+    def __init__(
+        self, service: ReleaseReadinessService, tenant_id: str, writes: JiraWrites
+    ) -> None:
+        self._service = service
+        self._tenant_id = tenant_id
+        self._writes = writes
+        self._own: dict[str, frozenset[str]] = {}
+
+    async def of(self, finding: Finding, suggestion: Suggestion | None) -> str | None:
+        off = self._writes.refusal(JiraWriteKind.READINESS_CREATE)
+        if off is not None or suggestion is None or suggestion.status is not SuggestionStatus.OPEN:
+            return off
+        key = suggestion.draft.project_key
+        if self._writes.create_projects.allows(key, ()):
+            return None
+        scope = finding.scope.key
+        if scope not in self._own:
+            self._own[scope] = await self._service.own_project_keys(self._tenant_id, finding.scope)
+        return self._writes.create_refusal(key, self._own[scope])
 
 
 def _gaps(views: Sequence[FindingView], today: date) -> tuple[ReadinessGap, ...]:

@@ -2189,10 +2189,17 @@ def test_revert_writeback_route_reverts_then_is_idempotent(settings: Settings) -
             created_at=datetime(2026, 1, 10, 9, 0, tzinfo=UTC),
         )
 
+        # Off, nothing writes to the tracker, a revert neither; on, it reverts once.
+        off = client.post("/admin/ops/writeback/wb-1/revert")
+        assert client.put("/config/tenant/writeback", json={"enabled": True}).status_code == 200
         first = client.post("/admin/ops/writeback/wb-1/revert")
         second = client.post("/admin/ops/writeback/wb-1/revert")
         missing = client.post("/admin/ops/writeback/does-not-exist/revert")
 
+    assert off.status_code == 409
+    assert off.json()["detail"] == (
+        "Jira writes are off for this tenant. Nothing was reverted in the issue tracker."
+    )
     assert first.status_code == 200
     body = first.json()
     assert body["issue_key"] == "PO-1"

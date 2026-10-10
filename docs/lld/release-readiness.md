@@ -58,14 +58,25 @@ repositories serve memory mode and tests.
 ## Create in Jira
 
 The one caller of `IssueTracker.create_issue`. In order: the draft's version,
-the readiness `create_in_jira` setting and the tenant's write-back switch (both
-read on every press), the scope evaluated again (a criterion covered since is
+the tenant's Jira writes switch and its "Create release-readiness issues" switch
+(both read on every press from `JiraWritesService`, 409 while either is off), the
+draft's Jira project among those new issues may go to (by default the scope's
+own: a project's or release's project key, a pod's projects' keys; any other is
+a 422 naming the allowed ones), the scope evaluated again (a criterion covered since is
 refused, naming what covers it), a claim `open -> creating`, a search for the
 draft's marker label `op-rr-<8 hex>` (an issue an earlier try made is adopted),
 then one create: unassigned, the approver as reporter where the tracker allows,
 and a footer naming who approved it. The issue is recorded as the next sync
 would, and the finding is covered by it. Failures say a fixed category, never
 the tracker's text, and leave the draft open.
+
+The readiness settings' `create_in_jira` is the same switch, not a second one:
+`GET /config/readiness` shows it, and a `PUT /config/readiness/settings` that
+changes it sets (and audits) "Create release-readiness issues"; left out, it is
+kept. The switches are stored as `jira_writes` in the tenant's
+`readiness_settings` row (readiness's own save keeps that key), their changes
+in `readiness_actions` as `jira_writes_changed`; until the kind is set there,
+the stored `create_in_jira` counts.
 
 ## Who may
 

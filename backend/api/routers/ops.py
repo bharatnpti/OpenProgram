@@ -22,7 +22,7 @@ from api.dtos import (
 from core.application.authorization import AuthorizationPolicy, Capability
 from core.application.dead_letter_service import DeadLetterService
 from core.application.sync_status_service import SyncStatusService
-from core.application.writeback_service import WriteBackService
+from core.application.writeback_service import WriteBackOff, WriteBackService
 from core.domain.auth import Principal
 from core.domain.errors import AuthorizationDenied
 from core.domain.writeback import WriteBackStatus
@@ -94,7 +94,13 @@ async def revert_writeback(
         )
     # The revert goes THROUGH WriteBackService (the only sanctioned write caller),
     # which is idempotent: a second revert of the same applied write returns None.
-    reverted = await service.revert(audit)
+    # While the tenant's Jira writes switch is off nothing is written, a revert neither.
+    try:
+        reverted = await service.revert(audit)
+    except WriteBackOff as exc:
+        raise HTTPException(
+            status_code=409, detail=f"{exc} Nothing was reverted in the issue tracker."
+        ) from exc
     if reverted is None:
         raise HTTPException(
             status_code=409,

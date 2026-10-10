@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from enum import Enum
@@ -22,9 +22,10 @@ from core.application.merge_request_links import (
 from core.application.sync_services import record_issue_as_synced
 from core.domain.auth import Principal, Role
 from core.domain.cross_person import merge_request_refs_in
-from core.domain.errors import ProviderUnavailable
+from core.domain.errors import OpenProgramError, ProviderUnavailable
 from core.domain.graph import FactEvent
 from core.domain.integrations import Issue, IssueState
+from core.domain.jira_writes import MASTER_OFF, JiraWriteKind
 from core.domain.status import IssueClaim, WriteBackConsent
 from core.domain.writeback import (
     WriteBackAdoption,
@@ -65,6 +66,10 @@ CONSOLE_SOURCE = "console"
 # How many synced merge request facts the open merge request check reads.
 _MERGE_REQUEST_FACT_SCAN_LIMIT = 5000
 
+# A kind's own Jira writes switch (``JiraWritesService.kind_on``), read only
+# while the master switch is on.
+KindSwitch = Callable[[str, JiraWriteKind], Awaitable[bool]]
+
 
 def _log_warning(event: str, **fields: str) -> None:
     # Imported here, not at module load: the check-in drift read imports this
@@ -74,6 +79,10 @@ def _log_warning(event: str, **fields: str) -> None:
     import structlog
 
     structlog.get_logger(__name__).warning(event, **fields)
+
+
+class WriteBackOff(OpenProgramError):
+    """The tenant's master Jira writes switch is off, so nothing was written (409)."""
 
 
 @dataclass(frozen=True)
@@ -133,7 +142,10 @@ class WriteBackService:
 
     A write happens only if all four default-deny gates hold:
 
-    1. System gate -- the tenant override (or the injected settings default) is on.
+    1. System gate -- the tenant override (or the injected settings default) is on,
+       and so is the switch of the write's kind (``kind_switch``): updates from
+       check-ins for the claim and consent paths, moves from task updates for
+       the console path. With no ``kind_switch`` every kind is on.
     2. Capability gate -- the acting principal holds ``WRITE_ISSUE_TRACKER``.
     3. Consent gate -- the developer's standing consent is ``auto_apply``.
     4. Ownership gate -- the developer is the issue's current assignee in the
@@ -175,6 +187,7 @@ class WriteBackService:
         graph_repository: GraphRepository | None = None,
         authorization_policy: AuthorizationPolicy | None = None,
         writeback_enabled_default: bool = False,
+        kind_switch: KindSwitch | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._issue_tracker = issue_tracker
@@ -186,11 +199,19 @@ class WriteBackService:
         self._graph = graph_repository
         self._policy = authorization_policy or AuthorizationPolicy()
         self._default_enabled = writeback_enabled_default
+        self._kind_switch = kind_switch
         self._clock = clock or (lambda: datetime.now(tz=UTC))
 
     async def system_gate_open(self, tenant_id: str) -> bool:
+        """The master switch: off, nothing is written to the tracker, whatever else is on."""
         override = await self._config.get_writeback_enabled(tenant_id)
         return self._default_enabled if override is None else override
+
+    async def gate_open(self, tenant_id: str, kind: JiraWriteKind) -> bool:
+        """The master switch and this kind's own switch are both on."""
+        if not await self.system_gate_open(tenant_id):
+            return False
+        return self._kind_switch is None or await self._kind_switch(tenant_id, kind)
 
     async def standing_consent_open(self, tenant_id: str, developer_id: str) -> bool:
         """Whether this developer's claims on their own issues are written without asking.
@@ -203,7 +224,7 @@ class WriteBackService:
         )
         if not self._policy.can(principal, Capability.WRITE_ISSUE_TRACKER):
             return False
-        if not await self.system_gate_open(tenant_id):
+        if not await self.gate_open(tenant_id, JiraWriteKind.CHECKIN_UPDATES):
             return False
         return await self._consent(tenant_id, developer_id) is WriteBackConsent.AUTO_APPLY
 
@@ -218,7 +239,7 @@ class WriteBackService:
         )
         if not self._policy.can(principal, Capability.WRITE_ISSUE_TRACKER):
             return False
-        if not await self.system_gate_open(tenant_id):
+        if not await self.gate_open(tenant_id, JiraWriteKind.CHECKIN_UPDATES):
             return False
         return await self._consent(tenant_id, developer_id) is WriteBackConsent.ALWAYS_ASK
 
@@ -259,7 +280,9 @@ class WriteBackService:
         """
         if not claims:
             return WriteBackDryRun()
-        consent = await self._writing_consent(tenant_id, developer_id)
+        consent = await self._writing_consent(
+            tenant_id, developer_id, JiraWriteKind.CHECKIN_UPDATES
+        )
         if consent is None:
             return WriteBackDryRun()
         keys: set[str] = set()
@@ -284,17 +307,20 @@ class WriteBackService:
             return WriteBackDryRun(written=frozenset(keys), held_for_open_mr=held)
         return WriteBackDryRun(proposed=frozenset(keys), held_for_open_mr=held)
 
-    async def _writing_consent(self, tenant_id: str, developer_id: str) -> WriteBackConsent | None:
-        """This developer's consent when a claim of theirs can reach the tracker, else None.
+    async def _writing_consent(
+        self, tenant_id: str, developer_id: str, kind: JiraWriteKind
+    ) -> WriteBackConsent | None:
+        """This developer's consent when an update of theirs of this kind can reach the tracker.
 
-        Read-only: the capability and system gates, then a consent that is not ``never``.
+        Read-only: the capability gate, the system gate with the kind's switch,
+        then a consent that is not ``never``. None when any of them is closed.
         """
         principal = Principal(
             tenant_id=tenant_id, subject=developer_id, roles=frozenset({Role.DEV})
         )
         if not self._policy.can(principal, Capability.WRITE_ISSUE_TRACKER):
             return None
-        if not await self.system_gate_open(tenant_id):
+        if not await self.gate_open(tenant_id, kind):
             return None
         consent = await self._consent(tenant_id, developer_id)
         return None if consent is WriteBackConsent.NEVER else consent
@@ -306,7 +332,7 @@ class WriteBackService:
         the claim path reads them. The console offers its "Also move in Jira"
         tick only when this is not ``off``.
         """
-        consent = await self._writing_consent(tenant_id, developer_id)
+        consent = await self._writing_consent(tenant_id, developer_id, JiraWriteKind.CONSOLE_MOVES)
         if consent is None:
             return "off"
         return "auto" if consent is WriteBackConsent.AUTO_APPLY else "ask"
@@ -332,7 +358,10 @@ class WriteBackService:
         with no row. Only the state moves: an ETA is never written to the
         issue's due date, which belongs to whoever plans it.
         """
-        if await self._writing_consent(tenant_id, developer_id) is None:
+        if (
+            await self._writing_consent(tenant_id, developer_id, JiraWriteKind.CONSOLE_MOVES)
+            is None
+        ):
             return ConsoleWriteBack(
                 outcome="off", detail=f"Not moved in {tracker_name}: write-back is off."
             )
@@ -460,7 +489,7 @@ class WriteBackService:
         )
         if not self._policy.can(principal, Capability.WRITE_ISSUE_TRACKER):
             return []
-        if not await self.system_gate_open(tenant_id):
+        if not await self.gate_open(tenant_id, JiraWriteKind.CHECKIN_UPDATES):
             return []
         consent = await self._consent(tenant_id, developer_id)
         if consent is WriteBackConsent.NEVER:
@@ -658,7 +687,7 @@ class WriteBackService:
         )
         if not self._policy.can(principal, Capability.WRITE_ISSUE_TRACKER):
             return []
-        if not await self.system_gate_open(tenant_id):
+        if not await self.gate_open(tenant_id, JiraWriteKind.CHECKIN_UPDATES):
             return []
         if await self._consent(tenant_id, developer_id) is WriteBackConsent.NEVER:
             return []
@@ -827,11 +856,16 @@ class WriteBackService:
         Returns ``None`` when the audit is not an applied write with a captured
         prior state, or when this exact applied write has already been reverted
         (idempotent -- reverting twice never double-applies the reverse write).
+        Raises ``WriteBackOff`` while the master switch is off: nothing writes to
+        the tracker then. The kind's own switch is not read, so an admin can
+        still undo a check-in's write after turning check-in updates off.
         """
         if audit.status is not WriteBackStatus.APPLIED or audit.before_state is None:
             return None
         if await self._already_reverted(audit):
             return None
+        if not await self.system_gate_open(audit.tenant_id):
+            raise WriteBackOff(MASTER_OFF)
         try:
             await self._issue_tracker.transition(
                 audit.tenant_id, audit.issue_key, audit.before_state

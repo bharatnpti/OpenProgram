@@ -484,15 +484,15 @@ async def test_create_needs_both_switches() -> None:
     await world.service.run_project(TENANT, "checkout", MANAGER)
     off = _row(await _board(world), "Security review")
     assert off.suggestion is not None
-    assert (
-        off.actions.create_off_reason == "Creating issues from OpenProgram is off for this tenant."
+    assert off.actions.create_off_reason == (
+        "Creating release-readiness issues is off for this tenant."
     )
 
-    with pytest.raises(ReadinessConflict, match="off for this tenant"):
+    with pytest.raises(ReadinessConflict, match="release-readiness issues is off"):
         await world.service.create(TENANT, off.suggestion.suggestion_id, OWNER, version=1)
     suggestion = await _open_draft(world)
     world.writeback = False
-    with pytest.raises(ReadinessConflict, match="needs Jira write-back on"):
+    with pytest.raises(ReadinessConflict, match="Jira writes are off for this tenant"):
         await world.service.create(TENANT, suggestion.suggestion_id, OWNER, version=1)
 
     assert world.tracker.created == []
