@@ -9,21 +9,27 @@ import type {
 import {
   bandProfile,
   bandSummary,
+  countsFor,
   dotX,
   formatHours,
   formatShare,
   investment,
   noneWords,
   leadHours,
+  noStageTimeWords,
   parseScope,
   planDots,
+  requestCountWords,
   requestReference,
+  sampleWords,
   scopeWords,
+  stagesFor,
   standingWords,
   thicknessAt,
   typeColorVar,
   typeSourceWords,
   TYPES,
+  worstJam,
 } from "./prFlow.ts";
 
 const stage = (
@@ -31,12 +37,13 @@ const stage = (
   label: string,
   p50: number | null,
   p75: number | null,
+  count = p50 === null ? 0 : 10,
 ): PullRequestFlowStageDto => ({
   stage: key,
   label,
   p50_hours: p50,
   p75_hours: p75,
-  measured_count: p50 === null ? 0 : 10,
+  measured_count: count,
   open_count: 1,
 });
 
@@ -46,6 +53,30 @@ const stages = [
   stage("in_review", "In review", 2, 4),
   stage("awaiting_merge", "Awaiting merge", 0.75, 1.5),
 ];
+
+// What the server sends for a type: its own four stages and its own worst jam.
+// Feature has two merged requests, one of them unreviewed (coding only counts it).
+const featureStages = [
+  stage("coding", "Coding", 2.5, 3, 2),
+  stage("awaiting_review", "Awaiting review", 40, 48, 1),
+  stage("in_review", "In review", 1.5, 1.5, 1),
+  stage("awaiting_merge", "Awaiting merge", null, null),
+];
+// One merged request with coding alone known: a time, but no jam.
+const bugFixStages = [
+  stage("coding", "Coding", 1, 1, 1),
+  stage("awaiting_review", "Awaiting review", null, null),
+  stage("in_review", "In review", null, null),
+  stage("awaiting_merge", "Awaiting merge", null, null),
+];
+// A type with no request: four stages, no time, no count.
+const refactorStages = [
+  stage("coding", "Coding", null, null),
+  stage("awaiting_review", "Awaiting review", null, null),
+  stage("in_review", "In review", null, null),
+  stage("awaiting_merge", "Awaiting merge", null, null),
+];
+const noJam = { p50: null, p75: null };
 
 const hours = (c: number | null, a: number | null, r: number | null, m: number | null) => ({
   coding: c,
@@ -96,6 +127,14 @@ function flow(overrides: Partial<PullRequestFlowResponse> = {}): PullRequestFlow
       { request_type: "feature", label: "Feature", merged_count: 2, open_count: 1 },
       { request_type: "bug_fix", label: "Bug fix", merged_count: 1, open_count: 0 },
     ],
+    stages_by_type: {
+      feature: {
+        stages: featureStages,
+        worst_jam: { p50: "awaiting_review", p75: "awaiting_review" },
+      },
+      bug_fix: { stages: bugFixStages, worst_jam: noJam },
+      refactor: { stages: refactorStages, worst_jam: noJam },
+    },
     items: [item()],
     items_truncated: false,
     notes: [],
@@ -300,9 +339,105 @@ test("the scope in words, and from the URL", () => {
   assert.deepEqual(parseScope(null), { kind: "all", id: null });
 });
 
-test("a screen reader hears every stage and which one jams", () => {
+test("a screen reader hears every stage, how many requests it rests on, and which one jams", () => {
   assert.equal(
     bandSummary(flow(), "p75"),
-    "Time in each stage at p75, from 3 timed merged requests: Coding 6 h, Awaiting review 30 h (the worst jam), In review 4 h, Awaiting merge 1.5 h.",
+    "Time in each stage at p75, from 3 timed merged requests: Coding 6 h · 10 requests, Awaiting review 30 h · 10 requests (the worst jam), In review 4 h · 10 requests, Awaiting merge 1.5 h · 10 requests.",
   );
+  assert.equal(
+    bandSummary(flow(), "p50", "feature"),
+    "Time in each stage of Feature requests at p50: Coding 2.5 h · 2 requests, Awaiting review 40 h · 1 request (the worst jam), In review 1.5 h · 1 request, Awaiting merge —.",
+  );
+});
+
+test("a picked type shows its own stage times, every request's with none picked", () => {
+  const all = flow();
+  assert.equal(stagesFor(all, null), all.stages);
+  assert.equal(stagesFor(all, "feature"), featureStages);
+  // The server sends every type; one it did not send has no time in any stage.
+  const missing = stagesFor(all, "documentation");
+  assert.deepEqual(
+    missing.map((s) => [s.stage, s.p50_hours, s.p75_hours, s.measured_count, s.open_count]),
+    [
+      ["coding", null, null, 0, 0],
+      ["awaiting_review", null, null, 0, 0],
+      ["in_review", null, null, 0, 0],
+      ["awaiting_merge", null, null, 0, 0],
+    ],
+  );
+  // The percentile picks the type's p50 or p75, as it picks the tenant's.
+  const p50 = bandProfile(stagesFor(all, "feature"), "p50").map((s) => s.hours);
+  const p75 = bandProfile(stagesFor(all, "feature"), "p75").map((s) => s.hours);
+  assert.deepEqual(p50, [2.5, 40, 1.5, null]);
+  assert.deepEqual(p75, [3, 48, 1.5, null]);
+});
+
+test("the band's thickness and the worst jam follow the picked type", () => {
+  const all = flow();
+  const tenant = bandProfile(stagesFor(all, null), "p75");
+  const feature = bandProfile(stagesFor(all, "feature"), "p75");
+  const refactor = bandProfile(stagesFor(all, "refactor"), "p75");
+  // Awaiting review jams for both, and beside it coding is shorter for feature.
+  assert.equal(tenant[1].jam, 1);
+  assert.equal(feature[1].jam, 1);
+  assert.ok(feature[0].thickness > tenant[0].thickness);
+  // A stage the type has no time in is open and neutral, like a type with none at all.
+  assert.deepEqual([feature[3].thickness, feature[3].jam, feature[3].count], [1, 0, 0]);
+  assert.deepEqual(
+    refactor.map((s) => [s.thickness, s.jam, s.count]),
+    [
+      [1, 0, 0],
+      [1, 0, 0],
+      [1, 0, 0],
+      [1, 0, 0],
+    ],
+  );
+  assert.deepEqual(
+    feature.map((s) => s.count),
+    [2, 1, 1, 0],
+  );
+  assert.equal(worstJam(all, "p75"), "awaiting_review");
+  assert.equal(worstJam(all, "p75", null), "awaiting_review");
+  assert.equal(worstJam(all, "p50", "feature"), "awaiting_review");
+  // Coding alone known: no jam, as the server says.
+  assert.equal(worstJam(all, "p75", "bug_fix"), null);
+  assert.equal(worstJam(all, "p75", "documentation"), null);
+});
+
+test("the merged and open counts follow the picked type", () => {
+  const all = flow();
+  assert.deepEqual(countsFor(all, null), { merged: 3, open: 1 });
+  assert.deepEqual(countsFor(all, "feature"), { merged: 2, open: 1 });
+  assert.deepEqual(countsFor(all, "bug_fix"), { merged: 1, open: 0 });
+  assert.deepEqual(countsFor(all, "refactor"), { merged: 0, open: 0 });
+});
+
+test("a time says how many requests it rests on: 1 request, 24 requests, nothing for a dash", () => {
+  assert.equal(requestCountWords(1), "1 request");
+  assert.equal(requestCountWords(24), "24 requests");
+  assert.equal(`${formatHours(24)} · ${sampleWords(24, 1)}`, "24 h · 1 request");
+  assert.equal(`${formatHours(24)} · ${sampleWords(24, 24)}`, "24 h · 24 requests");
+  assert.equal(sampleWords(null, 0), null);
+  // A dash carries no number, whatever count came with it.
+  assert.equal(sampleWords(null, 3), null);
+  assert.equal(sampleWords(2, 0), null);
+});
+
+test("a picked type with no stage time says why, and one with some says nothing", () => {
+  const all = flow();
+  assert.equal(
+    noStageTimeWords("Refactor", 0, 30, stagesFor(all, "refactor")),
+    "No request of type Refactor was merged in these 30 days, so there is no stage time to show.",
+  );
+  assert.equal(
+    noStageTimeWords("Refactor", 3, 90, stagesFor(all, "refactor")),
+    "No stage time is known for the 3 merged requests of type Refactor.",
+  );
+  assert.equal(
+    noStageTimeWords("Refactor", 1, 90, stagesFor(all, "refactor")),
+    "No stage time is known for the 1 merged request of type Refactor.",
+  );
+  assert.equal(noStageTimeWords("Feature", 2, 30, stagesFor(all, "feature")), null);
+  // Coding alone is still a time.
+  assert.equal(noStageTimeWords("Bug fix", 1, 30, stagesFor(all, "bug_fix")), null);
 });

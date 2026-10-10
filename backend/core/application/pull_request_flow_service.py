@@ -3,8 +3,10 @@
 Reads the synced ``vcs_pull_request`` facts, the latest one per request, for a
 window of days ending on the day viewed. Merged requests in the window give the
 stage times (p50 and p75); open ones are counted in the stage they are in now.
-No workstreams are needed: the scope is the tenant, a program's projects, a
-project's repositories, or a pod's members and repositories.
+Each request type gets the same figures over its own requests (``type_flows``),
+by the same rule, so a client never has to compute a percentile. No workstreams
+are needed: the scope is the tenant, a program's projects, a project's
+repositories, or a pod's members and repositories.
 
 Descriptive only, like the work-item flow: nothing here scores or raises a risk.
 """
@@ -87,6 +89,16 @@ class RequestTypeCountView:
 
 
 @dataclass(frozen=True, kw_only=True)
+class RequestTypeFlowView:
+    """One type's own stage times: what ``stages`` and the worst jam are, over its requests only."""
+
+    request_type: RequestType
+    stages: tuple[StageFlowView, ...]
+    worst_jam_p50: ReviewStage | None
+    worst_jam_p75: ReviewStage | None
+
+
+@dataclass(frozen=True, kw_only=True)
 class PullRequestFlowItemView:
     repo: str
     number: str
@@ -131,6 +143,8 @@ class PullRequestFlowView:
     worst_jam_p50: ReviewStage | None
     worst_jam_p75: ReviewStage | None
     type_counts: tuple[RequestTypeCountView, ...]
+    #: Every type, in the fixed order, with the stage times of its requests alone.
+    type_flows: tuple[RequestTypeFlowView, ...]
     items: tuple[PullRequestFlowItemView, ...]
     items_truncated: bool
     #: What the figures leave out, in words.
@@ -211,7 +225,7 @@ class PullRequestFlowService:
             still_coding = item.stage is ReviewStage.CODING
             if item.timed and not still_coding and item.stage_hours[ReviewStage.CODING] is None:
                 no_commit += 1
-        stages = tuple(_stage_view(stage, merged, open_now) for stage in REVIEW_STAGE_ORDER)
+        stages = _stage_views(merged, open_now)
         merged.sort(key=lambda item: item.merged_at or window_start, reverse=True)
         open_now.sort(key=lambda item: item.stage_age_hours or 0.0, reverse=True)
         untimed = sum(1 for item in (*merged, *open_now) if not item.timed)
@@ -231,6 +245,7 @@ class PullRequestFlowService:
             worst_jam_p50=_worst(stages, "p50_hours"),
             worst_jam_p75=_worst(stages, "p75_hours"),
             type_counts=_type_counts(merged, open_now),
+            type_flows=_type_flows(merged, open_now),
             items=(*merged[:MERGED_ITEM_LIMIT], *open_now[:OPEN_ITEM_LIMIT]),
             items_truncated=len(merged) > MERGED_ITEM_LIMIT or len(open_now) > OPEN_ITEM_LIMIT,
             notes=_notes(scope, untimed=untimed, unreviewed=unreviewed, no_commit=no_commit),
@@ -480,6 +495,13 @@ def _hours_between(start: datetime | None, end: datetime) -> float | None:
     return max(0.0, (end - start).total_seconds() / 3600.0)
 
 
+def _stage_views(
+    merged: Sequence[PullRequestFlowItemView], open_now: Sequence[PullRequestFlowItemView]
+) -> tuple[StageFlowView, ...]:
+    """The four stages' times over these requests: the one rule for every figure."""
+    return tuple(_stage_view(stage, merged, open_now) for stage in REVIEW_STAGE_ORDER)
+
+
 def _stage_view(
     stage: ReviewStage,
     merged: Sequence[PullRequestFlowItemView],
@@ -518,6 +540,30 @@ def _type_counts(
         )
         for request_type in REQUEST_TYPE_ORDER
     )
+
+
+def _type_flows(
+    merged: Sequence[PullRequestFlowItemView], open_now: Sequence[PullRequestFlowItemView]
+) -> tuple[RequestTypeFlowView, ...]:
+    """Each type's stage times and worst jam, from its own requests by the same rules.
+
+    A type with no request still has its four stages, with no time and no count.
+    """
+    flows: list[RequestTypeFlowView] = []
+    for request_type in REQUEST_TYPE_ORDER:
+        stages = _stage_views(
+            [item for item in merged if item.request_type is request_type],
+            [item for item in open_now if item.request_type is request_type],
+        )
+        flows.append(
+            RequestTypeFlowView(
+                request_type=request_type,
+                stages=stages,
+                worst_jam_p50=_worst(stages, "p50_hours"),
+                worst_jam_p75=_worst(stages, "p75_hours"),
+            )
+        )
+    return tuple(flows)
 
 
 def _notes(scope: _Scope, *, untimed: int, unreviewed: int, no_commit: int) -> tuple[str, ...]:

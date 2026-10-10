@@ -1,4 +1,5 @@
 // Only type imports here: this module runs under `node --test` as written.
+import { plural } from "../../lib/words.ts";
 import type {
   PullRequestFlowItemDto,
   PullRequestFlowResponse,
@@ -87,8 +88,79 @@ export function stageValue(stage: PullRequestFlowStageDto, pct: Percentile): num
   return pct === "p50" ? stage.p50_hours : stage.p75_hours;
 }
 
-export function worstJam(flow: PullRequestFlowResponse, pct: Percentile): ReviewStage | null {
-  return flow.worst_jam[pct];
+/** The four stages with nothing timed: what a type with no request has. */
+function untimedStages(): PullRequestFlowStageDto[] {
+  return STAGES.map((stage) => ({
+    stage,
+    label: STAGE_LABELS[stage],
+    p50_hours: null,
+    p75_hours: null,
+    measured_count: 0,
+    open_count: 0,
+  }));
+}
+
+/**
+ * The stage times the band shows: the picked type's own, or every request's
+ * with no type picked. Both come from the server, by one percentile rule; a
+ * type the server has no figures for has no time in any stage.
+ */
+export function stagesFor(
+  flow: PullRequestFlowResponse,
+  type: RequestType | null,
+): readonly PullRequestFlowStageDto[] {
+  if (type === null) return flow.stages;
+  return flow.stages_by_type[type]?.stages ?? untimedStages();
+}
+
+/** The stage requests spend longest in: the picked type's, or all requests'. */
+export function worstJam(
+  flow: PullRequestFlowResponse,
+  pct: Percentile,
+  type: RequestType | null = null,
+): ReviewStage | null {
+  return (type === null ? flow.worst_jam : flow.stages_by_type[type]?.worst_jam)?.[pct] ?? null;
+}
+
+/** The "N merged · N open" figures: the picked type's, or all requests'. */
+export function countsFor(
+  flow: PullRequestFlowResponse,
+  type: RequestType | null,
+): { merged: number; open: number } {
+  if (type === null) return { merged: flow.merged_count, open: flow.open_count };
+  const row = flow.type_counts.find((entry) => entry.request_type === type);
+  return { merged: row?.merged_count ?? 0, open: row?.open_count ?? 0 };
+}
+
+/** "1 request", "24 requests": how many requests a stage time rests on. */
+export function requestCountWords(count: number): string {
+  return plural(count, "request", "requests");
+}
+
+/**
+ * What a stage time rests on, as "1 request"; null when the stage has no time
+ * (a dash carries no number).
+ */
+export function sampleWords(hours: number | null, count: number): string | null {
+  if (hours === null || !Number.isFinite(hours) || count < 1) return null;
+  return requestCountWords(count);
+}
+
+/**
+ * Why a picked type has no stage time to show, or null when it has some. The
+ * band stays drawn, every stage a dash.
+ */
+export function noStageTimeWords(
+  label: string,
+  merged: number,
+  days: number,
+  stages: readonly PullRequestFlowStageDto[],
+): string | null {
+  if (stages.some((stage) => stage.measured_count > 0)) return null;
+  if (merged === 0) {
+    return `No request of type ${label} was merged in these ${days} days, so there is no stage time to show.`;
+  }
+  return `No stage time is known for the ${plural(merged, "merged request", "merged requests")} of type ${label}.`;
 }
 
 /**
@@ -100,7 +172,14 @@ export function worstJam(flow: PullRequestFlowResponse, pct: Percentile): Review
 export function bandProfile(
   stages: readonly PullRequestFlowStageDto[],
   pct: Percentile,
-): { stage: ReviewStage; thickness: number; jam: number; hours: number | null }[] {
+): {
+  stage: ReviewStage;
+  thickness: number;
+  jam: number;
+  hours: number | null;
+  /** Merged requests the time rests on. */
+  count: number;
+}[] {
   const byStage = new Map(stages.map((stage) => [stage.stage, stage]));
   const values = STAGES.map((stage) => {
     const view = byStage.get(stage);
@@ -111,7 +190,13 @@ export function bandProfile(
     const value = values[i];
     // Raised to 1.5 so the longest stage stands out: 4 h beside 23 h is not a jam.
     const jam = value === null || top === 0 ? 0 : (Math.log1p(value) / top) ** 1.5;
-    return { stage, hours: value, jam, thickness: 1 - 0.62 * jam };
+    return {
+      stage,
+      hours: value,
+      jam,
+      thickness: 1 - 0.62 * jam,
+      count: byStage.get(stage)?.measured_count ?? 0,
+    };
   });
 }
 
@@ -292,14 +377,25 @@ export function scopeWords(scope: PullRequestFlowResponse["scope"]): string {
   return `${kind} ${scope.name ?? scope.id}: ${repoWords}`;
 }
 
-/** The screen reader's summary of the band. */
-export function bandSummary(flow: PullRequestFlowResponse, pct: Percentile): string {
-  const jam = worstJam(flow, pct);
-  const parts = flow.stages.map((stage) => {
-    const value = formatHours(stageValue(stage, pct));
-    return `${stage.label} ${value}${stage.stage === jam ? " (the worst jam)" : ""}`;
+/** The screen reader's summary of the band, for the picked type or for every request. */
+export function bandSummary(
+  flow: PullRequestFlowResponse,
+  pct: Percentile,
+  type: RequestType | null = null,
+): string {
+  const jam = worstJam(flow, pct, type);
+  const parts = stagesFor(flow, type).map((stage) => {
+    const value = stageValue(stage, pct);
+    const sample = sampleWords(value, stage.measured_count);
+    return `${stage.label} ${formatHours(value)}${sample ? ` · ${sample}` : ""}${
+      stage.stage === jam ? " (the worst jam)" : ""
+    }`;
   });
-  return `Time in each stage at ${pct}, from ${flow.timed_merged_count} timed merged requests: ${parts.join(", ")}.`;
+  const lead =
+    type === null
+      ? `Time in each stage at ${pct}, from ${flow.timed_merged_count} timed merged requests`
+      : `Time in each stage of ${typeLabel(type)} requests at ${pct}`;
+  return `${lead}: ${parts.join(", ")}.`;
 }
 
 export interface InvestmentRow {
