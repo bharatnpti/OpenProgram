@@ -1,0 +1,161 @@
+frontend-v3/src/api/openapi.json
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 12342,12344,12531,12623,12628,12646
+frontend-v3/src/features/daily/reportView.test.ts
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 25-38
+backend/infra/workflows/schedule.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 15,37,40,89-107
+  s_a17a18ca8c509e::t_84ef577d486ff5 108-109
+backend/core/domain/status.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 219-221,227,246-247,259,262-264,272-273
+frontend-v2/src/api/generated.ts
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 3089-3091,3094,3172,3199,3203,3213
+backend/tests/unit/golden/day_report_full_day_at_risk.text.txt
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 33-34,36,39-40
+backend/tests/unit/golden/day_report_full_day.teams.json
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 89,95,101
+backend/tests/unit/golden/day_report_full_day_at_risk.email.html
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 1
+backend/tests/unit/test_testcontainers_compose.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 17-18
+frontend-v3/scripts/mock-console.mjs
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 946-947,976
+.env.example
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 18-21,23-24
+backend/tests/unit/test_day_report_ask_words.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 1-88
+backend/tests/unit/test_api.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 1084-1102,1552-1557,1598-1610
+backend/tests/unit/test_status_collector.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 496-498
+backend/api/routers/ask.py
+  s_a17a18ca8c509e::t_df1a48aad65114 65
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 14,32,84-85
+frontend-v3/src/features/checkin/schedule.test.ts
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 67-76,434-483,485
+backend/tests/unit/test_people_named_not_ids.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 1-524
+backend/tests/unit/test_agent_and_workflow.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 279-333,662-692,1887-1888
+frontend-v3/src/api/generated.ts
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 3089-3091,3094,3172,3199,3203,3213
+backend/tests/unit/golden/day_report_readiness_crowded.email.html
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 1
+backend/core/application/portfolio_feed_service.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 8,223,229-233
+backend/tests/unit/golden/day_report_readiness_gap.text.txt
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 32-35,37,40-41
+backend/core/application/person_names.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 7-12,17,27-31,80-135
+  s_a17a18ca8c509e::t_2dec39470d66fb 136
+backend/core/application/forecast_service.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 25,810
+backend/core/application/day_report_asks.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 143-148,152,607-609
+  s_a17a18ca8c509e::t_6f5affbd02a0d1 610-611
+backend/tests/unit/test_persona_views.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 58-59
+backend/api/routers/persona.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 70,87,94,121,128-129,517,534,541-545,548,555,561-566
+  s_a17a18ca8c509e::t_24f67ecd1de4ef 567-568
+backend/core/domain/workflows.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 8
+backend/tests/unit/golden/day_report_full_day_at_risk.teams.json
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 89,95,101
+backend/config/settings.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 68-72,75-76,844-845
+backend/tests/unit/golden/day_report_full_day.email.html
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 1
+backend/api/dtos.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 51,985-993,1002,1079-1081,1088,1105-1109,1118,2081-2085,2087-2089,2099,2109-2113,2143-2146,2156,2662-2665,2671-2672,2677-2679,2742-2744,3035,3037-3038,3042,4487
+backend/infra/workflows/checkin_fanout.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 107-112,135-157,203-209
+  s_a17a18ca8c509e::t_f6b60709a773d2 210-211
+backend/core/application/cross_person_service.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 22,853-854,882,889-890,908-915
+  s_a17a18ca8c509e::t_3697bf38de0307 916
+backend/tests/unit/golden/day_report_full_day_at_risk.slack.txt
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 32-33,35,38-39
+frontend-v3/src/features/admin/checkinForm.ts
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 89,92-96
+backend/core/application/status_collector.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 50-55,354-361,366,1618-1623,1717,1930-1932,1935-1944,1987-1991,1999,2088-2092,2096,2146,2190,3539,3569-3570,3573-3575,3579,3583,3585,4198,4200,4888-4891,4899-4903,4905,4920-4921,4931-4934,4958,4980-5000
+  s_a17a18ca8c509e::t_add9056e6296ec 5001-5002
+frontend-v2/src/api/openapi.json
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 12342,12344,12531,12623,12628,12646
+backend/tests/unit/golden/day_report_readiness_crowded.slack.txt
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 41-44,46,49-50
+backend/core/application/checkin_drift.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 44,240,507,548,552-555,567,594-595,604,611-614,635,684-689
+backend/core/application/day_report_builder.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 54,641-644
+backend/core/application/task_update_service.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 189
+backend/tests/unit/test_ask_service.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 566-568,633
+frontend-v3/src/features/admin/checkinForm.test.ts
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 55-61,109-125
+  s_a17a18ca8c509e::t_16ffaec8473941 126-127
+backend/tests/unit/golden/day_report_full_day.slack.txt
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 29-30,32,35-36
+backend/tests/unit/golden/day_report_full_day.text.txt
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 30-31,33,36-37
+backend/tests/unit/test_ask_api.py
+  s_a17a18ca8c509e::t_2c995309dea4a5 189
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 18,34-41,44-45,47-48,69-70,162-166,175-188,190-193,197-200,226
+backend/core/application/ask_service.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 1105-1108,1330-1332,1334-1336,1438-1440,1442-1443,1451,1455,1462,1469,1475,1485,1527-1528
+  s_a17a18ca8c509e::t_df1a48aad65114 1333
+backend/tests/unit/golden/day_report_readiness_gap.slack.txt
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 31-34,36,39-40
+backend/tests/unit/test_day_reports.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 412,416-419,421,450-451,456,664-668
+backend/tests/unit/golden/day_report_readiness_gap.email.html
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 1
+docker-compose.yml
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 305,367
+frontend-v3/src/features/checkin/schedule.ts
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 29-33,51-58,125,130,160-161,171-173,203-206,293-295,309,322-323,327-330,350-351,357
+backend/core/application/persona_views.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 18,424-425
+frontend/src/api/generated.ts
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 3093-3095,3098,3176,3203,3207,3217
+docs/ops/real-integrations.md
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 174-182
+backend/tests/unit/golden/day_report_readiness_crowded.teams.json
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 89,95,101
+backend/tests/unit/test_checkin_send_schedule.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 139-153
+backend/tests/unit/test_readiness_day_report.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 64,66
+backend/api/routers/checkin.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 29,63-65,83-85,126-128,149,184-188,247-249
+  s_a17a18ca8c509e::t_9be338b8c1edfa 250-251
+backend/tests/unit/golden/day_report_readiness_gap.teams.json
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 89,95,101
+frontend/src/api/openapi.json
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 12342,12344,12531,12623,12628,12646
+backend/core/application/risk_service.py
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 25,859
+backend/tests/unit/golden/day_report_readiness_crowded.text.txt
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 42-45,47,50-51
+features.md
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 461-462
+README.md
+  s_a17a18ca8c509e::t_bb2274b6cd16ed 259
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dc6349f41b57b53f7094bd7e985086f7ee62463d",
+  "prompts": {},
+  "sessions": {
+    "s_a17a18ca8c509e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5c08089-2933-44f3-a3c3-066d71fe7232",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
