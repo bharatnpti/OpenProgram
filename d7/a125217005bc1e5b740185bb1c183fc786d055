@@ -1,0 +1,45 @@
+frontend-v3/src/features/signals/FlowBand.tsx
+  s_3101dec2ee3c53::t_fb0266d34447b9 419-422,433-435,443-444
+  s_3101dec2ee3c53::t_60e5f4ebfd5e95 299
+  s_3101dec2ee3c53::t_9f608d85895cb9 110-113,115,445
+  s_3101dec2ee3c53::t_5313227f683751 25-26
+  s_3101dec2ee3c53::t_3511bfeb7094ea 14
+  s_3101dec2ee3c53::t_f2e9ad513ae4d6 93-96
+  s_3101dec2ee3c53::t_0f934483d7add5 46-47,49,105,108,324
+  s_3101dec2ee3c53::t_e6fff36442d613 423-432,436-442
+  s_3101dec2ee3c53::t_00836251e4e03d 386
+  s_3101dec2ee3c53::t_c89c05081fb209 106-107
+  s_3101dec2ee3c53::t_2f58b71029766c 446-447
+frontend-v3/scripts/mock/flow.mjs
+  s_3101dec2ee3c53::t_001d3539b614bf 276-297,360,407,414-430
+frontend-v3/src/features/signals/PrFlowSection.tsx
+  s_3101dec2ee3c53::t_720f68adaf2b9a 420-423
+  s_3101dec2ee3c53::t_3f5925df5cb461 341,343
+  s_3101dec2ee3c53::t_fc3cbcb7b014ac 452-461
+  s_3101dec2ee3c53::t_39764bde26b99e 312,314
+  s_3101dec2ee3c53::t_b62d8d30120f3b 565-577,582
+  s_3101dec2ee3c53::t_4c86fc6caa230d 474
+  s_3101dec2ee3c53::t_05d800f3956ebb 283-293
+  s_3101dec2ee3c53::t_39d5127354a31f 593,597
+  s_3101dec2ee3c53::t_3603b8540e777f 358-360
+  s_3101dec2ee3c53::t_95e2fe2fb87067 673-680
+  s_3101dec2ee3c53::t_cf955222416b9c 19,23,27,31,34
+  s_3101dec2ee3c53::t_a265a40a65a1b2 125-127
+  s_3101dec2ee3c53::t_d241c3caa9c254 559
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d7a125217005bc1e5b740185bb1c183fc786d055",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
