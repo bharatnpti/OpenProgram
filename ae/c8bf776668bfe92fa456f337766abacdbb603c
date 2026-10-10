@@ -1,0 +1,45 @@
+backend/api/main.py
+  s_3101dec2ee3c53::t_2fb569137fdd90 57
+backend/infra/phase1_smoke.py
+  s_3101dec2ee3c53::t_2fb569137fdd90 58
+backend/config/settings.py
+  s_3101dec2ee3c53::t_4e06f2b0aec616 44-47,49-50
+  s_3101dec2ee3c53::t_3641c153178cb2 584
+scripts/seed_demo_history.py
+  s_3101dec2ee3c53::t_2fb569137fdd90 152
+backend/tests/unit/test_psycopg_executor.py
+  s_3101dec2ee3c53::t_011133c79012c9 31
+  s_3101dec2ee3c53::t_21274321ea0134 67-68
+  s_3101dec2ee3c53::t_5e4328142d6d8d 252-253
+  s_3101dec2ee3c53::t_c7ed6f2ccd3683 1,6-7,12,14-20,23
+  s_3101dec2ee3c53::t_481750e2888505 127-251,254-264
+backend/infra/registry.py
+  s_3101dec2ee3c53::t_a2efe636ea4685 175-180,1515-1519,1523-1532,1535,1537-1541
+backend/tests/unit/test_agent_and_workflow.py
+  s_3101dec2ee3c53::t_34263a9f2fc006 1689
+  s_3101dec2ee3c53::t_cd527f34c45e43 711,735,763
+  s_3101dec2ee3c53::t_13803b9f60e780 1690
+backend/infra/persistence/psycopg_executor.py
+  s_3101dec2ee3c53::t_03dfbc6a702fd3 6,24-37,54,58-64,73,79,84-92,99,105-106,108-109,126-140,158-160,162-164,187-215
+  s_3101dec2ee3c53::t_664736afa38124 216-217
+backend/infra/workflows/schedule.py
+  s_3101dec2ee3c53::t_2fb569137fdd90 27
+backend/infra/workflows/worker.py
+  s_3101dec2ee3c53::t_2fb569137fdd90 28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aec8bf776668bfe92fa456f337766abacdbb603c",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
