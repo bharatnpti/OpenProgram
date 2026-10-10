@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 type WorkflowPayloadValue = str | int | float | bool | None
-type CheckinReconcileStatus = Literal["skipped_early", "no_missing", "dispatched"]
+type CheckinReconcileStatus = Literal["skipped_early", "no_missing", "dispatched", "disabled"]
 type CrossPersonNotifyRetryStatus = Literal["ran", "disabled"]
 
 

@@ -38,16 +38,16 @@ _Acceptance and tests_
 
 *What we need, and from whom*
 _Priya_
-    • Answer: CHK-1: "Is 3-D Secure in scope?" (6 days; asked by Asha (partly answered)). Escalated to Mark (Manager).
-    • Fix: CHK-3: Test environment is down (1 day; reported by Asha).
-    • Decision: Checkout Revamp: no security review in Jira yet (due 9 Nov); create it or link one (since today).
-    • Decision: Payments Pod: no on-call handover in Jira yet (due 9 Oct); create it or link one (since today).
+    • Answer: CHK-1: "Is 3-D Secure in scope?" (waiting 6 days; asked by Asha (partly answered)). Escalated to Mark (Manager).
+    • Fix: CHK-3: Test environment is down (waiting 1 day; reported by Asha).
+    • Decision: Checkout Revamp: no security review in Jira yet (due 9 Nov); create it or link one (waiting since today).
+    • Decision: Payments Pod: no on-call handover in Jira yet (due 9 Oct); create it or link one (waiting since today).
 _Asha_
-    • Fix: Zoe waits on CHK-3 (2 days). Escalated to Priya (Scrum master).
+    • Fix: Zoe waits on CHK-3 (waiting 2 days). Escalated to Priya (Scrum master).
     • Fix: CHK-1: no test case yet for engineering delivery (before business testing).
 _Omar_
-    • Fix: CHK-1: CHK-1 waits on Omar's API change in PLT-9 (5 days; reported by Asha, waits on Platform Pod (PLT-9)). Escalated to Lena (Scrum master).
-    • Review: CHK-1: Asha asked for a review (2 days). Escalated to Lena (Scrum master).
+    • Fix: CHK-1: CHK-1 waits on Omar's API change in PLT-9 (waiting 5 days; reported by Asha, waits on Platform Pod (PLT-9)). Escalated to Lena (Scrum master).
+    • Review: CHK-1: Asha asked for a review (waiting 2 days). Escalated to Lena (Scrum master).
 
 *Open questions*
 • CHK-1 · What we asked: Is 3-D Secure in scope? · Asked to: Priya · Asked on: Tue 29 Sep 2026 · Heard back?: Partly

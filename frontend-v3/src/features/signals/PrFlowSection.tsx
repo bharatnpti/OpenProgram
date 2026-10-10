@@ -16,17 +16,22 @@ import {
   STAGE_LABELS,
   STAGES,
   TYPES,
+  countsFor,
   formatHours,
   formatShare,
   investment,
+  noStageTimeWords,
   noneWords,
   parseScope,
   requestReference,
+  sampleWords,
   scopeWords,
   standingWords,
   stageValue,
+  stagesFor,
   typeColorVar,
   typeLabel,
+  worstJam,
   type Percentile,
 } from "./prFlow";
 
@@ -117,7 +122,9 @@ export function PrFlowSection({
             {full ? (
               <InvestmentCard flow={flow.data} highlight={highlight} onType={toggleType} />
             ) : null}
-            {full && asTable ? <FlowTables flow={flow.data} pct={pct} /> : null}
+            {full && asTable ? (
+              <FlowTables flow={flow.data} pct={pct} highlight={highlight} />
+            ) : null}
           </div>
         ) : null}
       </PanelState>
@@ -273,6 +280,17 @@ function BandCard({
   const drawn = flow.items.filter((item) => item.timed).length;
   const nothing = flow.merged_count === 0 && flow.open_count === 0;
   const still = useReducedMotion();
+  // The picked type's own figures; every request's with none picked.
+  const counts = countsFor(flow, highlight);
+  const noTime =
+    highlight === null || nothing
+      ? null
+      : noStageTimeWords(
+          typeLabel(highlight),
+          counts.merged,
+          flow.window_days,
+          stagesFor(flow, highlight),
+        );
   return (
     <section
       aria-labelledby="pr-flow-title"
@@ -291,9 +309,9 @@ function BandCard({
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-[13px] text-(--op-flow-ink-2)">
             <span className="text-[15px] font-extrabold text-(--op-flow-ink)">
-              {flow.merged_count.toLocaleString("en-GB")}
+              {counts.merged.toLocaleString("en-GB")}
             </span>{" "}
-            merged · {flow.open_count.toLocaleString("en-GB")} open
+            merged · {counts.open.toLocaleString("en-GB")} open
           </p>
           <span className="rounded-full border border-(--op-flow-border) px-2.5 py-1 text-[12px] font-bold text-(--op-flow-ink-2)">
             {pct}
@@ -320,8 +338,9 @@ function BandCard({
           highlight={highlight}
         />
       )}
+      {noTime ? <p className="mt-2 text-[12px] text-(--op-flow-ink-2)">{noTime}</p> : null}
       <Legend highlight={highlight} onType={onType} />
-      <FlowNotes flow={flow} drawn={drawn} />
+      <FlowNotes flow={flow} drawn={drawn} byType={highlight !== null} />
       {full ? (
         <details className="mt-3 text-[12px] text-(--op-flow-ink-2)">
           <summary className="cursor-pointer font-bold text-(--op-flow-ink)">
@@ -336,8 +355,9 @@ function BandCard({
             ))}
             <li>
               Times are the {pct === "p50" ? "median (p50)" : "75th percentile (p75)"} of the
-              requests merged in the window; open requests are dots where they stand now. A request
-              merged with no review counts for coding only.
+              requests merged in the window, or of the picked type&apos;s requests when one is
+              picked; the count beside a time is how many requests it rests on. Open requests are
+              dots where they stand now. A request merged with no review counts for coding only.
             </li>
           </ul>
         </details>
@@ -397,7 +417,10 @@ function Legend({
         />
         open now
       </span>
-      <ul className="flex flex-wrap gap-1" aria-label="Request types: pick one to light its dots">
+      <ul
+        className="flex flex-wrap gap-1"
+        aria-label="Request types: pick one to see its requests and its times in each stage"
+      >
         {TYPES.map(({ type, label }) => (
           <li key={type}>
             <button
@@ -426,7 +449,16 @@ function Legend({
   );
 }
 
-function FlowNotes({ flow, drawn }: { flow: PullRequestFlowResponse; drawn: number }) {
+function FlowNotes({
+  flow,
+  drawn,
+  byType,
+}: {
+  flow: PullRequestFlowResponse;
+  drawn: number;
+  /** A type is picked: the notes still cover every type, and say so. */
+  byType: boolean;
+}) {
   const notes = [...flow.notes];
   if (flow.items_truncated) {
     notes.push(
@@ -439,6 +471,7 @@ function FlowNotes({ flow, drawn }: { flow: PullRequestFlowResponse; drawn: numb
   if (notes.length === 0) return null;
   return (
     <ul role="note" className="mt-3 grid gap-1 text-[12px] text-(--op-flow-ink-2)">
+      {byType ? <li>These notes cover every type, not only the one picked.</li> : null}
       {notes.map((note) => (
         <li key={note}>{note}</li>
       ))}
@@ -523,18 +556,30 @@ function InvestmentCard({
       <p className="mt-3 text-[12px] text-(--op-flow-ink-2)">
         A type comes from the first rule that names one: a dependency bot wrote it, the linked Jira
         issue&apos;s type, a label, a title prefix (feat:, fix:, docs: …), a branch prefix. Pick a
-        type to light its requests in the flow.
+        type to see its requests and its times in each stage.
       </p>
     </section>
   );
 }
 
-function FlowTables({ flow, pct }: { flow: PullRequestFlowResponse; pct: Percentile }) {
+function FlowTables({
+  flow,
+  pct,
+  highlight,
+}: {
+  flow: PullRequestFlowResponse;
+  pct: Percentile;
+  highlight: RequestType | null;
+}) {
+  // The stage times follow the picked type, as the band does.
+  const stages = stagesFor(flow, highlight);
+  const jam = worstJam(flow, pct, highlight);
+  const forType = highlight === null ? "" : ` for ${typeLabel(highlight)} requests`;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <TableBox>
         <table className="w-full min-w-[520px] border-collapse">
-          <caption className="sr-only">Time in each stage</caption>
+          <caption className="sr-only">Time in each stage{forType}</caption>
           <thead>
             <tr>
               <th className={th}>Stage</th>
@@ -545,11 +590,11 @@ function FlowTables({ flow, pct }: { flow: PullRequestFlowResponse; pct: Percent
             </tr>
           </thead>
           <tbody>
-            {flow.stages.map((stage) => (
+            {stages.map((stage) => (
               <tr key={stage.stage}>
                 <td className={td}>
                   <span className="font-bold">{stage.label}</span>
-                  {flow.worst_jam[pct] === stage.stage ? (
+                  {jam === stage.stage ? (
                     <span className="ml-2 text-[12px] text-grey-secondary">worst jam at {pct}</span>
                   ) : null}
                 </td>
@@ -625,9 +670,14 @@ function FlowTables({ flow, pct }: { flow: PullRequestFlowResponse; pct: Percent
         </table>
       </TableBox>
       <p className="text-[12px] text-grey-secondary">
-        Stage times at {pct}:{" "}
-        {flow.stages
-          .map((stage) => `${stage.label} ${formatHours(stageValue(stage, pct))}`)
+        Stage times at {pct}
+        {forType}:{" "}
+        {stages
+          .map((stage) => {
+            const value = stageValue(stage, pct);
+            const sample = sampleWords(value, stage.measured_count);
+            return `${stage.label} ${formatHours(value)}${sample ? ` · ${sample}` : ""}`;
+          })
           .join(", ")}
         . A dash is a stage the request has not finished, skipped, or whose history was not read.
       </p>

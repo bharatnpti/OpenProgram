@@ -26,6 +26,11 @@ import { clockIn, currentZoneName } from "../../lib/zones.ts";
  *   since a member's days only skip a send that falls on one they leave off.
  * - other: steps, ranges and the like. A member reads "a schedule your admin
  *   set"; an admin reads the cron. Every day of the week is offered.
+ * - off: the scheduled send is switched off (OPENPROGRAM_CHECKIN_FANOUT_ENABLED),
+ *   so nobody is asked on a schedule. Everyone reads "Check-ins aren't sent on a
+ *   schedule right now."; no time, cron or day is said as when the bot asks.
+ *   Every day of the week is offered, and a member's days only matter once it
+ *   is on again.
  * "Every day" is said only of a weekly schedule that sends on all seven days.
  */
 
@@ -42,6 +47,14 @@ const DAYS_AHEAD_FOR_DATES = 4 * 366;
 export function isWeekly(send: Pick<Send, "kind">): boolean {
   return send.kind === "weekly";
 }
+
+/** Whether the scheduled send is switched off, so the bot asks nobody on a schedule. */
+export function isOff(send: Pick<Send, "kind">): boolean {
+  return send.kind === "off";
+}
+
+/** Said first wherever the send is off, in the member's dialog and in Admin › Check-ins. */
+export const SEND_OFF = "Check-ins aren't sent on a schedule right now.";
 
 /**
  * The days offered as someone's days, Monday 0. On a weekly schedule only the
@@ -109,12 +122,12 @@ export function datesWords(send: Pick<Send, "month_days" | "months">): string {
   return months ? `each day of ${listWords(months)}` : "";
 }
 
-/** The next send after `now`; null for a schedule that isn't weekly or on dates. */
+/** The next send after `now`; null for a schedule that isn't weekly or on dates, or is off. */
 export function nextSendAt(
   send: Pick<Send, "kind" | "local_time" | "weekdays" | "month_days" | "months">,
   now: Date,
 ): Date | null {
-  if (!send.local_time || send.kind === "other") return null;
+  if (!send.local_time || (send.kind !== "weekly" && send.kind !== "dates")) return null;
   const [hour, minute, second] = send.local_time.split(":").map(Number);
   const matches = (at: Date) =>
     isWeekly(send)
@@ -144,7 +157,8 @@ export function nextSendAt(
  * "09:30 UTC (11:30 in Europe/Berlin)", "09:30 UTC (23:30 the day before in
  * Pacific/Honolulu)", "09:30 UTC". The zone's clock is the next send's, so a
  * change of summer time shows from the day it applies. Only for a schedule
- * with one time (weekly or dates); any other is said as its cron.
+ * with one time (weekly or dates); any other is said as its cron. Never
+ * called for a send that is off, which has no time.
  */
 export function sendTimeWords(
   send: Pick<
@@ -154,7 +168,9 @@ export function sendTimeWords(
   zone: string | null,
   now: Date,
 ): string {
-  if (!send.local_time || send.kind === "other") return `${send.cron} (${send.timezone})`;
+  if (!send.local_time || (send.kind !== "weekly" && send.kind !== "dates")) {
+    return `${send.cron} (${send.timezone})`;
+  }
   const utc = `${clockTime(send.local_time)} ${send.timezone}`;
   const at = zone && zone !== send.timezone ? nextSendAt(send, now) : null;
   const local = at && zone ? clockIn(at, zone) : null;
@@ -184,6 +200,10 @@ const NOT_WEEKLY = "Check-ins aren't on a weekly schedule right now.";
  * admin's own clock (`zone`), and what a member's days and zone change.
  */
 export function adminSendWords(send: Send, zone: string | null, now: Date = new Date()): string {
+  if (isOff(send)) {
+    // The cron is what applies once it is on again, so it isn't said as when the bot asks.
+    return `${SEND_OFF} The scheduled send is switched off (OPENPROGRAM_CHECKIN_FANOUT_ENABLED), so the bot asks nobody until it is on again. A member's days only matter then; their time zone decides which day a reply counts for.`;
+  }
   const effect = isWeekly(send)
     ? "A member's days decide whether they are asked that day"
     : "A member's days only skip them when a send falls on a day they leave off";
@@ -270,6 +290,9 @@ export function clockTime(time: string): string {
  * one time is "a schedule your admin set" (an admin reads its cron).
  */
 export function askTimeWords(send: Send, zone: string | null, now: Date = new Date()): string {
+  if (isOff(send)) {
+    return `${SEND_OFF} The bot won't ask you until your admin turns the scheduled send back on. You can still choose your days and your time zone: they apply from then.`;
+  }
   const notYours = "so it isn't yours to set";
   if (send.kind === "weekly") {
     return `The bot asks everyone ${sendWords(send, zone, now)}: one time for the whole team, ${notYours}. You choose which of those days it asks you, and your time zone.`;
@@ -283,7 +306,7 @@ export function askTimeWords(send: Send, zone: string | null, now: Date = new Da
 /** Under the time zone: what it changes, and that the send time isn't one of those things. */
 export function zoneEffectWords(send: Send): string {
   const effect = "Decides which day your reply counts for. It doesn't change when the bot asks you";
-  if (!send.local_time || send.kind === "other") return `${effect}.`;
+  if (!send.local_time || (send.kind !== "weekly" && send.kind !== "dates")) return `${effect}.`;
   const time = `${clockTime(send.local_time)} ${send.timezone}`;
   const when = send.kind === "dates" ? `${time} on ${datesWords(send)}` : time;
   return `${effect}: that is ${when} for everyone.`;
@@ -296,10 +319,15 @@ export function daysLegendWords(send: Pick<Send, "kind">): string {
 
 /**
  * The line under the day chips. On a schedule that isn't weekly, every day is
- * offered, so it says that a day only skips a send that falls on it.
+ * offered, so it says that a day only skips a send that falls on it; while the
+ * send is off, that the days only matter once it is on again.
  */
 export function daysHintWords(send: Pick<Send, "kind">, teamDays: boolean): string {
   const following = "Following your team: when its days change, yours do too.";
+  if (isOff(send)) {
+    const later = "Your days only matter once check-ins are sent on a schedule again.";
+    return `${later} ${teamDays ? following : "These stay yours if the team's change."}`;
+  }
   if (isWeekly(send)) {
     return teamDays
       ? following
@@ -319,12 +347,14 @@ export function zoneWords(timezone: string | null, teamZone: string): string {
  * The menu line under "Check-in schedule". Weekly: the days they are asked,
  * "Mon–Fri · Europe/Berlin". Otherwise when the bot asks, and the days that
  * skip them: "Only on 1 Jan · skips Sat, Sun · Europe/Berlin", "On your admin's
- * schedule · Europe/Berlin".
+ * schedule · Europe/Berlin". Off: "Not sent on a schedule now · Europe/Berlin",
+ * with no days, since none of them is asked.
  */
 export function scheduleSummary(preference: CheckinPreferenceResponse): string {
   const send = preference.send;
   const draft = draftFrom(preference);
   const zone = draft.timezone ?? `team time zone (${preference.defaults.timezone})`;
+  if (isOff(send)) return `Not sent on a schedule now · ${zone}`;
   if (isWeekly(send)) return `${daysWords(draft.weekdays, send)} · ${zone}`;
   const when = send.kind === "dates" ? `Only on ${datesWords(send)}` : "On your admin's schedule";
   const skipped = EVERY_DAY.filter((day) => !draft.weekdays.includes(day));

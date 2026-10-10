@@ -41,6 +41,7 @@ from core.application.merge_request_links import (
     is_open_merge_request,
     merge_requests_by_issue_key,
 )
+from core.application.person_names import person_name
 from core.application.status_summaries import day_label
 from core.application.writeback_service import canonical_target_state
 from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
@@ -236,7 +237,7 @@ def review_without_merge_request_fact(
     tenant_id: str,
     issue_key: str,
     developer_id: str,
-    developer_name: str,
+    developer_name: str | None,
     as_of: date,
     status_source: StatusSource,
     observed_at: datetime,
@@ -503,7 +504,7 @@ def eta_stated_fact(
     issue_key: str,
     eta: IssueEta | None,
     developer_id: str,
-    developer_name: str,
+    developer_name: str | None,
     as_of: date,
     observed_at: datetime,
     correlation_id: str,
@@ -544,8 +545,13 @@ def checkin_drift_signals(
     owners: Mapping[str, str] | None = None,
     is_code_work: Callable[[str, str], bool] | None = None,
     workers: Mapping[str, Collection[str]] | None = None,
+    names: Mapping[str, str] | None = None,
 ) -> list[CheckInDriftSignal]:
     """The check-in drift signals for ``issue_keys`` stated on ``as_of``.
+
+    A reason names who said it by ``names`` (member id to display name), else
+    by the name recorded on the fact, else as ``UNKNOWN_PERSON``: never by the
+    chat id, which an older fact recorded as its "name" when none was known.
 
     A "said in review" signal, the latest per issue, is dropped once an open
     merge request names the issue, and when ``is_code_work(issue_key,
@@ -558,6 +564,7 @@ def checkin_drift_signals(
     :func:`eta_is_compared`), also for ETAs recorded before that rule.
     """
     owner_of = owners or {}
+    known = names or {}
     in_review: dict[str, FactEvent] = {}
     etas: dict[str, dict[str, FactEvent]] = {}
     for fact in sorted(facts, key=lambda item: (item.observed_at, item.ingested_at)):
@@ -584,8 +591,8 @@ def checkin_drift_signals(
             kind=SAID_IN_REVIEW_NO_MR,
             issue_key=key,
             reason=(
-                f"{_speaker(fact.payload)} said {key} is in review, but no open merge "
-                "request names it."
+                f"{_speaker(fact.payload, known, start=True)} said {key} is in review, but no "
+                "open merge request names it."
             ),
             stated_by=_text(fact.payload, "developer_id") or "",
             stated_source=_status_source(fact.payload),
@@ -594,14 +601,17 @@ def checkin_drift_signals(
         if key in still_missing
     ]
     for key, by_person in sorted(etas.items()):
-        signal = _eta_disagreement(key, by_person, owner_of.get(key))
+        signal = _eta_disagreement(key, by_person, owner_of.get(key), known)
         if signal is not None:
             signals.append(signal)
     return signals
 
 
 def _eta_disagreement(
-    issue_key: str, by_person: Mapping[str, FactEvent], owner_id: str | None
+    issue_key: str,
+    by_person: Mapping[str, FactEvent],
+    owner_id: str | None,
+    names: Mapping[str, str],
 ) -> CheckInDriftSignal | None:
     """``ETAs disagree for CHK-4: Liam Chen (owner) said Tuesday, Oct 6; ...``.
 
@@ -622,7 +632,7 @@ def _eta_disagreement(
     # The owner first, then the others in the order they said it.
     stated.sort(key=lambda item: (item[0] != owner_id, item[1].observed_at))
     parts = [
-        f"{_speaker(fact.payload)}{' (owner)' if person == owner_id else ''} said "
+        f"{_speaker(fact.payload, names)}{' (owner)' if person == owner_id else ''} said "
         f"{_eta_words(fact.payload, window)}"
         for person, fact, window in stated
     ]
@@ -671,8 +681,12 @@ def _month_day(stated_on: date, month: int, day: int) -> date | None:
     return None
 
 
-def _speaker(payload: Mapping[str, JsonScalar]) -> str:
-    return _text(payload, "developer_name") or _text(payload, "developer_id") or "Someone"
+def _speaker(
+    payload: Mapping[str, JsonScalar], names: Mapping[str, str], *, start: bool = False
+) -> str:
+    """Who stated it, by name; ``UNKNOWN_PERSON`` when none is known, capitalised to start."""
+    name = person_name(names, _text(payload, "developer_id"), _text(payload, "developer_name"))
+    return name[:1].upper() + name[1:] if start else name
 
 
 def _status_source(payload: Mapping[str, JsonScalar]) -> StatusSource | None:

@@ -12,6 +12,7 @@ from core.domain.workflows import (
     ScheduleBootstrapResult,
     SyncScheduleConfig,
 )
+from core.ports.workflows import WorkflowScheduler
 from infra.registry import ServiceRegistry
 from infra.workflows.dispatch import safe_workflow_id
 
@@ -33,18 +34,10 @@ async def ensure_workflow_schedules(
 ) -> list[ScheduleBootstrapResult]:
     settings = settings or registry.settings
     scheduler = registry.workflow_scheduler()
-    results = [
-        await scheduler.ensure_heartbeat_schedule(),
-        await scheduler.ensure_checkin_fanout_schedule(checkin_fanout_config(settings)),
-    ]
+    results = [await scheduler.ensure_heartbeat_schedule()]
     # A feature switched off removes its schedule: one created while it was on
     # would otherwise keep firing, because nothing else ever deletes it.
-    if settings.checkin_reconcile_enabled:
-        results.append(
-            await scheduler.ensure_checkin_reconcile_schedule(checkin_reconcile_config(settings))
-        )
-    else:
-        results.append(await scheduler.remove_schedule(settings.checkin_reconcile_schedule_id))
+    results.extend(await _ensure_checkin_schedules(scheduler, settings))
     if settings.conversation_purge_enabled:
         results.append(
             await scheduler.ensure_conversation_purge_schedule(conversation_purge_config(settings))
@@ -91,6 +84,27 @@ async def ensure_workflow_schedules(
         results.append(await scheduler.remove_schedule(settings.readiness_scan_schedule_id))
     results.extend(await scheduler.ensure_sync_schedules(sync_configs))
     return results
+
+
+async def _ensure_checkin_schedules(
+    scheduler: WorkflowScheduler, settings: Settings
+) -> list[ScheduleBootstrapResult]:
+    """The scheduled send of everyone's check-ins, and its catch-up.
+
+    The reconcile pass asks whoever the fan-out missed, so with the fan-out off
+    it would become the send itself: it is scheduled only with both on.
+    """
+    if settings.checkin_fanout_enabled:
+        fanout = await scheduler.ensure_checkin_fanout_schedule(checkin_fanout_config(settings))
+    else:
+        fanout = await scheduler.remove_schedule(settings.checkin_fanout_schedule_id)
+    if settings.checkin_fanout_enabled and settings.checkin_reconcile_enabled:
+        reconcile = await scheduler.ensure_checkin_reconcile_schedule(
+            checkin_reconcile_config(settings)
+        )
+    else:
+        reconcile = await scheduler.remove_schedule(settings.checkin_reconcile_schedule_id)
+    return [fanout, reconcile]
 
 
 def checkin_fanout_config(settings: Settings) -> CheckinScheduleConfig:

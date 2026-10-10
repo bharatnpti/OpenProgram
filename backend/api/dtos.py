@@ -40,6 +40,7 @@ from core.application.forecast_service import (
     ScopeDeliveryView,
 )
 from core.application.gate_service import GateBoardView
+from core.application.person_names import UNKNOWN_PERSON, without_member_ids
 from core.application.persona_views import (
     BlockerDetailView,
     BlockerView,
@@ -71,6 +72,7 @@ from core.application.pull_request_flow_service import (
     PullRequestFlowItemView,
     PullRequestFlowView,
     RequestTypeCountView,
+    RequestTypeFlowView,
     StageFlowView,
 )
 from core.application.task_update_service import TASK_UPDATE_TEXT_MAX, TaskStatement, TaskUpdate
@@ -973,7 +975,15 @@ class FocusResponse(BaseModel):
     )
 
     @classmethod
-    def from_view(cls, view: FocusView, *, write_back: WriteBackModeName = "off") -> FocusResponse:
+    def from_view(
+        cls,
+        view: FocusView,
+        *,
+        write_back: WriteBackModeName = "off",
+        names: Mapping[str, str] | None = None,
+    ) -> FocusResponse:
+        """``names`` (member id to name) clean ids out of a summary stored before
+        it named people (``without_member_ids``)."""
         return cls(
             write_back=write_back,
             developer_id=view.developer_id,
@@ -982,7 +992,7 @@ class FocusResponse(BaseModel):
             status_source=view.status_source,
             developer_confirmed=view.developer_confirmed,
             status_as_of=view.status_as_of,
-            summary=view.summary,
+            summary=without_member_ids(view.summary, names or {}),
             blockers=list(view.blockers),
             blocker_details=[BlockerDetailDto.from_view(detail) for detail in view.blocker_details],
             tasks=[FocusTaskDto.from_view(task) for task in view.tasks],
@@ -1059,14 +1069,16 @@ class CheckinDeveloperDto(BaseModel):
     summary: str
 
     @classmethod
-    def from_view(cls, developer: CheckinDeveloperView) -> CheckinDeveloperDto:
+    def from_view(
+        cls, developer: CheckinDeveloperView, names: Mapping[str, str] | None = None
+    ) -> CheckinDeveloperDto:
         return cls(
             developer_id=developer.developer_id,
             developer_name=developer.developer_name,
             state=developer.state,
             source=developer.source,
             status_as_of=developer.status_as_of,
-            summary=developer.summary,
+            summary=without_member_ids(developer.summary, names or {}),
         )
 
 
@@ -1083,7 +1095,11 @@ class PodCheckinsResponse(BaseModel):
     developers: list[CheckinDeveloperDto]
 
     @classmethod
-    def from_view(cls, view: PodCheckinsView) -> PodCheckinsResponse:
+    def from_view(
+        cls, view: PodCheckinsView, names: Mapping[str, str] | None = None
+    ) -> PodCheckinsResponse:
+        """``names`` (member id to name) clean ids out of summaries stored before
+        they named people (``without_member_ids``)."""
         return cls(
             pod_id=view.pod_id,
             pod_name=view.pod_name,
@@ -1092,7 +1108,7 @@ class PodCheckinsResponse(BaseModel):
             partial=view.partial,
             stale=view.stale,
             missing=view.missing,
-            developers=[CheckinDeveloperDto.from_view(item) for item in view.developers],
+            developers=[CheckinDeveloperDto.from_view(item, names) for item in view.developers],
         )
 
 
@@ -1867,6 +1883,22 @@ class PullRequestWorstJamDto(BaseModel):
     p75: ReviewStage | None
 
 
+class PullRequestTypeFlowDto(BaseModel):
+    """One request type's own stage times and worst jam, over that type's requests alone."""
+
+    model_config = ConfigDict(frozen=True)
+
+    stages: list[PullRequestFlowStageDto]
+    worst_jam: PullRequestWorstJamDto
+
+    @classmethod
+    def from_view(cls, view: RequestTypeFlowView) -> PullRequestTypeFlowDto:
+        return cls(
+            stages=[PullRequestFlowStageDto.from_view(stage) for stage in view.stages],
+            worst_jam=PullRequestWorstJamDto(p50=view.worst_jam_p50, p75=view.worst_jam_p75),
+        )
+
+
 class PullRequestFlowResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -1889,6 +1921,13 @@ class PullRequestFlowResponse(BaseModel):
     stages: list[PullRequestFlowStageDto]
     worst_jam: PullRequestWorstJamDto
     type_counts: list[PullRequestTypeCountDto]
+    stages_by_type: dict[RequestType, PullRequestTypeFlowDto] = Field(
+        description=(
+            "Every request type's own stage times and worst jam, over its requests alone: "
+            "the same percentile rule as stages. A type with no request has its four stages "
+            "with no time and a count of 0."
+        )
+    )
     items: list[PullRequestFlowItemDto]
     items_truncated: bool = Field(
         description="More requests than the items list holds; counts and stage times cover all."
@@ -1911,6 +1950,10 @@ class PullRequestFlowResponse(BaseModel):
             stages=[PullRequestFlowStageDto.from_view(stage) for stage in view.stages],
             worst_jam=PullRequestWorstJamDto(p50=view.worst_jam_p50, p75=view.worst_jam_p75),
             type_counts=[PullRequestTypeCountDto.from_view(item) for item in view.type_counts],
+            stages_by_type={
+                flow.request_type: PullRequestTypeFlowDto.from_view(flow)
+                for flow in view.type_flows
+            },
             items=[PullRequestFlowItemDto.from_view(item) for item in view.items],
             items_truncated=view.items_truncated,
             notes=list(view.notes),
@@ -2055,8 +2098,15 @@ class RiskFindingResponse(BaseModel):
 
     @classmethod
     def from_domain(
-        cls, finding: RiskFinding, *, person_name: str | None = None
+        cls,
+        finding: RiskFinding,
+        *,
+        person_name: str | None = None,
+        names: Mapping[str, str] | None = None,
     ) -> RiskFindingResponse:
+        """``names`` (member id to name) clean ids out of the owner's stored status
+        summary and the reason (``without_member_ids``)."""
+        known = names or {}
         return cls(
             rule_id=finding.rule_id.value,
             severity=finding.severity,
@@ -2066,7 +2116,7 @@ class RiskFindingResponse(BaseModel):
                 id=finding.entity_ref.id,
             ),
             workstream_id=finding.workstream_id,
-            reason=finding.reason,
+            reason=without_member_ids(finding.reason, known),
             evidence=RiskEvidenceDto(
                 identifier=finding.evidence.identifier,
                 url=finding.evidence.url,
@@ -2076,7 +2126,11 @@ class RiskFindingResponse(BaseModel):
             detected_at=finding.detected_at,
             status=finding.status.value,
             owner_id=finding.owner_id,
-            owner_status_summary=finding.owner_status_summary,
+            owner_status_summary=(
+                without_member_ids(finding.owner_status_summary, known)
+                if finding.owner_status_summary is not None
+                else None
+            ),
             owner_status_source=finding.owner_status_source,
             owner_status_as_of=finding.owner_status_as_of,
             owner_status_has_blockers=finding.owner_status_has_blockers,
@@ -2106,7 +2160,10 @@ class DriftFindingResponse(BaseModel):
     child_entity_ref: EntityRefDto | None
 
     @classmethod
-    def from_domain(cls, finding: DriftFinding) -> DriftFindingResponse:
+    def from_domain(
+        cls, finding: DriftFinding, names: Mapping[str, str] | None = None
+    ) -> DriftFindingResponse:
+        """``names`` (member id to name) clean ids out of the reason (``without_member_ids``)."""
         return cls(
             kind=finding.kind.value,
             severity=finding.severity,
@@ -2116,7 +2173,7 @@ class DriftFindingResponse(BaseModel):
                 id=finding.entity_ref.id,
             ),
             workstream_id=finding.workstream_id,
-            reason=finding.reason,
+            reason=without_member_ids(finding.reason, names or {}),
             detected_at=finding.detected_at,
             owner_id=finding.owner_id,
             stated_source=finding.stated_source,
@@ -2515,18 +2572,24 @@ class CheckinSendResponse(BaseModel):
             "What the schedule is. `weekly`: one time on days of the week (`local_time`, "
             "`weekdays`). `dates`: one time on listed days of the month and/or in listed "
             "months (`local_time`, `month_days`, `months`), such as 1 January only. `other`: "
-            "anything else, such as a step or a range in the time; only `cron` says when."
+            "anything else, such as a step or a range in the time; only `cron` says when. "
+            "`off`: the scheduled send is switched off (OPENPROGRAM_CHECKIN_FANOUT_ENABLED), "
+            "so nobody is asked on a schedule; `cron` is what applies once it is on again, "
+            "and every other field is null."
         ),
     )
     cron: str = Field(
         description=(
             "The tenant's check-in schedule as configured (OPENPROGRAM_CHECKIN_FANOUT_CRON). "
-            "Every member is asked on it; nobody has a time of their own."
+            "Every member is asked on it, unless `kind` is `off`; nobody has a time of "
+            "their own."
         ),
     )
     timezone: str = Field(description="The zone the schedule is read in: always UTC.")
     local_time: time | None = Field(
-        description="The clock time of the send in `timezone`; null when `kind` is `other`.",
+        description=(
+            "The clock time of the send in `timezone`; null when `kind` is `other` or `off`."
+        ),
     )
     weekdays: list[int] | None = Field(
         description=(
@@ -2589,9 +2652,9 @@ class CheckinPreferenceResponse(BaseModel):
     defaults: CheckinDefaultsResponse
     send: CheckinSendResponse = Field(
         description=(
-            "When the bot asks: one tenant-wide send. The member's `weekdays` decide whether "
-            "they are asked on a send day; their `timezone` decides which day a reply counts "
-            "for, not when they are asked."
+            "When the bot asks: one tenant-wide send, or none while `kind` is `off`. The "
+            "member's `weekdays` decide whether they are asked on a send day; their `timezone` "
+            "decides which day a reply counts for, not when they are asked."
         ),
     )
 
@@ -2882,11 +2945,14 @@ class MyStatusResponse(BaseModel):
         cls,
         status: DeveloperStatus,
         blocker_details: tuple[BlockerDetailView, ...] = (),
+        names: Mapping[str, str] | None = None,
     ) -> MyStatusResponse:
+        """``names`` (member id to name) clean ids out of a summary stored before
+        it named people (``without_member_ids``)."""
         return cls(
             source=status.source,
             developer_confirmed=status.developer_confirmed,
-            summary=status.summary,
+            summary=without_member_ids(status.summary, names or {}),
             blockers=list(status.blockers),
             blocker_details=[BlockerDetailDto.from_view(detail) for detail in blocker_details],
             eta_change_days=status.eta_change_days,
@@ -4331,7 +4397,7 @@ class CommitmentResponse(BaseModel):
                     target_date=change.target_date,
                     changed_at=change.changed_at,
                     changed_by=change.changed_by,
-                    changed_by_name=names.get(change.changed_by, change.changed_by),
+                    changed_by_name=names.get(change.changed_by) or UNKNOWN_PERSON,
                     note=change.note,
                 )
                 for change in commitment.changes

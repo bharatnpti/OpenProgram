@@ -281,6 +281,116 @@ async def test_the_tenant_flow_times_each_stage_and_names_the_worst_jam() -> Non
     )
 
 
+async def _stages_of(view: PullRequestFlowView, request_type: str) -> dict:
+    flow = next(item for item in view.type_flows if item.request_type.value == request_type)
+    return {stage.stage: stage for stage in flow.stages}
+
+
+async def test_a_type_is_timed_from_its_own_requests_by_the_same_rule_as_all_of_them() -> None:
+    store = await _seeded()
+    # A second bug fix, so the type has two: the median is between them.
+    await _fact(
+        store,
+        repo="acme/checkout-api",
+        number="9",
+        title="fix: refund rounding",
+        member="U-liam",
+        observed_at=hours_ago(6),
+        timeline=_merged_timeline(6, (4, 8, 4, 3)),
+        merged_at=iso(hours_ago(6)),
+    )
+
+    view = await _flow(store)
+
+    bug_fix = await _stages_of(view, "bug_fix")
+    coding = bug_fix[ReviewStage.CODING]
+    # Request 1 (CHK-3, a Bug): coding 2 h, awaiting 16, review 2, merge 1.
+    # Request 9: coding 4 h, awaiting 8, review 4, merge 3. Nothing else is a bug fix.
+    assert coding.measured_count == 2
+    assert coding.p50_hours == pytest.approx(3.0)
+    assert coding.p75_hours == pytest.approx(3.5)
+    assert bug_fix[ReviewStage.AWAITING_REVIEW].p50_hours == pytest.approx(12.0)
+    assert bug_fix[ReviewStage.AWAITING_REVIEW].p75_hours == pytest.approx(14.0)
+    assert bug_fix[ReviewStage.IN_REVIEW].p50_hours == pytest.approx(3.0)
+    assert bug_fix[ReviewStage.AWAITING_MERGE].p50_hours == pytest.approx(2.0)
+    # Documentation is request 2 alone, so the figures are its own, not the tenant's.
+    documentation = await _stages_of(view, "documentation")
+    assert documentation[ReviewStage.CODING].p50_hours == pytest.approx(4.0)
+    assert documentation[ReviewStage.AWAITING_REVIEW].p50_hours == pytest.approx(30.0)
+    # The all-types figures are untouched by the new field.
+    overall = {stage.stage: stage for stage in view.stages}
+    assert overall[ReviewStage.CODING].measured_count == 4
+    assert overall[ReviewStage.AWAITING_REVIEW].p50_hours == pytest.approx(16.0)
+
+
+async def test_a_type_with_no_request_has_its_four_stages_with_no_time_and_no_count() -> None:
+    view = await _flow(await _seeded())
+
+    assert [flow.request_type.value for flow in view.type_flows] == [
+        row.request_type.value for row in view.type_counts
+    ]
+    performance = next(f for f in view.type_flows if f.request_type.value == "performance")
+    assert [stage.stage for stage in performance.stages] == list(ReviewStage)
+    for stage in performance.stages:
+        assert (stage.p50_hours, stage.p75_hours) == (None, None)
+        assert (stage.measured_count, stage.open_count) == (0, 0)
+    assert (performance.worst_jam_p50, performance.worst_jam_p75) == (None, None)
+
+
+async def test_a_type_with_one_request_is_that_requests_times_counted_once() -> None:
+    view = await _flow(await _seeded())
+
+    bug_fix = await _stages_of(view, "bug_fix")
+    # Request 1 alone: p50 and p75 are both its own hours, from a sample of one.
+    for stage, hours in (
+        (ReviewStage.CODING, 2.0),
+        (ReviewStage.AWAITING_REVIEW, 16.0),
+        (ReviewStage.IN_REVIEW, 2.0),
+        (ReviewStage.AWAITING_MERGE, 1.0),
+    ):
+        assert bug_fix[stage].p50_hours == pytest.approx(hours)
+        assert bug_fix[stage].p75_hours == pytest.approx(hours)
+        assert bug_fix[stage].measured_count == 1
+    flow = next(f for f in view.type_flows if f.request_type.value == "bug_fix")
+    # The worst jam is the type's own longest stage, by the rule the tenant's uses.
+    assert (flow.worst_jam_p50, flow.worst_jam_p75) == (
+        ReviewStage.AWAITING_REVIEW,
+        ReviewStage.AWAITING_REVIEW,
+    )
+
+
+async def test_a_type_keeps_the_no_review_rule_coding_only_and_its_open_requests() -> None:
+    view = await _flow(await _seeded())
+
+    # The bot's dependency update (request 6) merged with no review: coding is
+    # known (it was ready the hour it was written), the review stages were
+    # skipped, not waited.
+    dependency = await _stages_of(view, "dependency_update")
+    assert dependency[ReviewStage.CODING].measured_count == 1
+    assert dependency[ReviewStage.CODING].p50_hours == pytest.approx(0.0)
+    for stage in (ReviewStage.AWAITING_REVIEW, ReviewStage.IN_REVIEW, ReviewStage.AWAITING_MERGE):
+        assert (dependency[stage].p50_hours, dependency[stage].measured_count) == (None, 0)
+    # With coding alone known, the type has no worst jam either.
+    flow = next(f for f in view.type_flows if f.request_type.value == "dependency_update")
+    assert (flow.worst_jam_p50, flow.worst_jam_p75) == (None, None)
+
+
+async def test_an_open_request_is_counted_in_its_stage_for_its_own_type_only() -> None:
+    view = await _flow(await _seeded())
+
+    # Request 5 (CHK-8, a Story) is open, awaiting review: no feature has merged,
+    # so the type has a count of one waiting and no time.
+    feature = await _stages_of(view, "feature")
+    assert feature[ReviewStage.AWAITING_REVIEW].open_count == 1
+    assert (
+        feature[ReviewStage.AWAITING_REVIEW].p50_hours,
+        feature[ReviewStage.AWAITING_REVIEW].measured_count,
+    ) == (None, 0)
+    for other in ("bug_fix", "documentation", "dependency_update", "unclassified"):
+        stages = await _stages_of(view, other)
+        assert sum(stage.open_count for stage in stages.values()) == 0
+
+
 async def test_each_request_is_typed_and_listed_newest_first_with_open_ones_after() -> None:
     view = await _flow(await _seeded())
 
@@ -601,6 +711,26 @@ def test_the_endpoint_answers_for_a_scope_and_keeps_the_flow_read_rules(
         "Dependency update",
         "Bug fix",
     ]
+    # Every type has its own four stages, keyed by the type's name, in the fixed order.
+    assert list(body["stages_by_type"]) == [row["request_type"] for row in body["type_counts"]]
+    bug_fix = body["stages_by_type"]["bug_fix"]
+    assert [stage["stage"] for stage in bug_fix["stages"]] == [
+        "coding",
+        "awaiting_review",
+        "in_review",
+        "awaiting_merge",
+    ]
+    assert bug_fix["stages"][1]["p50_hours"] == 2.0
+    assert bug_fix["stages"][1]["measured_count"] == 1
+    assert bug_fix["worst_jam"] == {"p50": "awaiting_review", "p75": "awaiting_review"}
+    assert body["stages_by_type"]["refactor"]["stages"][0] == {
+        "stage": "coding",
+        "label": "Coding",
+        "p50_hours": None,
+        "p75_hours": None,
+        "measured_count": 0,
+        "open_count": 0,
+    }
     assert project.json()["scope"] == {
         "kind": "project",
         "id": "checkout",

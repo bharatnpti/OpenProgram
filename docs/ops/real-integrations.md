@@ -171,7 +171,15 @@ holds for the conversation purge, inbound sweeper, counterpart-DM retry and
 narrative-brief schedules.
 
 The 09:30 weekday fan-out (`openprogram-checkin-fanout`, cron in UTC) stays
-active.
+active unless `OPENPROGRAM_CHECKIN_FANOUT_ENABLED=false`. With that off the
+worker deletes the fan-out schedule and the reconcile schedule when it starts,
+whatever `CHECKIN_RECONCILE_ENABLED` says (the catch-up alone would ask
+everyone), and a run that still fires, such as DBOS replaying missed runs at
+start-up before the schedules are applied, asks nobody. The console's check-in
+screens then say "Check-ins aren't sent on a schedule right now." An admin can
+still send one member's check-in. Setting it back to `true` re-creates the
+schedule on the next start, with no replay of the days it was off. Prefer it to
+a cron set to a far date or a manual `pause_schedule`.
 
 `use_real` also pins `CROSS_PERSON_AUTO_NOTIFY=false` (a branch in flight turns
 it on by default; it DMs whoever a check-in asks something of).

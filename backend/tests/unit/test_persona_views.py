@@ -55,7 +55,8 @@ async def test_focus_falls_back_to_status_when_developer_graph_is_missing() -> N
     view = await service.focus("demo", "dev-missing", as_of)
 
     assert view.developer_id == "dev-missing"
-    assert view.developer_name == "dev-missing"
+    # No member record names them, and the id is never shown as the name.
+    assert view.developer_name == "a team member"
     assert view.status_source is StatusSource.CONFIRMED
     assert view.summary == "Finishing handoff."
     assert view.tasks == ()

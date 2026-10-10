@@ -4,10 +4,17 @@ A person reaches the read models as an id: a member's node id, which in a
 single-workspace tenant is also their chat user id. A view that shows the
 person to a reader names them from the member record first, then the chat
 directory, and otherwise as ``UNKNOWN_PERSON``.
+
+Text stored before a builder named people can still hold their ids (an
+inferred status summary said "risks flagged on U0..."). ``without_member_ids``
+is the read-time cleanup for it: each member id the tenant knows becomes that
+member's name, and any other token shaped like a chat user id becomes
+``UNKNOWN_PERSON``. An id of another shape that no member has is left as it is.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
 
 from core.domain.graph import GraphNode, NodeKind
@@ -16,6 +23,11 @@ from core.ports.repositories import GraphRepository
 
 # Who a line is about when nothing names them: never a raw chat id.
 UNKNOWN_PERSON = "a team member"
+
+# A chat user id as the chat provider issues them: U or W, then 8 to 11
+# capitals and digits with at least one digit ("U0000TEST01"). A word in
+# capitals ("UNDERSTOOD") has no digit; an issue key ("CHK-12") has a dash.
+CHAT_ID = re.compile(r"(?<![\w/-])[UW](?=[A-Z0-9]*\d)[A-Z0-9]{8,11}(?![\w/-])")
 
 
 class PersonNames:
@@ -64,6 +76,63 @@ class PersonNames:
                 if name is not None:
                     names[person_id] = name
         return names
+
+    async def by_member_id(self, tenant_id: str) -> dict[str, str]:
+        """Every member's name by each of their ids: node id and chat id (``member_names``)."""
+        if self._graph_repository is None:
+            return {}
+        return member_names(await self._graph_repository.list_nodes(tenant_id, NodeKind.DEVELOPER))
+
+
+def member_names(members: Iterable[GraphNode]) -> dict[str, str]:
+    """Each member's name by node id and by chat id; one whose name is only an id is left out.
+
+    A member's own node id wins over another member's chat id.
+    """
+    listed = [member for member in members if member.kind is NodeKind.DEVELOPER]
+    names: dict[str, str] = {}
+    for member in listed:
+        chat_id = _chat_id(member)
+        name = _usable_name(member.name, raw_ids=_member_ids(member))
+        if chat_id is not None and name is not None:
+            names.setdefault(chat_id, name)
+    for member in listed:
+        name = _usable_name(member.name, raw_ids=_member_ids(member))
+        if name is not None:
+            names[member.id] = name
+    return names
+
+
+def without_member_ids(text: str, names: Mapping[str, str]) -> str:
+    """``text`` with each member id in ``names`` replaced by the name, any other chat id by
+    ``UNKNOWN_PERSON``.
+
+    ``names`` maps an id to a display name (``member_names``). Only ids that
+    look like ids are replaced (a digit, a dash, an underscore or a colon in
+    them), so a member whose id is a plain word never rewrites that word. "Ana
+    (U0...)" becomes "Ana", not the name twice.
+    """
+    if not text:
+        return text
+    for raw_id, name in sorted(names.items(), key=lambda item: -len(item[0])):
+        if raw_id not in text or raw_id == name or not _looks_like_an_id(raw_id):
+            continue
+        escaped = re.escape(raw_id)
+        # A literal, so a backslash in a name is never read as a group reference.
+        literal = name.replace("\\", "\\\\")
+        text = re.sub(rf"{re.escape(name)}\s*[(\[]\s*`?{escaped}`?\s*[)\]]", literal, text)
+        text = re.sub(rf"(?<![\w/-])(`?){escaped}\1(?![\w/-])", literal, text)
+    return CHAT_ID.sub(UNKNOWN_PERSON, text)
+
+
+def _looks_like_an_id(value: str) -> bool:
+    """Ids such as U0AA1OMAR01, U1001 or dev-ada, not a word or a bare number."""
+    return (
+        len(value) >= 4
+        and " " not in value
+        and not value.isdigit()
+        and any(char.isdigit() or char in "-_:" for char in value)
+    )
 
 
 def person_name(names: Mapping[str, str], person_id: str | None, recorded: str | None) -> str:

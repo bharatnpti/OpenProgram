@@ -8,11 +8,13 @@ from datetime import UTC, date, datetime, time, timedelta
 
 from core.application.agents.tool_loop import ToolCallingAgent
 from core.application.authorization import AuthorizationPolicy, Capability
+from core.application.delivery_scope import DeliveryScopeService, reads_pod_dates, reads_project
 from core.application.flow_metrics_service import (
     FlowMetricsService,
     PortfolioFlowView,
     WorkstreamFlowView,
 )
+from core.application.forecast_service import ForecastService, ScopeDeliveryView
 from core.application.persona_views import (
     PersonaViewService,
     PortfolioHeatmapView,
@@ -28,7 +30,8 @@ from core.application.risk_service import RiskService
 from core.application.rollup_service import NO_WORK_REASON
 from core.application.status_summaries import NO_REPLY_BLOCKER
 from core.domain.auth import Principal
-from core.domain.errors import GraphNotFound
+from core.domain.errors import AuthorizationDenied, GraphNotFound
+from core.domain.forecast import Verdict
 from core.domain.graph import (
     EdgeKind,
     GraphEdge,
@@ -85,6 +88,10 @@ ASK_SYSTEM_PROMPT = (
     "Why something has its colour, or needs attention, is answered from "
     "status_reasons: the rollup's own factors, and the open risk and drift signals "
     "beneath it. "
+    "Whether a project or pod will make its date is answered from delivery_forecast: "
+    "the committed date, history's 50% and 85% dates and the verdict. A colour is not a "
+    "forecast, so never say a date will be made or missed unless delivery_forecast says "
+    "so, and say when it has too little history to forecast. "
     "Relationships -- who is assigned to what, who belongs to which pod, what "
     "contains what -- live on edges, so call graph_neighbors before reporting that "
     "something has none, and never tell the user their data is missing or needs "
@@ -109,6 +116,7 @@ _MAX_TEXT_CHARS = 240
 _MAX_REASONS = 15
 _MAX_PARTS = 20
 _MAX_SIGNALS = 10
+_MAX_PROJECTS = 20
 _RAG_ORDER: dict[Rag, int] = {Rag.RED: 0, Rag.AMBER: 1, Rag.UNKNOWN: 2, Rag.GREEN: 3}
 _AS_OF_PARAMETER: Mapping[str, object] = {
     "type": "string",
@@ -138,6 +146,25 @@ _CHECKIN_WORDS: Mapping[StatusSource, str] = {
     StatusSource.UNKNOWN: "no status",
 }
 _NO_REPLY_SAYS = "No confirmed reply to the check-in."
+# A forecast's verdict as the day report words it (frontend-v3 VERDICT_WORDS).
+_VERDICT_WORDS: Mapping[Verdict, str] = {
+    Verdict.ON_TRACK: "on track",
+    Verdict.AT_RISK: "at risk",
+    Verdict.OFF_TRACK: "off track",
+    Verdict.DONE: "done",
+    Verdict.NO_DATE: "no delivery date set",
+    Verdict.NOT_ENOUGH_DATA: "not enough history to forecast",
+}
+# A scope with no requirements counted has no verdict worth giving, as the console
+# shows it: its forecast reads "done" only because nothing is open.
+_NOTHING_TO_FORECAST = "nothing to forecast: no requirements counted"
+_NOTHING_COUNTED_REASON = "No requirements are counted for it yet."
+# What a verdict was judged from, for the verdicts judged against a date.
+_JUDGED: frozenset[Verdict] = frozenset({Verdict.ON_TRACK, Verdict.AT_RISK, Verdict.OFF_TRACK})
+_TARGET_SOURCES: Mapping[str, str] = {
+    "committed": "committed date",
+    "jira_release": "Jira release date",
+}
 _BULLET = re.compile(r"^\s*[-*•]\s+")
 
 # The model is asked for a JSON object, yet a live reply can come back as
@@ -1055,6 +1082,177 @@ class PodBlockersTool:
 
 
 @dataclass(frozen=True, kw_only=True)
+class DeliveryForecastTool:
+    """Whether a project or pod will make its committed date, as Delivery forecasts it.
+
+    Asked whether a project would make its date, Ask had no forecast to read:
+    it said it could not tell, or called a red project late from its colour
+    alone. This hands over the committed date, history's 50% and 85% dates,
+    the verdict and its reasons from ForecastService.project_delivery, the read
+    behind /projects/{id}/delivery and /pods/{id}/delivery, after the check
+    each of those routes makes through DeliveryScopeService: a scrum master
+    reads the projects their pods work on. A read the route would refuse comes
+    back in the route's own words, never as data. The route also answers a
+    developer for their own pod, but Ask is not for developers: AskService
+    offers no tool to a role /ask refuses (may_ask), so they never get here.
+    """
+
+    principal: Principal
+    service: ForecastService
+    scope: DeliveryScopeService
+    repository: GraphRepository
+    as_of: date
+
+    name: str = "delivery_forecast"
+    description: str = (
+        "Whether a project or pod will make its committed delivery date, on one day, "
+        "today unless as_of names an earlier one: the committed date and how often it "
+        "moved, history's 50% and 85% likely finish dates (forecast_p50, forecast_p85), "
+        "the verdict against the date and what it rests on, whether there is enough "
+        "history to forecast, the team's latest ETA or due date, and the reasons in "
+        "Delivery's own words. A project comes with its pods' and releases' verdicts, a "
+        "pod with its part of each project it works on, a program with each of its "
+        "projects; leave node_id unset to cover every project. Use it for 'will X make "
+        "its date', 'is X on track for its date' and 'which projects will miss their "
+        "date'; search_graph_nodes turns a name into the node_id."
+    )
+    parameters: Mapping[str, object] = field(
+        default_factory=lambda: {
+            "type": "object",
+            "properties": {
+                "node_id": {
+                    "type": "string",
+                    "description": "The project, pod or program to forecast. Leave unset "
+                    "for every project.",
+                },
+                "as_of": _AS_OF_PARAMETER,
+            },
+            "additionalProperties": False,
+        }
+    )
+
+    async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
+        as_of = _snapshot_date(arguments.get("as_of"), self.as_of)
+        node_id = _string_argument(arguments.get("node_id"))
+        try:
+            if node_id is None:
+                payload = await self._every_project(as_of)
+            else:
+                payload = await self._node(node_id, as_of)
+        except AuthorizationDenied as exc:
+            payload = {"error": str(exc)}
+        if "error" in payload:
+            return json.dumps(payload, ensure_ascii=False)
+        return json.dumps({"as_of": as_of.isoformat(), **payload}, ensure_ascii=False)
+
+    async def _node(self, node_id: str, as_of: date) -> dict[str, object]:
+        node = await self.repository.get_node(self.principal.tenant_id, node_id, as_of=as_of)
+        if node is None:
+            raise GraphNotFound(
+                f"{node_id} not found; search_graph_nodes finds a project, pod or program by name"
+            )
+        if node.kind is NodeKind.PROJECT:
+            await self.scope.ensure_project_read(self.principal, node.id)
+            return {"projects": [await self._project(node.id, as_of, with_parts=True)]}
+        if node.kind is NodeKind.POD:
+            await self.scope.ensure_pod_dates(self.principal, node.id)
+            return await self._pod(node, as_of)
+        if node.kind is NodeKind.PROGRAM:
+            return await self._program(node, as_of)
+        return {
+            "error": f"{node_id} is a {node.kind.value}; delivery_forecast covers a project, "
+            "pod or program"
+        }
+
+    async def _project(
+        self, project_id: str, as_of: date, *, with_parts: bool
+    ) -> dict[str, object]:
+        view = await self.service.project_delivery(self.principal.tenant_id, project_id, as_of)
+        payload: dict[str, object] = {
+            "project_id": project_id,
+            "project_name": view.project.name,
+            **_forecast_payload(view.project),
+        }
+        if with_parts:
+            payload["pods"] = [
+                {"pod_id": pod.scope.id, "pod_name": pod.name, **_forecast_summary(pod)}
+                for pod in view.pods[:_MAX_PODS]
+            ]
+            payload["releases"] = [
+                {"release_name": release.name, **_forecast_summary(release)}
+                for release in view.releases[:_MAX_PARTS]
+            ]
+        return payload
+
+    async def _pod(self, pod: GraphNode, as_of: date) -> dict[str, object]:
+        """The pod's part of each project it works on, as /pods/{id}/delivery lists them."""
+        tenant_id = self.principal.tenant_id
+        projects: list[dict[str, object]] = []
+        for project in await self.service.pod_projects(tenant_id, pod.id, as_of):
+            view = await self.service.project_delivery(tenant_id, project.id, as_of)
+            part = next((item for item in view.pods if item.scope.id == pod.id), None)
+            if part is None:
+                continue
+            projects.append(
+                {
+                    "project_id": project.id,
+                    "project_name": project.name,
+                    "project_target_date": _iso(view.project.target),
+                    **_forecast_payload(part),
+                }
+            )
+        return {"pod_id": pod.id, "pod_name": pod.name, "projects": projects}
+
+    async def _program(self, program: GraphNode, as_of: date) -> dict[str, object]:
+        tenant_id = self.principal.tenant_id
+        contained = {
+            edge.to_node_id
+            for edge in await self.repository.list_edges(
+                tenant_id, from_node_id=program.id, kind=EdgeKind.CONTAINS
+            )
+            if edge.is_active_on(as_of)
+        }
+        projects = [
+            node
+            for node in await self.repository.list_nodes(tenant_id, NodeKind.PROJECT, as_of=as_of)
+            if node.id in contained
+        ]
+        payload = await self._projects(projects, as_of)
+        return {"program_id": program.id, "program_name": program.name, **payload}
+
+    async def _every_project(self, as_of: date) -> dict[str, object]:
+        nodes = await self.repository.list_nodes(
+            self.principal.tenant_id, NodeKind.PROJECT, as_of=as_of
+        )
+        return await self._projects(nodes, as_of)
+
+    async def _projects(self, nodes: Sequence[GraphNode], as_of: date) -> dict[str, object]:
+        """The projects among ``nodes`` the asker reads, by name, saying what was left out."""
+        readable = set(await self.scope.readable_projects(self.principal, (n.id for n in nodes)))
+        listed = sorted(
+            (node for node in nodes if node.id in readable),
+            key=lambda node: (node.name.casefold(), node.id),
+        )
+        payload: dict[str, object] = {
+            "projects": [
+                await self._project(node.id, as_of, with_parts=False)
+                for node in listed[:_MAX_PROJECTS]
+            ]
+        }
+        unread = len(nodes) - len(listed)
+        if unread:
+            payload["not_shown"] = (
+                f"{_count_words(unread, 'project')} outside what the asker reads "
+                f"{'is' if unread == 1 else 'are'} left out."
+            )
+        if len(listed) > _MAX_PROJECTS:
+            payload["truncated"] = (
+                f"Only the first {_MAX_PROJECTS} of {len(listed)} projects by name are listed."
+            )
+        return payload
+
+
+@dataclass(frozen=True, kw_only=True)
 class _RecordedTool:
     """Runs a tool and notes that it ran.
 
@@ -1088,11 +1286,25 @@ class _RecordedTool:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)
 
 
-def _reads_aggregate(principal: Principal) -> bool:
-    """The team-or-exec read that /ask itself and the portfolio routes require."""
+def may_ask(principal: Principal) -> bool:
+    """Whether /ask admits this role: the team-or-exec aggregate read.
+
+    The route and AskService._tools both decide with this one rule. A role it
+    refuses, a developer, is offered no tool at all, even where a tool's REST
+    twin would answer them for their own pod or project.
+    """
     policy = AuthorizationPolicy()
     return policy.can(principal, Capability.READ_TEAM_AGGREGATE) or policy.can(
         principal, Capability.READ_EXEC_AGGREGATE
+    )
+
+
+def _reads_delivery(principal: Principal) -> bool:
+    """Whether /projects/{id}/delivery or /pods/{id}/delivery answers the principal for
+    some project or pod: everywhere by role, or within their own part of the tree."""
+    policy = AuthorizationPolicy()
+    return reads_project(policy, principal, own=True) or reads_pod_dates(
+        policy, principal, own=True
     )
 
 
@@ -1119,6 +1331,8 @@ class AskService:
         flow_metrics_service: FlowMetricsService,
         persona_view_service: PersonaViewService,
         risk_service: RiskService,
+        forecast_service: ForecastService,
+        delivery_scope_service: DeliveryScopeService,
         model: str,
         tool_agent: ToolCallingAgent | None = None,
     ) -> None:
@@ -1128,6 +1342,8 @@ class AskService:
         self._flow_metrics_service = flow_metrics_service
         self._persona_view_service = persona_view_service
         self._risk_service = risk_service
+        self._forecast_service = forecast_service
+        self._delivery_scope_service = delivery_scope_service
         self._model = model
         self._tool_agent = tool_agent or ToolCallingAgent(llm_provider=llm_provider)
 
@@ -1183,7 +1399,12 @@ class AskService:
         is offered only when the endpoint serving the same data would answer
         them. A tool left out is simply absent: the model cannot see it, and a
         call to it by name comes back as not available.
+
+        A role /ask itself refuses is offered nothing, whatever a tool's REST
+        twin would say for them: Ask is not for developers.
         """
+        if not may_ask(principal):
+            return ()
         tenant_id = principal.tenant_id
         graph = self._graph_repository
         personas = self._persona_view_service
@@ -1191,31 +1412,31 @@ class AskService:
             # Graph reads behind /ask's own aggregate check.
             (
                 SearchGraphNodesTool(tenant_id=tenant_id, repository=graph, as_of=as_of),
-                _reads_aggregate,
+                may_ask,
             ),
             (
                 GraphNeighborsTool(tenant_id=tenant_id, repository=graph, as_of=as_of),
-                _reads_aggregate,
+                may_ask,
             ),
             # /portfolio/feed
             (
                 RecentFactsTool(
                     tenant_id=tenant_id, repository=self._time_series_repository, as_of=as_of
                 ),
-                _reads_aggregate,
+                may_ask,
             ),
             # /workstreams/{id}/flow and /portfolio/flow
             (
                 WorkstreamFlowTool(
                     tenant_id=tenant_id, service=self._flow_metrics_service, as_of=as_of
                 ),
-                _reads_aggregate,
+                may_ask,
             ),
             (
                 PortfolioFlowTool(
                     tenant_id=tenant_id, service=self._flow_metrics_service, as_of=as_of
                 ),
-                _reads_aggregate,
+                may_ask,
             ),
             # /portfolio/risks and /projects/{id}/risks
             (
@@ -1225,7 +1446,7 @@ class AskService:
                     repository=graph,
                     as_of=as_of,
                 ),
-                _reads_aggregate,
+                may_ask,
             ),
             # /workstreams/{id}/progress
             (
@@ -1265,6 +1486,19 @@ class AskService:
                     tenant_id=tenant_id, service=personas, repository=graph, as_of=as_of
                 ),
                 _has(Capability.READ_POD_BLOCKERS),
+            ),
+            # /projects/{id}/delivery and /pods/{id}/delivery: offered when either
+            # answers somewhere, and per project or pod only where it does. A
+            # developer's own pod answers, but they never reach here: may_ask.
+            (
+                DeliveryForecastTool(
+                    principal=principal,
+                    service=self._forecast_service,
+                    scope=self._delivery_scope_service,
+                    repository=graph,
+                    as_of=as_of,
+                ),
+                _reads_delivery,
             ),
         )
         return tuple(tool for tool, allowed in offered if allowed(principal))
@@ -2050,6 +2284,65 @@ async def _pods(
     if node.kind is not NodeKind.POD:
         return f"{requested} is a {node.kind.value}, not a pod"
     return (node,)
+
+
+def _forecast_payload(view: ScopeDeliveryView) -> dict[str, object]:
+    """One scope's date and forecast, as Delivery shows it, with its reasons."""
+    history = view.history
+    team = view.team
+    return {
+        **_forecast_summary(view),
+        "first_committed_date": _iso(view.commitment.original_date),
+        "times_moved": view.commitment.times_moved,
+        "target_source": _TARGET_SOURCES.get(view.target_source or ""),
+        "verdict_rests_on": _verdict_basis(view),
+        "enough_history": history.sample_days >= history.needed_days,
+        "history_working_days": history.sample_days,
+        "history_working_days_needed": history.needed_days,
+        "no_forecast_reason": history.reason,
+        "remaining": _number(history.remaining),
+        "unit": history.unit,
+        "finished_in_history": _number(history.completed_in_sample),
+        "team_latest_date": _iso(team.latest),
+        "team_latest_issue": team.latest_key,
+        "open_without_date": team.undated,
+        "requirements": view.total,
+        # Its reasons would say every requirement is in production.
+        "reasons": (
+            [_clip(reason) for reason in view.reasons[:_MAX_REASONS]]
+            if view.total > 0
+            else [_NOTHING_COUNTED_REASON]
+        ),
+    }
+
+
+def _forecast_summary(view: ScopeDeliveryView) -> dict[str, object]:
+    """The date, verdict and history's dates: what a project lists for each of its parts."""
+    return {
+        "committed_date": _iso(view.commitment.target_date),
+        "target_date": _iso(view.target),
+        "verdict": _VERDICT_WORDS[view.verdict] if view.total > 0 else _NOTHING_TO_FORECAST,
+        "forecast_p50": _iso(view.history.p50) if view.history.remaining > 0 else None,
+        "forecast_p85": _iso(view.history.p85) if view.history.remaining > 0 else None,
+        "open_requirements": view.open,
+    }
+
+
+def _verdict_basis(view: ScopeDeliveryView) -> str | None:
+    """What decided an on track, at risk or off track verdict: history first, else the team."""
+    if view.verdict not in _JUDGED or view.total == 0:
+        return None
+    if view.history.p50 is not None and view.history.p85 is not None:
+        return "history forecast"
+    return "team ETAs and due dates"
+
+
+def _number(value: float) -> float | int:
+    return int(value) if value.is_integer() else round(value, 1)
+
+
+def _count_words(count: int, noun: str) -> str:
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
 def _clip(text: str | None) -> str | None:

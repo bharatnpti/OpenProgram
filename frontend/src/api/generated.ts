@@ -3067,10 +3067,12 @@ export interface components {
      *     ``WEEKLY``: one time of day on days of the week, in every month (all seven
      *     days is every day). ``DATES``: one time of day on listed days of the month
      *     and/or in listed months, such as 1 January only. ``OTHER``: anything else,
-     *     such as a step or a range in the time; only the cron says when.
+     *     such as a step or a range in the time; only the cron says when. ``OFF``:
+     *     the scheduled send is switched off (``OPENPROGRAM_CHECKIN_FANOUT_ENABLED``),
+     *     so nobody is asked on a schedule, whatever the cron says.
      * @enum {string}
      */
-    CheckInSendKind: "weekly" | "dates" | "other";
+    CheckInSendKind: "weekly" | "dates" | "other" | "off";
     /**
      * CheckinDefaultsResponse
      * @description The team defaults a member follows for any field not set for them.
@@ -3148,7 +3150,7 @@ export interface components {
        */
       inherited: components["schemas"]["CheckInPreferenceField"][];
       defaults: components["schemas"]["CheckinDefaultsResponse"];
-      /** @description When the bot asks: one tenant-wide send. The member's `weekdays` decide whether they are asked on a send day; their `timezone` decides which day a reply counts for, not when they are asked. */
+      /** @description When the bot asks: one tenant-wide send, or none while `kind` is `off`. The member's `weekdays` decide whether they are asked on a send day; their `timezone` decides which day a reply counts for, not when they are asked. */
       send: components["schemas"]["CheckinSendResponse"];
     };
     /**
@@ -3175,11 +3177,11 @@ export interface components {
      * @description When the bot asks: one send of the check-ins for the whole tenant.
      */
     CheckinSendResponse: {
-      /** @description What the schedule is. `weekly`: one time on days of the week (`local_time`, `weekdays`). `dates`: one time on listed days of the month and/or in listed months (`local_time`, `month_days`, `months`), such as 1 January only. `other`: anything else, such as a step or a range in the time; only `cron` says when. */
+      /** @description What the schedule is. `weekly`: one time on days of the week (`local_time`, `weekdays`). `dates`: one time on listed days of the month and/or in listed months (`local_time`, `month_days`, `months`), such as 1 January only. `other`: anything else, such as a step or a range in the time; only `cron` says when. `off`: the scheduled send is switched off (OPENPROGRAM_CHECKIN_FANOUT_ENABLED), so nobody is asked on a schedule; `cron` is what applies once it is on again, and every other field is null. */
       kind: components["schemas"]["CheckInSendKind"];
       /**
        * Cron
-       * @description The tenant's check-in schedule as configured (OPENPROGRAM_CHECKIN_FANOUT_CRON). Every member is asked on it; nobody has a time of their own.
+       * @description The tenant's check-in schedule as configured (OPENPROGRAM_CHECKIN_FANOUT_CRON). Every member is asked on it, unless `kind` is `off`; nobody has a time of their own.
        */
       cron: string;
       /**
@@ -3189,7 +3191,7 @@ export interface components {
       timezone: string;
       /**
        * Local Time
-       * @description The clock time of the send in `timezone`; null when `kind` is `other`.
+       * @description The clock time of the send in `timezone`; null when `kind` is `other` or `off`.
        */
       local_time: string | null;
       /**
@@ -5343,6 +5345,13 @@ export interface components {
       worst_jam: components["schemas"]["PullRequestWorstJamDto"];
       /** Type Counts */
       type_counts: components["schemas"]["PullRequestTypeCountDto"][];
+      /**
+       * Stages By Type
+       * @description Every request type's own stage times and worst jam, over its requests alone: the same percentile rule as stages. A type with no request has its four stages with no time and a count of 0.
+       */
+      stages_by_type: {
+        [key: string]: components["schemas"]["PullRequestTypeFlowDto"];
+      };
       /** Items */
       items: components["schemas"]["PullRequestFlowItemDto"][];
       /**
@@ -5421,6 +5430,15 @@ export interface components {
       merged_count: number;
       /** Open Count */
       open_count: number;
+    };
+    /**
+     * PullRequestTypeFlowDto
+     * @description One request type's own stage times and worst jam, over that type's requests alone.
+     */
+    PullRequestTypeFlowDto: {
+      /** Stages */
+      stages: components["schemas"]["PullRequestFlowStageDto"][];
+      worst_jam: components["schemas"]["PullRequestWorstJamDto"];
     };
     /**
      * PullRequestWorstJamDto

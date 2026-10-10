@@ -22,6 +22,7 @@ from core.application.merge_request_links import (
     merge_request_label,
     merge_requests_by_issue_key,
 )
+from core.application.person_names import member_names
 from core.application.proof_links import pull_request_evidence
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
@@ -855,6 +856,7 @@ class RiskService:
                 owners=assignees,
                 is_code_work=is_code_work,
                 workers=issue_workers(set(tasks), merge_requests, commits),
+                names=member_names(nodes_by_id.values()),
             )
         ]
 

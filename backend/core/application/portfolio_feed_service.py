@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from core.application.person_names import PersonNames, person_name
+from core.application.person_names import PersonNames, person_name, without_member_ids
 from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.ports.repositories import TimeSeriesRepository
 
@@ -220,14 +220,17 @@ def _summary_for_fact(fact: FactEvent, names: Mapping[str, str]) -> str:
         blockers = "1 blocker" if blocker_count == 1 else f"{blocker_count} blockers"
         return f"Check-in updated for {developer}: {status_source}, {blockers}{eta_text}"
     if fact.source == "risk":
-        return _risk_summary(fact)
+        return _risk_summary(fact, names)
     if fact.source == "cross_person_request":
         return _cross_person_summary(fact, names)
     return fact.source
 
 
-def _risk_summary(fact: FactEvent) -> str:
-    reason = _payload_string(fact.payload, "reason") or "signal-derived risk"
+def _risk_summary(fact: FactEvent, names: Mapping[str, str]) -> str:
+    # A stored reason is cleaned of any chat id, as every read of stored text is.
+    reason = without_member_ids(
+        _payload_string(fact.payload, "reason") or "signal-derived risk", names
+    )
     transition = _payload_string(fact.payload, "transition")
     if transition == "cleared":
         return f"Risk cleared: {reason}"

@@ -61,9 +61,9 @@ async def test_the_lines_and_asks_name_scopes_and_work_and_the_facts_follow_the_
     decisions = [line for group in asks.groups for line in group.lines if "Decision:" in line]
     assert decisions == [
         "Decision: Checkout Revamp: no security review in Jira yet (due 9 Nov); "
-        "create it or link one (since today).",
+        "create it or link one (waiting since today).",
         "Decision: Payments Pod: no on-call handover in Jira yet (due 9 Oct); "
-        "create it or link one (since today).",
+        "create it or link one (waiting since today).",
     ]
     # The advisory accessibility check is on the board, never in the report.
     assert "accessibility" not in "\n".join(important.lines).casefold()

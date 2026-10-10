@@ -22,6 +22,7 @@ from uuid import uuid4
 
 from core.application.checkin_drift import CHECKIN_DRIFT_FACT_SOURCE, ETA_STATED
 from core.application.delivery_service import DeliveryService
+from core.application.person_names import UNKNOWN_PERSON
 from core.domain.delivery import DeliveryStage, RequirementsSnapshot
 from core.domain.errors import GraphNotFound
 from core.domain.forecast import (
@@ -806,7 +807,7 @@ def _target_reasons(
     if target_source != "committed" or not commitment.changes or target is None:
         return ["No delivery date is committed yet."] if history.remaining > 0 else []
     actor = commitment.changes[-1].changed_by
-    line = f"Committed for {_day(target)} by {names.get(actor, actor)}"
+    line = f"Committed for {_day(target)} by {names.get(actor) or UNKNOWN_PERSON}"
     if commitment.times_moved and commitment.moved_days:
         later = "later" if commitment.moved_days > 0 else "earlier"
         line += (

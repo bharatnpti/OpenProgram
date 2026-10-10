@@ -52,6 +52,13 @@ const HOURLY: CheckinPreferenceResponse["send"] = {
   local_time: null,
   weekdays: null,
 };
+// The scheduled send switched off: nothing but the cron it would use again.
+const OFF: CheckinPreferenceResponse["send"] = {
+  ...SEND,
+  kind: "off",
+  local_time: null,
+  weekdays: null,
+};
 
 // As the seeded demo tenant has every member: each field set, even where it equals the default.
 const SET: CheckinPreferenceResponse = {
@@ -97,6 +104,25 @@ test("off a weekly schedule every day is offered, and the note says a day only s
       { weekdays: [0, 1, 2, 3, 4, 5] },
     );
   }
+});
+
+test("while the scheduled send is off every day is offered, and the note says days wait for it", () => {
+  const everyDay: CheckinPreferenceResponse = {
+    ...SET,
+    weekdays: [0, 1, 2, 3, 4, 5, 6],
+    send: OFF,
+  };
+  assert.deepEqual(sendDays(everyDay), [0, 1, 2, 3, 4, 5, 6]);
+  assert.deepEqual(askedDays([6, 0, 5], everyDay), [0, 5, 6]);
+  assert.equal(
+    daysNote(everyDay),
+    "Check-ins aren't sent on a schedule right now, so these days only matter once the scheduled send is on again.",
+  );
+  const draft = draftFrom(everyDay);
+  assert.deepEqual(changesFrom(everyDay, draft), {});
+  assert.deepEqual(changesFrom(everyDay, editField(draft, everyDay, "weekdays", [0, 1, 2, 3, 4])), {
+    weekdays: [0, 1, 2, 3, 4],
+  });
 });
 
 const FOLLOWING: CheckinPreferenceResponse = {
