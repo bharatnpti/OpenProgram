@@ -460,3 +460,11 @@ test("the assistant floats on every tab for the aggregate readers, never for a d
   // Roles combine: a developer who is also a scrum master has it.
   assert.equal(accessOf({ lens: ["dev", "sm"], chatEnabled: false }).assistant, true);
 });
+
+test("release readiness: read by those who decide on a release, acted on by all but an executive", () => {
+  assert.deepEqual(access("dev").readiness, { board: false, act: false });
+  assert.deepEqual(access("exec").readiness, { board: true, act: false });
+  for (const role of ["sm", "po", "mgr", "admin"] as const) {
+    assert.deepEqual(access(role).readiness, { board: true, act: true }, role);
+  }
+});

@@ -10,6 +10,17 @@ import type {
   ItemStatus,
   QuestionStatus,
   TrackedQuestionResponse,
+  ReadinessBoardResponse,
+  ReadinessConfigResponse,
+  ReadinessCreateResponse,
+  ReadinessCriterionDto,
+  ReadinessDraftDto,
+  ReadinessFindingResponse,
+  ReadinessHistoryResponse,
+  ReadinessLinkRequest,
+  ReadinessPreviewResponse,
+  ReadinessRunResponse,
+  ReadinessSettingsDto,
   CommitmentResponse,
   DeliveryDateRequest,
   PodDeliveryResponse,
@@ -640,6 +651,73 @@ export const apiClient = {
     requestJson<TrackedQuestionResponse>(`/issues/${encodeURIComponent(issueKey)}/questions`, {
       method: "POST",
       body,
+    }),
+  // Release readiness: the board, Run check now, a person's actions, the configuration.
+  projectReadiness: (projectId: string, releaseId?: string) =>
+    requestJson<ReadinessBoardResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/readiness`, {
+        release_id: releaseId,
+      }),
+    ),
+  runReadiness: (projectId: string, releaseId?: string) =>
+    requestJson<ReadinessRunResponse>(
+      withQuery(`/projects/${encodeURIComponent(projectId)}/readiness/run`, {
+        release_id: releaseId,
+      }),
+      { method: "POST" },
+    ),
+  linkReadiness: (findingId: string, body: ReadinessLinkRequest) =>
+    requestJson<ReadinessFindingResponse>(
+      `/readiness-findings/${encodeURIComponent(findingId)}/link`,
+      { method: "POST", body },
+    ),
+  waiveReadiness: (findingId: string, reason: string) =>
+    requestJson<ReadinessFindingResponse>(
+      `/readiness-findings/${encodeURIComponent(findingId)}/not-applicable`,
+      { method: "POST", body: { reason } },
+    ),
+  reopenReadiness: (findingId: string) =>
+    requestJson<ReadinessFindingResponse>(
+      `/readiness-findings/${encodeURIComponent(findingId)}/reopen`,
+      { method: "POST" },
+    ),
+  draftReadiness: (findingId: string) =>
+    requestJson<ReadinessFindingResponse>(
+      `/readiness-findings/${encodeURIComponent(findingId)}/draft`,
+      { method: "POST" },
+    ),
+  readinessHistory: (findingId: string) =>
+    requestJson<ReadinessHistoryResponse>(
+      `/readiness-findings/${encodeURIComponent(findingId)}/history`,
+    ),
+  editReadinessDraft: (suggestionId: string, version: number, draft: ReadinessDraftDto) =>
+    requestJson<ReadinessFindingResponse>(
+      `/readiness-suggestions/${encodeURIComponent(suggestionId)}`,
+      { method: "PUT", body: { version, draft } },
+    ),
+  dismissReadinessDraft: (suggestionId: string, reason: string) =>
+    requestJson<ReadinessFindingResponse>(
+      `/readiness-suggestions/${encodeURIComponent(suggestionId)}/dismiss`,
+      { method: "POST", body: { reason } },
+    ),
+  createReadinessIssue: (suggestionId: string, version: number) =>
+    requestJson<ReadinessCreateResponse>(
+      `/readiness-suggestions/${encodeURIComponent(suggestionId)}/create`,
+      { method: "POST", body: { version } },
+    ),
+  readinessConfig: () => requestJson<ReadinessConfigResponse>("/config/readiness"),
+  saveReadinessSettings: (body: ReadinessSettingsDto) =>
+    requestJson<ReadinessSettingsDto>("/config/readiness/settings", { method: "PUT", body }),
+  saveReadinessCriterion: (body: ReadinessCriterionDto) =>
+    requestJson<ReadinessCriterionDto>("/config/readiness/criteria", { method: "PUT", body }),
+  removeReadinessCriterion: (criterionId: string) =>
+    requestJson<void>(`/config/readiness/criteria/${encodeURIComponent(criterionId)}`, {
+      method: "DELETE",
+    }),
+  previewReadinessCriterion: (projectId: string, criterion: ReadinessCriterionDto) =>
+    requestJson<ReadinessPreviewResponse>("/config/readiness/criteria/preview", {
+      method: "POST",
+      body: { project_id: projectId, criterion },
     }),
   releases: (projectId: string) =>
     requestJson<ReleaseResponse[]>(`/projects/${encodeURIComponent(projectId)}/releases`),

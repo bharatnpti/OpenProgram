@@ -288,3 +288,25 @@ export type PullRequestTypeCountDto = components["schemas"]["PullRequestTypeCoun
 export type ReviewStage = components["schemas"]["ReviewStage"];
 export type RequestType = components["schemas"]["RequestType"];
 export type TypeSource = components["schemas"]["TypeSource"];
+
+// Release readiness. Used by frontend-v3 only.
+export type ReadinessBoardResponse = components["schemas"]["ReadinessBoardResponse"];
+export type ReadinessFindingResponse = components["schemas"]["ReadinessFindingResponse"];
+export type ReadinessShownState = components["schemas"]["ReadinessShownState"];
+export type ReadinessUrgencyDto = components["schemas"]["ReadinessUrgencyDto"];
+export type ReadinessDraftDto = components["schemas"]["ReadinessDraftDto"];
+export type ReadinessSuggestionDto = components["schemas"]["ReadinessSuggestionDto"];
+export type ReadinessRunResponse = components["schemas"]["ReadinessRunResponse"];
+export type ReadinessCreateResponse = components["schemas"]["ReadinessCreateResponse"];
+export type ReadinessHistoryResponse = components["schemas"]["ReadinessHistoryResponse"];
+export type ReadinessConfigResponse = components["schemas"]["ReadinessConfigResponse"];
+export type ReadinessSettingsDto = components["schemas"]["ReadinessSettingsDto"];
+export type ReadinessCriterionDto = components["schemas"]["ReadinessCriterionDto"];
+export type ReadinessMatcherDto = components["schemas"]["ReadinessMatcherDto"];
+export type ReadinessPreviewResponse = components["schemas"]["ReadinessPreviewResponse"];
+export type ReadinessLinkRequest = components["schemas"]["ReadinessLinkRequest"];
+export type ReadinessMatcherKind = components["schemas"]["MatcherKind"];
+export type ReadinessUrgencyKind = components["schemas"]["UrgencyKind"];
+export type ReadinessAppliesTo = components["schemas"]["AppliesTo"];
+export type ReadinessSeverity = components["schemas"]["Severity"];
+export type ReadinessStrength = components["schemas"]["Strength"];

@@ -1,6 +1,7 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { apiClient } from "../../api/client";
+import { sameOnEveryDay } from "../../app/queryCache";
 import { useRole } from "../../app/role";
 import { useReportAccess } from "../reports/useReportAccess";
 
@@ -116,6 +117,24 @@ export function useGateBoard(projectId: string, releaseId?: string) {
       queryKey: ["gates", projectId, releaseId ?? ""],
       queryFn: () => apiClient.gateBoard(projectId, undefined, releaseId),
       enabled: projectId !== "",
+    }),
+  };
+}
+
+/**
+ * Release readiness: read as it stands now whatever day is viewed (it is not kept
+ * per day), by the roles that decide on a release. A release scope is its own entry.
+ */
+export function useReadiness(projectId: string, releaseId?: string) {
+  const { access } = useRole();
+  const readable = access.readiness.board;
+  return {
+    readable,
+    query: useQuery({
+      queryKey: ["readiness", projectId, releaseId ?? ""],
+      queryFn: () => apiClient.projectReadiness(projectId, releaseId),
+      enabled: readable && projectId !== "",
+      ...sameOnEveryDay,
     }),
   };
 }

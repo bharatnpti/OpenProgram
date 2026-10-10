@@ -90,6 +90,17 @@ export type Access = {
     /** A link to Admin › Escalation, where the matrix is kept. */
     escalationLink: boolean;
   };
+  /**
+   * Release readiness on Overall: the people who decide on a release read it
+   * (a scrum master their pods' rows, an executive without drafts); a developer
+   * has nothing to act on, so it is not drawn. Each row's buttons follow the
+   * server's `can`.
+   */
+  readiness: {
+    board: boolean;
+    /** `ACT_ON_READINESS`: Run check now and the row actions. */
+    act: boolean;
+  };
 };
 
 export type Lens = { lens: readonly AppRole[]; chatEnabled: boolean };
@@ -155,6 +166,10 @@ export function accessOf({ lens, chatEnabled }: Lens): Access {
       requirements: can.canReadProjectProgress,
       risks: can.canReadAggregate,
       escalationLink: can.canManageConfig,
+    },
+    readiness: {
+      board: has("admin", "mgr", "po", "sm", "exec"),
+      act: has("admin", "mgr", "po", "sm"),
     },
   };
 }

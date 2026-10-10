@@ -374,6 +374,7 @@ function preview(history, release) {
         bypassed: BYPASSED,
         risks: 4,
         lines: [],
+        readiness_gaps: 0,
       },
       asks: ASKS,
     },
