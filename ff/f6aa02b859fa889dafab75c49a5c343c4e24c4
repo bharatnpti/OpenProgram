@@ -1,0 +1,50 @@
+backend/tests/unit/test_ask_delivery_forecast.py
+  s_5530970eb0bbf1::t_800aa6d88882ba 24-29,153-155,312-314
+  s_5530970eb0bbf1::t_3699de5199c197 12,181-183,205,214-215,239,255,281,286,298,318,324,335-336
+  s_5530970eb0bbf1::t_e56e57e2f436f1 1-11,13-23,30-152,156-180,184-199,201-204,206-213,216-238,240-254,256-262,276-280,282-285,287-297,299-311,315-317,319-323,325-334,337-364
+  s_5530970eb0bbf1::t_82328b46577082 200
+  s_5530970eb0bbf1::t_e31230522d6588 263-272,274-275
+  s_5530970eb0bbf1::t_560fcfe402e42e 273
+backend/tests/unit/test_delivery_scope.py
+  s_5530970eb0bbf1::t_6e3101711e8706 123-149
+backend/tests/unit/test_ask_service.py
+  s_5530970eb0bbf1::t_37b8ecf644bcc7 11
+  s_5530970eb0bbf1::t_6e3101711e8706 32,59,299-307
+  s_5530970eb0bbf1::t_9e65d989c58ad8 566-576,586,591-592,603,632
+backend/tests/unit/test_ask_api.py
+  s_5530970eb0bbf1::t_5c163d0e2a9106 195-207,233
+  s_5530970eb0bbf1::t_839a8612da7060 213-214
+  s_5530970eb0bbf1::t_962221948474dd 14,19,26-27,52-58,64-68,74-96,116-117,123,127,147-149,154-194,208-212,215-232,234-235
+  s_5530970eb0bbf1::t_c930978f6d41dd 236-237
+backend/core/application/ask_service.py
+  s_5530970eb0bbf1::t_93f49c4da91a5e 1109
+  s_5530970eb0bbf1::t_92f58be1484f4b 11,17,33-34,91-94,119,149-157,162-167,1084-1108,1110-1140,1144-1190,1194-1214,1216-1252,1295-1303,1327-1328,1338-1339,1478-1489,2276-2296,2303-2310,2312-2319,2321-2332
+  s_5530970eb0bbf1::t_6b3abb1f20ccfb 1141-1143
+  s_5530970eb0bbf1::t_e31230522d6588 158-160,2311,2320
+  s_5530970eb0bbf1::t_b5afe95fc9bd3b 1191-1193
+  s_5530970eb0bbf1::t_abb10cc2221cf8 1215
+  s_5530970eb0bbf1::t_560fcfe402e42e 161,2297-2302
+  s_5530970eb0bbf1::t_edc614b76a0fb1 2333-2334
+features.md
+  s_5530970eb0bbf1::t_2c90292f0fa270 461-462
+backend/core/application/delivery_scope.py
+  s_5530970eb0bbf1::t_0e3aa08fb367ae 217-236
+backend/api/dependencies.py
+  s_5530970eb0bbf1::t_d62bf76c1d38f2 247-248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fff6aa02b859fa889dafab75c49a5c343c4e24c4",
+  "prompts": {},
+  "sessions": {
+    "s_5530970eb0bbf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a53320e5-22d7-4842-9c90-8168fdc01b34",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
