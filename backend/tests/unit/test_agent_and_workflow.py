@@ -708,7 +708,7 @@ async def test_worker_bootstraps_schedules_before_running_worker(
 
     await worker.main()
 
-    assert events == ["ensure", "worker", "run", "close"]
+    assert events == ["ensure", "worker", "run", "shutdown"]
 
 
 async def test_worker_runs_slack_socket_listener_alongside_workflow_worker(
@@ -732,7 +732,7 @@ async def test_worker_runs_slack_socket_listener_alongside_workflow_worker(
 
     await worker.main()
 
-    assert events == ["ensure", "worker", "run", "listen", "close"]
+    assert events == ["ensure", "worker", "run", "listen", "shutdown"]
 
 
 async def test_worker_keeps_running_workflows_when_slack_socket_is_misconfigured(
@@ -760,7 +760,7 @@ async def test_worker_keeps_running_workflows_when_slack_socket_is_misconfigured
 
     await worker.main()
 
-    assert events == ["ensure", "worker", "run", "close"]
+    assert events == ["ensure", "worker", "run", "shutdown"]
 
 
 async def test_dbos_dispatch_keeps_runtime_alive_for_started_workflows(
@@ -793,9 +793,18 @@ async def test_dbos_dispatch_keeps_runtime_alive_for_started_workflows(
         calls.append(("start", (workflow, payload)))
         return WorkflowHandle()
 
+    class SyncQueue:
+        async def enqueue_async(self, workflow: object, payload: object) -> WorkflowHandle:
+            calls.append(("enqueue", (workflow, payload)))
+            return WorkflowHandle()
+
+    async def sync_queue() -> SyncQueue:
+        return SyncQueue()
+
     monkeypatch.setattr(dbos_workflows, "_ensure_dbos_runtime", ensure)
     monkeypatch.setattr(dbos_workflows, "destroy_dbos_runtime", destroy)
     monkeypatch.setattr(dbos_workflows, "SetWorkflowID", WorkflowIdContext)
+    monkeypatch.setattr(dbos_workflows, "_registered_sync_queue", sync_queue)
     monkeypatch.setattr(dbos_workflows.DBOS, "start_workflow_async", staticmethod(start_workflow))
 
     scheduler = dbos_workflows.DbosWorkflowScheduler(
@@ -826,7 +835,9 @@ async def test_dbos_dispatch_keeps_runtime_alive_for_started_workflows(
     assert sync_workflow_id.startswith("sync-git-demo-repo-oneai-openprogram-")
     assert ("destroy", None) not in calls
     assert [call[0] for call in calls].count("ensure") == 2
-    assert [call[0] for call in calls].count("start") == 2
+    # The check-in starts at once; the git sync waits its turn on the sync queue.
+    assert [call[0] for call in calls].count("start") == 1
+    assert [call[0] for call in calls].count("enqueue") == 1
     assert [call[0] for call in calls].count("result") == 1
 
 
@@ -1686,8 +1697,8 @@ class _WorkerStartupRegistry:
             raise self.listener_error
         return self.listener
 
-    async def close(self) -> None:
-        self.events.append("close")
+    async def shutdown(self) -> None:
+        self.events.append("shutdown")
 
 
 class _OneShotWorkflowWorker:

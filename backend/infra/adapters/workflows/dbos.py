@@ -10,8 +10,13 @@ from uuid import uuid4
 
 import psycopg
 import structlog
-from dbos import DBOS, DBOSConfig, Debouncer, ScheduleInput, SetWorkflowID
+from dbos import DBOS, DBOSConfig, Debouncer, Queue, ScheduleInput, SetWorkflowID
 
+# The scheduler's own cron parser, so a tick's successor is computed exactly as
+# DBOS fires it (six-field crons put the seconds first).
+from dbos._croniter import croniter  # type: ignore[attr-defined]
+
+from config.settings import DEFAULT_DBOS_SYSTEM_POOL_SIZE, DEFAULT_SYNC_QUEUE_CONCURRENCY
 from core.application.reply_ingestion import run_reply_debounce
 from core.domain.workflows import (
     CheckinFanoutInput,
@@ -95,6 +100,7 @@ from infra.workflows.runtime_sync import (
     RuntimeSyncInput,
     RuntimeSyncPlan,
     RuntimeSyncWorkflowResult,
+    superseded_runtime_sync_result,
 )
 
 _logger = structlog.get_logger(__name__)
@@ -117,11 +123,27 @@ SyncWorkflowResult = (
 
 @dataclass(frozen=True)
 class DbosRuntimeConfig:
+    """What one DBOS runtime is launched with.
+
+    The pool size and the sync limit travel here, filled by whoever builds the
+    config from its settings, so launching a runtime never reads the global
+    settings: a caller holding only an application name and a database URL
+    (an integration test, a one-off script) needs no secret key or provider.
+    """
+
     app_name: str
     system_database_url: str
+    system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
+    sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
 
 
 _configured_runtime: DbosRuntimeConfig | None = None
+
+# Jira and Git sync workflows wait here for a slot instead of all starting at
+# once: a fan-out per repository or project after a long sleep started
+# hundreds together and ran Postgres out of connections.
+SYNC_QUEUE_NAME = "openprogram_sync"
+_sync_queue: tuple[DbosRuntimeConfig, Queue] | None = None
 
 
 @DBOS.step(name="openprogram_record_heartbeat", retries_allowed=True)
@@ -403,14 +425,49 @@ async def dbos_gate_scan_workflow(payload: GateScanInput) -> GateScanResult:
     return await dbos_run_gate_scan_step(payload)
 
 
+# A step, so a recovered run keeps the answer its first attempt recorded.
+@DBOS.step(name="openprogram_check_sync_tick_superseded")
+async def dbos_check_sync_tick_superseded_step(scheduled_at: str, cron: str) -> bool:
+    now = datetime.now(tz=UTC)
+    return sync_tick_superseded(datetime.fromisoformat(scheduled_at), cron, now=now)
+
+
 @DBOS.workflow(name="openprogram_scheduled_sync")
 async def dbos_scheduled_sync_workflow(
     scheduled_time: datetime,
     context: dict[str, Any],
 ) -> SyncWorkflowResult:
-    return await _run_sync_dispatch(
-        sync_dispatch_for_schedule(_sync_schedule_config_from_context(context), scheduled_time)
-    )
+    return await _run_scheduled_sync(scheduled_time, context)
+
+
+async def _run_scheduled_sync(
+    scheduled_time: datetime, context: dict[str, Any]
+) -> SyncWorkflowResult:
+    config = _sync_schedule_config_from_context(context)
+    dispatch = sync_dispatch_for_schedule(config, scheduled_time)
+    workflow_input = sync_workflow_input(dispatch)
+    # A Jira or Git sync reads from its cursor, so only the latest due tick does
+    # anything. After a sleep DBOS fires every missed tick back to back; each
+    # one a newer tick has superseded returns at once, without dispatching.
+    if isinstance(workflow_input, RuntimeSyncInput):
+        scheduled_at = scheduled_time.isoformat()
+        if await dbos_check_sync_tick_superseded_step(scheduled_at, config.cron):
+            _logger.info(
+                "scheduled_sync_tick_superseded",
+                schedule_id=config.schedule_id,
+                scheduled_at=scheduled_at,
+            )
+            return superseded_runtime_sync_result(workflow_input)
+    return await _run_sync_dispatch(dispatch)
+
+
+def sync_tick_superseded(scheduled_at: datetime, cron: str, *, now: datetime) -> bool:
+    """Whether the schedule's next tick after ``scheduled_at`` is already due.
+
+    The latest due tick is never superseded, so one run always happens.
+    """
+    following = croniter(cron, scheduled_at, second_at_beginning=True).get_next(datetime)
+    return bool(following <= now)
 
 
 @DBOS.step(name="openprogram_prepare_daily_checkin")
@@ -697,13 +754,19 @@ async def _run_derived_step(workflow_input: object, connector: str) -> SyncWorkf
 
 
 async def _start_sync_child_workflow(input: SyncDispatchInput, *, workflow_id: str) -> str:
-    """Start the workflow that serves one sync dispatch, under a chosen id."""
+    """Start the workflow that serves one sync dispatch, under a chosen id.
+
+    Jira and Git syncs are enqueued on the sync queue and start when it has a
+    slot; every other kind starts at once.
+    """
     workflow_input = sync_workflow_input(input)
+    if isinstance(workflow_input, JiraSyncInput | GitSyncInput):
+        queue = await _registered_sync_queue()
     with SetWorkflowID(workflow_id):
         if isinstance(workflow_input, JiraSyncInput):
-            await DBOS.start_workflow_async(dbos_jira_sync_workflow, workflow_input)
+            await queue.enqueue_async(dbos_jira_sync_workflow, workflow_input)
         elif isinstance(workflow_input, GitSyncInput):
-            await DBOS.start_workflow_async(dbos_git_sync_workflow, workflow_input)
+            await queue.enqueue_async(dbos_git_sync_workflow, workflow_input)
         elif isinstance(workflow_input, CalendarSyncInput):
             await DBOS.start_workflow_async(dbos_calendar_sync_workflow, workflow_input)
         elif isinstance(workflow_input, DirectorySyncInput):
@@ -734,6 +797,27 @@ async def _start_derived_workflow(workflow_input: object, connector: str) -> Non
         raise ValueError(f"unsupported sync connector: {connector}")
 
 
+async def _registered_sync_queue() -> Queue:
+    """The sync queue, registered once per launched runtime with the configured limit.
+
+    The limit is global: every executor sharing the system database (the API
+    and the worker both launch DBOS) counts against it. Configuration wins
+    over whatever an earlier run stored.
+    """
+    global _sync_queue
+    runtime = _configured_runtime
+    if runtime is None:
+        raise RuntimeError("DBOS runtime is not configured")
+    if _sync_queue is None or _sync_queue[0] != runtime:
+        queue = await DBOS.register_queue_async(
+            SYNC_QUEUE_NAME,
+            global_concurrency=runtime.sync_queue_concurrency,
+            on_conflict="always_update",
+        )
+        _sync_queue = (runtime, queue)
+    return _sync_queue[1]
+
+
 def _apply_active_schedules(schedules: Sequence[ScheduleInput]) -> None:
     """Create or replace schedules, then resume them: configuration wins over a pause.
 
@@ -754,14 +838,19 @@ class DbosWorkflowScheduler:
     tenant_id: str
     heartbeat_cron: str
     reply_debounce_seconds: int = 30
+    system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
+    sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
+
+    def runtime_config(self) -> DbosRuntimeConfig:
+        return DbosRuntimeConfig(
+            app_name=self.app_name,
+            system_database_url=self.system_database_url,
+            system_pool_size=self.system_pool_size,
+            sync_queue_concurrency=self.sync_queue_concurrency,
+        )
 
     async def ensure_heartbeat_schedule(self) -> ScheduleBootstrapResult:
-        started_runtime = _ensure_dbos_runtime(
-            DbosRuntimeConfig(
-                app_name=self.app_name,
-                system_database_url=self.system_database_url,
-            )
-        )
+        started_runtime = _ensure_dbos_runtime(self.runtime_config())
         try:
             _apply_active_schedules(
                 [
@@ -780,12 +869,7 @@ class DbosWorkflowScheduler:
     async def ensure_checkin_fanout_schedule(
         self, config: CheckinScheduleConfig
     ) -> ScheduleBootstrapResult:
-        started_runtime = _ensure_dbos_runtime(
-            DbosRuntimeConfig(
-                app_name=self.app_name,
-                system_database_url=self.system_database_url,
-            )
-        )
+        started_runtime = _ensure_dbos_runtime(self.runtime_config())
         try:
             _apply_active_schedules([_checkin_fanout_schedule_input(config)])
         finally:
@@ -796,12 +880,7 @@ class DbosWorkflowScheduler:
     async def ensure_checkin_reconcile_schedule(
         self, config: CheckinReconcileScheduleConfig
     ) -> ScheduleBootstrapResult:
-        started_runtime = _ensure_dbos_runtime(
-            DbosRuntimeConfig(
-                app_name=self.app_name,
-                system_database_url=self.system_database_url,
-            )
-        )
+        started_runtime = _ensure_dbos_runtime(self.runtime_config())
         try:
             _apply_active_schedules([_checkin_reconcile_schedule_input(config)])
         finally:
@@ -812,12 +891,7 @@ class DbosWorkflowScheduler:
     async def ensure_conversation_purge_schedule(
         self, config: ConversationPurgeScheduleConfig
     ) -> ScheduleBootstrapResult:
-        started_runtime = _ensure_dbos_runtime(
-            DbosRuntimeConfig(
-                app_name=self.app_name,
-                system_database_url=self.system_database_url,
-            )
-        )
+        started_runtime = _ensure_dbos_runtime(self.runtime_config())
         try:
             _apply_active_schedules([_conversation_purge_schedule_input(config)])
         finally:
@@ -828,12 +902,7 @@ class DbosWorkflowScheduler:
     async def ensure_inbound_sweeper_schedule(
         self, config: InboundSweeperScheduleConfig
     ) -> ScheduleBootstrapResult:
-        started_runtime = _ensure_dbos_runtime(
-            DbosRuntimeConfig(
-                app_name=self.app_name,
-                system_database_url=self.system_database_url,
-            )
-        )
+        started_runtime = _ensure_dbos_runtime(self.runtime_config())
         try:
             _apply_active_schedules([_inbound_events_sweeper_schedule_input(config)])
         finally:
@@ -844,12 +913,7 @@ class DbosWorkflowScheduler:
     async def ensure_cross_person_notify_retry_schedule(
         self, config: CrossPersonNotifyRetryScheduleConfig
     ) -> ScheduleBootstrapResult:
-        started_runtime = _ensure_dbos_runtime(
-            DbosRuntimeConfig(
-                app_name=self.app_name,
-                system_database_url=self.system_database_url,
-            )
-        )
+        started_runtime = _ensure_dbos_runtime(self.runtime_config())
         try:
             _apply_active_schedules([_cross_person_notify_retry_schedule_input(config)])
         finally:
@@ -862,12 +926,7 @@ class DbosWorkflowScheduler:
     ) -> list[ScheduleBootstrapResult]:
         if not configs:
             return []
-        started_runtime = _ensure_dbos_runtime(
-            DbosRuntimeConfig(
-                app_name=self.app_name,
-                system_database_url=self.system_database_url,
-            )
-        )
+        started_runtime = _ensure_dbos_runtime(self.runtime_config())
         try:
             _apply_active_schedules([_sync_schedule_input(config) for config in configs])
         finally:
@@ -879,12 +938,7 @@ class DbosWorkflowScheduler:
         ]
 
     async def remove_schedule(self, schedule_id: str) -> ScheduleBootstrapResult:
-        started_runtime = _ensure_dbos_runtime(
-            DbosRuntimeConfig(
-                app_name=self.app_name,
-                system_database_url=self.system_database_url,
-            )
-        )
+        started_runtime = _ensure_dbos_runtime(self.runtime_config())
         try:
             existed = DBOS.get_schedule(schedule_id) is not None
             if existed:
@@ -899,12 +953,7 @@ class DbosWorkflowScheduler:
     async def arm_reply_coalesce(
         self, conversation_key: str, tenant_id: str, *, burst_key: str
     ) -> None:
-        _ensure_dbos_runtime(
-            DbosRuntimeConfig(
-                app_name=self.app_name,
-                system_database_url=self.system_database_url,
-            )
-        )
+        _ensure_dbos_runtime(self.runtime_config())
         coalesce_id = reply_coalesce_workflow_id(tenant_id, conversation_key, burst_key)
         # Idempotent start (no-op while this burst's window is running) then
         # signal, which resets the debounce timer on that coalesce workflow.
@@ -920,12 +969,7 @@ class DbosWorkflowScheduler:
         await DBOS.send_async(coalesce_id, "ping", DBOS_REPLY_TOPIC)
 
     async def dispatch_developer_checkin(self, input: DeveloperCheckinDispatch) -> str:
-        _ensure_dbos_runtime(
-            DbosRuntimeConfig(
-                app_name=self.app_name,
-                system_database_url=self.system_database_url,
-            )
-        )
+        _ensure_dbos_runtime(self.runtime_config())
         return await _start_daily_checkin_workflow(input)
 
     async def dispatch_sync(self, input: SyncDispatchInput) -> str:
@@ -933,12 +977,7 @@ class DbosWorkflowScheduler:
         workflow_id = safe_workflow_id(
             f"sync-{workflow_name}-{input.tenant_id}-{input.scope}-{uuid4()}"
         )
-        _ensure_dbos_runtime(
-            DbosRuntimeConfig(
-                app_name=self.app_name,
-                system_database_url=self.system_database_url,
-            )
-        )
+        _ensure_dbos_runtime(self.runtime_config())
         return await _start_sync_child_workflow(input, workflow_id=workflow_id)
 
 
@@ -958,14 +997,19 @@ class DbosRollupRefresher:
     app_name: str
     system_database_url: str
     debounce_seconds: float = ROLLUP_REFRESH_DEBOUNCE_SECONDS
+    system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
+    sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
+
+    def runtime_config(self) -> DbosRuntimeConfig:
+        return DbosRuntimeConfig(
+            app_name=self.app_name,
+            system_database_url=self.system_database_url,
+            system_pool_size=self.system_pool_size,
+            sync_queue_concurrency=self.sync_queue_concurrency,
+        )
 
     async def refresh_rollup(self, tenant_id: str, as_of: date) -> None:
-        _ensure_dbos_runtime(
-            DbosRuntimeConfig(
-                app_name=self.app_name,
-                system_database_url=self.system_database_url,
-            )
-        )
+        _ensure_dbos_runtime(self.runtime_config())
         # The requests come from inside DBOS steps (the repository sync's merge
         # pass, a reply drain), and DBOS refuses to start a workflow in a step,
         # which a retry would start again. A repeated debounce is harmless (it
@@ -995,16 +1039,24 @@ def _debounce_rollup(tenant_id: str, as_of: date, debounce_seconds: float) -> No
 class DbosWorkflowWorker:
     app_name: str
     system_database_url: str
+    system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
+    sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
+
+    def runtime_config(self) -> DbosRuntimeConfig:
+        return DbosRuntimeConfig(
+            app_name=self.app_name,
+            system_database_url=self.system_database_url,
+            system_pool_size=self.system_pool_size,
+            sync_queue_concurrency=self.sync_queue_concurrency,
+        )
 
     async def run(self) -> None:
-        configure_dbos_runtime(
-            DbosRuntimeConfig(
-                app_name=self.app_name,
-                system_database_url=self.system_database_url,
-            )
-        )
+        configure_dbos_runtime(self.runtime_config())
         DBOS.launch()
         try:
+            # Stores the configured sync concurrency as the worker starts, so a
+            # changed setting holds before the first sync is enqueued.
+            await _registered_sync_queue()
             await asyncio.Event().wait()
         finally:
             destroy_dbos_runtime()
@@ -1014,7 +1066,17 @@ class DbosWorkflowWorker:
 class DbosWorkflowReadinessProbe:
     app_name: str
     system_database_url: str
+    system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
+    sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
     _launched: bool = field(default=False, init=False, compare=False)
+
+    def runtime_config(self) -> DbosRuntimeConfig:
+        return DbosRuntimeConfig(
+            app_name=self.app_name,
+            system_database_url=self.system_database_url,
+            system_pool_size=self.system_pool_size,
+            sync_queue_concurrency=self.sync_queue_concurrency,
+        )
 
     async def check(self) -> bool:
         if self._launched:
@@ -1025,12 +1087,7 @@ class DbosWorkflowReadinessProbe:
                 await connection.execute("SELECT 1")
             finally:
                 await connection.close()
-            configure_dbos_runtime(
-                DbosRuntimeConfig(
-                    app_name=self.app_name,
-                    system_database_url=self.system_database_url,
-                )
-            )
+            configure_dbos_runtime(self.runtime_config())
             DBOS.launch()
         except Exception:
             destroy_dbos_runtime()
@@ -1047,6 +1104,9 @@ def configure_dbos_runtime(config: DbosRuntimeConfig) -> None:
     dbos_config: DBOSConfig = {
         "name": config.app_name,
         "system_database_url": config.system_database_url,
+        # Bounded explicitly: with max_overflow 0 (DBOS's default) this is the
+        # most the pool opens, plus one connection for the LISTEN/NOTIFY thread.
+        "sys_db_pool_size": config.system_pool_size,
     }
     DBOS(config=dbos_config)
     _configured_runtime = config
@@ -1061,9 +1121,10 @@ def _ensure_dbos_runtime(config: DbosRuntimeConfig) -> bool:
 
 
 def destroy_dbos_runtime() -> None:
-    global _configured_runtime
+    global _configured_runtime, _sync_queue
     DBOS.destroy(destroy_registry=False)
     _configured_runtime = None
+    _sync_queue = None
 
 
 def _heartbeat_schedule_input(

@@ -16,6 +16,7 @@ Three principles run through the whole system:
 - Low-level designs → [docs/lld/](docs/lld/)
 - Slack setup → [docs/ops/slack-setup.md](docs/ops/slack-setup.md)
 - Local demo with a populated tenant → [docs/ops/local-demo.md](docs/ops/local-demo.md)
+- Database connections and their budget → [docs/ops/database-connections.md](docs/ops/database-connections.md)
 - Demo videos, English and Hindi → [Demo videos](#demo-videos)
 
 ---
@@ -257,6 +258,8 @@ All settings are `OPENPROGRAM_`-prefixed pydantic-settings, documented in [.env.
 | `OPENPROGRAM_ISSUE_TRACKER_PROVIDER` / `VCS_PROVIDER` / `CALENDAR_PROVIDER` | `jira` / `github`\|`gitlab` / `google` |
 | `OPENPROGRAM_CHECKIN_FANOUT_CRON` | when daily check-ins go out — one schedule for the whole tenant, read in UTC (`30 9 * * 1-5`, 09:30 UTC Monday to Friday, by default); each member's check-in days are honoured, but a per-member check-in time is stored and not used. The check-in preference API returns it as `send`, and the console names it in UTC and on the viewer's clock |
 | `OPENPROGRAM_CONVERSATION_RETENTION_DAYS` | retention for raw chat conversation history |
+| `OPENPROGRAM_POSTGRES_POOL_MAX_SIZE` / `POSTGRES_POOL_TIMEOUT_SECONDS` | the one application pool per process (10), and how long a caller waits for a connection (30 s) |
+| `OPENPROGRAM_DBOS_SYSTEM_POOL_SIZE` / `SYNC_QUEUE_CONCURRENCY` | DBOS's own pool per process (10), and how many Jira and Git syncs run at once (4); budgeted in [docs/ops/database-connections.md](docs/ops/database-connections.md) |
 
 Jira write-back is **default-deny behind three independent gates**: a tenant flag (`jira_writeback_enabled`), the `WRITE_ISSUE_TRACKER` capability, and per-developer consent (`always_ask` / `auto_apply` / `never`). Only `writeback_service.py` may call the write path, and every applied change is audited and revertible.
 
@@ -316,6 +319,6 @@ CI (`.github/workflows/ci.yml`) runs backend lint+types+tests, integration, lint
 | [infra/](infra) | container, Prometheus, Grafana, OTel, and LiteLLM configuration |
 | [scripts/](scripts) | mock LLM and local helper scripts |
 | [docs/lld/](docs/lld) | low-level designs per seam |
-| [docs/ops/](docs/ops) | Slack setup and the local demo |
+| [docs/ops/](docs/ops) | Slack setup, the local demo, database connections |
 | [docker-compose.yml](docker-compose.yml) | full local stack with opt-in profiles |
 | [Makefile](Makefile) | every task above |

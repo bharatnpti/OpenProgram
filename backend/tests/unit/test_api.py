@@ -813,8 +813,17 @@ async def test_chat_signature_required_keys_off_configured_provider_not_url(
     registry = ServiceRegistry(configured)
     body = _slack_json_body({"event": {"type": "message"}})
 
-    assert not await registry.chat_webhook_signature_valid("mock_slack", {}, body)
-    assert await registry.chat_webhook_signature_valid("slack", _signed_slack_headers(body), body)
+    try:
+        assert not await registry.chat_webhook_signature_valid("mock_slack", {}, body)
+        assert await registry.chat_webhook_signature_valid(
+            "slack", _signed_slack_headers(body), body
+        )
+    finally:
+        # Looking up the tenant's signing secret opens the process's shared
+        # Postgres pool on this test's loop whenever a database answers. Close
+        # it on that loop, as an app's lifespan would, or a later test's
+        # shutdown meets a pool whose loop has closed.
+        await registry.shutdown()
 
 
 async def test_chat_signature_skipped_when_configured_provider_is_not_slack(

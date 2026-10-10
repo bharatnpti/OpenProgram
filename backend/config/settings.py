@@ -19,6 +19,11 @@ from core.domain.status import CheckInDefaults, CheckInSendSchedule, checkin_sen
 # It is public, so it must never protect a shared (non-local) deployment.
 DEFAULT_SECRET_KEY = "q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ="
 
+# The DBOS pool and sync-queue limits, named so the DBOS adapter's runtime config
+# defaults to exactly what the settings default to, without reading the settings.
+DEFAULT_DBOS_SYSTEM_POOL_SIZE = 10
+DEFAULT_SYNC_QUEUE_CONCURRENCY = 4
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -41,8 +46,13 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5175",
     )
     database_url: str = "postgresql://openprogram:openprogram@localhost:5432/openprogram"
+    # The one application pool each process (API, worker) shares between its
+    # requests and every workflow step it runs. A caller waits up to the
+    # timeout for a free connection; the pool never opens one past the max.
+    # docs/ops/database-connections.md budgets these against max_connections.
     postgres_pool_min_size: int = 1
-    postgres_pool_max_size: int = 5
+    postgres_pool_max_size: int = 10
+    postgres_pool_timeout_seconds: float = 30.0
     redis_url: str = "redis://localhost:6379/0"
     redis_max_connections: int = 10
     heartbeat_schedule_id: str | None = None
@@ -147,7 +157,13 @@ class Settings(BaseSettings):
     temporal_heartbeat_interval_seconds: int = 60
     dbos_app_name: str = "openprogram"
     dbos_system_database_url: str | None = None
+    # DBOS's own pool on its system database, per process (DBOS defaults to 20);
+    # its notification listener holds one connection more, outside the pool.
+    dbos_system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
     dbos_heartbeat_cron: str = "0 * * * * *"
+    # How many Jira and Git sync workflows run at once, across every process.
+    # The rest wait their turn in the openprogram_sync queue.
+    sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
     tenant_default_timezone: str = "UTC"
     checkin_reply_wait_seconds: int = 14400
     checkin_final_reply_wait_seconds: int = 28800
@@ -540,6 +556,8 @@ class Settings(BaseSettings):
         "redis_rate_limit_max_events",
         "postgres_pool_min_size",
         "postgres_pool_max_size",
+        "dbos_system_pool_size",
+        "sync_queue_concurrency",
         "redis_max_connections",
         "calendar_sync_window_days",
         "conversation_retention_days",
@@ -576,7 +594,7 @@ class Settings(BaseSettings):
             raise ValueError("seconds value must be positive")
         return value
 
-    @field_validator("reply_processing_retry_backoff_seconds")
+    @field_validator("reply_processing_retry_backoff_seconds", "postgres_pool_timeout_seconds")
     @classmethod
     def validate_positive_backoff(cls, value: float) -> float:
         if value <= 0:
