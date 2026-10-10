@@ -7,8 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from api.dependencies import get_ask_service, get_current_principal
 from api.dtos import AskRequest, AskResponse
-from core.application.ask_service import AskService
-from core.application.authorization import AuthorizationPolicy, Capability
+from core.application.ask_service import AskService, may_ask
 from core.domain.auth import Principal
 
 router = APIRouter(tags=["ask"])
@@ -20,7 +19,7 @@ async def ask(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[AskService, Depends(get_ask_service)],
 ) -> AskResponse:
-    _ensure_aggregate(principal)
+    _ensure_may_ask(principal)
     view = await service.ask(
         principal=principal,
         question=request.question,
@@ -30,11 +29,8 @@ async def ask(
     return AskResponse.from_view(view)
 
 
-def _ensure_aggregate(principal: Principal) -> None:
-    policy = AuthorizationPolicy()
-    if policy.can(principal, Capability.READ_TEAM_AGGREGATE):
-        return
-    if policy.can(principal, Capability.READ_EXEC_AGGREGATE):
+def _ensure_may_ask(principal: Principal) -> None:
+    if may_ask(principal):
         return
     raise HTTPException(
         status_code=403,

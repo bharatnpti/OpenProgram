@@ -563,8 +563,9 @@ async def test_an_unknown_id_comes_back_as_an_error_the_model_can_correct() -> N
 @pytest.mark.parametrize(
     ("role", "expected"),
     [
-        # A developer reads their own pod's dates; /ask itself still refuses them.
-        (Role.DEV, {"delivery_forecast"}),
+        # /ask refuses a developer, so Ask offers them nothing: not even the
+        # delivery forecast their own pod's REST read would answer.
+        (Role.DEV, set()),
         (
             Role.PO,
             _AGGREGATE_TOOLS | {"workstream_progress", "status_reasons", "delivery_forecast"},
@@ -629,6 +630,7 @@ async def test_a_role_that_cannot_read_risks_cannot_call_the_risk_tool_by_name()
         as_of=AS_OF,
     )
 
+    assert llm.requests[0].tools == ()
     assert "open_risks" not in {tool.name for tool in llm.requests[0].tools}
     assert llm.requests[1].tool_results[0].content == "Tool open_risks is not available."
     assert view.tools_used == ()
