@@ -1,0 +1,45 @@
+backend/infra/adapters/jira/jira_adapter.py
+  s_3101dec2ee3c53::t_25e19ceaf6b527 285-290
+  s_3101dec2ee3c53::t_900b2ad74863cd 947-972
+  s_3101dec2ee3c53::t_a0c1d67374f74d 296
+  s_3101dec2ee3c53::t_e182ddc37d369c 232-284,291-295,297-307
+  s_3101dec2ee3c53::t_3bc2acb247c8be 15,20,23
+  s_3101dec2ee3c53::t_56949f22a4b9a5 973-974
+backend/infra/adapters/integrations/fake.py
+  s_3101dec2ee3c53::t_709caa39d39739 3,14,98,104,157-158,160-177,305-312
+  s_3101dec2ee3c53::t_a0c1d67374f74d 159
+  s_3101dec2ee3c53::t_3d2172629eac30 313-314
+backend/tests/contract/test_jira_create_issue.py
+  s_3101dec2ee3c53::t_40fc82a14f01d9 1-145
+backend/tests/contract/fakes.py
+  s_3101dec2ee3c53::t_59f38ee4de01ab 22,132-134
+  s_3101dec2ee3c53::t_1c66ffa706b136 76
+  s_3101dec2ee3c53::t_b07da190b95d35 135
+backend/core/ports/issue_tracker.py
+  s_3101dec2ee3c53::t_d35f75c693bd11 5-13
+  s_3101dec2ee3c53::t_acecc82ea38781 51-59
+backend/core/domain/integrations.py
+  s_3101dec2ee3c53::t_9e171be1dbbf10 74-94
+  s_3101dec2ee3c53::t_95e15ceccea7f6 73
+backend/infra/adapters/connections/routing.py
+  s_3101dec2ee3c53::t_244228b8e7508b 19,88-89
+  s_3101dec2ee3c53::t_38bc94bfbe61d5 90
+backend/core/domain/errors.py
+  s_3101dec2ee3c53::t_a9fdac5b9c2179 24-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5c20a234ed4b7f6d021fc2c824e5094b8bb9d942",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
