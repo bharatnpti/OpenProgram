@@ -1,0 +1,79 @@
+frontend-v2/src/api/openapi.json
+  s_3101dec2ee3c53::t_321b6ec061176c 5189-5199,5201-5202,5365-5468,14125-14129,14133,14137-14224,14828-14832,14843-14844,18353-18362,18386-18388
+frontend-v3/src/features/overall/podDates.test.ts
+  s_3101dec2ee3c53::t_19af0fafee860d 49
+backend/core/application/day_report_builder.py
+  s_3101dec2ee3c53::t_1eb332ed0fae07 601,614
+frontend-v2/src/features/forecast/forecast.test.ts
+  s_3101dec2ee3c53::t_40cbde16a2d1e6 32
+backend/infra/persistence/postgres_delivery.py
+  s_3101dec2ee3c53::t_97e826e439ec36 17,20-22,34-40,57-60,64,76,78-82,95-135,221-245
+  s_3101dec2ee3c53::t_88d098b0dfffdb 77
+  s_3101dec2ee3c53::t_cbc424ff8eb868 246-248
+backend/infra/persistence/in_memory_forecast.py
+  s_3101dec2ee3c53::t_97e826e439ec36 5,54-64
+frontend/src/api/generated.ts
+  s_3101dec2ee3c53::t_321b6ec061176c 1141-1167,3821-3870,4096-4100,5437-5446,9255-9256,9356-9421
+frontend-v3/src/components/ui/dateStripWords.test.ts
+  s_3101dec2ee3c53::t_c21b123eedf3bd 60,106-108,114-116,122-143
+  s_3101dec2ee3c53::t_e89310c52f3dd7 109-113,117-121
+  s_3101dec2ee3c53::t_f85ea716509a9e 144-145
+backend/core/application/forecast_service.py
+  s_3101dec2ee3c53::t_0aa23b9c1391c0 9-12,28,30-31,37-38,50,53,59-63,119-136,158-159,169-170,175-215,372-373,441-443,450,454,481,486-488,494-496,582-584,632-634,637-640,656,741,756-757,761,777
+frontend-v3/src/features/reports/projectStatusWords.test.ts
+  s_3101dec2ee3c53::t_19af0fafee860d 30
+frontend-v3/src/features/overall/answerWords.test.ts
+  s_3101dec2ee3c53::t_19af0fafee860d 38
+backend/api/dtos.py
+  s_3101dec2ee3c53::t_619b9ffff4fd6c 37,3353-3394,3491-3497,3500-3502,3562-3563,4293-4295,4348,4400-4402,4410
+  s_3101dec2ee3c53::t_b8c525de1f645d 102-103
+frontend/src/api/openapi.json
+  s_3101dec2ee3c53::t_321b6ec061176c 5189-5199,5201-5202,5365-5468,14125-14129,14133,14137-14224,14828-14832,14843-14844,18353-18362,18386-18388
+backend/core/ports/forecast.py
+  s_3101dec2ee3c53::t_717d386c86fb84 5,32-39
+backend/tests/unit/test_forecast_min_history.py
+  s_3101dec2ee3c53::t_0173e6e1876581 228-229,232,234,236-238
+  s_3101dec2ee3c53::t_0ebf54d57e2d6a 13,21-22,33,47,49-50,123,127-128,130,132-135,137,173-176,186,202,226-227,263,285,363
+  s_3101dec2ee3c53::t_e005c1055bfc99 333
+  s_3101dec2ee3c53::t_d9b3d60fe7ccd5 1-12,14-20,23-32,34-46,48,51-122,124-126,129,131,136,138-172,177-185,187-201,203-225,230-231,233,235,239-262,264-284,286-332,334-362,364-442
+frontend-v3/src/api/openapi.json
+  s_3101dec2ee3c53::t_321b6ec061176c 5189-5199,5201-5202,5365-5468,14125-14129,14133,14137-14224,14828-14832,14843-14844,18353-18362,18386-18388
+frontend-v3/src/features/overall/overallWords.test.ts
+  s_3101dec2ee3c53::t_19af0fafee860d 123
+frontend-v3/src/api/generated.ts
+  s_3101dec2ee3c53::t_321b6ec061176c 1141-1167,3808-3857,4083-4087,5424-5433,9242-9243,9343-9408
+frontend-v2/src/api/generated.ts
+  s_3101dec2ee3c53::t_321b6ec061176c 1141-1167,3808-3857,4083-4087,5424-5433,9242-9243,9343-9408
+backend/config/settings.py
+  s_3101dec2ee3c53::t_5714447f10a9e4 555-562
+  s_3101dec2ee3c53::t_42c6a47a7366a0 16-20
+  s_3101dec2ee3c53::t_6a7e7fedd2201c 115-117
+features.md
+  s_3101dec2ee3c53::t_99f4a11ec78672 532
+backend/api/routers/delivery.py
+  s_3101dec2ee3c53::t_dad0ed9197a3a5 1,4-6,24-25,39,51-61,65-68,72,76-78,102-130,134
+  s_3101dec2ee3c53::t_beb3d5e517344f 131-133
+  s_3101dec2ee3c53::t_32ead8295e13b6 135-136
+backend/infra/registry.py
+  s_3101dec2ee3c53::t_5963ec2e5036cb 67-71,135,151,261-263,468-476,484-485
+backend/core/domain/forecast.py
+  s_3101dec2ee3c53::t_a72e0072e3006c 13-14,32-33,35-41,72-75,210-211,292,294-297,307,309,317-318,329,350,399-435,438,440
+  s_3101dec2ee3c53::t_cc9493991eab31 188-198
+  s_3101dec2ee3c53::t_3a8f02be9ed1e2 187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f9be5cafd56a8a4db280ca58e911d215f53e0978",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
