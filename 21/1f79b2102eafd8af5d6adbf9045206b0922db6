@@ -1,0 +1,19 @@
+backend/Dockerfile
+  s_a17a18ca8c509e::t_b709858386d354 9-11,13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "211f79b2102eafd8af5d6adbf9045206b0922db6",
+  "prompts": {},
+  "sessions": {
+    "s_a17a18ca8c509e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5c08089-2933-44f3-a3c3-066d71fe7232",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
