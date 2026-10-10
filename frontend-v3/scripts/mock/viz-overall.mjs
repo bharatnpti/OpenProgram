@@ -11,6 +11,7 @@
 //   forecasts yet, the verdict falls back on the team's dates, and the date was
 //   set once.
 // Writes stay the reports lane's, so they round-trip in either dataset.
+import { neededDays } from "./forecast-settings.mjs";
 import * as reportsLane from "./reports.mjs";
 
 const TODAY = "2026-10-06";
@@ -66,6 +67,7 @@ function monthHistory(scope, today) {
     release_id: scope === "project" ? null : scope,
     scope_kind: scope === "project" ? "project" : "release",
     days,
+    needed_days: neededDays(),
   };
 }
 
@@ -105,7 +107,7 @@ function shortCommitment(commitment) {
 function shortScope(scope) {
   const commitment = shortCommitment(scope.commitment);
   const target = commitment.target_date ?? scope.jira_release_date ?? null;
-  const reason = "Only 2 working days of history; a forecast needs 10.";
+  const reason = `Only 2 working days of history; a forecast needs ${neededDays()}.`;
   const next = {
     ...scope,
     commitment,
@@ -168,6 +170,7 @@ export function api(req, url, roles, userId, send, deny) {
         release_id: releaseId,
         scope_kind: releaseId ? "release" : "project",
         days: [{ day: TODAY, p50: null, p85: null, sample_days: 0 }],
+        needed_days: neededDays(),
       });
     }
     // Today's forecast is the delivery read's, so the chart ends where the strip says.
@@ -198,6 +201,7 @@ export function api(req, url, roles, userId, send, deny) {
           p85: null,
           sample_days: i,
         })),
+        needed_days: neededDays(),
       });
     }
     return reply(send, 200, monthHistory(releaseId ?? "project", today ?? {}));

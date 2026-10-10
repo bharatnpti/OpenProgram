@@ -9,6 +9,7 @@
 // questions for everyone but the executive, sign-off only for the roles a kind
 // names. Wired from scripts/mock-api.mjs, called before the console handlers.
 import { pods as directoryPods, roster } from "../mock-console.mjs";
+import { neededDays, timelineDays } from "./forecast-settings.mjs";
 
 const TODAY = "2026-10-06";
 const PROJECT = "project-checkout";
@@ -163,6 +164,8 @@ function requirements(release) {
       due_date: null,
       in_stage_since: since,
     })),
+    timeline_days: timelineDays(),
+    forecast_needed_days: neededDays(),
   };
 }
 
@@ -298,6 +301,7 @@ const history = (p50, p85, remaining) => ({
   sample_days: 21,
   completed_in_sample: 6,
   reason: null,
+  needed_days: neededDays(),
 });
 
 function scope(kind, id, name, total, open, hist, team, verdict, reasons, jiraDate = null) {
@@ -337,6 +341,7 @@ function podScope(podId) {
   }
   // A short history cannot forecast, so the team's own dates decide (core/domain/forecast.py
   // `verdict`): the latest date is before the pod's 16 Oct, but one requirement has none.
+  const short = `Only 1 working day of history; a forecast needs ${neededDays()}.`;
   return scope(
     "pod",
     podId,
@@ -347,12 +352,12 @@ function podScope(podId) {
       ...history(null, null, 6),
       sample_days: 1,
       completed_in_sample: 0,
-      reason: "Only 1 working day of history; a forecast needs 10.",
+      reason: short,
     },
     { latest: "2026-10-15", latest_key: "CHK-109", dated: 5, undated: 1 },
     "at_risk",
     [
-      "Only 1 working day of history; a forecast needs 10.",
+      short,
       "Team dates: the latest open requirement is due Thu 15 Oct 2026 (CHK-109).",
       "1 open requirement has no ETA or due date.",
     ],

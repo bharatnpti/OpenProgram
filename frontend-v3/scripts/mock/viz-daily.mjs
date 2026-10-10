@@ -9,6 +9,8 @@
 // always with the month. `text` is rendered here the way the server's render_text
 // renders the sections, so the preview drawer shows what a send would carry.
 
+import { neededDays } from "./forecast-settings.mjs";
+
 const DAY = "2026-10-06";
 const SINCE = "2026-10-05";
 const HISTORY = process.env.VIZ_DAILY_HISTORY === "month" ? "month" : "short";
@@ -200,7 +202,7 @@ function preview(history, release) {
       ]
     : [
         "Committed for Tue 15 Dec 2026 by Mina Patel.",
-        "Only 3 working days of history; a forecast needs 10.",
+        `Only 3 working days of history; a forecast needs ${neededDays()}.`,
         "Team dates: the latest open requirement is due Tue 6 Oct 2026 (CHK-4).",
       ];
   const bypassLines = BYPASSED.map(
@@ -308,8 +310,10 @@ function preview(history, release) {
         p50: month ? "2026-12-02" : null,
         p85: month ? "2026-12-21" : null,
         history_days: month ? null : 3,
-        history_needed: month ? null : 10,
-        no_forecast_reason: month ? null : "Only 3 working days of history; a forecast needs 10.",
+        history_needed: month ? null : neededDays(),
+        no_forecast_reason: month
+          ? null
+          : `Only 3 working days of history; a forecast needs ${neededDays()}.`,
         team_latest: DAY,
         team_latest_key: "CHK-4",
       },

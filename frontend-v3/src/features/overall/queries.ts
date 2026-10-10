@@ -12,17 +12,21 @@ import { useReportAccess } from "../reports/useReportAccess";
  * release are cached apart.
  */
 
-/** How many days of daily snapshots the requirements read asks for. */
-export const REQUIREMENT_DAYS = 30;
+/** How many days of the forecast's own history "How the date moved" asks for. */
+export const SLIP_DAYS = 30;
 
+/**
+ * The requirements read leaves its days to the server: 30, or the forecast's
+ * window when the tenant's minimum needs more, so the flow can reach that
+ * minimum whenever the forecast can (`timeline_days` says which).
+ */
 export function useRequirements(projectId: string, releaseId?: string) {
   const { canReadProjectProgress } = useRole();
   return {
     readable: canReadProjectProgress,
     query: useQuery({
       queryKey: ["requirements", projectId, releaseId ?? ""],
-      queryFn: () =>
-        apiClient.projectRequirements(projectId, undefined, REQUIREMENT_DAYS, releaseId),
+      queryFn: () => apiClient.projectRequirements(projectId, undefined, undefined, releaseId),
       enabled: canReadProjectProgress && projectId !== "",
     }),
   };
@@ -52,8 +56,7 @@ export function useForecastHistory(projectId: string, releaseId?: string) {
     readable: canReadProjectProgress,
     query: useQuery({
       queryKey: ["delivery-history", projectId, releaseId ?? ""],
-      queryFn: () =>
-        apiClient.projectForecastHistory(projectId, undefined, releaseId, REQUIREMENT_DAYS),
+      queryFn: () => apiClient.projectForecastHistory(projectId, undefined, releaseId, SLIP_DAYS),
       enabled: canReadProjectProgress && projectId !== "",
     }),
   };

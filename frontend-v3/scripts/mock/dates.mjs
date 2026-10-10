@@ -8,6 +8,8 @@
 // with open work and no committed date (red). Checkout Revamp stays the reports
 // lane's (off track, with an at-risk release and pod).
 
+import { neededDays } from "./forecast-settings.mjs";
+
 const PROGRESS = ["po", "mgr", "exec", "admin"];
 
 /** Answers and says so: the router stops at the first handler that returns true. */
@@ -98,7 +100,10 @@ export function api(req, url, roles, userId, send) {
     if (!has(PROGRESS)) {
       return reply(send, 403, { detail: `${userId} is not authorized for read_project_progress` });
     }
-    return reply(send, 200, { project: DELIVERIES[m[1]], pods: [], releases: [] });
+    // The minimum in force when asked: Admin's Forecast setting (forecast-settings.mjs).
+    const project = DELIVERIES[m[1]];
+    const history = { ...project.history, needed_days: neededDays() };
+    return reply(send, 200, { project: { ...project, history }, pods: [], releases: [] });
   }
   return false;
 }

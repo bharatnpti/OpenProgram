@@ -39,16 +39,31 @@ test("the flow draws from ten working days of snapshots; before that it says how
   assert.equal(historyDays(three), 2);
   assert.equal(historyDays([...three, { day: "2026-10-10", counts: {} }]), 2);
   assert.equal(historyDays([...three, { day: "2026-10-12", counts: {} }]), 3);
-  assert.equal(flowDrawable(three), false);
-  assert.equal(flowDrawable(month()), true);
+  assert.equal(flowDrawable(three, 10), false);
+  assert.equal(flowDrawable(month(), 10), true);
   assert.equal(
-    shortHistoryNote([
-      { day: "2026-10-07", counts: {} },
-      { day: "2026-10-08", counts: {} },
-      { day: "2026-10-09", counts: {} },
-    ]),
+    shortHistoryNote(
+      [
+        { day: "2026-10-07", counts: {} },
+        { day: "2026-10-08", counts: {} },
+        { day: "2026-10-09", counts: {} },
+      ],
+      10,
+    ),
     "Not enough history for the flow yet: 2 of 10 working days. Until then one bar shows today's split.",
   );
+});
+
+test("the flow waits for the tenant's minimum, the one the forecast waits for", () => {
+  const days = historyDays(month());
+  assert.equal(flowDrawable(month(), days), true);
+  assert.equal(flowDrawable(month(), days + 1), false);
+  assert.equal(flowDrawable(month().slice(27), 2), true, "a minimum of two is met by Wed to Fri");
+  assert.equal(
+    shortHistoryNote(month(), 25),
+    `Not enough history for the flow yet: ${days} of 25 working days. Until then one bar shows today's split.`,
+  );
+  assert.match(shortHistoryNote(month().slice(27), 5), /: 2 of 5 working days\./);
 });
 
 test("today's split says where most of the open work is", () => {

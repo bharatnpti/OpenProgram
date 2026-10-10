@@ -1,13 +1,13 @@
 // O3, "Requirements by stage": a cumulative flow of the requirements in each
-// stage, day by day, with today's counts beside it; under ten working days of
-// history, one bar of today's split. Pure geometry and wording, runtime imports
+// stage, day by day, with today's counts beside it; under the working days of
+// history the forecast needs (the tenant's minimum), one bar of today's split. Pure geometry and wording, runtime imports
 // by their .ts path, so `node --test` runs it as written.
 import type { DeliveryStage, RequirementTimelinePointResponse } from "../../api/schema";
 
 import { STAGE_LABELS, STAGE_ORDER } from "../../components/viz/stages.ts";
 import { daysBetween, formatDay } from "../../lib/format.ts";
 import { countTicks, niceCeiling, thinAxisLabels, type AxisLabel } from "./charts.ts";
-import { FORECAST_NEEDS_DAYS, monthMarks } from "./slip.ts";
+import { monthMarks } from "./slip.ts";
 
 type Point = Pick<RequirementTimelinePointResponse, "day" | "counts">;
 export type StageLabel = (stage: DeliveryStage) => string;
@@ -23,7 +23,8 @@ const isWorkingDay = (iso: string) => {
  * Working days of history the timeline holds, counted as the forecast counts
  * them (core/domain/forecast.py `daily_completions`): a working day whose
  * working day before has a snapshot too. So "3 of 10 working days" here is the
- * same 3 as the forecast's, and the flow draws when the forecast could.
+ * same 3 as the forecast's, and against the same minimum (the requirements
+ * read's `forecast_needed_days`), so the flow draws when the forecast could.
  */
 export function historyDays(timeline: Point[]): number {
   const days = new Set(timeline.map((point) => point.day));
@@ -39,13 +40,14 @@ function previousWorkingDay(iso: string): string {
   return moment.toISOString().slice(0, 10);
 }
 
-export function flowDrawable(timeline: Point[]): boolean {
-  return historyDays(timeline) >= FORECAST_NEEDS_DAYS;
+/** Whether the flow can draw: the timeline holds the working days the forecast needs. */
+export function flowDrawable(timeline: Point[], neededDays: number): boolean {
+  return historyDays(timeline) >= neededDays;
 }
 
 /** "Not enough history for the flow yet: 3 of 10 working days." */
-export function shortHistoryNote(timeline: Point[]): string {
-  return `Not enough history for the flow yet: ${historyDays(timeline)} of ${FORECAST_NEEDS_DAYS} working days. Until then one bar shows today's split.`;
+export function shortHistoryNote(timeline: Point[], neededDays: number): string {
+  return `Not enough history for the flow yet: ${historyDays(timeline)} of ${neededDays} working days. Until then one bar shows today's split.`;
 }
 
 /**

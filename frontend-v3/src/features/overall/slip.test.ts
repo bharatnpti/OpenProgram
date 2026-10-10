@@ -74,7 +74,7 @@ test("the chart waits for a move or a forecast; one date and no history is a lin
 });
 
 test("the one line says the date and why, or that none is committed, and when the chart draws", () => {
-  const dated = slipRecord([moved], null, 3);
+  const dated = slipRecord([moved], null, 3, 10);
   assert.deepEqual(dated.line, [
     "",
     "Tue 15 Dec",
@@ -84,14 +84,25 @@ test("the one line says the date and why, or that none is committed, and when th
     dated.note,
     "The chart draws once the date moves or the forecast has 10 working days of history. It has 3.",
   );
-  assert.deepEqual(slipRecord([], "2026-10-30", 0).line, [
+  assert.deepEqual(slipRecord([], "2026-10-30", 0, 10).line, [
     "No date is committed; the Jira release date ",
     "Fri 30 Oct",
     " is used.",
   ]);
-  const none = slipRecord([], null, 0);
+  const none = slipRecord([], null, 0, 10);
   assert.deepEqual(none.line, ["", "No delivery date is committed yet.", ""]);
   assert.match(none.note, /^The chart draws once a date is committed and moves/);
+});
+
+test("the one line names the working days the tenant's forecast needs", () => {
+  assert.equal(
+    slipRecord([moved], null, 3, 5).note,
+    "The chart draws once the date moves or the forecast has 5 working days of history. It has 3.",
+  );
+  assert.equal(
+    slipRecord([], null, 3, 20).note,
+    "The chart draws once a date is committed and moves, or the forecast has 20 working days of history. It has 3.",
+  );
 });
 
 test("the finding says when the date moved and where it sits in the forecast", () => {

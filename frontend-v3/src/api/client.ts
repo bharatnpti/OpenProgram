@@ -27,6 +27,8 @@ import type {
   DayReportSetupResponse,
   DeliveryStagesResponse,
   DeliveryStagesUpdateRequest,
+  ForecastSettingsResponse,
+  ForecastSettingsUpdateRequest,
   ObservedStatusResponse,
   ReportPreviewResponse,
   ReportRunResponse,
@@ -520,6 +522,10 @@ export const apiClient = {
   deliveryStages: () => requestJson<DeliveryStagesResponse>("/config/delivery/stages"),
   saveDeliveryStages: (body: DeliveryStagesUpdateRequest) =>
     requestJson<DeliveryStagesResponse>("/config/delivery/stages", { method: "PUT", body }),
+  /** How many working days of history a delivery forecast needs (admin). */
+  forecastSettings: () => requestJson<ForecastSettingsResponse>("/config/delivery/forecast"),
+  saveForecastSettings: (body: ForecastSettingsUpdateRequest) =>
+    requestJson<ForecastSettingsResponse>("/config/delivery/forecast", { method: "PUT", body }),
   observedStatuses: () => requestJson<ObservedStatusResponse[]>("/config/delivery/statuses"),
   previewObservedStatuses: (body: DeliveryStagesUpdateRequest) =>
     requestJson<ObservedStatusResponse[]>("/config/delivery/statuses/preview", {
