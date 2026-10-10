@@ -553,6 +553,19 @@ Functional requirements:
 - A matrix shall name who decides, usually the product owner, and up to five levels above the ask's owner. Each level goes to the ask's team's scrum master, its team's manager, or a named member, and says after how many days each kind of ask (fix, decision, answer, review) reaches it; a kind left empty never does. A higher level shall never be reached sooner than the one below it.
 - A report shall name the highest level an ask reached whose contact is someone other than its owner.
 
+### 4.31 Release Readiness
+
+**Business requirement:** A release, project or pod shall not reach production without the work it needs beyond each requirement's gates, such as a security review, a load test, a runbook and handover, a data-protection impact assessment or a change approval, and the missing pieces shall be drafted as Jira issues for a person to create.
+
+Functional requirements:
+
+- Admins shall define release criteria on the Release readiness tab, from a blank form or one of six generic examples; none is on until an admin adds it. A criterion applies to each release (or the project while it has none), each project or each pod, optionally only where an issue carries a label or type; is needed before a delivery stage and a number of working days before the scope's committed date; is blocking or advisory; and is found by a label, an issue type, a phrase in the title, the title's words or the epic, each either counting as evidence or only a hint.
+- An agent, switched on per tenant, shall check every scope each hour after the Jira sync, and on demand, over the issues OpenProgram already syncs, without calling Jira. Each criterion reads covered (with its evidence), missing, or unsure (with why). While the Jira sync is failing or behind, a covered criterion shall not turn missing, and a new blocking gap shall wait for fresh data before the day report says it.
+- A missing criterion shall get one drafted Jira issue, written from names and dates only, never from Jira text. A person may edit it, dismiss it (it is not drafted again until someone reopens it), link an existing issue or a record instead, or mark the criterion not applicable with a reason; a blocking one only as a manager or admin.
+- An issue shall be created in Jira only when a person presses Create on one draft, with both the tenant's Jira write-back switch and the readiness create switch on. It is unassigned, carries a marker label so a retry adopts what an earlier try made, and its text names who approved it.
+- Overall shall show the criteria per project, release and pod to the product owner, manager, executive (read only) and admin, and to a scrum master for the pods they run; the answer line shall add a blocking gap near its date as a reason of its own, beside the forecast. The day report shall list such gaps under Most important and ask the decision owner (a pod's scrum master for a pod's) to decide.
+- Every person's action and every change the agent makes shall be kept in an audit trail, shown per criterion.
+
 ## 5. Key Business Data Flows
 
 ### 5.1 Read Sync Flow
