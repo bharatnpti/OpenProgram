@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -19,6 +20,34 @@ DEFAULT_FEED_SOURCES = (
     "risk",
     "cross_person_request",
 )
+
+
+# A tracker's broad issue states and a work item's lifecycle states, in the words
+# the console uses for them. The facts keep the raw value (``details`` and the
+# brief read it); only a sentence a person reads says "In progress".
+_STATE_WORDS: Mapping[str, str] = {
+    "todo": "To do",
+    "in_progress": "In progress",
+    "in_review": "In review",
+    "blocked": "Blocked",
+    "done": "Done",
+}
+_STATE_KEY = re.compile(r"[a-z][a-z0-9_]*")
+
+
+def state_label(state: str) -> str:
+    """A state in words a person reads: ``in_progress`` is "In progress".
+
+    A state the table does not know but that is written like a key (``proposed``,
+    ``on_hold``) reads as its words, sentence-cased. Anything else is a name the
+    tracker or a person chose ("Code review") and is left as written.
+    """
+    known = _STATE_WORDS.get(state.strip().lower())
+    if known is not None:
+        return known
+    if _STATE_KEY.fullmatch(state):
+        return state.replace("_", " ").capitalize()
+    return state
 
 
 # Canonical cross-person fact keys first, then the legacy aliases older facts carry.
@@ -156,9 +185,11 @@ def _summary_for_fact(fact: FactEvent, names: Mapping[str, str]) -> str:
     payload = fact.payload
     if fact.source == "work_item":
         label = _payload_string(payload, "name") or fact.entity_ref.id
-        from_state = _payload_string(payload, "from_state") or "unknown"
-        to_state = _payload_string(payload, "to_state") or "updated"
-        return f"{label} moved from {from_state} to {to_state}"
+        from_state = _payload_string(payload, "from_state")
+        to_state = _payload_string(payload, "to_state")
+        before = state_label(from_state) if from_state else "unknown"
+        after = state_label(to_state) if to_state else "updated"
+        return f"{label} moved from {before} to {after}"
     if fact.source == "vcs_pull_request":
         repo = _payload_string(payload, "repo") or "unknown repo"
         pr_id = _payload_string(payload, "id") or "?"
@@ -173,9 +204,9 @@ def _summary_for_fact(fact: FactEvent, names: Mapping[str, str]) -> str:
         return f"Commit {sha[:7]} in {repo}: {message}"
     if fact.source == "issue":
         key = _payload_string(payload, "key") or fact.entity_ref.id
-        state = _payload_string(payload, "state") or "updated"
+        state = _payload_string(payload, "state")
         title = _payload_string(payload, "title") or key
-        return f"Issue {key} moved to {state}: {title}"
+        return f"Issue {key} moved to {state_label(state) if state else 'updated'}: {title}"
     if fact.source == "checkin":
         # The member's name, else the directory's, else the one the collector
         # recorded: an older fact recorded none, or only the id.
@@ -186,10 +217,8 @@ def _summary_for_fact(fact: FactEvent, names: Mapping[str, str]) -> str:
         blocker_count = _payload_int(payload, "blocker_count") or 0
         eta_change_days = _payload_int(payload, "eta_change_days")
         eta_text = f", eta change {eta_change_days:+d}d" if eta_change_days is not None else ""
-        return (
-            f"Check-in updated for {developer}: {status_source}, "
-            f"{blocker_count} blocker(s){eta_text}"
-        )
+        blockers = "1 blocker" if blocker_count == 1 else f"{blocker_count} blockers"
+        return f"Check-in updated for {developer}: {status_source}, {blockers}{eta_text}"
     if fact.source == "risk":
         return _risk_summary(fact)
     if fact.source == "cross_person_request":
@@ -216,12 +245,33 @@ def _cross_person_summary(fact: FactEvent, names: Mapping[str, str]) -> str:
     if transition == "opened":
         return f"Cross-person {kind} opened: {requester} needs {counterpart} for {summary}"
     if transition == "resolved":
+        if _resolved_by_requester(fact.payload):
+            # The requester closed their own ask: that says nothing of what the
+            # person asked did, so the sentence does not credit them with it.
+            return (
+                f"Cross-person {kind} resolved: {requester} no longer needs "
+                f"{counterpart} for {summary}"
+            )
         return f"Cross-person {kind} resolved: {counterpart} completed {summary}"
     if transition == "acknowledged":
         return f"Cross-person {kind} acknowledged: {counterpart} is handling {summary}"
     if transition == "needs_resolution":
         return f"Cross-person {kind} needs PM resolution: {requester} named {summary}"
     return f"Cross-person {kind} {transition}: {summary}"
+
+
+def _resolved_by_requester(payload: Mapping[str, JsonScalar]) -> bool:
+    """Whether the requester made the change (``changed_by``), not the person asked.
+
+    Facts recorded before ``changed_by`` existed name no one, and read as before.
+    An ask of oneself has one person on both sides, who did the work.
+    """
+    changed_by = _payload_string(payload, "changed_by")
+    return (
+        changed_by is not None
+        and changed_by == _payload_string_any(payload, _REPORTER_ID_KEYS)
+        and changed_by != _payload_string_any(payload, _REFERENCED_PERSON_ID_KEYS)
+    )
 
 
 def _reporter_name(payload: Mapping[str, JsonScalar], names: Mapping[str, str]) -> str | None:

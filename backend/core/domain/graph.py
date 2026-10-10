@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from enum import StrEnum
 
 type JsonScalar = str | int | float | bool | None
+
+#: Node metadata key the graph keeps for itself: the day a node was deleted.
+#: A deleted node stays stored, so a read as of an earlier day still finds it
+#: (``GraphRepository.delete_node``). Every node write drops the key from the
+#: metadata it is given, and no read returns it.
+DELETED_ON_METADATA_KEY = "deleted_on"
 
 
 class NodeKind(StrEnum):
@@ -103,8 +109,29 @@ class GraphEdge:
 
     def is_active_on(self, as_of: date) -> bool:
         starts_before = self.valid_from is None or self.valid_from <= as_of
-        ends_after = self.valid_to is None or self.valid_to > as_of
-        return starts_before and ends_after
+        return starts_before and self.ends_after(as_of)
+
+    def ends_after(self, day: date) -> bool:
+        """Whether the edge still holds on ``day`` or a later day.
+
+        True for an edge active on ``day`` and for one that starts later; false
+        once it has ended, which makes it history for the days before its end.
+        """
+        return self.valid_to is None or self.valid_to > day
+
+    def ended_on(self, day: date) -> GraphEdge | None:
+        """The edge as it reads once it ends on ``day``, or None if it then holds on no day.
+
+        Windows are half-open, so an edge ended on ``day`` is gone from ``day``
+        on and unchanged for every earlier day. One that starts on ``day`` or
+        later would hold on no day at all. One that already ended by ``day``
+        is returned as it is: its history is not rewritten.
+        """
+        if not self.ends_after(day):
+            return self
+        if self.valid_from is not None and self.valid_from >= day:
+            return None
+        return replace(self, valid_to=day)
 
 
 @dataclass(frozen=True, kw_only=True)

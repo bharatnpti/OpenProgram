@@ -35,6 +35,7 @@ from infra.persistence.postgres_status import (
 from infra.persistence.psycopg_executor import PsycopgAsyncExecutor
 from tests.contract.contracts import (
     assert_conversation_repository_contract,
+    assert_graph_history_contract,
     assert_graph_repository_contract,
     assert_inbound_chat_event_repository_contract,
     assert_status_repository_contract,
@@ -346,6 +347,7 @@ async def test_developer_blockers_migration_backfill_and_round_trip(
             # (LOAD 'age' + search_path), the same construction the fixture
             # test above uses, so a plain executor is sufficient.
             await assert_graph_repository_contract(PostgresGraphRepository(executor))
+            await assert_graph_history_contract(PostgresGraphRepository(executor))
             # The write-back audit contract had only ever run against the fakes
             # and the in-memory store, so an unbounded count -- `since=None`,
             # which is the default and the only way to ask "how many ever" --

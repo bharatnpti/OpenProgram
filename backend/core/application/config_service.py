@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 
@@ -149,6 +149,15 @@ class _MemberIdentity:
 
 
 class ConfigService:
+    """Admin changes to the tenant graph, dated so earlier days read as they were.
+
+    A link made here holds from today (``today``) and an unlink ends it today,
+    so a read as of an earlier day, a past day's report among them, still sees
+    the links of that day. Deleting a node ends its links today and keeps the
+    node for those reads. Links stored without a start date (seeds, synced
+    containers, links made before links were dated) hold on every earlier day.
+    """
+
     def __init__(
         self,
         graph_repository: GraphRepository,
@@ -159,6 +168,7 @@ class ConfigService:
         writeback_config_repository: WriteBackConfigRepository | None = None,
         issue_tracker: IssueTracker | None = None,
         require_issue_tracker_link: bool = False,
+        today: Callable[[], date] = date.today,
     ) -> None:
         self._graph_repository = graph_repository
         self._status_repository = status_repository
@@ -170,6 +180,9 @@ class ConfigService:
         # True when a real tracker is configured: a member it cannot attribute
         # issues to is then as unmapped as one who cannot be messaged.
         self._require_issue_tracker_link = require_issue_tracker_link
+        # The day a link starts or ends: the day the config router has always
+        # used (a pod membership's start) and the directory reads by default.
+        self._today = today
 
     async def list_nodes(self, tenant_id: str, kind: NodeKind) -> list[GraphNode]:
         return await self._graph_repository.list_nodes(tenant_id, kind)
@@ -223,8 +236,9 @@ class ConfigService:
         return updated
 
     async def delete_node(self, tenant_id: str, id: str, kind: NodeKind) -> None:
+        """Delete from today: its links end today, and earlier days still read it."""
         existing = await self._ensure_node(tenant_id, id, kind)
-        await self._graph_repository.delete_node(existing.tenant_id, existing.id)
+        await self._graph_repository.delete_node(existing.tenant_id, existing.id, on=self._today())
         if kind is NodeKind.DEVELOPER:
             await self._status_repository.delete_checkin_preference(tenant_id, id)
 
@@ -259,7 +273,7 @@ class ConfigService:
             to_node_id=project_id,
             kind=EdgeKind.CONTAINS,
         )
-        await self._remove_edges_from_kind(
+        await self._end_links_from_kind(
             tenant_id,
             edges,
             from_kind=NodeKind.PROGRAM,
@@ -289,7 +303,7 @@ class ConfigService:
     ) -> None:
         await self._ensure_node(tenant_id, project_id, NodeKind.PROJECT)
         await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
-        await self._remove_exact_edge(tenant_id, project_id, pod_id, EdgeKind.CONTAINS)
+        await self._end_link(tenant_id, project_id, pod_id, EdgeKind.CONTAINS)
 
     async def link_project_workstream(
         self,
@@ -314,7 +328,7 @@ class ConfigService:
     ) -> None:
         await self._ensure_node(tenant_id, project_id, NodeKind.PROJECT)
         await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
-        await self._remove_exact_edge(tenant_id, project_id, workstream_id, EdgeKind.CONTAINS)
+        await self._end_link(tenant_id, project_id, workstream_id, EdgeKind.CONTAINS)
 
     async def assign_pod_workstream(
         self,
@@ -339,7 +353,7 @@ class ConfigService:
     ) -> None:
         await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
         await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
-        await self._remove_exact_edge(tenant_id, pod_id, workstream_id, EdgeKind.ASSIGNED_TO)
+        await self._end_link(tenant_id, pod_id, workstream_id, EdgeKind.ASSIGNED_TO)
 
     async def link_workstream_task(
         self,
@@ -364,7 +378,7 @@ class ConfigService:
     ) -> None:
         await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
         await self._ensure_node(tenant_id, task_id, NodeKind.TASK)
-        await self._remove_exact_edge(tenant_id, workstream_id, task_id, EdgeKind.CONTAINS)
+        await self._end_link(tenant_id, workstream_id, task_id, EdgeKind.CONTAINS)
 
     async def link_pod_member(
         self,
@@ -372,8 +386,9 @@ class ConfigService:
         pod_id: str,
         member_id: str,
         role: str,
-        valid_from: date,
+        valid_from: date | None = None,
     ) -> GraphEdge:
+        """Add the member to the pod from ``valid_from``, today when not given."""
         await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
         await self._ensure_node(tenant_id, member_id, NodeKind.DEVELOPER)
         return await self._add_unique_edge(
@@ -509,12 +524,12 @@ class ConfigService:
     ) -> None:
         await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
         await self._ensure_node(tenant_id, work_item_id, NodeKind.WORK_ITEM)
-        await self._remove_exact_edge(tenant_id, workstream_id, work_item_id, EdgeKind.CONTAINS)
+        await self._end_link(tenant_id, workstream_id, work_item_id, EdgeKind.CONTAINS)
 
     async def unlink_pod_member(self, tenant_id: str, pod_id: str, member_id: str) -> None:
         await self._ensure_node(tenant_id, pod_id, NodeKind.POD)
         await self._ensure_node(tenant_id, member_id, NodeKind.DEVELOPER)
-        await self._remove_exact_edge(tenant_id, pod_id, member_id, EdgeKind.CONTAINS)
+        await self._end_link(tenant_id, pod_id, member_id, EdgeKind.CONTAINS)
 
     async def assign_member_task(
         self,
@@ -539,7 +554,7 @@ class ConfigService:
     ) -> None:
         await self._ensure_node(tenant_id, member_id, NodeKind.DEVELOPER)
         await self._ensure_node(tenant_id, task_id, NodeKind.TASK)
-        await self._remove_exact_edge(tenant_id, member_id, task_id, EdgeKind.ASSIGNED_TO)
+        await self._end_link(tenant_id, member_id, task_id, EdgeKind.ASSIGNED_TO)
 
     async def get_checkin_preference(
         self,
@@ -825,14 +840,25 @@ class ConfigService:
         valid_from: date | None = None,
         metadata: Mapping[str, JsonScalar] | None = None,
     ) -> GraphEdge:
+        """Link the two nodes from today, unless they are linked already.
+
+        Only a link still in force counts as one: a link ended earlier is
+        history, so linking again adds a new one from today, and the days in
+        between keep reading as unlinked.
+        """
         if from_node_id == to_node_id:
             raise ConfigValidationError("self links are not allowed")
-        existing = await self._graph_repository.list_edges(
-            tenant_id,
-            from_node_id=from_node_id,
-            to_node_id=to_node_id,
-            kind=kind,
-        )
+        today = self._today()
+        existing = [
+            edge
+            for edge in await self._graph_repository.list_edges(
+                tenant_id,
+                from_node_id=from_node_id,
+                to_node_id=to_node_id,
+                kind=kind,
+            )
+            if edge.ends_after(today)
+        ]
         if existing:
             raise ConfigConflict(f"{kind.value} link already exists")
         edge = GraphEdge(
@@ -840,31 +866,29 @@ class ConfigService:
             from_node_id=from_node_id,
             to_node_id=to_node_id,
             kind=kind,
-            valid_from=valid_from,
+            valid_from=valid_from if valid_from is not None else today,
             metadata=_metadata(metadata),
         )
         await self._graph_repository.add_edge(edge)
         return edge
 
-    async def _remove_exact_edge(
+    async def _end_link(
         self,
         tenant_id: str,
         from_node_id: str,
         to_node_id: str,
         kind: EdgeKind,
     ) -> None:
+        """End today every link still in force between the two nodes."""
         edges = await self._graph_repository.list_edges(
             tenant_id,
             from_node_id=from_node_id,
             to_node_id=to_node_id,
             kind=kind,
         )
-        if not edges:
-            raise GraphNotFound(f"{kind.value} link was not found")
-        for edge in edges:
-            await self._graph_repository.remove_edge(edge)
+        await self._end_links(edges, not_found=f"{kind.value} link was not found")
 
-    async def _remove_edges_from_kind(
+    async def _end_links_from_kind(
         self,
         tenant_id: str,
         edges: list[GraphEdge],
@@ -877,10 +901,20 @@ class ConfigService:
             from_node = await self._graph_repository.get_node(tenant_id, edge.from_node_id)
             if from_node is not None and from_node.kind is from_kind:
                 matching.append(edge)
-        if not matching:
+        await self._end_links(matching, not_found=not_found)
+
+    async def _end_links(self, edges: Sequence[GraphEdge], *, not_found: str) -> None:
+        """End the links still in force today; earlier days keep reading them.
+
+        A link that already ended is history and is left alone, so with none
+        still in force there is nothing to unlink.
+        """
+        today = self._today()
+        current = [edge for edge in edges if edge.ends_after(today)]
+        if not current:
             raise GraphNotFound(not_found)
-        for edge in matching:
-            await self._graph_repository.remove_edge(edge)
+        for edge in current:
+            await self._graph_repository.end_edge(edge, today)
 
     def _directory_repository_or_raise(self) -> DirectoryUserRepository:
         if self._directory_repository is None:
@@ -959,7 +993,7 @@ class DirectoryService:
         as_of: date,
     ) -> DirectoryItemView:
         """One workstream, in use or not: a direct link to an empty one still opens."""
-        await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM)
+        await self._ensure_node(tenant_id, workstream_id, NodeKind.WORKSTREAM, as_of)
         items = await self._list_items(tenant_id, NodeKind.WORKSTREAM, as_of, only_id=workstream_id)
         if not items:
             raise GraphNotFound(f"workstream {workstream_id} not found for tenant {tenant_id}")
@@ -971,7 +1005,7 @@ class DirectoryService:
         project_id: str,
         as_of: date,
     ) -> list[DirectoryItemView]:
-        await self._ensure_node(tenant_id, project_id, NodeKind.PROJECT)
+        await self._ensure_node(tenant_id, project_id, NodeKind.PROJECT, as_of)
         return [
             item
             for item in await self.list_workstreams(tenant_id, as_of)
@@ -989,10 +1023,18 @@ class DirectoryService:
         *,
         only_id: str | None = None,
     ) -> list[DirectoryItemView]:
-        """The items of ``kind``; ``only_id`` reads that one, a workstream in use or not."""
-        nodes = await self._graph_repository.list_nodes(tenant_id)
+        """The items of ``kind`` as of ``as_of``; ``only_id`` reads that one, in use or not.
+
+        Nodes and links are read as they were that day: a node deleted later is
+        still listed, and a link ended later or made later reads as it stood.
+        """
+        nodes = await self._graph_repository.list_nodes(tenant_id, as_of=as_of)
         node_by_id = {node.id: node for node in nodes}
-        edges = await self._graph_repository.list_edges(tenant_id)
+        edges = [
+            edge
+            for edge in await self._graph_repository.list_edges(tenant_id)
+            if edge.is_active_on(as_of)
+        ]
         in_use = workstreams_in_use(nodes, edges, as_of)
         selected = [
             node
@@ -1126,8 +1168,9 @@ class DirectoryService:
         tenant_id: str,
         id: str,
         kind: NodeKind,
+        as_of: date,
     ) -> GraphNode:
-        node = await self._graph_repository.get_node(tenant_id, id)
+        node = await self._graph_repository.get_node(tenant_id, id, as_of=as_of)
         if node is None:
             raise GraphNotFound(f"{kind.value} {id} not found for tenant {tenant_id}")
         if node.kind is not kind:

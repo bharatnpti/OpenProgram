@@ -685,6 +685,58 @@ async def test_recent_facts_reads_a_window_that_ends_on_the_as_of_date() -> None
     assert window == {"start": "2026-09-21", "end": "2026-09-25"}
 
 
+async def test_recent_facts_say_states_in_words_not_in_raw_names() -> None:
+    """An answer read "Issue CHK-12 moved to in_progress": the model copies what it is handed."""
+    store = InMemoryGraphStore()
+    await store.append_fact(
+        FactEvent(
+            tenant_id="demo",
+            source="issue",
+            entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.TASK, id="CHK-12"),
+            payload={"key": "CHK-12", "title": "Cart totals", "state": "in_progress"},
+            observed_at=datetime(2026, 9, 25, 9, 0, tzinfo=UTC),
+            correlation_id="fact-issue",
+        )
+    )
+    await store.append_fact(
+        FactEvent(
+            tenant_id="demo",
+            source="work_item",
+            entity_ref=EntityRef(tenant_id="demo", kind=NodeKind.WORK_ITEM, id="wi-refunds"),
+            payload={"name": "Refund flow", "from_state": "in_progress", "to_state": "done"},
+            observed_at=datetime(2026, 9, 25, 8, 0, tzinfo=UTC),
+            correlation_id="fact-work-item",
+        )
+    )
+    tool = RecentFactsTool(tenant_id="demo", repository=store, as_of=AS_OF)
+
+    facts = json.loads(await tool.run({"period": "today"}))["facts"]
+
+    assert [fact["summary"] for fact in facts] == [
+        "Issue CHK-12 moved to In progress: Cart totals",
+        "Refund flow moved from In progress to Done",
+    ]
+    assert facts[0]["details"]["state"] == "In progress"
+    assert facts[1]["details"] == {
+        "from_state": "In progress",
+        "to_state": "Done",
+        "item_type": None,
+        "repo": None,
+        "branch": None,
+        "pr_id": None,
+    }
+    assert "in_progress" not in json.dumps(facts)
+
+
+async def test_workstream_flow_says_a_work_items_state_in_words() -> None:
+    store = await _delivery_store()
+    flow = _tool(_ask_service(store, FakeLlmProvider()), _principal(Role.MGR), "workstream_flow")
+
+    payload = json.loads(await flow.run({"workstream_id": "ws-payments"}))
+
+    assert [item["state"] for item in payload["work_items"]] == ["In progress"]
+
+
 def test_a_fact_window_is_at_most_a_month() -> None:
     assert fact_window({"since": "2025-01-01"}, AS_OF) == DateWindow(
         start=AS_OF - timedelta(days=30), end=AS_OF
@@ -1313,6 +1365,12 @@ async def _ask_once(store: InMemoryGraphStore, reply: str) -> AskResponseView:
         "References: [Digital Platform Program, CHK-8, Zoe Almeida]",
         f"**Sources:** program-platform; CHK-8; Zoe Almeida ({_ZOE}).",
         f"References:\n- program-platform\n- CHK-8\n- {_ZOE}",
+        # An array written one id to a line, as a model pretty-prints it.
+        f'References: [\n  "program-platform",\n  "CHK-8",\n  "{_ZOE}"\n]',
+        f'References:\n[\n  "program-platform",\n  "CHK-8",\n  "{_ZOE}"\n]',
+        '**References:**\n```json\n["Digital Platform Program",\n "CHK-8",\n "Zoe Almeida"\n]\n```',
+        f'References: ["program-platform",\n  "CHK-8", "{_ZOE}"]',
+        "References: [\n  Digital Platform Program\n  CHK-8\n  Zoe Almeida\n]",
     ],
 )
 async def test_a_plain_text_answer_loses_its_references_line_and_labels_its_sources(
@@ -1325,6 +1383,44 @@ async def test_a_plain_text_answer_loses_its_references_line_and_labels_its_sour
     assert view.answer == _LIVE_PROSE
     assert view.references == ("program-platform", "CHK-8", _ZOE)
     assert view.sources == _LABELLED_SOURCES
+
+
+async def test_a_references_array_over_several_lines_never_ends_up_in_the_answer() -> None:
+    """Live, "What is blocking Checkout?" came back with its answer ending on
+    `"Checkout Revamp",`, `"Payments Pod"` and `]`: the model had listed its
+    references as an array with one name to a line, and only the heading line
+    was cut. The array is the sources, in the order it lists them, not text."""
+    store = await _attention_store()
+    answer = (
+        "Checkout is not currently blocked.\n"
+        "Everything related to Checkout has no open blockers today.\n"
+        "Payments Pod, which covers Checkout, has zero blockers."
+    )
+    reply = f'{answer}\n\nReferences: [\n  "Checkout Revamp",\n  "Payments Pod"\n]'
+
+    view = await _ask_once(store, reply)
+
+    assert view.answer == answer
+    assert view.references == ("project-checkout", "pod-payments")
+    assert view.sources == (
+        AskSource(id="project-checkout", kind=NodeKind.PROJECT, label="Checkout Revamp"),
+        AskSource(id="pod-payments", kind=NodeKind.POD, label="Payments Pod"),
+    )
+
+
+async def test_a_references_array_inside_a_json_answer_is_cut_whole() -> None:
+    store = await _attention_store()
+    reply = json.dumps(
+        {
+            "answer": f'{_LIVE_PROSE}\nReferences: [\n  "Digital Platform Program",\n  "CHK-8"\n]',
+            "references": ["program-platform", _ZOE],
+        }
+    )
+
+    view = await _ask_once(store, reply)
+
+    assert view.answer == _LIVE_PROSE
+    assert view.references == ("program-platform", _ZOE, "CHK-8")
 
 
 async def test_a_references_line_keeps_only_what_names_a_node() -> None:
@@ -1467,6 +1563,40 @@ async def test_an_empty_reply_says_no_answer_came_back() -> None:
         (
             "• 2 issues merged but still open (source: Jira)",
             "• 2 issues merged but still open (source: Jira)",
+            (),
+            (),
+        ),
+        # A list over several lines is cut whole, closed or cut off.
+        (
+            'Program is red.\nReferences: [\n  "program-platform",\n  "CHK-8"\n]',
+            "Program is red.",
+            (),
+            ("program-platform", "CHK-8"),
+        ),
+        (
+            'Program is red.\nReferences:\n[\n  "program-platform",\n  "CHK-8"',
+            "Program is red.",
+            (),
+            ("program-platform", "CHK-8"),
+        ),
+        # A bracket inside an item does not close the list early.
+        (
+            'Program is red.\nReferences: [\n  "Checkout [v2]",\n  "CHK-8"\n]',
+            "Program is red.",
+            (),
+            ("Checkout [v2]", "CHK-8"),
+        ),
+        # Prose after the list is the answer's again.
+        (
+            'References: [\n  "CHK-8"\n]\nProgram is red.',
+            "Program is red.",
+            (),
+            ("CHK-8",),
+        ),
+        # Only a references heading opens a list: a "[" line elsewhere is the answer's.
+        (
+            "[Draft\nProgram is red.",
+            "[Draft\nProgram is red.",
             (),
             (),
         ),

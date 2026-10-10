@@ -19,6 +19,7 @@ from core.application.connection_service import (
     ConnectionConflict,
     ConnectionDraft,
     ConnectionService,
+    ConnectionTestRefused,
     StoredConnections,
     UnknownConnector,
 )
@@ -27,9 +28,11 @@ from core.domain.connections import (
     ConnectionTestOutcome,
     ConnectionValidationError,
     ConnectionValues,
+    FieldKind,
     applicable_fields,
     missing_required,
     normalize_settings,
+    rerouted_fields,
 )
 from core.domain.graph import Developer
 from core.domain.integrations import Issue, IssueState, SyncCursor
@@ -429,16 +432,18 @@ async def test_a_draft_is_tested_over_the_stored_values_and_not_recorded() -> No
     view = await harness.service.test(
         TENANT,
         "jira",
-        draft=ConnectionDraft(
-            settings={"base_url": "https://new.example.com"},
-            # Blank means "keep the stored one", as the console sends it.
-            secrets={"personal_access_token": ""},
-        ),
+        # The address and sign-in are as saved, so the stored token may go there.
+        draft=ConnectionDraft(settings={"story_points_field": "customfield_10016"}, secrets={}),
     )
 
     assert view.recorded is False
-    assert harness.tester.calls[-1][1]["base_url"] == "https://new.example.com"
-    assert harness.tester.calls[-1][1]["personal_access_token"] == "p"
+    assert harness.tester.calls[-1][1] == {
+        "deployment": "data_center",
+        "base_url": "https://jira.example.com",
+        "auth_method": "personal_access_token",
+        "personal_access_token": "p",
+        "story_points_field": "customfield_10016",
+    }
     stored = await harness.repository.get(TENANT, "jira")
     assert stored is not None and stored.last_test is None
 
@@ -453,6 +458,249 @@ async def test_a_test_with_a_required_field_missing_never_reaches_the_system() -
     assert view.check.ok is False
     assert view.check.message == "Fill in Personal access token first."
     assert harness.tester.calls == []
+
+
+# --- A draft test and the stored secrets ------------------------------------------------
+
+# One saved connection per way a secret is sent: (connector, settings, secrets).
+_SAVED: dict[str, tuple[str, dict[str, str | None], dict[str, str | None]]] = {
+    "jira-pat": ("jira", dict(JIRA_DC), {"personal_access_token": "stored-pat"}),
+    "jira-cloud": (
+        "jira",
+        {
+            "deployment": "cloud",
+            "base_url": "https://jira.example.com",
+            "auth_method": "api_token",
+            "email": "reader@example.com",
+        },
+        {"api_token": "stored-token"},
+    ),
+    "jira-basic": (
+        "jira",
+        {
+            "deployment": "data_center",
+            "base_url": "https://jira.example.com",
+            "auth_method": "basic",
+            "username": "reader",
+        },
+        {"password": "stored-password"},
+    ),
+    "gitlab": (
+        "gitlab",
+        {"base_url": "https://gitlab.example.com", "namespace_id": "acme"},
+        {"token": "stored-token"},
+    ),
+    "github": (
+        "github",
+        {"base_url": "https://github.example.com/api/v3", "owner": "acme"},
+        {"token": "stored-token"},
+    ),
+    "email": (
+        "email",
+        {
+            "host": "smtp.example.com",
+            "port": "587",
+            "security": "starttls",
+            "username": "reports",
+            "from_address": "reports@example.com",
+        },
+        {"password": "stored-password"},
+    ),
+    "calendar": ("google_calendar", {"calendar_id": "leave"}, {"token": "stored-token"}),
+    "teams": (
+        "teams",
+        {"channel_name": "Delivery"},
+        {"webhook_url": "https://teams.example.com/hooks/1"},
+    ),
+}
+_REFUSAL = (
+    " changed. A stored secret is used only with the address and sign-in it was saved with, "
+    "so enter {secret} again to test the new values."
+)
+
+
+async def _saved(name: str) -> tuple[_Harness, str]:
+    connector, settings, secrets = _SAVED[name]
+    harness = _harness()
+    await harness.service.save(
+        TENANT, connector, enabled=False, settings=settings, secrets=secrets, actor="a"
+    )
+    return harness, connector
+
+
+@pytest.mark.parametrize(
+    ("name", "draft", "changed", "secret"),
+    [
+        (
+            "jira-pat",
+            {"base_url": "https://jira.example.org"},
+            "Jira address",
+            "Personal access token",
+        ),
+        ("jira-cloud", {"email": "someone@example.com"}, "Account email", "API token"),
+        ("jira-basic", {"username": "admin"}, "User name", "Password"),
+        ("gitlab", {"base_url": "https://gitlab.example.org"}, "GitLab address", "Access token"),
+        # Cleared, the address falls back to its default: another host.
+        ("gitlab", {"base_url": None}, "GitLab address", "Access token"),
+        ("github", {"base_url": "https://api.github.com"}, "API address", "Access token"),
+        ("email", {"host": "smtp.example.org", "port": "25"}, "SMTP server and Port", "Password"),
+        # Turning encryption off would send the stored password in clear.
+        ("email", {"security": "none"}, "Encryption", "Password"),
+        ("email", {"username": "someone-else"}, "User name", "Password"),
+        (
+            "calendar",
+            {"base_url": "https://calendar.example.com/v3"},
+            "API address",
+            "Access token",
+        ),
+    ],
+)
+async def test_a_draft_that_moves_an_address_or_user_never_takes_the_stored_secret_there(
+    name: str, draft: dict[str, str | None], changed: str, secret: str
+) -> None:
+    harness, connector = await _saved(name)
+
+    with pytest.raises(ConnectionTestRefused) as refused:
+        await harness.service.test(
+            TENANT, connector, draft=ConnectionDraft(settings=draft, secrets={})
+        )
+
+    assert str(refused.value) == changed + _REFUSAL.format(secret=secret)
+    assert harness.tester.calls == []
+
+
+async def test_a_draft_that_moves_the_address_is_tested_there_with_the_secret_typed_again() -> None:
+    harness, _ = await _saved("jira-pat")
+
+    view = await harness.service.test(
+        TENANT,
+        "jira",
+        draft=ConnectionDraft(
+            settings={"base_url": "https://jira.example.org"},
+            secrets={"personal_access_token": "typed-again"},
+        ),
+    )
+
+    assert view.recorded is False
+    [(_, values)] = harness.tester.calls
+    assert values["base_url"] == "https://jira.example.org"
+    assert values["personal_access_token"] == "typed-again"
+
+
+@pytest.mark.parametrize(
+    ("name", "draft", "secret_key", "secret"),
+    [
+        # Read on the same host with the same sign-in: nothing to type again.
+        (
+            "jira-pat",
+            {"story_points_field": "customfield_10016"},
+            "personal_access_token",
+            "stored-pat",
+        ),
+        (
+            "jira-pat",
+            {"base_url": "https://jira.example.com/"},
+            "personal_access_token",
+            "stored-pat",
+        ),
+        ("gitlab", {"namespace_id": "platform"}, "token", "stored-token"),
+        (
+            "teams",
+            {"channel_name": "Delivery daily"},
+            "webhook_url",
+            "https://teams.example.com/hooks/1",
+        ),
+        ("email", {"from_address": "noreply@example.com"}, "password", "stored-password"),
+    ],
+)
+async def test_a_draft_that_keeps_the_address_and_sign_in_reuses_the_stored_secret(
+    name: str, draft: dict[str, str | None], secret_key: str, secret: str
+) -> None:
+    harness, connector = await _saved(name)
+
+    view = await harness.service.test(
+        TENANT, connector, draft=ConnectionDraft(settings=draft, secrets={})
+    )
+
+    assert view.check.ok is True
+    [(_, values)] = harness.tester.calls
+    assert values[secret_key] == secret
+
+
+@pytest.mark.parametrize("cleared", [None, "", "  "])
+async def test_a_secret_cleared_in_a_draft_is_never_taken_from_the_store(
+    cleared: str | None,
+) -> None:
+    harness, _ = await _saved("jira-pat")
+
+    view = await harness.service.test(
+        TENANT,
+        "jira",
+        draft=ConnectionDraft(settings={}, secrets={"personal_access_token": cleared}),
+    )
+
+    assert view.check.ok is False
+    assert view.check.message == "Fill in Personal access token first."
+    assert harness.tester.calls == []
+
+
+async def test_a_draft_clears_an_optional_secret_or_setting_without_reusing_the_stored_one() -> (
+    None
+):
+    mail, _ = await _saved("email")
+    code, _ = await _saved("gitlab")
+
+    # Nothing stored is reused, so a moved server is fine: it gets no password.
+    await mail.service.test(
+        TENANT,
+        "email",
+        draft=ConnectionDraft(settings={"host": "smtp.example.org"}, secrets={"password": None}),
+    )
+    await code.service.test(
+        TENANT, "gitlab", draft=ConnectionDraft(settings={"namespace_id": None}, secrets={})
+    )
+
+    [(_, mail_values)] = mail.tester.calls
+    assert mail_values["host"] == "smtp.example.org"
+    assert "password" not in mail_values
+    [(_, code_values)] = code.tester.calls
+    assert "namespace_id" not in code_values
+    assert code_values["token"] == "stored-token"
+
+
+def test_a_field_counts_as_moved_only_while_it_applies() -> None:
+    saved = normalize_settings(JIRA_SPEC, JIRA_DC)
+
+    # The account email belongs to another sign-in method: it sends nothing.
+    assert rerouted_fields(JIRA_SPEC, saved, {**saved, "email": "x@example.com"}) == ()
+    assert [
+        item.key
+        for item in rerouted_fields(JIRA_SPEC, saved, {**saved, "base_url": "https://x.example"})
+    ] == ["base_url"]
+    # A default compares as its value: the saved default is not a change.
+    assert rerouted_fields(GITLAB_SPEC, {}, {"base_url": "https://gitlab.com"}) == ()
+
+
+def test_the_fields_that_route_a_secret_are_its_address_encryption_and_sign_in() -> None:
+    routing = {
+        spec.id: sorted(item.key for item in spec.fields if item.routes_secrets)
+        for spec in ALL_SPECS
+    }
+
+    assert routing == {
+        "jira": ["auth_method", "base_url", "email", "username"],
+        "gitlab": ["base_url"],
+        "github": ["base_url"],
+        "slack": [],
+        "email": ["host", "port", "security", "username"],
+        "teams": [],
+        "google_calendar": ["base_url"],
+    }
+    # A secret is sent to every address field, so a new one must route secrets too.
+    for spec in ALL_SPECS:
+        for item in spec.fields:
+            if item.kind is FieldKind.URL:
+                assert item.routes_secrets, (spec.id, item.key)
 
 
 # --- Reading a connection for adapters ----------------------------------------------
@@ -681,9 +929,20 @@ def test_api_saves_reads_tests_and_removes_a_connection(settings: Settings) -> N
             },
         )
         read = client.get("/config/integrations/jira")
-        tested = client.post(
+        moved = client.post(
             "/config/integrations/jira/test",
             json={"settings": {"base_url": "https://jira.invalid"}, "secrets": {}},
+        )
+        cleared = client.post(
+            "/config/integrations/jira/test",
+            json={"secrets": {"personal_access_token": None}},
+        )
+        tested = client.post(
+            "/config/integrations/jira/test",
+            json={
+                "settings": {"base_url": "https://jira.invalid"},
+                "secrets": {"personal_access_token": "pat-typed-again"},
+            },
         )
         client.post("/config/members", json={"id": "dev-user", "name": "Dana Admin"})
         named = client.get("/config/integrations/jira")
@@ -700,6 +959,14 @@ def test_api_saves_reads_tests_and_removes_a_connection(settings: Settings) -> N
     assert body["settings"]["base_url"] == "https://jira.example.com"
     assert body["secrets_set"] == ["personal_access_token"]
     assert "pat-never-returned" not in saved.text + read.text
+    # The stored token is never sent to an address nobody saved.
+    assert moved.status_code == 400
+    assert moved.json()["detail"] == (
+        "Jira address changed. A stored secret is used only with the address and sign-in it "
+        "was saved with, so enter Personal access token again to test the new values."
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["message"] == "Fill in Personal access token first."
     assert tested.status_code == 200
     assert tested.json()["ok"] is False
     assert tested.json()["recorded"] is False

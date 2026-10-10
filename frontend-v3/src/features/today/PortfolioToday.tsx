@@ -1,0 +1,473 @@
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+
+import { apiClient } from "../../api/client";
+import type { DirectoryItemResponse, Rag } from "../../api/schema";
+import { usePods, useProgramChoice, useProjects, useWorkstreams } from "../../app/directory";
+import { useRole } from "../../app/role";
+import { scopeToProgram } from "../../app/scope";
+import { useDayWords, useShownDay } from "../../app/viewingDate";
+import { PanelState } from "../../components/PanelState";
+import { ChipPicker, Greeting, Panel, RagDot, Row, Sparkline } from "../../components/ui/Bits";
+import { formatDate, formatDay, formatTime } from "../../lib/format";
+import { ragSeverity } from "../../lib/status";
+import { cn } from "../../lib/utils";
+import { readState } from "../../lib/readState";
+import { deviceTimezone } from "../../lib/zones";
+import {
+  checkinsLine,
+  greetingTitle,
+  plural,
+  signalAge,
+  signalKindLabel,
+  todayEyebrow,
+} from "../../lib/words";
+import {
+  heatTiles,
+  momentum,
+  momentumNote,
+  noPodTiles,
+  programCell,
+  signalHref,
+  tileKey,
+  tileColours,
+  tileReasons,
+  tileWeights,
+  todayVerdict,
+  type NoPodTile,
+  type TileReason,
+} from "./heat";
+import { useProjectDeliveries } from "../overall/queries";
+import { DeliveryDatesPanel } from "./DeliveryDates";
+import { CheckinCard } from "./CheckinCard";
+import { YourAsks } from "./YourAsks";
+
+const HEAT_COLUMNS = 4;
+const SIGNALS_SHOWN = 5;
+
+const HERO: Record<Rag, string> = {
+  red: "bg-rag-red-bg text-rag-red",
+  amber: "bg-rag-amber-bg text-rag-amber-deep",
+  green: "bg-rag-green-bg text-rag-green",
+  unknown: "bg-grey-fill text-grey-body",
+};
+const TILE: Record<Rag, string> = {
+  red: "bg-rag-red-bg text-rag-red",
+  amber: "bg-rag-amber-bg text-rag-amber",
+  green: "bg-rag-green-bg text-rag-green",
+  unknown: "bg-rag-unknown-bg text-rag-unknown",
+};
+
+/**
+ * The portfolio read shared by manager, executive and admin: a one-line
+ * verdict with its reason, every project's delivery dates (worst first), heat
+ * for projects, workstreams and pods (worst first, each saying why, a project
+ * with its due date), the people in no team, the oldest risks, then 30-day
+ * momentum, the newest executive brief and the person's own asks. A tenant with several programs shows
+ * one at a time: pick it in the verdict area; each chip carries the program's
+ * colour and the screen opens on the worst.
+ */
+export function PortfolioToday() {
+  const shownDay = useShownDay();
+  // "today", or "on Mon 5 Oct" while a past day is shown: the day words of the line below.
+  const day = useDayWords();
+  const { roleLabel, greetingName, canReadPortfolio } = useRole();
+  const { query: programsQuery, programs, program, choose } = useProgramChoice();
+  const programId = program?.id ?? "";
+  const projects = useProjects();
+  const workstreams = useWorkstreams();
+  const pods = usePods();
+
+  const attention = useQuery({
+    queryKey: ["portfolio", "attention", programId],
+    queryFn: () =>
+      apiClient.portfolioAttention(undefined, programId, deviceTimezone() ?? undefined),
+    enabled: Boolean(programId) && canReadPortfolio,
+  });
+  const trend = useQuery({
+    queryKey: ["portfolio", "trend", programId],
+    queryFn: () => apiClient.nodeTrend("program", programId, { windowDays: 30 }),
+    enabled: Boolean(programId) && canReadPortfolio,
+  });
+  // The heat map's cells carry each node's reason, and the people in no team.
+  const heatmap = useQuery({
+    queryKey: ["portfolio", "heatmap", programId],
+    queryFn: () => apiClient.portfolioHeatmap(undefined, programId),
+    enabled: Boolean(programId) && canReadPortfolio,
+  });
+  const brief = useQuery({
+    queryKey: ["briefs", "exec", 1],
+    queryFn: () => apiClient.personaBriefs("exec", 1),
+  });
+
+  // Each of these is asked only once the program is known, so it is still to come, not empty,
+  // while the programs load.
+  const attentionRead = readState(attention, programsQuery);
+  const trendRead = readState(trend, programsQuery);
+  const heatmapRead = readState(heatmap, programsQuery);
+  // The tiles are the directory's, scoped to the program and coloured by the heat map; the
+  // heat map failing leaves them in the directory's colours, with a line saying so.
+  const directoryRead = readState(projects, programsQuery, workstreams, pods);
+
+  const a = attention.data;
+  const m = momentum(trend.data?.points);
+  const newest = brief.data?.briefs[0];
+  const scoped = scopeToProgram(programId, programs.length, {
+    projects: projects.data ?? [],
+    workstreams: workstreams.data ?? [],
+    pods: pods.data ?? [],
+  });
+  const heat = [
+    { label: "Projects", kind: "project", items: scoped.projects },
+    { label: "Workstreams", kind: "workstream", items: scoped.workstreams },
+    { label: "Pods", kind: "pod", items: scoped.pods },
+  ].filter((row) => row.kind !== "workstream" || row.items.length > 0);
+  const deliveries = useProjectDeliveries(scoped.projects.map((project) => project.id));
+  const due = new Map(
+    scoped.projects.flatMap((project, index) => {
+      const target = deliveries[index]?.data?.project.target;
+      return target ? [[project.id, target] as const] : [];
+    }),
+  );
+  const reasons = tileReasons(heatmap.data?.cells);
+  const colours = tileColours(heatmap.data?.cells);
+  const weights = tileWeights(heatmap.data?.cells);
+  const noPod = noPodTiles(heatmap.data?.cells, HEAT_COLUMNS);
+  // The program's own colour can be worse than its teams': it then leads the verdict.
+  const verdict = a ? todayVerdict(a, programCell(heatmap.data?.cells, programId)) : null;
+
+  return (
+    <>
+      <Greeting
+        eyebrow={todayEyebrow(program?.name, shownDay)}
+        title={greetingTitle(greetingName, roleLabel)}
+        sub="A portfolio-wide read on delivery health, momentum, and what changed."
+      />
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
+        {programs.length > 1 ? (
+          <ChipPicker
+            label="Program"
+            value={programId}
+            onChange={choose}
+            options={programs.map((item) => ({ value: item.id, label: item.name, rag: item.rag }))}
+            note={`${programs.length} programs · worst first`}
+          />
+        ) : null}
+        <PanelState
+          // The heat map too: its program cell can turn the verdict, and the amber one
+          // drawn first would flip to red a moment later.
+          isLoading={attentionRead.isLoading || heatmapRead.isLoading}
+          error={programsQuery.error ?? attention.error}
+          isEmpty={!programsQuery.isLoading && !program}
+          emptyText="No program is configured yet. An admin adds one under Admin → Entities."
+        >
+          {a && verdict ? (
+            <section className={cn("rounded-3xl p-6", HERO[verdict.rag])}>
+              <p className="flex items-center gap-3 text-[24px] font-extrabold text-balance">
+                <RagDot rag={verdict.rag} className="h-3 w-3" />
+                {verdict.headline}
+              </p>
+              {verdict.detail ? (
+                <p className="mt-2 text-[15px] font-medium">{verdict.detail}</p>
+              ) : null}
+              <p className="mt-3 text-[13px] opacity-80">
+                {checkinsLine(
+                  a.checkins,
+                  a.checkins.first_asked_at ? formatTime(a.checkins.first_asked_at) : null,
+                  day,
+                )}
+              </p>
+            </section>
+          ) : null}
+        </PanelState>
+
+        <DeliveryDatesPanel
+          projects={scoped.projects}
+          reads={deliveries}
+          waiting={directoryRead.isLoading}
+        />
+
+        <Panel
+          title="Portfolio heat"
+          note="worst first · click a tile to open it in Delivery · hover for every reason"
+        >
+          <PanelState
+            isLoading={directoryRead.isLoading || heatmapRead.isLoading}
+            error={directoryRead.error}
+          >
+            <div className="mt-2 grid grid-cols-[minmax(0,1fr)] gap-3">
+              {heat.map((row) => (
+                <HeatRow
+                  key={row.kind}
+                  label={row.label}
+                  kind={row.kind}
+                  items={row.items}
+                  reasons={reasons}
+                  colours={colours}
+                  weights={weights}
+                  due={row.kind === "project" ? due : undefined}
+                />
+              ))}
+              {noPod.tiles.length > 0 ? <NoPodRow tiles={noPod.tiles} total={noPod.total} /> : null}
+            </div>
+            {heatmap.isError ? (
+              <p className="mt-3 text-[12px] text-grey-secondary">
+                The reasons under each tile could not be loaded, so only the colours show.
+              </p>
+            ) : null}
+          </PanelState>
+        </Panel>
+
+        <Panel
+          title="Oldest open risks"
+          note={
+            <Link
+              to="/signals?view=risks"
+              className="font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
+            >
+              All risks
+            </Link>
+          }
+        >
+          <PanelState
+            {...attentionRead}
+            isEmpty={(a?.signals ?? []).length === 0}
+            emptyText="Nothing needs attention right now."
+          >
+            {programs.length > 1 ? (
+              <p className="mb-1 text-[12px] text-grey-secondary">
+                Risks are read across the whole portfolio, not one program.
+              </p>
+            ) : null}
+            <ul>
+              {(a?.signals ?? []).slice(0, SIGNALS_SHOWN).map((s, i) => (
+                <Row
+                  key={`${s.kind}-${i}`}
+                  rag={s.severity}
+                  title={
+                    <Link to={signalHref(s.link)} className="text-ink no-underline hover:underline">
+                      {s.title}
+                    </Link>
+                  }
+                  meta={signalKindLabel(s.kind)}
+                  right={signalAge(s.age_days)}
+                />
+              ))}
+            </ul>
+          </PanelState>
+        </Panel>
+
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
+          <Panel
+            title="Momentum"
+            // "not enough reported days" is a finding about a trend, so only once it is read.
+            note={trend.data ? momentumNote(m, trend.data.window_days) : undefined}
+          >
+            <PanelState {...trendRead}>
+              <Sparkline values={m.values} label={`Program health over 30 days: ${m.label}`} />
+              <p className="mt-2 text-[12px] text-grey-secondary">
+                Measured only over days that reported a status.
+              </p>
+            </PanelState>
+          </Panel>
+          <Panel
+            title="Executive brief"
+            note={
+              <Link
+                to="/coordination?brief=exec"
+                className="font-bold max-sm:inline-flex max-sm:min-h-11 max-sm:items-center"
+              >
+                All briefs
+              </Link>
+            }
+          >
+            <PanelState
+              isLoading={brief.isLoading}
+              error={brief.error}
+              isEmpty={!newest}
+              emptyText="No executive brief has been generated yet. It is written weekly from the week's facts."
+            >
+              {newest ? (
+                <div className="text-[14px] text-grey-body">
+                  <p className="font-bold text-ink">{newest.title}</p>
+                  {newest.bullets && newest.bullets.length > 0 ? (
+                    <ul className="mt-2 grid list-disc gap-1 pl-5">
+                      {newest.bullets.map((b) => (
+                        <li key={b}>{b}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2">{newest.body}</p>
+                  )}
+                  <p className="mt-2 text-[12px] text-grey-secondary">
+                    {formatDate(newest.generated_at)} · from{" "}
+                    {plural(newest.sources.length, "source", "sources")}
+                  </p>
+                </div>
+              ) : null}
+            </PanelState>
+          </Panel>
+        </div>
+        {/* Their own check-in, asked in chat like everyone else's, and their asks. */}
+        <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-2">
+          <CheckinCard compact />
+          <YourAsks />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** A row of heat, `HEAT_COLUMNS` wide: label on the left, then a tile per node, worst first. */
+function HeatRow({
+  label,
+  kind,
+  items,
+  reasons,
+  colours,
+  weights,
+  due,
+}: {
+  label: string;
+  kind: string;
+  items: DirectoryItemResponse[];
+  reasons: Map<string, TileReason>;
+  colours: Map<string, Rag>;
+  weights: Map<string, number>;
+  /** A project's committed date, for "Due Fri 30 Oct" on its tile. */
+  due?: Map<string, string>;
+}) {
+  const colourOf = (item: DirectoryItemResponse): Rag =>
+    colours.get(tileKey(kind, item.id)) ?? item.rag ?? "unknown";
+  const weightOf = (item: DirectoryItemResponse) => weights.get(tileKey(kind, item.id)) ?? 0;
+  // A tile opens its Delivery panel where this role's Delivery lists the kind (an
+  // executive's lists no pods, so a pod tile is only its colour and reason).
+  const { delivery } = useRole().access;
+  const linked = kind in delivery && delivery[kind as keyof typeof delivery];
+  // Worst colour first; among one colour, the one with more reasons; then A to Z.
+  const ranked = [...items].sort(
+    (a, b) =>
+      ragSeverity(colourOf(b)) - ragSeverity(colourOf(a)) ||
+      weightOf(b) - weightOf(a) ||
+      a.name.localeCompare(b.name),
+  );
+  const { shown, hidden, hiddenAsBad } = heatTiles(ranked, colourOf, HEAT_COLUMNS);
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-2 sm:grid-cols-[110px_minmax(0,1fr)]">
+      <p className="pt-2 text-[13px] font-bold text-grey-secondary">
+        {label}
+        {hidden > 0 ? (
+          <span className="block text-[11px] font-medium">
+            worst {shown.length} of {ranked.length}
+            {hiddenAsBad ? " · the rest are as bad" : ""}
+          </span>
+        ) : null}
+      </p>
+      {shown.length === 0 ? (
+        <p className="pt-2 text-[13px] text-grey-secondary">None configured.</p>
+      ) : (
+        <ul className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          {shown.map((item) => {
+            const rag = colourOf(item);
+            const why = reasons.get(tileKey(kind, item.id));
+            return (
+              <li key={item.id}>
+                {linked ? (
+                  <Link
+                    to={`/delivery/${kind}/${encodeURIComponent(item.id)}`}
+                    title={why?.tooltip}
+                    className={cn(
+                      "block min-h-[76px] rounded-2xl px-3 py-3 no-underline hover:shadow-op-hover",
+                      TILE[rag],
+                    )}
+                  >
+                    <TileText
+                      name={item.name}
+                      colour={rag}
+                      why={why?.reason}
+                      due={due?.get(item.id)}
+                    />
+                  </Link>
+                ) : (
+                  <div
+                    title={why?.tooltip}
+                    className={cn("min-h-[76px] rounded-2xl px-3 py-3", TILE[rag])}
+                  >
+                    <TileText
+                      name={item.name}
+                      colour={rag}
+                      why={why?.reason}
+                      due={due?.get(item.id)}
+                    />
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * People in no pod, project or program (an executive, or someone not yet
+ * placed): their own check-in, which no team's colour counts and the verdict
+ * never reads.
+ */
+function NoPodRow({ tiles, total }: { tiles: NoPodTile[]; total: number }) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-2 sm:grid-cols-[110px_minmax(0,1fr)]">
+      <p className="pt-2 text-[13px] font-bold text-grey-secondary">
+        No pod
+        <span className="block text-[11px] font-medium">
+          {total > tiles.length ? `worst ${tiles.length} of ${total}` : "not in team colours"}
+        </span>
+      </p>
+      <ul className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {tiles.map((tile) => (
+          <li key={tile.id}>
+            <div
+              title={[tile.name, ...tile.reasons.map((line) => `• ${line}`)].join("\n")}
+              className={cn("min-h-[76px] rounded-2xl px-3 py-3", TILE[tile.rag])}
+            >
+              <TileText
+                name={tile.name}
+                colour={tile.reason ? tile.rag : tile.state}
+                why={tile.reason ?? undefined}
+              />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** A tile's name, its colour, and the few words that say why. */
+function TileText({
+  name,
+  colour,
+  why,
+  due,
+}: {
+  name: string;
+  colour: string;
+  why: string | undefined;
+  due?: string;
+}) {
+  return (
+    <>
+      <span className="block truncate text-[14px] font-bold">{name}</span>
+      <span className="mt-1 block text-[11px] font-extrabold uppercase tracking-wider">
+        {colour}
+        {due ? (
+          <span className="font-bold normal-case tracking-normal"> · Due {formatDay(due)}</span>
+        ) : null}
+      </span>
+      {why ? (
+        <span className="mt-0.5 block line-clamp-2 text-[12px] font-semibold">{why}</span>
+      ) : null}
+    </>
+  );
+}

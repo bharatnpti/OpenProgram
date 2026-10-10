@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 
 import pytest
@@ -326,6 +326,44 @@ async def test_snapshots_make_a_timeline_and_say_what_moved_since_the_last_one()
     assert since["CHK-2"] == TODAY
 
 
+async def test_each_timeline_day_keeps_its_story_points_for_a_burn_down_by_points() -> None:
+    store = await _graph()
+    snapshots = InMemoryRequirementsSnapshotRepository()
+    service = _service(store, snapshots)
+    by_count = _snapshot(
+        date(2026, 10, 2), {"CHK-1": S.IN_TESTING, "CHK-3": S.PRODUCTION}, project_id="checkout"
+    )
+    by_points = replace(
+        _snapshot(
+            date(2026, 10, 3),
+            {"CHK-1": S.IN_TESTING, "CHK-3": S.PRODUCTION},
+            project_id="checkout",
+        ),
+        stage_points={
+            **{stage: 0.0 for stage in DeliveryStage},
+            S.IN_TESTING: 3.0,
+            S.PRODUCTION: 8.0,
+        },
+        has_points=True,
+    )
+    await snapshots.save(by_count)
+    await snapshots.save(by_points)
+
+    view = await service.requirements(TENANT, "checkout", TODAY)
+
+    first, second, today = view.timeline
+    assert first.has_points is False
+    assert second.has_points is True
+    assert second.points[S.IN_TESTING] == 3.0
+    assert second.points[S.PRODUCTION] == 8.0
+    # Counts are unchanged beside the points.
+    assert second.counts[S.IN_TESTING] == 1
+    # Today is counted live; two requirements carry no points, so it says so.
+    assert today.day == TODAY
+    assert today.has_points is False
+    assert today.points[S.BUSINESS_TESTING] == 5.0
+
+
 async def test_an_earlier_day_reads_its_stored_snapshot_or_says_none_was_kept() -> None:
     store = await _graph()
     snapshots = InMemoryRequirementsSnapshotRepository()
@@ -432,6 +470,11 @@ def test_api_serves_a_projects_requirements_to_whoever_reads_its_progress(
     assert [stage["count"] for stage in body["stages"]] == [0] * 6
     assert body["live"] is True
     assert body["percent_complete"] is None
+    # Each day of the timeline carries its points per stage, and whether every
+    # requirement had points that day; with none counted it has none.
+    today = body["timeline"][-1]
+    assert today["has_points"] is False
+    assert set(today["points"]) == {stage.value for stage in DeliveryStage}
     assert missing.status_code == 404
 
 

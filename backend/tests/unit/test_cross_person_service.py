@@ -5,16 +5,21 @@ from datetime import UTC, datetime
 import pytest
 
 from config.settings import Settings
-from core.application.cross_person_service import CrossPersonRequestService
+from core.application.cross_person_service import (
+    CrossPersonRequestService,
+    RequestStatusNotSettable,
+)
 from core.application.status_collector import OUTBOUND_DM_MAX_CHARS
 from core.domain.cross_person import (
     CrossPersonRequest,
+    CrossPersonRequestKind,
     CrossPersonRequestResolution,
     CrossPersonRequestStatus,
+    may_set_status,
 )
 from core.domain.directory import DirectoryUser
-from core.domain.errors import ProviderUnavailable
-from core.domain.graph import EntityRef, NodeKind
+from core.domain.errors import AuthorizationDenied, ProviderUnavailable
+from core.domain.graph import EntityRef, JsonScalar, NodeKind
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
 from core.domain.status import CrossPersonMention
 from core.ports.chat import ChatProvider
@@ -547,14 +552,147 @@ async def test_resolving_twice_from_the_console_tells_the_requester_once() -> No
     service, _, chat = await _service_with(_ALICE, _REQUESTER)
     request = (await _record(service, _resolution()))[0]
 
-    first = await service.update_status("demo", request.id, CrossPersonRequestStatus.RESOLVED)
-    second = await service.update_status("demo", request.id, CrossPersonRequestStatus.RESOLVED)
+    resolved = CrossPersonRequestStatus.RESOLVED
+    first = await service.update_status("demo", request.id, resolved, actor="U-alice")
+    second = await service.update_status("demo", request.id, resolved, actor="U-alice")
 
     assert first is not None
     assert second is not None
     assert second.status is CrossPersonRequestStatus.RESOLVED
     told = [m for m in chat.sent if m.metadata.get("purpose") == "cross_person_request_resolved"]
     assert len(told) == 1
+
+
+async def test_a_resolve_by_the_person_asked_tells_the_requester_and_names_them() -> None:
+    service, store, chat = await _service_with(_ALICE, _REQUESTER)
+    request = (await _record(service, _resolution()))[0]
+
+    await service.update_status(
+        "demo", request.id, CrossPersonRequestStatus.RESOLVED, actor="U-alice"
+    )
+
+    told = [m for m in chat.sent if m.metadata.get("purpose") == "cross_person_request_resolved"]
+    assert [m.text for m in told] == [
+        "Alice Chen marked your review request resolved: API schema review"
+    ]
+    assert await _changes(store, request.id) == {"opened": "dev-1", "resolved": "U-alice"}
+
+
+async def test_a_requester_who_resolves_their_own_ask_is_not_told_about_it() -> None:
+    """They know, and the notice would say the person asked had resolved it."""
+    service, store, chat = await _service_with(_ALICE, _REQUESTER)
+    request = (await _record(service, _resolution()))[0]
+
+    resolved = await service.update_status(
+        "demo", request.id, CrossPersonRequestStatus.RESOLVED, actor="dev-1"
+    )
+
+    assert resolved is not None
+    assert resolved.status is CrossPersonRequestStatus.RESOLVED
+    told = [m for m in chat.sent if m.metadata.get("purpose") == "cross_person_request_resolved"]
+    assert told == []
+    assert await _changes(store, request.id) == {"opened": "dev-1", "resolved": "dev-1"}
+
+
+async def test_a_refused_change_leaves_the_request_as_it_was_and_records_nothing() -> None:
+    service, store, chat = await _service_with(_ALICE, _REQUESTER)
+    request = (await _record(service, _resolution()))[0]
+    sent = len(chat.sent)
+
+    with pytest.raises(AuthorizationDenied):
+        await service.update_status(
+            "demo", request.id, CrossPersonRequestStatus.ACKNOWLEDGED, actor="dev-1"
+        )
+    with pytest.raises(AuthorizationDenied):
+        await service.update_status(
+            "demo", request.id, CrossPersonRequestStatus.RESOLVED, actor="U-manager"
+        )
+    with pytest.raises(RequestStatusNotSettable):
+        await service.update_status(
+            "demo", request.id, CrossPersonRequestStatus.DISMISSED, actor="dev-1"
+        )
+
+    stored = await store.get("demo", request.id)
+    assert stored is not None
+    assert stored.status is CrossPersonRequestStatus.OPEN
+    assert await _changes(store, request.id) == {"opened": "dev-1"}
+    assert len(chat.sent) == sent
+
+
+async def test_acknowledging_never_reopens_a_resolved_request() -> None:
+    """Acknowledging takes an open ask on; a closed request stays closed."""
+    service, store, _ = await _service_with(_ALICE, _REQUESTER)
+    request = (await _record(service, _resolution()))[0]
+    await service.update_status(
+        "demo", request.id, CrossPersonRequestStatus.RESOLVED, actor="U-alice"
+    )
+
+    again = await service.update_status(
+        "demo", request.id, CrossPersonRequestStatus.ACKNOWLEDGED, actor="U-alice"
+    )
+
+    assert again is not None
+    assert again.status is CrossPersonRequestStatus.RESOLVED
+    assert await _changes(store, request.id) == {"opened": "dev-1", "resolved": "U-alice"}
+
+
+async def test_a_reply_records_the_person_asked_as_who_moved_the_request() -> None:
+    service, store, _ = await _service_with(_ALICE, _REQUESTER)
+    request = (await _record(service, _resolution()))[0]
+
+    await service.handle_counterpart_reply(
+        _counterpart_reply(request.notify_correlation_id or "", "on it"), request
+    )
+
+    assert await _changes(store, request.id) == {"opened": "dev-1", "acknowledged": "U-alice"}
+
+
+@pytest.mark.parametrize(
+    ("member", "counterpart", "status", "allowed"),
+    [
+        ("U-alice", "U-alice", CrossPersonRequestStatus.ACKNOWLEDGED, True),
+        ("dev-1", "U-alice", CrossPersonRequestStatus.ACKNOWLEDGED, False),
+        ("U-manager", "U-alice", CrossPersonRequestStatus.ACKNOWLEDGED, False),
+        ("U-alice", "U-alice", CrossPersonRequestStatus.RESOLVED, True),
+        ("dev-1", "U-alice", CrossPersonRequestStatus.RESOLVED, True),
+        ("U-manager", "U-alice", CrossPersonRequestStatus.RESOLVED, False),
+        # Nobody matched yet: nobody to take it on, and the requester may close it.
+        ("dev-1", None, CrossPersonRequestStatus.ACKNOWLEDGED, False),
+        ("dev-1", None, CrossPersonRequestStatus.RESOLVED, True),
+        # OpenProgram records these; no one sets them by hand.
+        ("U-alice", "U-alice", CrossPersonRequestStatus.OPEN, False),
+        ("dev-1", "U-alice", CrossPersonRequestStatus.DISMISSED, False),
+        ("dev-1", None, CrossPersonRequestStatus.NEEDS_RESOLUTION, False),
+    ],
+)
+def test_who_may_set_a_status_by_hand(
+    member: str, counterpart: str | None, status: CrossPersonRequestStatus, allowed: bool
+) -> None:
+    request = CrossPersonRequest(
+        tenant_id="demo",
+        id="xreq-1",
+        requester_id="dev-1",
+        requester_chat_ref="U-dev",
+        counterpart_id=counterpart,
+        kind=CrossPersonRequestKind.REVIEW,
+        note="API schema review",
+        source_correlation_id="corr-1",
+        status=CrossPersonRequestStatus.OPEN,
+        created_at=datetime(2026, 1, 10, 9, 10, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 10, 9, 10, tzinfo=UTC),
+    )
+
+    assert may_set_status(request, member, status) is allowed
+
+
+async def _changes(store: InMemoryGraphStore, request_id: str) -> dict[str, JsonScalar]:
+    """Each transition recorded for the request, and who made it."""
+    facts = await store.list_recent_facts("demo", sources=("cross_person_request",))
+    return {
+        str(fact.payload["transition"]): fact.payload["changed_by"]
+        for fact in facts
+        if fact.payload["request_id"] == request_id
+    }
 
 
 def _resolution(

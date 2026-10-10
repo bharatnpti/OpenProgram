@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import date
 from typing import Annotated, cast
 
 from fastapi import Header, HTTPException, Request, status
@@ -23,9 +25,11 @@ from core.application.graph_queries import GraphQueryService
 from core.application.person_names import PersonNames
 from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
+from core.application.pull_request_flow_service import PullRequestFlowService
 from core.application.risk_service import RiskService
 from core.application.self_status_service import SelfStatusService
 from core.application.sync_status_service import SyncStatusService
+from core.application.task_update_service import TaskUpdateService
 from core.application.writeback_service import WriteBackService
 from core.domain.auth import Principal, Role
 from core.domain.errors import (
@@ -131,7 +135,13 @@ def get_graph_query_service(request: Request) -> GraphQueryService:
 
 
 def get_config_service(request: Request) -> ConfigService:
-    registry = get_registry(request)
+    return config_service_for(get_registry(request))
+
+
+def config_service_for(
+    registry: ServiceRegistry, *, today: Callable[[], date] = date.today
+) -> ConfigService:
+    """The config service over the registry's stores; ``today`` dates the links it changes."""
     return ConfigService(
         graph_repository=registry.graph_repository(),
         status_repository=registry.status_repository(),
@@ -141,12 +151,21 @@ def get_config_service(request: Request) -> ConfigService:
         writeback_config_repository=registry.writeback_config_repository(),
         issue_tracker=registry.issue_tracker(),
         require_issue_tracker_link=registry.settings.issue_tracker_provider != "fake",
+        today=today,
     )
 
 
 def get_flow_metrics_service(request: Request) -> FlowMetricsService:
     registry = get_registry(request)
     return FlowMetricsService(
+        graph_repository=registry.graph_repository(),
+        time_series_repository=registry.time_series_repository(),
+    )
+
+
+def get_pull_request_flow_service(request: Request) -> PullRequestFlowService:
+    registry = get_registry(request)
+    return PullRequestFlowService(
         graph_repository=registry.graph_repository(),
         time_series_repository=registry.time_series_repository(),
     )
@@ -259,6 +278,7 @@ def get_persona_view_service(request: Request) -> PersonaViewService:
         # A day with no stored rollup is computed with the drift the stored
         # ones carry (N3), read by the Signals list's own reader.
         drift_signals=get_risk_service(request),
+        identity_link_repository=registry.identity_link_repository(),
     )
 
 
@@ -270,6 +290,10 @@ def get_provider_names(request: Request) -> ProviderNames:
 def get_self_status_service(request: Request) -> SelfStatusService:
     registry = get_registry(request)
     return registry.self_status_service()
+
+
+def get_task_update_service(request: Request) -> TaskUpdateService:
+    return get_registry(request).task_update_service()
 
 
 def get_branding_service(request: Request) -> BrandingService:

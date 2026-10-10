@@ -1757,6 +1757,32 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/me/tasks/{task_id}/update": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Update My Task
+     * @description Update one of the caller's own tasks for today: only the fields sent change.
+     *
+     *     The state and the note are recorded on the task, the ETA as the person's
+     *     stated ETA, a blocker through the blocker lifecycle (their other blockers
+     *     carry forward), and today's status keeps or gains a reply. With
+     *     ``move_in_tracker`` and a state, the tracker issue moves behind the
+     *     write-back gates; the ETA never reaches the tracker.
+     */
+    post: operations["update_my_task_me_tasks__task_id__update_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/me/checkin-preference": {
     parameters: {
       query?: never;
@@ -2002,6 +2028,31 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/portfolio/pr-flow": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Portfolio Pull Request Flow
+     * @description How long pull and merge requests spend coding, awaiting review, in review and
+     *     awaiting merge, and what kind of work they are: merged ones in the ``days``
+     *     before ``as_of`` give the stage times, open ones are counted where they stand.
+     *
+     *     The whole tenant, or one of a program, a project or a pod. The same read
+     *     permission as ``/portfolio/flow``.
+     */
+    get: operations["portfolio_pull_request_flow_portfolio_pr_flow_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/portfolio/feed": {
     parameters: {
       query?: never;
@@ -2103,7 +2154,14 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Update Cross Person Request Status */
+    /**
+     * Update Cross Person Request Status
+     * @description Acknowledge or resolve a cross-person request, as the signed-in member.
+     *
+     *     Only the person the request asks acknowledges it, and only they or its
+     *     requester resolve it, whatever else the caller's role reads (403). No other
+     *     status is set by hand (422). The change is recorded with who made it.
+     */
     post: operations["update_cross_person_request_status_cross_person_requests__request_id__status_post"];
     delete?: never;
     options?: never;
@@ -2870,8 +2928,12 @@ export interface components {
      * ConnectionTestRequest
      * @description Optional unsaved values to test over the stored ones.
      *
-     *     A secret left out or blank uses the stored one. Leave the whole body out to
-     *     test what is saved; only that test is recorded on the connection.
+     *     A secret left out uses the stored one, but only while every address and
+     *     sign-in field is as saved: a test that changes one must carry each secret
+     *     it uses, or it is refused with 400. A secret mapped to null or blank is
+     *     cleared for the test and never falls back to the stored one. Leave the
+     *     whole body out to test what is saved; only that test is recorded on the
+     *     connection.
      */
     ConnectionTestRequest: {
       /** Settings */
@@ -2880,7 +2942,7 @@ export interface components {
       };
       /** Secrets */
       secrets?: {
-        [key: string]: string;
+        [key: string]: string | null;
       };
     };
     /** ConnectionTestResponse */
@@ -3579,6 +3641,12 @@ export interface components {
       tasks: components["schemas"]["FocusTaskDto"][];
       /** Focus */
       focus: components["schemas"]["FocusItemDto"][];
+      /**
+       * Write Back
+       * @description How the person's updates reach the tracker: auto (written at once), ask (written when they tick it in the console, or say yes in chat) or off.
+       * @enum {string}
+       */
+      write_back: "auto" | "ask" | "off";
     };
     /** FocusTaskDto */
     FocusTaskDto: {
@@ -3592,6 +3660,32 @@ export interface components {
       confidence: number | null;
       /** Deadline */
       deadline: string | null;
+      /**
+       * Tracker Status
+       * @description The tracker's own status name, for a synced task; null otherwise.
+       */
+      tracker_status: string | null;
+      /**
+       * My Eta
+       * @description The person's own latest ETA for the task (its last day); null when none.
+       */
+      my_eta: string | null;
+      /**
+       * My Eta Label
+       * @description That ETA as it was given: 'Oct 9' from the console, 'early next week' from chat.
+       */
+      my_eta_label: string | null;
+      last_update: components["schemas"]["TaskStatementDto"] | null;
+      /**
+       * Blocker Ids
+       * @description The person's open blockers on this task, ids from blocker_details.
+       */
+      blocker_ids: string[];
+      /**
+       * Can Move In Tracker
+       * @description The person is the synced tracker issue's assignee through their identity link. The tick to move the issue also needs write_back other than off.
+       */
+      can_move_in_tracker: boolean;
     };
     /**
      * GateBoardResponse
@@ -4211,6 +4305,23 @@ export interface components {
       open_blockers: components["schemas"]["PodTaskBlockerDto"][];
       /** Tracker Status */
       tracker_status?: string | null;
+      /** @description The latest statement any owner made on the task: a state or a note. */
+      last_update?: components["schemas"]["TaskStatementDto"] | null;
+      /**
+       * Last Update By
+       * @description The name of the owner who made that statement.
+       */
+      last_update_by?: string | null;
+      /**
+       * Eta
+       * @description The owners' own ETA for the task: the latest day any of them gave.
+       */
+      eta?: string | null;
+      /**
+       * Eta Label
+       * @description That ETA as it was given: 'Oct 9' from the console, 'Tuesday' from chat.
+       */
+      eta_label?: string | null;
     };
     /** PodTaskOwnerDto */
     PodTaskOwnerDto: {
@@ -4430,6 +4541,185 @@ export interface components {
        */
       drift: components["schemas"]["DriftFindingResponse"][];
     };
+    /** PullRequestFlowItemDto */
+    PullRequestFlowItemDto: {
+      /** Repo */
+      repo: string;
+      /** Number */
+      number: string;
+      /** Title */
+      title: string;
+      /** Web Url */
+      web_url: string | null;
+      /** Author Name */
+      author_name: string | null;
+      request_type: components["schemas"]["RequestType"];
+      type_source: components["schemas"]["TypeSource"];
+      /** Type Evidence */
+      type_evidence: string | null;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "open" | "merged";
+      /** Draft */
+      draft: boolean;
+      /** @description The stage an open request is in now; null for a merged one or when not known. */
+      stage: components["schemas"]["ReviewStage"] | null;
+      /** Stage Since */
+      stage_since: string | null;
+      /** Stage Age Hours */
+      stage_age_hours: number | null;
+      stage_hours: components["schemas"]["PullRequestStageHoursDto"];
+      /** Opened At */
+      opened_at: string | null;
+      /** Merged At */
+      merged_at: string | null;
+      /** Reviewer Count */
+      reviewer_count: number;
+      /**
+       * Timed
+       * @description Whether the request's review history was read.
+       */
+      timed: boolean;
+    };
+    /** PullRequestFlowResponse */
+    PullRequestFlowResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Window Days */
+      window_days: number;
+      /**
+       * Window Start
+       * Format: date-time
+       */
+      window_start: string;
+      /**
+       * Window End
+       * Format: date-time
+       */
+      window_end: string;
+      scope: components["schemas"]["PullRequestFlowScopeDto"];
+      /**
+       * Merged Count
+       * @description Requests merged in the window.
+       */
+      merged_count: number;
+      /**
+       * Open Count
+       * @description Requests open at the end of the window.
+       */
+      open_count: number;
+      /**
+       * Timed Merged Count
+       * @description Merged requests whose review history was read, so their stages are timed.
+       */
+      timed_merged_count: number;
+      /**
+       * Unreviewed Merged Count
+       * @description Merged requests with no review by anyone but the author.
+       */
+      unreviewed_merged_count: number;
+      /**
+       * Untimed Count
+       * @description Requests synced before review histories were read: counted, not timed.
+       */
+      untimed_count: number;
+      /** Stages */
+      stages: components["schemas"]["PullRequestFlowStageDto"][];
+      worst_jam: components["schemas"]["PullRequestWorstJamDto"];
+      /** Type Counts */
+      type_counts: components["schemas"]["PullRequestTypeCountDto"][];
+      /** Items */
+      items: components["schemas"]["PullRequestFlowItemDto"][];
+      /**
+       * Items Truncated
+       * @description More requests than the items list holds; counts and stage times cover all.
+       */
+      items_truncated: boolean;
+      /**
+       * Notes
+       * @description What the figures leave out, in words.
+       */
+      notes: string[];
+    };
+    /** PullRequestFlowScopeDto */
+    PullRequestFlowScopeDto: {
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "tenant" | "program" | "project" | "pod";
+      /** Id */
+      id: string | null;
+      /** Name */
+      name: string | null;
+      /**
+       * Repos
+       * @description The repositories read; null for every repository the tenant syncs.
+       */
+      repos: string[] | null;
+      /**
+       * Member Count
+       * @description A pod's members whose requests count; null when authors are not narrowed.
+       */
+      member_count: number | null;
+    };
+    /** PullRequestFlowStageDto */
+    PullRequestFlowStageDto: {
+      stage: components["schemas"]["ReviewStage"];
+      /** Label */
+      label: string;
+      /** P50 Hours */
+      p50_hours: number | null;
+      /** P75 Hours */
+      p75_hours: number | null;
+      /**
+       * Measured Count
+       * @description Merged requests in the window whose time in this stage is known.
+       */
+      measured_count: number;
+      /**
+       * Open Count
+       * @description Open requests in this stage now.
+       */
+      open_count: number;
+    };
+    /**
+     * PullRequestStageHoursDto
+     * @description Hours a request spent in each stage it finished; null for one not finished or not known.
+     */
+    PullRequestStageHoursDto: {
+      /** Coding */
+      coding: number | null;
+      /** Awaiting Review */
+      awaiting_review: number | null;
+      /** In Review */
+      in_review: number | null;
+      /** Awaiting Merge */
+      awaiting_merge: number | null;
+    };
+    /** PullRequestTypeCountDto */
+    PullRequestTypeCountDto: {
+      request_type: components["schemas"]["RequestType"];
+      /** Label */
+      label: string;
+      /** Merged Count */
+      merged_count: number;
+      /** Open Count */
+      open_count: number;
+    };
+    /**
+     * PullRequestWorstJamDto
+     * @description The stage requests spend longest in, at each percentile.
+     */
+    PullRequestWorstJamDto: {
+      p50: components["schemas"]["ReviewStage"] | null;
+      p75: components["schemas"]["ReviewStage"] | null;
+    };
     /** QuestionCreateRequest */
     QuestionCreateRequest: {
       /** Asked To */
@@ -4572,8 +4862,8 @@ export interface components {
       progress_line: string;
       /** Sections */
       sections: components["schemas"]["ReportSectionResponse"][];
-      /** Console Url */
-      console_url: string | null;
+      /** Console Path */
+      console_path: string | null;
       /** Text */
       text: string;
     };
@@ -4666,6 +4956,20 @@ export interface components {
       /** Rows */
       rows: string[][];
     };
+    /**
+     * RequestType
+     * @enum {string}
+     */
+    RequestType:
+      | "feature"
+      | "dependency_update"
+      | "bug_fix"
+      | "refactor"
+      | "chore"
+      | "documentation"
+      | "test"
+      | "performance"
+      | "unclassified";
     /** RequirementMoveResponse */
     RequirementMoveResponse: {
       /** Key */
@@ -4720,6 +5024,19 @@ export interface components {
       counts: {
         [key: string]: number;
       };
+      /**
+       * Points
+       * @description Story points per stage that day; a burn-down by points reads them only when has_points.
+       */
+      points?: {
+        [key: string]: number;
+      };
+      /**
+       * Has Points
+       * @description True when every requirement counted that day carried story points.
+       * @default false
+       */
+      has_points: boolean;
     };
     /**
      * RequirementsResponse
@@ -4770,6 +5087,11 @@ export interface components {
       /** Requirements */
       requirements: components["schemas"]["RequirementResponse"][];
     };
+    /**
+     * ReviewStage
+     * @enum {string}
+     */
+    ReviewStage: "coding" | "awaiting_review" | "in_review" | "awaiting_merge";
     /** RiskEvidenceDto */
     RiskEvidenceDto: {
       /** Identifier */
@@ -5026,6 +5348,74 @@ export interface components {
       /** Tracker Status */
       tracker_status?: string | null;
     };
+    /**
+     * TaskStatementDto
+     * @description The person's latest statement on a task: a state or a note, when and where.
+     *
+     *     A chat statement carries its state only; a note is typed in the console.
+     */
+    TaskStatementDto: {
+      /** State */
+      state: ("todo" | "in_progress" | "in_review" | "blocked" | "done") | null;
+      /** Note */
+      note: string | null;
+      /**
+       * At
+       * Format: date-time
+       */
+      at: string;
+      /**
+       * Via
+       * @enum {string}
+       */
+      via: "chat" | "console";
+    };
+    /**
+     * TaskTrackerResultDto
+     * @description What the tracker move did, as the task row says it.
+     */
+    TaskTrackerResultDto: {
+      /**
+       * Outcome
+       * @enum {string}
+       */
+      outcome: "applied" | "held_open_mr" | "not_owner" | "no_change" | "off" | "failed";
+      /** Detail */
+      detail: string;
+      /** Merge Requests */
+      merge_requests: string[];
+    };
+    /**
+     * TaskUpdateRequest
+     * @description One person's update of one of their tasks: only the fields that changed.
+     *
+     *     Every field is optional and at least one change must be sent
+     *     (``move_in_tracker`` alone is none). ``eta: null`` clears the ETA; leaving
+     *     ``eta`` out keeps it. A field this model does not know is refused.
+     */
+    TaskUpdateRequest: {
+      /** State */
+      state?: ("todo" | "in_progress" | "in_review" | "blocked" | "done") | null;
+      /** Eta */
+      eta?: string | null;
+      /** Note */
+      note?: string | null;
+      /** Add Blocker */
+      add_blocker?: string | null;
+      /** Resolve Blocker Ids */
+      resolve_blocker_ids?: string[];
+      /**
+       * Move In Tracker
+       * @description True also moves the tracker issue to `state`; ignored without a state. Left out or null: the tracker is not touched.
+       */
+      move_in_tracker?: boolean | null;
+    };
+    /** TaskUpdateResponse */
+    TaskUpdateResponse: {
+      task: components["schemas"]["FocusTaskDto"];
+      status: components["schemas"]["MyStatusResponse"];
+      tracker: components["schemas"]["TaskTrackerResultDto"] | null;
+    };
     /** TeamForecastResponse */
     TeamForecastResponse: {
       /** Latest */
@@ -5132,6 +5522,12 @@ export interface components {
       /** Score */
       score: number;
     };
+    /**
+     * TypeSource
+     * @description Which rule gave a request its type.
+     * @enum {string}
+     */
+    TypeSource: "author" | "issue" | "label" | "title" | "branch" | "none";
     /** UnmappedMemberResponse */
     UnmappedMemberResponse: {
       /** Id */
@@ -10047,6 +10443,50 @@ export interface operations {
       };
     };
   };
+  update_my_task_me_tasks__task_id__update_post: {
+    parameters: {
+      query?: {
+        as_of?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path: {
+        task_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TaskUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TaskUpdateResponse"];
+        };
+      };
+      /** @description The task is not in the caller's own tree: not theirs. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Nothing to update, a day other than today, an ETA before today, Blocked with no blocker, or a blocker to resolve that is not open on this task. */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   get_checkin_preference_me_checkin_preference_get: {
     parameters: {
       query?: never;
@@ -10553,6 +10993,43 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["PortfolioFlowResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  portfolio_pull_request_flow_portfolio_pr_flow_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+        days?: number;
+        program_id?: string | null;
+        project_id?: string | null;
+        pod_id?: string | null;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PullRequestFlowResponse"];
         };
       };
       /** @description Validation Error */

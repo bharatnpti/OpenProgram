@@ -157,10 +157,17 @@ test("a required secret counts as present when stored, and missing once cleared"
   );
 });
 
-test("a test sends typed secrets only, never a clear", () => {
+test("a test sends a cleared secret as null, so the stored one is never tested", () => {
   const form = { ...formFromConnection(JIRA), clearedSecrets: ["personal_access_token"] };
 
-  assert.deepEqual(testPayload(JIRA, form).secrets, {});
+  assert.deepEqual(testPayload(JIRA, form).secrets, { personal_access_token: null });
+});
+
+test("a test sends typed secrets and leaves out the ones left alone", () => {
+  const form = { ...formFromConnection(JIRA), secrets: { personal_access_token: " new " } };
+
+  assert.deepEqual(testPayload(JIRA, form).secrets, { personal_access_token: "new" });
+  assert.deepEqual(testPayload(JIRA, formFromConnection(JIRA)).secrets, {});
 });
 
 test("a card names who saved it, or shows the id when it is no member's", () => {

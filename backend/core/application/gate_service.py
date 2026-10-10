@@ -184,7 +184,7 @@ class GateService:
     async def board(
         self, tenant_id: str, project_id: str, as_of: date, release: Release | None = None
     ) -> GateBoardView:
-        if not await self._delivery.is_project(tenant_id, project_id):
+        if not await self._delivery.is_project(tenant_id, project_id, as_of):
             raise GraphNotFound(f"No project {project_id!r}.")
         templates = [item for item in (await self.templates(tenant_id))[0] if item.enabled]
         tasks = await self._delivery.scope_tasks(tenant_id, project_id, as_of, release)

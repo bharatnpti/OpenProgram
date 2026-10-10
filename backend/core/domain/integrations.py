@@ -92,6 +92,32 @@ class IssueText:
     updated_at: datetime | None = None
 
 
+class PullRequestEventKind(StrEnum):
+    """What happened on a pull or merge request, in provider-neutral words."""
+
+    #: A commit on the request, dated by when its author wrote it.
+    COMMIT = "commit"
+    #: Marked as a draft (GitLab "draft", GitHub "convert to draft").
+    DRAFT = "draft"
+    #: Marked ready for review.
+    READY = "ready"
+    #: A person's note or line comment.
+    COMMENT = "comment"
+    #: A submitted review that neither approved nor was withdrawn (GitHub).
+    REVIEW = "review"
+    APPROVAL = "approval"
+    #: An approval taken back.
+    UNAPPROVAL = "unapproval"
+
+
+@dataclass(frozen=True, kw_only=True)
+class PullRequestEvent:
+    kind: PullRequestEventKind
+    at: datetime
+    #: The provider login of who did it; None for a commit.
+    actor: str | None = None
+
+
 @dataclass(frozen=True, kw_only=True)
 class PullRequest:
     tenant_id: str
@@ -102,6 +128,13 @@ class PullRequest:
     metadata: Mapping[str, JsonScalar] = field(default_factory=dict)
     updated_at: datetime | None = None
     opened_at: datetime | None = None
+    merged_at: datetime | None = None
+    closed_at: datetime | None = None
+    labels: tuple[str, ...] = ()
+    #: Commits, draft and ready marks, review notes and approvals, oldest first.
+    #: None when the provider's history of the request was not read: a request
+    #: listed for an author, or one whose history read failed.
+    events: tuple[PullRequestEvent, ...] | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

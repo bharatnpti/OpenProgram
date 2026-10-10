@@ -10,6 +10,7 @@ from opentelemetry import trace
 
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
+    DELETED_ON_METADATA_KEY,
     EdgeKind,
     EntityRef,
     FactEvent,
@@ -52,44 +53,49 @@ class PostgresGraphRepository:
     def __init__(self, executor: AsyncSqlExecutor) -> None:
         self._executor = executor
 
-    async def list_nodes(self, tenant_id: str, kind: NodeKind | None = None) -> list[GraphNode]:
+    async def list_nodes(
+        self, tenant_id: str, kind: NodeKind | None = None, *, as_of: date | None = None
+    ) -> list[GraphNode]:
+        exists, exists_params = _node_exists_on(as_of)
+        clauses = ["tenant_id = %s", exists]
+        params: list[object] = [tenant_id, *exists_params]
+        if kind is not None:
+            clauses.append("kind = %s")
+            params.append(kind.value)
         with _tracer.start_as_current_span("postgres.graph.list_nodes"):
-            if kind is None:
-                rows = await self._executor.fetch(
-                    """
-                    SELECT tenant_id, id, kind, name, metadata
-                    FROM graph_nodes
-                    WHERE tenant_id = %s
-                    ORDER BY kind, name, id
-                    """,
-                    (tenant_id,),
-                )
-            else:
-                rows = await self._executor.fetch(
-                    """
-                    SELECT tenant_id, id, kind, name, metadata
-                    FROM graph_nodes
-                    WHERE tenant_id = %s AND kind = %s
-                    ORDER BY kind, name, id
-                    """,
-                    (tenant_id, kind.value),
-                )
-        return [_node_from_row(row) for row in rows]
-
-    async def get_node(self, tenant_id: str, id: str) -> GraphNode | None:
-        with _tracer.start_as_current_span("postgres.graph.get_node"):
             rows = await self._executor.fetch(
-                """
+                f"""
                 SELECT tenant_id, id, kind, name, metadata
                 FROM graph_nodes
-                WHERE tenant_id = %s AND id = %s
+                WHERE {" AND ".join(clauses)}
+                ORDER BY kind, name, id
+                """,
+                tuple(params),
+            )
+        return [_node_from_row(row) for row in rows]
+
+    async def get_node(
+        self, tenant_id: str, id: str, *, as_of: date | None = None
+    ) -> GraphNode | None:
+        exists, exists_params = _node_exists_on(as_of)
+        with _tracer.start_as_current_span("postgres.graph.get_node"):
+            rows = await self._executor.fetch(
+                f"""
+                SELECT tenant_id, id, kind, name, metadata
+                FROM graph_nodes
+                WHERE tenant_id = %s AND id = %s AND {exists}
                 LIMIT 1
                 """,
-                (tenant_id, id),
+                (tenant_id, id, *exists_params),
             )
         return _node_from_row(rows[0]) if rows else None
 
     async def upsert_node(self, node: GraphNode) -> None:
+        # The metadata written never carries the deletion day, so storing a
+        # node also restores one deleted under this id.
+        metadata = {
+            key: value for key, value in node.metadata.items() if key != DELETED_ON_METADATA_KEY
+        }
         with _tracer.start_as_current_span("postgres.graph.upsert_node"):
             async with self._executor.transaction() as transaction:
                 await transaction.execute(
@@ -102,29 +108,52 @@ class PostgresGraphRepository:
                         name = EXCLUDED.name,
                         metadata = EXCLUDED.metadata
                     """,
-                    (node.tenant_id, node.id, node.kind.value, node.name, dict(node.metadata)),
+                    (node.tenant_id, node.id, node.kind.value, node.name, metadata),
                 )
                 await self._sync_age_node(transaction, node)
 
-    async def delete_node(self, tenant_id: str, id: str) -> None:
+    async def delete_node(self, tenant_id: str, id: str, *, on: date) -> None:
+        """End the node's edges on ``on`` and mark it deleted from ``on``.
+
+        The row stays, so edges ended today still have both ends and a read as
+        of an earlier day still finds the node. The day is kept in metadata
+        (``DELETED_ON_METADATA_KEY``) rather than a column: runtime config
+        lives in the existing graph tables without new schema.
+        """
         with _tracer.start_as_current_span("postgres.graph.delete_node"):
             async with self._executor.transaction() as transaction:
-                await transaction.execute(
+                live = await transaction.fetch(
                     """
-                    DELETE FROM graph_edges
+                    SELECT 1
+                    FROM graph_nodes
+                    WHERE tenant_id = %s AND id = %s AND metadata->>%s::text IS NULL
+                    FOR UPDATE
+                    """,
+                    (tenant_id, id, DELETED_ON_METADATA_KEY),
+                )
+                if not live:
+                    return
+                edge_rows = await transaction.fetch(
+                    """
+                    SELECT DISTINCT tenant_id, from_node_id, to_node_id, kind,
+                           valid_from, valid_to, metadata
+                    FROM graph_edges
                     WHERE tenant_id = %s
                       AND (from_node_id = %s OR to_node_id = %s)
+                      AND (valid_to IS NULL OR valid_to > %s)
                     """,
-                    (tenant_id, id, id),
+                    (tenant_id, id, id, on),
                 )
+                for row in edge_rows:
+                    await self._end_edge(transaction, _edge_from_row(row), on)
                 await transaction.execute(
                     """
-                    DELETE FROM graph_nodes
+                    UPDATE graph_nodes
+                    SET metadata = metadata || jsonb_build_object(%s::text, %s::text)
                     WHERE tenant_id = %s AND id = %s
                     """,
-                    (tenant_id, id),
+                    (DELETED_ON_METADATA_KEY, on.isoformat(), tenant_id, id),
                 )
-                await self._sync_age_delete_node(transaction, tenant_id, id)
 
     async def add_edge(self, edge: GraphEdge) -> None:
         """Store the edge unless an identical one is already there.
@@ -138,19 +167,11 @@ class PostgresGraphRepository:
         Matching on all seven columns mirrors ``remove_edge``, so an edge with
         a different validity window or metadata is still a distinct edge.
         """
-        identity = (
-            edge.tenant_id,
-            edge.from_node_id,
-            edge.to_node_id,
-            edge.kind.value,
-            edge.valid_from,
-            edge.valid_to,
-            dict(edge.metadata),
-        )
+        identity = _edge_identity(edge)
         with _tracer.start_as_current_span("postgres.graph.add_edge"):
             async with self._executor.transaction() as transaction:
                 inserted = await transaction.fetch(
-                    """
+                    f"""
                     INSERT INTO graph_edges (
                         tenant_id, from_node_id, to_node_id, kind, valid_from, valid_to, metadata
                     )
@@ -158,13 +179,7 @@ class PostgresGraphRepository:
                     WHERE NOT EXISTS (
                         SELECT 1
                         FROM graph_edges
-                        WHERE tenant_id = %s
-                          AND from_node_id = %s
-                          AND to_node_id = %s
-                          AND kind = %s
-                          AND valid_from IS NOT DISTINCT FROM %s
-                          AND valid_to IS NOT DISTINCT FROM %s
-                          AND metadata = %s
+                        WHERE {_EDGE_IDENTITY}
                     )
                     RETURNING 1
                     """,
@@ -206,36 +221,66 @@ class PostgresGraphRepository:
         with _tracer.start_as_current_span("postgres.graph.remove_edge"):
             async with self._executor.transaction() as transaction:
                 await transaction.execute(
-                    """
+                    f"""
                     DELETE FROM graph_edges
-                    WHERE tenant_id = %s
-                      AND from_node_id = %s
-                      AND to_node_id = %s
-                      AND kind = %s
-                      AND valid_from IS NOT DISTINCT FROM %s
-                      AND valid_to IS NOT DISTINCT FROM %s
-                      AND metadata = %s
+                    WHERE {_EDGE_IDENTITY}
                     """,
-                    (
-                        edge.tenant_id,
-                        edge.from_node_id,
-                        edge.to_node_id,
-                        edge.kind.value,
-                        edge.valid_from,
-                        edge.valid_to,
-                        dict(edge.metadata),
-                    ),
+                    _edge_identity(edge),
                 )
-                await self._sync_age_remove_edge(transaction, edge)
+                await self._sync_age_edge_pair(transaction, edge)
+
+    async def end_edge(self, edge: GraphEdge, on: date) -> None:
+        with _tracer.start_as_current_span("postgres.graph.end_edge"):
+            async with self._executor.transaction() as transaction:
+                await self._end_edge(transaction, edge, on)
+
+    async def _end_edge(self, session: AsyncSqlSession, edge: GraphEdge, on: date) -> None:
+        """Replace the stored edge by ``edge.ended_on(on)``, or erase it when that is None.
+
+        A replace rather than an UPDATE, so neither a legacy duplicate of the
+        edge nor an identical row already ended that day is left twice: the
+        rows read as the in-memory store's list, one per distinct edge.
+        """
+        ended = edge.ended_on(on)
+        if ended == edge:
+            return
+        deleted = await session.fetch(
+            f"""
+            DELETE FROM graph_edges
+            WHERE {_EDGE_IDENTITY}
+            RETURNING 1
+            """,
+            _edge_identity(edge),
+        )
+        if not deleted:
+            return
+        if ended is not None:
+            await session.execute(
+                f"""
+                INSERT INTO graph_edges (
+                    tenant_id, from_node_id, to_node_id, kind, valid_from, valid_to, metadata
+                )
+                SELECT %s::text, %s::text, %s::text, %s::text, %s::date, %s::date, %s::jsonb
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM graph_edges
+                    WHERE {_EDGE_IDENTITY}
+                )
+                """,
+                (*_edge_identity(ended), *_edge_identity(ended)),
+            )
+        await self._sync_age_edge_pair(session, edge)
 
     async def get_program_tree(self, tenant_id: str, program_id: str, as_of: date) -> GraphTree:
+        root_exists, root_params = _node_exists_on(as_of)
+        child_exists, child_params = _node_exists_on(as_of, alias="child")
         with _tracer.start_as_current_span("postgres.graph.get_program_tree"):
             rows = await self._executor.fetch(
-                """
+                f"""
                 WITH RECURSIVE walk AS (
                     SELECT tenant_id, id, kind, name, metadata
                     FROM graph_nodes
-                    WHERE tenant_id = %s AND id = %s
+                    WHERE tenant_id = %s AND id = %s AND {root_exists}
                   UNION
                     SELECT child.tenant_id, child.id, child.kind, child.name, child.metadata
                     FROM graph_nodes child
@@ -248,10 +293,11 @@ class PostgresGraphRepository:
                     WHERE edge.kind IN ('contains', 'assigned_to')
                       AND (edge.valid_from IS NULL OR edge.valid_from <= %s)
                       AND (edge.valid_to IS NULL OR edge.valid_to > %s)
+                      AND {child_exists}
                 )
                 SELECT * FROM walk
                 """,
-                (tenant_id, program_id, as_of, as_of),
+                (tenant_id, program_id, *root_params, as_of, as_of, *child_params),
             )
         nodes = tuple(_node_from_row(row) for row in rows)
         if not nodes:
@@ -298,10 +344,11 @@ class PostgresGraphRepository:
     async def pods_containing_developer(
         self, tenant_id: str, developer_id: str, as_of: date
     ) -> list[GraphNode]:
+        pod_exists, pod_params = _node_exists_on(as_of, alias="n")
         with _tracer.start_as_current_span("postgres.graph.pods_containing_developer"):
             rows = await self._executor.fetch(
-                """
-                SELECT n.tenant_id, n.id, n.kind, n.name, n.metadata
+                f"""
+                SELECT DISTINCT n.tenant_id, n.id, n.kind, n.name, n.metadata
                 FROM graph_edges e
                 JOIN graph_nodes n
                   ON n.tenant_id = e.tenant_id AND n.id = e.from_node_id
@@ -311,9 +358,10 @@ class PostgresGraphRepository:
                   AND n.kind = 'pod'
                   AND (e.valid_from IS NULL OR e.valid_from <= %s)
                   AND (e.valid_to IS NULL OR e.valid_to > %s)
+                  AND {pod_exists}
                 ORDER BY n.id
                 """,
-                (tenant_id, developer_id, as_of, as_of),
+                (tenant_id, developer_id, as_of, as_of, *pod_params),
             )
             return [_node_from_row(row) for row in rows]
 
@@ -324,9 +372,10 @@ class PostgresGraphRepository:
         node id — the query never filters the target's kind, only that the
         resolved ancestors are pods.
         """
+        pod_exists, pod_params = _node_exists_on(as_of, alias="n")
         with _tracer.start_as_current_span("postgres.graph.pods_for_task"):
             rows = await self._executor.fetch(
-                """
+                f"""
                 SELECT DISTINCT n.tenant_id, n.id, n.kind, n.name, n.metadata
                 FROM graph_nodes n
                 JOIN (
@@ -348,7 +397,7 @@ class PostgresGraphRepository:
                       AND (pw.valid_from IS NULL OR pw.valid_from <= %s)
                       AND (pw.valid_to IS NULL OR pw.valid_to > %s)
                 ) pods ON n.id = pods.pod_id
-                WHERE n.tenant_id = %s AND n.kind = 'pod'
+                WHERE n.tenant_id = %s AND n.kind = 'pod' AND {pod_exists}
                 ORDER BY n.id
                 """,
                 (
@@ -363,6 +412,7 @@ class PostgresGraphRepository:
                     as_of,
                     as_of,
                     tenant_id,
+                    *pod_params,
                 ),
             )
             return [_node_from_row(row) for row in rows]
@@ -641,26 +691,25 @@ class PostgresGraphRepository:
                 ),
             )
 
-    async def _sync_age_delete_node(
-        self, session: AsyncSqlSession, tenant_id: str, id: str
-    ) -> None:
-        with _tracer.start_as_current_span("postgres.age.delete_node"):
-            await _prepare_age_session(session)
-            await session.execute(
-                """
-                SELECT *
-                FROM cypher('openprogram_graph', $$
-                    MATCH (n:GraphNode {tenant_id: $tenant_id, id: $id})
-                    DETACH DELETE n
-                    RETURN 1
-                $$, %s) AS (n agtype)
-                """,
-                (_age_params(tenant_id=tenant_id, id=id),),
-            )
+    async def _sync_age_edge_pair(self, session: AsyncSqlSession, edge: GraphEdge) -> None:
+        """Rebuild the mirror's edges of ``edge``'s kind between its two nodes.
 
-    async def _sync_age_remove_edge(self, session: AsyncSqlSession, edge: GraphEdge) -> None:
+        A Cypher pattern cannot pick one of several parallel edges reliably
+        (AGE drops null properties, see migration 0027), and a pair now often
+        holds several: an ended edge kept for history beside a later one. So
+        the pair's mirror edges are cleared and written again from the
+        relational rows, which stay the source of truth.
+        """
         relation = _AGE_RELATION_BY_EDGE_KIND[edge.kind]
-        with _tracer.start_as_current_span("postgres.age.remove_edge"):
+        rows = await session.fetch(
+            """
+            SELECT tenant_id, from_node_id, to_node_id, kind, valid_from, valid_to, metadata
+            FROM graph_edges
+            WHERE tenant_id = %s AND from_node_id = %s AND to_node_id = %s AND kind = %s
+            """,
+            (edge.tenant_id, edge.from_node_id, edge.to_node_id, edge.kind.value),
+        )
+        with _tracer.start_as_current_span("postgres.age.sync_edge_pair"):
             await _prepare_age_session(session)
             await session.execute(
                 # See _sync_age_edge: the label is a fixed literal, values are bound.
@@ -686,6 +735,8 @@ class PostgresGraphRepository:
                     ),
                 ),
             )
+        for row in rows:
+            await self._sync_age_edge(session, _edge_from_row(row))
 
 
 class PostgresTimeSeriesRepository:
@@ -846,6 +897,47 @@ async def _prepare_age_session(session: AsyncSqlSession) -> None:
     await session.execute('SET LOCAL search_path = ag_catalog, "$user", public')
 
 
+# The seven columns that make an edge: two rows equal in all seven are one edge.
+_EDGE_IDENTITY = """
+    tenant_id = %s
+    AND from_node_id = %s
+    AND to_node_id = %s
+    AND kind = %s
+    AND valid_from IS NOT DISTINCT FROM %s::date
+    AND valid_to IS NOT DISTINCT FROM %s::date
+    AND metadata = %s::jsonb
+"""
+
+
+def _edge_identity(edge: GraphEdge) -> tuple[object, ...]:
+    """Parameters for ``_EDGE_IDENTITY`` (and for an INSERT of the same edge)."""
+    return (
+        edge.tenant_id,
+        edge.from_node_id,
+        edge.to_node_id,
+        edge.kind.value,
+        edge.valid_from,
+        edge.valid_to,
+        dict(edge.metadata),
+    )
+
+
+def _node_exists_on(as_of: date | None, *, alias: str = "") -> tuple[str, tuple[object, ...]]:
+    """A WHERE clause keeping nodes not deleted: now when ``as_of`` is None, else by that day.
+
+    ``alias`` names the graph_nodes row in a join; it is one of this module's
+    literals, never caller input. The key is bound, not interpolated.
+    """
+    metadata = f"{alias}.metadata" if alias else "metadata"
+    deleted_on = f"{metadata}->>%s::text"
+    if as_of is None:
+        return f"{deleted_on} IS NULL", (DELETED_ON_METADATA_KEY,)
+    return (
+        f"({deleted_on} IS NULL OR ({deleted_on})::date > %s::date)",
+        (DELETED_ON_METADATA_KEY, DELETED_ON_METADATA_KEY, as_of),
+    )
+
+
 def _age_params(**values: str | None) -> str:
     """Serialize Cypher parameters for the ``cypher()`` third argument.
 
@@ -857,13 +949,14 @@ def _age_params(**values: str | None) -> str:
 
 
 def _node_from_row(row: Mapping[str, object]) -> GraphNode:
-    metadata = row.get("metadata")
+    metadata = _json_mapping(row.get("metadata"))
+    metadata.pop(DELETED_ON_METADATA_KEY, None)
     return GraphNode(
         tenant_id=str(row["tenant_id"]),
         id=str(row["id"]),
         kind=NodeKind(str(row["kind"])),
         name=str(row["name"]),
-        metadata=_json_mapping(metadata),
+        metadata=metadata,
     )
 
 

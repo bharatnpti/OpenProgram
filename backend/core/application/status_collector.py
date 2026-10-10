@@ -58,6 +58,7 @@ from core.application.status_summaries import (
     NON_STATUS_REPLY_SUMMARY,
     UNKNOWN_SUMMARY,
     TrackerUpdate,
+    answered_in_console,
     basis_status,
     clarification_cap_note,
     inferred_summary,
@@ -67,6 +68,7 @@ from core.application.status_summaries import (
     summary_with_tracker_updates,
     with_no_active_work,
 )
+from core.application.task_update_service import CHAT, stated_task_state, task_update_fact
 from core.application.team_context import (
     coordinates_team,
     gives_team_context,
@@ -1041,7 +1043,14 @@ class StatusCollector:
         if self._graph_repository is None:
             return {}
         nodes = {node.id: node for node in await self._graph_repository.list_nodes(tenant_id)}
-        edges = await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+        # The links in force now: one ended earlier is history and would map a
+        # moved task to the project it left.
+        today = datetime.now(tz=UTC).date()
+        edges = [
+            edge
+            for edge in await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+            if edge.is_active_on(today)
+        ]
         parent_of = {
             edge.to_node_id: edge.from_node_id
             for edge in edges
@@ -1094,6 +1103,47 @@ class StatusCollector:
                     as_of=status.as_of,
                     observed_at=checkin.replied_at,
                     correlation_id=checkin.correlation_id,
+                )
+            )
+
+    async def _record_task_updates(self, checkin: CheckIn, status: DeveloperStatus) -> None:
+        """Keep what the check-in said of each issue's state, for that task's row.
+
+        The console's task row shows the person's last statement on the task,
+        from the console or from chat: each finalized check-in records one
+        ``task_update`` fact per issue it named with a canonical state (the
+        write-back's reading of the claim). The fact carries the state only,
+        never the claim's note: a fact holds no reply or claim text. A claim
+        that names no state ("on track") records nothing.
+        """
+        if (
+            self._time_series_repository is None
+            or checkin.replied_at is None
+            or checkin.signals is None
+        ):
+            return
+        stated = {
+            claim.issue_key: state
+            for claim in checkin.signals.issue_updates
+            if claim.issue_key and (state := stated_task_state(claim)) is not None
+        }
+        if not stated:
+            return
+        name = await self._developer_display_name(checkin.tenant_id, checkin.developer_id)
+        for key, state in stated.items():
+            await self._time_series_repository.append_fact_once(
+                task_update_fact(
+                    tenant_id=checkin.tenant_id,
+                    task_id=key,
+                    issue_key=key,
+                    task_label=key,
+                    developer_id=checkin.developer_id,
+                    developer_name=name,
+                    as_of=status.as_of,
+                    observed_at=checkin.replied_at,
+                    correlation_id=checkin.correlation_id,
+                    via=CHAT,
+                    state=state,
                 )
             )
 
@@ -1745,6 +1795,11 @@ class StatusCollector:
             for turn in turns
         )
 
+    async def answered_in_console(self, tenant_id: str, developer_id: str, day: date) -> bool:
+        """Whether the person answered ``day`` in the console (``answered_in_console``)."""
+        status = await self._status_repository.latest_developer_status(tenant_id, developer_id, day)
+        return answered_in_console(status, day)
+
     async def record_non_response(
         self,
         *,
@@ -1756,7 +1811,8 @@ class StatusCollector:
     ) -> DeveloperStatus:
         """Close a check-in at the end of its ladder, with the status of the day.
 
-        A reply on record is finalized; otherwise the day is inferred, stale or
+        A reply on record is finalized; a status the person gave in the console
+        that day stands as it is; otherwise the day is inferred, stale or
         unknown, never confirmed. Either way the check-in's correlation is
         consumed: the check-in is closed, and a reply from now on is a late
         update for its day (G9), never a reply to an open question.
@@ -1789,6 +1845,15 @@ class StatusCollector:
             )
             if finalized is not None:
                 return finalized
+
+        answered = await self._status_repository.latest_developer_status(
+            tenant_id, developer_id, as_of
+        )
+        if answered is not None and answered_in_console(answered, as_of):
+            # The person gave the day's status in the console (a task update, a
+            # confirm or a correction): that is their answer, never overwritten
+            # by an inferred, stale or unknown one. The check-in still closes.
+            return answered
 
         inferred, no_active_work = await self._fallback_inference(
             tenant_id=tenant_id,
@@ -2492,6 +2557,7 @@ class StatusCollector:
         await self._append_blocker_resolved_facts(updated, status, reconciliation)
         await self._record_review_without_merge_request(updated, status)
         await self._record_issue_etas(updated, status)
+        await self._record_task_updates(updated, status)
         written = await self._maybe_write_back(updated, final_signals, closing=closing)
         status = await self._with_tracker_updates(status, written)
         # Send exactly one "Got it" ack per accepted reply. Gated on the
@@ -3036,6 +3102,7 @@ class StatusCollector:
         await self._append_blocker_resolved_facts(updated, status, reconciliation)
         await self._record_review_without_merge_request(updated, status)
         await self._record_issue_etas(updated, status)
+        await self._record_task_updates(updated, status)
         written = await self._late_update_write_back(updated, final_signals)
         status = await self._with_tracker_updates(status, written)
         await self._send_late_update_ack(checkin=updated, applied=written)

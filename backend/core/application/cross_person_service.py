@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -26,9 +26,11 @@ from core.domain.cross_person import (
     CrossPersonRequestResolution,
     CrossPersonRequestStatus,
     is_repeat_of,
+    may_set_status,
     new_cross_person_request,
     request_subject,
 )
+from core.domain.errors import AuthorizationDenied, OpenProgramError
 from core.domain.graph import EntityRef, FactEvent, JsonScalar, NodeKind
 from core.domain.llm import LlmRequest
 from core.domain.messaging import ChatUserRef, InboundMessage, OutboundMessage
@@ -42,6 +44,10 @@ _logger = structlog.get_logger(__name__)
 DEFAULT_NOTIFY_MAX_ATTEMPTS = 5
 DEFAULT_NOTIFY_RETRY_BACKOFF_SECONDS = 300
 DEFAULT_NOTIFY_RETRY_BATCH = 50
+
+
+class RequestStatusNotSettable(OpenProgramError):
+    """A status no one sets by hand: open, needs_resolution or dismissed."""
 
 
 def _utc_now() -> datetime:
@@ -102,7 +108,7 @@ class CrossPersonRequestService:
                 if stored.status is CrossPersonRequestStatus.NEEDS_RESOLUTION
                 else "opened"
             )
-            await self._append_fact(stored, transition=transition)
+            await self._append_fact(stored, transition=transition, changed_by=stored.requester_id)
             if self.auto_notify and stored.status is CrossPersonRequestStatus.OPEN:
                 stored = await self._notify_best_effort(stored)
             created.append(stored)
@@ -141,6 +147,8 @@ class CrossPersonRequestService:
         self,
         request: CrossPersonRequest,
         resolved_at: datetime,
+        *,
+        changed_by: str | None,
     ) -> tuple[CrossPersonRequest, ...]:
         """Resolve the still-open copies of an ask that has just been resolved.
 
@@ -148,6 +156,7 @@ class CrossPersonRequestService:
         would otherwise stay open after the ask itself was done. Only a clear
         match closes: the same requester, person and work, never a vague ask.
         The requester was told about the request itself, so not again here.
+        ``changed_by`` made the resolution, so each copy's fact names them too.
         """
         closed: list[CrossPersonRequest] = []
         for other in await self.repository.list_for_requester(
@@ -165,7 +174,11 @@ class CrossPersonRequestService:
                 from_statuses=_STILL_OPEN,
             )
             if updated is not None:
-                await self._append_fact(updated, transition=CrossPersonRequestStatus.RESOLVED.value)
+                await self._append_fact(
+                    updated,
+                    transition=CrossPersonRequestStatus.RESOLVED.value,
+                    changed_by=changed_by,
+                )
                 closed.append(updated)
         return tuple(closed)
 
@@ -260,7 +273,9 @@ class CrossPersonRequestService:
                 # Closed since it was listed: resolved, or superseded by a
                 # pass running beside this one, which recorded it.
                 continue
-            await self._append_fact(updated, transition=_SUPERSEDED, superseded_by=newer.id)
+            await self._append_fact(
+                updated, transition=_SUPERSEDED, changed_by=None, superseded_by=newer.id
+            )
             _logger.info(
                 "cross_person_request_superseded",
                 tenant_id=tenant_id,
@@ -324,9 +339,12 @@ class CrossPersonRequestService:
             # repository, a reply or the console. That pass tells the requester
             # (N24: Liam got the CHK-3 notice twice, a second apart).
             return None
-        await self._append_fact(updated, transition=CrossPersonRequestStatus.RESOLVED.value)
+        # The merge resolved it, not any member's act in OpenProgram.
+        await self._append_fact(
+            updated, transition=CrossPersonRequestStatus.RESOLVED.value, changed_by=None
+        )
         told = await self._told_about_a_copy(updated)
-        await self._close_repeats(updated, updated.updated_at)
+        await self._close_repeats(updated, updated.updated_at, changed_by=None)
         await self._settle_blockers(updated, updated.updated_at, merged=merged)
         if told:
             return updated
@@ -439,7 +457,7 @@ class CrossPersonRequestService:
         )
         if opened is None:
             return await self.repository.get(tenant_id, request_id)
-        await self._append_fact(opened, transition="opened")
+        await self._append_fact(opened, transition="opened", changed_by=opened.requester_id)
         if self.auto_notify:
             opened = await self._notify_best_effort(opened)
         return opened
@@ -636,12 +654,17 @@ class CrossPersonRequestService:
             # "on it"), or the merge pass or another reply closed it since it
             # was read, and that one told the requester.
             return await self.repository.get(request.tenant_id, request.id) or request
-        await self._append_fact(updated, transition=reading.status.value)
+        # Only the person asked replies in the DM thread or the inbox it routes.
+        await self._append_fact(
+            updated, transition=reading.status.value, changed_by=request.counterpart_id
+        )
         if reading.status is CrossPersonRequestStatus.RESOLVED:
             # What the resolution settles is stored before anyone is told, so
             # a failed DM cannot leave a copy or a blocker open behind it.
             told = await self._told_about_a_copy(updated)
-            await self._close_repeats(updated, message.received_at)
+            await self._close_repeats(
+                updated, message.received_at, changed_by=request.counterpart_id
+            )
             await self._settle_blockers(updated, message.received_at)
             if not told:
                 await self._notify_requester_resolved(updated)
@@ -657,9 +680,28 @@ class CrossPersonRequestService:
         tenant_id: str,
         request_id: str,
         status: CrossPersonRequestStatus,
+        *,
+        actor: str,
     ) -> CrossPersonRequest | None:
+        """Acknowledge or resolve a request by hand, as ``actor`` (a member id).
+
+        Only the person asked acknowledges, and only they or the requester
+        resolve (``may_set_status``): anyone else is refused, whatever their
+        role reads. The transition's fact names ``actor`` as who made it, at
+        the time it was made. None when there is no such request.
+        """
+        from_statuses = _SET_BY_HAND_FROM.get(status)
+        if from_statuses is None:
+            raise RequestStatusNotSettable(
+                "A request can only be acknowledged or resolved by hand; "
+                "OpenProgram records its other statuses."
+            )
         existing = await self.repository.get(tenant_id, request_id)
-        if existing is not None and existing.status is status:
+        if existing is None:
+            return None
+        if not may_set_status(existing, actor, status):
+            raise AuthorizationDenied(_SET_BY_HAND_REFUSAL[status])
+        if existing.status is status:
             # Resolving twice (a double click, a retried call) is not a second
             # transition, and must not tell the requester a second time.
             return existing
@@ -668,26 +710,23 @@ class CrossPersonRequestService:
             request_id,
             status,
             self.clock(),
+            from_statuses=from_statuses,
         )
         if updated is None:
-            # Missing, or a concurrent call made this change first and has
-            # told the requester: the request as it is now.
+            # A concurrent call made this change first and told the requester,
+            # or the request has moved on (resolved, or dismissed as a copy):
+            # the request as it is now.
             return await self.repository.get(tenant_id, request_id)
-        await self._append_fact(updated, transition=status.value)
+        await self._append_fact(updated, transition=status.value, changed_by=actor)
         if status is CrossPersonRequestStatus.RESOLVED:
             told = await self._told_about_a_copy(updated)
-            await self._close_repeats(updated, updated.updated_at)
+            await self._close_repeats(updated, updated.updated_at, changed_by=actor)
             await self._settle_blockers(updated, updated.updated_at)
-            if not told:
+            # A requester who resolved their own ask needs no notice, and the
+            # notice would say the person asked had done it.
+            if not told and actor != updated.requester_id:
                 await self._notify_requester_resolved(updated)
         return updated
-
-    async def get(
-        self,
-        tenant_id: str,
-        request_id: str,
-    ) -> CrossPersonRequest | None:
-        return await self.repository.get(tenant_id, request_id)
 
     async def list_portfolio(
         self,
@@ -882,8 +921,18 @@ class CrossPersonRequestService:
         request: CrossPersonRequest,
         *,
         transition: str,
+        changed_by: str | None,
         superseded_by: str | None = None,
     ) -> None:
+        """Record one transition of the request, and who made it.
+
+        ``changed_by`` is the member whose act it was: the requester whose
+        check-in stated the ask (or named who they meant), the person asked
+        when their reply moved it, or whoever acknowledged or resolved it by
+        hand; a copy closed with a resolution names whoever made that one.
+        None when OpenProgram moved it on its own: a merge resolved it, or a
+        newer copy of the same ask superseded it.
+        """
         if self.time_series_repository is None:
             return
         entity_ref = EntityRef(
@@ -905,6 +954,7 @@ class CrossPersonRequestService:
             "dependency_kind": _fact_kind(request),
             "dependency_status": _fact_status(request.status),
             "transition": transition,
+            "changed_by": changed_by,
             "summary": request.note,
             "first_seen_at": request.created_at.isoformat(),
             "last_seen_at": request.updated_at.isoformat(),
@@ -963,6 +1013,24 @@ def requester_notice_key(request_id: str, state: CrossPersonRequestStatus) -> st
 _CLOSED_STATUSES = frozenset(
     {CrossPersonRequestStatus.RESOLVED, CrossPersonRequestStatus.DISMISSED}
 )
+# The statuses a person sets by hand, each with the ones it moves a request
+# from: acknowledging takes an open ask on, and resolving also closes one
+# acknowledged or still waiting for its requester to say who they meant. A
+# closed request stays closed. OpenProgram records the other statuses.
+_SET_BY_HAND_FROM: Mapping[CrossPersonRequestStatus, tuple[CrossPersonRequestStatus, ...]] = {
+    CrossPersonRequestStatus.ACKNOWLEDGED: (CrossPersonRequestStatus.OPEN,),
+    CrossPersonRequestStatus.RESOLVED: (
+        CrossPersonRequestStatus.OPEN,
+        CrossPersonRequestStatus.ACKNOWLEDGED,
+        CrossPersonRequestStatus.NEEDS_RESOLUTION,
+    ),
+}
+_SET_BY_HAND_REFUSAL = {
+    CrossPersonRequestStatus.ACKNOWLEDGED: "Only the person this request asks can acknowledge it.",
+    CrossPersonRequestStatus.RESOLVED: (
+        "Only the person this request asks, or the person who raised it, can resolve it."
+    ),
+}
 # Asked of a named person and not yet done: what a repeat refreshes, and what
 # a resolution, a copy's or a merge's, closes.
 _STILL_OPEN = (CrossPersonRequestStatus.OPEN, CrossPersonRequestStatus.ACKNOWLEDGED)

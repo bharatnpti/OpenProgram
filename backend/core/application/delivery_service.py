@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 
 from core.application.persona_views import owned_project_tasks
@@ -63,6 +63,10 @@ class StageCountView:
 class TimelinePoint:
     day: date
     counts: Mapping[DeliveryStage, int]
+    #: Story points per stage that day, as the day's snapshot kept them.
+    points: Mapping[DeliveryStage, float] = field(default_factory=dict)
+    #: True when every requirement counted that day carried story points.
+    has_points: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -204,7 +208,8 @@ class DeliveryService:
         mapping = (await self.delivery_settings(tenant_id)).settings.mapping
         if project_ids is None:
             project_ids = [
-                node.id for node in await self._graph.list_nodes(tenant_id, NodeKind.PROJECT)
+                node.id
+                for node in await self._graph.list_nodes(tenant_id, NodeKind.PROJECT, as_of=day)
             ]
         wanted = list(dict.fromkeys([*project_ids, *(release.project_id for release in releases)]))
         owned = await owned_project_tasks(self._graph, tenant_id, wanted, day)
@@ -280,8 +285,9 @@ class DeliveryService:
             tenant_id, _scope_id(project_id, release), start, end
         )
 
-    async def is_project(self, tenant_id: str, project_id: str) -> bool:
-        node = await self._graph.get_node(tenant_id, project_id)
+    async def is_project(self, tenant_id: str, project_id: str, as_of: date | None = None) -> bool:
+        """Whether the id is a project: now, or on ``as_of`` (one deleted since still is)."""
+        node = await self._graph.get_node(tenant_id, project_id, as_of=as_of)
         return node is not None and node.kind is NodeKind.PROJECT
 
     async def scope_tasks(
@@ -308,7 +314,7 @@ class DeliveryService:
         days: int = DEFAULT_TIMELINE_DAYS,
         release: Release | None = None,
     ) -> RequirementsView:
-        project = await self._graph.get_node(tenant_id, project_id)
+        project = await self._graph.get_node(tenant_id, project_id, as_of=as_of)
         if project is None or project.kind is not NodeKind.PROJECT:
             raise GraphNotFound(f"project {project_id} not found for tenant {tenant_id}")
         if release is not None and release.project_id != project_id:
@@ -344,7 +350,7 @@ class DeliveryService:
         timeline = [snapshot for snapshot in history if snapshot.day < as_of]
         if current is not None:
             timeline.append(current)
-        names = await self._member_names(tenant_id)
+        names = await self._member_names(tenant_id, as_of)
         return _view(
             project=project,
             release=release,
@@ -364,10 +370,10 @@ class DeliveryService:
                 assigned.setdefault(edge.to_node_id, edge.from_node_id)
         return assigned
 
-    async def _member_names(self, tenant_id: str) -> dict[str, str]:
+    async def _member_names(self, tenant_id: str, as_of: date) -> dict[str, str]:
         return {
             node.id: node.name
-            for node in await self._graph.list_nodes(tenant_id, NodeKind.DEVELOPER)
+            for node in await self._graph.list_nodes(tenant_id, NodeKind.DEVELOPER, as_of=as_of)
         }
 
 
@@ -511,7 +517,12 @@ def _view(
         points_done=current.points_done if current else 0.0,
         stages=stages,
         timeline=tuple(
-            TimelinePoint(day=snapshot.day, counts=dict(snapshot.stage_counts))
+            TimelinePoint(
+                day=snapshot.day,
+                counts=dict(snapshot.stage_counts),
+                points=dict(snapshot.stage_points),
+                has_points=snapshot.has_points,
+            )
             for snapshot in timeline
         ),
         moves=stage_moves(previous, current) if current is not None else (),

@@ -118,8 +118,10 @@ class ForecastService:
 
     # ---- releases ------------------------------------------------------
 
-    async def releases(self, tenant_id: str, project_id: str) -> list[Release]:
-        await self._project(tenant_id, project_id)
+    async def releases(
+        self, tenant_id: str, project_id: str, *, as_of: date | None = None
+    ) -> list[Release]:
+        await self._project(tenant_id, project_id, as_of)
         return sorted(
             await self._releases.list_for_project(tenant_id, project_id),
             key=lambda release: release.name.casefold(),
@@ -220,7 +222,7 @@ class ForecastService:
 
     async def pod_projects(self, tenant_id: str, pod_id: str, as_of: date) -> list[GraphNode]:
         """The projects a pod works on, whose dates its scrum master sets."""
-        pod = await self._graph.get_node(tenant_id, pod_id)
+        pod = await self._graph.get_node(tenant_id, pod_id, as_of=as_of)
         if pod is None or pod.kind is not NodeKind.POD:
             raise GraphNotFound(f"No pod {pod_id!r}.")
         project_ids = {
@@ -233,14 +235,14 @@ class ForecastService:
         projects = [
             node
             for project_id in sorted(project_ids)
-            if (node := await self._graph.get_node(tenant_id, project_id)) is not None
+            if (node := await self._graph.get_node(tenant_id, project_id, as_of=as_of)) is not None
             and node.kind is NodeKind.PROJECT
         ]
         return projects
 
     async def runs_pod(self, tenant_id: str, pod_id: str, subject: str, as_of: date) -> bool:
         """Whether ``subject`` is the pod's scrum master contact or one of its members."""
-        pod = await self._graph.get_node(tenant_id, pod_id)
+        pod = await self._graph.get_node(tenant_id, pod_id, as_of=as_of)
         if pod is None or pod.kind is not NodeKind.POD:
             return False
         if pod.metadata.get("escalation_sm_member_id") == subject:
@@ -265,7 +267,7 @@ class ForecastService:
     async def project_delivery(
         self, tenant_id: str, project_id: str, as_of: date
     ) -> ProjectDeliveryView:
-        project = await self._project(tenant_id, project_id)
+        project = await self._project(tenant_id, project_id, as_of)
         changes = await self._commitments.changes_for_project(tenant_id, project_id)
         by_scope: dict[str, list[DateChange]] = {}
         for change in changes:
@@ -291,7 +293,7 @@ class ForecastService:
                 )
             )
         releases = []
-        for release in await self.releases(tenant_id, project_id):
+        for release in await self.releases(tenant_id, project_id, as_of=as_of):
             scope = CommitmentScope(
                 kind=CommitmentScopeKind.RELEASE, id=release.release_id, project_id=project_id
             )
@@ -493,25 +495,32 @@ class ForecastService:
             pod_keys=await self._pod_keys(tenant_id, project_id, tasks, as_of),
             names={
                 node.id: node.name
-                for node in await self._graph.list_nodes(tenant_id, NodeKind.DEVELOPER)
+                for node in await self._graph.list_nodes(tenant_id, NodeKind.DEVELOPER, as_of=as_of)
             },
         )
 
     async def _etas(self, tenant_id: str, keys: set[str]) -> dict[str, date]:
-        """The last day of each issue's latest check-in ETA, the assignee's first."""
+        """The last day of each issue's latest stated ETA, from a check-in or the console.
+
+        An ETA cleared in the console is recorded with no day: when it is the
+        latest, the issue has no ETA, so an earlier one no longer counts.
+        """
         facts = await self._facts.list_recent_facts(
             tenant_id, sources=(CHECKIN_DRIFT_FACT_SOURCE,), limit=_ETA_FACT_LIMIT
         )
-        latest: dict[str, tuple[datetime, date]] = {}
+        latest: dict[str, tuple[datetime, date | None]] = {}
         for fact in sorted(facts, key=lambda item: item.observed_at):
             payload = fact.payload
             key = payload.get("issue_key")
             if payload.get("kind") != ETA_STATED or not isinstance(key, str) or key not in keys:
                 continue
+            if "eta_date" in payload and payload["eta_date"] is None:
+                latest[key] = (fact.observed_at, None)
+                continue
             day = _iso_date(payload.get("eta_date"))
             if day is not None:
                 latest[key] = (fact.observed_at, day)
-        return {key: day for key, (_seen, day) in latest.items()}
+        return {key: day for key, (_seen, day) in latest.items() if day is not None}
 
     async def _pod_keys(
         self, tenant_id: str, project_id: str, tasks: Mapping[str, GraphNode], as_of: date
@@ -536,7 +545,7 @@ class ForecastService:
         ):
             if not edge.is_active_on(as_of):
                 continue
-            node = await self._graph.get_node(tenant_id, edge.to_node_id)
+            node = await self._graph.get_node(tenant_id, edge.to_node_id, as_of=as_of)
             if node is not None and node.kind is NodeKind.POD:
                 pods.append(node)
         return sorted(pods, key=lambda pod: pod.name.casefold())
@@ -554,8 +563,11 @@ class ForecastService:
             if release.project_id != scope.project_id:
                 raise GraphNotFound(f"No release {scope.id!r} in project {scope.project_id!r}.")
 
-    async def _project(self, tenant_id: str, project_id: str) -> GraphNode:
-        project = await self._graph.get_node(tenant_id, project_id)
+    async def _project(
+        self, tenant_id: str, project_id: str, as_of: date | None = None
+    ) -> GraphNode:
+        """The project, as of ``as_of`` when given: a past day still finds one deleted since."""
+        project = await self._graph.get_node(tenant_id, project_id, as_of=as_of)
         if project is None or project.kind is not NodeKind.PROJECT:
             raise GraphNotFound(f"No project {project_id!r}.")
         return project

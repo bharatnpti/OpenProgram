@@ -146,6 +146,19 @@ async def send_checkin_nudge_activity(payload: NudgeInput) -> NudgeResult:
                 status="already_replied",
             )
 
+        collector = registry.status_collector()
+        if await collector.answered_in_console(
+            payload.tenant_id, checkin.developer_id, date.fromisoformat(payload.as_of)
+        ):
+            # Answered in the console: nothing to nudge for, and the close-out
+            # leaves that status as it is.
+            return NudgeResult(
+                tenant_id=payload.tenant_id,
+                developer_id=checkin.developer_id,
+                correlation_id=payload.correlation_id,
+                status=SUPPRESSED_REPLIED,
+            )
+
         nudge = await repository.checkin_nudge_for(payload.tenant_id, payload.correlation_id, 1)
         if nudge is not None:
             return NudgeResult(
@@ -157,7 +170,7 @@ async def send_checkin_nudge_activity(payload: NudgeInput) -> NudgeResult:
                 or _pending_nudge_message_id(payload.correlation_id),
             )
 
-        nudge_message_id = await registry.status_collector().send_nudge(
+        nudge_message_id = await collector.send_nudge(
             tenant_id=payload.tenant_id,
             correlation_id=payload.correlation_id,
             developer_name=payload.developer_name,
@@ -203,7 +216,7 @@ async def send_escalation_step_activity(payload: EscalationStepInput) -> NudgeRe
         collector = registry.status_collector()
         target = EscalationTarget(payload.target)
         as_of = date.fromisoformat(payload.as_of)
-        developer_replied = await _developer_has_replied(registry, collector, checkin)
+        developer_replied = await _developer_has_replied(registry, collector, checkin, as_of)
         developer_available = True
         contact: EscalationContact | None = None
         # A replied person's rung is suppressed whoever it is for: nothing to look up.
@@ -256,16 +269,20 @@ async def send_escalation_step_activity(payload: EscalationStepInput) -> NudgeRe
 
 
 async def _developer_has_replied(
-    registry: ServiceRegistry, collector: StatusCollector, checkin: CheckIn
+    registry: ServiceRegistry, collector: StatusCollector, checkin: CheckIn, as_of: date
 ) -> bool:
     """Whether the person has answered this open check-in at all.
 
     ``replied_at`` stays unset until a reply is finalized, so on its own it
     reads a person whose reply drew a clarification as silent. Their reply is
     on record as a user turn on the check-in's correlation; a reply that has
-    arrived but still waits in the inbound buffer counts too.
+    arrived but still waits in the inbound buffer counts too, and so does the
+    day's status given in the console (a task update, a confirm or a
+    correction: ``answered_in_console``).
     """
     if await collector.has_reply_on_record(checkin):
+        return True
+    if await collector.answered_in_console(checkin.tenant_id, checkin.developer_id, as_of):
         return True
     return await _reply_waiting_in_inbound_buffer(registry, checkin)
 

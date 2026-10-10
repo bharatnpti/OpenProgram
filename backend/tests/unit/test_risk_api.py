@@ -13,6 +13,7 @@ from core.application.risk_service import RiskService
 from core.domain.risk import RiskProviderConfig
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.registry import ServiceRegistry
+from tests.fixtures.config_day import config_api_on
 
 AS_OF = "2026-07-01"
 
@@ -25,7 +26,10 @@ def _iso_days_ago(days: int) -> str:
 def _app_for_role(settings: Settings, role: str, store: InMemoryGraphStore) -> FastAPI:
     role_settings = settings.model_copy(update={"dev_principal_roles": role})
     registry = ServiceRegistry(role_settings, graph_store=store)
-    return create_app(settings=role_settings, registry=registry)
+    # Set up on the day read: a config link holds from the day it is made.
+    return config_api_on(
+        create_app(settings=role_settings, registry=registry), date.fromisoformat(AS_OF)
+    )
 
 
 def _seed_project_with_open_risk(admin_app: FastAPI, client: TestClient) -> None:

@@ -1,0 +1,188 @@
+[
+  {
+    "name": "01-today-developer.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1007" }
+  },
+  {
+    "name": "02-today-scrum-master.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1006" }
+  },
+  {
+    "name": "03-today-product-owner.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1003" }
+  },
+  {
+    "name": "04-today-manager.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
+  },
+  {
+    "name": "05-delivery-pod.png",
+    "path": "/delivery/pod/pod-payments",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
+  },
+  {
+    "name": "06-delivery-program-executive.png",
+    "path": "/delivery/program/program-digital",
+    "storage": { "openprogram.acting-as": "U1011" }
+  },
+  {
+    "name": "07-signals-risks.png",
+    "path": "/signals?view=risks",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
+  },
+  {
+    "name": "08-coordination.png",
+    "path": "/coordination",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
+  },
+  {
+    "name": "09-reports.png",
+    "path": "/reports",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
+  },
+  {
+    "name": "10-daily-manager.png",
+    "path": "/reports/project-checkout/daily",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
+  },
+  {
+    "name": "11-overall-admin.png",
+    "path": "/reports/project-checkout/overall",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" },
+    "wait": 2500
+  },
+  {
+    "name": "12-chat-developer.png",
+    "path": "/chat",
+    "storage": { "openprogram.acting-as": "U1002" }
+  },
+  {
+    "name": "13-admin-checkins.png",
+    "path": "/admin",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" },
+    "wait": 2500
+  },
+  {
+    "name": "14-admin-data-sources.png",
+    "path": "/admin?tab=sources",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "15-today-task-update.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1007" },
+    "full_page": false,
+    "steps": [
+      { "click": { "role": "button", "name": "Update Checkout error copy" } },
+      { "click": { "css": "form label", "text": "Done" } },
+      { "click": { "css": "form label", "text": "Also move" } },
+      { "click": { "css": "form textarea" } },
+      { "type": "Merged after Liam's review" }
+    ]
+  },
+  {
+    "name": "16-today-mobile.png",
+    "path": "/today",
+    "width": 390,
+    "storage": { "openprogram.acting-as": "U1006" }
+  },
+  {
+    "name": "17-command-palette.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" },
+    "full_page": false,
+    "steps": [{ "press": "Control+K" }, { "type": "pay" }]
+  },
+  {
+    "name": "18-past-day.png",
+    "path": "/today?asOf=2026-10-05",
+    "storage": { "openprogram.acting-as": "U1006" }
+  },
+  {
+    "name": "19-overall-delivery-date.png",
+    "path": "/reports/project-checkout/overall",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" },
+    "wait": 2500,
+    "full_page": false,
+    "steps": [{ "click": { "role": "button", "name": "Change date" } }]
+  },
+  {
+    "name": "20-overall-gate-dialog.png",
+    "path": "/reports/project-checkout/overall",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" },
+    "wait": 2500,
+    "full_page": false,
+    "steps": [{ "click": { "css": "table button", "text": "CHK-104" } }]
+  },
+  {
+    "name": "21-admin-integrations.png",
+    "path": "/admin?tab=integrations",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "22-admin-delivery-stages.png",
+    "path": "/admin?tab=stages",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "23-admin-gates.png",
+    "path": "/admin?tab=gates",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "24-admin-escalation.png",
+    "path": "/admin?tab=escalation",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "25-admin-branding.png",
+    "path": "/admin?tab=branding",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "26-admin-links.png",
+    "path": "/admin?tab=links",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "27-admin-directory.png",
+    "path": "/admin?tab=directory",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "28-admin-entities.png",
+    "path": "/admin?tab=entities",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "29-admin-escalation-contacts.png",
+    "path": "/admin?tab=contacts",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "admin" }
+  },
+  {
+    "name": "30-today-scrum-master-checkins.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1006" },
+    "steps": [{ "click": { "role": "button", "name": "Check-ins today" } }]
+  },
+  {
+    "name": "31-assistant.png",
+    "path": "/today",
+    "storage": { "openprogram.acting-as": "U1006" },
+    "full_page": false,
+    "steps": [
+      { "click": { "role": "button", "name": "Ask Ora" } },
+      { "click": { "css": "[role=dialog] ul button", "text": "blocking" } },
+      { "wait": 1200 }
+    ]
+  },
+  {
+    "name": "32-delivery-project-no-date.png",
+    "path": "/delivery/project/project-insights",
+    "storage": { "openprogram.acting-as": "U1001", "openprogram.active-role": "mgr" }
+  }
+]

@@ -42,6 +42,11 @@ CLARIFICATION_CAP_LEAD = "Clarification cap reached:"
 # Opens the summary of a status recorded from a reply that came after its
 # check-in closed, with the time it came (G9): "Late update 15:11 UTC: ...".
 LATE_UPDATE_LEAD = "Late update"
+# Opens the summary of a status written from the day's task updates in the
+# console, when no reply was on record that day: "Updated tasks in OpenProgram:
+# CHK-4 in review, ETA Oct 9." The summary is rebuilt from the day's updates
+# while it still opens with this lead; any other summary is the person's own.
+TASK_UPDATE_LEAD = "Updated tasks in OpenProgram:"
 # The placeholder blocker a non-response status carries when nothing is open.
 NO_REPLY_BLOCKER = "no confirmed reply"
 # Who made a tracker update a summary sentence is marked with (N48): "CHK-17
@@ -235,6 +240,22 @@ def stale_summary(basis: DeveloperStatus | None) -> str:
         f"{NON_RESPONSE_LEAD} Last known {basis.source.value} status on {day}: "
         f"{reported_text(basis.summary)}"
     )
+
+
+def answered_in_console(status: DeveloperStatus | None, day: date) -> bool:
+    """Whether the person gave ``day``'s status themselves in the console.
+
+    The one rule the check-in ladder reads for an answer that came outside
+    chat: a confirm or a correction (``developer_confirmed``), or a task update
+    (a summary under ``TASK_UPDATE_LEAD``, which stays while the day's console
+    updates rebuild it). Such a day is answered: no nudge or escalation goes
+    out for it, and its close-out leaves the status as it is. A chat reply
+    needs no such mark: it sets the check-in's ``replied_at``, or leaves user
+    turns on its correlation (``StatusCollector.has_reply_on_record``).
+    """
+    if status is None or status.as_of != day:
+        return False
+    return status.developer_confirmed or status.summary.startswith(TASK_UPDATE_LEAD)
 
 
 def confirmed_summary(

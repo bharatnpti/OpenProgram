@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -13,6 +14,7 @@ from core.domain.cross_person import (
     CrossPersonRequestKind,
     CrossPersonRequestStatus,
 )
+from core.domain.graph import FactEvent
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from infra.registry import ServiceRegistry
 
@@ -118,10 +120,47 @@ def test_my_cross_person_requests_relation_filter(settings: Settings) -> None:
     assert raised_none["requests"] == []
 
 
+def test_my_raised_requests_hold_an_ask_nobody_was_matched_to(settings: Settings) -> None:
+    """An ask whose person was not matched waits on its requester, so it is theirs to see.
+
+    It has no counterpart, so it is in no inbox. Listing only open and
+    acknowledged asks told its requester "no open asks of others" for the one
+    ask that was waiting on them to say who was meant. A closed ask still goes.
+    """
+    store = InMemoryGraphStore()
+    for request_id, status in (
+        ("xreq-unmatched", CrossPersonRequestStatus.NEEDS_RESOLUTION),
+        ("xreq-resolved", CrossPersonRequestStatus.RESOLVED),
+        ("xreq-dismissed", CrossPersonRequestStatus.DISMISSED),
+    ):
+        asyncio.run(_seed_unmatched_request(store, request_id=request_id, status=status))
+
+    requester = _app_for_role(settings, "dev", "dev-1", store)
+    with TestClient(requester) as client:
+        raised = client.get("/me/cross-person-requests?relation=raised").json()
+        both = client.get("/me/cross-person-requests?relation=both").json()
+        waiting = client.get("/me/cross-person-requests").json()
+    assert [request["id"] for request in raised["requests"]] == ["xreq-unmatched"]
+    assert raised["requests"][0]["status"] == "needs_resolution"
+    assert raised["requests"][0]["counterpart_id"] is None
+    assert raised["requests"][0]["delivery"] is None
+    assert [request["id"] for request in both["requests"]] == ["xreq-unmatched"]
+    # Nobody was asked, so it is in no inbox: `waiting` is unchanged.
+    assert waiting["requests"] == []
+
+    someone_else = _app_for_role(settings, "dev", "dev-2", store)
+    with TestClient(someone_else) as client:
+        for relation in ("raised", "both", "waiting"):
+            assert client.get(f"/me/cross-person-requests?relation={relation}").json() == {
+                "requests": []
+            }
+
+
 def test_update_cross_person_request_status(settings: Settings) -> None:
+    """The person asked acknowledges the request: it is theirs to take on."""
     store = InMemoryGraphStore()
     asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.OPEN))
-    app = _app_for_role(settings, "admin", "admin-user", store)
+    app = _app_for_role(settings, "dev", "U-alice", store)
 
     with TestClient(app) as client:
         response = client.post(
@@ -138,12 +177,28 @@ def test_update_cross_person_request_status(settings: Settings) -> None:
     assert stored.status is CrossPersonRequestStatus.ACKNOWLEDGED
 
 
-def test_update_cross_person_request_status_denies_unrelated_developer(
-    settings: Settings,
+# Every role that reads the portfolio board, and people who are on no request.
+_NOT_ON_THE_REQUEST = [
+    ("admin", "admin-user"),
+    ("mgr", "mgr-user"),
+    ("exec", "exec-user"),
+    ("sm", "sm-user"),
+    ("po", "po-user"),
+    ("dev", "U-someone-else"),
+]
+
+
+@pytest.mark.parametrize(
+    ("role", "subject"),
+    # The requester waits on the ask; only the person asked takes it on.
+    [*_NOT_ON_THE_REQUEST, ("dev", "dev-1")],
+)
+def test_nobody_but_the_person_asked_acknowledges_a_request(
+    settings: Settings, role: str, subject: str
 ) -> None:
     store = InMemoryGraphStore()
     asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.OPEN))
-    app = _app_for_role(settings, "dev", "U-someone-else", store)
+    app = _app_for_role(settings, role, subject, store)
 
     with TestClient(app) as client:
         response = client.post(
@@ -152,6 +207,136 @@ def test_update_cross_person_request_status_denies_unrelated_developer(
         )
 
     assert response.status_code == 403
+    assert response.json()["detail"] == "Only the person this request asks can acknowledge it."
+    stored = asyncio.run(store.get("demo", "xreq-1"))
+    assert stored is not None
+    assert stored.status is CrossPersonRequestStatus.OPEN
+    assert asyncio.run(_status_facts(store)) == []
+
+
+@pytest.mark.parametrize("subject", ["U-alice", "dev-1"])
+def test_the_person_asked_or_the_requester_resolves_a_request(
+    settings: Settings, subject: str
+) -> None:
+    store = InMemoryGraphStore()
+    asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.ACKNOWLEDGED))
+    app = _app_for_role(settings, "dev", subject, store)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/cross-person-requests/xreq-1/status",
+            json={"status": "resolved"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "resolved"
+    stored = asyncio.run(store.get("demo", "xreq-1"))
+    assert stored is not None
+    assert stored.status is CrossPersonRequestStatus.RESOLVED
+
+
+@pytest.mark.parametrize(("role", "subject"), _NOT_ON_THE_REQUEST)
+def test_nobody_else_resolves_a_request_whatever_their_role_reads(
+    settings: Settings, role: str, subject: str
+) -> None:
+    store = InMemoryGraphStore()
+    asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.OPEN))
+    app = _app_for_role(settings, role, subject, store)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/cross-person-requests/xreq-1/status",
+            json={"status": "resolved"},
+        )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == (
+        "Only the person this request asks, or the person who raised it, can resolve it."
+    )
+    stored = asyncio.run(store.get("demo", "xreq-1"))
+    assert stored is not None
+    assert stored.status is CrossPersonRequestStatus.OPEN
+    assert asyncio.run(_status_facts(store)) == []
+
+
+@pytest.mark.parametrize("status", ["open", "needs_resolution", "dismissed"])
+def test_statuses_openprogram_records_are_not_set_by_hand(settings: Settings, status: str) -> None:
+    store = InMemoryGraphStore()
+    asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.ACKNOWLEDGED))
+    app = _app_for_role(settings, "dev", "U-alice", store)
+
+    with TestClient(app) as client:
+        response = client.post("/cross-person-requests/xreq-1/status", json={"status": status})
+
+    assert response.status_code == 422
+    stored = asyncio.run(store.get("demo", "xreq-1"))
+    assert stored is not None
+    assert stored.status is CrossPersonRequestStatus.ACKNOWLEDGED
+
+
+def test_each_status_change_names_who_made_it_and_when(settings: Settings) -> None:
+    store = InMemoryGraphStore()
+    asyncio.run(_seed_request(store, status=CrossPersonRequestStatus.OPEN))
+
+    with TestClient(_app_for_role(settings, "dev", "U-alice", store)) as client:
+        assert client.post(
+            "/cross-person-requests/xreq-1/status", json={"status": "acknowledged"}
+        ).is_success
+    acknowledged = asyncio.run(store.get("demo", "xreq-1"))
+    with TestClient(_app_for_role(settings, "dev", "dev-1", store)) as client:
+        assert client.post(
+            "/cross-person-requests/xreq-1/status", json={"status": "resolved"}
+        ).is_success
+    resolved = asyncio.run(store.get("demo", "xreq-1"))
+
+    assert acknowledged is not None and resolved is not None
+    facts = asyncio.run(_status_facts(store))
+    assert len(facts) == 2
+    assert {
+        fact.payload["transition"]: (fact.payload["changed_by"], fact.observed_at) for fact in facts
+    } == {
+        "acknowledged": ("U-alice", acknowledged.updated_at),
+        "resolved": ("dev-1", resolved.updated_at),
+    }
+    assert acknowledged.updated_at > _ASKED_AT
+
+
+def test_an_unmatched_request_is_resolved_by_its_requester_and_acknowledged_by_nobody(
+    settings: Settings,
+) -> None:
+    """Nobody is asked yet, so there is no one to acknowledge it."""
+    store = InMemoryGraphStore()
+    asyncio.run(
+        _seed_request(store, status=CrossPersonRequestStatus.NEEDS_RESOLUTION, counterpart_id=None)
+    )
+
+    with TestClient(_app_for_role(settings, "dev", "dev-1", store)) as client:
+        acknowledged = client.post(
+            "/cross-person-requests/xreq-1/status", json={"status": "acknowledged"}
+        )
+        resolved = client.post("/cross-person-requests/xreq-1/status", json={"status": "resolved"})
+
+    assert acknowledged.status_code == 403
+    assert resolved.status_code == 200
+    assert resolved.json()["status"] == "resolved"
+
+
+def test_an_unknown_request_is_not_found(settings: Settings) -> None:
+    store = InMemoryGraphStore()
+    app = _app_for_role(settings, "dev", "U-alice", store)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/cross-person-requests/xreq-missing/status", json={"status": "resolved"}
+        )
+
+    assert response.status_code == 404
+
+
+async def _status_facts(store: InMemoryGraphStore) -> list[FactEvent]:
+    """The transitions recorded for the request since it was seeded."""
+    facts = await store.list_recent_facts("demo", sources=("cross_person_request",))
+    return [fact for fact in facts if fact.payload.get("request_id") == "xreq-1"]
 
 
 def _app_for_role(
@@ -161,7 +346,12 @@ def _app_for_role(
     store: InMemoryGraphStore,
 ) -> FastAPI:
     role_settings = settings.model_copy(
-        update={"dev_principal_roles": role, "dev_principal_subject": subject}
+        update={
+            "dev_principal_roles": role,
+            "dev_principal_subject": subject,
+            # A resolution tells the requester; the fake keeps that offline.
+            "chat_provider": "fake",
+        }
     )
     registry = ServiceRegistry(role_settings, graph_store=store)
     return create_app(settings=role_settings, registry=registry)
@@ -195,10 +385,39 @@ async def _seed_undelivered_request(
     )
 
 
+async def _seed_unmatched_request(
+    store: InMemoryGraphStore,
+    *,
+    request_id: str,
+    status: CrossPersonRequestStatus,
+) -> None:
+    """A request raised by dev-1 whose named person matched nobody: no counterpart, no DM."""
+    await store.create(
+        CrossPersonRequest(
+            tenant_id="demo",
+            id=request_id,
+            requester_id="dev-1",
+            requester_chat_ref="U-dev",
+            counterpart_id=None,
+            kind=CrossPersonRequestKind.REVIEW,
+            note="Needs a reviewer assigned to the release MR",
+            source_correlation_id="corr-2",
+            status=status,
+            created_at=datetime(2026, 1, 10, 9, 10, tzinfo=UTC),
+            updated_at=datetime(2026, 1, 10, 9, 10, tzinfo=UTC),
+            raw_name="reviewer",
+        )
+    )
+
+
+_ASKED_AT = datetime(2026, 1, 10, 9, 10, tzinfo=UTC)
+
+
 async def _seed_request(
     store: InMemoryGraphStore,
     *,
     status: CrossPersonRequestStatus,
+    counterpart_id: str | None = "U-alice",
 ) -> None:
     await store.create(
         CrossPersonRequest(
@@ -206,13 +425,13 @@ async def _seed_request(
             id="xreq-1",
             requester_id="dev-1",
             requester_chat_ref="U-dev",
-            counterpart_id="U-alice",
+            counterpart_id=counterpart_id,
             kind=CrossPersonRequestKind.REVIEW,
             note="API schema review",
             source_correlation_id="corr-1",
             status=status,
-            created_at=datetime(2026, 1, 10, 9, 10, tzinfo=UTC),
-            updated_at=datetime(2026, 1, 10, 9, 10, tzinfo=UTC),
+            created_at=_ASKED_AT,
+            updated_at=_ASKED_AT,
             raw_name="Alice Chen",
             email="alice@example.com",
             counterpart_display_name="Alice Chen",

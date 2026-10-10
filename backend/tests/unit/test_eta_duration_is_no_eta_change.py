@@ -145,7 +145,7 @@ async def test_sofias_duration_is_recorded_as_a_window_and_no_eta_change() -> No
         ("CHK-14", "2026-10-06", "2026-10-07")
     ]
     assert await _feed_summaries(store) == [
-        "Check-in updated for Sofia Bergmann: confirmed, 0 blocker(s)"
+        "Check-in updated for Sofia Bergmann: confirmed, 0 blockers"
     ]
 
 
@@ -160,5 +160,5 @@ async def test_an_eta_pushed_by_two_days_is_still_an_eta_change() -> None:
     status = await store.latest_developer_status(_TENANT, _SOFIA, _DAY)
     assert status is not None and status.eta_change_days == 2
     assert await _feed_summaries(store) == [
-        "Check-in updated for Sofia Bergmann: confirmed, 0 blocker(s), eta change +2d"
+        "Check-in updated for Sofia Bergmann: confirmed, 0 blockers, eta change +2d"
     ]

@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from core.application.blocker_lifecycle import BlockerLifecycleService
 from core.application.blocker_resolution import BlockerResolutionService
 from core.application.persona_views import BlockerDetailView
+from core.application.rollup_service import PersonRollups, refresh_person_rollups
 from core.application.status_summaries import NO_REPLY_BLOCKER, basis_status, confirmed_summary
 from core.domain.blockers import (
     BlockerReconciliation,
@@ -28,6 +29,10 @@ class SelfStatusService:
     Confirming an inferred, stale, unknown or carried-forward status records
     what was confirmed -- an earlier day's status with its date, or what the
     inference was drawn from -- not the "no confirmed check-in" wording.
+
+    After either write the person's trees are rolled up again (``rollups``),
+    so their pod reads the confirmed status at once, not at the next hourly
+    rollup.
     """
 
     def __init__(
@@ -35,10 +40,12 @@ class SelfStatusService:
         status_repository: StatusRepository,
         blocker_lifecycle: BlockerLifecycleService | None = None,
         blocker_resolution: BlockerResolutionService | None = None,
+        rollups: PersonRollups | None = None,
     ) -> None:
         self._status_repository = status_repository
         self._blockers = blocker_lifecycle or BlockerLifecycleService(status_repository)
         self._blocker_resolution = blocker_resolution
+        self._rollups = rollups
 
     async def my_status(
         self,
@@ -116,6 +123,7 @@ class SelfStatusService:
             confirmed_at=now,
         )
         await self._blockers.persist_with_status(confirmed, reconciliation)
+        await refresh_person_rollups(self._rollups, tenant_id, developer_id, as_of)
         return confirmed
 
     async def correct(
@@ -161,6 +169,7 @@ class SelfStatusService:
             confirmed_at=now,
         )
         await self._blockers.persist_with_status(corrected, reconciliation)
+        await refresh_person_rollups(self._rollups, tenant_id, developer_id, as_of)
         return corrected
 
     async def _reconcile(

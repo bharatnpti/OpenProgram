@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 
@@ -19,7 +19,11 @@ from core.application.persona_views import (
     TreeNodeView,
     WorkstreamProgressView,
 )
-from core.application.portfolio_feed_service import DEFAULT_FEED_SOURCES, PortfolioFeedService
+from core.application.portfolio_feed_service import (
+    DEFAULT_FEED_SOURCES,
+    PortfolioFeedService,
+    state_label,
+)
 from core.application.risk_service import RiskService
 from core.application.rollup_service import NO_WORK_REASON
 from core.application.status_summaries import NO_REPLY_BLOCKER
@@ -301,7 +305,7 @@ class SearchGraphNodesTool:
         query = _string_argument(arguments.get("query"))
         kinds = _kinds_argument(arguments.get("kinds"))
         limit = _bounded_int(arguments.get("limit"), default=10, maximum=25)
-        nodes = await self.repository.list_nodes(self.tenant_id)
+        nodes = await self.repository.list_nodes(self.tenant_id, as_of=self.as_of)
         in_use = workstreams_in_use(
             nodes,
             await self.repository.list_edges(self.tenant_id, kind=EdgeKind.CONTAINS),
@@ -328,6 +332,23 @@ class SearchGraphNodesTool:
         ]
         matches = [_search_match(node, in_use) for node in nodes[:limit]]
         return json.dumps(matches, ensure_ascii=False)
+
+
+# The details keys that hold a tracker or work-item state ("in_progress").
+_STATE_DETAILS = ("state", "from_state", "to_state")
+
+
+def _spoken_states(details: Mapping[str, JsonScalar]) -> dict[str, JsonScalar]:
+    """A fact's details with its states in words ("In progress", not "in_progress").
+
+    A model that is handed ``in_progress`` writes it into the answer as it came.
+    """
+    return {
+        key: state_label(value)
+        if key in _STATE_DETAILS and isinstance(value, str) and value
+        else value
+        for key, value in details.items()
+    }
 
 
 def _search_match(node: GraphNode, in_use: frozenset[str]) -> dict[str, object]:
@@ -429,7 +450,7 @@ class GraphNeighborsTool:
                 if self._wanted(edge, kinds):
                     found.append(("in", edge.kind.value, edge.from_node_id))
 
-        nodes = await self.repository.list_nodes(self.tenant_id)
+        nodes = await self.repository.list_nodes(self.tenant_id, as_of=self.as_of)
         # An empty workstream is optional set-up, no relation worth naming.
         in_use = workstreams_in_use(
             nodes,
@@ -442,7 +463,7 @@ class GraphNeighborsTool:
         found = [item for item in found if item[2] not in empty][:limit]
         wanted = {neighbor for _, _, neighbor in found}
         names = {node.id: node for node in nodes if node.id in wanted}
-        node = await self.repository.get_node(self.tenant_id, node_id)
+        node = await self.repository.get_node(self.tenant_id, node_id, as_of=self.as_of)
         return json.dumps(
             {
                 "node": (
@@ -558,7 +579,7 @@ class RecentFactsTool:
                         "entity_kind": item.entity_ref.kind.value,
                         "entity_id": item.entity_ref.id,
                         "observed_at": item.observed_at.isoformat(),
-                        "details": dict(item.details),
+                        "details": _spoken_states(item.details),
                     }
                     for item in items[:limit]
                 ],
@@ -722,7 +743,7 @@ class StatusReasonsTool:
     async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
         node_id = _required_string(arguments.get("node_id"), "node_id")
         as_of = _snapshot_date(arguments.get("as_of"), self.as_of)
-        node = await self.repository.get_node(self.tenant_id, node_id)
+        node = await self.repository.get_node(self.tenant_id, node_id, as_of=as_of)
         if node is None:
             raise GraphNotFound(
                 f"{node_id} not found; search_graph_nodes finds a program, project, "
@@ -742,7 +763,7 @@ class StatusReasonsTool:
         tree = await self.service.program_tree(self.tenant_id, node_id, as_of)
         labels = {
             graph_node.id: node_label(graph_node)
-            for graph_node in await self.repository.list_nodes(self.tenant_id)
+            for graph_node in await self.repository.list_nodes(self.tenant_id, as_of=as_of)
         }
         beneath = {tree_node.id for tree_node in tree.nodes}
         risks = [
@@ -836,7 +857,7 @@ class PortfolioHeatmapTool:
         kinds = set(_kinds_argument(arguments.get("kinds")))
         limit = _bounded_int(arguments.get("limit"), default=60, maximum=100)
         view = await self.service.portfolio_heatmap(self.tenant_id, as_of, program_root_id)
-        names = await _node_names(self.repository, self.tenant_id)
+        names = await _node_names(self.repository, self.tenant_id, as_of)
         return json.dumps(
             _portfolio_heatmap_payload(view, names, kinds=kinds, limit=limit),
             ensure_ascii=False,
@@ -893,7 +914,7 @@ class OpenRisksTool:
         if workstream_id is not None:
             risks = [risk for risk in risks if risk.workstream_id == workstream_id]
             drift = [finding for finding in drift if finding.workstream_id == workstream_id]
-        names = await _node_names(self.repository, self.tenant_id)
+        names = await _node_names(self.repository, self.tenant_id, self.as_of)
         return json.dumps(
             {
                 "as_of": self.as_of.isoformat(),
@@ -1143,7 +1164,7 @@ class AskService:
         )
         response = await self._tool_agent.run(request, tools)
         parsed = _parse_answer(response.text)
-        nodes = await _nodes_by_any_id(self._graph_repository, principal.tenant_id)
+        nodes = await _nodes_by_any_id(self._graph_repository, principal.tenant_id, asked_for)
         labelled = _nodes_by_label(nodes)
         answer = _without_raw_ids(_tidy_lines(parsed.answer), nodes) or _NO_ANSWER
         references = _references(parsed, nodes, labelled) or _named_in(answer, labelled)
@@ -1411,26 +1432,16 @@ def _clean_answer(text: str) -> tuple[str, list[str]]:
     """The answer's own lines, and the items of every references line cut from it.
 
     A line that starts with References, Refs, Sources or Citations and a colon
-    goes, with the list under it when it has none of its own; a trailing
-    "(References: ...)" or "References: [...]" goes from the end of a line.
-    Code fences and a leading "Answer:" go too.
+    goes, with the list under it when it has none of its own, and a "[" list
+    that runs over several lines goes whole; a trailing "(References: ...)" or
+    "References: [...]" goes from the end of a line. Code fences and a leading
+    "Answer:" go too.
     """
     kept: list[str] = []
     cited: list[str] = []
-    listing = False
-    for line in text.splitlines():
-        if _FENCE_LINE.match(line):
-            continue
-        if listing:
-            entry = _LIST_ITEM.match(line)
-            if entry is not None or line.strip().startswith("[") or not line.strip():
-                cited.extend(_reference_items(entry.group("item") if entry else line))
-                continue
-            listing = False
-        heading = _REFERENCES_LINE.match(line)
-        if heading is not None:
-            cited.extend(_reference_items(heading.group("items")))
-            listing = not heading.group("items").strip()
+    for line, listed in _reference_lines(text.splitlines()):
+        if listed is not None:
+            cited.extend(_reference_items(listed))
             continue
         trailing = _TRAILING_REFERENCES.search(line) or _TRAILING_REFERENCE_LIST.search(line)
         if trailing is not None:
@@ -1438,6 +1449,56 @@ def _clean_answer(text: str) -> tuple[str, list[str]]:
             line = line[: trailing.start()]
         kept.append(line)
     return _ANSWER_LABEL.sub("", "\n".join(kept).strip(), count=1).strip(), cited
+
+
+def _reference_lines(lines: Iterable[str]) -> Iterator[tuple[str, str | None]]:
+    """Each line of a reply as ``(line, None)``, or ``("", list)`` for a references list.
+
+    A references heading and the bullets or ``[...]`` under a bare one belong to
+    the list. So does an array written one id to a line, as a model pretty-prints
+    it: "References: [" or a bare heading and a "[" line open it, and it runs to
+    the line that closes it, or to the end of the reply when that was cut off.
+    Its lines are given whole, newlines kept, for ``_reference_items`` to read.
+    """
+    listing = False
+    opened: list[str] = []
+    for line in lines:
+        if _FENCE_LINE.match(line):
+            continue
+        if opened or (listing and _opens_list(line)):
+            opened.append(line)
+            if not _is_open("\n".join(opened)):
+                yield "", "\n".join(opened)
+                opened = []
+            continue
+        if listing:
+            entry = _LIST_ITEM.match(line)
+            if entry is not None or line.strip().startswith("[") or not line.strip():
+                yield "", entry.group("item") if entry else line
+                continue
+            listing = False
+        heading = _REFERENCES_LINE.match(line)
+        if heading is None:
+            yield line, None
+            continue
+        items = heading.group("items")
+        if _opens_list(items):
+            opened = [items]
+        else:
+            yield "", items
+            listing = not items.strip()
+    if opened:
+        yield "", "\n".join(opened)
+
+
+def _opens_list(text: str) -> bool:
+    """Whether ``text`` opens a "[" list that it does not close itself."""
+    return text.strip().startswith("[") and _is_open(text)
+
+
+def _is_open(text: str) -> bool:
+    """Whether ``text`` has more "[" than "]", so a list in it is still being written."""
+    return text.count("[") > text.count("]")
 
 
 def _unique(items: Sequence[str]) -> tuple[str, ...]:
@@ -1560,13 +1621,15 @@ def node_label(node: GraphNode) -> str | None:
     return name
 
 
-async def _nodes_by_any_id(repository: GraphRepository, tenant_id: str) -> dict[str, GraphNode]:
-    """Every node by its id, and each member also by their chat id.
+async def _nodes_by_any_id(
+    repository: GraphRepository, tenant_id: str, as_of: date
+) -> dict[str, GraphNode]:
+    """Every node of ``as_of`` by its id, and each member also by their chat id.
 
     A model may cite a person by the chat id a tool showed it. A member's own
     node id always wins over another member's chat id.
     """
-    nodes = await repository.list_nodes(tenant_id)
+    nodes = await repository.list_nodes(tenant_id, as_of=as_of)
     by_id: dict[str, GraphNode] = {}
     for node in nodes:
         chat_id = _string_metadata(node, "chat_external_id")
@@ -1797,7 +1860,7 @@ def _workstream_flow_payload(view: WorkstreamFlowView) -> dict[str, object]:
             {
                 "id": item.id,
                 "name": item.name,
-                "state": item.state,
+                "state": state_label(item.state),
                 "item_type": item.item_type,
                 "repo": item.repo,
                 "branch": item.branch,
@@ -1965,11 +2028,11 @@ def _drift_payload(finding: DriftFinding, names: Mapping[str, str]) -> dict[str,
     }
 
 
-async def _node_names(repository: GraphRepository, tenant_id: str) -> dict[str, str]:
-    """Names by node id, leaving out a person whose only name is their raw id."""
+async def _node_names(repository: GraphRepository, tenant_id: str, as_of: date) -> dict[str, str]:
+    """Names by node id as of ``as_of``, leaving out a person whose only name is their raw id."""
     return {
         node.id: node.name
-        for node in await repository.list_nodes(tenant_id)
+        for node in await repository.list_nodes(tenant_id, as_of=as_of)
         if node.name and not (node.kind is NodeKind.DEVELOPER and node.name == node.id)
     }
 

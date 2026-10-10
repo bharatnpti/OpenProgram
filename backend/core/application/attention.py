@@ -1060,14 +1060,19 @@ def _finding_clauses(
     drift: Sequence[DriftFinding],
     drivers: Sequence[_Driver],
 ) -> list[str]:
-    """Open risks and drift the tiles do not already carry, for the second line."""
+    """Open risks and drift the tiles do not already carry, for the second line.
+
+    The line keeps only the first few, so the risks come worst first, then oldest
+    first, as the signals list does: a younger risk never takes the place of an
+    older one.
+    """
     carried = {driver.item for driver in drivers if driver.kind is DriverKind.DRIFT and driver.item}
     clauses: list[str] = []
     for drift_finding in drift:
         key = day.graph.label(drift_finding.entity_ref.id)
         if key is None or key not in carried:
             clauses.append(_drift_finding_words(drift_finding, key, day))
-    for risk in risks:
+    for risk in sorted(risks, key=lambda found: (-_SEVERITY[found.severity], -found.age_days)):
         key = day.graph.label(risk.entity_ref.id)
         if key is None or key not in carried:
             clauses.append(_risk_words(risk, key))

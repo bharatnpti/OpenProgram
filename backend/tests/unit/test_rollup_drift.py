@@ -200,6 +200,11 @@ def _drift(status: NodeStatus) -> list[str]:
     return [factor.description for factor in status.factors if factor.kind is FactorKind.DRIFT]
 
 
+def _worded(status: NodeStatus) -> list[str]:
+    """A cell's drift reasons, without the count of days: it depends on when this runs."""
+    return sorted(re.sub(r"open \d+ days", "open N days", reason) for reason in _drift(status))
+
+
 _TEAMS = ("pod-platform", "pod-payments", "pod-identity", "project-checkout", "project-identity")
 
 
@@ -440,6 +445,49 @@ async def test_an_ageing_merge_request_with_a_disclosed_blocker_is_no_drift() ->
 
     assert noah.rag is Rag.AMBER  # the blocker, said by him
     assert _drift(noah) == []
+
+
+async def test_two_ageing_merge_requests_of_one_person_each_name_their_own_issue() -> None:
+    # One person's checkout-api !3 (CHK-6, Payments) and identity-service !1 (IDP-4,
+    # Identity) have both been open 3 days: the portfolio read kept one of them,
+    # so the cell, Payments and Checkout never named CHK-6.
+    store = await _org()
+    await store.upsert_node(
+        Task(
+            tenant_id=TENANT,
+            id="IDP-4",
+            name="Session rotation",
+            metadata={"key": "IDP-4", "state": "in_progress", "status": "In Progress"},
+        )
+    )
+    for parent, child in (("pod-identity", "IDP-4"), ("project-identity", "IDP-4")):
+        await store.add_edge(_edge(parent, child, EdgeKind.CONTAINS))
+    await store.add_edge(_edge(NOAH, "IDP-4", EdgeKind.ASSIGNED_TO))
+    for repo, number, branch in (
+        ("acme/checkout-api", "3", "CHK-6-refund-edge-cases"),
+        ("acme/identity-service", "1", "IDP-4-session-rotation"),
+    ):
+        await _merge_request(
+            store,
+            repo=repo,
+            number=number,
+            branch=branch,
+            days_ago=3,
+            merged=False,
+            author=NOAH,
+        )
+    risk = _risk(store, default_pr_age_days=2)
+    for project_id in ("project-checkout", "project-identity"):
+        await risk.assess_and_persist_project(TENANT, project_id, DAY)
+
+    by_id = await _rollup(store, default_pr_age_days=2)
+
+    chk6 = "Signals disagree: CHK-6 has a merge request open N days (checkout-api !3)."
+    idp4 = "Signals disagree: IDP-4 has a merge request open N days (identity-service !1)."
+    assert len(await risk.portfolio_risks(TENANT, DAY)) == 2
+    assert _worded(by_id[NOAH]) == [chk6, idp4]
+    assert _worded(by_id["pod-payments"]) == [chk6]
+    assert _worded(by_id["pod-identity"]) == [idp4]
 
 
 async def test_the_heat_map_names_the_drift_on_the_owner_and_up_the_tree() -> None:

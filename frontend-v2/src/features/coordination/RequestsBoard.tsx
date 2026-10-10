@@ -209,12 +209,20 @@ function RequestCard({
   onAcknowledge: () => void;
   onResolve: () => void;
 }) {
-  const { people } = useRole();
+  const { people, actingAs, user } = useRole();
   // A request stores the requester as an id; the counterpart carries a resolved
   // display name. Look the requester up in the directory so both read as people.
   const requester =
     people.find((person) => person.id === request.requester_id)?.name ?? request.requester_id;
   const counterpart = request.counterpart_display_name ?? request.raw_name ?? "unmatched";
+  // Acknowledging says the person asked has taken it on, so it is theirs alone;
+  // resolving is theirs or the requester's. The server refuses anyone else,
+  // whatever their role reads, so the card offers only what the viewer may do.
+  const memberId = actingAs?.id ?? user?.subject ?? null;
+  const askedOfViewer = memberId !== null && request.counterpart_id === memberId;
+  const raisedByViewer = memberId !== null && request.requester_id === memberId;
+  const canAcknowledge = askedOfViewer && request.status === "open";
+  const canResolve = askedOfViewer || raisedByViewer;
   return (
     <div className="rounded-2xl border border-grey-border bg-white p-4">
       <div className="text-xs font-bold uppercase tracking-wide text-magenta">{request.kind}</div>
@@ -223,19 +231,27 @@ function RequestCard({
         {requester} → {counterpart}
       </div>
       <DeliveryNote delivery={request.delivery} />
-      <div className="mt-3 flex items-center gap-3">
-        <Pill variant="ghost" size="sm" onClick={onAcknowledge} disabled={readOnly}>
-          Acknowledge
-        </Pill>
-        <button
-          type="button"
-          onClick={onResolve}
-          disabled={readOnly}
-          className="text-[13px] font-bold text-grey-secondary hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-grey-secondary"
-        >
-          Resolve
-        </button>
-      </div>
+      {canResolve ? (
+        <div className="mt-3 flex items-center gap-3">
+          {canAcknowledge ? (
+            <Pill variant="ghost" size="sm" onClick={onAcknowledge} disabled={readOnly}>
+              Acknowledge
+            </Pill>
+          ) : null}
+          <button
+            type="button"
+            onClick={onResolve}
+            disabled={readOnly}
+            className="text-[13px] font-bold text-grey-secondary hover:text-ink disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-grey-secondary"
+          >
+            Resolve
+          </button>
+        </div>
+      ) : (
+        <p className="mt-3 text-[12px] text-grey-secondary">
+          Only the people on this request acknowledge or resolve it.
+        </p>
+      )}
     </div>
   );
 }

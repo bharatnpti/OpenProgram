@@ -60,6 +60,15 @@ from core.application.persona_views import (
     WorkstreamProgressView,
 )
 from core.application.portfolio_feed_service import PortfolioFeedItemView, PortfolioFeedView
+from core.application.pull_request_flow_service import (
+    FlowScopeView,
+    PullRequestFlowItemView,
+    PullRequestFlowView,
+    RequestTypeCountView,
+    StageFlowView,
+)
+from core.application.task_update_service import TASK_UPDATE_TEXT_MAX, TaskStatement, TaskUpdate
+from core.application.writeback_service import ConsoleWriteBack
 from core.domain.auth import Role
 from core.domain.branding import LogoContentType, TenantLogo
 from core.domain.brief import BriefKind, NarrativeBrief
@@ -113,6 +122,7 @@ from core.domain.reports import (
     RunStatus,
     RunTrigger,
 )
+from core.domain.review_flow import RequestType, ReviewStage, TypeSource
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import Rag, RollupFactor
 from core.domain.status import (
@@ -141,6 +151,7 @@ from core.domain.writeback import (
     WriteBackGate,
     WriteBackGateSource,
     WriteBackStatus,
+    WriteBackTarget,
 )
 from core.ports.auth import AuthenticatedUser
 
@@ -738,6 +749,38 @@ class RollupFactorDto(BaseModel):
         )
 
 
+# A task's state as a person states it, and as the tracker is moved to.
+TaskStateName = Literal["todo", "in_progress", "in_review", "blocked", "done"]
+TaskUpdateVia = Literal["chat", "console"]
+WriteBackModeName = Literal["auto", "ask", "off"]
+TaskTrackerOutcome = Literal["applied", "held_open_mr", "not_owner", "no_change", "off", "failed"]
+
+
+class TaskStatementDto(BaseModel):
+    """The person's latest statement on a task: a state or a note, when and where.
+
+    A chat statement carries its state only; a note is typed in the console.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    state: TaskStateName | None
+    note: str | None
+    at: datetime
+    via: TaskUpdateVia
+
+    @classmethod
+    def from_view(cls, statement: TaskStatement | None) -> TaskStatementDto | None:
+        if statement is None:
+            return None
+        return cls(
+            state=statement.state.value if statement.state is not None else None,
+            note=statement.note,
+            at=statement.at,
+            via=statement.via,
+        )
+
+
 class FocusTaskDto(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -747,6 +790,24 @@ class FocusTaskDto(BaseModel):
     source: StatusSource
     confidence: float | None
     deadline: date | None
+    tracker_status: str | None = Field(
+        description="The tracker's own status name, for a synced task; null otherwise."
+    )
+    my_eta: date | None = Field(
+        description="The person's own latest ETA for the task (its last day); null when none."
+    )
+    my_eta_label: str | None = Field(
+        description="That ETA as it was given: 'Oct 9' from the console, 'early next week' "
+        "from chat."
+    )
+    last_update: TaskStatementDto | None
+    blocker_ids: list[str] = Field(
+        description="The person's open blockers on this task, ids from blocker_details."
+    )
+    can_move_in_tracker: bool = Field(
+        description="The person is the synced tracker issue's assignee through their identity "
+        "link. The tick to move the issue also needs write_back other than off."
+    )
 
     @classmethod
     def from_view(cls, task: FocusTaskView) -> FocusTaskDto:
@@ -757,6 +818,12 @@ class FocusTaskDto(BaseModel):
             source=task.source,
             confidence=task.confidence,
             deadline=task.deadline,
+            tracker_status=task.tracker_status,
+            my_eta=task.my_eta,
+            my_eta_label=task.my_eta_label,
+            last_update=TaskStatementDto.from_view(task.last_update),
+            blocker_ids=list(task.blocker_ids),
+            can_move_in_tracker=task.can_move_in_tracker,
         )
 
 
@@ -826,10 +893,15 @@ class FocusResponse(BaseModel):
     blocker_details: list[BlockerDetailDto]
     tasks: list[FocusTaskDto]
     focus: list[FocusItemDto]
+    write_back: WriteBackModeName = Field(
+        description="How the person's updates reach the tracker: auto (written at once), ask "
+        "(written when they tick it in the console, or say yes in chat) or off."
+    )
 
     @classmethod
-    def from_view(cls, view: FocusView) -> FocusResponse:
+    def from_view(cls, view: FocusView, *, write_back: WriteBackModeName = "off") -> FocusResponse:
         return cls(
+            write_back=write_back,
             developer_id=view.developer_id,
             developer_name=view.developer_name,
             as_of=view.as_of,
@@ -1020,6 +1092,22 @@ class PodTaskDto(BaseModel):
     # The issue tracker's own status name, e.g. "In Progress"; null for a task
     # that did not come from a tracker. Optional, so older clients are unaffected.
     tracker_status: str | None = None
+    # What the task's owners said and expect, optional for the same reason.
+    last_update: TaskStatementDto | None = Field(
+        default=None,
+        description="The latest statement any owner made on the task: a state or a note.",
+    )
+    last_update_by: str | None = Field(
+        default=None, description="The name of the owner who made that statement."
+    )
+    eta: date | None = Field(
+        default=None,
+        description="The owners' own ETA for the task: the latest day any of them gave.",
+    )
+    eta_label: str | None = Field(
+        default=None,
+        description="That ETA as it was given: 'Oct 9' from the console, 'Tuesday' from chat.",
+    )
 
     @classmethod
     def from_view(cls, task: PodTaskView) -> PodTaskDto:
@@ -1034,6 +1122,10 @@ class PodTaskDto(BaseModel):
             blocked=task.blocked,
             open_blockers=[PodTaskBlockerDto.from_view(item) for item in task.open_blockers],
             tracker_status=task.tracker_status,
+            last_update=TaskStatementDto.from_view(task.last_update),
+            last_update_by=task.last_update_by,
+            eta=task.eta.day if task.eta is not None else None,
+            eta_label=task.eta.label if task.eta is not None else None,
         )
 
 
@@ -1546,6 +1638,208 @@ class PortfolioFlowResponse(BaseModel):
             avg_cycle_time_days=view.avg_cycle_time_days,
             avg_pr_age_days=view.avg_pr_age_days,
             workstreams=[WorkstreamFlowSummaryDto.from_view(item) for item in view.workstreams],
+        )
+
+
+class PullRequestStageHoursDto(BaseModel):
+    """Hours a request spent in each stage it finished; null for one not finished or not known."""
+
+    model_config = ConfigDict(frozen=True)
+
+    coding: float | None
+    awaiting_review: float | None
+    in_review: float | None
+    awaiting_merge: float | None
+
+    @classmethod
+    def from_view(cls, hours: Mapping[ReviewStage, float | None]) -> PullRequestStageHoursDto:
+        return cls(
+            coding=hours.get(ReviewStage.CODING),
+            awaiting_review=hours.get(ReviewStage.AWAITING_REVIEW),
+            in_review=hours.get(ReviewStage.IN_REVIEW),
+            awaiting_merge=hours.get(ReviewStage.AWAITING_MERGE),
+        )
+
+
+class PullRequestFlowStageDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    stage: ReviewStage
+    label: str
+    p50_hours: float | None
+    p75_hours: float | None
+    measured_count: int = Field(
+        description="Merged requests in the window whose time in this stage is known."
+    )
+    open_count: int = Field(description="Open requests in this stage now.")
+
+    @classmethod
+    def from_view(cls, view: StageFlowView) -> PullRequestFlowStageDto:
+        return cls(
+            stage=view.stage,
+            label=view.label,
+            p50_hours=view.p50_hours,
+            p75_hours=view.p75_hours,
+            measured_count=view.measured_count,
+            open_count=view.open_count,
+        )
+
+
+class PullRequestTypeCountDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    request_type: RequestType
+    label: str
+    merged_count: int
+    open_count: int
+
+    @classmethod
+    def from_view(cls, view: RequestTypeCountView) -> PullRequestTypeCountDto:
+        return cls(
+            request_type=view.request_type,
+            label=view.label,
+            merged_count=view.merged_count,
+            open_count=view.open_count,
+        )
+
+
+class PullRequestFlowItemDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    repo: str
+    number: str
+    title: str
+    web_url: str | None
+    author_name: str | None
+    request_type: RequestType
+    type_source: TypeSource
+    type_evidence: str | None
+    state: Literal["open", "merged"]
+    draft: bool
+    stage: ReviewStage | None = Field(
+        description="The stage an open request is in now; null for a merged one or when not known."
+    )
+    stage_since: datetime | None
+    stage_age_hours: float | None
+    stage_hours: PullRequestStageHoursDto
+    opened_at: datetime | None
+    merged_at: datetime | None
+    reviewer_count: int
+    timed: bool = Field(description="Whether the request's review history was read.")
+
+    @classmethod
+    def from_view(cls, view: PullRequestFlowItemView) -> PullRequestFlowItemDto:
+        return cls(
+            repo=view.repo,
+            number=view.number,
+            title=view.title,
+            web_url=view.web_url,
+            author_name=view.author_name,
+            request_type=view.request_type,
+            type_source=view.type_source,
+            type_evidence=view.type_evidence,
+            state="merged" if view.state == "merged" else "open",
+            draft=view.draft,
+            stage=view.stage,
+            stage_since=view.stage_since,
+            stage_age_hours=view.stage_age_hours,
+            stage_hours=PullRequestStageHoursDto.from_view(view.stage_hours),
+            opened_at=view.opened_at,
+            merged_at=view.merged_at,
+            reviewer_count=view.reviewer_count,
+            timed=view.timed,
+        )
+
+
+class PullRequestFlowScopeDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["tenant", "program", "project", "pod"]
+    id: str | None
+    name: str | None
+    repos: list[str] | None = Field(
+        description="The repositories read; null for every repository the tenant syncs."
+    )
+    member_count: int | None = Field(
+        description="A pod's members whose requests count; null when authors are not narrowed."
+    )
+
+    @classmethod
+    def from_view(cls, view: FlowScopeView) -> PullRequestFlowScopeDto:
+        kind: Literal["tenant", "program", "project", "pod"] = (
+            "program"
+            if view.kind == "program"
+            else "project"
+            if view.kind == "project"
+            else "pod"
+            if view.kind == "pod"
+            else "tenant"
+        )
+        return cls(
+            kind=kind,
+            id=view.id,
+            name=view.name,
+            repos=list(view.repos) if view.repos is not None else None,
+            member_count=view.member_count,
+        )
+
+
+class PullRequestWorstJamDto(BaseModel):
+    """The stage requests spend longest in, at each percentile."""
+
+    model_config = ConfigDict(frozen=True)
+
+    p50: ReviewStage | None
+    p75: ReviewStage | None
+
+
+class PullRequestFlowResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    as_of: date
+    window_days: int
+    window_start: datetime
+    window_end: datetime
+    scope: PullRequestFlowScopeDto
+    merged_count: int = Field(description="Requests merged in the window.")
+    open_count: int = Field(description="Requests open at the end of the window.")
+    timed_merged_count: int = Field(
+        description="Merged requests whose review history was read, so their stages are timed."
+    )
+    unreviewed_merged_count: int = Field(
+        description="Merged requests with no review by anyone but the author."
+    )
+    untimed_count: int = Field(
+        description="Requests synced before review histories were read: counted, not timed."
+    )
+    stages: list[PullRequestFlowStageDto]
+    worst_jam: PullRequestWorstJamDto
+    type_counts: list[PullRequestTypeCountDto]
+    items: list[PullRequestFlowItemDto]
+    items_truncated: bool = Field(
+        description="More requests than the items list holds; counts and stage times cover all."
+    )
+    notes: list[str] = Field(description="What the figures leave out, in words.")
+
+    @classmethod
+    def from_view(cls, view: PullRequestFlowView) -> PullRequestFlowResponse:
+        return cls(
+            as_of=view.as_of,
+            window_days=view.window_days,
+            window_start=view.window_start,
+            window_end=view.window_end,
+            scope=PullRequestFlowScopeDto.from_view(view.scope),
+            merged_count=view.merged_count,
+            open_count=view.open_count,
+            timed_merged_count=view.timed_merged_count,
+            unreviewed_merged_count=view.unreviewed_merged_count,
+            untimed_count=view.untimed_count,
+            stages=[PullRequestFlowStageDto.from_view(stage) for stage in view.stages],
+            worst_jam=PullRequestWorstJamDto(p50=view.worst_jam_p50, p75=view.worst_jam_p75),
+            type_counts=[PullRequestTypeCountDto.from_view(item) for item in view.type_counts],
+            items=[PullRequestFlowItemDto.from_view(item) for item in view.items],
+            items_truncated=view.items_truncated,
+            notes=list(view.notes),
         )
 
 
@@ -2529,6 +2823,75 @@ _NOT_SELF_SET_CHECKIN_FIELDS = {
 }
 
 
+class TaskUpdateRequest(BaseModel):
+    """One person's update of one of their tasks: only the fields that changed.
+
+    Every field is optional and at least one change must be sent
+    (``move_in_tracker`` alone is none). ``eta: null`` clears the ETA; leaving
+    ``eta`` out keeps it. A field this model does not know is refused.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state: TaskStateName | None = None
+    eta: date | None = None
+    note: str | None = Field(default=None, max_length=TASK_UPDATE_TEXT_MAX)
+    add_blocker: str | None = Field(default=None, max_length=TASK_UPDATE_TEXT_MAX)
+    resolve_blocker_ids: list[str] = Field(default_factory=list, max_length=50)
+    move_in_tracker: bool | None = Field(
+        default=None,
+        description="True also moves the tracker issue to `state`; ignored without a state. "
+        "Left out or null: the tracker is not touched.",
+    )
+
+    @field_validator("note", "add_blocker")
+    @classmethod
+    def blank_is_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+    def to_update(self) -> TaskUpdate:
+        return TaskUpdate(
+            state=WriteBackTarget(self.state) if self.state is not None else None,
+            eta=self.eta,
+            eta_sent="eta" in self.model_fields_set,
+            note=self.note,
+            add_blocker=self.add_blocker,
+            resolve_blocker_ids=tuple(item for item in self.resolve_blocker_ids if item),
+            move_in_tracker=self.move_in_tracker is True,
+        )
+
+
+class TaskTrackerResultDto(BaseModel):
+    """What the tracker move did, as the task row says it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    outcome: TaskTrackerOutcome
+    detail: str
+    merge_requests: list[str]
+
+    @classmethod
+    def from_result(cls, result: ConsoleWriteBack | None) -> TaskTrackerResultDto | None:
+        if result is None:
+            return None
+        return cls(
+            outcome=result.outcome,
+            detail=result.detail,
+            merge_requests=list(result.merge_requests),
+        )
+
+
+class TaskUpdateResponse(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    task: FocusTaskDto
+    status: MyStatusResponse
+    tracker: TaskTrackerResultDto | None
+
+
 class SelfCheckinPreferenceUpdateRequest(BaseModel):
     """The part of their own check-in preference a person may change.
 
@@ -2762,14 +3125,18 @@ class ConnectionUpdateRequest(BaseModel):
 class ConnectionTestRequest(BaseModel):
     """Optional unsaved values to test over the stored ones.
 
-    A secret left out or blank uses the stored one. Leave the whole body out to
-    test what is saved; only that test is recorded on the connection.
+    A secret left out uses the stored one, but only while every address and
+    sign-in field is as saved: a test that changes one must carry each secret
+    it uses, or it is refused with 400. A secret mapped to null or blank is
+    cleared for the test and never falls back to the stored one. Leave the
+    whole body out to test what is saved; only that test is recorded on the
+    connection.
     """
 
     model_config = ConfigDict(frozen=True)
 
     settings: dict[str, str | None] = Field(default_factory=dict)
-    secrets: dict[str, str] = Field(default_factory=dict)
+    secrets: dict[str, str | None] = Field(default_factory=dict)
 
 
 class ConnectionDetailDto(BaseModel):
@@ -2926,6 +3293,15 @@ class RequirementTimelinePointResponse(BaseModel):
 
     day: date
     counts: dict[DeliveryStage, int]
+    points: dict[DeliveryStage, float] = Field(
+        default_factory=dict,
+        description="Story points per stage that day; a burn-down by points reads them "
+        "only when has_points.",
+    )
+    has_points: bool = Field(
+        default=False,
+        description="True when every requirement counted that day carried story points.",
+    )
 
 
 class RequirementMoveResponse(BaseModel):
@@ -3004,7 +3380,12 @@ class RequirementsResponse(BaseModel):
                 for item in view.stages
             ],
             timeline=[
-                RequirementTimelinePointResponse(day=point.day, counts=dict(point.counts))
+                RequirementTimelinePointResponse(
+                    day=point.day,
+                    counts=dict(point.counts),
+                    points=dict(point.points),
+                    has_points=point.has_points,
+                )
                 for point in view.timeline
             ],
             moves=[
@@ -3385,7 +3766,10 @@ class ReportPreviewResponse(BaseModel):
     percent_complete: float | None
     progress_line: str
     sections: list[ReportSectionResponse]
-    console_url: str | None
+    #: The report's own page in the console, relative to the console's address
+    #: (``/reports/<project>/daily?report=<id>``), for the console to link in place.
+    #: The absolute address a sent message carries is in ``text``, never read from here.
+    console_path: str | None
     text: str
 
     @classmethod
@@ -3398,7 +3782,7 @@ class ReportPreviewResponse(BaseModel):
             percent_complete=report.percent_complete,
             progress_line=report.progress_line,
             sections=[ReportSectionResponse.from_domain(section) for section in report.sections],
-            console_url=report.console_url,
+            console_path=report.console_path,
             text=text,
         )
 

@@ -128,7 +128,9 @@ class BlockerResolutionService:
                 found.setdefault(blocker.blocker_id, blocker)
         resolved: list[tuple[GraphNode, ResolvedBlocker]] = []
         for blocker in found.values():
-            developer = await self._graph_repository.get_node(tenant_id, blocker.developer_id)
+            developer = await self._graph_repository.get_node(
+                tenant_id, blocker.developer_id, as_of=as_of
+            )
             if developer is not None:
                 resolved.append((developer, await self._resolve(tenant_id, blocker, as_of)))
         return tuple(resolved)
@@ -153,7 +155,7 @@ class BlockerResolutionService:
             blocked, pod_ids, unattributed = _placement(own, foreign, developer_pods)
         if blocked is not None:
             work_item_ref, work_item_name, critical = await self._work_item_details(
-                tenant_id, blocker.developer_id, blocked
+                tenant_id, blocker.developer_id, blocked, as_of
             )
         depends_on = _depends_on(foreign, {pod.id for pod in developer_pods} | set(pod_ids))
         return ResolvedBlocker(
@@ -206,7 +208,7 @@ class BlockerResolutionService:
         return own, foreign
 
     async def _work_item_details(
-        self, tenant_id: str, developer_id: str, work_item_id: str
+        self, tenant_id: str, developer_id: str, work_item_id: str, as_of: date
     ) -> tuple[EntityRef | None, str | None, bool]:
         """Fail-soft node lookup: an unknown issue key keeps a TASK-kind ref.
 
@@ -215,7 +217,7 @@ class BlockerResolutionService:
         The name comes back too: the node is already in hand here, and every
         caller that wants to label the attribution would otherwise re-fetch it.
         """
-        node = await self._graph_repository.get_node(tenant_id, work_item_id)
+        node = await self._graph_repository.get_node(tenant_id, work_item_id, as_of=as_of)
         if node is None:
             return (
                 EntityRef(tenant_id=tenant_id, kind=NodeKind.TASK, id=work_item_id),
@@ -230,7 +232,11 @@ class BlockerResolutionService:
                 to_node_id=work_item_id,
                 kind=EdgeKind.ASSIGNED_TO,
             )
-            critical = any(_truthy(edge.metadata.get("critical_path")) for edge in edges)
+            critical = any(
+                _truthy(edge.metadata.get("critical_path"))
+                for edge in edges
+                if edge.is_active_on(as_of)
+            )
         return node.ref, node.name, critical
 
     async def _developer_pod_ids(

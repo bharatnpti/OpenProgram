@@ -7950,6 +7950,86 @@
         }
       }
     },
+    "/me/tasks/{task_id}/update": {
+      "post": {
+        "tags": ["checkins"],
+        "summary": "Update My Task",
+        "description": "Update one of the caller's own tasks for today: only the fields sent change.\n\nThe state and the note are recorded on the task, the ETA as the person's\nstated ETA, a blocker through the blocker lifecycle (their other blockers\ncarry forward), and today's status keeps or gains a reply. With\n``move_in_tracker`` and a state, the tracker issue moves behind the\nwrite-back gates; the ETA never reaches the tracker.",
+        "operationId": "update_my_task_me_tasks__task_id__update_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskUpdateResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The task is not in the caller's own tree: not theirs."
+          },
+          "422": {
+            "description": "Nothing to update, a day other than today, an ETA before today, Blocked with no blocker, or a blocker to resolve that is not open on this task."
+          }
+        }
+      }
+    },
     "/me/checkin-preference": {
       "get": {
         "tags": ["checkins"],
@@ -8945,6 +9025,124 @@
         }
       }
     },
+    "/portfolio/pr-flow": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "Portfolio Pull Request Flow",
+        "description": "How long pull and merge requests spend coding, awaiting review, in review and\nawaiting merge, and what kind of work they are: merged ones in the ``days``\nbefore ``as_of`` give the stage times, open ones are counted where they stand.\n\nThe whole tenant, or one of a program, a project or a pod. The same read\npermission as ``/portfolio/flow``.",
+        "operationId": "portfolio_pull_request_flow_portfolio_pr_flow_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 180,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          },
+          {
+            "name": "program_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Program Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "pod_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pod Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PullRequestFlowResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/portfolio/feed": {
       "get": {
         "tags": ["personas"],
@@ -9285,6 +9483,7 @@
       "post": {
         "tags": ["personas"],
         "summary": "Update Cross Person Request Status",
+        "description": "Acknowledge or resolve a cross-person request, as the signed-in member.\n\nOnly the person the request asks acknowledges it, and only they or its\nrequester resolve it, whatever else the caller's role reads (403). No other\nstatus is set by hand (422). The change is recorded with who made it.",
         "operationId": "update_cross_person_request_status_cross_person_requests__request_id__status_post",
         "parameters": [
           {
@@ -11598,7 +11797,14 @@
           },
           "secrets": {
             "additionalProperties": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "type": "object",
             "title": "Secrets"
@@ -11606,7 +11812,7 @@
         },
         "type": "object",
         "title": "ConnectionTestRequest",
-        "description": "Optional unsaved values to test over the stored ones.\n\nA secret left out or blank uses the stored one. Leave the whole body out to\ntest what is saved; only that test is recorded on the connection."
+        "description": "Optional unsaved values to test over the stored ones.\n\nA secret left out uses the stored one, but only while every address and\nsign-in field is as saved: a test that changes one must carry each secret\nit uses, or it is refused with 400. A secret mapped to null or blank is\ncleared for the test and never falls back to the stored one. Leave the\nwhole body out to test what is saved; only that test is recorded on the\nconnection."
       },
       "ConnectionTestResponse": {
         "properties": {
@@ -13405,6 +13611,12 @@
             },
             "type": "array",
             "title": "Focus"
+          },
+          "write_back": {
+            "type": "string",
+            "enum": ["auto", "ask", "off"],
+            "title": "Write Back",
+            "description": "How the person's updates reach the tracker: auto (written at once), ask (written when they tick it in the console, or say yes in chat) or off."
           }
         },
         "type": "object",
@@ -13419,7 +13631,8 @@
           "blockers",
           "blocker_details",
           "tasks",
-          "focus"
+          "focus",
+          "write_back"
         ],
         "title": "FocusResponse"
       },
@@ -13461,10 +13674,83 @@
               }
             ],
             "title": "Deadline"
+          },
+          "tracker_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracker Status",
+            "description": "The tracker's own status name, for a synced task; null otherwise."
+          },
+          "my_eta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Eta",
+            "description": "The person's own latest ETA for the task (its last day); null when none."
+          },
+          "my_eta_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "My Eta Label",
+            "description": "That ETA as it was given: 'Oct 9' from the console, 'early next week' from chat."
+          },
+          "last_update": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskStatementDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blocker_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocker Ids",
+            "description": "The person's open blockers on this task, ids from blocker_details."
+          },
+          "can_move_in_tracker": {
+            "type": "boolean",
+            "title": "Can Move In Tracker",
+            "description": "The person is the synced tracker issue's assignee through their identity link. The tick to move the issue also needs write_back other than off."
           }
         },
         "type": "object",
-        "required": ["id", "name", "rag", "source", "confidence", "deadline"],
+        "required": [
+          "id",
+          "name",
+          "rag",
+          "source",
+          "confidence",
+          "deadline",
+          "tracker_status",
+          "my_eta",
+          "my_eta_label",
+          "last_update",
+          "blocker_ids",
+          "can_move_in_tracker"
+        ],
         "title": "FocusTaskDto"
       },
       "GateBoardResponse": {
@@ -15071,6 +15357,54 @@
               }
             ],
             "title": "Tracker Status"
+          },
+          "last_update": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskStatementDto"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest statement any owner made on the task: a state or a note."
+          },
+          "last_update_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Update By",
+            "description": "The name of the owner who made that statement."
+          },
+          "eta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta",
+            "description": "The owners' own ETA for the task: the latest day any of them gave."
+          },
+          "eta_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta Label",
+            "description": "That ETA as it was given: 'Oct 9' from the console, 'Tuesday' from chat."
           }
         },
         "type": "object",
@@ -15593,6 +15927,479 @@
         "required": ["project_id", "as_of", "risks"],
         "title": "ProjectRisksResponse"
       },
+      "PullRequestFlowItemDto": {
+        "properties": {
+          "repo": {
+            "type": "string",
+            "title": "Repo"
+          },
+          "number": {
+            "type": "string",
+            "title": "Number"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "web_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Web Url"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "request_type": {
+            "$ref": "#/components/schemas/RequestType"
+          },
+          "type_source": {
+            "$ref": "#/components/schemas/TypeSource"
+          },
+          "type_evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Evidence"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["open", "merged"],
+            "title": "State"
+          },
+          "draft": {
+            "type": "boolean",
+            "title": "Draft"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewStage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The stage an open request is in now; null for a merged one or when not known."
+          },
+          "stage_since": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage Since"
+          },
+          "stage_age_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage Age Hours"
+          },
+          "stage_hours": {
+            "$ref": "#/components/schemas/PullRequestStageHoursDto"
+          },
+          "opened_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opened At"
+          },
+          "merged_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merged At"
+          },
+          "reviewer_count": {
+            "type": "integer",
+            "title": "Reviewer Count"
+          },
+          "timed": {
+            "type": "boolean",
+            "title": "Timed",
+            "description": "Whether the request's review history was read."
+          }
+        },
+        "type": "object",
+        "required": [
+          "repo",
+          "number",
+          "title",
+          "web_url",
+          "author_name",
+          "request_type",
+          "type_source",
+          "type_evidence",
+          "state",
+          "draft",
+          "stage",
+          "stage_since",
+          "stage_age_hours",
+          "stage_hours",
+          "opened_at",
+          "merged_at",
+          "reviewer_count",
+          "timed"
+        ],
+        "title": "PullRequestFlowItemDto"
+      },
+      "PullRequestFlowResponse": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "window_days": {
+            "type": "integer",
+            "title": "Window Days"
+          },
+          "window_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Window Start"
+          },
+          "window_end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Window End"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/PullRequestFlowScopeDto"
+          },
+          "merged_count": {
+            "type": "integer",
+            "title": "Merged Count",
+            "description": "Requests merged in the window."
+          },
+          "open_count": {
+            "type": "integer",
+            "title": "Open Count",
+            "description": "Requests open at the end of the window."
+          },
+          "timed_merged_count": {
+            "type": "integer",
+            "title": "Timed Merged Count",
+            "description": "Merged requests whose review history was read, so their stages are timed."
+          },
+          "unreviewed_merged_count": {
+            "type": "integer",
+            "title": "Unreviewed Merged Count",
+            "description": "Merged requests with no review by anyone but the author."
+          },
+          "untimed_count": {
+            "type": "integer",
+            "title": "Untimed Count",
+            "description": "Requests synced before review histories were read: counted, not timed."
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/PullRequestFlowStageDto"
+            },
+            "type": "array",
+            "title": "Stages"
+          },
+          "worst_jam": {
+            "$ref": "#/components/schemas/PullRequestWorstJamDto"
+          },
+          "type_counts": {
+            "items": {
+              "$ref": "#/components/schemas/PullRequestTypeCountDto"
+            },
+            "type": "array",
+            "title": "Type Counts"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PullRequestFlowItemDto"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "items_truncated": {
+            "type": "boolean",
+            "title": "Items Truncated",
+            "description": "More requests than the items list holds; counts and stage times cover all."
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Notes",
+            "description": "What the figures leave out, in words."
+          }
+        },
+        "type": "object",
+        "required": [
+          "as_of",
+          "window_days",
+          "window_start",
+          "window_end",
+          "scope",
+          "merged_count",
+          "open_count",
+          "timed_merged_count",
+          "unreviewed_merged_count",
+          "untimed_count",
+          "stages",
+          "worst_jam",
+          "type_counts",
+          "items",
+          "items_truncated",
+          "notes"
+        ],
+        "title": "PullRequestFlowResponse"
+      },
+      "PullRequestFlowScopeDto": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["tenant", "program", "project", "pod"],
+            "title": "Kind"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "repos": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repos",
+            "description": "The repositories read; null for every repository the tenant syncs."
+          },
+          "member_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Count",
+            "description": "A pod's members whose requests count; null when authors are not narrowed."
+          }
+        },
+        "type": "object",
+        "required": ["kind", "id", "name", "repos", "member_count"],
+        "title": "PullRequestFlowScopeDto"
+      },
+      "PullRequestFlowStageDto": {
+        "properties": {
+          "stage": {
+            "$ref": "#/components/schemas/ReviewStage"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "p50_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50 Hours"
+          },
+          "p75_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P75 Hours"
+          },
+          "measured_count": {
+            "type": "integer",
+            "title": "Measured Count",
+            "description": "Merged requests in the window whose time in this stage is known."
+          },
+          "open_count": {
+            "type": "integer",
+            "title": "Open Count",
+            "description": "Open requests in this stage now."
+          }
+        },
+        "type": "object",
+        "required": ["stage", "label", "p50_hours", "p75_hours", "measured_count", "open_count"],
+        "title": "PullRequestFlowStageDto"
+      },
+      "PullRequestStageHoursDto": {
+        "properties": {
+          "coding": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coding"
+          },
+          "awaiting_review": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Awaiting Review"
+          },
+          "in_review": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Review"
+          },
+          "awaiting_merge": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Awaiting Merge"
+          }
+        },
+        "type": "object",
+        "required": ["coding", "awaiting_review", "in_review", "awaiting_merge"],
+        "title": "PullRequestStageHoursDto",
+        "description": "Hours a request spent in each stage it finished; null for one not finished or not known."
+      },
+      "PullRequestTypeCountDto": {
+        "properties": {
+          "request_type": {
+            "$ref": "#/components/schemas/RequestType"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "merged_count": {
+            "type": "integer",
+            "title": "Merged Count"
+          },
+          "open_count": {
+            "type": "integer",
+            "title": "Open Count"
+          }
+        },
+        "type": "object",
+        "required": ["request_type", "label", "merged_count", "open_count"],
+        "title": "PullRequestTypeCountDto"
+      },
+      "PullRequestWorstJamDto": {
+        "properties": {
+          "p50": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "p75": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["p50", "p75"],
+        "title": "PullRequestWorstJamDto",
+        "description": "The stage requests spend longest in, at each percentile."
+      },
       "QuestionCreateRequest": {
         "properties": {
           "asked_to": {
@@ -15905,7 +16712,7 @@
             "type": "array",
             "title": "Sections"
           },
-          "console_url": {
+          "console_path": {
             "anyOf": [
               {
                 "type": "string"
@@ -15914,7 +16721,7 @@
                 "type": "null"
               }
             ],
-            "title": "Console Url"
+            "title": "Console Path"
           },
           "text": {
             "type": "string",
@@ -15930,7 +16737,7 @@
           "percent_complete",
           "progress_line",
           "sections",
-          "console_url",
+          "console_path",
           "text"
         ],
         "title": "ReportPreviewResponse",
@@ -16165,6 +16972,21 @@
         "required": ["columns", "rows"],
         "title": "ReportTableResponse"
       },
+      "RequestType": {
+        "type": "string",
+        "enum": [
+          "feature",
+          "dependency_update",
+          "bug_fix",
+          "refactor",
+          "chore",
+          "documentation",
+          "test",
+          "performance",
+          "unclassified"
+        ],
+        "title": "RequestType"
+      },
       "RequirementMoveResponse": {
         "properties": {
           "key": {
@@ -16339,6 +17161,23 @@
             },
             "type": "object",
             "title": "Counts"
+          },
+          "points": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/DeliveryStage"
+            },
+            "type": "object",
+            "title": "Points",
+            "description": "Story points per stage that day; a burn-down by points reads them only when has_points."
+          },
+          "has_points": {
+            "type": "boolean",
+            "title": "Has Points",
+            "description": "True when every requirement counted that day carried story points.",
+            "default": false
           }
         },
         "type": "object",
@@ -16498,6 +17337,11 @@
         ],
         "title": "RequirementsResponse",
         "description": "A project's requirements by delivery stage, with counts over time."
+      },
+      "ReviewStage": {
+        "type": "string",
+        "enum": ["coding", "awaiting_review", "in_review", "awaiting_merge"],
+        "title": "ReviewStage"
       },
       "RiskEvidenceDto": {
         "properties": {
@@ -17255,6 +18099,170 @@
         "required": ["id", "name", "rag", "source", "confidence", "deadline"],
         "title": "TaskProgressDto"
       },
+      "TaskStatementDto": {
+        "properties": {
+          "state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["todo", "in_progress", "in_review", "blocked", "done"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "At"
+          },
+          "via": {
+            "type": "string",
+            "enum": ["chat", "console"],
+            "title": "Via"
+          }
+        },
+        "type": "object",
+        "required": ["state", "note", "at", "via"],
+        "title": "TaskStatementDto",
+        "description": "The person's latest statement on a task: a state or a note, when and where.\n\nA chat statement carries its state only; a note is typed in the console."
+      },
+      "TaskTrackerResultDto": {
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "enum": ["applied", "held_open_mr", "not_owner", "no_change", "off", "failed"],
+            "title": "Outcome"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "merge_requests": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Merge Requests"
+          }
+        },
+        "type": "object",
+        "required": ["outcome", "detail", "merge_requests"],
+        "title": "TaskTrackerResultDto",
+        "description": "What the tracker move did, as the task row says it."
+      },
+      "TaskUpdateRequest": {
+        "properties": {
+          "state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["todo", "in_progress", "in_review", "blocked", "done"]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "eta": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "add_blocker": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Add Blocker"
+          },
+          "resolve_blocker_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Resolve Blocker Ids"
+          },
+          "move_in_tracker": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move In Tracker",
+            "description": "True also moves the tracker issue to `state`; ignored without a state. Left out or null: the tracker is not touched."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TaskUpdateRequest",
+        "description": "One person's update of one of their tasks: only the fields that changed.\n\nEvery field is optional and at least one change must be sent\n(``move_in_tracker`` alone is none). ``eta: null`` clears the ETA; leaving\n``eta`` out keeps it. A field this model does not know is refused."
+      },
+      "TaskUpdateResponse": {
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/FocusTaskDto"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MyStatusResponse"
+          },
+          "tracker": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TaskTrackerResultDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["task", "status", "tracker"],
+        "title": "TaskUpdateResponse"
+      },
       "TeamForecastResponse": {
         "properties": {
           "latest": {
@@ -17466,6 +18474,12 @@
         "type": "object",
         "required": ["as_of", "rag", "source", "score"],
         "title": "TrendPointDto"
+      },
+      "TypeSource": {
+        "type": "string",
+        "enum": ["author", "issue", "label", "title", "branch", "none"],
+        "title": "TypeSource",
+        "description": "Which rule gave a request its type."
       },
       "UnmappedMemberResponse": {
         "properties": {

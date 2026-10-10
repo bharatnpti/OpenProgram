@@ -30,6 +30,7 @@ from core.domain.integrations import (
     SyncCursor,
     UserRef,
 )
+from core.domain.review_flow import labels_payload, review_timeline, timeline_payload
 from core.ports.calendar import CalendarProvider
 from core.ports.issue_tracker import IssueTracker
 from core.ports.repositories import (
@@ -436,8 +437,10 @@ class VcsReadSyncService:
             for container_id in container_ids:
                 await self._link_repo_container(tenant_id, container_id, repo.id)
             commits = await self._vcs_provider.list_commits(tenant_id, repo_name, cursor)
+            # A cursor from before request histories were read re-reads the
+            # requests once, so the merged ones get their stage times too.
             pull_requests = await self._vcs_provider.list_pull_requests(
-                tenant_id, repo_name, cursor
+                tenant_id, repo_name, cursor if _has_read_histories(cursor) else None
             )
 
             members = await self._members_by_vcs_identity(tenant_id)
@@ -456,6 +459,10 @@ class VcsReadSyncService:
                 ),
             ]
             next_cursor = _next_cursor(cursor, timestamps)
+            next_cursor = replace(
+                next_cursor,
+                metadata={**next_cursor.metadata, PULL_REQUEST_HISTORY_CURSOR_KEY: True},
+            )
             item_count = len(commits) + len(pull_requests)
             recorded_cursor = succeeded_cursor(next_cursor, observed, item_count)
             await self._cursor_repository.record_cursor(
@@ -564,12 +571,17 @@ class VcsReadSyncService:
                     "merged": pull_request.merged,
                     "opened_at": _datetime_iso(pull_request.opened_at or pull_request.updated_at),
                     **_pull_request_state(pull_request),
+                    **_pull_request_flow_fields(pull_request),
                     **_unlinked_author(pull_request.author, member),
                 },
                 observed_at=pull_request_observed_at,
+                # A fact with the request's history read is its own fact for the
+                # same update: the one-time re-read must not be dropped as a
+                # duplicate of the fact written before histories were read.
                 correlation_id=(
                     f"vcs:pull_request:{pull_request.tenant_id}:{repo_name}:"
                     f"{pull_request.id}:{pull_request_observed_at.isoformat()}"
+                    f"{':history' if pull_request.events is not None else ''}"
                 ),
             )
         )
@@ -695,6 +707,45 @@ def _pull_request_state(pull_request: PullRequest) -> dict[str, JsonScalar]:
         value = metadata.get(key)
         if isinstance(value, str) and value:
             values[key] = value
+    return values
+
+
+#: Set on a repository's cursor once a sync has read its requests with their
+#: histories. A cursor without it predates that, so the next sync re-reads the
+#: requests the cursor would skip (the newest page of them, as a first sync does).
+PULL_REQUEST_HISTORY_CURSOR_KEY = "pull_request_history"
+
+
+def _has_read_histories(cursor: SyncCursor) -> bool:
+    return cursor.updated_at is None or cursor.metadata.get(PULL_REQUEST_HISTORY_CURSOR_KEY) is True
+
+
+def _pull_request_flow_fields(pull_request: PullRequest) -> dict[str, JsonScalar]:
+    """When it merged or closed, its labels, and the stage times its history gives.
+
+    The history is summarised here, at sync, into the few times the stages are
+    read from (``core.domain.review_flow``); the notes themselves are not kept.
+    """
+    values: dict[str, JsonScalar] = {}
+    if pull_request.merged_at is not None:
+        values["merged_at"] = pull_request.merged_at.isoformat()
+    if pull_request.closed_at is not None:
+        values["closed_at"] = pull_request.closed_at.isoformat()
+    labels = labels_payload(pull_request.labels)
+    if labels is not None:
+        values["labels"] = labels
+    if pull_request.events is not None:
+        merged_at = pull_request.merged_at or (
+            pull_request.updated_at if pull_request.merged else None
+        )
+        timeline = review_timeline(
+            pull_request.events,
+            author=pull_request.author.external_id,
+            opened_at=pull_request.opened_at,
+            draft=bool(pull_request.metadata.get("draft")),
+            merged_at=merged_at,
+        )
+        values.update(timeline_payload(timeline))
     return values
 
 

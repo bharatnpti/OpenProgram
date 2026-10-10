@@ -11,7 +11,9 @@
 ```python
 class GraphRepository(Protocol):
     async def upsert_node(self, node: GraphNode) -> None: ...
+    async def delete_node(self, tenant_id: str, id: str, *, on: date) -> None: ...
     async def add_edge(self, edge: GraphEdge) -> None: ...
+    async def end_edge(self, edge: GraphEdge, on: date) -> None: ...
     async def get_program_tree(self, tenant_id: str, program_id: str, as_of: date) -> GraphTree: ...
     async def active_developer_memberships(
         self, tenant_id: str, developer_id: str, as_of: date
@@ -41,6 +43,15 @@ class VectorStore(Protocol):
 - `vector_items`: pgvector embedding records and cosine-similarity search.
 
 The migration strictly requires `age`, `timescaledb`, and `vector`; it fails if the custom Postgres container image does not provide them.
+
+## History
+
+A read for a day sees the graph as it stood that day, so a change never rewrites an earlier day.
+
+- An edge holds over `[valid_from, valid_to)`. A link made through the config API starts the day it is made.
+- Unlinking ends an edge that day (`end_edge`): earlier days still read it. One that would then hold on no day (it starts that day or later) is erased; `remove_edge` erases one outright.
+- `delete_node(on=...)` ends the node's edges that day and keeps the node, with the day under the reserved metadata key `deleted_on`, so runtime config needs no new schema. Node reads without `as_of` leave it out; reads with an earlier `as_of` still find it. `upsert_node` restores it, with its old edges still ended.
+- The AGE mirror keeps every relational edge row. Ending or erasing one rewrites the mirror edges of that node pair from the relational rows, as migration `0027` rebuilds the whole mirror.
 
 ## Sequence
 

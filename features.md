@@ -70,6 +70,7 @@ Functional requirements:
 - Admins shall link and unlink workstreams to projects, pods to workstreams, and tasks to workstreams.
 - Admins shall link and unlink members to pods with a role-in-pod label.
 - Admins shall assign and unassign tasks to members.
+- Every link an admin makes shall hold from that day, and unlinking or deleting shall end it that day, never erase it. A deleted program, project, workstream, pod, member, or task shall be gone from the admin screens and from every view of that day or later, and still be there, with its links, for a view or report of an earlier day. Linking again shall start a new link that day, so the days in between stay unlinked. A link stored without a start day (seeded or synced) shall hold on every earlier day.
 - Admins shall create work items (directly, or from a branch or pull request), record work-item transitions, and link work items to workstreams through the config API.
 - Admins shall search synced directory users.
 - Admins shall add selected directory users as configured members.
@@ -208,6 +209,8 @@ Functional requirements:
 - The console shall open every role on Today, showing the view for the role being viewed as.
 - The developer view shall show today's check-in summary and open blockers, where the status came from (answered in chat, confirmed in the console, partly answered, inferred from delivery signals, stale, or carried forward from an earlier day), a focus list ranked by urgency, and assigned tasks with RAG, status source, and confidence.
 - A developer shall confirm the day's status, or correct its summary, blockers, and ETA change, from the console. A correction is a full statement, so a blocker left out of it is resolved.
+- A correction shall name each blocker it restates by the id the status gave it, and that blocker shall keep its age and history, also when two blockers share a work item or read alike. A blocker without an id (a new one, or one from an older client) shall be matched by work item, then wording.
+- When there is no status to show, confirm, or correct, the answer shall say whether the person has no member record or is a member with no status on record yet.
 - Confirming a status the developer didn't give that day (inferred, stale, unknown, or carried forward from an earlier day) shall record what was confirmed: the earlier day's status with its date, or what the inference was drawn from. It shall not keep the "no confirmed check-in" wording or the no-reply placeholder blocker.
 - The developer view shall show the pods, projects, and programs the developer's check-in rolls up into, each with its current colour, and shall say so plainly when the developer is in no pod.
 - The scrum master view shall default to the pods the person belongs to, and shall show each member as confirmed, partial, stale, or missing, plus open blockers with owner, source, and age.
@@ -269,7 +272,7 @@ Functional requirements:
 - Executives shall read directory data, executive aggregates, project and workstream progress, program rollups, and portfolio heatmaps, but not pod blockers or pod check-ins.
 - A pod's task list and rollup reasons shall need both the pod check-in and pod blocker reads, so scrum masters, managers, and admins open them.
 - Signals, flow, feed, trends, briefs, the portfolio requests board, and Ask the graph shall need a team or executive aggregate read.
-- A cross-person request's status shall be changeable by a team or executive reader, or by the request's own requester or counterpart.
+- Only the person a cross-person request asks shall acknowledge it, and only they or its requester shall resolve it. No role grants either, admin included, and no other request status shall be set by hand.
 - Admins shall manage configuration and dispatch workflows.
 - Admin role shall short-circuit to allowed for capabilities.
 - No role, admin included, shall be granted raw DM content: there is no capability or field for it. Budget-like sensitive fields shall be readable only by admins and executives.
@@ -320,6 +323,7 @@ Functional requirements:
 - The system shall use encrypted secret storage for connector credentials.
 - Admins shall set up each integrated system from the Integrations tab, including how it signs in: Jira (Cloud with email and API token, or Data Center and Server with a personal access token or user name and password), GitLab or GitHub (one code host at a time), Slack (bot, app-level and signing tokens), email over SMTP, a Microsoft Teams channel webhook, and Google Calendar. Secrets shall be stored encrypted, never returned by any API, kept unless typed over or cleared, and removed with the connection.
 - An admin shall test a connection, saved or not, before relying on it. A test shall answer with a fixed sentence and what the system reported (server, signed-in account, and for Jira its number fields to pick story points from), never an error's own text; only a test of the saved values shall be recorded. Testing Teams posts one test message.
+- A test of unsaved values shall use a stored secret only with the address and sign-in it was saved with (the address, the SMTP server, port and encryption, the sign-in method and the user). A test that changes one of them shall carry every secret it uses, typed again, or be refused with a plain sentence naming what changed, so a mistyped address never receives a stored secret. A secret, or a setting, cleared in the test shall be left out of it, never taken from what is stored.
 - A connection the tenant turned on shall win over the server's own settings, from the next call and without a restart; a connector the tenant has not turned on shall keep using the server's settings. Memory mode shall stay credential-free and never use tenant connections.
 - Jira Data Center and Server shall be read through the v2 REST API, paged by offset; Jira Cloud shall keep the enhanced search endpoint. Issue sync shall also read due dates, fix versions and their release dates, labels, priority, created and resolved times, and story points from the configured field, and each issue fact shall keep the tracker's status name, type and points.
 
@@ -385,7 +389,8 @@ Functional requirements:
 - The system shall rate a finding amber at its threshold and red at double it.
 - The system shall present a finding's age as the age it has on the date being read, not the age it had when the rule fired.
 - The system shall re-derive a finding's severity from that current age, so an open finding escalates as it ages without needing to be re-detected.
-- The system shall keep a finding's stored reason as a statement about detection time, since it describes the evidence that opened the finding.
+- The system shall keep a finding's stored reason as a statement about detection time, since it describes the evidence that opened the finding, except for the day count the rules word into it (open, active or unchanged for N days), which is worded again with the age the finding has on the date being read, so a sentence never shows a second, older age beside the finding's own.
+- The system shall keep one finding per pull request, so a person with several open requests has several findings, and a portfolio read counts every one of them.
 - The system shall record a fact when a finding opens and when it clears, and shall not duplicate a finding that is already open.
 - The system shall show the owner's own narrative beside the signal that contradicts it.
 - The system shall detect drift such as work reported done with no pull request, and claimed progress with no activity.
@@ -405,6 +410,7 @@ Functional requirements:
 - While a past day is viewed, nothing shall be changeable. Confirm, correct, acknowledge, resolve, send, request check-in, and clear history shall be disabled, and the client shall refuse any change request as a backstop. Asking the graph and signing out stay allowed.
 - These reads shall honour the viewing date: directory statuses and portfolio heat; the developer's status, focus list, and tasks; pod check-ins, blockers, rollup reasons, and tasks; project and workstream progress; the program tree; the 30-day momentum line; open risks and drift; flow metrics; and Ask the graph answers.
 - These shall show current state whatever the viewing date, and the screen shall say so: the Signals feed (left out of Everything on a past day), narrative briefs, cross-person requests, and the chat, which is read-only.
+- A past day shall read the links, pods, people, and projects of that day: a later unlink or delete shall not change it, nor shall an earlier day's report (see 4.2).
 - The Admin screen shall always show current configuration, and the viewing-date control shall be hidden there.
 - The console shall move "today" forward when the day changes, so a console left open never keeps asking for yesterday.
 
@@ -435,11 +441,11 @@ Functional requirements:
 - The system shall send no DM about a request whose person was not matched or is the requester. Such a request stays visible to the requester, and a DM that fails to send shall not lose the request.
 - The system shall retry a counterpart DM that failed to send, from a scheduled pass, with the same message. It shall count every attempt, the first included, stop after a configured number (5 by default) with a wait that doubles after each failure (5 minutes after the first by default), never send the DM twice when passes overlap or the DM was recorded meanwhile, and send nothing while counterpart notification is off. A request recorded while notification was off is never DMed later.
 - The requester's "Raised by you" list and the board shall say when the DM is still being retried and when it was not delivered.
-- The counterpart's reply shall acknowledge or resolve the request, and the requester shall be told when it is resolved. A reply after the request is resolved shall change nothing.
-- The system shall record each status change as a fact, so requests appear in the activity feed.
-- Coordination shall show requests in Open, Acknowledged, and Needs resolution columns, naming requester and counterpart, with Acknowledge and Resolve actions on each card.
+- The counterpart's reply shall acknowledge or resolve the request, and the requester shall be told when it is resolved, unless they resolved it themselves. A reply after the request is resolved shall change nothing.
+- The system shall record each status change as a fact, with the member who made it and when (none when a merge or a superseding copy closed it), so requests appear in the activity feed. A request its requester resolved shall not read in the feed as completed by the person asked.
+- Coordination shall show requests in Open, Acknowledged, and Needs resolution columns, naming requester and counterpart. A card shall offer Acknowledge to the person asked while the request is open, and Resolve to them or the requester; anyone else sees that only the people on the request act on it.
 - Team and executive readers shall see the portfolio-wide board; a developer shall see the requests waiting on them.
-- Coordination shall show "Raised by you": the open and acknowledged requests the person asked of others, and where each one has got to.
+- Coordination shall show "Raised by you": the open and acknowledged requests the person asked of others, and those that need resolution because nobody was matched (they wait on the requester, who has to say who was meant), and where each one has got to.
 - The developer, scrum master, and product owner Today shall show "Waiting on you": the open and acknowledged requests where the person is the counterpart.
 
 ### 4.23 Ask the Graph

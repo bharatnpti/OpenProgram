@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta
@@ -120,7 +121,7 @@ class RiskService:
     async def project_risks(
         self, tenant_id: str, project_id: str, as_of: date
     ) -> list[RiskFinding]:
-        await self._ensure_project(tenant_id, project_id)
+        await self._ensure_project(tenant_id, project_id, as_of)
         findings = await self._load_open_findings(tenant_id, project_id=project_id, as_of=as_of)
         return await self._without_settled_requests(tenant_id, findings)
 
@@ -168,11 +169,11 @@ class RiskService:
     async def project_drift(
         self, tenant_id: str, project_id: str, as_of: date
     ) -> list[DriftFinding]:
-        await self._ensure_project(tenant_id, project_id)
+        await self._ensure_project(tenant_id, project_id, as_of)
         return await self._detect_project_drift(tenant_id, project_id, as_of)
 
     async def portfolio_drift(self, tenant_id: str, as_of: date) -> list[DriftFinding]:
-        projects = await self._graph_repository.list_nodes(tenant_id, NodeKind.PROJECT)
+        projects = await self._graph_repository.list_nodes(tenant_id, NodeKind.PROJECT, as_of=as_of)
         findings: list[DriftFinding] = []
         for project in projects:
             findings.extend(await self._detect_project_drift(tenant_id, project.id, as_of))
@@ -197,7 +198,10 @@ class RiskService:
         blocker on the issue would count in. Read on every rollup, so a signal
         that clears stops counting at the next one.
         """
-        nodes_by_id = {node.id: node for node in await self._graph_repository.list_nodes(tenant_id)}
+        nodes_by_id = {
+            node.id: node
+            for node in await self._graph_repository.list_nodes(tenant_id, as_of=as_of)
+        }
         assignees: dict[str, set[str]] = {}
         for edge in await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.ASSIGNED_TO):
             if edge.is_active_on(as_of):
@@ -298,7 +302,7 @@ class RiskService:
     async def scan_and_record_drift(
         self, tenant_id: str, project_id: str, as_of: date
     ) -> DriftScanResult:
-        await self._ensure_project(tenant_id, project_id)
+        await self._ensure_project(tenant_id, project_id, as_of)
         findings = await self._detect_project_drift(tenant_id, project_id, as_of)
         for finding in findings:
             await self._append_drift_fact(finding, project_id, as_of)
@@ -319,7 +323,7 @@ class RiskService:
         project_id: str,
         as_of: date,
     ) -> RiskAssessmentDelta:
-        await self._ensure_project(tenant_id, project_id)
+        await self._ensure_project(tenant_id, project_id, as_of)
         current = await self._assess_project(tenant_id, project_id, as_of)
         previous = await self._load_open_findings(tenant_id, project_id=project_id, as_of=as_of)
         return await self._persist_delta(tenant_id, project_id, previous, current, as_of)
@@ -332,9 +336,13 @@ class RiskService:
         project_id: str,
         as_of: date,
     ) -> list[RiskFinding]:
-        nodes = await self._graph_repository.list_nodes(tenant_id)
+        nodes = await self._graph_repository.list_nodes(tenant_id, as_of=as_of)
         nodes_by_id = {node.id: node for node in nodes}
-        edges = await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+        edges = [
+            edge
+            for edge in await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+            if edge.is_active_on(as_of)
+        ]
 
         workstream_ids = [
             edge.to_node_id
@@ -687,9 +695,13 @@ class RiskService:
         ``green_over_red`` is read from the stored rollup, so the rollup's own
         read of drift (``owner_drift``) skips it rather than read its last run.
         """
-        nodes = await self._graph_repository.list_nodes(tenant_id)
+        nodes = await self._graph_repository.list_nodes(tenant_id, as_of=as_of)
         nodes_by_id = {node.id: node for node in nodes}
-        edges = await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+        edges = [
+            edge
+            for edge in await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+            if edge.is_active_on(as_of)
+        ]
         workstream_ids = [
             edge.to_node_id
             for edge in edges
@@ -1240,7 +1252,7 @@ class RiskService:
             ]
         latest_by_key: dict[str, FactEvent] = {}
         for fact in sorted(facts, key=lambda item: (item.observed_at, item.ingested_at)):
-            key = _payload_str(fact.payload, "risk_key")
+            key = _fact_risk_key(fact.payload)
             if key is None:
                 continue
             latest_by_key[key] = fact
@@ -1299,6 +1311,9 @@ class RiskService:
         # with. A finding is only re-recorded when it opens, so a fact written
         # before the threshold was persisted would otherwise stay frozen for
         # its whole life; resolve the rule's threshold from config for those.
+        # The sentence counts days too, so it is worded again with the same age:
+        # the recorded one says what was true when the finding opened (the feed
+        # keeps it), and beside today's age it read as a second, older age.
         workstream_id = _payload_str(fact.payload, "workstream_id")
         threshold_days = _payload_int(fact.payload, "threshold_days")
         if threshold_days is None:
@@ -1311,7 +1326,7 @@ class RiskService:
             severity=severity,
             entity_ref=EntityRef(tenant_id=tenant_id, kind=entity_kind, id=entity_id),
             workstream_id=workstream_id,
-            reason=reason,
+            reason=_reason_at_age(rule_id, reason, current_age_days),
             evidence=RiskEvidence(
                 identifier=identifier,
                 url=_payload_str(fact.payload, "evidence_url"),
@@ -1330,8 +1345,8 @@ class RiskService:
             owner_status_has_blockers=has_relevant_blockers,
         )
 
-    async def _ensure_project(self, tenant_id: str, project_id: str) -> GraphNode:
-        node = await self._graph_repository.get_node(tenant_id, project_id)
+    async def _ensure_project(self, tenant_id: str, project_id: str, as_of: date) -> GraphNode:
+        node = await self._graph_repository.get_node(tenant_id, project_id, as_of=as_of)
         if node is None:
             raise GraphNotFound(f"project {project_id} not found for tenant {tenant_id}")
         if node.kind is not NodeKind.PROJECT:
@@ -1343,7 +1358,44 @@ _SEVERITY_RANK: dict[Rag, int] = {Rag.RED: 0, Rag.AMBER: 1, Rag.UNKNOWN: 2, Rag.
 
 
 def _risk_key(finding: RiskFinding) -> str:
-    return f"{finding.rule_id.value}:{finding.entity_ref.kind.value}:{finding.entity_ref.id}"
+    """What makes a finding the same one on the next assessment, and in the portfolio read."""
+    return _compose_risk_key(
+        finding.rule_id.value,
+        finding.entity_ref.kind.value,
+        finding.entity_ref.id,
+        finding.evidence.identifier,
+    )
+
+
+def _fact_risk_key(payload: Mapping[str, JsonScalar]) -> str | None:
+    """The key of the finding a risk fact records; None for a fact that carries none.
+
+    Worked out from the fact's fields, not its stored ``risk_key``: a fact recorded
+    before the request was part of a pull request's key carries one key for all of
+    its author's requests.
+    """
+    stored = _payload_str(payload, "risk_key")
+    if stored is None:
+        return None
+    rule_id = _payload_str(payload, "rule_id")
+    entity_kind = _payload_str(payload, "entity_kind")
+    entity_id = _payload_str(payload, "entity_id")
+    evidence = _payload_str(payload, "evidence_identifier")
+    if rule_id and entity_kind and entity_id and evidence:
+        return _compose_risk_key(rule_id, entity_kind, entity_id, evidence)
+    return stored
+
+
+def _compose_risk_key(rule_id: str, entity_kind: str, entity_id: str, evidence: str) -> str:
+    """One finding per rule and entity; for a pull request, one per request.
+
+    A request no work item claims is filed on its author (or its repository), who
+    can have several open at once. Keyed by the author alone they were one finding:
+    the second was never recorded, and the portfolio read kept the latest of them
+    across projects.
+    """
+    key = f"{rule_id}:{entity_kind}:{entity_id}"
+    return f"{key}:{evidence}" if rule_id == RiskRuleId.PR_AGE.value else key
 
 
 def _pull_request_ref(finding: RiskFinding) -> tuple[str, str]:
@@ -1489,6 +1541,33 @@ def _age_days(reference_at: datetime | None, as_of: date) -> int | None:
 def _days(count: int) -> str:
     """'1 day', '3 days': a finding's reason is read as a sentence, never 'day(s)'."""
     return "1 day" if count == 1 else f"{count} days"
+
+
+# The day count each rule's reason carries, as ``_work_item_findings`` and
+# ``_pr_age_findings`` word it, and as findings recorded before ``_days`` did
+# ("3 day(s)"). Each pattern is anchored to the end of its sentence, so a title
+# that names a number of days is never taken for the count.
+_RECORDED_DAYS = r"\d+ (?:days?|day\(s\))"
+_REASON_DAYS: dict[RiskRuleId, re.Pattern[str]] = {
+    RiskRuleId.FEATURE_NO_PR: re.compile(
+        rf"(?<= has been active for ){_RECORDED_DAYS}(?= with no linked pull request\.$)"
+    ),
+    RiskRuleId.PR_AGE: re.compile(rf"(?<= has been open for ){_RECORDED_DAYS}(?=\.$)"),
+    RiskRuleId.STALE_WORK_ITEM: re.compile(
+        rf"(?<= has had no state change in ){_RECORDED_DAYS}(?=\.$)"
+    ),
+}
+
+
+def _reason_at_age(rule_id: RiskRuleId, reason: str, age_days: int) -> str:
+    """The reason a finding was recorded with, counting the days it has on the day read.
+
+    The sentence is written when the finding opens, and the finding keeps ageing:
+    "open for 3 days" beside an age of 5 reads as two ages for one finding. A
+    sentence this does not recognise is returned as recorded.
+    """
+    pattern = _REASON_DAYS.get(rule_id)
+    return pattern.sub(_days(age_days), reason, count=1) if pattern is not None else reason
 
 
 def _parse_repo_list(value: JsonScalar) -> list[str]:

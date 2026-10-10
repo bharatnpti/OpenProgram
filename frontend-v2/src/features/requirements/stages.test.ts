@@ -13,8 +13,8 @@ test("change labels sign the difference and say nothing for none", () => {
 test("columns stack production at the base and share one scale", () => {
   const { columns, max } = stackColumns(
     [
-      { day: "2026-10-04", counts: { production: 2, in_testing: 2 } },
-      { day: "2026-10-05", counts: { production: 4, in_testing: 2, raised: 2 } },
+      { day: "2026-10-04", counts: { production: 2, in_testing: 2 }, has_points: false },
+      { day: "2026-10-05", counts: { production: 4, in_testing: 2, raised: 2 }, has_points: false },
     ],
     { width: 200, height: 100, gap: 2 },
   );
@@ -35,10 +35,13 @@ test("columns stack production at the base and share one scale", () => {
 });
 
 test("a tiny count keeps a visible sliver after its gap", () => {
-  const { columns } = stackColumns([{ day: "d", counts: { production: 99, raised: 1 } }], {
-    width: 50,
-    height: 100,
-  });
+  const { columns } = stackColumns(
+    [{ day: "d", counts: { production: 99, raised: 1 }, has_points: false }],
+    {
+      width: 50,
+      height: 100,
+    },
+  );
 
   assert.equal(columns[0].segments[1].height, 1);
 });

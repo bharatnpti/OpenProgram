@@ -37,7 +37,7 @@ def slack_text(report: DayReport) -> str:
         if section.table is not None:
             lines.extend(_slack(line) for line in table_lines(section.table))
     if report.console_url:
-        lines.extend(["", f"<{report.console_url}|Open in OpenProgram>"])
+        lines.extend(["", f"<{_slack(report.console_url)}|Open in OpenProgram>"])
     return "\n".join(lines)
 
 

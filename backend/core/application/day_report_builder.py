@@ -66,6 +66,7 @@ from core.domain.reports import (
     ReportGroup,
     ReportSection,
     ReportTable,
+    day_report_path,
 )
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import Rag
@@ -136,6 +137,7 @@ class DayReportBuilder:
         day: date,
         *,
         release_id: str | None = None,
+        report_id: str | None = None,
         note: DayReportNote | None = None,
     ) -> DayReport:
         facts = await self._facts(tenant_id, project_id, day, release_id)
@@ -150,6 +152,7 @@ class DayReportBuilder:
             if facts.release is not None
             else scope.project.name
         )
+        console_path = day_report_path(scope.project.id, report_id)
         return DayReport(
             title=f"{name}: day report, {_day_label(day)}",
             project_name=name,
@@ -183,10 +186,9 @@ class DayReportBuilder:
                     empty_text="No open questions.",
                 ),
             ),
+            console_path=console_path,
             console_url=(
-                f"{self._console_base_url}/delivery/project/{scope.project.id}"
-                if self._console_base_url
-                else None
+                f"{self._console_base_url}{console_path}" if self._console_base_url else None
             ),
             attention_count=len(asks),
         )
@@ -242,7 +244,9 @@ class DayReportBuilder:
     async def _scope(
         self, tenant_id: str, project_id: str, day: date, release: Release | None
     ) -> AskScope:
-        project = await self._graph.get_node(tenant_id, project_id)
+        # Read as of the report's day: a pod or person deleted since still
+        # appears on an earlier day's report, as it was that day.
+        project = await self._graph.get_node(tenant_id, project_id, as_of=day)
         if project is None or project.kind is not NodeKind.PROJECT:
             raise GraphNotFound(f"project {project_id} not found for tenant {tenant_id}")
         owned = await owned_project_tasks(self._graph, tenant_id, [project_id], day)
@@ -251,7 +255,7 @@ class DayReportBuilder:
             for task in owned.get(project_id, ())
             if release is None or release.includes(task.metadata)
         }
-        nodes = {node.id: node for node in await self._graph.list_nodes(tenant_id)}
+        nodes = {node.id: node for node in await self._graph.list_nodes(tenant_id, as_of=day)}
         contains = [
             edge
             for edge in await self._graph.list_edges(tenant_id, kind=EdgeKind.CONTAINS)

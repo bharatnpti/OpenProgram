@@ -16,6 +16,7 @@ from api.dependencies import (
     get_persona_view_service,
     get_portfolio_feed_service,
     get_provider_names,
+    get_pull_request_flow_service,
     get_risk_service,
     get_write_back_service,
 )
@@ -40,17 +41,22 @@ from api.dtos import (
     ProgramTreeResponse,
     ProjectProgressResponse,
     ProjectRisksResponse,
+    PullRequestFlowResponse,
     RiskFindingResponse,
     WorkstreamFlowResponse,
     WorkstreamProgressResponse,
     WriteBackAdoptionResponse,
 )
 from core.application.authorization import AuthorizationPolicy, Capability
-from core.application.cross_person_service import CrossPersonRequestService
+from core.application.cross_person_service import (
+    CrossPersonRequestService,
+    RequestStatusNotSettable,
+)
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.person_names import PersonNames, person_name
 from core.application.persona_views import PersonaViewService, ProviderNames
 from core.application.portfolio_feed_service import PortfolioFeedService
+from core.application.pull_request_flow_service import FlowScopeInvalid, PullRequestFlowService
 from core.application.risk_service import RiskService
 from core.application.writeback_service import WriteBackService
 from core.domain.auth import Principal
@@ -74,10 +80,14 @@ async def my_focus(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+    write_back_service: Annotated[WriteBackService, Depends(get_write_back_service)],
 ) -> FocusResponse:
     _ensure(principal, Capability.READ_OWN_WORK)
     view = await persona_service.focus(principal.tenant_id, principal.subject, as_of)
-    return FocusResponse.from_view(view)
+    return FocusResponse.from_view(
+        view,
+        write_back=await write_back_service.write_back_mode(principal.tenant_id, principal.subject),
+    )
 
 
 @router.get("/pods/{pod_id}/blockers", response_model=PodBlockersResponse)
@@ -291,6 +301,40 @@ async def portfolio_flow(
     return PortfolioFlowResponse.from_view(view)
 
 
+@router.get("/portfolio/pr-flow", response_model=PullRequestFlowResponse)
+async def portfolio_pull_request_flow(
+    as_of: Annotated[date, Query(default_factory=date.today)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    service: Annotated[PullRequestFlowService, Depends(get_pull_request_flow_service)],
+    days: Annotated[int, Query(ge=1, le=180)] = 30,
+    program_id: Annotated[str | None, Query()] = None,
+    project_id: Annotated[str | None, Query()] = None,
+    pod_id: Annotated[str | None, Query()] = None,
+) -> PullRequestFlowResponse:
+    """How long pull and merge requests spend coding, awaiting review, in review and
+    awaiting merge, and what kind of work they are: merged ones in the ``days``
+    before ``as_of`` give the stage times, open ones are counted where they stand.
+
+    The whole tenant, or one of a program, a project or a pod. The same read
+    permission as ``/portfolio/flow``.
+    """
+    _ensure_aggregate(principal)
+    try:
+        view = await service.flow(
+            principal.tenant_id,
+            as_of,
+            days=days,
+            program_id=program_id,
+            project_id=project_id,
+            pod_id=pod_id,
+        )
+    except FlowScopeInvalid as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except GraphNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return PullRequestFlowResponse.from_view(view)
+
+
 @router.get("/portfolio/feed", response_model=PortfolioFeedResponse)
 async def portfolio_feed(
     principal: Annotated[Principal, Depends(get_current_principal)],
@@ -370,6 +414,11 @@ async def my_cross_person_requests(
     """
     _ensure(principal, Capability.READ_OWN_WORK)
     active = (CrossPersonRequestStatus.OPEN, CrossPersonRequestStatus.ACKNOWLEDGED)
+    # An ask nobody was matched to (needs_resolution) has no counterpart, so it
+    # is in no inbox: it waits on its requester, who has to say who was meant.
+    # Listing only the active statuses told a requester they had no asks of
+    # others for exactly the one that waits on them.
+    raised = (*active, CrossPersonRequestStatus.NEEDS_RESOLUTION)
     requests: list[CrossPersonRequest] = []
     if relation in {MyRequestRelation.WAITING, MyRequestRelation.BOTH}:
         requests.extend(
@@ -377,7 +426,7 @@ async def my_cross_person_requests(
         )
     if relation in {MyRequestRelation.RAISED, MyRequestRelation.BOTH}:
         requests.extend(
-            await service.list_raised(principal.tenant_id, principal.subject, statuses=active)
+            await service.list_raised(principal.tenant_id, principal.subject, statuses=raised)
         )
     # A request one raised on oneself would otherwise appear twice under `both`.
     unique = list({request.id: request for request in requests}.values())
@@ -396,22 +445,21 @@ async def update_cross_person_request_status(
     principal: Annotated[Principal, Depends(get_current_principal)],
     service: Annotated[CrossPersonRequestService, Depends(get_cross_person_request_service)],
 ) -> CrossPersonRequestResponse:
-    if not _can_update_cross_person_request(principal):
-        raise HTTPException(
-            status_code=403,
-            detail=f"{principal.subject} is not authorized to update cross-person requests",
+    """Acknowledge or resolve a cross-person request, as the signed-in member.
+
+    Only the person the request asks acknowledges it, and only they or its
+    requester resolve it, whatever else the caller's role reads (403). No other
+    status is set by hand (422). The change is recorded with who made it.
+    """
+    _ensure(principal, Capability.READ_OWN_WORK)
+    try:
+        updated = await service.update_status(
+            principal.tenant_id, request_id, request.status, actor=principal.subject
         )
-    existing = await service.get(principal.tenant_id, request_id)
-    if existing is None:
-        raise HTTPException(status_code=404, detail=f"cross-person request {request_id} not found")
-    if not _can_update_cross_person_request(principal, existing):
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"{principal.subject} is not authorized to update cross-person request {request_id}"
-            ),
-        )
-    updated = await service.update_status(principal.tenant_id, request_id, request.status)
+    except AuthorizationDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RequestStatusNotSettable as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if updated is None:
         raise HTTPException(status_code=404, detail=f"cross-person request {request_id} not found")
     return CrossPersonRequestResponse.from_domain(updated)
@@ -493,19 +541,3 @@ def _ensure_aggregate(principal: Principal) -> None:
     raise HTTPException(
         status_code=403, detail=f"{principal.subject} is not authorized for aggregate read"
     )
-
-
-def _can_update_cross_person_request(
-    principal: Principal,
-    request: CrossPersonRequest | None = None,
-) -> bool:
-    policy = AuthorizationPolicy()
-    if policy.can(principal, Capability.READ_TEAM_AGGREGATE):
-        return True
-    if policy.can(principal, Capability.READ_EXEC_AGGREGATE):
-        return True
-    if not policy.can(principal, Capability.READ_OWN_WORK):
-        return False
-    if request is None:
-        return True
-    return principal.subject in {request.requester_id, request.counterpart_id}

@@ -101,7 +101,7 @@ class FlowMetricsService:
         workstream_id: str,
         as_of: date,
     ) -> WorkstreamFlowView:
-        workstream = await self._ensure_workstream(tenant_id, workstream_id)
+        workstream = await self._ensure_workstream(tenant_id, workstream_id, as_of)
         snapshots = await self._work_item_snapshots(tenant_id, as_of)
         workstream_snapshots = [
             snapshot for snapshot in snapshots if workstream_id in snapshot.workstream_ids
@@ -124,7 +124,9 @@ class FlowMetricsService:
         )
 
     async def portfolio_flow(self, tenant_id: str, as_of: date) -> PortfolioFlowView:
-        workstreams = await self._graph_repository.list_nodes(tenant_id, NodeKind.WORKSTREAM)
+        workstreams = await self._graph_repository.list_nodes(
+            tenant_id, NodeKind.WORKSTREAM, as_of=as_of
+        )
         snapshots = await self._work_item_snapshots(tenant_id, as_of)
         summaries: list[WorkstreamFlowSummaryView] = []
         for workstream in workstreams:
@@ -162,8 +164,10 @@ class FlowMetricsService:
             ),
         )
 
-    async def _ensure_workstream(self, tenant_id: str, workstream_id: str) -> GraphNode:
-        node = await self._graph_repository.get_node(tenant_id, workstream_id)
+    async def _ensure_workstream(
+        self, tenant_id: str, workstream_id: str, as_of: date
+    ) -> GraphNode:
+        node = await self._graph_repository.get_node(tenant_id, workstream_id, as_of=as_of)
         if node is None:
             raise GraphNotFound(f"workstream {workstream_id} not found for tenant {tenant_id}")
         if node.kind is not NodeKind.WORKSTREAM:
@@ -175,12 +179,18 @@ class FlowMetricsService:
         tenant_id: str,
         as_of: date,
     ) -> list[_WorkItemSnapshot]:
-        nodes = await self._graph_repository.list_nodes(tenant_id, NodeKind.WORK_ITEM)
-        edges = await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+        nodes = await self._graph_repository.list_nodes(tenant_id, NodeKind.WORK_ITEM, as_of=as_of)
+        edges = [
+            edge
+            for edge in await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS)
+            if edge.is_active_on(as_of)
+        ]
         workstream_by_item: dict[str, list[str]] = {}
         for edge in edges:
-            from_node = await self._graph_repository.get_node(tenant_id, edge.from_node_id)
-            to_node = await self._graph_repository.get_node(tenant_id, edge.to_node_id)
+            from_node = await self._graph_repository.get_node(
+                tenant_id, edge.from_node_id, as_of=as_of
+            )
+            to_node = await self._graph_repository.get_node(tenant_id, edge.to_node_id, as_of=as_of)
             if (
                 from_node is not None
                 and to_node is not None

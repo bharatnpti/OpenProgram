@@ -14,6 +14,7 @@ from core.application.attention import (
     cell_reasons,
 )
 from core.application.blocker_resolution import BlockerResolutionService, ResolvedBlocker
+from core.application.checkin_drift import CHECKIN_DRIFT_FACT_SOURCE
 from core.application.rollup_service import (
     NO_WORK_REASON,
     DriftSignals,
@@ -21,6 +22,16 @@ from core.application.rollup_service import (
     is_outside_teams,
     people_outside_teams,
     task_rag,
+)
+from core.application.status_summaries import NO_REPLY_BLOCKER
+from core.application.sync_services import ISSUE_FACT_SOURCE
+from core.application.task_update_service import (
+    TASK_UPDATE_FACT_SOURCE,
+    StatedEta,
+    TaskStatement,
+    last_statement,
+    own_eta,
+    task_facts,
 )
 from core.domain.errors import GraphNotFound
 from core.domain.graph import (
@@ -38,12 +49,17 @@ from core.domain.rollup import FactorKind, NodeStatus, Rag, RollupFactor
 from core.domain.status import DeveloperStatus, StatusSource
 from core.ports.repositories import (
     GraphRepository,
+    IdentityLinkRepository,
     RollupRepository,
     StatusRepository,
     TimeSeriesRepository,
 )
 
 TASK_FACT_LOOKBACK_DAYS = 30
+# Facts that say what a person stated about a task, not how it is going: a
+# task's colour never comes from them (a statement never repaints a task, and
+# an ETA fact never masks the tracker's colour).
+_STATEMENT_FACT_SOURCES = frozenset({TASK_UPDATE_FACT_SOURCE, CHECKIN_DRIFT_FACT_SOURCE})
 
 
 class PortfolioFindings(Protocol):
@@ -78,6 +94,17 @@ class FocusTaskView:
     source: StatusSource
     confidence: float | None
     deadline: date | None
+    # The tracker's own status name ("In Review"), for a synced task only.
+    tracker_status: str | None = None
+    # The person's own latest ETA for the task, from a check-in or the console.
+    my_eta: date | None = None
+    my_eta_label: str | None = None
+    # The person's latest statement on the task: a state or a note.
+    last_update: TaskStatement | None = None
+    # The person's open blockers on the task, as their blocker details place them.
+    blocker_ids: tuple[str, ...] = ()
+    # The person is the synced tracker issue's assignee, through their identity link.
+    can_move_in_tracker: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -194,6 +221,11 @@ class PodTaskView:
     open_blockers: tuple[PodTaskBlockerView, ...]
     #: The issue tracker's own status name, e.g. "In Progress" (see `_tracker_status_name`).
     tracker_status: str | None = None
+    #: The latest statement any owner made on the task (a state or a note), and who made it.
+    last_update: TaskStatement | None = None
+    last_update_by: str | None = None
+    #: The owners' own ETA for the task: the latest day any of them gave.
+    eta: StatedEta | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -357,12 +389,18 @@ class PersonaViewService:
         rollup_repository: RollupRepository,
         time_series_repository: TimeSeriesRepository,
         drift_signals: DriftSignals | None = None,
+        identity_link_repository: IdentityLinkRepository | None = None,
     ) -> None:
-        """``drift_signals`` gives a rollup computed here, with nothing stored, its drift (N3)."""
+        """``drift_signals`` gives a rollup computed here, with nothing stored, its drift (N3).
+
+        ``identity_link_repository`` maps a person to their tracker account, so
+        a focus task can say whether they are its synced assignee.
+        """
         self._graph_repository = graph_repository
         self._status_repository = status_repository
         self._rollup_repository = rollup_repository
         self._time_series_repository = time_series_repository
+        self._identity_links = identity_link_repository
         self._blocker_resolution = BlockerResolutionService(graph_repository, status_repository)
         self._rollup_service = RollupService(
             status_repository, rollup_repository, self._blocker_resolution, drift_signals
@@ -379,7 +417,7 @@ class PersonaViewService:
             tree = await self._graph_repository.get_program_tree(tenant_id, developer_id, as_of)
         except GraphNotFound:
             status_source = status.source if status else StatusSource.UNKNOWN
-            blockers = status.blockers if status else ()
+            blockers = _listed_blockers(status)
             return FocusView(
                 developer_id=developer_id,
                 developer_name=developer_id,
@@ -406,13 +444,16 @@ class PersonaViewService:
                 ),
             )
         developer = tree.root
-        tasks_list: list[FocusTaskView] = []
-        for node in _sorted_nodes(tree.nodes):
-            if node.kind is NodeKind.TASK:
-                tasks_list.append(await self._focus_task(node, as_of))
-        tasks = tuple(tasks_list)
+        context = await self._focus_context(tenant_id, developer_id, tree, resolved_blockers)
+        tasks = tuple(
+            [
+                await self._focus_task(node, as_of, context)
+                for node in _sorted_nodes(tree.nodes)
+                if node.kind is NodeKind.TASK
+            ]
+        )
         status_source = status.source if status else StatusSource.UNKNOWN
-        blockers = status.blockers if status else ()
+        blockers = _listed_blockers(status)
         focus = tuple(
             FocusItemView(
                 kind="blocker",
@@ -562,6 +603,8 @@ class PersonaViewService:
                 continue
             node = nodes[task_id]
             status = await self._task_status(node, as_of)
+            facts = await task_facts(self._time_series_repository, node, as_of)
+            said = _owners_last_statement(facts, owners, as_of)
             open_blockers = tuple(
                 PodTaskBlockerView(
                     blocker_id=blocker.blocker_id,
@@ -588,6 +631,9 @@ class PersonaViewService:
                     blocked=status.rag is Rag.RED or bool(open_blockers),
                     open_blockers=open_blockers,
                     tracker_status=_tracker_status_name(node.metadata),
+                    last_update=said[0] if said is not None else None,
+                    last_update_by=said[1] if said is not None else None,
+                    eta=_owners_eta(facts, owners, as_of),
                 )
             )
         tasks.sort(key=lambda task: (not task.blocked, _TRIAGE_RANK[task.rag], task.name, task.id))
@@ -864,7 +910,7 @@ class PersonaViewService:
         findings (``findings``; none read without it), and how long each open
         blocker has stood.
         """
-        program_id = program_root_id or await self._first_program_id(tenant_id)
+        program_id = program_root_id or await self._first_program_id(tenant_id, as_of)
         loaded = await self._heatmap_statuses(tenant_id, as_of, program_id)
         statuses = loaded[0] if loaded is not None else []
         day = await self._attention_day(tenant_id, statuses, as_of, today, names)
@@ -902,7 +948,7 @@ class PersonaViewService:
                 statuses = list(await self._rollup_service.compute(tree, as_of))
                 statuses += await self._outside_teams(tenant_id, as_of)
             return statuses, tree
-        resolved_root_id = await self._first_program_id(tenant_id)
+        resolved_root_id = await self._first_program_id(tenant_id, as_of)
         if resolved_root_id is None:
             return None
         try:
@@ -933,7 +979,7 @@ class PersonaViewService:
         """The day as the reasons read it: statuses, teams on the day, its check-ins."""
         provider = names or ProviderNames()
         graph = TeamGraph.from_graph(
-            await self._graph_repository.list_nodes(tenant_id),
+            await self._graph_repository.list_nodes(tenant_id, as_of=as_of),
             await self._graph_repository.list_edges(tenant_id),
             as_of,
         )
@@ -973,7 +1019,7 @@ class PersonaViewService:
         outside = {status.entity_ref.id for status in statuses if is_outside_teams(status)}
         nodes = {node.id: node for node in tree.nodes} if tree is not None else {}
         for node_id in sorted((wanted | outside) - nodes.keys()):
-            node = await self._graph_repository.get_node(tenant_id, node_id)
+            node = await self._graph_repository.get_node(tenant_id, node_id, as_of=day.as_of)
             if node is not None:
                 nodes[node_id] = node
         context = context.with_labels(
@@ -1033,8 +1079,8 @@ class PersonaViewService:
         people = await people_outside_teams(self._graph_repository, tenant_id, as_of)
         return list(await self._rollup_service.compute_outside_teams(people, as_of))
 
-    async def _first_program_id(self, tenant_id: str) -> str | None:
-        programs = await self._graph_repository.list_nodes(tenant_id, NodeKind.PROGRAM)
+    async def _first_program_id(self, tenant_id: str, as_of: date) -> str | None:
+        programs = await self._graph_repository.list_nodes(tenant_id, NodeKind.PROGRAM, as_of=as_of)
         return programs[0].id if programs else None
 
     async def _tenant_contains(
@@ -1045,7 +1091,10 @@ class PersonaViewService:
         Ownership is read from these, not from a tree: a tree holds only the
         edges below its root, so a container elsewhere is out of its sight.
         """
-        nodes = {node.id: node for node in await self._graph_repository.list_nodes(tenant_id)}
+        nodes = {
+            node.id: node
+            for node in await self._graph_repository.list_nodes(tenant_id, as_of=as_of)
+        }
         parents: dict[str, list[str]] = {}
         for edge in await self._graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS):
             if edge.is_active_on(as_of):
@@ -1074,8 +1123,59 @@ class PersonaViewService:
                 )
         return statuses
 
-    async def _focus_task(self, node: GraphNode, as_of: date) -> FocusTaskView:
-        status = await self._task_status(node, as_of)
+    async def focus_task(
+        self, tenant_id: str, developer_id: str, task_id: str, as_of: date
+    ) -> FocusTaskView | None:
+        """One task of the person's focus, as ``focus`` lists it; None when it is not theirs."""
+        try:
+            tree = await self._graph_repository.get_program_tree(tenant_id, developer_id, as_of)
+        except GraphNotFound:
+            return None
+        node = next(
+            (item for item in tree.nodes if item.kind is NodeKind.TASK and item.id == task_id),
+            None,
+        )
+        if node is None:
+            return None
+        blockers = await self._blocker_resolution.open_blockers_for_developer(
+            tenant_id, developer_id, as_of
+        )
+        context = await self._focus_context(tenant_id, developer_id, tree, blockers)
+        return await self._focus_task(node, as_of, context)
+
+    async def _focus_context(
+        self,
+        tenant_id: str,
+        developer_id: str,
+        tree: GraphTree,
+        blockers: Sequence[ResolvedBlocker],
+    ) -> _FocusContext:
+        accounts = {developer_id}
+        if self._identity_links is not None:
+            link = await self._identity_links.get_identity_link(tenant_id, developer_id)
+            if link is not None and link.jira_account_id:
+                accounts.add(link.jira_account_id)
+        blocker_ids: dict[str, list[str]] = {}
+        for blocker in blockers:
+            if blocker.work_item_ref is not None:
+                blocker_ids.setdefault(blocker.work_item_ref.id, []).append(blocker.blocker_id)
+        return _FocusContext(
+            developer_id=developer_id,
+            accounts=frozenset(accounts),
+            blocker_ids={key: tuple(ids) for key, ids in blocker_ids.items()},
+            assigned={
+                edge.to_node_id
+                for edge in tree.edges
+                if edge.kind is EdgeKind.ASSIGNED_TO and edge.from_node_id == developer_id
+            },
+        )
+
+    async def _focus_task(
+        self, node: GraphNode, as_of: date, context: _FocusContext
+    ) -> FocusTaskView:
+        facts = await task_facts(self._time_series_repository, node, as_of)
+        status = _task_status_from_facts(node, facts, as_of)
+        eta = own_eta(facts, context.developer_id, as_of)
         return FocusTaskView(
             id=node.id,
             name=node.name,
@@ -1083,6 +1183,12 @@ class PersonaViewService:
             source=status.source,
             confidence=status.confidence,
             deadline=_deadline(node),
+            tracker_status=_tracker_status_name(node.metadata),
+            my_eta=eta.day if eta is not None else None,
+            my_eta_label=eta.label if eta is not None else None,
+            last_update=last_statement(facts, context.developer_id, as_of),
+            blocker_ids=context.blocker_ids.get(node.id, ()),
+            can_move_in_tracker=_owns_synced_issue(node, facts, context, as_of),
         )
 
     async def _task_progress(self, node: GraphNode, as_of: date) -> TaskProgressView:
@@ -1103,13 +1209,73 @@ class PersonaViewService:
             node.ref,
             _since_for_as_of(as_of),
         )
-        fact = max(facts, key=lambda item: item.observed_at) if facts else None
-        return TaskStatusView(
-            rag=_rag_from_fact_or_metadata(fact, node),
-            source=_source_from_fact(fact),
-            confidence=_confidence_from_fact(fact),
-            source_ref=node.ref,
-        )
+        return _task_status_from_facts(node, facts, as_of)
+
+
+@dataclass(frozen=True, kw_only=True)
+class _FocusContext:
+    """What every task row of one person's focus reads alike."""
+
+    developer_id: str
+    # The person's ids in the tracker: their member id and their identity link's.
+    accounts: frozenset[str]
+    # Open blocker ids per task id, as the blocker details place them.
+    blocker_ids: Mapping[str, tuple[str, ...]]
+    # The tasks the person's tree reaches through their own assignment edge.
+    assigned: set[str]
+
+
+def _task_status_from_facts(
+    node: GraphNode, facts: Sequence[FactEvent], as_of: date
+) -> TaskStatusView:
+    """A task's colour from its latest tracker or rollup fact, else its synced metadata.
+
+    Statements are left out: a ``task_update`` (what the person said in chat
+    or the console) never repaints the task, and an ``eta_stated`` or other
+    ``checkin_drift`` fact, which carries no colour, no longer hides the
+    tracker's.
+    """
+    since = _since_for_as_of(as_of)
+    coloured = [
+        fact
+        for fact in facts
+        if fact.source not in _STATEMENT_FACT_SOURCES and fact.observed_at >= since
+    ]
+    fact = max(coloured, key=lambda item: item.observed_at) if coloured else None
+    return TaskStatusView(
+        rag=_rag_from_fact_or_metadata(fact, node),
+        source=_source_from_fact(fact),
+        confidence=_confidence_from_fact(fact),
+        source_ref=node.ref,
+    )
+
+
+def _owns_synced_issue(
+    node: GraphNode, facts: Sequence[FactEvent], context: _FocusContext, as_of: date
+) -> bool:
+    """Whether the person is the synced tracker issue's assignee.
+
+    Only a task the issue sync wrote (it carries the tracker ``state``) is an
+    issue to move. The assignee is the latest synced issue fact's
+    ``assignee_id``, matched against the person's tracker ids, the way the
+    write-back's ownership gate matches the live issue's; with no issue fact
+    in the window, the person's own assignment edge stands in. A read only:
+    the write itself checks the live issue again.
+    """
+    state = node.metadata.get("state")
+    if not isinstance(state, str) or not state.strip():
+        return False
+    synced = [
+        fact
+        for fact in facts
+        if fact.source == ISSUE_FACT_SOURCE
+        and "assignee_id" in fact.payload
+        and fact.observed_at.date() <= as_of
+    ]
+    if not synced:
+        return node.id in context.assigned
+    assignee = max(synced, key=lambda item: item.observed_at).payload.get("assignee_id")
+    return isinstance(assignee, str) and assignee in context.accounts
 
 
 def _source_names(tree: GraphTree, factors: Iterable[RollupFactor]) -> dict[str, str]:
@@ -1143,7 +1309,7 @@ async def owned_project_tasks(
     Read for many projects at once, so the tenant's nodes and ``contains``
     edges are listed once. A project id that is not a project is left out.
     """
-    nodes = {node.id: node for node in await graph_repository.list_nodes(tenant_id)}
+    nodes = {node.id: node for node in await graph_repository.list_nodes(tenant_id, as_of=as_of)}
     parents: dict[str, list[str]] = {}
     for edge in await graph_repository.list_edges(tenant_id, kind=EdgeKind.CONTAINS):
         if edge.is_active_on(as_of):
@@ -1361,6 +1527,26 @@ def _task_owners(
     return frozenset(owners), frozenset(attributable)
 
 
+def _owners_last_statement(
+    facts: Sequence[FactEvent], owners: Sequence[GraphNode], as_of: date
+) -> tuple[TaskStatement, str] | None:
+    """The latest statement any owner made on a task, with that owner's name."""
+    said = [
+        (statement, owner.name)
+        for owner in owners
+        if (statement := last_statement(facts, owner.id, as_of)) is not None
+    ]
+    return max(said, key=lambda item: item[0].at, default=None)
+
+
+def _owners_eta(
+    facts: Sequence[FactEvent], owners: Sequence[GraphNode], as_of: date
+) -> StatedEta | None:
+    """The owners' ETA for a task: the latest day any of them gave, since the task ends with it."""
+    etas = [eta for owner in owners if (eta := own_eta(facts, owner.id, as_of)) is not None]
+    return max(etas, key=lambda eta: eta.day, default=None)
+
+
 def _since_for_as_of(as_of: date) -> datetime:
     return datetime.combine(as_of - timedelta(days=TASK_FACT_LOOKBACK_DAYS), time.min, tzinfo=UTC)
 
@@ -1385,6 +1571,21 @@ def _blocker_view(
         pod_ref=blocker.explicit_pod_ref,
         unattributed=blocker.unattributed,
         first_seen_on=blocker.first_seen_on,
+    )
+
+
+def _listed_blockers(status: DeveloperStatus | None) -> tuple[str, ...]:
+    """The blockers a status lists, without the placeholder a day nobody answered carries.
+
+    A non-response status holds ``NO_REPLY_BLOCKER`` so it is never empty. The
+    rollups and the blocker resolver drop it -- silence is the person's status,
+    never a blocker they have -- and so do the blocker details, which left the
+    focus list a "blocker" with nothing behind it.
+    """
+    if status is None:
+        return ()
+    return tuple(
+        blocker for blocker in status.blockers if blocker.strip().lower() != NO_REPLY_BLOCKER
     )
 
 

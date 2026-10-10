@@ -29,6 +29,7 @@ from core.application.gate_service import GateService
 from core.application.persona_views import ProviderNames
 from core.application.reply_ingestion import ReplyDrainResult, ReplyIngestionService
 from core.application.risk_service import RiskService
+from core.application.rollup_service import PersonRollups, RollupService
 from core.application.self_status_service import SelfStatusService
 from core.application.status_collector import DEFAULT_ISSUE_TRACKER_NAME, StatusCollector
 from core.application.sync_recording import provider_start_failure_message
@@ -38,6 +39,7 @@ from core.application.sync_services import (
     VcsReadSyncService,
 )
 from core.application.sync_status_service import SyncStatusService
+from core.application.task_update_service import TaskUpdateService
 from core.application.writeback_service import WriteBackService
 from core.domain.errors import ProviderUnavailable
 from core.domain.graph import NodeKind
@@ -1376,6 +1378,41 @@ class ServiceRegistry:
             ),
             blocker_resolution=BlockerResolutionService(
                 self.graph_repository(), self.status_repository()
+            ),
+            rollups=self.person_rollups(),
+        )
+
+    def task_update_service(self) -> TaskUpdateService:
+        return TaskUpdateService(
+            graph_repository=self.graph_repository(),
+            status_repository=self.status_repository(),
+            time_series_repository=self.time_series_repository(),
+            blocker_lifecycle=BlockerLifecycleService(
+                self.status_repository(), self.graph_repository()
+            ),
+            blocker_resolution=BlockerResolutionService(
+                self.graph_repository(), self.status_repository()
+            ),
+            write_back=self.write_back_service(),
+            rollups=self.person_rollups(),
+            tracker_name=self.provider_names().tracker,
+        )
+
+    def person_rollups(self) -> PersonRollups:
+        """Today's rollup of one person's trees, recorded right after their own update.
+
+        Each call builds a fresh ``RollupService`` with the drift the hourly
+        rollup reads (``RiskService.owner_drift``), since one keeps a day's drift.
+        """
+        blockers = BlockerResolutionService(self.graph_repository(), self.status_repository())
+        return PersonRollups(
+            graph_repository=self.graph_repository(),
+            rollup_repository=self.rollup_repository(),
+            service_factory=lambda: RollupService(
+                self.status_repository(),
+                self.rollup_repository(),
+                blockers,
+                drift_signals=self.risk_service(),
             ),
         )
 
