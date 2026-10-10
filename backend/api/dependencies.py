@@ -250,6 +250,8 @@ def get_ask_service(request: Request) -> AskService:
         flow_metrics_service=get_flow_metrics_service(request),
         persona_view_service=get_persona_view_service(request),
         risk_service=get_risk_service(request),
+        forecast_service=get_forecast_service(request),
+        delivery_scope_service=get_delivery_scope_service(request),
         model=settings.default_llm_model,
     )
 
