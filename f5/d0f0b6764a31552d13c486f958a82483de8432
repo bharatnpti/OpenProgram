@@ -1,0 +1,168 @@
+frontend-v3/src/features/admin/jiraWritesWords.test.ts
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-198
+backend/tests/unit/test_jira_writes_service.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-245
+frontend-v3/src/features/admin/readinessForm.ts
+  s_a17a18ca8c509e::t_1ceac4a634be05 9,264-278
+  s_a17a18ca8c509e::t_cf941861ff1017 279-280
+backend/core/application/day_report_asks.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 16-19,72-76,102-104,166-173,179-180,184-243
+  s_a17a18ca8c509e::t_5740ec44e8777e 244-245
+backend/tests/unit/golden/day_report_readiness_gap.slack.txt
+  s_a17a18ca8c509e::t_1ceac4a634be05 27
+backend/core/domain/jira_writes.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-381
+backend/tests/unit/golden/day_report_readiness_crowded.teams.json
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-126
+backend/tests/unit/test_delivery_scope.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 123-149
+frontend-v3/scripts/mock/jira-writes.mjs
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-210
+frontend-v3/src/features/admin/JiraWritesTab.tsx
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-334
+frontend-v3/src/pages/OverallPage.tsx
+  s_a17a18ca8c509e::t_1ceac4a634be05 9,30-31,38-40,76,98
+frontend-v3/src/api/schema.ts
+  s_a17a18ca8c509e::t_1ceac4a634be05 113-122,319-320
+frontend-v3/scripts/mock/release-readiness.mjs
+  s_a17a18ca8c509e::t_1ceac4a634be05 12-17,20-21,41-42,326-332,362-363,460-461,538-540,593,692,736-739,793,797,803-806,815
+backend/core/application/release_readiness_service.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 12-15,27,46,154-163,342,356,377,379,385-402,406-410,412-428,940,946,949,986,999-1004,1222-1232,1433,1445,1755-1778,1820,1822-1826,1835,1849-1876
+  s_a17a18ca8c509e::t_590e8ec330742c 1877-1878
+backend/core/ports/repositories.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 26,559-577
+  s_a17a18ca8c509e::t_50a6896eca869d 578-579
+backend/core/application/delivery_scope.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 217-236
+backend/api/routers/jira_writes.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-70
+frontend-v3/src/app/access.ts
+  s_a17a18ca8c509e::t_1ceac4a634be05 9,102-107,179,185-201
+  s_a17a18ca8c509e::t_ec9d555d31efcc 202-203
+backend/infra/registry.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 29,94,150,179,280,550-574,586,1556
+frontend-v3/src/app/access.test.ts
+  s_a17a18ca8c509e::t_1ceac4a634be05 9,15,467-472,474-497
+frontend-v3/scripts/mock-api.mjs
+  s_a17a18ca8c509e::t_1ceac4a634be05 34,228
+backend/tests/unit/golden/day_report_readiness_gap.text.txt
+  s_a17a18ca8c509e::t_1ceac4a634be05 28
+backend/api/main.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 29,144
+frontend-v3/src/api/openapi.json
+  s_a17a18ca8c509e::t_1ceac4a634be05 4293,4727-4828,7958,7983,16617-16678,16717-16934,19831,19875-19918,21914-21919
+frontend-v2/src/api/openapi.json
+  s_a17a18ca8c509e::t_1ceac4a634be05 4293,4727-4828,7958,7983,16617-16678,16717-16934,19831,19875-19918,21914-21919
+backend/api/readiness_dtos.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 175-178,208-236,246
+backend/tests/integration/test_jira_writes_repository.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-102
+frontend-v3/src/api/generated.ts
+  s_a17a18ca8c509e::t_1ceac4a634be05 907-910,1021-1038,1800-1803,4699-4723,4735-4808,5980,5992-6016,6717-6722,10160-10225,11976
+backend/core/application/jira_writes_service.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-107
+backend/tests/unit/test_api.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 2192-2194,2199-2202
+backend/tests/unit/test_jira_writes_api.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-249
+backend/api/routers/readiness.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 40,43,55,316,318,320-321,324-325,416-418
+backend/tests/fixtures/day_report_full_day.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 26,174-177,180-182,185-211,249-250,268-269
+  s_a17a18ca8c509e::t_764de6ac41884e 270
+features.md
+  s_a17a18ca8c509e::t_1ceac4a634be05 461-462,483,488-490,578-580
+backend/tests/unit/test_readiness_service.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 487-488,491,495
+backend/core/application/ask_service.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 11,17,33-34,92-95,127,157-175,1095-1263,1336-1344,1368-1369,1379-1380,1514-1525,2342-2398
+  s_a17a18ca8c509e::t_df0969dc046115 2399-2400
+backend/infra/persistence/postgres_readiness.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 81-86,93-95,98,105-111
+backend/tests/unit/golden/day_report_readiness_crowded.email.html
+  s_a17a18ca8c509e::t_1ceac4a634be05 1
+backend/tests/unit/test_readiness_api.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 151,173,175,178-180,282
+frontend-v3/src/features/admin/jiraWritesWords.ts
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-223
+frontend-v3/src/features/admin/CheckinsTab.tsx
+  s_a17a18ca8c509e::t_1ceac4a634be05 3,37,98-100,220-229
+frontend-v3/src/features/admin/readinessForm.test.ts
+  s_a17a18ca8c509e::t_1ceac4a634be05 4,13,88-104
+  s_a17a18ca8c509e::t_b23e51d0a428dc 105-106
+frontend-v3/src/features/admin/ReleaseReadinessTab.tsx
+  s_a17a18ca8c509e::t_1ceac4a634be05 4,41,44,143,145,156,176-187
+backend/tests/unit/test_ask_delivery_forecast.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-364
+backend/api/jira_writes_dtos.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-186
+backend/infra/persistence/in_memory_jira_writes.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-30
+backend/tests/unit/golden/day_report_readiness_crowded.text.txt
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-58
+backend/api/routers/ops.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 25,97-103
+backend/tests/unit/golden/day_report_readiness_crowded.slack.txt
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-55
+backend/tests/unit/golden/day_report_readiness_gap.email.html
+  s_a17a18ca8c509e::t_1ceac4a634be05 1
+backend/tests/unit/test_jira_writes_rules.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-213
+frontend-v3/src/pages/AdminPage.tsx
+  s_a17a18ca8c509e::t_1ceac4a634be05 14,26,50,77
+frontend/src/api/generated.ts
+  s_a17a18ca8c509e::t_1ceac4a634be05 907-910,1021-1038,1800-1803,4712-4736,4748-4821,5993,6005-6029,6730-6735,10173-10238,11989
+backend/tests/unit/test_ask_api.py
+  s_a17a18ca8c509e::t_47a9f813e5dc59 154,169,217
+  s_a17a18ca8c509e::t_1ceac4a634be05 20,25,32-33,58-64,70-74,80-102,122-123,129,133,153,155,160-168,170-216,218-241
+  s_a17a18ca8c509e::t_43962704e07e2a 242-243
+frontend-v2/src/api/generated.ts
+  s_a17a18ca8c509e::t_1ceac4a634be05 907-910,1021-1038,1800-1803,4699-4723,4735-4808,5980,5992-6016,6717-6722,10160-10225,11976
+frontend-v3/src/api/client.ts
+  s_a17a18ca8c509e::t_1ceac4a634be05 25,84-85,557-559,751
+backend/infra/persistence/postgres_jira_writes.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 1-147
+backend/tests/unit/golden/day_report_readiness_gap.teams.json
+  s_a17a18ca8c509e::t_1ceac4a634be05 77
+frontend-v3/src/features/daily/DailyReport.tsx
+  s_a17a18ca8c509e::t_1ceac4a634be05 101-105,131-141
+  s_a17a18ca8c509e::t_67fca0dea18a41 142-143
+backend/core/application/day_report_builder.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 8-10,26,31,43,49,57,75,311-312,314-321,354,541-545,733,773,775-777,781-782,786,789,795-823
+  s_a17a18ca8c509e::t_bc28012c768875 824-825
+docs/lld/release-readiness.md
+  s_a17a18ca8c509e::t_1ceac4a634be05 61-65,73-80,94-116
+backend/tests/unit/test_readiness_day_report.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 5-8,13,16-34,59-60,72-263
+frontend/src/api/openapi.json
+  s_a17a18ca8c509e::t_1ceac4a634be05 4293,4727-4828,7958,7983,16617-16678,16717-16934,19831,19875-19918,21914-21919
+frontend-v3/src/features/overall/queries.ts
+  s_a17a18ca8c509e::t_1ceac4a634be05 4-5,126-137,140-141,144
+backend/api/routers/config.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 14,57,68,1132,1134,1136-1139
+backend/tests/unit/test_ask_investigation.py
+  s_a17a18ca8c509e::t_94ecb8949957f7 9
+  s_a17a18ca8c509e::t_ed6a5bb547de8a 29,46,48,140-144
+backend/api/dependencies.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 27,212-216,254-255
+backend/core/application/writeback_service.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 4,25,28,69-72,84-87,145-148,190,202,206,210-215,227,242,283-285,310-313,315-316,323,335,361-364,492,690,859-861,867-868
+backend/tests/unit/test_ask_service.py
+  s_a17a18ca8c509e::t_1ceac4a634be05 11,32,59,299-307,566-576,586,591-592,603,632
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f5d0f0b6764a31552d13c486f958a82483de8432",
+  "prompts": {},
+  "sessions": {
+    "s_a17a18ca8c509e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5c08089-2933-44f3-a3c3-066d71fe7232",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
