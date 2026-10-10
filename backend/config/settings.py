@@ -19,6 +19,11 @@ from core.domain.status import CheckInDefaults
 # It is public, so it must never protect a shared (non-local) deployment.
 DEFAULT_SECRET_KEY = "q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ="
 
+# The DBOS pool and sync-queue limits, named so the DBOS adapter's runtime config
+# defaults to exactly what the settings default to, without reading the settings.
+DEFAULT_DBOS_SYSTEM_POOL_SIZE = 10
+DEFAULT_SYNC_QUEUE_CONCURRENCY = 4
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -152,11 +157,11 @@ class Settings(BaseSettings):
     dbos_system_database_url: str | None = None
     # DBOS's own pool on its system database, per process (DBOS defaults to 20);
     # its notification listener holds one connection more, outside the pool.
-    dbos_system_pool_size: int = 10
+    dbos_system_pool_size: int = DEFAULT_DBOS_SYSTEM_POOL_SIZE
     dbos_heartbeat_cron: str = "0 * * * * *"
     # How many Jira and Git sync workflows run at once, across every process.
     # The rest wait their turn in the openprogram_sync queue.
-    sync_queue_concurrency: int = 4
+    sync_queue_concurrency: int = DEFAULT_SYNC_QUEUE_CONCURRENCY
     tenant_default_timezone: str = "UTC"
     checkin_reply_wait_seconds: int = 14400
     checkin_final_reply_wait_seconds: int = 28800
