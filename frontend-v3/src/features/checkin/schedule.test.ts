@@ -3,10 +3,16 @@ import { test } from "node:test";
 
 import type { CheckinPreferenceResponse, CheckinSendResponse } from "../../api/schema";
 import {
+  adminSendWords,
   askTimeWords,
   askedDays,
   changeLines,
   clockTime,
+  datesWords,
+  daysHintWords,
+  daysLabel,
+  daysLegendWords,
+  daysWords,
   draftFrom,
   nextSendAt,
   noCheckinWords,
@@ -23,12 +29,40 @@ import {
   zoneEffectWords,
 } from "./schedule.ts";
 
+const NO_DATES = { month_days: null, months: null };
 // The backend's default: one send at 09:30 UTC, Monday to Friday.
 const SEND: CheckinSendResponse = {
+  kind: "weekly",
   cron: "30 9 * * 1-5",
   timezone: "UTC",
   local_time: "09:30:00",
   weekdays: [0, 1, 2, 3, 4],
+  ...NO_DATES,
+};
+// 09:30 UTC on all seven days: the one schedule that is every day.
+const DAILY: CheckinSendResponse = {
+  ...SEND,
+  cron: "30 9 * * *",
+  weekdays: [0, 1, 2, 3, 4, 5, 6],
+};
+// qa2's paused schedule: 00:00 UTC on 1 January, and on no other day.
+const NEW_YEAR: CheckinSendResponse = {
+  kind: "dates",
+  cron: "0 0 1 1 *",
+  timezone: "UTC",
+  local_time: "00:00:00",
+  weekdays: null,
+  month_days: [1],
+  months: [1],
+};
+// Every hour from 09:00 to 17:00 on weekdays: no one time to say.
+const HOURLY: CheckinSendResponse = {
+  kind: "other",
+  cron: "0 9-17 * * 1-5",
+  timezone: "UTC",
+  local_time: null,
+  weekdays: null,
+  ...NO_DATES,
 };
 
 const preference = (
@@ -111,11 +145,11 @@ test("no days at all is refused before the backend refuses it", () => {
 
 test("the summary of a change names the team's values", () => {
   const initial = draftFrom(preference());
-  assert.deepEqual(changeLines(initial, { ...initial, teamDays: true, timezone: null }, "UTC"), [
-    "Days: Mon–Fri → your team's (Mon–Fri)",
-    "Time zone: Europe/Berlin → your team's (UTC)",
-  ]);
-  assert.deepEqual(changeLines(initial, initial, "UTC"), []);
+  assert.deepEqual(
+    changeLines(initial, { ...initial, teamDays: true, timezone: null }, "UTC", SEND),
+    ["Days: Mon–Fri → your team's (Mon–Fri)", "Time zone: Europe/Berlin → your team's (UTC)"],
+  );
+  assert.deepEqual(changeLines(initial, initial, "UTC", SEND), []);
 });
 
 test("the zone list keeps the stored zone even when the browser lacks it", () => {
@@ -211,19 +245,12 @@ test("the next send skips the days the bot doesn't send on", () => {
   assert.equal(nextSendAt({ ...SEND, local_time: null }, FRIDAY_SUMMER), null);
 });
 
-test("a schedule the backend can't read as one time says its cron, and in UTC", () => {
-  const several = {
-    cron: "0 9,15 * * 1-5",
-    timezone: "UTC",
-    local_time: null,
-    weekdays: [0, 1, 2, 3, 4],
-  };
+test("a schedule with no one time says its cron, in UTC, and no days", () => {
   assert.equal(
-    sendWords(several, "Europe/Berlin", FRIDAY_SUMMER),
-    "on the schedule 0 9,15 * * 1-5 (UTC), Mon–Fri",
+    sendWords(HOURLY, "Europe/Berlin", FRIDAY_SUMMER),
+    "on the schedule 0 9-17 * * 1-5 (UTC)",
   );
-  const monthly = { cron: "30 9 1 * *", timezone: "UTC", local_time: "09:30:00", weekdays: null };
-  assert.equal(sendWords(monthly, "UTC", FRIDAY_SUMMER), "at 09:30 UTC");
+  assert.equal(nextSendAt(HOURLY, FRIDAY_SUMMER), null);
 });
 
 test("the time zone says what it changes, and that the send time isn't one of those things", () => {
@@ -235,7 +262,6 @@ test("the time zone says what it changes, and that the send time isn't one of th
 
 test("only the days the bot sends on are offered or shown as asked", () => {
   assert.deepEqual(sendDays(SEND), [0, 1, 2, 3, 4]);
-  assert.deepEqual(sendDays({ weekdays: null }), [0, 1, 2, 3, 4, 5, 6]);
   // Liam chose every day; the bot sends Monday to Friday, so that is when he is asked.
   assert.deepEqual(askedDays([0, 1, 2, 3, 4, 5, 6], SEND), [0, 1, 2, 3, 4]);
   assert.deepEqual(askedDays([4, 5, 0], SEND), [0, 4]);
@@ -259,4 +285,158 @@ test("the zone list offers only names a current server knows", () => {
   assert.ok(!zones.includes("Asia/Calcutta"));
   assert.ok(!zones.includes("Europe/Kiev"));
   assert.ok(zones.includes("Asia/Kolkata"));
+});
+
+// Liam, Omar and Hana on qa2: every day of their own, while the bot asks only on 1 Jan.
+const EVERY = [0, 1, 2, 3, 4, 5, 6];
+
+test("weekly: the send's time and days, and every day only when it sends on all seven", () => {
+  assert.equal(
+    askTimeWords(DAILY, "Europe/Berlin", FRIDAY_SUMMER),
+    "The bot asks everyone at 09:30 UTC (11:30 in Europe/Berlin), every day: one time for the whole team, so it isn't yours to set. You choose which of those days it asks you, and your time zone.",
+  );
+  assert.equal(daysWords(EVERY, DAILY), "Every day");
+  assert.deepEqual(sendDays(DAILY), EVERY);
+  assert.equal(
+    scheduleSummary(preference({ weekdays: EVERY, send: DAILY })),
+    "Every day · Europe/Berlin",
+  );
+  assert.equal(
+    adminSendWords(SEND, "Asia/Kolkata", FRIDAY_SUMMER),
+    "The bot asks everyone at 09:30 UTC (15:00 in Asia/Kolkata), Mon–Fri: one send for the whole tenant. A member's days decide whether they are asked that day; their time zone decides which day a reply counts for, not when they are asked.",
+  );
+  assert.equal(daysLegendWords(SEND), "Days the bot asks you");
+  assert.equal(
+    daysHintWords(SEND, false),
+    "On days you leave off, the bot doesn't ask you. These stay yours if the team's change.",
+  );
+});
+
+test("dates: only on 1 Jan, on the clock of that day, and said not to be weekly", () => {
+  assert.equal(
+    askTimeWords(NEW_YEAR, "Europe/Berlin", FRIDAY_SUMMER),
+    "Check-ins aren't on a weekly schedule right now. The bot asks everyone only on 1 Jan, at 00:00 UTC (01:00 in Europe/Berlin): one time for the whole team, so it isn't yours to set. You choose your days and your time zone.",
+  );
+  // The next send is Fri 1 Jan 2027, in winter: 01:00 in Berlin, not today's 02:00.
+  assert.equal(nextSendAt(NEW_YEAR, FRIDAY_SUMMER)?.toISOString(), "2027-01-01T00:00:00.000Z");
+  assert.equal(
+    sendTimeWords(NEW_YEAR, "Asia/Kolkata", FRIDAY_SUMMER),
+    "00:00 UTC (05:30 in Asia/Kolkata)",
+  );
+  assert.equal(
+    sendTimeWords(NEW_YEAR, "Asia/Tokyo", FRIDAY_SUMMER),
+    "00:00 UTC (09:00 in Asia/Tokyo)",
+  );
+  assert.equal(
+    sendTimeWords(NEW_YEAR, "Pacific/Honolulu", FRIDAY_SUMMER),
+    "00:00 UTC (14:00 the day before in Pacific/Honolulu)",
+  );
+  assert.equal(
+    zoneEffectWords(NEW_YEAR),
+    "Decides which day your reply counts for. It doesn't change when the bot asks you: that is 00:00 UTC on 1 Jan for everyone.",
+  );
+  assert.equal(
+    adminSendWords(NEW_YEAR, "Europe/Berlin", FRIDAY_SUMMER),
+    "Check-ins aren't on a weekly schedule right now. The bot asks everyone only on 1 Jan, at 00:00 UTC (01:00 in Europe/Berlin): one send for the whole tenant. A member's days only skip them when a send falls on a day they leave off; their time zone decides which day a reply counts for, not when they are asked.",
+  );
+});
+
+test("dates are said as dates, days of the month or months", () => {
+  const dates = (month_days: number[] | null, months: number[] | null) =>
+    datesWords({ month_days, months });
+  assert.equal(dates([1], [1]), "1 Jan");
+  assert.equal(dates([1], [1, 4, 7, 10]), "1 Jan, 1 Apr, 1 Jul and 1 Oct");
+  assert.equal(dates([15, 1], [7, 1]), "1 Jan, 15 Jan, 1 Jul and 15 Jul");
+  assert.equal(dates([1, 2, 3], [1, 2, 3]), "the 1st, 2nd and 3rd of Jan, Feb and Mar");
+  assert.equal(dates([1, 15], null), "the 1st and 15th of each month");
+  assert.equal(
+    dates([11, 12, 13, 21, 22, 23, 31], null),
+    "the 11th, 12th, 13th, 21st, 22nd, 23rd and 31st of each month",
+  );
+  assert.equal(dates(null, [1, 7]), "each day of Jan and Jul");
+  const twiceMonthly: CheckinSendResponse = {
+    ...NEW_YEAR,
+    cron: "0 9 1,15 * *",
+    local_time: "09:00:00",
+    month_days: [1, 15],
+    months: null,
+  };
+  assert.equal(nextSendAt(twiceMonthly, FRIDAY_SUMMER)?.toISOString(), "2026-10-15T09:00:00.000Z");
+  assert.match(
+    askTimeWords(twiceMonthly, "UTC", FRIDAY_SUMMER),
+    /The bot asks everyone only on the 1st and 15th of each month, at 09:00 UTC:/,
+  );
+});
+
+test("other: a member reads that an admin set it, an admin reads the cron", () => {
+  assert.equal(
+    askTimeWords(HOURLY, "Europe/Berlin", FRIDAY_SUMMER),
+    "The bot asks everyone on a schedule your admin set, the same for the whole team, so it isn't yours to set. You choose your days and your time zone.",
+  );
+  assert.equal(
+    zoneEffectWords(HOURLY),
+    "Decides which day your reply counts for. It doesn't change when the bot asks you.",
+  );
+  assert.equal(
+    adminSendWords(HOURLY, "Europe/Berlin", FRIDAY_SUMMER),
+    "The bot asks everyone on the cron schedule 0 9-17 * * 1-5, read in UTC: one schedule for the whole tenant. It isn't a simple weekly time, so the cron is the only account of when it asks. A member's days only skip them when a send falls on a day they leave off; their time zone decides which day a reply counts for, not when they are asked.",
+  );
+});
+
+test("off a weekly schedule every day is offered, and a day only skips a send", () => {
+  for (const send of [NEW_YEAR, HOURLY]) {
+    assert.deepEqual(sendDays(send), EVERY);
+    assert.deepEqual(askedDays([4, 5, 6], send), [4, 5, 6]);
+    assert.equal(daysLegendWords(send), "Your days");
+    assert.equal(
+      daysHintWords(send, false),
+      "Your days don't add asks: they only skip you when a send falls on a day you leave off. These stay yours if the team's change.",
+    );
+    assert.equal(
+      daysHintWords(send, true),
+      "Your days don't add asks: they only skip you when a send falls on a day you leave off. Following your team: when its days change, yours do too.",
+    );
+  }
+  // Liam stored every day: the line says when the bot asks, and he is skipped on no day.
+  const liam = preference({ weekdays: EVERY, send: NEW_YEAR });
+  assert.equal(scheduleSummary(liam), "Only on 1 Jan · Europe/Berlin");
+  assert.equal(
+    scheduleSummary(preference({ weekdays: [0, 1, 2, 3, 4], send: NEW_YEAR })),
+    "Only on 1 Jan · skips Sat, Sun · Europe/Berlin",
+  );
+  assert.equal(
+    scheduleSummary(preference({ weekdays: EVERY, send: HOURLY, inherited: ["timezone"] })),
+    "On your admin's schedule · team time zone (UTC)",
+  );
+  const initial = draftFrom(liam);
+  assert.deepEqual(initial.weekdays, EVERY);
+  assert.deepEqual(scheduleChanges(initial, { ...initial }), {});
+  assert.deepEqual(scheduleChanges(initial, { ...initial, weekdays: toggleDay(EVERY, 6) }), {
+    weekdays: [0, 1, 2, 3, 4, 5],
+  });
+  // Following the team shows the team's days (the dialog puts them in the draft).
+  const team = { ...initial, teamDays: true, weekdays: [0, 1, 2, 3, 4] };
+  assert.deepEqual(changeLines(initial, team, "UTC", NEW_YEAR), [
+    "Days: Mon–Sun → your team's (Mon–Fri)",
+  ]);
+});
+
+test("every day is said only of a send that is daily", () => {
+  for (const send of [SEND, NEW_YEAR, HOURLY]) {
+    const person = preference({ weekdays: EVERY, send });
+    const draft = draftFrom(person);
+    const words = [
+      daysLabel(EVERY, send),
+      daysWords(EVERY, send),
+      scheduleSummary(person),
+      askTimeWords(send, "Europe/Berlin", FRIDAY_SUMMER),
+      adminSendWords(send, "Europe/Berlin", FRIDAY_SUMMER),
+      zoneEffectWords(send),
+      daysHintWords(send, false),
+      ...changeLines(draft, { ...draft, teamDays: true }, "UTC", send),
+    ];
+    for (const line of words) assert.doesNotMatch(line, /every day/i, `${send.cron}: ${line}`);
+  }
+  assert.equal(daysLabel(EVERY, NEW_YEAR), "Mon–Sun");
+  assert.equal(daysLabel(EVERY, DAILY), "every day");
 });

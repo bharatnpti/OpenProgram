@@ -65,19 +65,32 @@ export function secondsFromMinutes(text: string): number | null {
 }
 
 /**
- * The days the bot sends on at all, Monday 0 (`send`, the tenant's one
- * schedule): every day when it doesn't say. Only these are offered, since a
- * member's day it never sends on asks nobody.
+ * The days offered as a member's days, Monday 0 (`send`, the tenant's one
+ * schedule). On a weekly schedule only the days the bot sends on, since a day
+ * it never sends on asks nobody; on any other (dates such as 1 Jan, or a cron
+ * that is neither) every day, since a member's day only skips a send that
+ * falls on it.
  */
 export function sendDays(pref: Pick<CheckinPreferenceResponse, "send">): number[] {
-  const days = pref.send.weekdays ?? [0, 1, 2, 3, 4, 5, 6];
+  const { kind, weekdays } = pref.send;
+  const days = kind === "weekly" && weekdays ? weekdays : [0, 1, 2, 3, 4, 5, 6];
   return [...new Set(days)].sort((a, b) => a - b);
 }
 
-/** Of `weekdays`, the days the bot sends on: the days they are really asked. */
+/** Of `weekdays`, the days offered: on a weekly schedule, the days they are really asked. */
 export function askedDays(weekdays: number[], pref: Pick<CheckinPreferenceResponse, "send">) {
   const sent = sendDays(pref);
   return [...new Set(weekdays)].filter((day) => sent.includes(day)).sort((a, b) => a - b);
+}
+
+/**
+ * Under the Change dialog's day chips on a schedule that isn't weekly: what
+ * the days do there. Null on a weekly one, whose chips are its send days.
+ */
+export function daysNote(pref: Pick<CheckinPreferenceResponse, "send">): string | null {
+  return pref.send.kind === "weekly"
+    ? null
+    : "Check-ins aren't on a weekly schedule, so these days only skip a send that falls on a day left off.";
 }
 
 export function draftFrom(pref: CheckinPreferenceResponse): PrefDraft {

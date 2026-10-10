@@ -14,6 +14,8 @@ import {
   askTimeWords,
   askedDays,
   changeLines,
+  daysHintWords,
+  daysLegendWords,
   daysWords,
   deviceTimezone,
   draftFrom,
@@ -117,14 +119,15 @@ function ScheduleForm({
   const [zones] = useState(() => timezoneOptions(initial.timezone, device));
   const team = preference.defaults;
   const send = preference.send;
-  // Only the days the bot sends on: a day it never sends on would change nothing.
+  // Weekly: only the days the bot sends on, since any other would change
+  // nothing. Otherwise every day: a day only skips a send that falls on it.
   const offered = sendDays(send);
   const teamDays = askedDays(team.weekdays, send);
 
   const changes = scheduleChanges(initial, draft);
   const changed = Object.keys(changes).length > 0;
   const problem = scheduleProblem(draft);
-  const lines = changeLines(initial, draft, team.timezone);
+  const lines = changeLines(initial, draft, team.timezone, send);
 
   const save = useMutation({
     mutationFn: () => apiClient.updateCheckinPreference(changes),
@@ -162,7 +165,7 @@ function ScheduleForm({
         }}
       >
         <fieldset>
-          <legend className={legend}>Days the bot asks you</legend>
+          <legend className={legend}>{daysLegendWords(send)}</legend>
           <div className="grid gap-2 text-[14px]">
             <label className="flex items-center gap-2">
               <input
@@ -171,7 +174,7 @@ function ScheduleForm({
                 checked={draft.teamDays}
                 onChange={() => chooseTeamDays(true)}
               />
-              Your team's days: {daysWords(teamDays)}
+              Your team's days: {daysWords(teamDays, send)}
             </label>
             <label className="flex items-center gap-2">
               <input
@@ -212,9 +215,7 @@ function ScheduleForm({
             })}
           </div>
           <p className="mt-2 text-[12px] text-grey-secondary">
-            {draft.teamDays
-              ? "Following your team: when its days change, yours do too."
-              : "On days you leave off, the bot doesn't ask you. These stay yours if the team's change."}
+            {daysHintWords(send, draft.teamDays)}
           </p>
           {problem ? <p className="mt-1 text-[12px] font-bold text-rag-red">{problem}</p> : null}
         </fieldset>

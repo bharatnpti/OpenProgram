@@ -11,10 +11,9 @@ import type {
 import { PanelState, TableBox, td, th } from "../../components/PanelState";
 import { Pill } from "../../components/ui/Pill";
 import { RagChip } from "../../components/ui/RagChip";
-import { weekdaysLabel } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { currentZoneName, deviceTimezone } from "../../lib/zones";
-import { sendWords } from "../checkin/schedule";
+import { adminSendWords, daysLabel } from "../checkin/schedule";
 import { AdminDialog, Problems, hintClass, inputClass, labelClass } from "./AdminBits";
 import { errorText, minutesLabel } from "./adminWords";
 import {
@@ -23,6 +22,7 @@ import {
   PREF_FIELDS,
   askedDays,
   changesFrom,
+  daysNote,
   defaultValue,
   draftFrom,
   draftProblems,
@@ -51,16 +51,17 @@ const CONSENT_OPTIONS: { value: WriteBackConsent; label: string }[] = [
 ];
 
 /**
- * A value as the table shows it: "Mon–Fri", "Europe/Berlin", "4 h". Days are
- * the ones the bot sends on (`askedDays`): a stored day it never sends on asks
- * nobody, so it is not shown as one they are asked.
+ * A value as the table shows it: "Mon–Fri", "Europe/Berlin", "4 h". On a
+ * weekly schedule days are the ones the bot sends on (`askedDays`): a stored
+ * day it never sends on asks nobody, so it is not shown as one they are asked.
+ * All seven are "every day" only when the bot sends daily (`daysLabel`).
  */
 function valueLabel(
   field: PrefField,
   value: unknown,
   pref: Pick<CheckinPreferenceResponse, "send">,
 ): string {
-  if (field === "weekdays") return weekdaysLabel(askedDays(value as number[], pref));
+  if (field === "weekdays") return daysLabel(askedDays(value as number[], pref), pref.send);
   if (field === "timezone") return String(value ?? "—");
   return minutesLabel(value as number);
 }
@@ -128,12 +129,10 @@ export function CheckinsTab() {
       <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
         {first && defaults ? (
           <p className="text-[13px] text-grey-body">
-            Team default: {weekdaysLabel(askedDays(defaults.weekdays, first))} · {defaults.timezone}{" "}
-            · nudge after {minutesLabel(defaults.reply_wait_seconds)} · give up after{" "}
-            {minutesLabel(defaults.final_reply_wait_seconds)}. The bot asks everyone{" "}
-            {sendWords(first.send, viewerZone, new Date())}: one send for the whole tenant. A
-            member's days decide whether they are asked that day; their time zone decides which day
-            a reply counts for, not when they are asked.
+            Team default: {daysLabel(askedDays(defaults.weekdays, first), first.send)} ·{" "}
+            {defaults.timezone} · nudge after {minutesLabel(defaults.reply_wait_seconds)} · give up
+            after {minutesLabel(defaults.final_reply_wait_seconds)}.{" "}
+            {adminSendWords(first.send, viewerZone, new Date())}
           </p>
         ) : null}
         <p className="text-[12px] text-grey-secondary">
@@ -367,9 +366,11 @@ function EditMember({
             </div>
           ) : null}
           <fieldset>
-            <legend className={labelClass}>Asked on</legend>
+            <legend className={labelClass}>
+              {pref.send.kind === "weekly" ? "Asked on" : "Days"}
+            </legend>
             <div className="flex flex-wrap gap-1.5">
-              {/* Only the days the bot sends on: any other would change nothing. */}
+              {/* Weekly: only the days the bot sends on. Otherwise every day (`sendDays`). */}
               {sendDays(pref).map((index) => {
                 const day = WEEKDAYS[index];
                 const on = draft.weekdays.includes(index);
@@ -400,6 +401,7 @@ function EditMember({
                 );
               })}
             </div>
+            {daysNote(pref) ? <p className={hintClass}>{daysNote(pref)}</p> : null}
             {source("weekdays")}
           </fieldset>
           <div>
