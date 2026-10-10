@@ -68,6 +68,7 @@ import type {
   WritebackConsentResponse,
   WritebackConsentUpdateRequest,
   TenantWritebackResponse,
+  DeliveryTreeResponse,
   DirectoryItemResponse,
   DirectorySearchResponse,
   DirectorySyncResponse,
@@ -227,6 +228,9 @@ export const apiClient = {
     requestJson<DirectoryItemResponse>(withAsOf(`/workstreams/${workstreamId}`, asOf)),
   projectWorkstreams: (projectId: string, asOf?: string) =>
     requestJson<DirectoryItemResponse[]>(withAsOf(`/projects/${projectId}/workstreams`, asOf)),
+  /** The caller's own part of the delivery tree, and what each node opens on for them. */
+  myDeliveryTree: (asOf?: string) =>
+    requestJson<DeliveryTreeResponse>(withAsOf("/me/delivery-tree", asOf)),
   focus: (asOf?: string) => requestJson<FocusResponse>(withAsOf("/me/focus", asOf)),
   myStatus: (asOf?: string) => requestJson<MyStatusResponse>(withAsOf("/me/status", asOf)),
   confirmMyStatus: (asOf?: string) =>

@@ -1985,6 +1985,32 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/me/delivery-tree": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * My Delivery Tree
+     * @description The caller's own part of the delivery tree: their programs, projects, and those pods.
+     *
+     *     The projects of the pods the caller belongs to or runs, and the projects
+     *     that name them as owner; under each, every pod by name. Each node says what
+     *     its Delivery panel shows the caller, and carries its colour only where they
+     *     read it. A manager's, executive's or admin's Delivery lists the whole
+     *     directory instead.
+     */
+    get: operations["my_delivery_tree_me_delivery_tree_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/portfolio/heatmap": {
     parameters: {
       query?: never;
@@ -3430,6 +3456,48 @@ export interface components {
       requirement_types?: string[];
     };
     /**
+     * DeliveryTreeNodeResponse
+     * @description One program, project or pod of the caller's own part of the delivery tree.
+     */
+    DeliveryTreeNodeResponse: {
+      /** Id */
+      id: string;
+      kind: components["schemas"]["NodeKind"];
+      /** Name */
+      name: string;
+      /** @description The node's colour, only where the caller reads it; null for a name only. */
+      rag: components["schemas"]["Rag"] | null;
+      /** @description What its Delivery panel shows the caller: 'panel' all of it, 'dates' a pod's dates and colour, 'name' its name and nothing to open. */
+      access: components["schemas"]["NodeAccess"];
+      /**
+       * Own
+       * @description A pod the caller belongs to or runs.
+       */
+      own: boolean;
+      /**
+       * Parent Ids
+       * @description A project's programs; a pod's projects among those listed.
+       */
+      parent_ids: string[];
+    };
+    /**
+     * DeliveryTreeResponse
+     * @description The caller's own part of the delivery tree, for their Delivery and palette.
+     */
+    DeliveryTreeResponse: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Programs */
+      programs: components["schemas"]["DeliveryTreeNodeResponse"][];
+      /** Projects */
+      projects: components["schemas"]["DeliveryTreeNodeResponse"][];
+      /** Pods */
+      pods: components["schemas"]["DeliveryTreeNodeResponse"][];
+    };
+    /**
      * DestinationKind
      * @enum {string}
      */
@@ -4280,6 +4348,12 @@ export interface components {
      * @enum {string}
      */
     NeedType: "fix" | "decision" | "answer" | "review";
+    /**
+     * NodeAccess
+     * @description What a node's Delivery panel shows the caller.
+     * @enum {string}
+     */
+    NodeAccess: "panel" | "dates" | "name";
     /**
      * NodeKind
      * @enum {string}
@@ -11268,6 +11342,39 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ProgramTreeResponse"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  my_delivery_tree_me_delivery_tree_get: {
+    parameters: {
+      query?: {
+        as_of?: string;
+      };
+      header?: {
+        authorization?: string | null;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeliveryTreeResponse"];
         };
       };
       /** @description Validation Error */

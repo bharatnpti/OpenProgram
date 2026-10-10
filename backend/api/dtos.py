@@ -20,6 +20,7 @@ from core.application.config_service import (
     UnmappedMember,
 )
 from core.application.connection_service import ConnectionTestView, ConnectionView
+from core.application.delivery_scope import DeliveryTreeNodeView, DeliveryTreeView, NodeAccess
 from core.application.delivery_service import (
     DeliverySettingsView,
     ObservedStatus,
@@ -545,6 +546,61 @@ class DirectoryPersonResponse(BaseModel):
     @classmethod
     def from_view(cls, view: DirectoryPersonView) -> DirectoryPersonResponse:
         return cls(key=view.key, id=view.id, member_id=view.member_id, name=view.name)
+
+
+class DeliveryTreeNodeResponse(BaseModel):
+    """One program, project or pod of the caller's own part of the delivery tree."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    kind: NodeKind
+    name: str
+    rag: Rag | None = Field(
+        description="The node's colour, only where the caller reads it; null for a name only."
+    )
+    access: NodeAccess = Field(
+        description=(
+            "What its Delivery panel shows the caller: 'panel' all of it, 'dates' a pod's "
+            "dates and colour, 'name' its name and nothing to open."
+        )
+    )
+    own: bool = Field(description="A pod the caller belongs to or runs.")
+    parent_ids: list[str] = Field(
+        description="A project's programs; a pod's projects among those listed."
+    )
+
+    @classmethod
+    def from_view(cls, view: DeliveryTreeNodeView) -> DeliveryTreeNodeResponse:
+        return cls(
+            id=view.id,
+            kind=view.kind,
+            name=view.name,
+            rag=view.rag,
+            access=view.access,
+            own=view.own,
+            parent_ids=list(view.parent_ids),
+        )
+
+
+class DeliveryTreeResponse(BaseModel):
+    """The caller's own part of the delivery tree, for their Delivery and palette."""
+
+    model_config = ConfigDict(frozen=True)
+
+    as_of: date
+    programs: list[DeliveryTreeNodeResponse]
+    projects: list[DeliveryTreeNodeResponse]
+    pods: list[DeliveryTreeNodeResponse]
+
+    @classmethod
+    def from_view(cls, view: DeliveryTreeView) -> DeliveryTreeResponse:
+        return cls(
+            as_of=view.as_of,
+            programs=[DeliveryTreeNodeResponse.from_view(item) for item in view.programs],
+            projects=[DeliveryTreeNodeResponse.from_view(item) for item in view.projects],
+            pods=[DeliveryTreeNodeResponse.from_view(item) for item in view.pods],
+        )
 
 
 class DirectoryItemResponse(BaseModel):

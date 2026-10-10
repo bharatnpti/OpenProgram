@@ -8860,6 +8860,64 @@
         }
       }
     },
+    "/me/delivery-tree": {
+      "get": {
+        "tags": ["personas"],
+        "summary": "My Delivery Tree",
+        "description": "The caller's own part of the delivery tree: their programs, projects, and those pods.\n\nThe projects of the pods the caller belongs to or runs, and the projects\nthat name them as owner; under each, every pod by name. Each node says what\nits Delivery panel shows the caller, and carries its colour only where they\nread it. A manager's, executive's or admin's Delivery lists the whole\ndirectory instead.",
+        "operationId": "my_delivery_tree_me_delivery_tree_get",
+        "parameters": [
+          {
+            "name": "as_of",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "title": "As Of"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryTreeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/portfolio/heatmap": {
       "get": {
         "tags": ["personas"],
@@ -13013,6 +13071,87 @@
         "required": ["stages"],
         "title": "DeliveryStagesUpdateRequest"
       },
+      "DeliveryTreeNodeResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/NodeKind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "rag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Rag"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The node's colour, only where the caller reads it; null for a name only."
+          },
+          "access": {
+            "$ref": "#/components/schemas/NodeAccess",
+            "description": "What its Delivery panel shows the caller: 'panel' all of it, 'dates' a pod's dates and colour, 'name' its name and nothing to open."
+          },
+          "own": {
+            "type": "boolean",
+            "title": "Own",
+            "description": "A pod the caller belongs to or runs."
+          },
+          "parent_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Parent Ids",
+            "description": "A project's programs; a pod's projects among those listed."
+          }
+        },
+        "type": "object",
+        "required": ["id", "kind", "name", "rag", "access", "own", "parent_ids"],
+        "title": "DeliveryTreeNodeResponse",
+        "description": "One program, project or pod of the caller's own part of the delivery tree."
+      },
+      "DeliveryTreeResponse": {
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date",
+            "title": "As Of"
+          },
+          "programs": {
+            "items": {
+              "$ref": "#/components/schemas/DeliveryTreeNodeResponse"
+            },
+            "type": "array",
+            "title": "Programs"
+          },
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/DeliveryTreeNodeResponse"
+            },
+            "type": "array",
+            "title": "Projects"
+          },
+          "pods": {
+            "items": {
+              "$ref": "#/components/schemas/DeliveryTreeNodeResponse"
+            },
+            "type": "array",
+            "title": "Pods"
+          }
+        },
+        "type": "object",
+        "required": ["as_of", "programs", "projects", "pods"],
+        "title": "DeliveryTreeResponse",
+        "description": "The caller's own part of the delivery tree, for their Delivery and palette."
+      },
       "DestinationKind": {
         "type": "string",
         "enum": ["chat_channel", "person", "email", "teams"],
@@ -15341,6 +15480,12 @@
         "type": "string",
         "enum": ["fix", "decision", "answer", "review"],
         "title": "NeedType"
+      },
+      "NodeAccess": {
+        "type": "string",
+        "enum": ["panel", "dates", "name"],
+        "title": "NodeAccess",
+        "description": "What a node's Delivery panel shows the caller."
       },
       "NodeKind": {
         "type": "string",

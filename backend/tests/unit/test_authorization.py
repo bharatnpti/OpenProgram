@@ -5,6 +5,14 @@ from typing import cast
 import pytest
 
 from core.application.authorization import AuthorizationPolicy, Capability, SensitiveField
+from core.application.delivery_scope import (
+    NodeAccess,
+    pod_access,
+    project_access,
+    reads_pod_dates,
+    reads_pod_detail,
+    reads_project,
+)
 from core.domain.auth import Principal, Role
 from core.domain.errors import AuthorizationDenied
 
@@ -42,6 +50,8 @@ def test_persona_capabilities_follow_role_scope() -> None:
     assert policy.can(sm, Capability.READ_DIRECTORY)
     assert policy.can(sm, Capability.READ_POD_BLOCKERS)
     assert policy.can(sm, Capability.READ_POD_CHECKINS)
+    # Not everywhere: a scrum master reads the projects their own pods work on,
+    # a scoped read (core/application/delivery_scope.py, tested below).
     assert not policy.can(sm, Capability.READ_PROJECT_PROGRESS)
     assert policy.can(po, Capability.READ_PROJECT_PROGRESS)
     assert policy.can(po, Capability.READ_DIRECTORY)
@@ -170,3 +180,70 @@ def test_unknown_sensitive_field_and_scope_default_to_false() -> None:
     assert principal.has_scope("read:own")
     assert not principal.has_scope("write:secrets")
     assert not policy.can_read_field(principal, cast(SensitiveField, "unknown"))
+
+
+# Reads scoped to the caller's own part of the tree (delivery_scope.py): who reads
+# a node they work on (own) and one they do not. The role capabilities above stay
+# as they are; these only add a way in for the scrum master's projects and the
+# developer's own pod.
+_SCOPED_READS = {
+    # role: (project own, project other, pod detail own, pod detail other,
+    #        pod dates own, pod dates other)
+    Role.DEV: (False, False, True, False, True, False),
+    Role.SM: (True, False, True, True, True, True),
+    Role.PO: (True, True, False, False, True, True),
+    Role.MGR: (True, True, True, True, True, True),
+    Role.EXEC: (True, True, False, False, True, True),
+    Role.ADMIN: (True, True, True, True, True, True),
+}
+
+
+@pytest.mark.parametrize("role", list(_SCOPED_READS))
+def test_scoped_reads_add_a_scrum_masters_projects_and_a_developers_own_pod(role: Role) -> None:
+    policy = AuthorizationPolicy()
+    principal = Principal(tenant_id="demo", subject=role.value, roles=frozenset({role}))
+    got = tuple(
+        read(policy, principal, own=own)
+        for read in (reads_project, reads_pod_detail, reads_pod_dates)
+        for own in (True, False)
+    )
+    assert got == _SCOPED_READS[role]
+
+
+def test_what_a_listed_node_opens_on_follows_the_scoped_reads() -> None:
+    """Delivery opens a pod's whole panel for its own people who read its detail.
+
+    A manager or admin opens every pod; another pod of a scrum master's or
+    product owner's projects opens as a project's reader sees it (its dates);
+    a developer gets only its name. A developer's project is a name too: no
+    project-level data beyond Today and Reports.
+    """
+    policy = AuthorizationPolicy()
+
+    def who(role: Role) -> Principal:
+        return Principal(tenant_id="demo", subject=role.value, roles=frozenset({role}))
+
+    pods = {
+        role: (pod_access(policy, who(role), own=True), pod_access(policy, who(role), own=False))
+        for role in Role
+    }
+    assert pods == {
+        Role.DEV: (NodeAccess.PANEL, NodeAccess.NAME),
+        Role.SM: (NodeAccess.PANEL, NodeAccess.DATES),
+        Role.PO: (NodeAccess.DATES, NodeAccess.DATES),
+        Role.MGR: (NodeAccess.PANEL, NodeAccess.PANEL),
+        Role.EXEC: (NodeAccess.DATES, NodeAccess.DATES),
+        Role.ADMIN: (NodeAccess.PANEL, NodeAccess.PANEL),
+    }
+    projects = {role: project_access(policy, who(role), own=True) for role in Role}
+    assert projects == {
+        Role.DEV: NodeAccess.NAME,
+        Role.SM: NodeAccess.PANEL,
+        Role.PO: NodeAccess.PANEL,
+        Role.MGR: NodeAccess.PANEL,
+        Role.EXEC: NodeAccess.PANEL,
+        Role.ADMIN: NodeAccess.PANEL,
+    }
+    nobody = Principal(tenant_id="demo", subject="nobody", roles=frozenset())
+    assert pod_access(policy, nobody, own=True) is NodeAccess.NAME
+    assert project_access(policy, nobody, own=True) is NodeAccess.NAME

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from api.dependencies import (
     get_cross_person_request_service,
     get_current_principal,
+    get_delivery_scope_service,
     get_flow_metrics_service,
     get_narrative_brief_repository,
     get_person_names,
@@ -24,6 +25,7 @@ from api.dtos import (
     CrossPersonRequestResponse,
     CrossPersonRequestsResponse,
     CrossPersonRequestStatusUpdateRequest,
+    DeliveryTreeResponse,
     DriftFindingResponse,
     FocusResponse,
     NarrativeBriefResponse,
@@ -52,6 +54,7 @@ from core.application.cross_person_service import (
     CrossPersonRequestService,
     RequestStatusNotSettable,
 )
+from core.application.delivery_scope import DeliveryScopeService
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.person_names import PersonNames, person_name
 from core.application.persona_views import PersonaViewService, ProviderNames
@@ -96,8 +99,9 @@ async def pod_blockers(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+    scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
 ) -> PodBlockersResponse:
-    _ensure(principal, Capability.READ_POD_BLOCKERS)
+    await _ensure_pod_detail(scope, principal, pod_id)
     try:
         view = await persona_service.pod_blockers(principal.tenant_id, pod_id, as_of)
     except GraphNotFound as exc:
@@ -111,8 +115,9 @@ async def pod_checkins(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+    scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
 ) -> PodCheckinsResponse:
-    _ensure(principal, Capability.READ_POD_CHECKINS)
+    await _ensure_pod_detail(scope, principal, pod_id)
     try:
         view = await persona_service.pod_checkins(principal.tenant_id, pod_id, as_of)
     except GraphNotFound as exc:
@@ -126,11 +131,12 @@ async def pod_rollup(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+    scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
 ) -> PodRollupResponse:
     # A pod's reasons name its open blockers and who has not checked in, so
-    # they need both pod capabilities: the pair the pod panel already needs.
-    _ensure(principal, Capability.READ_POD_BLOCKERS)
-    _ensure(principal, Capability.READ_POD_CHECKINS)
+    # they need both pod capabilities, the pair the pod panel already needs,
+    # or a developer's own pod.
+    await _ensure_pod_detail(scope, principal, pod_id)
     try:
         view = await persona_service.pod_rollup(principal.tenant_id, pod_id, as_of)
     except GraphNotFound as exc:
@@ -144,12 +150,12 @@ async def pod_tasks(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+    scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
 ) -> PodTasksResponse:
     # Each task carries its members' status and the pod's blockers attributed
-    # to it, so the list needs both pod capabilities: it never shows a role
-    # what the pod's check-ins or blockers would refuse it.
-    _ensure(principal, Capability.READ_POD_CHECKINS)
-    _ensure(principal, Capability.READ_POD_BLOCKERS)
+    # to it, so the list needs what the pod's check-ins and blockers need: it
+    # never shows a role what those would refuse it.
+    await _ensure_pod_detail(scope, principal, pod_id)
     try:
         view = await persona_service.pod_tasks(principal.tenant_id, pod_id, as_of)
     except GraphNotFound as exc:
@@ -163,8 +169,10 @@ async def project_progress(
     as_of: Annotated[date, Query(default_factory=date.today)],
     principal: Annotated[Principal, Depends(get_current_principal)],
     persona_service: Annotated[PersonaViewService, Depends(get_persona_view_service)],
+    scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
 ) -> ProjectProgressResponse:
-    _ensure(principal, Capability.READ_PROJECT_PROGRESS)
+    # Every project for its readers; for a scrum master, the projects their pods work on.
+    await _ensure_project_read(scope, principal, project_id)
     try:
         view = await persona_service.project_progress(principal.tenant_id, project_id, as_of)
     except GraphNotFound as exc:
@@ -197,6 +205,25 @@ async def program_tree(
     _ensure(principal, Capability.READ_PROGRAM_ROLLUP)
     view = await persona_service.program_tree(principal.tenant_id, program_id, as_of)
     return ProgramTreeResponse.from_view(view)
+
+
+@router.get("/me/delivery-tree", response_model=DeliveryTreeResponse)
+async def my_delivery_tree(
+    as_of: Annotated[date, Query(default_factory=date.today)],
+    principal: Annotated[Principal, Depends(get_current_principal)],
+    scope: Annotated[DeliveryScopeService, Depends(get_delivery_scope_service)],
+) -> DeliveryTreeResponse:
+    """The caller's own part of the delivery tree: their programs, projects, and those pods.
+
+    The projects of the pods the caller belongs to or runs, and the projects
+    that name them as owner; under each, every pod by name. Each node says what
+    its Delivery panel shows the caller, and carries its colour only where they
+    read it. A manager's, executive's or admin's Delivery lists the whole
+    directory instead.
+    """
+    _ensure(principal, Capability.READ_DIRECTORY)
+    view = await scope.tree(principal, as_of)
+    return DeliveryTreeResponse.from_view(view)
 
 
 @router.get("/portfolio/heatmap", response_model=PortfolioHeatmapResponse)
@@ -528,6 +555,24 @@ def _is_person(finding: RiskFinding) -> bool:
 def _ensure(principal: Principal, capability: Capability) -> None:
     try:
         AuthorizationPolicy().ensure(principal, capability)
+    except AuthorizationDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+async def _ensure_pod_detail(
+    scope: DeliveryScopeService, principal: Principal, pod_id: str
+) -> None:
+    try:
+        await scope.ensure_pod_detail(principal, pod_id)
+    except AuthorizationDenied as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+async def _ensure_project_read(
+    scope: DeliveryScopeService, principal: Principal, project_id: str
+) -> None:
+    try:
+        await scope.ensure_project_read(principal, project_id)
     except AuthorizationDenied as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
