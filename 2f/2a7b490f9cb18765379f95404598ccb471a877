@@ -1,0 +1,32 @@
+backend/infra/adapters/catalog.py
+  s_3101dec2ee3c53::t_c1fbbab995950f 374-375,399-400,415-416,431-432
+backend/config/settings.py
+  s_3101dec2ee3c53::t_27cf9af57ed454 22-26,162,166
+backend/tests/unit/test_dbos_sync_catch_up.py
+  s_3101dec2ee3c53::t_1d0f6bf34ae4bd 12-17,230-243,249-251,261,275-278,280-303,312-317,319,323-325,336-338,340-351,353-354,356-357,360-378,386
+  s_3101dec2ee3c53::t_34ed822ce4914a 24-29,379-385,387-388
+  s_3101dec2ee3c53::t_c1f897721c822d 339,352,355,358-359
+  s_3101dec2ee3c53::t_33a65731f43b94 30
+backend/infra/adapters/workflows/dbos.py
+  s_3101dec2ee3c53::t_e32b9e6a03c79a 19,853,872,883,894,905,916,929,941,956,972,980,1012,1054,1090
+  s_3101dec2ee3c53::t_dad0b314edc765 126-133,136-137,814,841-850,1000-1009,1042-1051,1069-1070,1073-1079,1109
+  s_3101dec2ee3c53::t_8dab71b8848a07 1080
+backend/tests/integration/test_connection_budget.py
+  s_3101dec2ee3c53::t_e33811f44d33aa 110-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2f2a7b490f9cb18765379f95404598ccb471a877",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
