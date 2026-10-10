@@ -14,6 +14,7 @@ from core.domain.llm import (
     LlmTool,
     LlmToolCall,
     LlmToolResult,
+    LlmTurn,
     TokenUsage,
 )
 from infra.adapters.llm import litellm_provider
@@ -342,8 +343,101 @@ async def test_litellm_sends_tools_and_parses_tool_calls() -> None:
             id="call-1",
             name="fetch_conversation_history",
             arguments={"since_days": 7, "limit": 3},
+            arguments_json='{"since_days": 7, "limit": 3}',
         ),
     )
+
+
+@respx.mock
+async def test_litellm_keeps_list_arguments_as_sent_and_sends_them_back() -> None:
+    """A to-do list is a list of objects: the scalar arguments drop it, the JSON keeps it."""
+    todos = '{"todos": [{"content": "Check blockers", "status": "pending"}]}'
+    route = respx.post("https://litellm.test/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "trace-llm",
+                "choices": [
+                    {
+                        "message": {
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call-1",
+                                    "type": "function",
+                                    "function": {"name": "write_todos", "arguments": todos},
+                                }
+                            ],
+                        }
+                    }
+                ],
+            },
+        )
+    )
+    provider = LiteLlmProvider(base_url="https://litellm.test", trace_sink=NoopTraceSink())
+    request = LlmRequest(tenant_id="demo", prompt="Plan", model="m", correlation_id="c")
+
+    response = await provider.complete(request)
+    (call,) = response.tool_calls
+    await provider.complete(
+        LlmRequest(
+            tenant_id="demo",
+            prompt="Plan",
+            model="m",
+            correlation_id="c",
+            tool_calls=(call,),
+            tool_results=(LlmToolResult(tool_call_id="call-1", content="ok"),),
+        )
+    )
+
+    assert call.arguments == {}
+    assert call.arguments_json == todos
+    resent = json.loads(route.calls[1].request.content)["messages"][-2]["tool_calls"][0]
+    assert resent["function"]["arguments"] == todos
+
+
+@respx.mock
+async def test_litellm_sends_a_kept_conversation_in_its_own_order() -> None:
+    route = respx.post("https://litellm.test/v1/chat/completions").mock(
+        return_value=httpx.Response(200, json={"id": "t", "choices": [{"message": {}}]})
+    )
+    provider = LiteLlmProvider(base_url="https://litellm.test", trace_sink=NoopTraceSink())
+    call = LlmToolCall(id="c1", name="task", arguments={}, arguments_json='{"d": [1]}')
+
+    await provider.complete(
+        LlmRequest(
+            tenant_id="demo",
+            prompt="never sent",
+            model="m",
+            correlation_id="c",
+            system="Rules.",
+            messages=(LlmMessage(role="user", content="never sent either"),),
+            turns=(
+                LlmTurn(role="user", content="Why?"),
+                LlmTurn(role="assistant", tool_calls=(call,)),
+                LlmTurn(role="tool", content="notes", tool_call_id="c1"),
+                LlmTurn(role="user", content="Answer now."),
+            ),
+        )
+    )
+
+    assert json.loads(route.calls[0].request.content)["messages"] == [
+        {"role": "system", "content": "Rules."},
+        {"role": "user", "content": "Why?"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "c1",
+                    "type": "function",
+                    "function": {"name": "task", "arguments": '{"d": [1]}'},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "c1", "content": "notes"},
+        {"role": "user", "content": "Answer now."},
+    ]
 
 
 async def test_fake_llm_provider_returns_scripted_responses() -> None:
