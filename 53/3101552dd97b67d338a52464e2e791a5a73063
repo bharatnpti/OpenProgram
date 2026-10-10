@@ -1,0 +1,72 @@
+backend/core/application/status_collector.py
+  s_3101dec2ee3c53::t_cdbaa2a9013d24 4994-4996
+  s_3101dec2ee3c53::t_0403475737d35c 354-361,366,1618-1623,1717,1987-1991,1999,2088-2092,2096,2146,2190,3539,3569-3570,3573-3575,3579,3583,3585,4198,4200,4888-4891,4899-4903,4905,4920-4921,4931-4934,4958,4980-4993,4997-5000
+  s_3101dec2ee3c53::t_0903c39b4d0f90 50-55,1930-1932,1935-1944
+  s_3101dec2ee3c53::t_cbbd1853933cdc 5001-5002
+backend/core/application/persona_views.py
+  s_3101dec2ee3c53::t_8e08b0d8b35305 18
+  s_3101dec2ee3c53::t_3b15e511646d90 424-425
+backend/core/application/person_names.py
+  s_3101dec2ee3c53::t_d2bae505e4d2ec 7-12,17,27-31,80-135
+  s_3101dec2ee3c53::t_7538ac5a464057 136
+backend/tests/unit/test_people_named_not_ids.py
+  s_3101dec2ee3c53::t_92a078991624bd 177,218,251,261,408-409,425-426
+  s_3101dec2ee3c53::t_9b5baa909c0c82 1-15,17-20,22-23,26-27,29-62,64-73,77-159,164-176,178-217,219-250,252-260,262-275,277-290,292-293,297-320,324-384,388-407,410-421,423-424,427-465
+  s_3101dec2ee3c53::t_e6e1c09c0bc4ef 422
+  s_3101dec2ee3c53::t_ad68499598abcf 74-76,160-163,291,294-296,321-323,385-387
+  s_3101dec2ee3c53::t_052bc0f2449fa9 28,276
+  s_3101dec2ee3c53::t_e86320fab0a534 16,21,24-25,63,466-524
+backend/core/application/checkin_drift.py
+  s_3101dec2ee3c53::t_19c2992887b9c7 240,507
+  s_3101dec2ee3c53::t_a840689e596be2 44
+  s_3101dec2ee3c53::t_5bc0c212ab2f2b 548,552-555,567,594-595,604,611-614,635,684-689
+backend/core/application/task_update_service.py
+  s_3101dec2ee3c53::t_19c2992887b9c7 189
+backend/api/dtos.py
+  s_3101dec2ee3c53::t_3b15e511646d90 4372
+  s_3101dec2ee3c53::t_f74a2495a5d921 43,977-985,994,1071-1073,1080,1097-1101,1110,2073-2077,2079-2081,2091,2101-2105,2135-2138,2920,2922-2923,2927
+  s_3101dec2ee3c53::t_d17bbb56affbe7 2148
+backend/core/application/cross_person_service.py
+  s_3101dec2ee3c53::t_3b15e511646d90 853-854,882,889-890,908-915
+  s_3101dec2ee3c53::t_8e08b0d8b35305 22
+  s_3101dec2ee3c53::t_02d173f513e1c7 916
+backend/core/application/portfolio_feed_service.py
+  s_3101dec2ee3c53::t_7d1543c3e416a4 8,223,229-233
+backend/api/routers/checkin.py
+  s_3101dec2ee3c53::t_a609a6bea52764 29,63-65,83-85,126-128,149,184-188,247-249
+  s_3101dec2ee3c53::t_9187e49622b2ab 250-251
+backend/core/application/forecast_service.py
+  s_3101dec2ee3c53::t_3b15e511646d90 25,810
+backend/tests/unit/test_persona_views.py
+  s_3101dec2ee3c53::t_b7bff8a3233cf5 58-59
+backend/core/application/day_report_builder.py
+  s_3101dec2ee3c53::t_8e08b0d8b35305 642-644
+  s_3101dec2ee3c53::t_3b15e511646d90 54,641
+backend/tests/unit/test_status_collector.py
+  s_3101dec2ee3c53::t_b7bff8a3233cf5 496-498
+backend/core/application/risk_service.py
+  s_3101dec2ee3c53::t_a840689e596be2 25
+  s_3101dec2ee3c53::t_5bc0c212ab2f2b 859
+backend/api/routers/persona.py
+  s_3101dec2ee3c53::t_a609a6bea52764 129
+  s_3101dec2ee3c53::t_f226fd044b9952 87,94,121,128,541-545,548,555
+  s_3101dec2ee3c53::t_810035b0447464 517,534,561-566
+  s_3101dec2ee3c53::t_c25ed125977dc5 70
+  s_3101dec2ee3c53::t_1b179e862a089b 567-568
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "533101552dd97b67d338a52464e2e791a5a73063",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
