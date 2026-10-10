@@ -1,0 +1,64 @@
+backend/tests/unit/golden/day_report_readiness_gap.text.txt
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 32-35,37,40-41
+backend/tests/unit/golden/day_report_full_day.slack.txt
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 29-30,32,35-36
+backend/tests/unit/golden/day_report_full_day_at_risk.slack.txt
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 32-33,35,38-39
+backend/tests/unit/golden/day_report_readiness_crowded.slack.txt
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 41-44,46,49-50
+backend/tests/unit/golden/day_report_readiness_gap.slack.txt
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 31-34,36,39-40
+backend/tests/unit/golden/day_report_readiness_gap.teams.json
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 89,95,101
+backend/tests/unit/test_day_reports.py
+  s_3101dec2ee3c53::t_9d62bb3a78ea67 412,416-419,421,450-451,456,664-666
+  s_3101dec2ee3c53::t_0e366b8a964454 668
+  s_3101dec2ee3c53::t_61f160ecc26b5b 667
+backend/core/application/day_report_asks.py
+  s_3101dec2ee3c53::t_f9a0251a12dbe2 143-148,152,607-609
+  s_3101dec2ee3c53::t_025b82e2d93160 610-611
+backend/tests/unit/golden/day_report_full_day.teams.json
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 89,95,101
+backend/tests/unit/golden/day_report_full_day.email.html
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 1
+backend/tests/unit/test_readiness_day_report.py
+  s_3101dec2ee3c53::t_f9a0251a12dbe2 64,66
+backend/tests/unit/golden/day_report_full_day_at_risk.email.html
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 1
+backend/tests/unit/golden/day_report_readiness_crowded.teams.json
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 89,95,101
+backend/tests/unit/golden/day_report_full_day_at_risk.text.txt
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 33-34,36,39-40
+backend/tests/unit/golden/day_report_readiness_gap.email.html
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 1
+frontend-v3/src/features/daily/reportView.test.ts
+  s_3101dec2ee3c53::t_453e6c2ec35719 25-38
+backend/tests/unit/golden/day_report_full_day.text.txt
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 30-31,33,36-37
+backend/tests/unit/golden/day_report_readiness_crowded.email.html
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 1
+backend/tests/unit/test_day_report_ask_words.py
+  s_3101dec2ee3c53::t_b5e54a35fc72df 68-69
+  s_3101dec2ee3c53::t_a6fbcd20ae31c4 1-41,43-67,70-88
+  s_3101dec2ee3c53::t_9b95b58692dac1 42
+backend/tests/unit/golden/day_report_readiness_crowded.text.txt
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 42-45,47,50-51
+backend/tests/unit/golden/day_report_full_day_at_risk.teams.json
+  s_3101dec2ee3c53::t_9e7ce929ab1ce9 89,95,101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2eea05858c2defacb87f1d5f43f518080961e384",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
