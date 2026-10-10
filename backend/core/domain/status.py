@@ -197,7 +197,7 @@ _CRON_MONTH_NAMES = {
         start=1,
     )
 }
-# The shorthands the scheduler's croniter expands (DBOS gives it no hash id).
+# The shorthands the workflow layer's scheduler (croniter) expands; it gives croniter no hash id.
 _CRON_ALIASES = {
     "@midnight": "0 0 * * *",
     "@hourly": "0 * * * *",
@@ -254,8 +254,8 @@ class CheckInSendSchedule:
 def checkin_send_schedule(cron: str) -> CheckInSendSchedule:
     """Read the tenant's check-in cron as a weekly time, a time on dates, or neither.
 
-    Five fields, six with the seconds first (DBOS runs croniter with
-    ``second_at_beginning``), or one of croniter's ``@`` shorthands. Only a
+    Five fields, six with the seconds first (the workflow layer's scheduler runs
+    croniter with ``second_at_beginning``), or one of croniter's ``@`` shorthands. Only a
     single second, minute and hour is read as a time. A day of the week
     restricted beside a day of the month or a month is ``OTHER``: croniter then
     asks on either kind of day (``day_or``), which neither words for weekdays
