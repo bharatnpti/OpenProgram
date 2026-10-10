@@ -1,0 +1,72 @@
+backend/core/application/pull_request_flow_service.py
+  s_3101dec2ee3c53::t_40e274b8804a08 7-9
+  s_3101dec2ee3c53::t_9eaad7562a9a79 92-100,146-147,228,248,498-504,545-566
+  s_3101dec2ee3c53::t_718ac8c7c16243 6
+  s_a17a18ca8c509e::t_16cd3c1fd91fc1 91,567-568
+backend/api/dtos.py
+  s_3101dec2ee3c53::t_9c3a0479682cb5 1887
+  s_3101dec2ee3c53::t_9eaad7562a9a79 1886,1888-1901,1924-1930,1953-1956
+  s_3101dec2ee3c53::t_63899550cf944e 75
+frontend-v3/src/features/signals/prFlow.ts
+  s_3101dec2ee3c53::t_d9f43ced5d233c 91-163
+  s_3101dec2ee3c53::t_dd93efa47ad04e 175-182
+  s_3101dec2ee3c53::t_c46aacb73dcfe6 380-392,394-398
+  s_3101dec2ee3c53::t_c800ec0162fb5e 2
+  s_3101dec2ee3c53::t_54315441a9dcb6 193-199
+frontend-v2/src/api/generated.ts
+  s_3101dec2ee3c53::t_9c3a0479682cb5 5423
+  s_3101dec2ee3c53::t_880399650ac8e6 5335-5341,5421-5422,5424-5428
+  s_3101dec2ee3c53::t_31d7bf58866852 5429
+backend/tests/unit/test_pull_request_flow.py
+  s_3101dec2ee3c53::t_d49145a5df9372 366-367,370
+  s_3101dec2ee3c53::t_852e06160bf6c6 714-733
+  s_3101dec2ee3c53::t_63899550cf944e 284-321,323-365,368-369,371-377,392-393
+  s_3101dec2ee3c53::t_102fbe5d67581f 322,378-391
+frontend-v3/src/features/signals/prFlow.test.ts
+  s_3101dec2ee3c53::t_2c8c2ca80e0d35 12,19,22,24,26,32,40,46,57-80,130-137,342,345-417,420-438,440-442
+  s_3101dec2ee3c53::t_c4304bcf1720af 418-419
+frontend-v3/src/api/generated.ts
+  s_3101dec2ee3c53::t_9c3a0479682cb5 5423
+  s_3101dec2ee3c53::t_880399650ac8e6 5335-5341,5421-5422,5424-5428
+  s_3101dec2ee3c53::t_56e42c108e9571 5429
+frontend-v3/src/api/openapi.json
+  s_3101dec2ee3c53::t_880399650ac8e6 18216-18226,18263,18451-18466
+  s_3101dec2ee3c53::t_9c3a0479682cb5 18467
+  s_3101dec2ee3c53::t_78f40b4d6fdce6 18468
+frontend-v2/src/api/openapi.json
+  s_3101dec2ee3c53::t_9c3a0479682cb5 18467
+  s_3101dec2ee3c53::t_880399650ac8e6 18216-18226,18263,18451-18466
+  s_3101dec2ee3c53::t_1cb9a940337e15 18468
+frontend/src/api/openapi.json
+  s_3101dec2ee3c53::t_880399650ac8e6 18216-18226,18263,18451-18466
+  s_3101dec2ee3c53::t_9c3a0479682cb5 18467
+  s_3101dec2ee3c53::t_c4cddc20c5242a 18468
+frontend/src/api/generated.ts
+  s_3101dec2ee3c53::t_880399650ac8e6 5348-5354,5434-5435,5437-5441
+  s_3101dec2ee3c53::t_9c3a0479682cb5 5436
+  s_3101dec2ee3c53::t_856b260ae118e2 5442
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "108e0cf5a5e87553fcee803e5022d5f0ee0a2bd4",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    },
+    "s_a17a18ca8c509e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5c08089-2933-44f3-a3c3-066d71fe7232",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
