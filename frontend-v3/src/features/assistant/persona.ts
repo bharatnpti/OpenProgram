@@ -12,8 +12,11 @@ export const ASSISTANT_NAME = "Ora";
 /** The button, the palette row and the panel's own label. */
 export const ASK_LABEL = `Ask ${ASSISTANT_NAME}`;
 
-/** The one-line note under the input. */
-export const ANSWER_NOTE = "Answers come from the delivery data and can be wrong.";
+/**
+ * The one-line note under the input. It says an AI writes the answers, as
+ * people talking to one must be told, and where to check them: the sources.
+ */
+export const ANSWER_NOTE = `${ASSISTANT_NAME} writes answers with AI from your delivery data. Check the sources before you act.`;
 
 /** The two ways to ask: a quick answer, or an investigation in steps. */
 export const QUICK_LABEL = "Quick answer";
@@ -22,7 +25,7 @@ export const INVESTIGATE_LABEL = "Investigate";
 export const INVESTIGATE_THIS = "Investigate this";
 
 /** The note under the input while Investigate is on. */
-export const INVESTIGATE_NOTE = `${ASSISTANT_NAME} checks the question step by step, which can take a minute. Answers can be wrong.`;
+export const INVESTIGATE_NOTE = `${ASSISTANT_NAME} checks the question step by step with AI, which can take a minute. Check the sources before you act.`;
 
 /** What the waiting bubble says: looking it up, planning, or checking the steps planned. */
 export function pendingWords(investigating: boolean, steps: number): string {

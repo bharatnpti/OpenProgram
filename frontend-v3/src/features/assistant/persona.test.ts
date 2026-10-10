@@ -27,7 +27,8 @@ const at = (place: Partial<AskPlace>): AskPlace => ({
 
 test("the assistant's name is said in one place, and every label is built from it", () => {
   assert.equal(ASK_LABEL, `Ask ${ASSISTANT_NAME}`);
-  assert.match(ANSWER_NOTE, /can be wrong/);
+  assert.match(ANSWER_NOTE, new RegExp(`^${ASSISTANT_NAME} writes answers with AI`));
+  assert.match(ANSWER_NOTE, /Check the sources before you act\.$/);
 });
 
 test("the greeting names the person and the time of day, and no one when nobody is named", () => {

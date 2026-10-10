@@ -75,6 +75,7 @@ test("the waiting words follow the investigation, and name the assistant", () =>
   assert.equal(pendingWords(true, 1), `${ASSISTANT_NAME} is checking 1 step…`);
   assert.equal(pendingWords(true, 3), `${ASSISTANT_NAME} is checking 3 steps…`);
   assert.equal(checkedWords(3), `How ${ASSISTANT_NAME} checked: 3 steps`);
-  assert.match(INVESTIGATE_NOTE, /can be wrong/);
+  assert.match(INVESTIGATE_NOTE, /with AI/);
+  assert.match(INVESTIGATE_NOTE, /Check the sources before you act\.$/);
   assert.equal(toolWords(["open_risks", "status_reasons"]), "open risks · status reasons");
 });
