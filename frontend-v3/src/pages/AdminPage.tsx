@@ -12,6 +12,7 @@ import { EscalationTab } from "../features/admin/EscalationTab";
 import { GatesTab } from "../features/admin/GatesTab";
 import { IntegrationsTab } from "../features/admin/IntegrationsTab";
 import { LinksTab } from "../features/admin/LinksTab";
+import { ReleaseReadinessTab } from "../features/admin/ReleaseReadinessTab";
 import { cn } from "../lib/utils";
 
 // Every setting has its own tab here, so nothing links out to the frontend-v2
@@ -23,6 +24,7 @@ const TABS = [
   { key: "integrations", label: "Integrations" },
   { key: "stages", label: "Delivery stages" },
   { key: "gates", label: "Gates" },
+  { key: "readiness", label: "Release readiness" },
   { key: "escalation", label: "Escalation" },
   { key: "contacts", label: "Escalation contacts" },
   { key: "branding", label: "Branding" },
@@ -72,6 +74,7 @@ export function AdminPage() {
         {tab === "integrations" ? <IntegrationsTab /> : null}
         {tab === "stages" ? <DeliveryStagesTab /> : null}
         {tab === "gates" ? <GatesTab /> : null}
+        {tab === "readiness" ? <ReleaseReadinessTab /> : null}
         {tab === "escalation" ? <EscalationTab /> : null}
         {tab === "contacts" ? <ContactsTab /> : null}
         {tab === "branding" ? <BrandingTab /> : null}
