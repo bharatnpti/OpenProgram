@@ -2515,18 +2515,24 @@ class CheckinSendResponse(BaseModel):
             "What the schedule is. `weekly`: one time on days of the week (`local_time`, "
             "`weekdays`). `dates`: one time on listed days of the month and/or in listed "
             "months (`local_time`, `month_days`, `months`), such as 1 January only. `other`: "
-            "anything else, such as a step or a range in the time; only `cron` says when."
+            "anything else, such as a step or a range in the time; only `cron` says when. "
+            "`off`: the scheduled send is switched off (OPENPROGRAM_CHECKIN_FANOUT_ENABLED), "
+            "so nobody is asked on a schedule; `cron` is what applies once it is on again, "
+            "and every other field is null."
         ),
     )
     cron: str = Field(
         description=(
             "The tenant's check-in schedule as configured (OPENPROGRAM_CHECKIN_FANOUT_CRON). "
-            "Every member is asked on it; nobody has a time of their own."
+            "Every member is asked on it, unless `kind` is `off`; nobody has a time of "
+            "their own."
         ),
     )
     timezone: str = Field(description="The zone the schedule is read in: always UTC.")
     local_time: time | None = Field(
-        description="The clock time of the send in `timezone`; null when `kind` is `other`.",
+        description=(
+            "The clock time of the send in `timezone`; null when `kind` is `other` or `off`."
+        ),
     )
     weekdays: list[int] | None = Field(
         description=(
@@ -2589,9 +2595,9 @@ class CheckinPreferenceResponse(BaseModel):
     defaults: CheckinDefaultsResponse
     send: CheckinSendResponse = Field(
         description=(
-            "When the bot asks: one tenant-wide send. The member's `weekdays` decide whether "
-            "they are asked on a send day; their `timezone` decides which day a reply counts "
-            "for, not when they are asked."
+            "When the bot asks: one tenant-wide send, or none while `kind` is `off`. The "
+            "member's `weekdays` decide whether they are asked on a send day; their `timezone` "
+            "decides which day a reply counts for, not when they are asked."
         ),
     )
 

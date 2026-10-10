@@ -256,6 +256,7 @@ All settings are `OPENPROGRAM_`-prefixed pydantic-settings, documented in [.env.
 | `OPENPROGRAM_WORKFLOW_PROVIDER` | `dbos` or `temporal` |
 | `OPENPROGRAM_CHAT_PROVIDER` | `slack`, `mock_slack`, or `fake` |
 | `OPENPROGRAM_ISSUE_TRACKER_PROVIDER` / `VCS_PROVIDER` / `CALENDAR_PROVIDER` | `jira` / `github`\|`gitlab` / `google` |
+| `OPENPROGRAM_CHECKIN_FANOUT_ENABLED` | the scheduled send of check-ins (`true` by default). `false` removes the `openprogram-checkin-fanout` schedule, and the reconcile catch-up (`OPENPROGRAM_CHECKIN_RECONCILE_ENABLED`, which runs only while both are on), when the worker starts; a run the runtime still fires asks nobody. `send.kind` is then `off`, and the console says check-ins aren't sent on a schedule. An admin's dispatch of one member's check-in still works. Use it, not a pause by hand, which the next restart resumes |
 | `OPENPROGRAM_CHECKIN_FANOUT_CRON` | when daily check-ins go out — one schedule for the whole tenant, read in UTC (`30 9 * * 1-5`, 09:30 UTC Monday to Friday, by default); each member's check-in days are honoured, but a per-member check-in time is stored and not used. The check-in preference API returns it as `send`, and the console names it in UTC and on the viewer's clock |
 | `OPENPROGRAM_CONVERSATION_RETENTION_DAYS` | retention for raw chat conversation history |
 | `OPENPROGRAM_POSTGRES_POOL_MAX_SIZE` / `POSTGRES_POOL_TIMEOUT_SECONDS` | the one application pool per process (10), and how long a caller waits for a connection (30 s) |

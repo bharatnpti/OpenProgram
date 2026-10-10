@@ -136,3 +136,18 @@ def test_the_cron_is_kept_as_configured(settings: Settings) -> None:
 
     assert configured.checkin_send_schedule().cron == "0 0 1 1 *"
     assert checkin_send_schedule("@YEARLY").cron == "@YEARLY"
+
+
+def test_the_send_switched_off_is_off_whatever_the_cron(settings: Settings) -> None:
+    off = settings.model_copy(update={"checkin_fanout_enabled": False})
+
+    assert settings.checkin_fanout_enabled is True
+    assert off.checkin_send_schedule() == CheckInSendSchedule(
+        cron="30 9 * * 1-5", kind=CheckInSendKind.OFF
+    )
+    # Nothing a screen could read as a time or a day is set while it is off.
+    for cron in ("0 9 * * *", "0 0 1 1 *", "*/15 * * * *"):
+        schedule = checkin_send_schedule(cron, enabled=False)
+        assert (schedule.kind, schedule.cron) == (CheckInSendKind.OFF, cron)
+        assert schedule.local_time is None
+        assert schedule.weekdays is schedule.month_days is schedule.months is None

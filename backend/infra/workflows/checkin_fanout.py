@@ -104,6 +104,12 @@ async def _developer_checkin_dispatches(
     registry: ServiceRegistry,
     payload: CheckinFanoutInput,
 ) -> list[DeveloperCheckinDispatch]:
+    if not registry.settings.checkin_fanout_enabled:
+        # A schedule registered earlier outlives the flag switched off since:
+        # the runtime can still fire it, or replay missed runs at start-up,
+        # before the worker removes it. Such a run asks nobody.
+        _log_scheduled_send_off("checkin_fanout_disabled", payload.tenant_id, payload.checkin_date)
+        return []
     checkin_date = date.fromisoformat(payload.checkin_date)
     developers = await registry.status_repository().developers_without_checkin(
         payload.tenant_id,
@@ -126,6 +132,29 @@ async def _checkin_reconcile_dispatch_plan(
     observed_at = _observed_at(payload.observed_at)
     local_observed_at = observed_at.astimezone(_timezone(payload.timezone))
     checkin_date = local_observed_at.date()
+    settings = registry.settings
+    if not (settings.checkin_fanout_enabled and settings.checkin_reconcile_enabled):
+        # The catch-up asks whoever the fan-out missed. With the fan-out off it
+        # would be the only send, so a pass from a schedule registered earlier
+        # asks nobody, as one with its own flag off does.
+        _log_scheduled_send_off(
+            "checkin_reconcile_disabled", payload.tenant_id, checkin_date.isoformat()
+        )
+        return CheckinReconcileDispatchPlan(
+            result=CheckinReconcileResult(
+                tenant_id=payload.tenant_id,
+                checkin_date=checkin_date.isoformat(),
+                status="disabled",
+                dispatched=0,
+                workflow_ids=[],
+                skipped_reason=(
+                    "check-in fan-out is off"
+                    if not settings.checkin_fanout_enabled
+                    else "check-in reconcile is off"
+                ),
+            ),
+            dispatches=[],
+        )
     cutoff = _local_time(payload.after_local_time)
     if local_observed_at.time() < cutoff:
         return CheckinReconcileDispatchPlan(
@@ -169,6 +198,15 @@ async def _checkin_reconcile_dispatch_plan(
         ),
         dispatches=dispatches,
     )
+
+
+def _log_scheduled_send_off(event: str, tenant_id: str, checkin_date: str) -> None:
+    # Imported here, not at module load: the workflow definitions import this
+    # module, and the workflow runtime loads them inside a sandbox that refuses
+    # structlog's import-time randomness (through rich).
+    import structlog
+
+    structlog.get_logger(__name__).info(event, tenant_id=tenant_id, checkin_date=checkin_date)
 
 
 def _observed_at(value: str | None) -> datetime:

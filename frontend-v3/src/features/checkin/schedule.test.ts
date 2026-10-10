@@ -64,6 +64,16 @@ const HOURLY: CheckinSendResponse = {
   weekdays: null,
   ...NO_DATES,
 };
+// The scheduled send switched off (OPENPROGRAM_CHECKIN_FANOUT_ENABLED=false):
+// the cron is what applies once it is on again, so it is never said as when.
+const OFF: CheckinSendResponse = {
+  kind: "off",
+  cron: "30 9 * * 1-5",
+  timezone: "UTC",
+  local_time: null,
+  weekdays: null,
+  ...NO_DATES,
+};
 
 const preference = (
   overrides: Partial<CheckinPreferenceResponse> = {},
@@ -421,8 +431,58 @@ test("off a weekly schedule every day is offered, and a day only skips a send", 
   ]);
 });
 
+test("off: the screens say check-ins aren't sent on a schedule, and no time, cron or day", () => {
+  assert.equal(
+    askTimeWords(OFF, "Europe/Berlin", FRIDAY_SUMMER),
+    "Check-ins aren't sent on a schedule right now. The bot won't ask you until your admin turns the scheduled send back on. You can still choose your days and your time zone: they apply from then.",
+  );
+  assert.equal(
+    adminSendWords(OFF, "Europe/Berlin", FRIDAY_SUMMER),
+    "Check-ins aren't sent on a schedule right now. The scheduled send is switched off (OPENPROGRAM_CHECKIN_FANOUT_ENABLED), so the bot asks nobody until it is on again. A member's days only matter then; their time zone decides which day a reply counts for.",
+  );
+  assert.equal(
+    zoneEffectWords(OFF),
+    "Decides which day your reply counts for. It doesn't change when the bot asks you.",
+  );
+  assert.equal(nextSendAt(OFF, FRIDAY_SUMMER), null);
+  // Every day is offered and kept, so a member can set their days for when it is on.
+  assert.deepEqual(sendDays(OFF), EVERY);
+  assert.deepEqual(askedDays([4, 5, 6], OFF), [4, 5, 6]);
+  assert.equal(daysLegendWords(OFF), "Your days");
+  assert.equal(
+    daysHintWords(OFF, false),
+    "Your days only matter once check-ins are sent on a schedule again. These stay yours if the team's change.",
+  );
+  assert.equal(
+    daysHintWords(OFF, true),
+    "Your days only matter once check-ins are sent on a schedule again. Following your team: when its days change, yours do too.",
+  );
+  // The menu names no days: none of them is asked while it is off.
+  assert.equal(
+    scheduleSummary(preference({ weekdays: [0, 1, 2, 3, 4], send: OFF })),
+    "Not sent on a schedule now · Europe/Berlin",
+  );
+  assert.equal(
+    scheduleSummary(preference({ send: OFF, inherited: ["timezone"] })),
+    "Not sent on a schedule now · team time zone (UTC)",
+  );
+  const draft = draftFrom(preference({ weekdays: EVERY, send: OFF }));
+  assert.deepEqual(draft.weekdays, EVERY);
+  assert.deepEqual(scheduleChanges(draft, { ...draft, weekdays: [0, 1, 2, 3, 4] }), {
+    weekdays: [0, 1, 2, 3, 4],
+  });
+  for (const line of [
+    askTimeWords(OFF, "Europe/Berlin", FRIDAY_SUMMER),
+    adminSendWords(OFF, "Europe/Berlin", FRIDAY_SUMMER),
+    zoneEffectWords(OFF),
+    scheduleSummary(preference({ send: OFF })),
+  ]) {
+    assert.doesNotMatch(line, /09:30|30 9|Mon–Fri|\bat \d/, line);
+  }
+});
+
 test("every day is said only of a send that is daily", () => {
-  for (const send of [SEND, NEW_YEAR, HOURLY]) {
+  for (const send of [SEND, NEW_YEAR, HOURLY, OFF]) {
     const person = preference({ weekdays: EVERY, send });
     const draft = draftFrom(person);
     const words = [

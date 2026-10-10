@@ -1081,6 +1081,25 @@ def test_pod_routes_answer_only_for_a_pod(settings: Settings) -> None:
                 assert unknown.status_code == 404, (role, route, unknown.text)
 
 
+def test_an_admin_still_sends_one_members_check_in_while_the_scheduled_send_is_off(
+    settings: Settings,
+) -> None:
+    app = create_app(
+        settings=settings.model_copy(
+            update={"workflow_provider": "fake", "checkin_fanout_enabled": False}
+        )
+    )
+    with TestClient(app) as client:
+        client.post("/config/members", json={"id": "dev-1", "name": "Dev One"})
+        checkin = client.post(
+            "/admin/workflows/checkin/dispatch",
+            json={"tenant_id": "demo", "developer_id": "dev-1", "checkin_date": "2026-01-10"},
+        )
+
+    assert checkin.status_code == 200, checkin.text
+    assert checkin.json()["workflow_id"] == "fake-checkin-demo-dev-1-2026-01-10"
+
+
 def test_admin_workflow_dispatch_routes_are_admin_only(settings: Settings) -> None:
     app = create_app(settings=settings.model_copy(update={"workflow_provider": "fake"}))
     with TestClient(app) as client:
@@ -1530,6 +1549,12 @@ def test_checkin_preference_follows_later_changes_to_the_defaults(settings: Sett
         yearly = client.get(path)
         app.state.settings = settings.model_copy(update={"checkin_fanout_cron": "*/15 * * * *"})
         stepped = client.get(path)
+        # The scheduled send switched off: no reading of the cron is true then.
+        app.state.settings = settings.model_copy(
+            update={"checkin_fanout_cron": "30 9 * * 1-5", "checkin_fanout_enabled": False}
+        )
+        switched_off = client.get(path)
+        switched_off_listed = client.get("/config/checkin-preferences")
 
     assert member.status_code == 200
     body = member.json()
@@ -1570,6 +1595,19 @@ def test_checkin_preference_follows_later_changes_to_the_defaults(settings: Sett
         "month_days": None,
         "months": None,
     }
+    off = {
+        "kind": "off",
+        "cron": "30 9 * * 1-5",
+        "timezone": "UTC",
+        "local_time": None,
+        "weekdays": None,
+        "month_days": None,
+        "months": None,
+    }
+    assert switched_off.json()["send"] == off
+    # The member's own days are kept for when it is on again.
+    assert switched_off.json()["weekdays"] == body["weekdays"]
+    assert all(item["send"] == off for item in switched_off_listed.json())
 
 
 def test_checkin_preference_field_sent_as_null_goes_back_to_the_default(

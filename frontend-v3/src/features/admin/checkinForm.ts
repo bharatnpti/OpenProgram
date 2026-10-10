@@ -86,11 +86,14 @@ export function askedDays(weekdays: number[], pref: Pick<CheckinPreferenceRespon
 /**
  * Under the Change dialog's day chips on a schedule that isn't weekly: what
  * the days do there. Null on a weekly one, whose chips are its send days.
+ * While the scheduled send is off (`kind` off) they do nothing until it is on.
  */
 export function daysNote(pref: Pick<CheckinPreferenceResponse, "send">): string | null {
-  return pref.send.kind === "weekly"
-    ? null
-    : "Check-ins aren't on a weekly schedule, so these days only skip a send that falls on a day left off.";
+  if (pref.send.kind === "weekly") return null;
+  if (pref.send.kind === "off") {
+    return "Check-ins aren't sent on a schedule right now, so these days only matter once the scheduled send is on again.";
+  }
+  return "Check-ins aren't on a weekly schedule, so these days only skip a send that falls on a day left off.";
 }
 
 export function draftFrom(pref: CheckinPreferenceResponse): PrefDraft {
