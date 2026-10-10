@@ -142,6 +142,7 @@ from core.domain.status import (
     CheckInDefaults,
     CheckInPreference,
     CheckInPreferenceField,
+    CheckInSendKind,
     CheckInSendSchedule,
     DeveloperStatus,
     EffectiveCheckInPreference,
@@ -2446,10 +2447,18 @@ class CheckinDefaultsResponse(BaseModel):
 
 
 class CheckinSendResponse(BaseModel):
-    """When the bot asks: one send of the day's check-ins for the whole tenant."""
+    """When the bot asks: one send of the check-ins for the whole tenant."""
 
     model_config = ConfigDict(frozen=True)
 
+    kind: CheckInSendKind = Field(
+        description=(
+            "What the schedule is. `weekly`: one time on days of the week (`local_time`, "
+            "`weekdays`). `dates`: one time on listed days of the month and/or in listed "
+            "months (`local_time`, `month_days`, `months`), such as 1 January only. `other`: "
+            "anything else, such as a step or a range in the time; only `cron` says when."
+        ),
+    )
     cron: str = Field(
         description=(
             "The tenant's check-in schedule as configured (OPENPROGRAM_CHECKIN_FANOUT_CRON). "
@@ -2458,26 +2467,41 @@ class CheckinSendResponse(BaseModel):
     )
     timezone: str = Field(description="The zone the schedule is read in: always UTC.")
     local_time: time | None = Field(
-        description=(
-            "The clock time of the send in `timezone`, or null when the schedule names "
-            "more than one time of day."
-        ),
+        description="The clock time of the send in `timezone`; null when `kind` is `other`.",
     )
     weekdays: list[int] | None = Field(
         description=(
-            "The days the bot sends, Monday 0, judged by the send's date in `timezone`; "
-            "null when the schedule also depends on the day of the month or the month. "
-            "A member is asked only on those of these days that are in their own `weekdays`."
+            "`weekly` only: the days the bot sends, Monday 0, judged by the send's date in "
+            "`timezone`; all seven is every day. Null for any other kind. A member is asked "
+            "only on those of these days that are in their own `weekdays`."
+        ),
+    )
+    month_days: list[int] | None = Field(
+        description=(
+            "`dates` only: the days of the month the bot sends on, 1 to 31; null for any day "
+            "of the month (then `months` is set)."
+        ),
+    )
+    months: list[int] | None = Field(
+        description=(
+            "`dates` only: the months the bot sends in, January 1; null for every month "
+            "(then `month_days` is set)."
         ),
     )
 
     @classmethod
     def from_domain(cls, schedule: CheckInSendSchedule) -> CheckinSendResponse:
+        def listed(values: tuple[int, ...] | None) -> list[int] | None:
+            return list(values) if values is not None else None
+
         return cls(
+            kind=schedule.kind,
             cron=schedule.cron,
             timezone=schedule.timezone,
             local_time=schedule.local_time,
-            weekdays=list(schedule.weekdays) if schedule.weekdays is not None else None,
+            weekdays=listed(schedule.weekdays),
+            month_days=listed(schedule.month_days),
+            months=listed(schedule.months),
         )
 
 

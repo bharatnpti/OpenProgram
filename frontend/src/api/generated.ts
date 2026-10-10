@@ -2678,6 +2678,17 @@ export interface components {
       | "reply_wait_seconds"
       | "final_reply_wait_seconds";
     /**
+     * CheckInSendKind
+     * @description What the check-in schedule is, so a screen says only what is true of it.
+     *
+     *     ``WEEKLY``: one time of day on days of the week, in every month (all seven
+     *     days is every day). ``DATES``: one time of day on listed days of the month
+     *     and/or in listed months, such as 1 January only. ``OTHER``: anything else,
+     *     such as a step or a range in the time; only the cron says when.
+     * @enum {string}
+     */
+    CheckInSendKind: "weekly" | "dates" | "other";
+    /**
      * CheckinDefaultsResponse
      * @description The team defaults a member follows for any field not set for them.
      */
@@ -2778,9 +2789,11 @@ export interface components {
     };
     /**
      * CheckinSendResponse
-     * @description When the bot asks: one send of the day's check-ins for the whole tenant.
+     * @description When the bot asks: one send of the check-ins for the whole tenant.
      */
     CheckinSendResponse: {
+      /** @description What the schedule is. `weekly`: one time on days of the week (`local_time`, `weekdays`). `dates`: one time on listed days of the month and/or in listed months (`local_time`, `month_days`, `months`), such as 1 January only. `other`: anything else, such as a step or a range in the time; only `cron` says when. */
+      kind: components["schemas"]["CheckInSendKind"];
       /**
        * Cron
        * @description The tenant's check-in schedule as configured (OPENPROGRAM_CHECKIN_FANOUT_CRON). Every member is asked on it; nobody has a time of their own.
@@ -2793,14 +2806,24 @@ export interface components {
       timezone: string;
       /**
        * Local Time
-       * @description The clock time of the send in `timezone`, or null when the schedule names more than one time of day.
+       * @description The clock time of the send in `timezone`; null when `kind` is `other`.
        */
       local_time: string | null;
       /**
        * Weekdays
-       * @description The days the bot sends, Monday 0, judged by the send's date in `timezone`; null when the schedule also depends on the day of the month or the month. A member is asked only on those of these days that are in their own `weekdays`.
+       * @description `weekly` only: the days the bot sends, Monday 0, judged by the send's date in `timezone`; all seven is every day. Null for any other kind. A member is asked only on those of these days that are in their own `weekdays`.
        */
       weekdays: number[] | null;
+      /**
+       * Month Days
+       * @description `dates` only: the days of the month the bot sends on, 1 to 31; null for any day of the month (then `months` is set).
+       */
+      month_days: number[] | null;
+      /**
+       * Months
+       * @description `dates` only: the months the bot sends in, January 1; null for every month (then `month_days` is set).
+       */
+      months: number[] | null;
     };
     /** CommitmentResponse */
     CommitmentResponse: {

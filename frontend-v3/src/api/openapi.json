@@ -10964,6 +10964,12 @@
         "title": "CheckInPreferenceField",
         "description": "The preference fields a member can leave to the team default, in display order."
       },
+      "CheckInSendKind": {
+        "type": "string",
+        "enum": ["weekly", "dates", "other"],
+        "title": "CheckInSendKind",
+        "description": "What the check-in schedule is, so a screen says only what is true of it.\n\n``WEEKLY``: one time of day on days of the week, in every month (all seven\ndays is every day). ``DATES``: one time of day on listed days of the month\nand/or in listed months, such as 1 January only. ``OTHER``: anything else,\nsuch as a step or a range in the time; only the cron says when."
+      },
       "CheckinDefaultsResponse": {
         "properties": {
           "local_time": {
@@ -11239,6 +11245,10 @@
       },
       "CheckinSendResponse": {
         "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/CheckInSendKind",
+            "description": "What the schedule is. `weekly`: one time on days of the week (`local_time`, `weekdays`). `dates`: one time on listed days of the month and/or in listed months (`local_time`, `month_days`, `months`), such as 1 January only. `other`: anything else, such as a step or a range in the time; only `cron` says when."
+          },
           "cron": {
             "type": "string",
             "title": "Cron",
@@ -11260,7 +11270,7 @@
               }
             ],
             "title": "Local Time",
-            "description": "The clock time of the send in `timezone`, or null when the schedule names more than one time of day."
+            "description": "The clock time of the send in `timezone`; null when `kind` is `other`."
           },
           "weekdays": {
             "anyOf": [
@@ -11275,13 +11285,43 @@
               }
             ],
             "title": "Weekdays",
-            "description": "The days the bot sends, Monday 0, judged by the send's date in `timezone`; null when the schedule also depends on the day of the month or the month. A member is asked only on those of these days that are in their own `weekdays`."
+            "description": "`weekly` only: the days the bot sends, Monday 0, judged by the send's date in `timezone`; all seven is every day. Null for any other kind. A member is asked only on those of these days that are in their own `weekdays`."
+          },
+          "month_days": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month Days",
+            "description": "`dates` only: the days of the month the bot sends on, 1 to 31; null for any day of the month (then `months` is set)."
+          },
+          "months": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Months",
+            "description": "`dates` only: the months the bot sends in, January 1; null for every month (then `month_days` is set)."
           }
         },
         "type": "object",
-        "required": ["cron", "timezone", "local_time", "weekdays"],
+        "required": ["kind", "cron", "timezone", "local_time", "weekdays", "month_days", "months"],
         "title": "CheckinSendResponse",
-        "description": "When the bot asks: one send of the day's check-ins for the whole tenant."
+        "description": "When the bot asks: one send of the check-ins for the whole tenant."
       },
       "CommitmentResponse": {
         "properties": {

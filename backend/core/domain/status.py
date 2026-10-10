@@ -190,64 +190,136 @@ class CheckInDefaults:
 CHECKIN_SEND_TIMEZONE = "UTC"
 
 _CRON_DAY_NAMES = {"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6}
+_CRON_MONTH_NAMES = {
+    name: number
+    for number, name in enumerate(
+        ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"),
+        start=1,
+    )
+}
+# The shorthands the scheduler's croniter expands (DBOS gives it no hash id).
+_CRON_ALIASES = {
+    "@midnight": "0 0 * * *",
+    "@hourly": "0 * * * *",
+    "@daily": "0 0 * * *",
+    "@weekly": "0 0 * * 0",
+    "@monthly": "0 0 1 * *",
+    "@yearly": "0 0 1 1 *",
+    "@annually": "0 0 1 1 *",
+}
+_CRON_ANY = {"*", "?"}
+
+
+class CheckInSendKind(StrEnum):
+    """What the check-in schedule is, so a screen says only what is true of it.
+
+    ``WEEKLY``: one time of day on days of the week, in every month (all seven
+    days is every day). ``DATES``: one time of day on listed days of the month
+    and/or in listed months, such as 1 January only. ``OTHER``: anything else,
+    such as a step or a range in the time; only the cron says when.
+    """
+
+    WEEKLY = "weekly"
+    DATES = "dates"
+    OTHER = "other"
 
 
 @dataclass(frozen=True, kw_only=True)
 class CheckInSendSchedule:
-    """When the bot asks: one send of the day's check-ins for the whole tenant.
+    """When the bot asks: one send of the check-ins for the whole tenant.
 
     The workflow layer starts one fan-out on ``cron``
     (``OPENPROGRAM_CHECKIN_FANOUT_CRON``), read in ``timezone`` (always UTC),
     and asks every member then. A member's own days only decide whether they
-    are skipped that day, judged by the send's UTC date; no member's own time
-    is used. ``local_time`` and ``weekdays`` (Monday 0) read the cron when it
-    names one second, minute and hour on days of the week (``30 9 * * 1-5``:
-    09:30, Monday to Friday). Either is ``None`` when the cron says more than
-    that, and ``cron`` is then the only account of when the bot asks.
+    are skipped on a send, judged by the send's UTC date; no member's own time
+    is used. ``kind`` says how much of the cron is read:
+
+    - ``WEEKLY``: ``local_time`` and ``weekdays`` (Monday 0; all seven is every
+      day). ``30 9 * * 1-5`` is 09:30, Monday to Friday.
+    - ``DATES``: ``local_time``, ``month_days`` (1 to 31; ``None`` for any day
+      of the month) and ``months`` (1 to 12; ``None`` for every month), at least
+      one of the two set. ``0 0 1 1 *`` is 00:00 on 1 January only.
+    - ``OTHER``: only ``cron``.
     """
 
     cron: str
+    kind: CheckInSendKind = CheckInSendKind.OTHER
     timezone: str = CHECKIN_SEND_TIMEZONE
     local_time: time | None = None
     weekdays: tuple[int, ...] | None = None
+    month_days: tuple[int, ...] | None = None
+    months: tuple[int, ...] | None = None
 
 
 def checkin_send_schedule(cron: str) -> CheckInSendSchedule:
-    """Read the tenant's check-in cron as a time of day and days of the week.
+    """Read the tenant's check-in cron as a weekly time, a time on dates, or neither.
 
-    Five fields, or six with the seconds first (as the workflow layer reads one). Only a
-    single value is read as the time, and only a cron that runs on any day of
-    the month in any month gives its days.
+    Five fields, six with the seconds first (DBOS runs croniter with
+    ``second_at_beginning``), or one of croniter's ``@`` shorthands. Only a
+    single second, minute and hour is read as a time. A day of the week
+    restricted beside a day of the month or a month is ``OTHER``: croniter then
+    asks on either kind of day (``day_or``), which neither words for weekdays
+    nor words for dates would say.
     """
-    fields = cron.split()
+    fields = _CRON_ALIASES.get(cron.strip().lower(), cron).split()
     seconds = "0"
     if len(fields) == 6:
         seconds, *fields = fields
     if len(fields) != 5:
         return CheckInSendSchedule(cron=cron)
-    minute, hour, day_of_month, month, day_of_week = fields
+    minute, hour, day_of_month, month, day_of_week = (field.lower() for field in fields)
     second_value = _cron_single(seconds, 59)
     minute_value = _cron_single(minute, 59)
     hour_value = _cron_single(hour, 23)
-    send_time = (
-        time(hour_value, minute_value, second_value)
-        if hour_value is not None and minute_value is not None and second_value is not None
-        else None
+    if second_value is None or minute_value is None or hour_value is None:
+        return CheckInSendSchedule(cron=cron)
+    send_time = time(hour_value, minute_value, second_value)
+    any_day, any_month = day_of_month in _CRON_ANY, month == "*"
+    if any_day and any_month:
+        weekdays = _cron_weekdays(day_of_week)
+        if weekdays is None:
+            return CheckInSendSchedule(cron=cron)
+        return CheckInSendSchedule(
+            cron=cron, kind=CheckInSendKind.WEEKLY, local_time=send_time, weekdays=weekdays
+        )
+    if day_of_week not in _CRON_ANY:
+        return CheckInSendSchedule(cron=cron)
+    month_days = None if any_day else _cron_values(day_of_month, 1, 31, {})
+    months = None if any_month else _cron_values(month, 1, 12, _CRON_MONTH_NAMES)
+    if (not any_day and month_days is None) or (not any_month and months is None):
+        return CheckInSendSchedule(cron=cron)
+    return CheckInSendSchedule(
+        cron=cron,
+        kind=CheckInSendKind.DATES,
+        local_time=send_time,
+        month_days=month_days,
+        months=months,
     )
-    weekdays = _cron_weekdays(day_of_week) if day_of_month in {"*", "?"} and month == "*" else None
-    return CheckInSendSchedule(cron=cron, local_time=send_time, weekdays=weekdays)
 
 
 def _cron_single(field: str, highest: int) -> int | None:
     return int(field) if field.isdigit() and int(field) <= highest else None
 
 
+def _cron_values(
+    field: str, lowest: int, highest: int, names: dict[str, int]
+) -> tuple[int, ...] | None:
+    """A field of single values ("1", "1,15", "jan,jul"); None for a range, a step or a word."""
+    values: set[int] = set()
+    for part in field.split(","):
+        value = int(part) if part.isdigit() else names.get(part)
+        if value is None or not lowest <= value <= highest:
+            return None
+        values.add(value)
+    return tuple(sorted(values))
+
+
 def _cron_weekdays(field: str) -> tuple[int, ...] | None:
     """A cron's day-of-week field (Sunday 0 or 7) as days with Monday 0."""
-    if field in {"*", "?"}:
+    if field in _CRON_ANY:
         return (0, 1, 2, 3, 4, 5, 6)
     days: set[int] = set()
-    for part in field.lower().split(","):
+    for part in field.split(","):
         base, slash, step_text = part.partition("/")
         if slash and not (step_text.isdigit() and int(step_text) > 0):
             return None

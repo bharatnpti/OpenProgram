@@ -1208,10 +1208,13 @@ def test_checkin_preference_routes_merge_and_validate(settings: Settings) -> Non
     # When the bot asks is the tenant's one schedule, read in UTC, whatever the
     # member's or the team's zone.
     send = {
+        "kind": "weekly",
         "cron": "0 7 * * 1-4",
         "timezone": "UTC",
         "local_time": "07:00:00",
         "weekdays": [0, 1, 2, 3],
+        "month_days": None,
+        "months": None,
     }
     assert default_response.status_code == 200
     assert default_response.json() == {
@@ -1419,10 +1422,13 @@ def test_checkin_preference_partial_save_keeps_the_other_stored_values(
         },
         # Noah's stored 08:05 is not when he is asked: the send is everyone's.
         "send": {
+            "kind": "weekly",
             "cron": "30 9 * * 1-5",
             "timezone": "UTC",
             "local_time": "09:30:00",
             "weekdays": [0, 1, 2, 3, 4],
+            "month_days": None,
+            "months": None,
         },
     }
     assert days_only.status_code == 200
@@ -1507,6 +1513,11 @@ def test_checkin_preference_follows_later_changes_to_the_defaults(settings: Sett
         )
         member = client.get(path)
         listed = client.get("/config/checkin-preferences")
+        # A schedule paused to one date a year, then one no words can say.
+        app.state.settings = settings.model_copy(update={"checkin_fanout_cron": "0 0 1 1 *"})
+        yearly = client.get(path)
+        app.state.settings = settings.model_copy(update={"checkin_fanout_cron": "*/15 * * * *"})
+        stepped = client.get(path)
 
     assert member.status_code == 200
     body = member.json()
@@ -1519,12 +1530,34 @@ def test_checkin_preference_follows_later_changes_to_the_defaults(settings: Sett
     assert body["defaults"]["reply_wait_seconds"] == 600
     # The send is the deployment's one schedule, in UTC, never the team's zone.
     assert body["send"] == {
+        "kind": "weekly",
         "cron": "45 8 * * *",
         "timezone": "UTC",
         "local_time": "08:45:00",
         "weekdays": [0, 1, 2, 3, 4, 5, 6],
+        "month_days": None,
+        "months": None,
     }
     assert next(item for item in listed.json() if item["developer_id"] == "dev-ada") == body
+    # 1 January only has no days of the week, so nothing can read it as every day.
+    assert yearly.json()["send"] == {
+        "kind": "dates",
+        "cron": "0 0 1 1 *",
+        "timezone": "UTC",
+        "local_time": "00:00:00",
+        "weekdays": None,
+        "month_days": [1],
+        "months": [1],
+    }
+    assert stepped.json()["send"] == {
+        "kind": "other",
+        "cron": "*/15 * * * *",
+        "timezone": "UTC",
+        "local_time": None,
+        "weekdays": None,
+        "month_days": None,
+        "months": None,
+    }
 
 
 def test_checkin_preference_field_sent_as_null_goes_back_to_the_default(
