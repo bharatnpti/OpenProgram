@@ -107,6 +107,8 @@ async def test_a_burst_of_git_syncs_stays_inside_the_connection_budget(
         dbos_workflows.DbosRuntimeConfig(
             app_name=settings.dbos_app_name,
             system_database_url=settings.resolved_dbos_system_database_url,
+            system_pool_size=settings.dbos_system_pool_size,
+            sync_queue_concurrency=settings.sync_queue_concurrency,
         )
     )
     DBOS.launch()

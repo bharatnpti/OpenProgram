@@ -9,11 +9,24 @@ import pytest
 
 from config.settings import Settings
 from core.domain.workflows import SyncDispatchInput
+from infra.adapters.catalog import (
+    build_rollup_refresher,
+    build_workflow_readiness_probe,
+    build_workflow_scheduler,
+    build_workflow_worker,
+)
 from infra.adapters.workflows import dbos as dbos_workflows
 from infra.workflows.runtime_sync import RuntimeSyncWorkflowResult
 from infra.workflows.schedule import sync_schedule_configs
 
 SECRET_KEY = "q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ="
+
+_DBOS_ADAPTERS = (
+    dbos_workflows.DbosWorkflowScheduler,
+    dbos_workflows.DbosRollupRefresher,
+    dbos_workflows.DbosWorkflowWorker,
+    dbos_workflows.DbosWorkflowReadinessProbe,
+)
 
 
 def _at(hhmm: str) -> datetime:
@@ -214,12 +227,28 @@ async def test_other_sync_kinds_still_start_at_once(monkeypatch: pytest.MonkeyPa
     ]
 
 
+def _settings_must_not_be_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Launching a runtime from its config must work where full settings do not validate.
+
+    An integration test, or a one-off script, holds an application name and a
+    database URL and no secret key: reading the global settings there raised
+    "secret_key must be a 44-character Fernet key".
+    """
+
+    def unavailable() -> Settings:
+        raise AssertionError("the DBOS runtime read the global settings")
+
+    monkeypatch.setattr("config.settings.get_settings", unavailable)
+
+
 async def test_the_sync_queue_is_registered_once_per_runtime_with_the_configured_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     registered: list[tuple[str, dict[str, object]]] = []
     runtime = dbos_workflows.DbosRuntimeConfig(
-        app_name="openprogram", system_database_url="postgresql://unused"
+        app_name="openprogram",
+        system_database_url="postgresql://unused",
+        sync_queue_concurrency=3,
     )
 
     async def register(name: str, **options: object) -> str:
@@ -229,7 +258,7 @@ async def test_the_sync_queue_is_registered_once_per_runtime_with_the_configured
     monkeypatch.setattr(dbos_workflows.DBOS, "register_queue_async", staticmethod(register))
     monkeypatch.setattr(dbos_workflows, "_configured_runtime", runtime)
     monkeypatch.setattr(dbos_workflows, "_sync_queue", None)
-    monkeypatch.setattr(dbos_workflows, "_sync_queue_concurrency", lambda: 3)
+    _settings_must_not_be_read(monkeypatch)
 
     first = await dbos_workflows._registered_sync_queue()
     again = await dbos_workflows._registered_sync_queue()
@@ -243,9 +272,35 @@ async def test_the_sync_queue_is_registered_once_per_runtime_with_the_configured
     ]
 
 
-def test_the_dbos_system_pool_is_bounded_by_the_setting(monkeypatch: pytest.MonkeyPatch) -> None:
-    configs: list[dict[str, object]] = []
+async def test_a_changed_sync_limit_registers_the_queue_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    limits: list[object] = []
 
+    async def register(name: str, **options: object) -> str:
+        limits.append(options["global_concurrency"])
+        return f"queue-{len(limits)}"
+
+    monkeypatch.setattr(dbos_workflows.DBOS, "register_queue_async", staticmethod(register))
+    monkeypatch.setattr(dbos_workflows, "_sync_queue", None)
+    _settings_must_not_be_read(monkeypatch)
+
+    for limit in (3, 3, 5):
+        monkeypatch.setattr(
+            dbos_workflows,
+            "_configured_runtime",
+            dbos_workflows.DbosRuntimeConfig(
+                app_name="openprogram",
+                system_database_url="postgresql://unused",
+                sync_queue_concurrency=limit,
+            ),
+        )
+        await dbos_workflows._registered_sync_queue()
+
+    assert limits == [3, 5]
+
+
+def _fake_dbos(configs: list[dict[str, object]]) -> type:
     class FakeDbos:
         def __init__(self, config: dict[str, object]) -> None:
             configs.append(config)
@@ -254,13 +309,20 @@ def test_the_dbos_system_pool_is_bounded_by_the_setting(monkeypatch: pytest.Monk
         def destroy(destroy_registry: bool = False) -> None:
             return None
 
-    monkeypatch.setattr(dbos_workflows, "DBOS", FakeDbos)
+    return FakeDbos
+
+
+def test_the_dbos_system_pool_is_bounded_by_the_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    configs: list[dict[str, object]] = []
+    monkeypatch.setattr(dbos_workflows, "DBOS", _fake_dbos(configs))
     monkeypatch.setattr(dbos_workflows, "_configured_runtime", None)
-    monkeypatch.setattr(dbos_workflows, "_dbos_system_pool_size", lambda: 7)
+    _settings_must_not_be_read(monkeypatch)
 
     dbos_workflows.configure_dbos_runtime(
         dbos_workflows.DbosRuntimeConfig(
-            app_name="openprogram", system_database_url="postgresql://unused"
+            app_name="openprogram",
+            system_database_url="postgresql://unused",
+            system_pool_size=7,
         )
     )
 
@@ -271,3 +333,56 @@ def test_the_dbos_system_pool_is_bounded_by_the_setting(monkeypatch: pytest.Monk
             "sys_db_pool_size": 7,
         }
     ]
+
+
+def test_a_runtime_built_from_a_name_and_a_url_alone_needs_no_settings(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    configs: list[dict[str, object]] = []
+    monkeypatch.setattr(dbos_workflows, "DBOS", _fake_dbos(configs))
+    monkeypatch.setattr(dbos_workflows, "_configured_runtime", None)
+    _settings_must_not_be_read(monkeypatch)
+
+    dbos_workflows.configure_dbos_runtime(
+        dbos_workflows.DbosRuntimeConfig(
+            app_name="openprogram-it", system_database_url="postgresql://unused"
+        )
+    )
+
+    assert configs[0]["sys_db_pool_size"] == settings.dbos_system_pool_size
+
+
+def test_the_runtime_config_defaults_are_the_settings_defaults(settings: Settings) -> None:
+    config = dbos_workflows.DbosRuntimeConfig(app_name="a", system_database_url="u")
+
+    assert config.system_pool_size == settings.dbos_system_pool_size
+    assert config.sync_queue_concurrency == settings.sync_queue_concurrency
+
+
+def test_every_dbos_adapter_carries_the_settings_values_into_its_runtime_config() -> None:
+    settings = Settings(
+        _env_file=None,
+        secret_key=SECRET_KEY,
+        runtime_mode="memory",
+        workflow_provider="dbos",
+        dbos_system_pool_size=6,
+        sync_queue_concurrency=2,
+    )
+
+    adapters = [
+        build_workflow_scheduler(settings),
+        build_rollup_refresher(settings),
+        build_workflow_worker(settings),
+        build_workflow_readiness_probe(settings),
+    ]
+
+    expected = dbos_workflows.DbosRuntimeConfig(
+        app_name=settings.dbos_app_name,
+        system_database_url=settings.resolved_dbos_system_database_url,
+        system_pool_size=6,
+        sync_queue_concurrency=2,
+    )
+    assert len(adapters) == 4
+    for adapter in adapters:
+        assert isinstance(adapter, _DBOS_ADAPTERS)
+        assert adapter.runtime_config() == expected

@@ -371,6 +371,8 @@ def build_workflow_scheduler(settings: Settings) -> WorkflowScheduler:
         return DbosWorkflowScheduler(
             app_name=settings.dbos_app_name,
             system_database_url=settings.resolved_dbos_system_database_url,
+            system_pool_size=settings.dbos_system_pool_size,
+            sync_queue_concurrency=settings.sync_queue_concurrency,
             schedule_id=settings.resolved_heartbeat_schedule_id,
             tenant_id=settings.tenant_id,
             heartbeat_cron=settings.dbos_heartbeat_cron,
@@ -394,6 +396,8 @@ def build_rollup_refresher(settings: Settings) -> RollupRefresher:
         return DbosRollupRefresher(
             app_name=settings.dbos_app_name,
             system_database_url=settings.resolved_dbos_system_database_url,
+            system_pool_size=settings.dbos_system_pool_size,
+            sync_queue_concurrency=settings.sync_queue_concurrency,
         )
     return TemporalRollupRefresher(
         target=settings.temporal_target,
@@ -408,6 +412,8 @@ def build_workflow_worker(settings: Settings) -> WorkflowWorker:
         return DbosWorkflowWorker(
             app_name=settings.dbos_app_name,
             system_database_url=settings.resolved_dbos_system_database_url,
+            system_pool_size=settings.dbos_system_pool_size,
+            sync_queue_concurrency=settings.sync_queue_concurrency,
         )
     return TemporalWorkflowWorker(
         target=settings.temporal_target,
@@ -422,6 +428,8 @@ def build_workflow_readiness_probe(settings: Settings) -> ReadinessProbe:
         return DbosWorkflowReadinessProbe(
             app_name=settings.dbos_app_name,
             system_database_url=settings.resolved_dbos_system_database_url,
+            system_pool_size=settings.dbos_system_pool_size,
+            sync_queue_concurrency=settings.sync_queue_concurrency,
         )
     return TemporalWorkflowReadinessProbe(target=settings.temporal_target)
 
