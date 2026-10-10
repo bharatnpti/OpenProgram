@@ -550,6 +550,7 @@ async def test_ensure_workflow_schedules_bootstraps_all_configured_schedules() -
         ("delivery_snapshot", "requirements"),
         ("day_report", "dispatch"),
         ("gate_scan", "issues"),
+        ("readiness_scan", "findings"),
     ]
     assert [result.schedule_id for result in results] == [
         "heartbeat-test",
@@ -619,6 +620,30 @@ async def test_ensure_workflow_schedules_removes_narrative_briefs_when_disabled(
     assert brief_ids
     assert registry.scheduler.removed == brief_ids
     assert not {c.schedule_id for c in registry.scheduler.sync_configs} & set(brief_ids)
+
+
+async def test_ensure_workflow_schedules_removes_the_readiness_scan_when_disabled() -> None:
+    settings_factory = cast(Callable[..., Settings], Settings)
+    settings = settings_factory(
+        _env_file=None,
+        secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+        heartbeat_schedule_id="heartbeat-test",
+        readiness_scan_enabled=False,
+    )
+    registry = _ScheduleBootstrapRegistry(settings)
+
+    await schedule.ensure_workflow_schedules(registry)
+
+    assert registry.scheduler.removed == [settings.readiness_scan_schedule_id]
+    assert "readiness_scan" not in {c.connector for c in registry.scheduler.sync_configs}
+
+
+def test_the_readiness_scan_runs_hourly_after_the_jira_sync_and_the_gate_scan() -> None:
+    settings = Settings(_env_file=None, secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=")
+    config = schedule.readiness_scan_schedule_config(settings)
+
+    assert (config.schedule_id, config.cron) == ("openprogram-readiness-scan", "45 * * * *")
+    assert settings.jira_sync_cron == "0 * * * *" and settings.gate_scan_cron == "40 * * * *"
 
 
 async def test_ensure_workflow_schedules_removes_day_reports_when_disabled() -> None:
@@ -1094,6 +1119,7 @@ def test_dbos_dispatch_sync_starts_a_workflow_for_every_connector() -> None:
         "dbos_delivery_snapshot_workflow",
         "dbos_day_report_dispatch_workflow",
         "dbos_gate_scan_workflow",
+        "dbos_readiness_scan_workflow",
     ):
         assert workflow_name in started, workflow_name
 
@@ -1104,7 +1130,12 @@ def test_temporal_delivery_workflows_are_registered() -> None:
         temporal_workflows.TemporalWorkflowScheduler._start_derived_workflow.__code__.co_names
     )
 
-    for name in ("DeliverySnapshotWorkflow", "DayReportDispatchWorkflow", "GateScanWorkflow"):
+    for name in (
+        "DeliverySnapshotWorkflow",
+        "DayReportDispatchWorkflow",
+        "GateScanWorkflow",
+        "ReadinessScanWorkflow",
+    ):
         assert name in worker_source
         assert name in derived_source
     assert "run_delivery_snapshot_activity" in worker_source

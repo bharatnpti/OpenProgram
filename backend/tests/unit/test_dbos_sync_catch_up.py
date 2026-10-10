@@ -227,6 +227,69 @@ async def test_other_sync_kinds_still_start_at_once(monkeypatch: pytest.MonkeyPa
     ]
 
 
+def _readiness_context() -> dict[str, Any]:
+    return {
+        "schedule_id": "openprogram-readiness-scan",
+        "tenant_id": "demo",
+        "connector": "readiness_scan",
+        "scope": "findings",
+        "payload": {},
+        "cron": "45 * * * *",
+    }
+
+
+async def test_a_superseded_readiness_tick_enqueues_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def superseded(scheduled_at: str, cron: str) -> bool:
+        assert cron == "45 * * * *"
+        return True
+
+    async def queue() -> object:
+        raise AssertionError("a superseded tick must not enqueue")
+
+    monkeypatch.setattr(dbos_workflows, "dbos_check_sync_tick_superseded_step", superseded)
+    monkeypatch.setattr(dbos_workflows, "_registered_sync_queue", queue)
+
+    result = await dbos_workflows._run_scheduled_sync(_at("02:45"), _readiness_context())
+
+    assert result.status == "superseded"  # type: ignore[union-attr]
+
+
+async def test_the_current_readiness_tick_waits_its_turn_on_the_sync_queue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from infra.workflows.readiness import ReadinessScanInput, ReadinessScanResult
+
+    enqueued: list[tuple[object, object]] = []
+    done = ReadinessScanResult(tenant_id="demo", status="ok", scopes=8, changed=2)
+
+    class Handle:
+        async def get_result(self) -> ReadinessScanResult:
+            return done
+
+    class Queue:
+        async def enqueue_async(self, function: object, input: object) -> Handle:
+            enqueued.append((function, input))
+            return Handle()
+
+    async def current(scheduled_at: str, cron: str) -> bool:
+        return False
+
+    async def queue() -> Queue:
+        return Queue()
+
+    monkeypatch.setattr(dbos_workflows, "dbos_check_sync_tick_superseded_step", current)
+    monkeypatch.setattr(dbos_workflows, "_registered_sync_queue", queue)
+
+    result = await dbos_workflows._run_scheduled_sync(_at("03:45"), _readiness_context())
+
+    assert result == done
+    [(function, payload)] = enqueued
+    assert function is dbos_workflows.dbos_readiness_scan_workflow
+    assert payload == ReadinessScanInput(tenant_id="demo", observed_at=_at("03:45").isoformat())
+
+
 def _settings_must_not_be_read(monkeypatch: pytest.MonkeyPatch) -> None:
     """Launching a runtime from its config must work where full settings do not validate.
 

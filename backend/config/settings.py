@@ -157,6 +157,12 @@ class Settings(BaseSettings):
     gate_scan_enabled: bool = True
     gate_scan_cron: str = "40 * * * *"
     gate_scan_schedule_id: str = "openprogram-gate-scan"
+    # Release readiness: each scope checked against the tenant's criteria every
+    # hour, after the Jira sync (:00) and the gate scan (:40), on the sync queue.
+    # The tenant's own switch decides whether a tick does anything.
+    readiness_scan_enabled: bool = True
+    readiness_scan_cron: str = "45 * * * *"
+    readiness_scan_schedule_id: str = "openprogram-readiness-scan"
     # Ask the language model for items in text with no headings (quotes only).
     gate_text_model_enabled: bool = True
     temporal_target: str = "localhost:7233"
@@ -455,6 +461,8 @@ class Settings(BaseSettings):
         "delivery_snapshot_schedule_id",
         "gate_scan_cron",
         "gate_scan_schedule_id",
+        "readiness_scan_cron",
+        "readiness_scan_schedule_id",
         "auth_public_backend_url",
         "auth_frontend_url",
         "auth_cookie_name",

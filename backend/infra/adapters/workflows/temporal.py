@@ -51,6 +51,7 @@ from infra.workflows import (
     inbound_events,
     jira_sync,
     nudge,
+    readiness,
     risk_assessment,
     rollup,
     runtime_sync,
@@ -77,6 +78,7 @@ from infra.workflows.drift_scan import DriftScanInput, DriftScanWorkflowResult
 from infra.workflows.git_sync import GitSyncInput, GitSyncWorkflowResult
 from infra.workflows.jira_sync import JiraSyncInput, ReadSyncWorkflowResult
 from infra.workflows.nudge import EscalationStepInput, NudgeInput, NudgeResult
+from infra.workflows.readiness import ReadinessScanInput, ReadinessScanResult
 from infra.workflows.risk_assessment import RiskAssessmentInput, RiskAssessmentWorkflowResult
 from infra.workflows.rollup import (
     ROLLUP_REFRESH_DEBOUNCE_SECONDS,
@@ -100,6 +102,7 @@ SyncWorkflowResult = (
     | DeliverySnapshotResult
     | DayReportDispatchResult
     | GateScanResult
+    | ReadinessScanResult
 )
 
 if TYPE_CHECKING:
@@ -413,6 +416,22 @@ class GateScanWorkflow:
         )
 
 
+@activity.defn
+async def run_readiness_scan_activity(payload: ReadinessScanInput) -> ReadinessScanResult:
+    return await readiness.run_readiness_scan_activity(payload)
+
+
+@workflow.defn
+class ReadinessScanWorkflow:
+    @workflow.run
+    async def run(self, payload: ReadinessScanInput) -> ReadinessScanResult:
+        return await workflow.execute_activity(
+            run_readiness_scan_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=20),
+        )
+
+
 @workflow.defn
 class ScheduledSyncWorkflow:
     @workflow.run
@@ -621,7 +640,8 @@ async def _execute_sync_activity(
     | RollupInput
     | DeliverySnapshotInput
     | DayReportDispatchInput
-    | GateScanInput,
+    | GateScanInput
+    | ReadinessScanInput,
 ) -> SyncWorkflowResult:
     if isinstance(payload, JiraSyncInput):
         return await workflow.execute_activity(
@@ -697,6 +717,12 @@ async def _execute_derived_activity(payload: object) -> SyncWorkflowResult:
     if isinstance(payload, GateScanInput):
         return await workflow.execute_activity(
             run_gate_scan_activity,
+            payload,
+            start_to_close_timeout=timedelta(minutes=20),
+        )
+    if isinstance(payload, ReadinessScanInput):
+        return await workflow.execute_activity(
+            run_readiness_scan_activity,
             payload,
             start_to_close_timeout=timedelta(minutes=20),
         )
@@ -1041,6 +1067,13 @@ class TemporalWorkflowScheduler:
                 id=workflow_id,
                 task_queue=self.task_queue,
             )
+        elif isinstance(workflow_input, ReadinessScanInput):
+            await client.start_workflow(
+                ReadinessScanWorkflow.run,
+                workflow_input,
+                id=workflow_id,
+                task_queue=self.task_queue,
+            )
         else:
             raise ValueError(f"unsupported sync connector: {connector}")
 
@@ -1109,6 +1142,7 @@ class TemporalWorkflowWorker:
                 DeliverySnapshotWorkflow,
                 DayReportDispatchWorkflow,
                 GateScanWorkflow,
+                ReadinessScanWorkflow,
                 ScheduledSyncWorkflow,
                 DailyCheckinWorkflow,
                 NudgeWorkflow,
@@ -1133,6 +1167,7 @@ class TemporalWorkflowWorker:
                 run_delivery_snapshot_activity,
                 run_day_report_dispatch_activity,
                 run_gate_scan_activity,
+                run_readiness_scan_activity,
                 start_daily_checkin_activity,
                 send_checkin_nudge_activity,
                 send_escalation_step_activity,

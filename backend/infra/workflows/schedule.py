@@ -85,6 +85,10 @@ async def ensure_workflow_schedules(
         sync_configs = (*sync_configs, gate_scan_schedule_config(settings))
     else:
         results.append(await scheduler.remove_schedule(settings.gate_scan_schedule_id))
+    if settings.readiness_scan_enabled:
+        sync_configs = (*sync_configs, readiness_scan_schedule_config(settings))
+    else:
+        results.append(await scheduler.remove_schedule(settings.readiness_scan_schedule_id))
     results.extend(await scheduler.ensure_sync_schedules(sync_configs))
     return results
 
@@ -245,6 +249,17 @@ def gate_scan_schedule_config(settings: Settings) -> SyncScheduleConfig:
         scope="issues",
         payload={},
         cron=settings.gate_scan_cron,
+    )
+
+
+def readiness_scan_schedule_config(settings: Settings) -> SyncScheduleConfig:
+    return SyncScheduleConfig(
+        schedule_id=settings.readiness_scan_schedule_id,
+        tenant_id=settings.tenant_id,
+        connector="readiness_scan",
+        scope="findings",
+        payload={},
+        cron=settings.readiness_scan_cron,
     )
 
 
