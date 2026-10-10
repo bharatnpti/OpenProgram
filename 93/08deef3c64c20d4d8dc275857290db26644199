@@ -1,0 +1,127 @@
+frontend-v3/src/api/ndjson.ts
+  s_a17a18ca8c509e::t_29c37eafaf303e 1-33
+backend/core/ports/investigation.py
+  s_a17a18ca8c509e::t_e85c749e62f5e4 1-74
+backend/infra/adapters/llm/langchain_bridge.py
+  s_a17a18ca8c509e::t_2d5e71bfdda577 8-10,38,118,124,126-127,129,137
+  s_a17a18ca8c509e::t_bfbec0cfd58cec 1-7,11-34,36-37,39-49,52-60,66-74,76-84,86-93,95-117,119-123,125,128,130-136,138-206
+  s_a17a18ca8c509e::t_79934561fe8565 61-65,75,85,94
+  s_a17a18ca8c509e::t_3919643367d819 35,50-51
+frontend-v2/src/api/generated.ts
+  s_a17a18ca8c509e::t_43cd06186a1a65 2058-2080,4541-4624,12410-12444
+backend/tests/unit/test_settings.py
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 128-131,476-488
+.importlinter
+  s_a17a18ca8c509e::t_bb71f71b4595f9 52-56
+backend/api/routers/ask.py
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 3-4,9,11-13,21-26,43-82
+  s_a17a18ca8c509e::t_d35edc15de1865 83-84
+backend/tests/unit/test_ask_service.py
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 301,588,617,1056,1603-1609
+  s_a17a18ca8c509e::t_5b159ab04bd3fa 1610-1611
+backend/api/dependencies.py
+  s_a17a18ca8c509e::t_811419d074792e 258
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 10,252-257,259-264
+  s_a17a18ca8c509e::t_ff1d9ff66b67e6 265-267
+frontend-v2/src/api/openapi.json
+  s_a17a18ca8c509e::t_43cd06186a1a65 8995-9053,16252-16407
+frontend-v3/src/api/openapi.json
+  s_a17a18ca8c509e::t_43cd06186a1a65 8995-9053,16252-16407
+frontend-v3/src/features/assistant/AssistantProvider.tsx
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 13,20-23,37,52,71-73,89-109,111,118-125
+  s_a17a18ca8c509e::t_fcbda2e968e931 126
+backend/api/dtos.py
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 9-18,2261-2365
+  s_a17a18ca8c509e::t_b90bb88345ea1d 2366-2367
+frontend-v3/src/api/generated.ts
+  s_a17a18ca8c509e::t_43cd06186a1a65 2058-2080,4541-4624,12410-12444
+frontend-v3/src/features/assistant/investigate.test.ts
+  s_a17a18ca8c509e::t_29c37eafaf303e 1-80
+backend/infra/registry.py
+  s_a17a18ca8c509e::t_fd2aa2d9996931 79,1308-1313
+  s_a17a18ca8c509e::t_ea07fd7f3d41c1 1314
+backend/tests/unit/test_ask_api.py
+  s_a17a18ca8c509e::t_269c40b33a22ba 234
+  s_a17a18ca8c509e::t_7f3d049e3ba633 194-196,199-205
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 10-15,116,188-193,197-198,206-233,235-252
+  s_a17a18ca8c509e::t_52e184ea0cfd4d 253-254
+frontend-v3/src/features/assistant/investigate.ts
+  s_a17a18ca8c509e::t_29c37eafaf303e 1-70
+frontend-v3/src/features/assistant/assistantContext.ts
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 3-4,17-21,41-42
+frontend/src/api/openapi.json
+  s_a17a18ca8c509e::t_43cd06186a1a65 8995-9053,16252-16407
+backend/infra/adapters/agents/deep_investigation.py
+  s_a17a18ca8c509e::t_79934561fe8565 40,49,160,177-178,181,188,190-194,197-198,200,208,260,380
+  s_a17a18ca8c509e::t_b2ff9949f499d2 28,46,87-88,93,199,210-225,227-230
+  s_a17a18ca8c509e::t_b992b72dc145bf 240-244
+  s_a17a18ca8c509e::t_fd2aa2d9996931 129,144,152
+  s_a17a18ca8c509e::t_5c4fce0c4d468e 1-27,29-39,41-42,44-45,47-48,50-86,89-92,94-128,130-143,145-151,153-159,161-176,182-187,189,201-207,209,254-259,261-278,284-287,289-332,334-336,344-345,347-379,381-406
+  s_a17a18ca8c509e::t_24cb1aab3f4f65 43,179-180,195-196
+  s_a17a18ca8c509e::t_269c40b33a22ba 226,231-239,245-253
+  s_a17a18ca8c509e::t_537a2f1b4e2b97 279-283,288,333,337-343,346
+frontend-v3/scripts/mock/assistant.mjs
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 8-11,86-143,164-192
+  s_a17a18ca8c509e::t_9b14d1aba9e672 193-196
+frontend-v3.md
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 66
+frontend-v3/scripts/mock-api.mjs
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 262
+frontend-v3/src/api/client.ts
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 10,124,192-195,214,220-224,233-246,377-390
+frontend-v3/src/features/assistant/Assistant.tsx
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 2-11,19,21,26-29,32-33,48-50,62,89,184-185,219-241,253-257,270-272,284-285,290-292,304,307-311,352-370,374-416
+  s_a17a18ca8c509e::t_56f2c467845e3b 417-418
+frontend-v3/src/api/ndjson.test.ts
+  s_a17a18ca8c509e::t_29c37eafaf303e 1-51
+pyproject.toml
+  s_a17a18ca8c509e::t_9437ad63d94821 16-18,21,53-57
+  s_a17a18ca8c509e::t_e264966489987d 58
+frontend-v3/src/api/schema.ts
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 280-284
+frontend/src/api/generated.ts
+  s_a17a18ca8c509e::t_43cd06186a1a65 2058-2080,4554-4637,12423-12457
+backend/core/application/ask_investigation.py
+  s_a17a18ca8c509e::t_d773f20408a0be 1-284,287-310,318-321,325-410
+  s_a17a18ca8c509e::t_811419d074792e 285-286,311-317
+  s_a17a18ca8c509e::t_fd2aa2d9996931 322-324
+backend/core/application/ask_service.py
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 78-80,94-101,182-184,1069,1102-1131,1204,1207-1213,1215,1324-1334,1392-1397,1404-1419,1728,1746-1748
+backend/tests/unit/test_deep_investigation.py
+  s_a17a18ca8c509e::t_d0866f15cf720c 1-13,15-94,96-109,111-113,118-172,176-188,193-228,231-285,287-291,294-295,297-309,315,317-320,333-355
+  s_a17a18ca8c509e::t_b992b72dc145bf 293
+  s_a17a18ca8c509e::t_269c40b33a22ba 14,95,110,114-117,189-192,229-230,286,292,296,310-314,316,321-332
+  s_a17a18ca8c509e::t_f23196caa0e589 173-175
+backend/tests/unit/test_ask_investigation.py
+  s_a17a18ca8c509e::t_6aad5f66e88a7c 1-118,122-334
+  s_a17a18ca8c509e::t_a9ff341f1a5078 119-121
+frontend-v3/src/features/assistant/persona.ts
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 18-38
+features.md
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 466-475
+.env.example
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 54-59
+backend/infra/adapters/agents/__init__.py
+  s_a17a18ca8c509e::t_3919643367d819 1
+backend/config/settings.py
+  s_a17a18ca8c509e::t_04d4ad0bd4f138 32-35,203-210,626,653-657,664-672,832-834
+  s_a17a18ca8c509e::t_60c93ebbe82756 835
+uv.lock
+  s_a17a18ca8c509e::t_f32a5e2bb5604a 11-13,46-63,154-162,585-602,626-634,652-660,673-711,1067-1161,1195-1222,1225,1239,1241-1256,1686,1689,1727,1731,2166-2186,2951-2962
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9308deef3c64c20d4d8dc275857290db26644199",
+  "prompts": {},
+  "sessions": {
+    "s_a17a18ca8c509e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5c08089-2933-44f3-a3c3-066d71fe7232",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}

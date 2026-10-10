@@ -1,0 +1,29 @@
+backend/infra/adapters/llm/litellm_provider.py
+  s_a17a18ca8c509e::t_83214a09becf01 18-25,337-339,364-372
+  s_a17a18ca8c509e::t_e75bf482ecb9dd 392,396,415,420-421,427-433
+  s_a17a18ca8c509e::t_79f72d414f9dc1 373-374,434-435
+backend/core/domain/llm.py
+  s_a17a18ca8c509e::t_83214a09becf01 42-57,70-73
+  s_a17a18ca8c509e::t_e75bf482ecb9dd 30-33
+backend/tests/unit/test_litellm_provider.py
+  s_a17a18ca8c509e::t_95f255c0559f13 346,351-396
+  s_a17a18ca8c509e::t_269c40b33a22ba 399-430,436-442
+  s_a17a18ca8c509e::t_b992b72dc145bf 17,431-435
+  s_a17a18ca8c509e::t_2071a7c1c1ac62 397-398
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a00f68521dbf02a534c8570f09f52cab78d115dd",
+  "prompts": {},
+  "sessions": {
+    "s_a17a18ca8c509e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5c08089-2933-44f3-a3c3-066d71fe7232",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
