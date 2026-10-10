@@ -1,0 +1,75 @@
+backend/core/domain/status.py
+  s_3101dec2ee3c53::t_49ff05b825f765 219-221,227,246-247,259,262-263,272-273
+  s_3101dec2ee3c53::t_edb20503035f2c 264
+backend/config/settings.py
+  s_3101dec2ee3c53::t_07ff9eef7f356f 814-815
+  s_3101dec2ee3c53::t_860891aa4074f0 64-68,71-72
+backend/tests/unit/test_api.py
+  s_3101dec2ee3c53::t_b566d6a87dea02 1090,1097,1552-1557,1598-1610
+  s_3101dec2ee3c53::t_cdf24109e746c3 1084-1089,1091-1096,1098-1102
+backend/api/dtos.py
+  s_3101dec2ee3c53::t_65ed1344a9aad1 2518-2521,2527-2528,2533-2535
+  s_3101dec2ee3c53::t_73fb42435d3dff 2598-2600
+backend/tests/unit/test_testcontainers_compose.py
+  s_3101dec2ee3c53::t_bc31b3c21c88c7 17-18
+docs/ops/real-integrations.md
+  s_3101dec2ee3c53::t_bc31b3c21c88c7 174-182
+frontend-v2/src/api/openapi.json
+  s_3101dec2ee3c53::t_6bceeac0812935 12179,12181,12368,12460,12465,12483
+frontend-v3/src/api/generated.ts
+  s_3101dec2ee3c53::t_6bceeac0812935 3042-3044,3047,3125,3152,3156,3166
+frontend-v3/src/api/openapi.json
+  s_3101dec2ee3c53::t_6bceeac0812935 12179,12181,12368,12460,12465,12483
+frontend-v3/src/features/admin/checkinForm.ts
+  s_3101dec2ee3c53::t_d561591c719cca 89,92-96
+frontend-v3/src/features/admin/checkinForm.test.ts
+  s_3101dec2ee3c53::t_eae8edc67832eb 55-61,109-122
+  s_3101dec2ee3c53::t_9e92032105c825 123-125
+  s_3101dec2ee3c53::t_05710e9e45e8c7 126-127
+frontend/src/api/generated.ts
+  s_3101dec2ee3c53::t_6bceeac0812935 3046-3048,3051,3129,3156,3160,3170
+.env.example
+  s_3101dec2ee3c53::t_bc31b3c21c88c7 18-21,23-24
+backend/tests/unit/test_checkin_send_schedule.py
+  s_3101dec2ee3c53::t_b566d6a87dea02 139-153
+frontend-v2/src/api/generated.ts
+  s_3101dec2ee3c53::t_6bceeac0812935 3042-3044,3047,3125,3152,3156,3166
+backend/infra/workflows/checkin_fanout.py
+  s_3101dec2ee3c53::t_4fbb810d830452 107-112,135-157,203-209
+  s_3101dec2ee3c53::t_e8a2194804dc2f 210-211
+backend/core/domain/workflows.py
+  s_3101dec2ee3c53::t_4fbb810d830452 8
+frontend-v3/src/features/checkin/schedule.ts
+  s_3101dec2ee3c53::t_d561591c719cca 29-33,51-58,125,130,160-161,171-173,203-206,293-295,309,322-323,327-330,350-351,357
+backend/infra/workflows/schedule.py
+  s_3101dec2ee3c53::t_98739f20dd1fa1 37
+  s_3101dec2ee3c53::t_763adbbc14504d 15,40,89-109
+README.md
+  s_3101dec2ee3c53::t_bc31b3c21c88c7 259
+frontend-v3/src/features/checkin/schedule.test.ts
+  s_3101dec2ee3c53::t_eae8edc67832eb 67-76,434-483,485
+docker-compose.yml
+  s_3101dec2ee3c53::t_bc31b3c21c88c7 305,367
+frontend/src/api/openapi.json
+  s_3101dec2ee3c53::t_6bceeac0812935 12179,12181,12368,12460,12465,12483
+backend/tests/unit/test_agent_and_workflow.py
+  s_3101dec2ee3c53::t_b566d6a87dea02 279-333,662-692,1887-1888
+frontend-v3/scripts/mock-console.mjs
+  s_3101dec2ee3c53::t_e140bc36e29571 946-947,976
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "32aab196ed90f1b45c2bde3b916c44c56871bdad",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
