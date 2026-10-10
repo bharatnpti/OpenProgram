@@ -29,6 +29,7 @@ const SCOPE: ScopeDeliveryResponse = {
     sample_days: 20,
     completed_in_sample: 31,
     reason: null,
+    needed_days: 10,
   },
   team: { latest: "2026-11-23", latest_key: "CHK-104", dated: 5, undated: 3 },
   verdict: "at_risk",

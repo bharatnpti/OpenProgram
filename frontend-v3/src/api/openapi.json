@@ -5186,12 +5186,20 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "integer",
-              "maximum": 180,
-              "minimum": 1,
-              "default": 30,
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 180,
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Days of timeline up to as_of. Left out: 30, or the forecast's window when the tenant's minimum needs more.",
               "title": "Days"
-            }
+            },
+            "description": "Days of timeline up to as_of. Left out: 30, or the forecast's window when the tenant's minimum needs more."
           },
           {
             "name": "release_id",
@@ -5337,6 +5345,110 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DeliveryStagesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/delivery/forecast": {
+      "get": {
+        "tags": ["delivery"],
+        "summary": "Get Forecast Settings",
+        "description": "How many working days of history a forecast needs: the tenant's, else the default.",
+        "operationId": "get_forecast_settings_config_delivery_forecast_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForecastSettingsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["delivery"],
+        "summary": "Save Forecast Settings",
+        "description": "Set the working days of history a forecast needs; null goes back to the default.\n\nEvery scope's forecast, the history read and the day report follow at once.\nA number outside the bounds is refused with 422 and says why.",
+        "operationId": "save_forecast_settings_config_delivery_forecast_put",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForecastSettingsUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForecastSettingsResponse"
                 }
               }
             }
@@ -14010,12 +14122,105 @@
             },
             "type": "array",
             "title": "Days"
+          },
+          "needed_days": {
+            "type": "integer",
+            "title": "Needed Days",
+            "description": "Working days of history each day's forecast needed before it gave dates."
           }
         },
         "type": "object",
-        "required": ["project_id", "release_id", "scope_kind", "days"],
+        "required": ["project_id", "release_id", "scope_kind", "days", "needed_days"],
         "title": "ForecastHistoryResponse",
         "description": "The project's, or one release's, history forecast as it stood on each day."
+      },
+      "ForecastSettingsResponse": {
+        "properties": {
+          "min_history_days": {
+            "type": "integer",
+            "title": "Min History Days",
+            "description": "Working days of history before a forecast gives its 50% and 85% dates."
+          },
+          "default_min_history_days": {
+            "type": "integer",
+            "title": "Default Min History Days",
+            "description": "The deployment's default, used while the tenant has set none."
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default"
+          },
+          "lowest": {
+            "type": "integer",
+            "title": "Lowest",
+            "description": "The fewest working days that may be set."
+          },
+          "highest": {
+            "type": "integer",
+            "title": "Highest",
+            "description": "The most working days that may be set."
+          },
+          "window_days": {
+            "type": "integer",
+            "title": "Window Days",
+            "description": "The calendar days of snapshots a forecast reads, which follow the minimum."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By"
+          }
+        },
+        "type": "object",
+        "required": [
+          "min_history_days",
+          "default_min_history_days",
+          "is_default",
+          "lowest",
+          "highest",
+          "window_days",
+          "updated_at",
+          "updated_by"
+        ],
+        "title": "ForecastSettingsResponse",
+        "description": "How many working days of history the tenant's delivery forecasts need."
+      },
+      "ForecastSettingsUpdateRequest": {
+        "properties": {
+          "min_history_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min History Days",
+            "description": "Working days of history before a forecast gives dates; null uses the default."
+          }
+        },
+        "type": "object",
+        "required": ["min_history_days"],
+        "title": "ForecastSettingsUpdateRequest"
       },
       "GateBoardResponse": {
         "properties": {
@@ -14620,6 +14825,11 @@
               }
             ],
             "title": "Reason"
+          },
+          "needed_days": {
+            "type": "integer",
+            "title": "Needed Days",
+            "description": "Working days of history the forecast needs before it gives dates."
           }
         },
         "type": "object",
@@ -14630,7 +14840,8 @@
           "unit",
           "sample_days",
           "completed_in_sample",
-          "reason"
+          "reason",
+          "needed_days"
         ],
         "title": "HistoryForecastResponse"
       },
@@ -18139,6 +18350,16 @@
             },
             "type": "array",
             "title": "Requirements"
+          },
+          "timeline_days": {
+            "type": "integer",
+            "title": "Timeline Days",
+            "description": "The calendar days the timeline covers, up to as_of."
+          },
+          "forecast_needed_days": {
+            "type": "integer",
+            "title": "Forecast Needed Days",
+            "description": "Working days of history the tenant's forecast needs; the flow of stages draws once the timeline holds as many."
           }
         },
         "type": "object",
@@ -18162,7 +18383,9 @@
           "previous_day",
           "unmapped_statuses",
           "excluded",
-          "requirements"
+          "requirements",
+          "timeline_days",
+          "forecast_needed_days"
         ],
         "title": "RequirementsResponse",
         "description": "A project's requirements by delivery stage, with counts over time."

@@ -35,6 +35,7 @@ function scope(over: {
       sample_days: 3,
       completed_in_sample: 0,
       reason: null,
+      needed_days: 10,
     },
     team: {
       latest: over.latest ?? null,

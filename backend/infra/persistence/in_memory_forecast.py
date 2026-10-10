@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from core.domain.forecast import CommitmentScope, DateChange, Release
+from core.domain.forecast import CommitmentScope, DateChange, ForecastSettings, Release
 
 
 @dataclass
@@ -51,3 +51,14 @@ class InMemoryReleaseRepository:
 
     async def delete(self, tenant_id: str, release_id: str) -> bool:
         return self._releases.pop((tenant_id, release_id), None) is not None
+
+
+@dataclass
+class InMemoryForecastSettingsRepository:
+    _settings: dict[str, ForecastSettings] = field(default_factory=dict)
+
+    async def get(self, tenant_id: str) -> ForecastSettings | None:
+        return self._settings.get(tenant_id)
+
+    async def save(self, settings: ForecastSettings) -> None:
+        self._settings[settings.tenant_id] = settings

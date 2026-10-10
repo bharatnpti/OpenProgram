@@ -6,6 +6,10 @@ a release without one uses its Jira release date. The forecast for each scope
 puts what history says beside what the team's own dates say, and names every
 reason the verdict is what it is: dates that moved, pods committed later than
 their project, a Jira release date that disagrees, requirements with no date.
+
+How many working days of history a forecast needs is the tenant's setting (an
+admin's, else the deployment's default); the window its samples are read from
+follows it, so every scope, the history read and the day report use one rule.
 """
 
 from __future__ import annotations
@@ -21,12 +25,17 @@ from core.application.delivery_service import DeliveryService
 from core.domain.delivery import DeliveryStage, RequirementsSnapshot
 from core.domain.errors import GraphNotFound
 from core.domain.forecast import (
+    HIGHEST_MIN_SAMPLE_DAYS,
     HISTORY_DAYS,
+    LOWEST_MIN_SAMPLE_DAYS,
+    MIN_SAMPLE_DAYS,
     Commitment,
     CommitmentError,
     CommitmentScope,
     CommitmentScopeKind,
     DateChange,
+    ForecastSettings,
+    ForecastSettingsError,
     HistoryForecast,
     OpenItem,
     Release,
@@ -38,14 +47,20 @@ from core.domain.forecast import (
     daily_completions,
     fix_version_dates,
     history_forecast,
+    history_window_days,
     split_names,
     team_forecast,
+    validated_min_sample_days,
     validated_note,
     validated_target,
     verdict,
 )
 from core.domain.graph import EdgeKind, GraphNode, NodeKind
-from core.ports.forecast import CommitmentRepository, ReleaseRepository
+from core.ports.forecast import (
+    CommitmentRepository,
+    ForecastSettingsRepository,
+    ReleaseRepository,
+)
 from core.ports.repositories import GraphRepository, TimeSeriesRepository
 
 #: Past this many working days apart, history and the team disagree.
@@ -101,6 +116,24 @@ class ForecastHistoryView:
     scope: CommitmentScope
     #: Oldest first; a day without a snapshot is left out, never guessed.
     days: tuple[ForecastDay, ...]
+    #: The working days of history each day's forecast needed.
+    needed_days: int = MIN_SAMPLE_DAYS
+
+
+@dataclass(frozen=True, kw_only=True)
+class ForecastSettingsView:
+    """The forecast settings in force for a tenant, and where they come from."""
+
+    #: Working days of history before a forecast gives dates: the tenant's, else the default.
+    min_sample_days: int
+    #: The deployment's default (OPENPROGRAM_FORECAST_MIN_HISTORY_DAYS).
+    default_min_sample_days: int
+    #: True while the tenant has set none and the default applies.
+    is_default: bool
+    #: The calendar days the samples are read from; they follow the minimum.
+    window_days: int
+    updated_at: datetime | None = None
+    updated_by: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -122,6 +155,8 @@ class ForecastService:
         commitment_repository: CommitmentRepository,
         release_repository: ReleaseRepository,
         time_series_repository: TimeSeriesRepository,
+        settings_repository: ForecastSettingsRepository | None = None,
+        default_min_sample_days: int = MIN_SAMPLE_DAYS,
         clock: Callable[[], datetime] = _utc_now,
         today: Callable[[], date] | None = None,
         new_id: Callable[[], str] = lambda: uuid4().hex,
@@ -131,9 +166,52 @@ class ForecastService:
         self._commitments = commitment_repository
         self._releases = release_repository
         self._facts = time_series_repository
+        self._settings = settings_repository
+        self._default_min_sample_days = validated_min_sample_days(default_min_sample_days)
         self._clock = clock
         self._today = today or (lambda: clock().date())
         self._new_id = new_id
+
+    # ---- settings --------------------------------------------------------
+
+    async def forecast_settings(self, tenant_id: str) -> ForecastSettingsView:
+        """The working days of history the tenant's forecasts need, and the window they read."""
+        stored = await self._settings.get(tenant_id) if self._settings is not None else None
+        days = stored.min_sample_days if stored is not None else None
+        # A value saved under wider bounds is held to today's.
+        in_force = (
+            self._default_min_sample_days
+            if days is None
+            else min(max(days, LOWEST_MIN_SAMPLE_DAYS), HIGHEST_MIN_SAMPLE_DAYS)
+        )
+        return ForecastSettingsView(
+            min_sample_days=in_force,
+            default_min_sample_days=self._default_min_sample_days,
+            is_default=days is None,
+            window_days=history_window_days(in_force),
+            updated_at=stored.updated_at if stored is not None else None,
+            updated_by=stored.updated_by if stored is not None else None,
+        )
+
+    async def save_forecast_settings(
+        self, tenant_id: str, min_sample_days: int | None, *, actor: str
+    ) -> ForecastSettingsView:
+        """Set the working days of history a forecast needs; None goes back to the default."""
+        if self._settings is None:
+            raise ForecastSettingsError("Forecast settings cannot be saved on this server.")
+        await self._settings.save(
+            ForecastSettings(
+                tenant_id=tenant_id,
+                min_sample_days=(
+                    validated_min_sample_days(min_sample_days)
+                    if min_sample_days is not None
+                    else None
+                ),
+                updated_at=self._clock(),
+                updated_by=actor,
+            )
+        )
+        return await self.forecast_settings(tenant_id)
 
     # ---- releases ------------------------------------------------------
 
@@ -291,7 +369,8 @@ class ForecastService:
         by_scope: dict[str, list[DateChange]] = {}
         for change in changes:
             by_scope.setdefault(change.scope.key, []).append(change)
-        context = await self._context(tenant_id, project_id, as_of)
+        rule = await self.forecast_settings(tenant_id)
+        context = await self._context(tenant_id, project_id, as_of, rule)
         project_scope = CommitmentScope(
             kind=CommitmentScopeKind.PROJECT, id=project_id, project_id=project_id
         )
@@ -359,18 +438,20 @@ class ForecastService:
         last ``days`` days that kept a snapshot, up to ``as_of``.
 
         Each day is forecast the way :meth:`project_delivery` forecasts it on that
-        day, from the same snapshots, keys and seed, so the last day is the forecast
-        the delivery view shows and an earlier one is what it showed then.
+        day, from the same snapshots, keys, seed and minimum, so the last day is the
+        forecast the delivery view shows and an earlier one is what it shows for
+        that day.
         """
         await self._project(tenant_id, project_id, as_of)
         release = await self.release(tenant_id, release_id) if release_id else None
         if release is not None and release.project_id != project_id:
             raise GraphNotFound(f"No release {release_id!r} in project {project_id!r}.")
         days = max(1, min(days, MAX_FORECAST_HISTORY_DAYS))
+        rule = await self.forecast_settings(tenant_id)
         first = as_of - timedelta(days=days - 1)
         before = as_of - timedelta(days=1)
         stored = await self._delivery.history(
-            tenant_id, project_id, first - timedelta(days=HISTORY_DAYS), before
+            tenant_id, project_id, first - timedelta(days=rule.window_days), before
         )
         own_days: dict[date, RequirementsSnapshot | None] = {
             item.day: item
@@ -397,18 +478,22 @@ class ForecastService:
             if own is None:
                 continue
             window = [
-                item for item in stored if day - timedelta(days=HISTORY_DAYS) <= item.day < day
+                item for item in stored if day - timedelta(days=rule.window_days) <= item.day < day
             ]
             keys = frozenset(own.items) if release is not None else None
             if keys is not None:
                 window = [_restricted(item, keys) for item in window]
-            forecast = _scope_forecast(scope, own, window, keys, day)
+            forecast = _scope_forecast(
+                scope, own, window, keys, day, min_sample_days=rule.min_sample_days
+            )
             forecasts.append(
                 ForecastDay(
                     day=day, p50=forecast.p50, p85=forecast.p85, sample_days=forecast.sample_days
                 )
             )
-        return ForecastHistoryView(scope=scope, days=tuple(forecasts))
+        return ForecastHistoryView(
+            scope=scope, days=tuple(forecasts), needed_days=rule.min_sample_days
+        )
 
     # ---- internals ---------------------------------------------------------
 
@@ -494,7 +579,9 @@ class ForecastService:
         extra_reasons: Sequence[str],
     ) -> ScopeDeliveryView:
         open_keys = _open_keys(snapshot)
-        forecast = _scope_forecast(scope, snapshot, history, keys, as_of)
+        forecast = _scope_forecast(
+            scope, snapshot, history, keys, as_of, min_sample_days=context.min_sample_days
+        )
         team = team_forecast(
             OpenItem(
                 key=key,
@@ -542,10 +629,15 @@ class ForecastService:
             },
         )
 
-    async def _context(self, tenant_id: str, project_id: str, as_of: date) -> _Context:
+    async def _context(
+        self, tenant_id: str, project_id: str, as_of: date, rule: ForecastSettingsView
+    ) -> _Context:
         snapshot = await self._delivery.snapshot(tenant_id, project_id, as_of)
         history = await self._delivery.history(
-            tenant_id, project_id, as_of - timedelta(days=HISTORY_DAYS), as_of - timedelta(days=1)
+            tenant_id,
+            project_id,
+            as_of - timedelta(days=rule.window_days),
+            as_of - timedelta(days=1),
         )
         tasks = {
             _task_key(task): task
@@ -561,6 +653,7 @@ class ForecastService:
                 node.id: node.name
                 for node in await self._graph.list_nodes(tenant_id, NodeKind.DEVELOPER, as_of=as_of)
             },
+            min_sample_days=rule.min_sample_days,
         )
 
     async def _etas(self, tenant_id: str, keys: set[str]) -> dict[str, date]:
@@ -645,6 +738,7 @@ class _Context:
     etas: Mapping[str, date]
     pod_keys: Mapping[str, frozenset[str]]
     names: Mapping[str, str]
+    min_sample_days: int
 
 
 def _open_keys(snapshot: RequirementsSnapshot | None) -> list[str]:
@@ -659,10 +753,12 @@ def _scope_forecast(
     history: Sequence[RequirementsSnapshot],
     keys: frozenset[str] | None,
     as_of: date,
+    *,
+    min_sample_days: int,
 ) -> HistoryForecast:
     """What history forecast for the scope on ``as_of``: the one rule the delivery view
     and the forecast's own history both use, seeded by the scope and the day, so a past
-    day's forecast reads the same as the delivery view read on that day."""
+    day's forecast reads the same as the delivery view reads for that day."""
     series = [*history, snapshot] if snapshot is not None else list(history)
     by_points = bool(series) and all(item.has_points for item in series)
     remaining: float
@@ -678,6 +774,7 @@ def _scope_forecast(
         start=as_of,
         seed=f"{scope.key}:{as_of.isoformat()}",
         unit="story points" if by_points else "requirements",
+        min_sample_days=min_sample_days,
     )
 
 
