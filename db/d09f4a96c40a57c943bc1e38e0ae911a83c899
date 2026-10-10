@@ -1,0 +1,50 @@
+backend/tests/unit/golden/day_report_readiness_gap.email.html
+  s_3101dec2ee3c53::t_f671650f628f03 1
+backend/tests/fixtures/day_report_full_day.py
+  s_3101dec2ee3c53::t_edc11f95b2d269 26,174-177,183-186,189-208,246-247,265-266
+  s_3101dec2ee3c53::t_06fa2cef0caff7 180,187
+  s_3101dec2ee3c53::t_56ea69c0c13846 267
+docs/lld/release-readiness.md
+  s_3101dec2ee3c53::t_44fe7e13ca72dc 83-84
+  s_3101dec2ee3c53::t_06fa2cef0caff7 85-88
+backend/tests/unit/golden/day_report_readiness_crowded.email.html
+  s_3101dec2ee3c53::t_f671650f628f03 1
+backend/tests/unit/golden/day_report_readiness_crowded.text.txt
+  s_3101dec2ee3c53::t_f671650f628f03 1-58
+backend/core/application/day_report_builder.py
+  s_3101dec2ee3c53::t_55f96e9ca22373 8-10,527-531,719
+backend/tests/unit/golden/day_report_readiness_gap.text.txt
+  s_3101dec2ee3c53::t_f671650f628f03 28
+frontend-v3/src/features/daily/DailyReport.tsx
+  s_3101dec2ee3c53::t_2d17fdee6b9c54 101-105,131-141
+  s_3101dec2ee3c53::t_898684a91d0a30 142-143
+backend/tests/unit/golden/day_report_readiness_gap.teams.json
+  s_3101dec2ee3c53::t_f671650f628f03 77
+backend/tests/unit/golden/day_report_readiness_crowded.teams.json
+  s_3101dec2ee3c53::t_f671650f628f03 1-126
+features.md
+  s_3101dec2ee3c53::t_06fa2cef0caff7 566-567
+backend/tests/unit/golden/day_report_readiness_crowded.slack.txt
+  s_3101dec2ee3c53::t_f671650f628f03 1-55
+backend/tests/unit/golden/day_report_readiness_gap.slack.txt
+  s_3101dec2ee3c53::t_f671650f628f03 27
+backend/tests/unit/test_readiness_day_report.py
+  s_3101dec2ee3c53::t_ce7e03d292cd17 5,14-20,45-46,58-82
+  s_3101dec2ee3c53::t_06fa2cef0caff7 6-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dbd09f4a96c40a57c943bc1e38e0ae911a83c899",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
