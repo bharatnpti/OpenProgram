@@ -9,7 +9,7 @@ import { Panel, Row } from "../../components/ui/Bits";
 import { boardMeta, boardRag, boardWord, repliedCount } from "../../lib/checkinWords";
 import { formatDay } from "../../lib/format";
 import { readState } from "../../lib/readState";
-import { FactorsPanel, NodeHeader, Related } from "./NodeBits";
+import { FactorsPanel, NodeHeader, Related, type OwnPanel } from "./NodeBits";
 import { PodDateStrips } from "./DeliveryStrips";
 import { PodTasksPanel } from "./PodTasks";
 import { reasonLine, type Finder } from "./factors";
@@ -17,12 +17,24 @@ import { reasonLine, type Finder } from "./factors";
 /**
  * A pod: members and who replied today, open blockers, and its tasks (blocked
  * first, each with owners and the blockers on it). Check-ins and blockers are
- * per person, so only the roles that read a pod's people get them.
+ * per person, so only the roles that read a pod's people get them. Opened from
+ * a person's own part of the tree (`own`), `own.full` says whether this pod's
+ * detail is theirs (a scrum master's own pod, a developer's own pod); without
+ * it the panel is the pod's dates and colour, as a project's reader sees it,
+ * and links only the projects their Delivery lists.
  */
-export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Finder }) {
+export function PodPanel({
+  pod,
+  find,
+  own,
+}: {
+  pod: DirectoryItemResponse;
+  find: Finder;
+  own?: OwnPanel;
+}) {
   const { canReadPodDetail } = useRole();
   const day = useDayWords();
-  const on = canReadPodDetail;
+  const on = own ? own.full : canReadPodDetail;
   const rollup = useQuery({
     queryKey: ["pod", pod.id, "rollup"],
     queryFn: () => apiClient.podRollup(pod.id),
@@ -54,18 +66,27 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
             : undefined
         }
         read={on ? readState(rollup) : undefined}
+        // Its reasons are in the rollup: a reader who has its dates only gets no line about them.
+        reasons={on || !own}
+        above={own?.trail}
       />
       <div className="mb-5 grid gap-2">
-        <Related
-          label="Projects"
-          kind="project"
-          items={pod.project_ids.map((id) => find("project", id))}
-        />
-        <Related
-          label="Workstreams"
-          kind="workstream"
-          items={pod.workstream_ids.map((id) => find("workstream", id))}
-        />
+        {own ? (
+          <Related label="Projects" kind="project" items={own.related} />
+        ) : (
+          <>
+            <Related
+              label="Projects"
+              kind="project"
+              items={pod.project_ids.map((id) => find("project", id))}
+            />
+            <Related
+              label="Workstreams"
+              kind="workstream"
+              items={pod.workstream_ids.map((id) => find("workstream", id))}
+            />
+          </>
+        )}
         <p className="text-[13px] text-grey-body">
           {pod.member_ids.length} {pod.member_ids.length === 1 ? "member" : "members"}
           {c
@@ -75,7 +96,8 @@ export function PodPanel({ pod, find }: { pod: DirectoryItemResponse; find: Find
         </p>
       </div>
       <div className="mb-5">
-        <PodDateStrips pod={pod} />
+        {/* Every listed pod that opens shows its dates: that is all a name-only pod lacks. */}
+        <PodDateStrips pod={pod} readable={own ? true : undefined} />
       </div>
       {/* Per person, so only for the roles that read a pod's people. */}
       {on ? (

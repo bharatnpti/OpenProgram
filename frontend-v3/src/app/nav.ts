@@ -32,7 +32,16 @@ export const NAV: NavItem[] = [
   { to: "/admin", page: "admin", label: "Admin", hint: "Configuration" },
 ];
 
-/** The destinations this role is offered: the navigation's tabs and the palette's screens. */
-export function shownNav(access: Pick<Access, "pages">): NavItem[] {
-  return NAV.filter((item) => access.pages[item.page]);
+/**
+ * The destinations this role is offered: the navigation's tabs and the palette's
+ * screens. A Delivery that lists the person's own part of the tree says so.
+ */
+export function shownNav(
+  access: Pick<Access, "pages"> & Partial<Pick<Access, "deliveryScope">>,
+): NavItem[] {
+  return NAV.filter((item) => access.pages[item.page]).map((item) =>
+    item.page === "delivery" && access.deliveryScope === "own"
+      ? { ...item, hint: "Your projects and pods" }
+      : item,
+  );
 }

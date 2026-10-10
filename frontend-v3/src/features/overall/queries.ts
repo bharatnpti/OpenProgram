@@ -32,14 +32,20 @@ export function useRequirements(projectId: string, releaseId?: string) {
   };
 }
 
-export function useDelivery(projectId: string) {
+/**
+ * The project's delivery. `readable` says the reader may read this one project
+ * where the role does not read every project's (a scrum master's own, from the
+ * person's part of the delivery tree); left out, the role decides.
+ */
+export function useDelivery(projectId: string, readable?: boolean) {
   const { canReadProjectProgress } = useRole();
+  const can = readable ?? canReadProjectProgress;
   return {
-    readable: canReadProjectProgress,
+    readable: can,
     query: useQuery({
       queryKey: ["delivery", projectId],
       queryFn: () => apiClient.projectDelivery(projectId),
-      enabled: canReadProjectProgress && projectId !== "",
+      enabled: can && projectId !== "",
     }),
   };
 }

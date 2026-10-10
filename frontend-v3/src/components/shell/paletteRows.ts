@@ -1,7 +1,8 @@
 // What the ⌘K palette offers and how a query picks from it. Type imports, and
 // runtime imports by their .ts path, so `node --test` can run it.
-import type { DirectoryItemResponse, Rag } from "../../api/schema";
+import type { DeliveryTreeResponse, DirectoryItemResponse, Rag } from "../../api/schema";
 import type { PaletteTargets } from "../../app/access";
+import { ownProjects } from "../../features/delivery/ownTree.ts";
 import { ragWords, toneForRag, type BadgeTone } from "../../lib/status.ts";
 
 export type PaletteKind =
@@ -19,6 +20,11 @@ export type PaletteRow = {
    * `rag`, as the Delivery navigator draws it. Null when nobody reported one.
    */
   rag?: Rag | null;
+  /**
+   * The role reads no colour for it (a developer's project): no dot, as the
+   * Delivery navigator draws none, rather than a grey one that says "unknown".
+   */
+  noStatus?: boolean;
   /**
    * A person's pods, the one the row opens first, and what the hint says
    * before them ("Backend Engineer · "). A query naming another of their pods
@@ -136,22 +142,71 @@ export function directoryRows(directory: Directory, targets: PaletteTargets): Pa
   });
 }
 
+/**
+ * The person's own part of the tree, for a Delivery that lists only it (the
+ * `own` scope): their projects, and the pods under them that open, each where
+ * Delivery opens it, with the colour its navigator draws. A pod listed by
+ * name only opens nothing, so is not offered; a project whose colour the
+ * person does not read (a developer's) gets no dot.
+ */
+export function ownRows(tree: DeliveryTreeResponse, targets: PaletteTargets): PaletteRow[] {
+  const projects = ownProjects(tree);
+  const { project: toProject, pod: toPod } = targets;
+  const programName = (ids: string[]) =>
+    ids.map((id) => tree.programs.find((p) => p.id === id)?.name).find(Boolean) ?? "";
+  const rows: PaletteRow[] = [];
+  if (toProject) {
+    for (const project of projects) {
+      rows.push({
+        key: `project:${project.id}`,
+        kind: "project",
+        label: project.name,
+        hint: hint("Project", programName(project.programIds)),
+        to: toProject(project.id),
+        rag: project.rag,
+        ...(project.rag === null ? { noStatus: true } : {}),
+      });
+    }
+  }
+  if (toPod) {
+    const seen = new Set<string>();
+    for (const pod of projects.flatMap((project) => project.pods)) {
+      if (!pod.opens || seen.has(pod.id)) continue;
+      seen.add(pod.id);
+      const where = projects.filter((p) => p.pods.some((item) => item.id === pod.id));
+      rows.push({
+        key: `pod:${pod.id}`,
+        kind: "pod",
+        label: pod.name,
+        hint: hint("Pod", where.map((p) => p.name).join(", ")),
+        to: toPod(pod.id),
+        rag: pod.rag,
+      });
+    }
+  }
+  return rows;
+}
+
 /** What a row's mark says: a node's status in a colour and words, or what kind of row it is. */
 export type PaletteMark =
-  { kind: "status"; tone: BadgeTone; words: string } | { kind: "screen" | "ask" | "person" };
+  | { kind: "status"; tone: BadgeTone; words: string }
+  | { kind: "screen" | "ask" | "person" | "plain" };
 
 /**
  * The mark before a row. A program, project, workstream or pod shows its
  * status: the directory's `rag`, the field the Delivery navigator's dot reads,
- * from the same reads (`["directory", kind]`), so the palette and Delivery can
- * never disagree. Green, amber and red say a verdict, grey says nothing is
- * known, and the words go with the colour ("At risk"). A screen, the
+ * from the same reads (`["directory", kind]`, or the person's own tree under
+ * the `own` scope), so the palette and Delivery can never disagree. Green,
+ * amber and red say a verdict, grey says nothing is known, and the words go
+ * with the colour ("At risk"). A node whose colour the role does not read is
+ * `plain`, an empty mark, as the navigator draws no dot for it. A screen, the
  * assistant and a person have no status, so their marks use no status colour.
  */
-export function paletteMark(row: Pick<PaletteRow, "kind" | "rag">): PaletteMark {
+export function paletteMark(row: Pick<PaletteRow, "kind" | "rag" | "noStatus">): PaletteMark {
   if (row.kind === "screen" || row.kind === "ask" || row.kind === "person") {
     return { kind: row.kind };
   }
+  if (row.noStatus) return { kind: "plain" };
   return { kind: "status", tone: toneForRag(row.rag), words: ragWords(row.rag) };
 }
 

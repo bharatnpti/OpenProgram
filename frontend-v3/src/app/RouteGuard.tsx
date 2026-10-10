@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import { apiClient } from "../api/client";
+import { ownLinks } from "../features/delivery/ownTree";
 import {
   pageOf,
   redirectFor,
@@ -11,6 +12,7 @@ import {
   roleOfferingPage,
   type DirectoryLinks,
 } from "./access";
+import { useOwnTree } from "./directory";
 import { roleLabels, rolePriority, useRole } from "./role";
 
 /**
@@ -27,12 +29,16 @@ export function RouteGuard({ children }: { children: ReactNode }) {
   const role = useRole();
   const { access } = role;
 
-  // Only a Delivery link to a pod or workstream needs the directory to say where to go.
-  const kind = location.pathname.split("/")[2];
+  // Only a Delivery link to a pod or workstream needs the directory to say where to go,
+  // and under the `own` scope any link to a node needs the person's part of the tree.
+  const [, first, kind, id] = location.pathname.split("/");
+  const delivery = pageOf(location.pathname) === "delivery" && first === "delivery";
+  const own = access.deliveryScope === "own";
+  const needsTree = delivery && own && Boolean(kind && id);
   const needsDirectory =
-    pageOf(location.pathname) === "delivery" &&
+    delivery &&
     (kind === "pod" || kind === "workstream") &&
-    !(access.pages.delivery && access.delivery[kind]);
+    (own || !(access.pages.delivery && access.delivery[kind]));
   // The same keys as app/directory.ts, so this shares its requests.
   const pods = useQuery({
     queryKey: ["directory", "pods"],
@@ -44,17 +50,21 @@ export function RouteGuard({ children }: { children: ReactNode }) {
     queryFn: () => apiClient.workstreams(),
     enabled: needsDirectory,
   });
-  const waiting = needsDirectory && (pods.isPending || workstreams.isPending);
+  const tree = useOwnTree(needsTree);
+  const waiting =
+    (needsDirectory && (pods.isPending || workstreams.isPending)) || (needsTree && tree.isPending);
 
   const redirect = useMemo(() => {
     if (waiting) return null;
     const links: DirectoryLinks = {
-      podProjects: (id) => pods.data?.find((pod) => pod.id === id)?.project_ids ?? [],
-      workstreamProjects: (id) =>
-        workstreams.data?.find((item) => item.id === id)?.project_ids ?? [],
+      podProjects: (podId) => pods.data?.find((pod) => pod.id === podId)?.project_ids ?? [],
+      workstreamProjects: (wsId) =>
+        workstreams.data?.find((item) => item.id === wsId)?.project_ids ?? [],
+      // A tree that failed to load leaves the link to the page, which says so.
+      own: tree.data ? ownLinks(tree.data) : null,
     };
     return redirectFor(location, access, role, links);
-  }, [access, location, pods.data, role, waiting, workstreams.data]);
+  }, [access, location, pods.data, role, tree.data, waiting, workstreams.data]);
 
   const target = redirect?.to ?? null;
   const missing = redirect?.missing ?? null;

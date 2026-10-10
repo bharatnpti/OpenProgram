@@ -54,6 +54,19 @@ export function usePods() {
   return useQuery({ queryKey: ["directory", "pods"], queryFn: () => apiClient.pods() });
 }
 
+/**
+ * The person's own part of the delivery tree (`GET /me/delivery-tree`): what a
+ * Delivery under the `own` scope lists, its palette rows, and where a link
+ * outside it goes. One key, so the navigator, the palette and the guard share it.
+ */
+export function useOwnTree(enabled = true) {
+  return useQuery({
+    queryKey: ["me", "delivery-tree"],
+    queryFn: () => apiClient.myDeliveryTree(),
+    enabled,
+  });
+}
+
 /** The first program: the root every portfolio read hangs off. */
 export function useProgram() {
   const programs = usePrograms();
