@@ -1,0 +1,102 @@
+frontend-v3/src/app/access.test.ts
+  s_3101dec2ee3c53::t_5e9c47749c7dff 38,52-57,59-63,67-72
+  s_3101dec2ee3c53::t_0a86aec643d17f 154-196,204,215-217,221-222,225-226,228-244,247-256,259,275-283,296-298,300-305,307-309,315-316,318-319,343-352,362-364,366,381-386,401-402,407,414,416,439-452
+  s_3101dec2ee3c53::t_5a114334e5e284 24-27
+  s_3101dec2ee3c53::t_1ae4d9243cc128 14
+frontend-v3/src/features/delivery/ownTree.test.ts
+  s_3101dec2ee3c53::t_9c1d2e5b05db3d 1-5,7-123
+  s_3101dec2ee3c53::t_c4cd90487db9a4 6
+frontend-v3/scripts/mock/scoped-delivery.mjs
+  s_3101dec2ee3c53::t_b210959ea5ece3 46-47
+  s_3101dec2ee3c53::t_541a19f200b6c1 1-45,48-141
+frontend-v3/src/features/delivery/DeliveryStrips.tsx
+  s_3101dec2ee3c53::t_83e368f6683dc4 120,125-126,129,133,136
+  s_3101dec2ee3c53::t_8d0dfa0800da34 19-24,30-31,37-46,48,50
+frontend-v3/src/features/delivery/ownTree.ts
+  s_3101dec2ee3c53::t_112f1e4b86152c 1-139
+frontend-v3/src/components/shell/paletteRows.test.ts
+  s_3101dec2ee3c53::t_a917c05e57f630 5,7-12,18,24
+  s_3101dec2ee3c53::t_84419d81a8bf1d 228-249,253-254,261-271,275-283
+  s_3101dec2ee3c53::t_c4cd90487db9a4 255-260
+  s_3101dec2ee3c53::t_33b4e7159da3d3 284-285
+frontend-v3/src/components/shell/CommandPalette.tsx
+  s_3101dec2ee3c53::t_654f6e03b11cc3 45-48
+  s_3101dec2ee3c53::t_c4cd90487db9a4 7,187-191
+  s_3101dec2ee3c53::t_201c2eea86a1f1 12,20
+  s_3101dec2ee3c53::t_55b66dd4e1d12e 144-148,151-157,163-164,169,173,175-177,181-186
+frontend-v3/src/app/access.ts
+  s_3101dec2ee3c53::t_b6135497438da2 260-261,266-270
+  s_3101dec2ee3c53::t_8f3b38221e20df 69-72,74
+  s_3101dec2ee3c53::t_ea953a2c4032f5 354-356
+  s_3101dec2ee3c53::t_079dcd21532515 367,369-372,374-376
+  s_3101dec2ee3c53::t_3edcc27e3d4836 9,12-17
+  s_3101dec2ee3c53::t_aab642b7bf9a75 262-264
+  s_3101dec2ee3c53::t_fc60980433823e 273-288,290-292,296-310,312
+  s_3101dec2ee3c53::t_25b6ed85b0d59c 187-188
+  s_3101dec2ee3c53::t_2d63f0ae8038f6 125-136
+  s_3101dec2ee3c53::t_b95f034692a833 116-117
+  s_3101dec2ee3c53::t_41705489de537a 52-58
+  s_3101dec2ee3c53::t_b67895b12ca0fa 271-272
+frontend-v3/src/features/delivery/ownTree.fixture.ts
+  s_3101dec2ee3c53::t_84d40ffd3e2dca 1-81
+frontend-v3/src/app/RouteGuard.tsx
+  s_3101dec2ee3c53::t_d7f218441a24a3 32-37,39,41,53-54,60-64,67
+  s_3101dec2ee3c53::t_c4cd90487db9a4 55
+  s_3101dec2ee3c53::t_287d91c0c769cd 7,15
+frontend-v3/src/features/assistant/Assistant.tsx
+  s_3101dec2ee3c53::t_836756ae0cf0b4 45
+frontend-v3/src/features/assistant/persona.test.ts
+  s_3101dec2ee3c53::t_387eb430e14708 4,135-138
+  s_3101dec2ee3c53::t_c4cd90487db9a4 20
+frontend-v3/src/app/directory.ts
+  s_3101dec2ee3c53::t_44ded467b567e2 57-69
+frontend-v3/src/app/nav.ts
+  s_3101dec2ee3c53::t_80cde528204b21 35-38,42-46
+  s_3101dec2ee3c53::t_5b100ce08eba48 39-41
+frontend-v3/scripts/mock-api.mjs
+  s_3101dec2ee3c53::t_6b0c6b472c83f8 32
+  s_3101dec2ee3c53::t_bf6c2d0ef0c81f 252-253
+frontend-v3/src/pages/DeliveryPage.tsx
+  s_3101dec2ee3c53::t_3c5a9eabdc7ad0 201-204
+  s_3101dec2ee3c53::t_738837fbbb75c5 236-241
+  s_3101dec2ee3c53::t_c4cd90487db9a4 264-267
+  s_3101dec2ee3c53::t_8be11b34af4b07 2,7,12,15,20-27,31-35,39-71,121-200,205-235,242-260,262-263,268-294,298-302
+frontend-v3/src/components/shell/paletteRows.ts
+  s_3101dec2ee3c53::t_c363fa6a60ddf7 3,5
+  s_3101dec2ee3c53::t_136ff9a1503340 145-153,155-156,161,163-164,166-167,192-193,198-202,205,209
+  s_3101dec2ee3c53::t_a434973c430265 154,157-160,162,165,168-187
+  s_3101dec2ee3c53::t_fd10ec3666fcf9 24-27
+  s_3101dec2ee3c53::t_3f34f6aced1803 23
+  s_3101dec2ee3c53::t_0342b0bd26d9e5 188-189
+frontend-v3/src/features/delivery/PodPanel.tsx
+  s_3101dec2ee3c53::t_46f69aba8b890a 12,20-24,26-34,37,69-71,74-89,99-100
+frontend-v3/src/features/delivery/ProjectPanel.tsx
+  s_3101dec2ee3c53::t_60bc3fc8e3cb16 9,16-19,21-29,31,35,47-48,60-76,79
+frontend-v3/src/features/delivery/ProjectNamesPanel.tsx
+  s_3101dec2ee3c53::t_5a014cee421dc3 1-64
+frontend-v3/src/features/delivery/NodeBits.tsx
+  s_3101dec2ee3c53::t_e9e6ff9931dc18 131-187
+  s_3101dec2ee3c53::t_d20081af8f94f1 126-129
+  s_3101dec2ee3c53::t_5d7cfc2c665a40 211
+  s_3101dec2ee3c53::t_02fb9d470f7755 14-17,26-28,36-39,43,47,50
+  s_3101dec2ee3c53::t_c22f3643fe722b 130
+  s_3101dec2ee3c53::t_d26e62d82d5f3f 196,198
+frontend-v3/src/features/overall/queries.ts
+  s_3101dec2ee3c53::t_6bf9c2ecf7c95b 35-40,42,44,48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f23132bb8e0f1d8628c619458def843cdd0bd061",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
