@@ -1,0 +1,24 @@
+backend/core/application/status_parsing.py
+  s_3101dec2ee3c53::t_3bbb015f35a206 505-507,509-510
+  s_3101dec2ee3c53::t_802312d065800e 16,46-52,294,338,482,498-504,508,511-517
+  s_3101dec2ee3c53::t_dbbc90b1eb70db 518-519
+backend/tests/unit/test_summary_names_issues.py
+  s_3101dec2ee3c53::t_1714eb0bfb2394 99-103
+  s_3101dec2ee3c53::t_e208580c685905 1-98,104-197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "de2d97deb584446f04b60195d88b2625ae9ecd57",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
