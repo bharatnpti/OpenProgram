@@ -37,6 +37,7 @@ from core.application.risk_service import RiskService
 from core.application.rollup_service import NO_WORK_REASON
 from core.application.status_summaries import NO_REPLY_BLOCKER
 from core.domain.auth import Principal
+from core.domain.delivery import DeliveryStage
 from core.domain.errors import AuthorizationDenied, GraphNotFound
 from core.domain.forecast import Release, Verdict
 from core.domain.graph import (
@@ -48,7 +49,13 @@ from core.domain.graph import (
     workstreams_in_use,
 )
 from core.domain.llm import LlmMessage, LlmRequest, LlmToolCall
-from core.domain.release_readiness import Severity, stage_words
+from core.domain.release_readiness import (
+    Severity,
+    Urgency,
+    UrgencyKind,
+    name_in_sentence,
+    stage_words,
+)
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import FactorKind, Rag, RollupFactor
 from core.domain.status import StatusSource
@@ -105,7 +112,10 @@ ASK_TOOL_GUIDANCE = (
     "before it can go live, whether it can be released -- is answered from "
     "release_readiness: name each missing or unsure criterion, blocking ones first, with "
     "what it rests on and the day it is needed by, and never call anything ready unless "
-    "release_readiness shows every criterion covered or not applicable. "
+    "release_readiness shows every criterion covered or not applicable. Say what is needed "
+    "by when in the words of the criterion's what_is_needed: the criterion is what is "
+    "needed, and the issue key in reached_stage_without_it is a requirement that already "
+    "reached that stage without it, never something that is needed. "
     "Relationships -- who is assigned to what, who belongs to which pod, what "
     "contains what -- live on edges, so call graph_neighbors before reporting that "
     "something has none, and never tell the user their data is missing or needs "
@@ -1472,8 +1482,10 @@ class ReleaseReadinessTool:
         "Whether a project, one of its releases, or a pod is ready for production, as "
         "Release readiness checks it: each release criterion (its name, blocking or "
         "advisory, the stage it is needed before), whether it is covered, missing, unsure "
-        "or not applicable and why, the evidence issue keys and how each was found, the "
-        "day it is needed by, and the status of the issue drafted for a missing one. A "
+        "or not applicable and why, the evidence issue keys and how each was found, what "
+        "is still needed by when (what_is_needed, needed_by), any requirement that already "
+        "reached the stage without it (reached_stage_without_it), and the status of the "
+        "issue drafted for a missing one. A "
         "project comes with each of its releases' counts; give release_id for one "
         "release's criteria. Use it for 'is X ready for production', 'what is missing "
         "before X can go live', 'can we release' and 'what must happen before the "
@@ -2914,6 +2926,36 @@ def _readiness_payload(board: BoardView, as_of: date) -> dict[str, object]:
     return payload
 
 
+_READY_STATES = frozenset({"covered", "not_applicable"})
+
+
+def what_is_needed(
+    criterion: str, needed_before: DeliveryStage, urgency: Urgency, *, ready: bool
+) -> str | None:
+    """What a criterion still needs before its stage, and by when, in a sentence to quote.
+
+    The finding used to give the requirement that reached the stage as
+    requirement_at_stage, beside needed_by, and an answer read the key as the
+    thing needed: "(CHK-3 needed by 2026-11-24)". The criterion is what is
+    needed; the key is a requirement that already reached the stage without it.
+    None once the criterion is covered or not applicable.
+    """
+    if ready:
+        return None
+    what = f"The {name_in_sentence(criterion)}"
+    stage = stage_words(needed_before)
+    due = urgency.due_on
+    if urgency.kind is UrgencyKind.OVERDUE and due is not None:
+        line = f"{what} was needed before {stage} by {due.isoformat()}, and that day has passed"
+    elif due is not None:
+        line = f"{what} is needed before {stage}, by {due.isoformat()}"
+    else:
+        line = f"{what} is needed before {stage}"
+    if urgency.kind is UrgencyKind.STAGE_REACHED and urgency.stage_key:
+        line += f"; {urgency.stage_key} already reached {stage} without it"
+    return line + "."
+
+
 def _finding_payload(view: FindingView, names: Mapping[str, str]) -> dict[str, object]:
     finding, criterion, suggestion = view.finding, view.criterion, view.suggestion
     person = finding.person
@@ -2941,9 +2983,17 @@ def _finding_payload(view: FindingView, names: Mapping[str, str]) -> dict[str, o
             for item in finding.candidates[:_MAX_SIGNALS]
         ],
         "urgency": urgency.kind.value,
+        "what_is_needed": what_is_needed(
+            criterion.name,
+            criterion.required_before,
+            urgency,
+            ready=view.shown_state in _READY_STATES,
+        ),
         "needed_by": _iso(urgency.due_on),
         "working_days_left": view.working_days_left,
-        "requirement_at_stage": urgency.stage_key,
+        "reached_stage_without_it": (
+            urgency.stage_key if urgency.kind is UrgencyKind.STAGE_REACHED else None
+        ),
         "held_for_fresh_jira_data": finding.held,
     }
     if person is not None:

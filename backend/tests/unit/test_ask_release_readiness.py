@@ -19,13 +19,20 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from config.settings import Settings
-from core.application.ask_service import ASK_SYSTEM_PROMPT, AskService, ReleaseReadinessTool
+from core.application.ask_service import (
+    ASK_SYSTEM_PROMPT,
+    AskService,
+    ReleaseReadinessTool,
+    what_is_needed,
+)
 from core.application.delivery_scope import DeliveryScopeService
 from core.application.flow_metrics_service import FlowMetricsService
 from core.application.persona_views import PersonaViewService
 from core.domain.auth import Principal, Role
+from core.domain.delivery import DeliveryStage
 from core.domain.graph import Developer, EdgeKind, GraphEdge, Pod, Task
 from core.domain.llm import LlmToolCall
+from core.domain.release_readiness import Urgency, UrgencyKind
 from infra.registry import ServiceRegistry
 from tests.contract.fakes import FakeLlmProvider
 from tests.unit.test_ask_service import _llm_response
@@ -212,6 +219,88 @@ async def test_it_says_what_the_readiness_board_says(client: TestClient) -> None
     assert "someone" not in json.dumps(payload)
 
 
+async def test_the_criterion_is_what_is_needed_and_the_key_already_reached_the_stage(
+    client: TestClient,
+) -> None:
+    """Ora wrote "(CHK-3 needed by 2026-11-24)": the stage's key read as the thing needed.
+
+    LCH-2 is done, so it reached production while no security review is in
+    Jira. The finding says the review is needed, and that LCH-2 got there
+    without it; no field names the key as needed.
+    """
+    _set_up(client)
+    client.post("/projects/launch/readiness/run", headers=_as("mgr"))
+
+    criteria = _by_name(await _read(_tool(client, Role.MGR), node_id="launch"))
+
+    security = criteria["Security review"]
+    assert security["urgency"] == "stage_reached"
+    assert security["what_is_needed"] == (
+        "The security review is needed before production; "
+        "LCH-2 already reached production without it."
+    )
+    assert security["reached_stage_without_it"] == "LCH-2"
+    assert "requirement_at_stage" not in security
+    load = criteria["Load test"]
+    assert (load["state"], load["what_is_needed"], load["reached_stage_without_it"]) == (
+        "Covered",
+        None,
+        None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("criterion", "stage", "urgency", "line"),
+    [
+        (
+            "Data protection review (DPR)",
+            DeliveryStage.PRODUCTION,
+            Urgency(
+                kind=UrgencyKind.STAGE_REACHED,
+                due_on=date(2026, 11, 24),
+                stage_key="LCH-3",
+            ),
+            "The data protection review (DPR) is needed before production, by 2026-11-24; "
+            "LCH-3 already reached production without it.",
+        ),
+        (
+            "Load test",
+            DeliveryStage.PRODUCTION,
+            Urgency(kind=UrgencyKind.DUE_SOON, due_on=date(2026, 11, 24)),
+            "The load test is needed before production, by 2026-11-24.",
+        ),
+        (
+            "Load test",
+            DeliveryStage.PRODUCTION,
+            Urgency(kind=UrgencyKind.OVERDUE, due_on=date(2026, 10, 1)),
+            "The load test was needed before production by 2026-10-01, and that day has passed.",
+        ),
+        (
+            "DPIA",
+            DeliveryStage.BUSINESS_TESTING,
+            Urgency(kind=UrgencyKind.NO_DATE),
+            "The DPIA is needed before business testing.",
+        ),
+    ],
+)
+def test_what_is_needed_names_the_criterion_its_stage_and_its_day(
+    criterion: str, stage: DeliveryStage, urgency: Urgency, line: str
+) -> None:
+    assert what_is_needed(criterion, stage, urgency, ready=False) == line
+
+
+def test_nothing_is_needed_once_a_criterion_is_covered_or_not_applicable() -> None:
+    urgency = Urgency(kind=UrgencyKind.LATER, due_on=date(2026, 11, 24))
+
+    assert what_is_needed("Load test", DeliveryStage.PRODUCTION, urgency, ready=True) is None
+
+
+def test_the_prompt_says_the_criterion_is_needed_never_the_key() -> None:
+    assert "in the words of the criterion's what_is_needed" in ASK_SYSTEM_PROMPT
+    assert "reached_stage_without_it is a requirement that already" in ASK_SYSTEM_PROMPT
+    assert "never something that is needed" in ASK_SYSTEM_PROMPT
+
+
 async def test_an_executive_reads_the_rows_without_drafts_as_the_route_gives_them(
     client: TestClient,
 ) -> None:
@@ -309,3 +398,8 @@ def test_the_ask_route_offers_and_runs_it(
     assert "release_readiness" in {tool.name for tool in llm.requests[0].tools}
     result = json.loads(llm.requests[1].tool_results[0].content)
     assert _by_name(result)["Security review"]["state"] == "Missing"
+    # What the model reads says what is needed, and which requirement got there without it.
+    assert _by_name(result)["Security review"]["what_is_needed"] == (
+        "The security review is needed before production; "
+        "LCH-2 already reached production without it."
+    )
