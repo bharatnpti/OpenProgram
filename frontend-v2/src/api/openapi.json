@@ -12025,6 +12025,17 @@
             "type": "string",
             "format": "date",
             "title": "First Seen On"
+          },
+          "counted_here": {
+            "type": "boolean",
+            "title": "Counted Here"
+          },
+          "counted_in": {
+            "items": {
+              "$ref": "#/components/schemas/BlockerPodDto"
+            },
+            "type": "array",
+            "title": "Counted In"
           }
         },
         "type": "object",
@@ -12041,9 +12052,26 @@
           "work_item_ref",
           "pod_ref",
           "unattributed",
-          "first_seen_on"
+          "first_seen_on",
+          "counted_here",
+          "counted_in"
         ],
         "title": "BlockerDto"
+      },
+      "BlockerPodDto": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name"],
+        "title": "BlockerPodDto"
       },
       "BrandingResponse": {
         "properties": {

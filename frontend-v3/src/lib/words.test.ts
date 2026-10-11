@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   checkinsLine,
+  countedElsewhere,
   daysLabel,
   deliveryNote,
   firstName,
@@ -31,6 +32,22 @@ test("counts agree with their word", () => {
   assert.equal(plural(1, "watermelon", "watermelons"), "1 watermelon");
   assert.equal(plural(0, "drift finding", "drift findings"), "0 drift findings");
   assert.equal(plural(11, "person", "people"), "11 people");
+});
+
+test("a pod's listed blocker says where it counts, only when that is another pod", () => {
+  assert.equal(countedElsewhere({ counted_here: true, counted_in: [] }), null);
+  assert.equal(
+    countedElsewhere({ counted_here: false, counted_in: [{ name: "Identity Pod" }] }),
+    "counted in Identity Pod",
+  );
+  assert.equal(
+    countedElsewhere({
+      counted_here: false,
+      counted_in: [{ name: "Identity Pod" }, { name: "Data Pod" }, { name: "Web Pod" }],
+    }),
+    "counted in Identity Pod, Data Pod and Web Pod",
+  );
+  assert.equal(countedElsewhere({ counted_here: false, counted_in: [] }), "counted in another pod");
 });
 
 test("a wait reads as days, or today", () => {

@@ -1,8 +1,9 @@
-"""The tasks a pod's Delivery panel lists, and who may read them."""
+"""The tasks a pod's Delivery panel lists, the blockers on them, and who may read them."""
 
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -11,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from api.main import create_app
 from config.settings import Settings
+from core.application.ask_service import PodBlockersTool
 from core.application.persona_views import PersonaViewService
 from core.domain.blockers import BlockerSource, DeveloperBlocker, normalize_blocker_key
 from core.domain.errors import GraphNotFound
@@ -26,7 +28,7 @@ from core.domain.graph import (
     WorkItem,
     Workstream,
 )
-from core.domain.rollup import Rag
+from core.domain.rollup import FactorKind, Rag
 from core.domain.status import DeveloperStatus, StatusSource
 from infra.persistence.in_memory_graph import InMemoryGraphStore
 from tests.fixtures.demo_graph import populate_demo_graph
@@ -156,6 +158,23 @@ async def test_a_task_two_pods_list_reads_blocked_in_both_for_a_member_of_both()
     it: Platform through its project. His blocker on IDP-6 counts where the
     blocked work sits, the Identity Pod, so Platform's task row read it clear.
     """
+    service = _service(await _idp6_store())
+
+    reads = {
+        pod_id: (await service.pod_tasks("demo", pod_id, AS_OF)).tasks
+        for pod_id in ("pod-identity", "pod-platform")
+    }
+
+    for pod_id, tasks in reads.items():
+        (row,) = tasks
+        assert (row.id, row.blocked) == ("IDP-6", True), pod_id
+        assert [(item.description, item.age_days) for item in row.open_blockers] == [
+            ("Waiting on review for sso-gateway!1", 4)
+        ], pod_id
+
+
+async def _idp6_store() -> InMemoryGraphStore:
+    """The QA tenant's IDP-6: both pods list it, its blocker counts in the Identity Pod."""
     store = InMemoryGraphStore()
     project = Project(tenant_id="demo", id="project-identity", name="Identity Platform")
     identity = Pod(tenant_id="demo", id="pod-identity", name="Identity Pod")
@@ -184,26 +203,140 @@ async def test_a_task_two_pods_list_reads_blocked_in_both_for_a_member_of_both()
             ),
         ),
     )
-    service = _service(store)
+    return store
 
-    reads = {
-        pod.id: (await service.pod_tasks("demo", pod.id, AS_OF)).tasks
-        for pod in (identity, platform)
+
+async def test_a_pods_blockers_list_one_on_a_task_it_lists_and_say_where_it_counts() -> None:
+    """The Platform Pod's page listed IDP-6 blocked and, above it, "No open blockers".
+
+    Its task list marks IDP-6 by Omar's blocker, which counts where the blocked
+    work sits: the Identity Pod. The blocker list now lists it too, marked as
+    counted in the Identity Pod, so the page says one thing.
+    """
+    service = _service(await _idp6_store())
+
+    identity = await service.pod_blockers("demo", "pod-identity", AS_OF)
+    platform = await service.pod_blockers("demo", "pod-platform", AS_OF)
+
+    (counted,) = identity.blockers
+    assert (counted.description, counted.age_days, counted.counted_here, counted.counted_in) == (
+        "Waiting on review for sso-gateway!1",
+        4,
+        True,
+        (),
+    )
+    (listed,) = platform.blockers
+    assert (listed.blocker_id, listed.description, listed.age_days, listed.owner_name) == (
+        counted.blocker_id,
+        counted.description,
+        4,
+        "Omar",
+    )
+    assert listed.work_item_ref is not None and listed.work_item_ref.id == "IDP-6"
+    assert listed.counted_here is False
+    assert [(pod.id, pod.name) for pod in listed.counted_in] == [("pod-identity", "Identity Pod")]
+    # The page's two lists agree: the task the blocker list names reads blocked.
+    (row,) = (await service.pod_tasks("demo", "pod-platform", AS_OF)).tasks
+    assert (row.id, row.blocked) == ("IDP-6", True)
+
+
+async def test_a_blocker_listed_where_it_does_not_count_changes_no_rollup_or_colour() -> None:
+    """Listing is not counting: only the Identity Pod's rollup has the blocker."""
+    service = _service(await _idp6_store())
+
+    rollups = {
+        pod_id: await service.pod_rollup("demo", pod_id, AS_OF)
+        for pod_id in ("pod-identity", "pod-platform")
     }
 
-    for pod_id, tasks in reads.items():
-        (row,) = tasks
-        assert (row.id, row.blocked) == ("IDP-6", True), pod_id
-        assert [(item.description, item.age_days) for item in row.open_blockers] == [
-            ("Waiting on review for sso-gateway!1", 4)
-        ], pod_id
-    # The pods' blocker lists keep placement: the blocker counts in Identity only.
-    identity_blockers = await service.pod_blockers("demo", identity.id, AS_OF)
-    platform_blockers = await service.pod_blockers("demo", platform.id, AS_OF)
-    assert [item.description for item in identity_blockers.blockers] == [
-        "Waiting on review for sso-gateway!1"
+    counted = {
+        pod_id: [factor for factor in view.factors if factor.kind is FactorKind.BLOCKER]
+        for pod_id, view in rollups.items()
+    }
+    assert len(counted["pod-identity"]) == 1
+    assert counted["pod-platform"] == []
+    assert rollups["pod-identity"].rag is Rag.AMBER
+    assert rollups["pod-platform"].rag not in {Rag.AMBER, Rag.RED}
+
+
+async def test_a_members_blocker_on_work_the_pod_does_not_list_stays_off_its_list() -> None:
+    """Sam's blocker counts in pod-b on pod-b's work; pod-a lists no task it marks."""
+    store = InMemoryGraphStore()
+    shared = Developer(tenant_id="demo", id="dev-shared", name="Sam")
+    await _add(store, shared)
+    for suffix in ("a", "b"):
+        pod = Pod(tenant_id="demo", id=f"pod-{suffix}", name=f"Pod {suffix.upper()}")
+        workstream = Workstream(tenant_id="demo", id=f"ws-{suffix}", name=f"Stream {suffix}")
+        task = Task(tenant_id="demo", id=f"task-{suffix}", name=f"Task {suffix}")
+        await _add(store, pod, workstream, task)
+        await _edge(store, pod.id, shared.id)
+        await _edge(store, pod.id, workstream.id, kind=EdgeKind.ASSIGNED_TO)
+        await _edge(store, workstream.id, task.id)
+        await _edge(store, shared.id, task.id, kind=EdgeKind.ASSIGNED_TO)
+    await store.record_developer_status_with_blockers(
+        _status(shared.id),
+        (_blocker(shared.id, "waiting on review", work_item_id="task-b"),),
+    )
+    service = _service(store)
+
+    pod_a = await service.pod_blockers("demo", "pod-a", AS_OF)
+    pod_b = await service.pod_blockers("demo", "pod-b", AS_OF)
+
+    assert pod_a.blockers == ()
+    assert [(item.description, item.counted_here) for item in pod_b.blockers] == [
+        ("waiting on review", True)
     ]
-    assert platform_blockers.blockers == ()
+
+
+async def test_ask_lists_a_blocker_once_over_every_pod_and_says_where_it_counts() -> None:
+    """Over every pod Ask counts Omar's IDP-6 blocker once, where it counts."""
+    store = await _idp6_store()
+    tool = PodBlockersTool(tenant_id="demo", service=_service(store), repository=store, as_of=AS_OF)
+
+    every = json.loads(await tool.run({}))
+    platform = json.loads(await tool.run({"pod_id": "pod-platform"}))
+
+    assert every["blocker_count"] == 1
+    (counted,) = every["blockers"]
+    assert (counted["pod_name"], counted["work_item_id"], counted["counted_in_this_pod"]) == (
+        "Identity Pod",
+        "IDP-6",
+        True,
+    )
+    assert "counts_in" not in counted
+    assert platform["blocker_count"] == 1
+    (listed,) = platform["blockers"]
+    assert (listed["pod_name"], listed["counted_in_this_pod"], listed["counts_in"]) == (
+        "Platform Pod",
+        False,
+        ["Identity Pod"],
+    )
+
+
+def test_the_pod_blockers_route_says_where_a_listed_blocker_counts(settings: Settings) -> None:
+    app = _app(settings, "sm")
+    with TestClient(app) as client:
+        store = app.state.registry.graph_repository()
+
+        async def seed() -> None:
+            source = await _idp6_store()
+            for node in await source.list_nodes("demo"):
+                await store.upsert_node(node)
+            for edge in await source.list_edges("demo"):
+                await store.add_edge(edge)
+            blockers = await source.open_blockers("demo", "dev-omar", AS_OF)
+            await app.state.registry.status_repository().record_developer_status_with_blockers(
+                _status("dev-omar"), blockers
+            )
+
+        asyncio.run(seed())
+        response = client.get(f"/pods/pod-platform/blockers?as_of={AS_OF.isoformat()}")
+
+    assert response.status_code == 200, response.text
+    (blocker,) = response.json()["blockers"]
+    assert blocker["work_item_ref"]["id"] == "IDP-6"
+    assert blocker["counted_here"] is False
+    assert blocker["counted_in"] == [{"id": "pod-identity", "name": "Identity Pod"}]
 
 
 async def test_pod_tasks_include_another_projects_workstream_the_pod_serves() -> None:

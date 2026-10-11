@@ -2972,6 +2972,17 @@ export interface components {
        * Format: date
        */
       first_seen_on: string;
+      /** Counted Here */
+      counted_here: boolean;
+      /** Counted In */
+      counted_in: components["schemas"]["BlockerPodDto"][];
+    };
+    /** BlockerPodDto */
+    BlockerPodDto: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
     };
     /**
      * BrandingResponse

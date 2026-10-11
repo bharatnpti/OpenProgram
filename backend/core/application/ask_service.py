@@ -1194,7 +1194,10 @@ class PodBlockersTool:
     description: str = (
         "Blockers open today in a pod, oldest first: what is blocked, for how many "
         "days, whose blocker it is and which work item it is attributed to. Omit "
-        "pod_id to cover every pod."
+        "pod_id to cover every pod. A blocker counts in the pod its blocked work sits "
+        "with; one on a task a pod lists that counts in another pod comes with "
+        "counted_in_this_pod false and the pods it counts in. Over several pods each "
+        "blocker is listed once."
     )
     parameters: Mapping[str, object] = field(
         default_factory=lambda: {
@@ -1217,13 +1220,24 @@ class PodBlockersTool:
         if isinstance(pods, str):
             return json.dumps({"error": pods})
         limit = _bounded_int(arguments.get("limit"), default=20, maximum=50)
+        views = [
+            await self.service.pod_blockers(self.tenant_id, pod.id, self.as_of) for pod in pods
+        ]
         blockers = [
             (view.pod_id, view.pod_name, blocker)
-            for view in [
-                await self.service.pod_blockers(self.tenant_id, pod.id, self.as_of) for pod in pods
-            ]
+            for view in views
             for blocker in view.blockers
+            if blocker.counted_here
         ]
+        # A pod lists a blocker on a task of its own that counts in another pod
+        # (PersonaViewService.pod_blockers). Over several pods it stays where it
+        # counts, so a project's blockers are never counted twice.
+        counted = {blocker.blocker_id for _pod_id, _pod_name, blocker in blockers}
+        for view in views:
+            for blocker in view.blockers:
+                if not blocker.counted_here and blocker.blocker_id not in counted:
+                    counted.add(blocker.blocker_id)
+                    blockers.append((view.pod_id, view.pod_name, blocker))
         blockers.sort(key=lambda item: -item[2].age_days)
         return json.dumps(
             {
@@ -1243,6 +1257,12 @@ class PodBlockersTool:
                             blocker.work_item_ref.id if blocker.work_item_ref else None
                         ),
                         "unattributed": blocker.unattributed,
+                        "counted_in_this_pod": blocker.counted_here,
+                        **(
+                            {}
+                            if blocker.counted_here
+                            else {"counts_in": [pod.name for pod in blocker.counted_in]}
+                        ),
                     }
                     for pod_id, pod_name, blocker in blockers[:limit]
                 ],

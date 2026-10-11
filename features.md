@@ -239,6 +239,7 @@ Functional requirements:
 - The workstream panel shall show its type, phase, target date, and its owner, TPM, and scrum master by name. An ID that matches no member shall be shown as an ID, never as a name.
 - A direct link to an empty workstream shall open its panel, which shall say that no work is in it yet and how work gets into one, instead of a status, reasons, or a 0% ring.
 - The pod panel shall show members, confirmed check-ins, open blockers, and the pod's tasks: those assigned to its members within the pod's remit (the pod itself, the workstreams it serves, or a project that contains it), blocked first, each with its owners and the open blockers attributed to it.
+- A pod's open blockers shall include a member's blocker on a task the pod lists even when the blocker counts in another pod (the one its blocked work sits with), marked "counted in <that pod>", so the blocker list and the task list never disagree. Such a blocker shall still count once, in that pod only: the listing pod's colour, reasons and rollups shall not change, and Ask's pod_blockers over several pods shall list it once.
 - A panel the viewing role may not read shall say which role opens it, instead of showing a denial as dashes or a 0% ring.
 
 ### 4.11 Portfolio Heat and Signals

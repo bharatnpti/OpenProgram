@@ -226,3 +226,21 @@ export function checkinsLine(
   const base = `Check-ins ${day}: ${checkins.answered} of ${checkins.asked} replied`;
   return firstAsked ? `${base} · asked from ${firstAsked}` : base;
 }
+
+/**
+ * Where a pod's listed blocker counts, when that is not this pod: "counted in
+ * Identity Pod". A member's blocker on a task the pod lists is listed with the
+ * task, but counts only in the pod its blocked work sits with: that pod's
+ * colour, reasons and counts include it, this one's do not. Null when it
+ * counts here.
+ */
+export function countedElsewhere(blocker: {
+  counted_here: boolean;
+  counted_in: readonly { name: string }[];
+}): string | null {
+  if (blocker.counted_here) return null;
+  const names = blocker.counted_in.map((pod) => pod.name);
+  if (names.length === 0) return "counted in another pod";
+  const last = names[names.length - 1];
+  return `counted in ${names.length === 1 ? last : `${names.slice(0, -1).join(", ")} and ${last}`}`;
+}

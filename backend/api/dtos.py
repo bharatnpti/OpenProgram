@@ -1015,6 +1015,13 @@ class FocusResponse(BaseModel):
         )
 
 
+class BlockerPodDto(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    name: str
+
+
 class BlockerDto(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -1031,6 +1038,11 @@ class BlockerDto(BaseModel):
     pod_ref: EntityRefDto | None
     unattributed: bool
     first_seen_on: date
+    # False for a blocker on a task this pod lists whose blocked work sits with
+    # another pod: listed here, counted there (in counted_in), never in this
+    # pod's rollup or colour.
+    counted_here: bool
+    counted_in: list[BlockerPodDto]
 
     @classmethod
     def from_view(cls, blocker: BlockerView) -> BlockerDto:
@@ -1052,6 +1064,8 @@ class BlockerDto(BaseModel):
             pod_ref=EntityRefDto.from_optional(blocker.pod_ref),
             unattributed=blocker.unattributed,
             first_seen_on=blocker.first_seen_on,
+            counted_here=blocker.counted_here,
+            counted_in=[BlockerPodDto(id=pod.id, name=pod.name) for pod in blocker.counted_in],
         )
 
 

@@ -9,6 +9,7 @@ import { Panel, Row } from "../../components/ui/Bits";
 import { boardMeta, boardRag, boardWord, repliedCount } from "../../lib/checkinWords";
 import { formatDay } from "../../lib/format";
 import { readState } from "../../lib/readState";
+import { countedElsewhere, plural } from "../../lib/words";
 import { FactorsPanel, NodeHeader, Related, type OwnPanel } from "./NodeBits";
 import { PodDateStrips } from "./DeliveryStrips";
 import { PodTasksPanel } from "./PodTasks";
@@ -92,7 +93,9 @@ export function PodPanel({
           {c
             ? ` · ${repliedCount({ confirmed: c.confirmed, partial: c.partial, total })} ${day}`
             : ""}
-          {blockers.data ? ` · ${blockers.data.blockers.length} open blockers` : ""}
+          {blockers.data
+            ? ` · ${plural(blockers.data.blockers.length, "open blocker", "open blockers")}`
+            : ""}
         </p>
       </div>
       <div className="mb-5">
@@ -147,7 +150,15 @@ export function PodPanel({
                           rag={b.age_days >= 7 ? "red" : "amber"}
                           accent={b.age_days >= 7 ? "red" : "amber"}
                           title={b.description}
-                          meta={`${b.owner_name}${b.work_item_ref ? ` · ${b.work_item_ref.id}` : ""} · since ${formatDay(b.first_seen_on)}`}
+                          meta={[
+                            b.owner_name,
+                            b.work_item_ref?.id,
+                            `since ${formatDay(b.first_seen_on)}`,
+                            // On a task this pod lists, but its colour is another pod's.
+                            countedElsewhere(b),
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
                           right={`${b.age_days}d`}
                         />
                       ))}
