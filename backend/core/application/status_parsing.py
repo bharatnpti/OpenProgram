@@ -13,7 +13,7 @@ from core.application.json_parsing import extract_json_object
 from core.application.reply_without_status import reads_without_status
 from core.domain.blockers import BlockerReport, DeveloperBlocker, normalize_blocker_key
 from core.domain.conversation import ConversationTurn
-from core.domain.cross_person import CrossPersonRequestKind, is_placeholder_name
+from core.domain.cross_person import CrossPersonRequestKind, is_placeholder_name, issue_keys_in
 from core.domain.llm import LlmRequest, LlmResponse
 from core.domain.status import CheckInSignals, CrossPersonMention, IssueClaim
 from core.ports.llm import LlmProvider
@@ -42,6 +42,13 @@ _REQUEST_NOTE_RULE = (
 _REQUEST_NAME_RULE = (
     "A requests name is a person's name. A role or placeholder such as reviewer, someone, "
     "anyone, the team, QA, a dev or my lead names nobody: add no request for it."
+)
+# The progress note is stored as the person's summary, which is read without the
+# reply, so it keeps the issues the reply names (V2 B1d: "About half done." for IDP-9).
+_PROGRESS_NOTE_RULE = (
+    "progress_note is a short summary of the reply that names every issue key the reply "
+    "names, each with what the reply says about it (for example 'IDP-9 is about half "
+    "done'); never leave out an issue key the reply gives."
 )
 # eta_change_days is an ETA that moved, never how long the work takes from now (N45).
 _ETA_CHANGE_RULE = (
@@ -284,6 +291,7 @@ def _parser_prompt(raw_reply: str, *, prior_text: str = "") -> str:
         "and pod string or null; include one item per blocker stated in the reply, copying an "
         "issue key or pod/team name only when the reply states it. Keep the blockers array "
         "equal to the blocker_details descriptions. "
+        f"{_PROGRESS_NOTE_RULE} "
         "Each requests item uses keys: name string, kind dependency/review/input, "
         "note string, email string or null. "
         f"{_REQUEST_NOTE_RULE} "
@@ -327,6 +335,7 @@ def _clarification_prompt(raw_reply: str, *, prior_text: str = "") -> str:
         "kind dependency/review/input, note string, email string or null. Each issue_updates "
         "item uses keys: issue_key string, claimed_done boolean, claimed_state string or null, "
         "and note string. "
+        f"{_PROGRESS_NOTE_RULE} "
         "Do not invent blockers. Previously open blockers are context only. When the reply "
         "says a previously open blocker is resolved, add its bracketed id to "
         "resolved_blocker_ids; never mark a blocker resolved otherwise. When the reply gives "
@@ -470,7 +479,7 @@ def _signals_from_json(
         # from the claim's words when the check-in records the issue's ETA.
         eta_change_days = None
     return CheckInSignals(
-        progress_note=progress_note.strip()
+        progress_note=_note_naming_reply_issues(progress_note.strip(), fallback_progress_note)
         if isinstance(progress_note, str) and progress_note.strip()
         else fallback_progress_note,
         blockers=blockers,
@@ -484,6 +493,28 @@ def _signals_from_json(
         blocker_reports=blocker_reports,
         resolved_blocker_ids=resolved_blocker_ids,
     )
+
+
+def _note_naming_reply_issues(note: str, reply: str) -> str:
+    """``note`` naming every issue key ``reply`` names (V2 B1d).
+
+    V2 live: Hana wrote "IDP-9 (Enterprise SSO onboarding guide) is in
+    progress, about half done. ...", and the model's progress note, stored as
+    her summary, read "About half done.": her card no longer said which task.
+    The note's words are kept, and the keys the reply names that it leaves out
+    are added by plain text rules: a note naming no issue leads with them
+    ("IDP-9: About half done."), and one that names some ends with the rest
+    ("IDP-3 is in review. Also about IDP-9.").
+    """
+    named = issue_keys_in(note.upper())
+    missing = sorted(issue_keys_in(reply) - named, key=reply.find)
+    if not missing:
+        return note
+    keys = ", ".join(missing)
+    if not named:
+        return f"{keys}: {note}"
+    end = "" if note.endswith((".", "!", "?")) else "."
+    return f"{note}{end} Also about {keys}."
 
 
 def _is_duration_from_now(eta_change_days: int, texts: Iterable[str]) -> bool:
