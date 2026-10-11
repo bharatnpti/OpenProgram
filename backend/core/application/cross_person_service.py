@@ -371,9 +371,17 @@ class CrossPersonRequestService:
         one -- Zoe's R3 copy by Noah's reply, her R2 copy later by the merge --
         and the requester hears about the ask once. Asked before this
         resolution closes its own copies, which are still open then.
+
+        A copy is an ask that was open together with this one: it was still
+        open when this one was made (``updated_at`` of a resolved request is
+        the time it resolved). An older ask about the same work that closed
+        before this one existed is another request, however alike the words
+        -- Zoe's 7 Oct review of CHK-12 and her 11 Oct one -- and its notice
+        said nothing about this one.
         """
         return any(
             is_repeat_of(request, other, vague_matches=False)
+            and other.updated_at >= request.created_at
             for other in await self.repository.list_for_requester(
                 request.tenant_id,
                 request.requester_id,
