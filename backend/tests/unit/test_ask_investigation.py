@@ -122,6 +122,9 @@ async def _ask_service() -> AskService:
         Task(tenant_id="demo", id="CHK-103", name="3-D Secure", metadata={"key": "CHK-103"}),
     ):
         await store.upsert_node(node)
+    registry = ServiceRegistry(
+        Settings(_env_file=None, secret_key=SECRET_KEY, runtime_mode="memory"), graph_store=store
+    )
     return AskService(
         llm_provider=_Llm(),
         graph_repository=store,
@@ -143,11 +146,9 @@ async def _ask_service() -> AskService:
             rollup_repository=store,
             provider_config=RiskProviderConfig(default_no_pr_days=3, default_stale_days=30),
         ),
-        forecast_service=ServiceRegistry(
-            Settings(_env_file=None, secret_key=SECRET_KEY, runtime_mode="memory"),
-            graph_store=store,
-        ).forecast_service(),
+        forecast_service=registry.forecast_service(),
         delivery_scope_service=DeliveryScopeService(store, store),
+        release_readiness_service=registry.release_readiness_service(),
         model="test-model",
     )
 

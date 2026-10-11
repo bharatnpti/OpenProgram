@@ -27,12 +27,18 @@ from core.application.portfolio_feed_service import (
     PortfolioFeedService,
     state_label,
 )
+from core.application.readiness_access import pod_viewer, project_viewer, reads_some_board
+from core.application.release_readiness_service import (
+    BoardView,
+    FindingView,
+    ReleaseReadinessService,
+)
 from core.application.risk_service import RiskService
 from core.application.rollup_service import NO_WORK_REASON
 from core.application.status_summaries import NO_REPLY_BLOCKER
 from core.domain.auth import Principal
 from core.domain.errors import AuthorizationDenied, GraphNotFound
-from core.domain.forecast import Verdict
+from core.domain.forecast import Release, Verdict
 from core.domain.graph import (
     EdgeKind,
     GraphEdge,
@@ -42,6 +48,7 @@ from core.domain.graph import (
     workstreams_in_use,
 )
 from core.domain.llm import LlmMessage, LlmRequest, LlmToolCall
+from core.domain.release_readiness import Severity, stage_words
 from core.domain.risk import DriftFinding, RiskFinding
 from core.domain.rollup import FactorKind, Rag, RollupFactor
 from core.domain.status import StatusSource
@@ -94,6 +101,11 @@ ASK_TOOL_GUIDANCE = (
     "the committed date, history's 50% and 85% dates and the verdict. A colour is not a "
     "forecast, so never say a date will be made or missed unless delivery_forecast says "
     "so, and say when it has too little history to forecast. "
+    "Whether a project, release or pod is ready for production -- what is still missing "
+    "before it can go live, whether it can be released -- is answered from "
+    "release_readiness: name each missing or unsure criterion, blocking ones first, with "
+    "what it rests on and the day it is needed by, and never call anything ready unless "
+    "release_readiness shows every criterion covered or not applicable. "
     "Relationships -- who is assigned to what, who belongs to which pod, what "
     "contains what -- live on edges, so call graph_neighbors before reporting that "
     "something has none, and never tell the user their data is missing or needs "
@@ -1411,6 +1423,101 @@ class DeliveryForecastTool:
 
 
 @dataclass(frozen=True, kw_only=True)
+class ReleaseReadinessTool:
+    """What a project, one of its releases, or a pod still needs before production.
+
+    Asked what was missing before a project could go to production, Ask had no
+    readiness to read: it explained the project's colour and never named the
+    blocking criterion the readiness board showed missing. This hands over that
+    board -- each criterion, whether it is covered, missing or unsure, the
+    evidence and candidate issue keys, when it is needed by, and the drafted
+    issue's status -- from ReleaseReadinessService.project_board or pod_board,
+    the reads behind /projects/{id}/readiness and /pods/{id}/readiness, after the
+    same check those routes make (readiness_access). A read the route would
+    refuse comes back in the route's own words, never as data; an executive
+    gets the rows without drafts, as the route gives them. It writes nothing.
+    Ask is not for developers (may_ask), so they never get here.
+    """
+
+    principal: Principal
+    service: ReleaseReadinessService
+    forecasts: ForecastService
+    repository: GraphRepository
+    #: The day asked about. Readiness keeps no history, so a board checked after
+    #: it says so rather than passing for that day's.
+    as_of: date
+
+    name: str = "release_readiness"
+    description: str = (
+        "Whether a project, one of its releases, or a pod is ready for production, as "
+        "Release readiness checks it: each release criterion (its name, blocking or "
+        "advisory, the stage it is needed before), whether it is covered, missing, unsure "
+        "or not applicable and why, the evidence issue keys and how each was found, the "
+        "day it is needed by, and the status of the issue drafted for a missing one. A "
+        "project comes with each of its releases' counts; give release_id for one "
+        "release's criteria. Use it for 'is X ready for production', 'what is missing "
+        "before X can go live', 'can we release' and 'what must happen before the "
+        "release'; search_graph_nodes turns a name into the node_id."
+    )
+    parameters: Mapping[str, object] = field(
+        default_factory=lambda: {
+            "type": "object",
+            "properties": {
+                "node_id": {
+                    "type": "string",
+                    "description": "The project or pod to check.",
+                },
+                "release_id": {
+                    "type": "string",
+                    "description": "One release of the project, from a project's releases.",
+                },
+            },
+            "required": ["node_id"],
+            "additionalProperties": False,
+        }
+    )
+
+    async def run(self, arguments: Mapping[str, JsonScalar]) -> str:
+        node_id = _required_string(arguments.get("node_id"), "node_id")
+        release_id = _string_argument(arguments.get("release_id"))
+        tenant_id = self.principal.tenant_id
+        node = await self.repository.get_node(tenant_id, node_id)
+        if node is None:
+            raise GraphNotFound(
+                f"{node_id} not found; search_graph_nodes finds a project or pod by name"
+            )
+        try:
+            if node.kind is NodeKind.PROJECT:
+                viewer = await project_viewer(
+                    self.principal, self.forecasts, self.service, node.id, reading=True
+                )
+                release = await self._release(node.id, release_id) if release_id else None
+                board = await self.service.project_board(
+                    tenant_id, node.id, viewer, release=release
+                )
+            elif node.kind is NodeKind.POD:
+                viewer = await pod_viewer(self.principal, self.forecasts, node.id)
+                board = await self.service.pod_board(tenant_id, node.id, viewer)
+            else:
+                return json.dumps(
+                    {
+                        "error": f"{node_id} is a {node.kind.value}; release_readiness covers "
+                        "a project, one of its releases, or a pod"
+                    }
+                )
+        except AuthorizationDenied as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+        return json.dumps(_readiness_payload(board, self.as_of), ensure_ascii=False)
+
+    async def _release(self, project_id: str, release_id: str) -> Release:
+        """The project's release, as the route finds it: another project's is no release."""
+        release = await self.forecasts.release(self.principal.tenant_id, release_id)
+        if release.project_id != project_id:
+            raise GraphNotFound(f"{release_id} is no release of {project_id}")
+        return release
+
+
+@dataclass(frozen=True, kw_only=True)
 class RecordedTool:
     """Runs a tool and notes that it ran.
 
@@ -1613,6 +1720,7 @@ class AskService:
         risk_service: RiskService,
         forecast_service: ForecastService,
         delivery_scope_service: DeliveryScopeService,
+        release_readiness_service: ReleaseReadinessService,
         model: str,
         tool_agent: ToolCallingAgent | None = None,
         max_tool_iterations: int = ASK_MAX_TOOL_ITERATIONS,
@@ -1625,6 +1733,7 @@ class AskService:
         self._risk_service = risk_service
         self._forecast_service = forecast_service
         self._delivery_scope_service = delivery_scope_service
+        self._release_readiness_service = release_readiness_service
         self._model = model
         self._tool_agent = tool_agent or ToolCallingAgent(
             llm_provider=llm_provider,
@@ -1786,6 +1895,19 @@ class AskService:
                     as_of=as_of,
                 ),
                 _reads_delivery,
+            ),
+            # /projects/{id}/readiness and /pods/{id}/readiness: offered when a
+            # board answers the role somewhere, and per project or pod only
+            # where it does (readiness_access), as delivery_forecast is.
+            (
+                ReleaseReadinessTool(
+                    principal=principal,
+                    service=self._release_readiness_service,
+                    forecasts=self._forecast_service,
+                    repository=graph,
+                    as_of=as_of,
+                ),
+                reads_some_board,
             ),
         )
         return tuple(tool for tool, allowed in offered if allowed(principal))
@@ -2716,6 +2838,109 @@ async def _pods(
     if node.kind is not NodeKind.POD:
         return f"{requested} is a {node.kind.value}, not a pod"
     return (node,)
+
+
+def _readiness_payload(board: BoardView, as_of: date) -> dict[str, object]:
+    """A readiness board for the model: every criterion's state, evidence and draft, by name.
+
+    The counts are the board's own (ReadinessBoardResponse.summary); a person is
+    named, never given by id; an empty board says why, so it never reads as ready.
+    """
+    states = [view.shown_state for view in board.findings]
+    checked = board.last_run.finished_at if board.last_run else None
+    payload: dict[str, object] = {
+        "scope_name": board.scope_name,
+        "project_id": board.project_id,
+        "pod_id": board.pod_id,
+        "release_id": board.release_id,
+        "checks_on": board.settings.enabled,
+        "last_checked": checked.isoformat() if checked else None,
+        "jira_data_as_of": board.jira.as_of.isoformat() if board.jira.as_of else None,
+        "jira_data_stale": board.jira.stale,
+        "blocking_missing": sum(
+            1
+            for view in board.findings
+            if view.shown_state == "missing" and view.criterion.severity is Severity.BLOCKING
+        ),
+        "missing": states.count("missing"),
+        "unsure": states.count("unsure"),
+        "covered": states.count("covered"),
+        "not_applicable": states.count("not_applicable"),
+        "criteria": [_finding_payload(view, board.names) for view in board.findings],
+        "releases": [
+            {
+                "release_id": line.release_id,
+                "release_name": line.name,
+                "missing": line.missing,
+                "unsure": line.unsure,
+                "criteria": line.total,
+            }
+            for line in board.releases[:_MAX_PARTS]
+        ],
+        "day_report_lines": list(board.important),
+    }
+    if checked is not None and checked.date() > as_of:
+        payload["history"] = (
+            f"Release readiness keeps no history: this is the check of {checked.date()}, "
+            f"which may not be how it stood on {as_of.isoformat()}."
+        )
+    if not board.findings:
+        payload["no_criteria"] = (
+            "No release criterion applies here, so nothing is checked: this says nothing "
+            "about whether it is ready."
+            if board.settings.enabled
+            else "Release readiness checks are off for this tenant, so nothing is checked."
+        )
+    return payload
+
+
+def _finding_payload(view: FindingView, names: Mapping[str, str]) -> dict[str, object]:
+    finding, criterion, suggestion = view.finding, view.criterion, view.suggestion
+    person = finding.person
+    urgency = finding.urgency
+    entry: dict[str, object] = {
+        "criterion": criterion.name,
+        "severity": criterion.severity.value,
+        "needed_before": stage_words(criterion.required_before),
+        "scope_kind": finding.scope.kind.value,
+        "scope_name": view.scope_name,
+        "state": state_label(view.shown_state),
+        "reason": _clip(finding.reason),
+        "evidence": [
+            {
+                "issue_key": item.issue_key or None,
+                "title": _clip(item.title),
+                "status": state_label(item.status) if item.status else None,
+                "done": item.done,
+                "how_found": item.how,
+            }
+            for item in finding.evidence[:_MAX_SIGNALS]
+        ],
+        "candidates": [
+            {"issue_key": item.issue_key, "title": _clip(item.title), "why": item.why.value}
+            for item in finding.candidates[:_MAX_SIGNALS]
+        ],
+        "urgency": urgency.kind.value,
+        "needed_by": _iso(urgency.due_on),
+        "working_days_left": view.working_days_left,
+        "requirement_at_stage": urgency.stage_key,
+        "held_for_fresh_jira_data": finding.held,
+    }
+    if person is not None:
+        entry["decision"] = {
+            "kind": state_label(person.kind.value),
+            "by": names.get(person.by),
+            "reason": _clip(person.reason) or None,
+            "issue_key": person.issue_key or None,
+        }
+    if suggestion is not None:
+        entry["draft"] = {
+            "status": state_label(suggestion.status.value),
+            "summary": _clip(suggestion.draft.summary),
+            "jira_project": suggestion.draft.project_key,
+            "created_issue_key": suggestion.created_issue_key,
+        }
+    return entry
 
 
 def _forecast_payload(view: ScopeDeliveryView) -> dict[str, object]:

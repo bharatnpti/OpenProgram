@@ -253,6 +253,7 @@ def get_ask_service(request: Request) -> AskService:
         risk_service=get_risk_service(request),
         forecast_service=get_forecast_service(request),
         delivery_scope_service=get_delivery_scope_service(request),
+        release_readiness_service=registry.release_readiness_service(),
         model=settings.default_llm_model,
         max_tool_iterations=settings.ask_max_tool_iterations,
     )

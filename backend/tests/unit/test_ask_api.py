@@ -72,6 +72,12 @@ _ANY_REST_TWIN: dict[str, tuple[tuple[str, str], ...]] = {
         ("GET", f"/projects/project-own/delivery?as_of={AS_OF}"),
         ("GET", f"/pods/pod-own/delivery?as_of={AS_OF}"),
     ),
+    # The same for a readiness board: a scrum master reads the projects their own
+    # pods work on, and a pod's board is its scrum master's (readiness_access).
+    "release_readiness": (
+        ("GET", "/projects/project-own/readiness"),
+        ("GET", "/pods/pod-own/readiness"),
+    ),
 }
 
 
@@ -131,6 +137,7 @@ def _ask_service(store: InMemoryGraphStore, registry: ServiceRegistry) -> AskSer
         ),
         forecast_service=registry.forecast_service(),
         delivery_scope_service=DeliveryScopeService(store, store),
+        release_readiness_service=registry.release_readiness_service(),
         model="test-model",
     )
 
@@ -230,6 +237,46 @@ async def test_delivery_forecast_answers_each_project_and_pod_as_its_route_does(
     assert {node_id for node_id, read in reads.items() if read} == expected
 
 
+@pytest.mark.parametrize("role", _ASKING_ROLES)
+async def test_release_readiness_answers_each_project_and_pod_as_its_route_does(
+    settings: Settings, role: str
+) -> None:
+    """Refused where the readiness route refuses, in its words; read where it reads."""
+    store = InMemoryGraphStore()
+    await _own_part(store)
+    app = _app_for_role(settings, role, store)
+    principal = Principal(tenant_id="demo", subject=ASKER, roles=frozenset({Role(role)}))
+    tools = _ask_service(store, app.state.registry).tools_for(principal, date.fromisoformat(AS_OF))
+    tool = next(tool for tool in tools if tool.name == "release_readiness")
+    reads: dict[str, bool] = {}
+
+    with TestClient(app) as client:
+        for kind, node_id in (
+            ("projects", "project-own"),
+            ("projects", "project-other"),
+            ("pods", "pod-own"),
+            ("pods", "pod-other"),
+        ):
+            route = client.get(f"/{kind}/{node_id}/readiness")
+            answer = json.loads(await tool.run({"node_id": node_id}))
+            if route.status_code == 403:
+                assert answer == {"error": route.json()["detail"]}, node_id
+            else:
+                assert route.status_code == 200, (node_id, route.text)
+                assert "error" not in answer, node_id
+                assert answer["scope_name"] == route.json()["scope_name"]
+            reads[node_id] = route.status_code == 200
+
+    # A scrum master reads their own pod's project and pod; a product owner and
+    # an executive every project's board but no pod's; a manager and an admin all.
+    expected = {
+        "sm": {"project-own", "pod-own"},
+        "po": {"project-own", "project-other"},
+        "exec": {"project-own", "project-other"},
+    }.get(role, {"project-own", "project-other", "pod-own", "pod-other"})
+    assert {node_id for node_id, read in reads.items() if read} == expected
+
+
 async def test_delivery_forecast_says_what_the_delivery_route_says(settings: Settings) -> None:
     store = InMemoryGraphStore()
     await _own_part(store)
@@ -297,6 +344,8 @@ def test_ask_route_answers_with_the_tools_the_asker_may_use(
     assert response.json()["answer"] == "No open risks."
     offered = {tool.name for tool in llm.requests[0].tools}
     assert "portfolio_heatmap" in offered
+    # get_ask_service wires the readiness board in.
+    assert "release_readiness" in offered
     assert "pod_checkins" not in offered
     risks = json.loads(llm.requests[1].tool_results[0].content)
     assert risks["as_of"] == AS_OF

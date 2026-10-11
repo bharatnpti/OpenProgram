@@ -184,7 +184,7 @@ export function accessOf({ lens, chatEnabled }: Lens): Access {
 
 /**
  * Whether the person reads a project's release readiness board, by the backend's
- * rule (api/routers/readiness.py `_project_viewer`): the roles that read every
+ * rule (core/application/readiness_access.py `project_viewer`): the roles that read every
  * project's, and a scrum master for a project one of their own pods (one they
  * belong to or run) works on, as `ForecastService.runs_project_pod` decides it.
  * Their pods come from their own part of the tree; until it answers (`tree`

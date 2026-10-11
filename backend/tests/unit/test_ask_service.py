@@ -286,6 +286,14 @@ def _persona_service(store: InMemoryGraphStore) -> PersonaViewService:
 
 
 def _ask_service(store: InMemoryGraphStore, llm: LlmProvider) -> AskService:
+    registry = ServiceRegistry(
+        Settings(
+            _env_file=None,
+            secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
+            runtime_mode="memory",
+        ),
+        graph_store=store,
+    )
     return AskService(
         llm_provider=llm,
         graph_repository=store,
@@ -296,15 +304,9 @@ def _ask_service(store: InMemoryGraphStore, llm: LlmProvider) -> AskService:
         ),
         persona_view_service=_persona_service(store),
         risk_service=_risk_service(store),
-        forecast_service=ServiceRegistry(
-            Settings(
-                _env_file=None,
-                secret_key="q6boIR1bNUZ-gozCYInhKglccJM7x11ysXmhquzIoUQ=",
-                runtime_mode="memory",
-            ),
-            graph_store=store,
-        ).forecast_service(),
+        forecast_service=registry.forecast_service(),
         delivery_scope_service=DeliveryScopeService(store, store),
+        release_readiness_service=registry.release_readiness_service(),
         model="test-model",
     )
 
@@ -560,6 +562,11 @@ async def test_an_unknown_id_comes_back_as_an_error_the_model_can_correct() -> N
     assert view.tools_used == ("open_risks",)
 
 
+# Every role /ask admits reads some readiness board: the scrum master's for the
+# projects their pods work on, per call (readiness_access).
+_READS_A_BOARD = {"delivery_forecast", "release_readiness"}
+
+
 @pytest.mark.parametrize(
     ("role", "expected"),
     [
@@ -568,12 +575,11 @@ async def test_an_unknown_id_comes_back_as_an_error_the_model_can_correct() -> N
         (Role.DEV, set()),
         (
             Role.PO,
-            _AGGREGATE_TOOLS | {"workstream_progress", "status_reasons", "delivery_forecast"},
+            _AGGREGATE_TOOLS | {"workstream_progress", "status_reasons"} | _READS_A_BOARD,
         ),
         (
             Role.SM,
-            _AGGREGATE_TOOLS
-            | {"pod_checkins", "pod_blockers", "status_reasons", "delivery_forecast"},
+            _AGGREGATE_TOOLS | {"pod_checkins", "pod_blockers", "status_reasons"} | _READS_A_BOARD,
         ),
         (
             Role.MGR,
@@ -584,13 +590,14 @@ async def test_an_unknown_id_comes_back_as_an_error_the_model_can_correct() -> N
                 "pod_checkins",
                 "pod_blockers",
                 "status_reasons",
-                "delivery_forecast",
-            },
+            }
+            | _READS_A_BOARD,
         ),
         (
             Role.EXEC,
             _AGGREGATE_TOOLS
-            | {"workstream_progress", "portfolio_heatmap", "status_reasons", "delivery_forecast"},
+            | {"workstream_progress", "portfolio_heatmap", "status_reasons"}
+            | _READS_A_BOARD,
         ),
         (
             Role.ADMIN,
@@ -601,8 +608,8 @@ async def test_an_unknown_id_comes_back_as_an_error_the_model_can_correct() -> N
                 "pod_checkins",
                 "pod_blockers",
                 "status_reasons",
-                "delivery_forecast",
-            },
+            }
+            | _READS_A_BOARD,
         ),
     ],
 )
