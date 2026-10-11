@@ -1,0 +1,45 @@
+frontend-v3/src/features/assistant/investigate.ts
+  s_3101dec2ee3c53::t_5a7105bf53315f 11,46-47,50,53,55
+backend/core/application/ask_service.py
+  s_3101dec2ee3c53::t_aaf8efbfe68cc7 137
+  s_3101dec2ee3c53::t_679013bb5565bc 120-126
+  s_3101dec2ee3c53::t_95607e2b45e4ba 1681-1683,1686-1687,1694,1698-1732,1738-1765,1773-1782
+  s_3101dec2ee3c53::t_39bcaa3bf6042f 270
+  s_3101dec2ee3c53::t_3d6211c44010b5 1766-1772
+  s_3101dec2ee3c53::t_16a77f9942cba5 1733-1737
+  s_3101dec2ee3c53::t_ceeb61aa626a84 1644
+  s_3101dec2ee3c53::t_39324a1fa8a816 246-269
+  s_3101dec2ee3c53::t_ea0ffb50303de2 1783-1784
+backend/tests/unit/test_ask_service.py
+  s_3101dec2ee3c53::t_d7f001d9bf3ce8 1551-1560
+frontend-v3/src/features/assistant/conversation.ts
+  s_3101dec2ee3c53::t_ac4ff72fb51163 90-180
+  s_3101dec2ee3c53::t_c97b1e2d9c1cfb 89
+frontend-v3/src/features/assistant/investigate.test.ts
+  s_3101dec2ee3c53::t_d99d0057245305 60-77
+frontend-v3/src/features/assistant/conversation.test.ts
+  s_3101dec2ee3c53::t_93daa4433803e0 113-137
+  s_3101dec2ee3c53::t_53338c33371b60 10
+frontend-v3/src/features/assistant/AssistantProvider.tsx
+  s_3101dec2ee3c53::t_5a7105bf53315f 14,144
+backend/tests/unit/test_ask_follow_ups_in_answer.py
+  s_3101dec2ee3c53::t_778814a9684cc7 1-244
+backend/core/application/ask_investigation.py
+  s_3101dec2ee3c53::t_7b038d6a5a5847 37,123-124,134-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "83acd5b3ddf96e686f9ba570d55c7c987ed9e139",
+  "prompts": {},
+  "sessions": {
+    "s_3101dec2ee3c53": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1da04d8f-851b-4140-b038-6ecce1bc8fb2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "bharatnpti <35888424+bharatnpti@users.noreply.github.com>"
+    }
+  }
+}
